@@ -7684,6 +7684,18 @@ async function execSingle(cmd) {
       const wp = window._agentWaterPreset; window._agentWaterPreset = null;
       setTimeout(() => parseAndExecute('water ' + wp), 200);
     }
+    // Actually equip the weapon if agent set one
+    if (agentProfile.weapon && characterController) {
+      if (!characterController.model) {
+        const charType = selectedCharacterType || 'knight';
+        if (!characterController.characterModels[charType]) {
+          const lib = CHARACTER_LIBRARY.find(c => c.id === charType);
+          if (lib) characterController.characterModels[charType] = { file: lib.file, animPrefix: '', procedural: true };
+        }
+        await characterController.loadCharacter(charType);
+      }
+      characterController.equipWeapon(agentProfile.weapon);
+    }
     return agentChanges.join('\n');
   }
   
