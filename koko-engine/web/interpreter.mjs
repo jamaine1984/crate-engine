@@ -89,7 +89,7 @@ function interpret(input) {
   }
   // Browse specific category: "show weapons", "browse buildings", "animals"
   for (const [keyword, category] of Object.entries(GALLERY_CATEGORIES)) {
-    if (lower === keyword || lower === `show ${keyword}` || lower === `browse ${keyword}` || lower === `open ${keyword}`) {
+    if (lower === `show ${keyword}` || lower === `browse ${keyword}` || lower === `open ${keyword}` || lower === `${keyword} gallery` || lower === `${keyword} library`) {
       return { action: 'openLibrary', category };
     }
   }
