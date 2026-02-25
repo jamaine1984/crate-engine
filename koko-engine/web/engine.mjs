@@ -6144,7 +6144,14 @@ async function parseAndExecute(rawCmd) {
         rawLower.includes('space') || rawLower.includes('dungeon') ||
         rawLower.includes('wasteland') || rawLower.includes('temple') ||
         rawLower.includes('haunted') || rawLower.includes('enchanted') || rawLower.includes('ocean') || rawLower.includes('lake') || rawLower.includes('pond') || rawLower.includes('sea') ||
-        rawLower.includes('fortress') || rawLower.includes('halloween')) {
+        rawLower.includes('fortress') || rawLower.includes('halloween') ||
+        rawLower.startsWith('water ') || rawLower === 'water' ||
+        rawLower.startsWith('equip ') || rawLower === 'unequip' || rawLower.startsWith('swap ') ||
+        rawLower === 'play' || rawLower === 'edit' || rawLower === 'play mode' || rawLower === 'edit mode' ||
+        rawLower === 'inventory' || rawLower === 'help' || rawLower === 'stats' ||
+        rawLower.startsWith('generate ') || rawLower === 'generator' || rawLower === '3d generator' ||
+        rawLower.startsWith('interior ') || rawLower.endsWith('story house') ||
+        rawLower === 'show weapons' || rawLower === 'show inventory') {
       rawCmd = rawLower; // Skip NL rewrite
       return (await execSingle(rawCmd)) || '';
     }
@@ -7683,6 +7690,15 @@ async function execSingle(cmd) {
   // === WEAPON EQUIP COMMANDS ===
   const equipMatch = lower.match(/^(?:equip|give me|use|wield|grab|take)\s+(?:a\s+|an\s+)?(sword|axe|dagger|hammer|spear|katana|pistol|rifle|shotgun|smg|sniper|bow)(?:\s+(?:in\s+)?(?:slot\s+)?(\d))?/);
   if (equipMatch && characterController) {
+    // Auto-load character model if none loaded
+    if (!characterController.model) {
+      const charType = selectedCharacterType || 'knight';
+      if (!characterController.characterModels[charType]) {
+        const lib = CHARACTER_LIBRARY.find(c => c.id === charType);
+        if (lib) characterController.characterModels[charType] = { file: lib.file, animPrefix: '', procedural: true };
+      }
+      await characterController.loadCharacter(charType);
+    }
     const weaponId = equipMatch[1];
     const slot = equipMatch[2] ? parseInt(equipMatch[2]) - 1 : -1;
     return characterController.equipWeapon(weaponId, slot);
@@ -8036,6 +8052,13 @@ async function execSingle(cmd) {
   const waterPresetMatch = lower.match(/^(?:set |change |use )?water (?:preset |style |type )?(tropical|storm|lake|ocean|swamp|river|arctic)/);
   if (waterPresetMatch) {
     const preset = waterPresetMatch[1];
+    // Auto-create ocean if none exists
+    let hasWater = objects.some(obj => obj.userData.isGerstnerWater);
+    if (!hasWater) {
+      window._pendingWaterPreset = preset;
+      await execSingle('add ocean');
+      return '🌊 Created ocean with ' + preset.charAt(0).toUpperCase() + preset.slice(1) + ' preset!';
+    }
     for (const obj of objects) {
       if (obj.userData.isGerstnerWater) {
         const p = WATER_PRESETS[preset];
@@ -9216,8 +9239,9 @@ input.addEventListener('keydown', async (e) => {
   cmdEl.textContent = '❯ ' + cmd;
   log.appendChild(cmdEl);
   
+  let response = '';
   try {
-    const response = await parseAndExecute(cmd);
+    response = await parseAndExecute(cmd);
     const text = (response || '').toString();
     text.split('\n').forEach(line => {
       if (!line) return;
@@ -10671,14 +10695,15 @@ animate();
 window._runCommand = async function(cmd) {
   const input = document.getElementById('prompt-input');
   const log = document.getElementById('output-log');
-  if (!input || !log) return;
+  if (!input || !log) return '';
   log.style.display = 'block';
   const cmdEl = document.createElement('div');
   cmdEl.className = 'entry cmd';
   cmdEl.textContent = '❯ ' + cmd;
   log.appendChild(cmdEl);
+  let response = '';
   try {
-    const response = await parseAndExecute(cmd);
+    response = await parseAndExecute(cmd);
     const text = (response || '').toString();
     text.split('\n').forEach(line => {
       if (!line) return;
@@ -10697,6 +10722,7 @@ window._runCommand = async function(cmd) {
   // Auto-hide log after 4s
   clearTimeout(window._logHideTimer);
   window._logHideTimer = setTimeout(() => { log.style.display = "none"; }, 4000);
+  return response || '';
 };
 
 window._engineReady = true;
