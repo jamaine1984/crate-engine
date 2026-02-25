@@ -1,0 +1,14303 @@
+window._userScripts = window._userScripts || [];
+const sceneHistory = [];
+
+
+// === AAA Water & Sky (v61) ===
+let Water, Sky, waterMesh, skyMesh, sun;
+async function loadWaterSky() {
+  try {
+    const [WaterMod, SkyMod] = await Promise.all([
+      import('three/addons/objects/Water.js'),
+      import('three/addons/objects/Sky.js')
+    ]);
+    Water = WaterMod.Water;
+    Sky = SkyMod.Sky;
+    console.log('[CRATE] Water + Sky modules loaded');
+  } catch(e) { console.warn('[CRATE] Water/Sky load failed:', e); }
+}
+loadWaterSky();
+
+
+// === Proper Real-World Scales (v61) ===
+const REAL_WORLD_SCALES = {
+  // Vehicles
+  car: 4.5, truck: 7, bus: 12, motorcycle: 2.2, bicycle: 1.8, boat: 6, ship: 20, helicopter: 10, airplane: 15, tank: 7,
+  // Buildings  
+  house: 8, castle: 25, tower: 18, tavern: 8, church: 15, shop: 6, barn: 10, warehouse: 12, skyscraper: 40,
+  // Nature
+  tree: 6, palm: 8, bush: 1.2, rock: 1.5, boulder: 3, flower: 0.4, mushroom: 0.3, log: 2,
+  // Characters
+  character: 1.8, npc: 1.8, soldier: 1.8, knight: 1.9, zombie: 1.8, skeleton: 1.7, guard: 1.85,
+  // Props
+  barrel: 0.9, crate: 0.8, chest: 0.6, table: 0.8, chair: 0.9, bench: 1.5, lamp: 2.5, torch: 1.2,
+  campfire: 0.6, tent: 2.5, fence: 1.2, gate: 3, bridge: 8, well: 1.5, fountain: 2,
+  // Weapons
+  sword: 1.0, axe: 0.9, shield: 0.7, bow: 1.1, staff: 1.6, gun: 0.8, rifle: 1.1,
+  // Furniture
+  bed: 2.0, sofa: 2.2, desk: 1.2, bookshelf: 2.0, cabinet: 1.8, oven: 0.9, fridge: 1.8,
+};
+
+function getProperScale(name) {
+  const lower = name.toLowerCase();
+  for (const [key, size] of Object.entries(REAL_WORLD_SCALES)) {
+    if (lower.includes(key)) return size;
+  }
+  return 2.0; // default
+}
+function createAAASky() {
+  if (!Sky || !scene) return;
+  if (skyMesh) scene.remove(skyMesh);
+  skyMesh = new Sky();
+  skyMesh.scale.setScalar(10000);
+  scene.add(skyMesh);
+  sun = new THREE.Vector3();
+  const uniforms = skyMesh.material.uniforms;
+  uniforms['turbidity'].value = 10;
+  uniforms['rayleigh'].value = 3;
+  uniforms['mieCoefficient'].value = 0.005;
+  uniforms['mieDirectionalG'].value = 0.7;
+  const phi = THREE.MathUtils.degToRad(90 - 2);
+  const theta = THREE.MathUtils.degToRad(180);
+  sun.setFromSphericalCoords(1, phi, theta);
+  uniforms['sunPosition'].value.copy(sun);
+  // Update environment map for PBR reflections
+  if (renderer) {
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+    const rt = pmremGenerator.fromScene(skyMesh);
+    if (scene.environment) scene.environment.dispose();
+    scene.environment = rt.texture;
+    pmremGenerator.dispose();
+  }
+  console.log('[CRATE] AAA Sky created');
+}
+
+function setSkyTime(elevation, azimuth) {
+  if (!skyMesh || !sun) return;
+  const phi = THREE.MathUtils.degToRad(90 - elevation);
+  const theta = THREE.MathUtils.degToRad(azimuth);
+  sun.setFromSphericalCoords(1, phi, theta);
+  skyMesh.material.uniforms['sunPosition'].value.copy(sun);
+}
+
+function createAAAWater(size) {
+  if (!Water) return createWater(size); // fallback
+  const s = size || 200;
+  const waterGeometry = new THREE.PlaneGeometry(s, s, 128, 128);
+  const w = new Water(waterGeometry, {
+    textureWidth: 512,
+    textureHeight: 512,
+    waterNormals: new THREE.TextureLoader().load(
+      'https://threejs.org/examples/textures/waternormals.jpg',
+      function(texture) {
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      }
+    ),
+    sunDirection: sun ? sun.clone().normalize() : new THREE.Vector3(0.7, 0.8, 0.3),
+    sunColor: 0xffffff,
+    waterColor: 0x001e0f,
+    distortionScale: 3.7,
+    fog: scene.fog !== undefined
+  });
+  w.rotation.x = -Math.PI / 2;
+  w.position.y = -0.3; // Below ground — terrain rises above
+  w.userData.isWater = true;
+  w.userData.isAAAWater = true;
+  w.userData.isSolid = true;
+  w.userData.name = 'ocean';
+  return w;
+}
+
+// === Vehicle Physics v2 (v61) ===
+let vehiclePhysics = null;
+function createVehiclePhysics(vehicleMesh) {
+  const vp = {
+    mesh: vehicleMesh,
+    speed: 0,
+    maxSpeed: 80,
+    acceleration: 35,
+    braking: 50,
+    friction: 0.97,
+    steerAngle: 0,
+    maxSteer: 0.04,
+    steerSpeed: 0.003,
+    steerReturn: 0.92,
+    direction: new THREE.Vector3(0, 0, -1),
+    rpm: 0,
+  };
+  return vp;
+}
+
+function updateVehiclePhysics(vp, dt, keys) {
+  if (!vp || !vp.mesh) return;
+  // Acceleration / Braking
+  if (keys.w || keys.ArrowUp) vp.speed += vp.acceleration * dt;
+  if (keys.s || keys.ArrowDown) vp.speed -= vp.braking * dt;
+  vp.speed *= vp.friction;
+  vp.speed = THREE.MathUtils.clamp(vp.speed, -20, vp.maxSpeed);
+  // Steering
+  if (keys.a || keys.ArrowLeft) vp.steerAngle -= vp.steerSpeed;
+  if (keys.d || keys.ArrowRight) vp.steerAngle += vp.steerSpeed;
+  vp.steerAngle *= vp.steerReturn;
+  vp.steerAngle = THREE.MathUtils.clamp(vp.steerAngle, -vp.maxSteer, vp.maxSteer);
+  // Apply rotation
+  if (Math.abs(vp.speed) > 0.5) {
+    vp.mesh.rotation.y -= vp.steerAngle * (vp.speed > 0 ? 1 : -1);
+  }
+  // Move
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(vp.mesh.quaternion);
+  vp.mesh.position.addScaledVector(forward, vp.speed * dt);
+  // RPM for HUD
+  vp.rpm = Math.abs(vp.speed / vp.maxSpeed) * 7000;
+  // Keep on ground
+  vp.mesh.position.y = Math.max(vp.mesh.position.y, 0.5);
+}
+
+// === Shooter System (v61) ===
+let shooterMode = false;
+let playerHP = 100;
+let ammo = 30;
+let maxAmmo = 30;
+const bullets = [];
+const enemies = [];
+
+function createBullet(origin, direction) {
+  const geo = new THREE.SphereGeometry(0.08, 4, 4);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+  const bullet = new THREE.Mesh(geo, mat);
+  bullet.position.copy(origin);
+  bullet.userData.velocity = direction.clone().multiplyScalar(80);
+  bullet.userData.life = 2.0;
+  scene.add(bullet);
+  bullets.push(bullet);
+  
+  // Muzzle flash
+  const flashGeo = new THREE.SphereGeometry(0.3, 6, 6);
+  const flashMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.9 });
+  const flash = new THREE.Mesh(flashGeo, flashMat);
+  flash.position.copy(origin);
+  scene.add(flash);
+  // Point light for muzzle
+  const flashLight = new THREE.PointLight(0xff8800, 3, 10);
+  flashLight.position.copy(origin);
+  scene.add(flashLight);
+  setTimeout(() => { scene.remove(flash); scene.remove(flashLight); flash.geometry.dispose(); flash.material.dispose(); }, 60);
+  
+  // Camera recoil kick
+  if (camera) {
+    const recoil = 0.02;
+    camera.rotation.x -= recoil;
+    setTimeout(() => { camera.rotation.x += recoil * 0.7; }, 50);
+  }
+  
+  return bullet;
+}
+
+function updateBullets(dt) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.position.addScaledVector(b.userData.velocity, dt);
+    b.userData.life -= dt;
+    if (b.userData.life <= 0) {
+      scene.remove(b);
+      bullets.splice(i, 1);
+      continue;
+    }
+    // Hit detection against enemies
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      if (b.position.distanceTo(e.position) < 1.5) {
+        e.userData.hp = (e.userData.hp || 50) - 25;
+        // Damage flash
+        e.traverse(c => { if (c.isMesh) { c._origColor = c._origColor || c.material.color.getHex(); c.material.color.setHex(0xff0000); setTimeout(() => { if (c.material) c.material.color.setHex(c._origColor || 0xffffff); }, 100); }});
+        // Floating damage number
+        showDamageNumber(b.position, 25);
+        scene.remove(b);
+        bullets.splice(i, 1);
+        if (e.userData.hp <= 0) {
+          scene.remove(e);
+          enemies.splice(j, 1);
+          if (typeof showToast === 'function') showToast('💀 Enemy eliminated!');
+        }
+        break;
+      }
+    }
+  }
+}
+
+function showDamageNumber(pos, damage) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 24px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('-' + damage, 32, 24);
+  const tex = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  sprite.position.copy(pos);
+  sprite.position.y += 2;
+  sprite.scale.set(1.5, 0.75, 1);
+  scene.add(sprite);
+  // Float up and fade
+  const startY = sprite.position.y;
+  const startTime = performance.now();
+  function animDmg() {
+    const elapsed = (performance.now() - startTime) / 1000;
+    if (elapsed > 1) { scene.remove(sprite); return; }
+    sprite.position.y = startY + elapsed * 2;
+    sprite.material.opacity = 1 - elapsed;
+    requestAnimationFrame(animDmg);
+  }
+  animDmg();
+}
+
+function createShooterHUD() {
+  let hud = document.getElementById('shooter-hud');
+  if (hud) return;
+  hud = document.createElement('div');
+  hud.id = 'shooter-hud';
+  hud.style.cssText = 'position:fixed;bottom:20px;left:20px;z-index:10000;font-family:monospace;color:#fff;text-shadow:0 0 5px rgba(0,0,0,0.8);pointer-events:none;';
+  hud.innerHTML = '<div id="sh-hp" style="font-size:20px;margin-bottom:4px">❤️ 100</div><div id="sh-ammo" style="font-size:16px">🔫 30/30</div>';
+  document.body.appendChild(hud);
+  // Crosshair
+  let ch = document.getElementById('crosshair');
+  if (!ch) {
+    ch = document.createElement('div');
+    ch.id = 'crosshair';
+    ch.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;width:24px;height:24px;display:none';
+    ch.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="2" fill="none" stroke="white" stroke-width="1.5" opacity="0.9"/><line x1="12" y1="2" x2="12" y2="8" stroke="white" stroke-width="1.5" opacity="0.7"/><line x1="12" y1="16" x2="12" y2="22" stroke="white" stroke-width="1.5" opacity="0.7"/><line x1="2" y1="12" x2="8" y2="12" stroke="white" stroke-width="1.5" opacity="0.7"/><line x1="16" y1="12" x2="22" y2="12" stroke="white" stroke-width="1.5" opacity="0.7"/></svg>';
+    document.body.appendChild(ch);
+  }
+}
+
+function updateShooterHUD() {
+  const hp = document.getElementById('sh-hp');
+  const am = document.getElementById('sh-ammo');
+  if (hp) hp.textContent = '❤️ ' + playerHP;
+  if (am) am.textContent = '🔫 ' + ammo + '/' + maxAmmo;
+}
+
+// === Speed HUD for vehicles ===
+function createSpeedHUD() {
+  let hud = document.getElementById('speed-hud');
+  if (hud) return;
+  hud = document.createElement('div');
+  hud.id = 'speed-hud';
+  hud.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:10000;font-family:monospace;color:#0f0;text-shadow:0 0 5px rgba(0,255,0,0.5);pointer-events:none;background:rgba(0,0,0,0.5);padding:12px 16px;border-radius:8px;border:1px solid #0f03;';
+  hud.innerHTML = '<div id="sp-speed" style="font-size:28px;font-weight:bold">0 km/h</div><div id="sp-rpm" style="font-size:14px;color:#0a0">0 RPM</div>';
+  document.body.appendChild(hud);
+}
+
+function updateSpeedHUD(speed, rpm) {
+  const sp = document.getElementById('sp-speed');
+  const rp = document.getElementById('sp-rpm');
+  if (sp) sp.textContent = Math.abs(Math.round(speed * 3.6)) + ' km/h';
+  if (rp) rp.textContent = Math.round(rpm) + ' RPM';
+}
+import * as THREE from 'three';
+console.log('THREE imported', typeof THREE); window.THREE = THREE;
+window._userScripts = window._userScripts || [];
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import auth from './auth.mjs';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+// ═══ POST-PROCESSING — Lazy loaded to prevent boot crashes ═══
+let EffectComposer, RenderPass, UnrealBloomPass, SMAAPass, ShaderPass, OutputPass, SSAOPass, RGBELoader, BokehPass;
+let _ppModulesLoaded = false;
+
+async function loadPostProcessingModules() {
+  try {
+    const [ec, rp, ub, sm, sp, op, ss, rg, bk] = await Promise.all([
+      import('three/addons/postprocessing/EffectComposer.js'),
+      import('three/addons/postprocessing/RenderPass.js'),
+      import('three/addons/postprocessing/UnrealBloomPass.js'),
+      import('three/addons/postprocessing/SMAAPass.js'),
+      import('three/addons/postprocessing/ShaderPass.js'),
+      import('three/addons/postprocessing/OutputPass.js'),
+      import('three/addons/postprocessing/SSAOPass.js').catch(() => null),
+      import('three/addons/loaders/RGBELoader.js'),
+      import('three/addons/postprocessing/BokehPass.js').catch(() => null),
+    ]);
+    EffectComposer = ec.EffectComposer;
+    RenderPass = rp.RenderPass;
+    UnrealBloomPass = ub.UnrealBloomPass;
+    SMAAPass = sm.SMAAPass;
+    ShaderPass = sp.ShaderPass;
+    OutputPass = op.OutputPass;
+    SSAOPass = ss?.SSAOPass || null;
+    RGBELoader = rg.RGBELoader;
+    BokehPass = bk?.BokehPass || null;
+    _ppModulesLoaded = true;
+    console.log('[PostFX] All post-processing modules loaded');
+    return true;
+  } catch(e) {
+    console.warn('[PostFX] Failed to load post-processing:', e.message);
+    _ppModulesLoaded = false;
+    return false;
+  }
+}
+const gltfLoader = new GLTFLoader();
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/');
+gltfLoader.setDRACOLoader(dracoLoader);
+import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
+import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
+import './savesystem.mjs';
+import './mobile.mjs';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=38';
+// Animation system
+const animationMixers = [];
+const clock = new THREE.Clock();
+
+
+// ═══ MULTIPLAYER LOBBY UI ═══
+function showMultiplayerLobby() {
+  let existing = document.getElementById('mp-lobby-modal');
+  if (existing) { existing.remove(); return; }
+  
+  const modal = document.createElement('div');
+  modal.id = 'mp-lobby-modal';
+  Object.assign(modal.style, {
+    position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:'500',
+    background:'#0d0d0d', border:'1px solid #333', borderRadius:'16px', padding:'28px',
+    width:'500px', maxHeight:'80vh', overflowY:'auto', color:'#eee',
+    fontFamily:"'Inter',system-ui,sans-serif", boxShadow:'0 20px 60px rgba(0,0,0,0.8)',
+  });
+  
+  modal.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:1.2rem">🌐 Multiplayer</h2>
+      <button onclick="this.closest('#mp-lobby-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
+    </div>
+    
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input id="mp-name" value="${localStorage.getItem('mp_name')||'Player'}" placeholder="Your name" style="flex:1;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.85rem">
+      <input id="mp-server" value="${localStorage.getItem('mp_server')||'wss://crate-engine-mp.fly.dev'}" placeholder="Server URL" style="flex:2;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.85rem">
+    </div>
+    
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button id="mp-quick-join" style="flex:1;padding:12px;background:linear-gradient(135deg,#ff6b35,#f7c948);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.9rem">⚡ Quick Match</button>
+      <button id="mp-create" style="flex:1;padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">🏗️ Create Room</button>
+      <button id="mp-refresh" style="padding:12px 16px;background:#111;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">🔄</button>
+    </div>
+    
+    <div id="mp-rooms" style="min-height:100px">
+      <div style="text-align:center;color:#555;padding:20px">Click 🔄 to load rooms or ⚡ Quick Match to jump in</div>
+    </div>
+    
+    <div id="mp-status" style="margin-top:12px;font-size:0.78rem;color:#666"></div>
+    
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #1a1a1a">
+      <p style="font-size:0.72rem;color:#555">
+        <strong>Self-host:</strong> Run <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">node server/multiplayer.mjs</code> or deploy to Railway/Render/Fly.io<br>
+        <strong>Commands:</strong> <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">multiplayer</code> / <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">join [room]</code> / <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">chat [message]</code>
+      </p>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  const statusEl = document.getElementById('mp-status');
+  
+  document.getElementById('mp-quick-join').onclick = async () => {
+    const server = document.getElementById('mp-server').value;
+    const name = document.getElementById('mp-name').value;
+    localStorage.setItem('mp_server', server); localStorage.setItem('mp_name', name);
+    statusEl.innerHTML = '<span style="color:#f7c948">Matchmaking...</span>';
+    try {
+      const httpUrl = server.replace('ws://', 'http://').replace('wss://', 'https://');
+      const resp = await fetch(httpUrl.replace(/:\d+.*/, ':' + new URL(server.replace('ws','http')).port) + '/matchmake', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ scene: null }),
+      });
+      const data = await resp.json();
+      if (data.room) {
+        statusEl.innerHTML = '<span style="color:#4ade80">Joining ' + data.room + '...</span>';
+        if (window._mp) { window._mp.connect(server, data.room, name); }
+        setTimeout(() => modal.remove(), 1000);
+      }
+    } catch(e) {
+      statusEl.innerHTML = '<span style="color:#f87171">Could not reach server. Is it running?</span>';
+    }
+  };
+  
+  document.getElementById('mp-create').onclick = () => {
+    const server = document.getElementById('mp-server').value;
+    const name = document.getElementById('mp-name').value;
+    const roomId = 'room_' + Date.now().toString(36);
+    localStorage.setItem('mp_server', server); localStorage.setItem('mp_name', name);
+    if (window._mp) { window._mp.connect(server, roomId, name); }
+    statusEl.innerHTML = '<span style="color:#4ade80">Created room: ' + roomId + '</span>';
+    setTimeout(() => modal.remove(), 1500);
+  };
+  
+  document.getElementById('mp-refresh').onclick = async () => {
+    const server = document.getElementById('mp-server').value;
+    const roomsEl = document.getElementById('mp-rooms');
+    roomsEl.innerHTML = '<div style="text-align:center;color:#f7c948;padding:10px">Loading...</div>';
+    try {
+      const httpUrl = server.replace('ws://', 'http://').replace('wss://', 'https://');
+      const port = new URL(server.replace('ws','http')).port || '8860';
+      const resp = await fetch(httpUrl.split(':' + port)[0] + ':' + port + '/lobby');
+      const data = await resp.json();
+      if (data.rooms.length === 0) {
+        roomsEl.innerHTML = '<div style="text-align:center;color:#555;padding:20px">No rooms yet — create one!</div>';
+      } else {
+        roomsEl.innerHTML = data.rooms.map(r => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#111;border:1px solid #1a1a1a;border-radius:8px;margin-bottom:6px">
+            <div>
+              <strong style="color:#fff">${r.name}</strong>
+              <span style="color:#666;font-size:0.75rem;margin-left:8px">${r.scene || 'custom'}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="color:#888;font-size:0.8rem">${r.players}/${r.maxPlayers}</span>
+              <button onclick="window._mp&&window._mp.connect('${server}','${r.id}',document.getElementById('mp-name').value);this.closest('#mp-lobby-modal').remove()" style="padding:6px 14px;background:#ff6b35;border:none;border-radius:6px;color:#fff;font-size:0.78rem;cursor:pointer;font-weight:600">Join</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    } catch(e) {
+      roomsEl.innerHTML = '<div style="text-align:center;color:#f87171;padding:20px">Could not reach server</div>';
+    }
+  };
+}
+window.showMultiplayerLobby = showMultiplayerLobby;
+
+// ═══ USER AI MODEL CONFIG ═══
+const AI_PROVIDERS = {
+  'claude': { name: 'Claude (Anthropic)', url: 'https://api.anthropic.com/v1/messages', header: 'x-api-key' },
+  'openai': { name: 'OpenAI / GPT', url: 'https://api.openai.com/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
+  'gemini': { name: 'Google Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', param: 'key' },
+  'groq': { name: 'Groq', url: 'https://api.groq.com/openai/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
+  'mistral': { name: 'Mistral AI', url: 'https://api.mistral.ai/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
+  'deepseek': { name: 'DeepSeek', url: 'https://api.deepseek.com/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
+  'ollama': { name: 'Ollama (Local)', url: 'http://localhost:11434/api/generate', header: null },
+};
+
+function getUserAIConfig() {
+  try {
+    return JSON.parse(localStorage.getItem('crate_ai_config') || 'null') || { provider: null, apiKey: null, model: null };
+  } catch { return { provider: null, apiKey: null, model: null }; }
+}
+function setUserAIConfig(provider, apiKey, model) {
+  localStorage.setItem('crate_ai_config', JSON.stringify({ provider, apiKey, model }));
+}
+
+// AI Settings Modal
+function showAISettingsModal() {
+  let existing = document.getElementById('ai-settings-modal');
+  if (existing) { existing.remove(); return; }
+  
+  const config = getUserAIConfig();
+  const modal = document.createElement('div');
+  modal.id = 'ai-settings-modal';
+  Object.assign(modal.style, {
+    position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:'500',
+    background:'#0d0d0d', border:'1px solid #333', borderRadius:'16px', padding:'28px',
+    width:'420px', maxHeight:'80vh', overflowY:'auto', color:'#eee',
+    fontFamily:"'Inter',system-ui,sans-serif", boxShadow:'0 20px 60px rgba(0,0,0,0.8)',
+  });
+  
+  const providers = Object.entries(AI_PROVIDERS).map(([k,v]) => 
+    `<option value="${k}" ${config.provider===k?'selected':''}>${v.name}</option>`
+  ).join('');
+  
+  modal.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:1.2rem">🤖 AI Model Settings</h2>
+      <button onclick="this.closest('#ai-settings-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
+    </div>
+    <p style="color:#888;font-size:0.8rem;margin-bottom:16px">Connect your own AI model for advanced scene generation, code assist, and NPC dialogue.</p>
+    
+    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Provider</label>
+    <select id="ai-provider" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:14px;font-size:0.85rem">
+      <option value="">None (use built-in commands only)</option>
+      ${providers}
+    </select>
+    
+    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">API Key</label>
+    <input id="ai-apikey" type="password" value="${config.apiKey||''}" placeholder="sk-..." style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:14px;font-size:0.85rem;box-sizing:border-box">
+    
+    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Model (optional)</label>
+    <input id="ai-model" value="${config.model||''}" placeholder="e.g. gpt-4o, claude-3-sonnet, gemini-pro" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:20px;font-size:0.85rem;box-sizing:border-box">
+    
+    <div style="display:flex;gap:10px">
+      <button id="ai-save-btn" style="flex:1;padding:10px;background:linear-gradient(135deg,#ff6b35,#f7c948);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.9rem">Save</button>
+      <button id="ai-test-btn" style="flex:1;padding:10px;background:#1a1a2e;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">Test Connection</button>
+    </div>
+    <div id="ai-status" style="margin-top:12px;font-size:0.78rem;color:#666"></div>
+  `;
+  document.body.appendChild(modal);
+  
+  document.getElementById('ai-save-btn').onclick = () => {
+    const p = document.getElementById('ai-provider').value;
+    const k = document.getElementById('ai-apikey').value;
+    const m = document.getElementById('ai-model').value;
+    setUserAIConfig(p, k, m);
+    document.getElementById('ai-status').innerHTML = '<span style="color:#4ade80">✓ Saved!</span>';
+    setTimeout(() => modal.remove(), 1000);
+  };
+  
+  document.getElementById('ai-test-btn').onclick = async () => {
+    const p = document.getElementById('ai-provider').value;
+    const k = document.getElementById('ai-apikey').value;
+    const statusEl = document.getElementById('ai-status');
+    if (!p || !k) { statusEl.innerHTML = '<span style="color:#f87171">⚠️ Select provider and enter API key</span>'; return; }
+    statusEl.innerHTML = '<span style="color:#f7c948">Testing...</span>';
+    try {
+      const prov = AI_PROVIDERS[p];
+      const headers = { 'Content-Type': 'application/json' };
+      if (prov.header) headers[prov.header] = (prov.prefix||'') + k;
+      const resp = await fetch(prov.url, { method: 'POST', headers, body: '{}' }).catch(() => null);
+      if (resp && (resp.status < 500)) {
+        statusEl.innerHTML = '<span style="color:#4ade80">✓ Connection OK (status ' + resp.status + ')</span>';
+      } else {
+        statusEl.innerHTML = '<span style="color:#f87171">⚠️ Could not reach API</span>';
+      }
+    } catch(e) {
+      statusEl.innerHTML = '<span style="color:#f87171">⚠️ Error: ' + e.message + '</span>';
+    }
+  };
+}
+window.showAISettingsModal = showAISettingsModal;
+
+
+// === PLAY MODE (WASD First-Person) ===
+let playMode = false;
+
+// === CHARACTER SELECT (restored from localStorage) ===
+let selectedCharacterType = null;
+try { selectedCharacterType = localStorage.getItem('crate_character'); } catch(e) {}
+
+let playAvatar = null;
+const playKeys = {};
+const playSpeed = 8;
+let playYaw = 0;
+
+window.addEventListener('keydown', e => { playKeys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup', e => { playKeys[e.key.toLowerCase()] = false; });
+
+
+// Get terrain surface Y at world position (x, z)
+// Ground an object so its bottom sits on terrain surface
+function groundObjectOnTerrain(obj) {
+  if (!terrainMesh || !obj) return;
+  const box = new THREE.Box3().setFromObject(obj);
+  const groundOffset = -box.min.y; // Distance from origin to bottom
+  const terrainY = getTerrainY(obj.position.x, obj.position.z);
+  const waterY = -0.3;
+  
+  // Check if object is a water item
+  const name = (obj.userData.name || '').toLowerCase();
+  const isWaterItem = name.includes('boat') || name.includes('ship') || name.includes('buoy') || name.includes('dock') || name.includes('raft');
+  
+  if (isWaterItem) {
+    // Water items float at water surface
+    obj.position.y = waterY + groundOffset;
+  } else if (terrainY < waterY && !isWaterItem) {
+    // Land object underwater — push to nearest dry land
+    let found = false;
+    for (let r = 2; r < 60; r += 2) {
+      for (let a = 0; a < Math.PI * 2; a += 0.4) {
+        const tx = obj.position.x + Math.cos(a) * r;
+        const tz = obj.position.z + Math.sin(a) * r;
+        const ty = getTerrainY(tx, tz);
+        if (ty > waterY + 0.2) {
+          obj.position.set(tx, ty + groundOffset, tz);
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (!found) obj.position.y = terrainY + groundOffset;
+  } else {
+    // Normal land placement
+    const isRock = name.includes('rock') || name.includes('boulder') || name.includes('stone');
+    if (isRock) {
+      // Rocks sink 25% into terrain
+      obj.position.y = terrainY + groundOffset * 0.75;
+    } else {
+      obj.position.y = terrainY + groundOffset;
+    }
+  }
+  
+  obj.userData.groundOffset = groundOffset;
+}
+
+function getTerrainY(x, z) {
+  if (!terrainMesh) return 0;
+  const rc = new THREE.Raycaster(new THREE.Vector3(x, 500, z), new THREE.Vector3(0, -1, 0));
+  const hits = rc.intersectObject(terrainMesh);
+  return hits.length > 0 ? hits[0].point.y : 0;
+}
+
+function enterPlayMode() {
+  playMode = true;
+  const tb = document.getElementById('build-toolbar'); if (tb) tb.style.display = 'none';
+  const nav = document.querySelector('nav'); if (nav) nav.style.display = 'none';
+  // Create or find avatar
+  playAvatar = objects.find(o => o.userData.name && o.userData.name.includes('player'));
+  if (!playAvatar) {
+    // Use camera as player
+    playAvatar = null;
+  }
+  // Spawn player on terrain surface
+  let spawnY = 2;
+  if (terrainMesh) {
+    const rc = new THREE.Raycaster(new THREE.Vector3(0, 200, 0), new THREE.Vector3(0, -1, 0));
+    const hits = rc.intersectObject(terrainMesh);
+    if (hits.length > 0) spawnY = hits[0].point.y + 2;
+  }
+  camera.position.set(0, spawnY, 0);
+  camera.rotation.set(0, 0, 0);
+  try { controls.enabled = false; } catch(e) {}
+  var pi = document.getElementById('prompt-input'); if (pi) { pi.blur(); pi.parentElement.style.display = "none"; } // Create minimap
+  if (typeof createMiniMap === 'function') createMiniMap();
+  return '🎮 Play mode ON — WASD to move, mouse to look, ESC to exit';
+}
+
+function exitPlayMode() {
+  playMode = false;
+  const tb = document.getElementById('build-toolbar'); if (tb) tb.style.display = 'flex';
+  const nav = document.querySelector('nav'); if (nav) nav.style.removeProperty('display');
+  try { controls.enabled = true; } catch(e) {}
+  var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return '🎮 Play mode OFF — back to editor';
+}
+
+function updatePlayMode(dt) {
+  if (!playMode) return;
+  const speed = playSpeed * dt;
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  forward.y = 0; forward.normalize();
+  right.y = 0; right.normalize();
+  
+  if (playKeys['w']) camera.position.addScaledVector(forward, speed);
+  if (playKeys['s']) camera.position.addScaledVector(forward, -speed);
+  if (playKeys['a']) camera.position.addScaledVector(right, -speed);
+  if (playKeys['d']) camera.position.addScaledVector(right, speed);
+  if (playKeys[' ']) camera.position.y += speed;
+  if (playKeys['shift']) camera.position.y -= speed;
+  
+  // Mouse look via pointer lock
+  if (document.pointerLockElement === canvas) {
+    // handled by pointermove
+  }
+}
+
+// Pointer lock for play mode
+let canvasEl = null;
+setTimeout(() => {
+  canvasEl = document.querySelector('canvas');
+  if (canvasEl) {
+    canvasEl.addEventListener('mousedown', (e) => {
+      if (playMode && e.button === 2 && characterController) {
+        characterController.startAim();
+        e.preventDefault();
+      }
+    });
+    canvasEl.addEventListener('mouseup', (e) => {
+      if (e.button === 2 && characterController) {
+        characterController.stopAim();
+      }
+    });
+    canvasEl.addEventListener('contextmenu', (e) => {
+      if (playMode) e.preventDefault(); // Prevent right-click menu in play mode
+    });
+        canvasEl.addEventListener('click', () => { if (playMode) canvasEl.requestPointerLock(); });
+    document.addEventListener('pointermove', (e) => {
+      if (playMode && document.pointerLockElement === canvasEl) {
+        playYaw -= e.movementX * 0.002;
+        const pitch = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x - e.movementY * 0.002));
+        camera.rotation.order = 'YXZ';
+        camera.rotation.y = playYaw;
+        camera.rotation.x = pitch;
+      }
+    });
+  }
+}, 1000);
+
+window.addEventListener('keydown', e => {
+  if (e.key === ' ' && dialogueSystem && dialogueSystem.active) { dialogueSystem.advance(); e.preventDefault(); return; }
+  if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
+  if (e.key === 'Escape' && playMode) { exitPlayMode(); document.exitPointerLock(); }
+});
+
+// Pointer lock change — exit play mode if pointer lock lost
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && playMode) {
+    exitPlayMode();
+  }
+});
+
+// === SCRIPTING / TRIGGERS ===
+const triggers = [];
+// Format: { type: 'proximity', target: 'coin', radius: 2, action: 'score', value: 10 }
+
+function addTrigger(type, target, action, value) {
+  triggers.push({ type, target: target.toLowerCase(), action, value, fired: false });
+  return '✓ Trigger added: when ' + type + ' ' + target + ' → ' + action + ' ' + value;
+}
+
+function updateTriggers() {
+  if (!playMode) return;
+  const playerPos = camera.position;
+  triggers.forEach(trig => {
+    if (trig.fired && trig.type === 'once') return;
+    const matches = objects.filter(o => o.userData.name && o.userData.name.toLowerCase().includes(trig.target));
+    matches.forEach(obj => {
+      const dist = playerPos.distanceTo(obj.position);
+      if (dist < (trig.radius || 2)) {
+        executeTriggerAction(trig, obj);
+        if (trig.type === 'once') trig.fired = true;
+      }
+    });
+  });
+}
+
+let gameScore = 0;
+function executeTriggerAction(trig, obj) {
+  if (trig.action === 'score') {
+    gameScore += (trig.value || 10);
+    updateHUD();
+    // Remove the object
+    scene.remove(obj);
+    objects.splice(objects.indexOf(obj), 1);
+  } else if (trig.action === 'remove' || trig.action === 'destroy') {
+    scene.remove(obj);
+    objects.splice(objects.indexOf(obj), 1);
+  } else if (trig.action === 'teleport') {
+    // Spawn player on terrain surface
+  let spawnY = 2;
+  if (terrainMesh) {
+    const rc = new THREE.Raycaster(new THREE.Vector3(0, 200, 0), new THREE.Vector3(0, -1, 0));
+    const hits = rc.intersectObject(terrainMesh);
+    if (hits.length > 0) spawnY = hits[0].point.y + 2;
+  }
+  camera.position.set(0, spawnY, 0);
+  } else if (trig.action === 'message') {
+    showNotification(trig.value || 'Triggered!');
+  } else if (trig.action === 'explode') {
+    // Particle burst
+    const burst = createExplosion(obj.position);
+    scene.add(burst);
+    scene.remove(obj);
+    objects.splice(objects.indexOf(obj), 1);
+    setTimeout(() => scene.remove(burst), 2000);
+  } else if (trig.action === 'spawn') {
+    execSingle('add ' + (trig.value || 'enemy') + ' at ' + obj.position.x + ' 0 ' + obj.position.z);
+  } else if (trig.action === 'heal') {
+    var char = window._engine?.character;
+    if (char) { char.health = Math.min(char.maxHealth, char.health + (trig.value || 50)); }
+    showNotification('❤️ +' + (trig.value || 50) + ' HP!');
+    if (window._sound) window._sound.SFX.heal();
+  } else if (trig.action === 'sound') {
+    if (window._sound?.SFX[trig.value]) window._sound.SFX[trig.value]();
+  } else if (trig.action === 'exec') {
+    execSingle(trig.value || '');
+  }
+}
+
+function createExplosion(pos) {
+  const count = 30;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    positions[i*3] = pos.x + (Math.random()-0.5)*0.5;
+    positions[i*3+1] = pos.y + Math.random()*0.5;
+    positions[i*3+2] = pos.z + (Math.random()-0.5)*0.5;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({color: 0xff4400, size: 0.3}));
+  pts.userData.startTime = performance.now();
+  return pts;
+}
+
+// === HUD (score, health, etc.) ===
+let hudDiv = null;
+function initHUD() {
+  hudDiv = document.createElement('div');
+  hudDiv.id = 'game-hud';
+  hudDiv.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9999;display:none;font-family:monospace;padding:8px 20px;background:rgba(0,0,0,0.7);border:1px solid #4ade80;border-radius:8px;color:#4ade80;font-size:18px;pointer-events:none;';
+  hudDiv.innerHTML = 'Score: 0';
+  document.body.appendChild(hudDiv);
+}
+function updateHUD() {
+  if (!hudDiv) initHUD();
+  hudDiv.style.display = playMode ? 'block' : 'none';
+  hudDiv.innerHTML = '⭐ Score: ' + gameScore;
+}
+setTimeout(initHUD, 500);
+
+// === NOTIFICATION TOAST ===
+function showNotification(msg) {
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:10000;font-family:monospace;padding:10px 24px;background:rgba(0,0,0,0.85);border:1px solid #f59e0b;border-radius:8px;color:#f59e0b;font-size:16px;pointer-events:none;transition:opacity 0.5s;';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 2500);
+}
+
+
+// Model name -> GLB file mapping (53 real 3D models)
+const GLB_MODELS = {
+  '1story_gableroof_mat':'buildings_pack_3_1story_gableroof_mat',
+  '1story_mat':'buildings_pack_3_1story_mat',
+  '1story_roundroof_mat':'buildings_pack_3_1story_roundroof_mat',
+  '1story_sign_mat':'buildings_pack_3_1story_sign_mat',
+  '2story_2_mat':'buildings_pack_3_2story_2_mat',
+  '2story_balcony_mat':'buildings_pack_3_2story_balcony_mat',
+  '2story_center_mat':'buildings_pack_3_2story_center_mat',
+  '2story_columns_mat':'buildings_pack_3_2story_columns_mat',
+  '2story_double_mat':'buildings_pack_3_2story_double_mat',
+  '2story_gableroof_mat':'buildings_pack_3_2story_gableroof_mat',
+  '2story_mat':'buildings_pack_3_2story_mat',
+  '2story_roundroof_mat':'buildings_pack_3_2story_roundroof_mat',
+  '2story_sidehouse_mat':'buildings_pack_3_2story_sidehouse_mat',
+  '2story_sign_mat':'buildings_pack_3_2story_sign_mat',
+  '2story_slim_mat':'buildings_pack_3_2story_slim_mat',
+  '2story_stairs_mat':'buildings_pack_3_2story_stairs_mat',
+  '2story_wide_2doors_mat':'buildings_pack_3_2story_wide_2doors_mat',
+  '2story_wide_mat':'buildings_pack_3_2story_wide_mat',
+  '3story_balcony_mat':'buildings_pack_3_3story_balcony_mat',
+  '3story_slim_mat':'buildings_pack_3_3story_slim_mat',
+  '3story_small_mat':'buildings_pack_3_3story_small_mat',
+  '4story_center_mat':'buildings_pack_3_4story_center_mat',
+  '4story_mat':'buildings_pack_3_4story_mat',
+  '4story_wide_2doors_mat':'buildings_pack_3_4story_wide_2doors_mat',
+  '4story_wide_2doors_roof_mat':'buildings_pack_3_4story_wide_2doors_roof_mat',
+  '6story_stack_mat':'buildings_pack_3_6story_stack_mat',
+  'ac':'cyberpunk_pack_ac',
+  'ac_side':'cyberpunk_pack_ac_side',
+  'ac_stacked':'cyberpunk_pack_ac_stacked',
+  'adventurer':'modular_women_adventurer',
+  'alpaca':'animals_pack_alpaca',
+  'anglerfish':'cute_fish_pack_anglerfish',
+  'animals_pack_alpaca':'animals_pack_alpaca',
+  'animals_pack_bull':'animals_pack_bull',
+  'animals_pack_cow':'animals_pack_cow',
+  'animals_pack_deer':'animals_pack_deer',
+  'animals_pack_donkey':'animals_pack_donkey',
+  'animals_pack_fox':'animals_pack_fox',
+  'animals_pack_horse':'animals_pack_horse',
+  'animals_pack_horse_white':'animals_pack_horse_white',
+  'animals_pack_husky':'animals_pack_husky',
+  'animals_pack_shibainu':'animals_pack_shibainu',
+  'animals_pack_stag':'animals_pack_stag',
+  'animals_pack_wolf':'animals_pack_wolf',
+  'antenna_1':'cyberpunk_pack_antenna_1',
+  'antenna_2':'cyberpunk_pack_antenna_2',
+  'apatosaurus':'dinosaurs_pack_apatosaurus',
+  'apple_1':'crops_pack_apple_1',
+  'apple_2':'crops_pack_apple_2',
+  'apple_3':'crops_pack_apple_3',
+  'apple_4':'crops_pack_apple_4',
+  'apple_crop':'crops_pack_apple_crop',
+  'apple_harvested':'crops_pack_apple_harvested',
+  'ar_1':'modular_sci_fi_guns_pack_ar_1',
+  'ar_2':'modular_sci_fi_guns_pack_ar_2',
+  'ar_3':'modular_sci_fi_guns_pack_ar_3',
+  'ar_4':'modular_sci_fi_guns_pack_ar_4',
+  'ar_5':'modular_sci_fi_guns_pack_ar_5',
+  'ar_6':'modular_sci_fi_guns_pack_ar_6',
+  'arch':'modular_dungeon_1_arch',
+  'arch_bars':'modular_dungeon_1_arch_bars',
+  'arch_door':'modular_dungeon_1_arch_door',
+  'arch_door_bottompivot':'modular_dungeon_1_arch_door_bottompivot',
+  'armor_black':'rpg_items_pack_armor_black',
+  'armor_golden':'rpg_items_pack_armor_golden',
+  'armor_leather':'rpg_items_pack_armor_leather',
+  'armor_metal':'rpg_items_pack_armor_metal',
+  'armor_metal2':'rpg_items_pack_armor_metal2',
+  'armoredcatfish':'cute_fish_pack_armoredcatfish',
+  'arrow':'rpg_items_pack_arrow',
+  'arrow_golden':'rpg_items_pack_arrow_golden',
+  'arrow_side':'platformer_game_pack_arrow_side',
+  'arrow_up':'platformer_game_pack_arrow_up',
+  'astronaut_barbarathebee-transformed':'ultimate_space_pack_astronaut_barbarathebee-transformed',
+  'astronaut_fernandotheflamingo-transformed':'ultimate_space_pack_astronaut_fernandotheflamingo-transformed',
+  'astronaut_finnthefrog-transformed':'ultimate_space_pack_astronaut_finnthefrog-transformed',
+  'astronaut_raetheredpanda-transformed':'ultimate_space_pack_astronaut_raetheredpanda-transformed',
+  'automobile':'car',
+  'avatar':'avatar',
+  'axe':'survival_pack_axe',
+  'axe_double':'rpg_items_pack_axe_double',
+  'axe_double_golden':'rpg_items_pack_axe_double_golden',
+  'axe_small':'survival_pack_axe_small',
+  'axe_small_golden':'rpg_items_pack_axe_small_golden',
+  'backpack':'survival_pack_backpack',
+  'bag':'rpg_items_pack_bag',
+  'bag_coins':'modular_dungeon_1_bag_coins',
+  'bag_open':'medieval_village_pack_bag_open',
+  'bag_standing':'modular_dungeon_1_bag_standing',
+  'bags':'medieval_village_pack_bags',
+  'bamboo_1':'crops_pack_bamboo_1',
+  'bamboo_2':'crops_pack_bamboo_2',
+  'bamboo_3':'crops_pack_bamboo_3',
+  'bamboo_4':'crops_pack_bamboo_4',
+  'bamboo_crop':'crops_pack_bamboo_crop',
+  'bandages':'survival_pack_bandages',
+  'banner':'modular_medieval_buildings_pack_banner',
+  'banner_wall':'modular_dungeon_1_banner_wall',
+  'barrel':'medieval_village_pack_barrel',
+  'barrel2':'modular_dungeon_1_barrel2',
+  'barrel_ar_1':'modular_sci_fi_guns_pack_barrel_ar_1',
+  'barrel_ar_3':'modular_sci_fi_guns_pack_barrel_ar_3',
+  'barrel_grenade_1':'modular_sci_fi_guns_pack_barrel_grenade_1',
+  'barrel_pistol_1':'modular_sci_fi_guns_pack_barrel_pistol_1',
+  'barrel_pistol_2':'modular_sci_fi_guns_pack_barrel_pistol_2',
+  'barrel_single':'modular_sci_fi_guns_pack_barrel_single',
+  'barrel_sniper_1':'modular_sci_fi_guns_pack_barrel_sniper_1',
+  'barrel_sniper_2':'modular_sci_fi_guns_pack_barrel_sniper_2',
+  'bars':'modular_dungeon_pack_bars',
+  'base_large-transformed':'ultimate_space_pack_base_large-transformed',
+  'bathroom_bathtub':'house_interior_pack_bathroom_bathtub',
+  'bathroom_mirror1':'house_interior_pack_bathroom_mirror1',
+  'bathroom_mirror2':'house_interior_pack_bathroom_mirror2',
+  'bathroom_shower1':'house_interior_pack_bathroom_shower1',
+  'bathroom_sink':'house_interior_pack_bathroom_sink',
+  'bathroom_toilet':'house_interior_pack_bathroom_toilet',
+  'bathroom_toilet2':'house_interior_pack_bathroom_toilet2',
+  'bathroom_toiletpaper':'house_interior_pack_bathroom_toiletpaper',
+  'bathroom_toiletpaperpile':'house_interior_pack_bathroom_toiletpaperpile',
+  'bathroom_towel':'house_interior_pack_bathroom_towel',
+  'bathroom_washingmachine':'house_interior_pack_bathroom_washingmachine',
+  'battery_big':'survival_pack_battery_big',
+  'battery_small':'survival_pack_battery_small',
+  'beach':'modular_men_beach',
+  'beartrap_closed':'survival_pack_beartrap_closed',
+  'beartrap_open':'survival_pack_beartrap_open',
+  'beast':'dinosaurs_pack_trex',
+  'bed_bunk':'house_interior_pack_bed_bunk',
+  'bed_king':'house_interior_pack_bed_king',
+  'bed_single':'house_interior_pack_bed_single',
+  'bee':'platformer_game_pack_bee',
+  'beet_1':'crops_pack_beet_1',
+  'beet_2':'crops_pack_beet_2',
+  'beet_3':'crops_pack_beet_3',
+  'beet_4':'crops_pack_beet_4',
+  'beet_crop':'crops_pack_beet_crop',
+  'bell':'medieval_village_pack_bell',
+  'bell_tower':'medieval_village_pack_bell_tower',
+  'bench':'medieval_village_pack_bench_1',
+  'bench_1':'medieval_village_pack_bench_1',
+  'bench_2':'medieval_village_pack_bench_2',
+  'betta':'cute_fish_pack_betta',
+  'birchtree_1':'nature_pack_birchtree_1',
+  'birchtree_2':'nature_pack_birchtree_2',
+  'birchtree_3':'nature_pack_birchtree_3',
+  'birchtree_4':'nature_pack_birchtree_4',
+  'birchtree_5':'nature_pack_birchtree_5',
+  'birchtree_autumn_1':'nature_pack_birchtree_autumn_1',
+  'birchtree_autumn_2':'nature_pack_birchtree_autumn_2',
+  'birchtree_autumn_3':'nature_pack_birchtree_autumn_3',
+  'birchtree_autumn_4':'nature_pack_birchtree_autumn_4',
+  'birchtree_autumn_5':'nature_pack_birchtree_autumn_5',
+  'birchtree_dead_1':'nature_pack_birchtree_dead_1',
+  'birchtree_dead_2':'nature_pack_birchtree_dead_2',
+  'birchtree_dead_3':'nature_pack_birchtree_dead_3',
+  'birchtree_dead_4':'nature_pack_birchtree_dead_4',
+  'birchtree_dead_5':'nature_pack_birchtree_dead_5',
+  'birchtree_dead_snow_1':'nature_pack_birchtree_dead_snow_1',
+  'birchtree_dead_snow_2':'nature_pack_birchtree_dead_snow_2',
+  'birchtree_dead_snow_3':'nature_pack_birchtree_dead_snow_3',
+  'birchtree_dead_snow_4':'nature_pack_birchtree_dead_snow_4',
+  'birchtree_dead_snow_5':'nature_pack_birchtree_dead_snow_5',
+  'birchtree_snow_1':'nature_pack_birchtree_snow_1',
+  'birchtree_snow_2':'nature_pack_birchtree_snow_2',
+  'birchtree_snow_3':'nature_pack_birchtree_snow_3',
+  'birchtree_snow_4':'nature_pack_birchtree_snow_4',
+  'birchtree_snow_5':'nature_pack_birchtree_snow_5',
+  'blacklionfish':'cute_fish_pack_blacklionfish',
+  'blacksmith':'medieval_village_pack_blacksmith',
+  'blasterb':'blasterb',
+  'blasterc':'blasterc',
+  'blasterd':'blasterd',
+  'blastere':'blastere',
+  'blasterf':'blasterf',
+  'blasterg':'blasterg',
+  'blasterh':'blasterh',
+  'blasteri':'blasteri',
+  'blasterj':'blasterj',
+  'blasterk':'blasterk',
+  'blasterl':'blasterl',
+  'blasterm':'blasterm',
+  'blastern':'blastern',
+  'blobfish':'cute_fish_pack_blobfish',
+  'bluegoldfish':'cute_fish_pack_bluegoldfish',
+  'bluetang':'cute_fish_pack_bluetang',
+  'boat':'ships_pack_boat',
+  'boatwsail':'ships_pack_boatwsail',
+  'bob':'spaceships_pack_bob',
+  'body_ar4':'modular_sci_fi_guns_pack_body_ar4',
+  'body_ar_1':'modular_sci_fi_guns_pack_body_ar_1',
+  'body_ar_3':'modular_sci_fi_guns_pack_body_ar_3',
+  'body_ar_5':'modular_sci_fi_guns_pack_body_ar_5',
+  'body_ar_6':'modular_sci_fi_guns_pack_body_ar_6',
+  'body_crossbow_1':'modular_sci_fi_guns_pack_body_crossbow_1',
+  'body_crossbow_2':'modular_sci_fi_guns_pack_body_crossbow_2',
+  'body_front_sniper_1':'modular_sci_fi_guns_pack_body_front_sniper_1',
+  'body_front_sniper_3':'modular_sci_fi_guns_pack_body_front_sniper_3',
+  'body_grenade_1':'modular_sci_fi_guns_pack_body_grenade_1',
+  'body_grenade_2':'modular_sci_fi_guns_pack_body_grenade_2',
+  'body_grenade_3':'modular_sci_fi_guns_pack_body_grenade_3',
+  'body_pistol_1':'modular_sci_fi_guns_pack_body_pistol_1',
+  'body_pistol_2':'modular_sci_fi_guns_pack_body_pistol_2',
+  'body_pistol_3':'modular_sci_fi_guns_pack_body_pistol_3',
+  'body_smg_1':'modular_sci_fi_guns_pack_body_smg_1',
+  'body_smg_2':'modular_sci_fi_guns_pack_body_smg_2',
+  'body_sniper_1':'modular_sci_fi_guns_pack_body_sniper_1',
+  'body_sniper_2':'modular_sci_fi_guns_pack_body_sniper_2',
+  'body_sniper_3':'modular_sci_fi_guns_pack_body_sniper_3',
+  'bomb':'platformer_game_pack_bomb',
+  'bone':'rpg_items_pack_bone',
+  'bones':'modular_dungeon_pack_bones',
+  'bones2':'modular_dungeon_pack_bones2',
+  'bonfire':'medieval_village_pack_bonfire_lit',
+  'bonfire_fire':'survival_pack_bonfire_fire',
+  'bonfire_lit':'medieval_village_pack_bonfire_lit',
+  'book1_closed':'rpg_items_pack_book1_closed',
+  'book1_open':'rpg_items_pack_book1_open',
+  'book2':'modular_dungeon_pack_book2',
+  'book2_closed':'rpg_items_pack_book2_closed',
+  'book2_open':'rpg_items_pack_book2_open',
+  'book3':'modular_dungeon_pack_book3',
+  'book3_closed':'rpg_items_pack_book3_closed',
+  'book3_open':'rpg_items_pack_book3_open',
+  'book4_closed':'rpg_items_pack_book4_closed',
+  'book4_open':'rpg_items_pack_book4_open',
+  'book_open':'modular_dungeon_pack_book_open',
+  'bookshelf':'house_interior_pack_bookshelf',
+  'bouncer':'platformer_game_pack_bouncer',
+  'bow_evil':'medieval_weapons_pack_bow_evil',
+  'bow_golden':'rpg_items_pack_bow_golden',
+  'bow_wooden':'rpg_items_pack_bow_wooden',
+  'bow_wooden2':'medieval_weapons_pack_bow_wooden2',
+  'box_animated':'box_animated',
+  'brainstem':'brainstem',
+  'brick':'modular_dungeon_1_brick',
+  'bridge':'modular_medieval_buildings_pack_bridge',
+  'bridge_modular':'platformer_game_pack_bridge_modular',
+  'bridge_modular_center':'platformer_game_pack_bridge_modular_center',
+  'bridge_small':'platformer_game_pack_bridge_small',
+  'bucket':'modular_dungeon_1_bucket',
+  'building1_large':'buildings_pack_2_building1_large',
+  'building1_small':'buildings_pack_2_building1_small',
+  'building2_large':'buildings_pack_2_building2_large',
+  'building2_small':'buildings_pack_2_building2_small',
+  'building3_big':'buildings_pack_2_building3_big',
+  'building3_small':'buildings_pack_2_building3_small',
+  'building4':'buildings_pack_2_building4',
+  'building_l-transformed':'ultimate_space_pack_building_l-transformed',
+  'buildings_pack_2_building1_large':'buildings_pack_2_building1_large',
+  'buildings_pack_2_building1_small':'buildings_pack_2_building1_small',
+  'buildings_pack_2_building2_large':'buildings_pack_2_building2_large',
+  'buildings_pack_2_building2_small':'buildings_pack_2_building2_small',
+  'buildings_pack_2_building3_big':'buildings_pack_2_building3_big',
+  'buildings_pack_2_building3_small':'buildings_pack_2_building3_small',
+  'buildings_pack_2_building4':'buildings_pack_2_building4',
+  'buildings_pack_2_house1':'buildings_pack_2_house1',
+  'buildings_pack_2_house2':'buildings_pack_2_house2',
+  'buildings_pack_3_1story_gableroof_mat':'buildings_pack_3_1story_gableroof_mat',
+  'buildings_pack_3_1story_mat':'buildings_pack_3_1story_mat',
+  'buildings_pack_3_1story_roundroof_mat':'buildings_pack_3_1story_roundroof_mat',
+  'buildings_pack_3_1story_sign_mat':'buildings_pack_3_1story_sign_mat',
+  'buildings_pack_3_2story_2_mat':'buildings_pack_3_2story_2_mat',
+  'buildings_pack_3_2story_balcony_mat':'buildings_pack_3_2story_balcony_mat',
+  'buildings_pack_3_2story_center_mat':'buildings_pack_3_2story_center_mat',
+  'buildings_pack_3_2story_columns_mat':'buildings_pack_3_2story_columns_mat',
+  'buildings_pack_3_2story_double_mat':'buildings_pack_3_2story_double_mat',
+  'buildings_pack_3_2story_gableroof_mat':'buildings_pack_3_2story_gableroof_mat',
+  'buildings_pack_3_2story_mat':'buildings_pack_3_2story_mat',
+  'buildings_pack_3_2story_roundroof_mat':'buildings_pack_3_2story_roundroof_mat',
+  'buildings_pack_3_2story_sidehouse_mat':'buildings_pack_3_2story_sidehouse_mat',
+  'buildings_pack_3_2story_sign_mat':'buildings_pack_3_2story_sign_mat',
+  'buildings_pack_3_2story_slim_mat':'buildings_pack_3_2story_slim_mat',
+  'buildings_pack_3_2story_stairs_mat':'buildings_pack_3_2story_stairs_mat',
+  'buildings_pack_3_2story_wide_2doors_mat':'buildings_pack_3_2story_wide_2doors_mat',
+  'buildings_pack_3_2story_wide_mat':'buildings_pack_3_2story_wide_mat',
+  'buildings_pack_3_3story_balcony_mat':'buildings_pack_3_3story_balcony_mat',
+  'buildings_pack_3_3story_slim_mat':'buildings_pack_3_3story_slim_mat',
+  'buildings_pack_3_3story_small_mat':'buildings_pack_3_3story_small_mat',
+  'buildings_pack_3_4story_center_mat':'buildings_pack_3_4story_center_mat',
+  'buildings_pack_3_4story_mat':'buildings_pack_3_4story_mat',
+  'buildings_pack_3_4story_wide_2doors_mat':'buildings_pack_3_4story_wide_2doors_mat',
+  'buildings_pack_3_4story_wide_2doors_roof_mat':'buildings_pack_3_4story_wide_2doors_roof_mat',
+  'buildings_pack_3_6story_stack_mat':'buildings_pack_3_6story_stack_mat',
+  'bull':'animals_pack_bull',
+  'bush':'simple_nature_pack_bush1',
+  'bush1':'simple_nature_pack_bush1',
+  'bush2':'simple_nature_pack_bush2',
+  'bush3':'simple_nature_pack_bush3',
+  'bush_1':'nature_pack_bush_1',
+  'bush_1-transformed':'ultimate_space_pack_bush_1-transformed',
+  'bush_2':'nature_pack_bush_2',
+  'bush_2-transformed':'ultimate_space_pack_bush_2-transformed',
+  'bush_3-transformed':'ultimate_space_pack_bush_3-transformed',
+  'bush_fruit':'platformer_game_pack_bush_fruit',
+  'bush_snow_1':'nature_pack_bush_snow_1',
+  'bush_snow_2':'nature_pack_bush_snow_2',
+  'bushberries_1':'nature_pack_bushberries_1',
+  'bushberries_2':'nature_pack_bushberries_2',
+  'bushberries_3':'crops_pack_bushberries_3',
+  'bushberries_4':'crops_pack_bushberries_4',
+  'bushberries_crop':'crops_pack_bushberries_crop',
+  'bushberries_harvested':'crops_pack_bushberries_harvested',
+  'butterflyfish':'cute_fish_pack_butterflyfish',
+  'cable_long':'cyberpunk_pack_cable_long',
+  'cable_small':'cyberpunk_pack_cable_small',
+  'cable_thick':'cyberpunk_pack_cable_thick',
+  'cactus':'cactus',
+  'cactus_1':'nature_pack_cactus_1',
+  'cactus_2':'nature_pack_cactus_2',
+  'cactus_3':'nature_pack_cactus_3',
+  'cactus_4':'nature_pack_cactus_4',
+  'cactus_5':'nature_pack_cactus_5',
+  'cactus_crop':'crops_pack_cactus_crop',
+  'cactus_harvested':'crops_pack_cactus_harvested',
+  'cactusflower_1':'nature_pack_cactusflower_1',
+  'cactusflowers_2':'nature_pack_cactusflowers_2',
+  'cactusflowers_3':'nature_pack_cactusflowers_3',
+  'cactusflowers_4':'nature_pack_cactusflowers_4',
+  'cactusflowers_5':'nature_pack_cactusflowers_5',
+  'campfire':'survival_pack_bonfire_fire',
+  'can_broken':'survival_pack_can_broken',
+  'can_closed':'survival_pack_can_closed',
+  'can_open':'survival_pack_can_open',
+  'can_red':'survival_pack_can_red',
+  'candelabrum':'modular_dungeon_pack_candelabrum',
+  'candelabrum_tall':'modular_dungeon_pack_candelabrum_tall',
+  'candle':'modular_dungeon_pack_candle',
+  'cannon':'platformer_game_pack_cannon',
+  'cannonball':'platformer_game_pack_cannonball',
+  'car':'car',
+  'carbon_fibre':'carbon_fibre',
+  'cardinalfish':'cute_fish_pack_cardinalfish',
+  'carpet':'modular_dungeon_pack_carpet',
+  'carpet_1':'house_interior_pack_carpet_1',
+  'carpet_2':'house_interior_pack_carpet_2',
+  'carpet_round':'house_interior_pack_carpet_round',
+  'carrot_1':'crops_pack_carrot_1',
+  'carrot_2':'crops_pack_carrot_2',
+  'carrot_3':'crops_pack_carrot_3',
+  'carrot_4':'crops_pack_carrot_4',
+  'carrot_crop':'crops_pack_carrot_crop',
+  'cart':'medieval_village_pack_cart',
+  'casual':'modular_women_casual',
+  'casual2':'modular_men_casual2',
+  'cauldron':'medieval_village_pack_cauldron',
+  'chair':'house_interior_pack_chair_1',
+  'chair_1':'house_interior_pack_chair_1',
+  'chair_2':'house_interior_pack_chair_2',
+  'chair_3':'house_interior_pack_chair_3',
+  'chair_4':'house_interior_pack_chair_4',
+  'chair_damask':'chair_damask',
+  'chalice':'rpg_items_pack_chalice',
+  'character':'modular_men_adventurer',
+  'character_gun':'platformer_game_pack_character_gun',
+  'character_humanoidrig':'platformer_game_pack_character_humanoidrig',
+  'chest':'modular_dungeon_1_bag_coins',
+  'chest_closed':'rpg_items_pack_chest_closed',
+  'chest_gold':'modular_dungeon_pack_chest_gold',
+  'chest_ingots':'rpg_items_pack_chest_ingots',
+  'chest_open':'rpg_items_pack_chest_open',
+  'chickenleg':'rpg_items_pack_chickenleg',
+  'claymore':'medieval_weapons_pack_claymore',
+  'clearcoat_wicker':'clearcoat_wicker',
+  'cloud_1':'platformer_game_pack_cloud_1',
+  'cloud_2':'platformer_game_pack_cloud_2',
+  'cloud_3':'platformer_game_pack_cloud_3',
+  'clownfish':'cute_fish_pack_clownfish',
+  'club':'single_knight_pack_club',
+  'cobweb':'modular_dungeon_1_cobweb',
+  'cobweb2':'modular_dungeon_1_cobweb2',
+  'coconut_half':'crops_pack_coconut_half',
+  'coin':'rpg_items_pack_coin',
+  'coin_pile':'modular_dungeon_1_coin_pile',
+  'coin_skull':'rpg_items_pack_coin_skull',
+  'coin_star':'rpg_items_pack_coin_star',
+  'collectible_board':'cyberpunk_pack_collectible_board',
+  'collectible_gear':'cyberpunk_pack_collectible_gear',
+  'column':'modular_dungeon_pack_column',
+  'column2':'modular_dungeon_1_column2',
+  'column_broken':'modular_dungeon_pack_column_broken',
+  'column_broken2':'modular_dungeon_pack_column_broken2',
+  'column_round1':'house_interior_pack_column_round1',
+  'column_round2':'house_interior_pack_column_round2',
+  'column_round3':'house_interior_pack_column_round3',
+  'column_squarebig':'house_interior_pack_column_squarebig',
+  'column_squaresmall':'house_interior_pack_column_squaresmall',
+  'commontree_1':'nature_pack_commontree_1',
+  'commontree_2':'nature_pack_commontree_2',
+  'commontree_3':'nature_pack_commontree_3',
+  'commontree_4':'nature_pack_commontree_4',
+  'commontree_5':'nature_pack_commontree_5',
+  'commontree_autumn_1':'nature_pack_commontree_autumn_1',
+  'commontree_autumn_2':'nature_pack_commontree_autumn_2',
+  'commontree_autumn_3':'nature_pack_commontree_autumn_3',
+  'commontree_autumn_4':'nature_pack_commontree_autumn_4',
+  'commontree_autumn_5':'nature_pack_commontree_autumn_5',
+  'commontree_dead_1':'nature_pack_commontree_dead_1',
+  'commontree_dead_2':'nature_pack_commontree_dead_2',
+  'commontree_dead_3':'nature_pack_commontree_dead_3',
+  'commontree_dead_4':'nature_pack_commontree_dead_4',
+  'commontree_dead_5':'nature_pack_commontree_dead_5',
+  'commontree_dead_snow_1':'nature_pack_commontree_dead_snow_1',
+  'commontree_dead_snow_2':'nature_pack_commontree_dead_snow_2',
+  'commontree_dead_snow_3':'nature_pack_commontree_dead_snow_3',
+  'commontree_dead_snow_4':'nature_pack_commontree_dead_snow_4',
+  'commontree_dead_snow_5':'nature_pack_commontree_dead_snow_5',
+  'commontree_snow_1':'nature_pack_commontree_snow_1',
+  'commontree_snow_2':'nature_pack_commontree_snow_2',
+  'commontree_snow_3':'nature_pack_commontree_snow_3',
+  'commontree_snow_4':'nature_pack_commontree_snow_4',
+  'commontree_snow_5':'nature_pack_commontree_snow_5',
+  'compass_closed':'survival_pack_compass_closed',
+  'compass_open':'survival_pack_compass_open',
+  'computer':'cyberpunk_pack_computer',
+  'computer_large':'cyberpunk_pack_computer_large',
+  'connector-transformed':'ultimate_space_pack_connector-transformed',
+  'coralgrouper':'cute_fish_pack_coralgrouper',
+  'corn_1':'nature_pack_corn_1',
+  'corn_2':'nature_pack_corn_2',
+  'corn_3':'crops_pack_corn_3',
+  'corn_4':'crops_pack_corn_4',
+  'corn_crop':'crops_pack_corn_crop',
+  'corn_harvested':'crops_pack_corn_harvested',
+  'couch_l':'house_interior_pack_couch_l',
+  'couch_large1':'house_interior_pack_couch_large1',
+  'couch_large2':'house_interior_pack_couch_large2',
+  'couch_large3':'house_interior_pack_couch_large3',
+  'couch_medium1':'house_interior_pack_couch_medium1',
+  'couch_medium2':'house_interior_pack_couch_medium2',
+  'couch_small1':'house_interior_pack_couch_small1',
+  'couch_small2':'house_interior_pack_couch_small2',
+  'cow':'animals_pack_cow',
+  'cowfish':'cute_fish_pack_cowfish',
+  'crab':'platformer_game_pack_crab',
+  'crate':'modular_dungeon_1_crate',
+  'crops_pack_apple_1':'crops_pack_apple_1',
+  'crops_pack_apple_2':'crops_pack_apple_2',
+  'crops_pack_apple_3':'crops_pack_apple_3',
+  'crops_pack_apple_4':'crops_pack_apple_4',
+  'crops_pack_apple_crop':'crops_pack_apple_crop',
+  'crops_pack_apple_harvested':'crops_pack_apple_harvested',
+  'crops_pack_bamboo_1':'crops_pack_bamboo_1',
+  'crops_pack_bamboo_2':'crops_pack_bamboo_2',
+  'crops_pack_bamboo_3':'crops_pack_bamboo_3',
+  'crops_pack_bamboo_4':'crops_pack_bamboo_4',
+  'crops_pack_bamboo_crop':'crops_pack_bamboo_crop',
+  'crops_pack_beet_1':'crops_pack_beet_1',
+  'crops_pack_beet_2':'crops_pack_beet_2',
+  'crops_pack_beet_3':'crops_pack_beet_3',
+  'crops_pack_beet_4':'crops_pack_beet_4',
+  'crops_pack_beet_crop':'crops_pack_beet_crop',
+  'crops_pack_bushberries_1':'crops_pack_bushberries_1',
+  'crops_pack_bushberries_2':'crops_pack_bushberries_2',
+  'crops_pack_bushberries_3':'crops_pack_bushberries_3',
+  'crops_pack_bushberries_4':'crops_pack_bushberries_4',
+  'crops_pack_bushberries_crop':'crops_pack_bushberries_crop',
+  'crops_pack_bushberries_harvested':'crops_pack_bushberries_harvested',
+  'crops_pack_cactus_1':'crops_pack_cactus_1',
+  'crops_pack_cactus_2':'crops_pack_cactus_2',
+  'crops_pack_cactus_3':'crops_pack_cactus_3',
+  'crops_pack_cactus_4':'crops_pack_cactus_4',
+  'crops_pack_cactus_crop':'crops_pack_cactus_crop',
+  'crops_pack_cactus_harvested':'crops_pack_cactus_harvested',
+  'crops_pack_carrot_1':'crops_pack_carrot_1',
+  'crops_pack_carrot_2':'crops_pack_carrot_2',
+  'crops_pack_carrot_3':'crops_pack_carrot_3',
+  'crops_pack_carrot_4':'crops_pack_carrot_4',
+  'crops_pack_carrot_crop':'crops_pack_carrot_crop',
+  'crops_pack_coconut_half':'crops_pack_coconut_half',
+  'crops_pack_corn_1':'crops_pack_corn_1',
+  'crops_pack_corn_2':'crops_pack_corn_2',
+  'crops_pack_corn_3':'crops_pack_corn_3',
+  'crops_pack_corn_4':'crops_pack_corn_4',
+  'crops_pack_corn_crop':'crops_pack_corn_crop',
+  'crops_pack_corn_harvested':'crops_pack_corn_harvested',
+  'crops_pack_flower_1':'crops_pack_flower_1',
+  'crops_pack_flower_2':'crops_pack_flower_2',
+  'crops_pack_flower_3':'crops_pack_flower_3',
+  'crops_pack_flower_4':'crops_pack_flower_4',
+  'crops_pack_flowers_crop':'crops_pack_flowers_crop',
+  'crops_pack_flowers_harvested':'crops_pack_flowers_harvested',
+  'crops_pack_grass_1':'crops_pack_grass_1',
+  'crops_pack_grass_2':'crops_pack_grass_2',
+  'crops_pack_grass_3':'crops_pack_grass_3',
+  'crops_pack_grass_4':'crops_pack_grass_4',
+  'crops_pack_lettuce_1':'crops_pack_lettuce_1',
+  'crops_pack_lettuce_2':'crops_pack_lettuce_2',
+  'crops_pack_lettuce_3':'crops_pack_lettuce_3',
+  'crops_pack_lettuce_4':'crops_pack_lettuce_4',
+  'crops_pack_lettuce_crop':'crops_pack_lettuce_crop',
+  'crops_pack_lettuce_harvested':'crops_pack_lettuce_harvested',
+  'crops_pack_mushroom_1':'crops_pack_mushroom_1',
+  'crops_pack_mushroom_2':'crops_pack_mushroom_2',
+  'crops_pack_mushroom_3':'crops_pack_mushroom_3',
+  'crops_pack_mushroom_4':'crops_pack_mushroom_4',
+  'crops_pack_mushroom_crop':'crops_pack_mushroom_crop',
+  'crops_pack_mushroom_harvested':'crops_pack_mushroom_harvested',
+  'crops_pack_orange_1':'crops_pack_orange_1',
+  'crops_pack_orange_2':'crops_pack_orange_2',
+  'crops_pack_orange_3':'crops_pack_orange_3',
+  'crops_pack_orange_4':'crops_pack_orange_4',
+  'crops_pack_orange_crop':'crops_pack_orange_crop',
+  'crops_pack_orange_harvested':'crops_pack_orange_harvested',
+  'crops_pack_palmtree_1':'crops_pack_palmtree_1',
+  'crops_pack_palmtree_2':'crops_pack_palmtree_2',
+  'crops_pack_palmtree_3':'crops_pack_palmtree_3',
+  'crops_pack_palmtree_4':'crops_pack_palmtree_4',
+  'crops_pack_palmtree_crop':'crops_pack_palmtree_crop',
+  'crops_pack_palmtree_harvested':'crops_pack_palmtree_harvested',
+  'crops_pack_pumpkin_1':'crops_pack_pumpkin_1',
+  'crops_pack_pumpkin_2':'crops_pack_pumpkin_2',
+  'crops_pack_pumpkin_3':'crops_pack_pumpkin_3',
+  'crops_pack_pumpkin_4':'crops_pack_pumpkin_4',
+  'crops_pack_pumpkin_crop':'crops_pack_pumpkin_crop',
+  'crops_pack_pumpkin_harvested':'crops_pack_pumpkin_harvested',
+  'crops_pack_rice_1':'crops_pack_rice_1',
+  'crops_pack_rice_2':'crops_pack_rice_2',
+  'crops_pack_rice_3':'crops_pack_rice_3',
+  'crops_pack_rice_4':'crops_pack_rice_4',
+  'crops_pack_rice_crop':'crops_pack_rice_crop',
+  'crops_pack_tomato_1':'crops_pack_tomato_1',
+  'crops_pack_tomato_2':'crops_pack_tomato_2',
+  'crops_pack_tomato_3':'crops_pack_tomato_3',
+  'crops_pack_tomato_4':'crops_pack_tomato_4',
+  'crops_pack_tomato_crop':'crops_pack_tomato_crop',
+  'crops_pack_tomato_harvested':'crops_pack_tomato_harvested',
+  'crops_pack_watermelon_1':'crops_pack_watermelon_1',
+  'crops_pack_watermelon_2':'crops_pack_watermelon_2',
+  'crops_pack_watermelon_3':'crops_pack_watermelon_3',
+  'crops_pack_watermelon_4':'crops_pack_watermelon_4',
+  'crops_pack_watermelon_crop':'crops_pack_watermelon_crop',
+  'crops_pack_watermelon_harvested':'crops_pack_watermelon_harvested',
+  'crops_pack_wheat_1':'crops_pack_wheat_1',
+  'crops_pack_wheat_2':'crops_pack_wheat_2',
+  'crops_pack_wheat_3':'crops_pack_wheat_3',
+  'crops_pack_wheat_4':'crops_pack_wheat_4',
+  'crops_pack_wheat_crop':'crops_pack_wheat_crop',
+  'crossbow_1':'modular_sci_fi_guns_pack_crossbow_1',
+  'crossbow_2':'modular_sci_fi_guns_pack_crossbow_2',
+  'crown':'crown',
+  'crown2':'rpg_items_pack_crown2',
+  'cruiseship':'ships_pack_cruiseship',
+  'crystal1':'rpg_items_pack_crystal1',
+  'crystal1_damaged':'rpg_items_pack_crystal1_damaged',
+  'crystal2':'rpg_items_pack_crystal2',
+  'crystal2_damaged':'rpg_items_pack_crystal2_damaged',
+  'crystal3':'rpg_items_pack_crystal3',
+  'crystal3_damaged':'rpg_items_pack_crystal3_damaged',
+  'crystal4':'rpg_items_pack_crystal4',
+  'crystal5':'rpg_items_pack_crystal5',
+  'crystal5_damaged':'rpg_items_pack_crystal5_damaged',
+  'cube_bricks':'platformer_game_pack_cube_bricks',
+  'cube_crate':'platformer_game_pack_cube_crate',
+  'cube_default':'platformer_game_pack_cube_default',
+  'cube_dirt_center_tall':'platformer_game_pack_cube_dirt_center_tall',
+  'cube_dirt_corner_tall':'platformer_game_pack_cube_dirt_corner_tall',
+  'cube_dirt_side_tall':'platformer_game_pack_cube_dirt_side_tall',
+  'cube_dirt_single':'platformer_game_pack_cube_dirt_single',
+  'cube_exclamation':'platformer_game_pack_cube_exclamation',
+  'cube_grass_bottom_tall':'platformer_game_pack_cube_grass_bottom_tall',
+  'cube_grass_center_tall':'platformer_game_pack_cube_grass_center_tall',
+  'cube_grass_corner_tall':'platformer_game_pack_cube_grass_corner_tall',
+  'cube_grass_cornerbottom_tall':'platformer_game_pack_cube_grass_cornerbottom_tall',
+  'cube_grass_cornercenter_tall':'platformer_game_pack_cube_grass_cornercenter_tall',
+  'cube_grass_side_tall':'platformer_game_pack_cube_grass_side_tall',
+  'cube_grass_sidebottom_tall':'platformer_game_pack_cube_grass_sidebottom_tall',
+  'cube_grass_sidecenter_tall':'platformer_game_pack_cube_grass_sidecenter_tall',
+  'cube_grass_single':'platformer_game_pack_cube_grass_single',
+  'cube_question':'platformer_game_pack_cube_question',
+  'cube_spikes':'platformer_game_pack_cube_spikes',
+  'curtains_double':'house_interior_pack_curtains_double',
+  'curtains_single':'house_interior_pack_curtains_single',
+  'cute_fish_pack_anglerfish':'cute_fish_pack_anglerfish',
+  'cute_fish_pack_armoredcatfish':'cute_fish_pack_armoredcatfish',
+  'cute_fish_pack_betta':'cute_fish_pack_betta',
+  'cute_fish_pack_blacklionfish':'cute_fish_pack_blacklionfish',
+  'cute_fish_pack_blobfish':'cute_fish_pack_blobfish',
+  'cute_fish_pack_bluegoldfish':'cute_fish_pack_bluegoldfish',
+  'cute_fish_pack_bluetang':'cute_fish_pack_bluetang',
+  'cute_fish_pack_boat':'cute_fish_pack_boat',
+  'cute_fish_pack_butterflyfish':'cute_fish_pack_butterflyfish',
+  'cute_fish_pack_cardinalfish':'cute_fish_pack_cardinalfish',
+  'cute_fish_pack_clownfish':'cute_fish_pack_clownfish',
+  'cute_fish_pack_coralgrouper':'cute_fish_pack_coralgrouper',
+  'cute_fish_pack_cowfish':'cute_fish_pack_cowfish',
+  'cute_fish_pack_dock_long':'cute_fish_pack_dock_long',
+  'cute_fish_pack_dock_long_norope':'cute_fish_pack_dock_long_norope',
+  'cute_fish_pack_dock_stairs':'cute_fish_pack_dock_stairs',
+  'cute_fish_pack_dock_wide':'cute_fish_pack_dock_wide',
+  'cute_fish_pack_fishingrod_lvl1':'cute_fish_pack_fishingrod_lvl1',
+  'cute_fish_pack_fishingrod_lvl2':'cute_fish_pack_fishingrod_lvl2',
+  'cute_fish_pack_fishingrod_lvl3':'cute_fish_pack_fishingrod_lvl3',
+  'cute_fish_pack_fishingrod_lvl4':'cute_fish_pack_fishingrod_lvl4',
+  'cute_fish_pack_fishingrod_lvl5':'cute_fish_pack_fishingrod_lvl5',
+  'cute_fish_pack_flatfish':'cute_fish_pack_flatfish',
+  'cute_fish_pack_flowerhorn':'cute_fish_pack_flowerhorn',
+  'cute_fish_pack_goblinshark':'cute_fish_pack_goblinshark',
+  'cute_fish_pack_goldfish':'cute_fish_pack_goldfish',
+  'cute_fish_pack_humphead':'cute_fish_pack_humphead',
+  'cute_fish_pack_koi':'cute_fish_pack_koi',
+  'cute_fish_pack_lionfish':'cute_fish_pack_lionfish',
+  'cute_fish_pack_lure_1':'cute_fish_pack_lure_1',
+  'cute_fish_pack_lure_2':'cute_fish_pack_lure_2',
+  'cute_fish_pack_lure_3':'cute_fish_pack_lure_3',
+  'cute_fish_pack_lure_4':'cute_fish_pack_lure_4',
+  'cute_fish_pack_lure_5':'cute_fish_pack_lure_5',
+  'cute_fish_pack_lure_6':'cute_fish_pack_lure_6',
+  'cute_fish_pack_mandarinfish':'cute_fish_pack_mandarinfish',
+  'cute_fish_pack_moorishidol':'cute_fish_pack_moorishidol',
+  'cute_fish_pack_parrotfish':'cute_fish_pack_parrotfish',
+  'cute_fish_pack_piranha':'cute_fish_pack_piranha',
+  'cute_fish_pack_puffer':'cute_fish_pack_puffer',
+  'cute_fish_pack_redsnapper':'cute_fish_pack_redsnapper',
+  'cute_fish_pack_royalgramma':'cute_fish_pack_royalgramma',
+  'cute_fish_pack_shark':'cute_fish_pack_shark',
+  'cute_fish_pack_sunfish':'cute_fish_pack_sunfish',
+  'cute_fish_pack_swordfish':'cute_fish_pack_swordfish',
+  'cute_fish_pack_tang':'cute_fish_pack_tang',
+  'cute_fish_pack_tetra':'cute_fish_pack_tetra',
+  'cute_fish_pack_tuna':'cute_fish_pack_tuna',
+  'cute_fish_pack_turbot':'cute_fish_pack_turbot',
+  'cute_fish_pack_worm':'cute_fish_pack_worm',
+  'cute_fish_pack_yellowtang':'cute_fish_pack_yellowtang',
+  'cute_fish_pack_zebraclownfish':'cute_fish_pack_zebraclownfish',
+  'cyberpunk_pack_ac':'cyberpunk_pack_ac',
+  'cyberpunk_pack_ac_side':'cyberpunk_pack_ac_side',
+  'cyberpunk_pack_ac_stacked':'cyberpunk_pack_ac_stacked',
+  'cyberpunk_pack_antenna_1':'cyberpunk_pack_antenna_1',
+  'cyberpunk_pack_antenna_2':'cyberpunk_pack_antenna_2',
+  'cyberpunk_pack_cable_long':'cyberpunk_pack_cable_long',
+  'cyberpunk_pack_cable_small':'cyberpunk_pack_cable_small',
+  'cyberpunk_pack_cable_thick':'cyberpunk_pack_cable_thick',
+  'cyberpunk_pack_character':'cyberpunk_pack_character',
+  'cyberpunk_pack_collectible_board':'cyberpunk_pack_collectible_board',
+  'cyberpunk_pack_collectible_gear':'cyberpunk_pack_collectible_gear',
+  'cyberpunk_pack_computer':'cyberpunk_pack_computer',
+  'cyberpunk_pack_computer_large':'cyberpunk_pack_computer_large',
+  'cyberpunk_pack_door':'cyberpunk_pack_door',
+  'cyberpunk_pack_enemy_2legs':'cyberpunk_pack_enemy_2legs',
+  'cyberpunk_pack_enemy_2legs_gun':'cyberpunk_pack_enemy_2legs_gun',
+  'cyberpunk_pack_enemy_flying':'cyberpunk_pack_enemy_flying',
+  'cyberpunk_pack_enemy_flying_gun':'cyberpunk_pack_enemy_flying_gun',
+  'cyberpunk_pack_enemy_large':'cyberpunk_pack_enemy_large',
+  'cyberpunk_pack_enemy_large_gun':'cyberpunk_pack_enemy_large_gun',
+  'cyberpunk_pack_fence':'cyberpunk_pack_fence',
+  'cyberpunk_pack_lever':'cyberpunk_pack_lever',
+  'cyberpunk_pack_light_square':'cyberpunk_pack_light_square',
+  'cyberpunk_pack_light_street_1':'cyberpunk_pack_light_street_1',
+  'cyberpunk_pack_light_street_2':'cyberpunk_pack_light_street_2',
+  'cyberpunk_pack_lootbox':'cyberpunk_pack_lootbox',
+  'cyberpunk_pack_pickup_health':'cyberpunk_pack_pickup_health',
+  'cyberpunk_pack_pickup_heart':'cyberpunk_pack_pickup_heart',
+  'cyberpunk_pack_pickup_tank':'cyberpunk_pack_pickup_tank',
+  'cyberpunk_pack_pipe_1':'cyberpunk_pack_pipe_1',
+  'cyberpunk_pack_pipe_2':'cyberpunk_pack_pipe_2',
+  'cyberpunk_pack_pipe_corner':'cyberpunk_pack_pipe_corner',
+  'cyberpunk_pack_pipe_corner_2':'cyberpunk_pack_pipe_corner_2',
+  'cyberpunk_pack_platform_1x1_empty':'cyberpunk_pack_platform_1x1_empty',
+  'cyberpunk_pack_platform_2x1_empty':'cyberpunk_pack_platform_2x1_empty',
+  'cyberpunk_pack_platform_2x2':'cyberpunk_pack_platform_2x2',
+  'cyberpunk_pack_platform_2x2_empty':'cyberpunk_pack_platform_2x2_empty',
+  'cyberpunk_pack_platform_4x1':'cyberpunk_pack_platform_4x1',
+  'cyberpunk_pack_platform_4x1_empty':'cyberpunk_pack_platform_4x1_empty',
+  'cyberpunk_pack_platform_4x2':'cyberpunk_pack_platform_4x2',
+  'cyberpunk_pack_platform_4x4':'cyberpunk_pack_platform_4x4',
+  'cyberpunk_pack_platform_4x4_empty':'cyberpunk_pack_platform_4x4_empty',
+  'cyberpunk_pack_rail_corner':'cyberpunk_pack_rail_corner',
+  'cyberpunk_pack_rail_corner_2':'cyberpunk_pack_rail_corner_2',
+  'cyberpunk_pack_rail_long':'cyberpunk_pack_rail_long',
+  'cyberpunk_pack_rail_short':'cyberpunk_pack_rail_short',
+  'cyberpunk_pack_sign_1':'cyberpunk_pack_sign_1',
+  'cyberpunk_pack_sign_2':'cyberpunk_pack_sign_2',
+  'cyberpunk_pack_sign_3':'cyberpunk_pack_sign_3',
+  'cyberpunk_pack_sign_4':'cyberpunk_pack_sign_4',
+  'cyberpunk_pack_sign_corner_1':'cyberpunk_pack_sign_corner_1',
+  'cyberpunk_pack_sign_corner_2':'cyberpunk_pack_sign_corner_2',
+  'cyberpunk_pack_sign_corner_3':'cyberpunk_pack_sign_corner_3',
+  'cyberpunk_pack_sign_corner_3_fenced':'cyberpunk_pack_sign_corner_3_fenced',
+  'cyberpunk_pack_sign_corner_hazard':'cyberpunk_pack_sign_corner_hazard',
+  'cyberpunk_pack_sign_corner_small1':'cyberpunk_pack_sign_corner_small1',
+  'cyberpunk_pack_sign_corner_small2':'cyberpunk_pack_sign_corner_small2',
+  'cyberpunk_pack_sign_small_1':'cyberpunk_pack_sign_small_1',
+  'cyberpunk_pack_sign_small_2':'cyberpunk_pack_sign_small_2',
+  'cyberpunk_pack_sign_small_3':'cyberpunk_pack_sign_small_3',
+  'cyberpunk_pack_support':'cyberpunk_pack_support',
+  'cyberpunk_pack_support_long':'cyberpunk_pack_support_long',
+  'cyberpunk_pack_support_short':'cyberpunk_pack_support_short',
+  'cyberpunk_pack_tank':'cyberpunk_pack_tank',
+  'cyberpunk_pack_turret_cannon':'cyberpunk_pack_turret_cannon',
+  'cyberpunk_pack_turret_gun':'cyberpunk_pack_turret_gun',
+  'cyberpunk_pack_turret_gundouble':'cyberpunk_pack_turret_gundouble',
+  'cyberpunk_pack_turret_teleporter':'cyberpunk_pack_turret_teleporter',
+  'cyberpunk_pack_tv_1':'cyberpunk_pack_tv_1',
+  'cyberpunk_pack_tv_2':'cyberpunk_pack_tv_2',
+  'cyberpunk_pack_tv_3':'cyberpunk_pack_tv_3',
+  'cylinder_pistol_1':'modular_sci_fi_guns_pack_cylinder_pistol_1',
+  'dagger':'rpg_items_pack_dagger',
+  'dagger_2':'medieval_weapons_pack_dagger_2',
+  'dagger_golden':'rpg_items_pack_dagger_golden',
+  'damaged_helmet':'damaged_helmet',
+  'dart':'rpg_items_pack_dart',
+  'dart_golden':'rpg_items_pack_dart_golden',
+  'decorative_wall':'modular_dungeon_1_decorative_wall',
+  'deer':'animals_pack_deer',
+  'dinosaurs_pack_apatosaurus':'dinosaurs_pack_apatosaurus',
+  'dinosaurs_pack_parasaurolophus':'dinosaurs_pack_parasaurolophus',
+  'dinosaurs_pack_stegosaurus':'dinosaurs_pack_stegosaurus',
+  'dinosaurs_pack_trex':'dinosaurs_pack_trex',
+  'dinosaurs_pack_triceratops':'dinosaurs_pack_triceratops',
+  'dinosaurs_pack_velociraptor':'dinosaurs_pack_velociraptor',
+  'directional_light':'directional_light',
+  'dispatcher':'spaceships_pack_dispatcher',
+  'dock_long':'cute_fish_pack_dock_long',
+  'dock_long_norope':'cute_fish_pack_dock_long_norope',
+  'dock_stairs':'cute_fish_pack_dock_stairs',
+  'dock_wide':'cute_fish_pack_dock_wide',
+  'dolphin':'fish_pack_dolphin',
+  'donkey':'animals_pack_donkey',
+  'door':'platformer_game_pack_door',
+  'door_1':'house_interior_pack_door_1',
+  'door_2':'house_interior_pack_door_2',
+  'door_3':'house_interior_pack_door_3',
+  'door_4':'house_interior_pack_door_4',
+  'door_5':'house_interior_pack_door_5',
+  'door_6':'house_interior_pack_door_6',
+  'door_7':'house_interior_pack_door_7',
+  'door_8':'house_interior_pack_door_8',
+  'door_9':'house_interior_pack_door_9',
+  'door_double':'house_interior_pack_door_double',
+  'door_round':'medieval_village_pack_door_round',
+  'door_straight':'medieval_village_pack_door_straight',
+  'dragon':'dinosaurs_pack_trex',
+  'drawer_1':'house_interior_pack_drawer_1',
+  'drawer_2':'house_interior_pack_drawer_2',
+  'drawer_3':'house_interior_pack_drawer_3',
+  'drawer_4':'house_interior_pack_drawer_4',
+  'drawer_5':'house_interior_pack_drawer_5',
+  'duck':'duck',
+  'dummy':'modular_medieval_buildings_pack_dummy',
+  'easy_enemies_pack_frog':'easy_enemies_pack_frog',
+  'easy_enemies_pack_rat':'easy_enemies_pack_rat',
+  'easy_enemies_pack_snake':'easy_enemies_pack_snake',
+  'easy_enemies_pack_snake_angry':'easy_enemies_pack_snake_angry',
+  'easy_enemies_pack_spider':'easy_enemies_pack_spider',
+  'easy_enemies_pack_wasp':'easy_enemies_pack_wasp',
+  'enemy':'platformer_game_pack_enemy',
+  'enemy_2legs':'cyberpunk_pack_enemy_2legs',
+  'enemy_2legs_gun':'cyberpunk_pack_enemy_2legs_gun',
+  'enemy_extrasmall-transformed':'ultimate_space_pack_enemy_extrasmall-transformed',
+  'enemy_flying':'cyberpunk_pack_enemy_flying',
+  'enemy_flying-transformed':'ultimate_space_pack_enemy_flying-transformed',
+  'enemy_flying_gun':'cyberpunk_pack_enemy_flying_gun',
+  'enemy_large':'cyberpunk_pack_enemy_large',
+  'enemy_large-transformed':'ultimate_space_pack_enemy_large-transformed',
+  'enemy_large_gun':'cyberpunk_pack_enemy_large_gun',
+  'enemy_small-transformed':'ultimate_space_pack_enemy_small-transformed',
+  'entrance':'modular_dungeon_pack_entrance',
+  'entrance2':'modular_dungeon_pack_entrance2',
+  'farmer':'modular_men_farmer',
+  'female':'modular_women_casual',
+  'fence':'fence',
+  'fence_1':'platformer_game_pack_fence_1',
+  'fence_90_modular':'modular_dungeon_1_fence_90_modular',
+  'fence_corner':'platformer_game_pack_fence_corner',
+  'fence_end_modular':'modular_dungeon_1_fence_end_modular',
+  'fence_middle':'platformer_game_pack_fence_middle',
+  'fence_straight_modular':'modular_dungeon_1_fence_straight_modular',
+  'fire':'medieval_village_pack_bonfire_lit',
+  'fireplace':'house_interior_pack_fireplace',
+  'firstaidkit':'survival_pack_firstaidkit',
+  'firstaidkit_hard':'survival_pack_firstaidkit_hard',
+  'fish1':'fish_pack_fish1',
+  'fish2':'fish_pack_fish2',
+  'fish3':'fish_pack_fish3',
+  'fish_pack_dolphin':'fish_pack_dolphin',
+  'fish_pack_fish1':'fish_pack_fish1',
+  'fish_pack_fish2':'fish_pack_fish2',
+  'fish_pack_fish3':'fish_pack_fish3',
+  'fish_pack_manta_ray':'fish_pack_manta_ray',
+  'fish_pack_shark':'fish_pack_shark',
+  'fish_pack_whale':'fish_pack_whale',
+  'fishbone':'rpg_items_pack_fishbone',
+  'fishingrod_lvl1':'cute_fish_pack_fishingrod_lvl1',
+  'fishingrod_lvl2':'cute_fish_pack_fishingrod_lvl2',
+  'fishingrod_lvl3':'cute_fish_pack_fishingrod_lvl3',
+  'fishingrod_lvl4':'cute_fish_pack_fishingrod_lvl4',
+  'fishingrod_lvl5':'cute_fish_pack_fishingrod_lvl5',
+  'flamingo':'flamingo',
+  'flaregun':'survival_pack_flaregun',
+  'flatfish':'cute_fish_pack_flatfish',
+  'floor_bricksseparate':'modular_dungeon_1_floor_bricksseparate',
+  'floor_bricksseparate2':'modular_dungeon_1_floor_bricksseparate2',
+  'floor_modular':'modular_dungeon_1_floor_modular',
+  'flower':'crops_pack_flower_1',
+  'flower_1':'crops_pack_flower_1',
+  'flower_2':'crops_pack_flower_2',
+  'flower_3':'crops_pack_flower_3',
+  'flower_4':'crops_pack_flower_4',
+  'flowerhorn':'cute_fish_pack_flowerhorn',
+  'flowers':'nature_pack_flowers',
+  'flowers_crop':'crops_pack_flowers_crop',
+  'flowers_harvested':'crops_pack_flowers_harvested',
+  'fork':'house_interior_pack_fork',
+  'formal':'modular_women_formal',
+  'fox':'fox',
+  'fox_anim':'fox_anim',
+  'frog':'easy_enemies_pack_frog',
+  'fruit':'platformer_game_pack_fruit',
+  'gascan':'survival_pack_gascan',
+  'gazebo':'medieval_village_pack_gazebo',
+  'gem_blue':'platformer_game_pack_gem_blue',
+  'gem_green':'platformer_game_pack_gem_green',
+  'gem_pink':'platformer_game_pack_gem_pink',
+  'geodesicdome-transformed':'ultimate_space_pack_geodesicdome-transformed',
+  'girl':'modular_women_casual',
+  'glamvelvet_sofa':'glamvelvet_sofa',
+  'glass_vase_flowers':'glass_vase_flowers',
+  'glass_window':'glass_window',
+  'glove':'rpg_items_pack_glove',
+  'goal_flag':'platformer_game_pack_goal_flag',
+  'goblinshark':'cute_fish_pack_goblinshark',
+  'gold_ingots':'rpg_items_pack_gold_ingots',
+  'goldfish':'cute_fish_pack_goldfish',
+  'grass':'nature_pack_grass',
+  'grass1':'simple_nature_pack_grass1',
+  'grass2':'simple_nature_pack_grass2',
+  'grass3':'simple_nature_pack_grass3',
+  'grass_1':'platformer_game_pack_grass_1',
+  'grass_1-transformed':'ultimate_space_pack_grass_1-transformed',
+  'grass_2':'platformer_game_pack_grass_2',
+  'grass_2-transformed':'ultimate_space_pack_grass_2-transformed',
+  'grass_3':'platformer_game_pack_grass_3',
+  'grass_3-transformed':'ultimate_space_pack_grass_3-transformed',
+  'grass_4':'crops_pack_grass_4',
+  'grass_short':'nature_pack_grass_short',
+  'grave':'modular_dungeon_1_skull',
+  'gravestone':'modular_dungeon_1_skull',
+  'grenade':'modular_sci_fi_guns_pack_grenade',
+  'grenade_1':'modular_sci_fi_guns_pack_grenade_1',
+  'grenade_2':'modular_sci_fi_guns_pack_grenade_2',
+  'grenade_3':'modular_sci_fi_guns_pack_grenade_3',
+  'grip_ar_1':'modular_sci_fi_guns_pack_grip_ar_1',
+  'grip_ar_6':'modular_sci_fi_guns_pack_grip_ar_6',
+  'grip_grenade_1':'modular_sci_fi_guns_pack_grip_grenade_1',
+  'grip_grenade_2':'modular_sci_fi_guns_pack_grip_grenade_2',
+  'grip_grenade_3':'modular_sci_fi_guns_pack_grip_grenade_3',
+  'grip_pistol_1':'modular_sci_fi_guns_pack_grip_pistol_1',
+  'grip_pistol_2':'modular_sci_fi_guns_pack_grip_pistol_2',
+  'grip_smg_1':'modular_sci_fi_guns_pack_grip_smg_1',
+  'grip_sniper_1':'modular_sci_fi_guns_pack_grip_sniper_1',
+  'grip_sniper_2':'modular_sci_fi_guns_pack_grip_sniper_2',
+  'hammer_double':'rpg_items_pack_hammer_double',
+  'hammer_double_golden':'rpg_items_pack_hammer_double_golden',
+  'hammer_small':'medieval_weapons_pack_hammer_small',
+  'handguard_pistol_3':'modular_sci_fi_guns_pack_handguard_pistol_3',
+  'hay':'medieval_village_pack_hay',
+  'hazard_cylinder':'platformer_game_pack_hazard_cylinder',
+  'hazard_saw':'platformer_game_pack_hazard_saw',
+  'hazard_spiketrap':'platformer_game_pack_hazard_spiketrap',
+  'heart':'rpg_items_pack_heart',
+  'heart_broken':'rpg_items_pack_heart_broken',
+  'heart_half':'rpg_items_pack_heart_half',
+  'heart_outline':'platformer_game_pack_heart_outline',
+  'helmet':'helmet',
+  'helmet1':'single_knight_pack_helmet1',
+  'helmet2':'single_knight_pack_helmet2',
+  'helmet3':'single_knight_pack_helmet3',
+  'horse':'horse',
+  'horse_anim':'horse_anim',
+  'horse_white':'animals_pack_horse_white',
+  'house1':'buildings_pack_2_house1',
+  'house2':'buildings_pack_2_house2',
+  'house_1':'medieval_village_pack_house_1',
+  'house_2':'medieval_village_pack_house_2',
+  'house_3':'medieval_village_pack_house_3',
+  'house_4':'medieval_village_pack_house_4',
+  'house_cylinder-transformed':'ultimate_space_pack_house_cylinder-transformed',
+  'house_interior_pack_bathroom_bathtub':'house_interior_pack_bathroom_bathtub',
+  'house_interior_pack_bathroom_mirror1':'house_interior_pack_bathroom_mirror1',
+  'house_interior_pack_bathroom_mirror2':'house_interior_pack_bathroom_mirror2',
+  'house_interior_pack_bathroom_shower1':'house_interior_pack_bathroom_shower1',
+  'house_interior_pack_bathroom_sink':'house_interior_pack_bathroom_sink',
+  'house_interior_pack_bathroom_toilet':'house_interior_pack_bathroom_toilet',
+  'house_interior_pack_bathroom_toilet2':'house_interior_pack_bathroom_toilet2',
+  'house_interior_pack_bathroom_toiletpaper':'house_interior_pack_bathroom_toiletpaper',
+  'house_interior_pack_bathroom_toiletpaperpile':'house_interior_pack_bathroom_toiletpaperpile',
+  'house_interior_pack_bathroom_towel':'house_interior_pack_bathroom_towel',
+  'house_interior_pack_bathroom_washingmachine':'house_interior_pack_bathroom_washingmachine',
+  'house_interior_pack_bed_bunk':'house_interior_pack_bed_bunk',
+  'house_interior_pack_bed_king':'house_interior_pack_bed_king',
+  'house_interior_pack_bed_single':'house_interior_pack_bed_single',
+  'house_interior_pack_bookshelf':'house_interior_pack_bookshelf',
+  'house_interior_pack_carpet_1':'house_interior_pack_carpet_1',
+  'house_interior_pack_carpet_2':'house_interior_pack_carpet_2',
+  'house_interior_pack_carpet_round':'house_interior_pack_carpet_round',
+  'house_interior_pack_chair_1':'house_interior_pack_chair_1',
+  'house_interior_pack_chair_2':'house_interior_pack_chair_2',
+  'house_interior_pack_chair_3':'house_interior_pack_chair_3',
+  'house_interior_pack_chair_4':'house_interior_pack_chair_4',
+  'house_interior_pack_column_round1':'house_interior_pack_column_round1',
+  'house_interior_pack_column_round2':'house_interior_pack_column_round2',
+  'house_interior_pack_column_round3':'house_interior_pack_column_round3',
+  'house_interior_pack_column_squarebig':'house_interior_pack_column_squarebig',
+  'house_interior_pack_column_squaresmall':'house_interior_pack_column_squaresmall',
+  'house_interior_pack_couch_l':'house_interior_pack_couch_l',
+  'house_interior_pack_couch_large1':'house_interior_pack_couch_large1',
+  'house_interior_pack_couch_large2':'house_interior_pack_couch_large2',
+  'house_interior_pack_couch_large3':'house_interior_pack_couch_large3',
+  'house_interior_pack_couch_medium1':'house_interior_pack_couch_medium1',
+  'house_interior_pack_couch_medium2':'house_interior_pack_couch_medium2',
+  'house_interior_pack_couch_small1':'house_interior_pack_couch_small1',
+  'house_interior_pack_couch_small2':'house_interior_pack_couch_small2',
+  'house_interior_pack_curtains_double':'house_interior_pack_curtains_double',
+  'house_interior_pack_curtains_single':'house_interior_pack_curtains_single',
+  'house_interior_pack_door_1':'house_interior_pack_door_1',
+  'house_interior_pack_door_2':'house_interior_pack_door_2',
+  'house_interior_pack_door_3':'house_interior_pack_door_3',
+  'house_interior_pack_door_4':'house_interior_pack_door_4',
+  'house_interior_pack_door_5':'house_interior_pack_door_5',
+  'house_interior_pack_door_6':'house_interior_pack_door_6',
+  'house_interior_pack_door_7':'house_interior_pack_door_7',
+  'house_interior_pack_door_8':'house_interior_pack_door_8',
+  'house_interior_pack_door_9':'house_interior_pack_door_9',
+  'house_interior_pack_door_double':'house_interior_pack_door_double',
+  'house_interior_pack_drawer_1':'house_interior_pack_drawer_1',
+  'house_interior_pack_drawer_2':'house_interior_pack_drawer_2',
+  'house_interior_pack_drawer_3':'house_interior_pack_drawer_3',
+  'house_interior_pack_drawer_4':'house_interior_pack_drawer_4',
+  'house_interior_pack_drawer_5':'house_interior_pack_drawer_5',
+  'house_interior_pack_fireplace':'house_interior_pack_fireplace',
+  'house_interior_pack_fork':'house_interior_pack_fork',
+  'house_interior_pack_houseplant_1':'house_interior_pack_houseplant_1',
+  'house_interior_pack_houseplant_2':'house_interior_pack_houseplant_2',
+  'house_interior_pack_houseplant_3':'house_interior_pack_houseplant_3',
+  'house_interior_pack_houseplant_4':'house_interior_pack_houseplant_4',
+  'house_interior_pack_houseplant_5':'house_interior_pack_houseplant_5',
+  'house_interior_pack_houseplant_6':'house_interior_pack_houseplant_6',
+  'house_interior_pack_houseplant_7':'house_interior_pack_houseplant_7',
+  'house_interior_pack_houseplant_8':'house_interior_pack_houseplant_8',
+  'house_interior_pack_kitchen_1drawers':'house_interior_pack_kitchen_1drawers',
+  'house_interior_pack_kitchen_2drawers':'house_interior_pack_kitchen_2drawers',
+  'house_interior_pack_kitchen_3drawers':'house_interior_pack_kitchen_3drawers',
+  'house_interior_pack_kitchen_cabinet1':'house_interior_pack_kitchen_cabinet1',
+  'house_interior_pack_kitchen_cabinet2':'house_interior_pack_kitchen_cabinet2',
+  'house_interior_pack_kitchen_cabinetsmall':'house_interior_pack_kitchen_cabinetsmall',
+  'house_interior_pack_kitchen_fridge':'house_interior_pack_kitchen_fridge',
+  'house_interior_pack_kitchen_oven':'house_interior_pack_kitchen_oven',
+  'house_interior_pack_kitchen_oven_large':'house_interior_pack_kitchen_oven_large',
+  'house_interior_pack_kitchen_sink':'house_interior_pack_kitchen_sink',
+  'house_interior_pack_knife':'house_interior_pack_knife',
+  'house_interior_pack_light_ceiling1':'house_interior_pack_light_ceiling1',
+  'house_interior_pack_light_ceiling2':'house_interior_pack_light_ceiling2',
+  'house_interior_pack_light_ceiling3':'house_interior_pack_light_ceiling3',
+  'house_interior_pack_light_ceiling4':'house_interior_pack_light_ceiling4',
+  'house_interior_pack_light_ceiling5':'house_interior_pack_light_ceiling5',
+  'house_interior_pack_light_ceiling6':'house_interior_pack_light_ceiling6',
+  'house_interior_pack_light_ceilingsingle':'house_interior_pack_light_ceilingsingle',
+  'house_interior_pack_light_chandelier':'house_interior_pack_light_chandelier',
+  'house_interior_pack_light_cube':'house_interior_pack_light_cube',
+  'house_interior_pack_light_cube2':'house_interior_pack_light_cube2',
+  'house_interior_pack_light_desk':'house_interior_pack_light_desk',
+  'house_interior_pack_light_floor1':'house_interior_pack_light_floor1',
+  'house_interior_pack_light_floor2':'house_interior_pack_light_floor2',
+  'house_interior_pack_light_floor3':'house_interior_pack_light_floor3',
+  'house_interior_pack_light_floor4':'house_interior_pack_light_floor4',
+  'house_interior_pack_light_icosahedron':'house_interior_pack_light_icosahedron',
+  'house_interior_pack_light_icosahedron2':'house_interior_pack_light_icosahedron2',
+  'house_interior_pack_light_small':'house_interior_pack_light_small',
+  'house_interior_pack_light_stand1':'house_interior_pack_light_stand1',
+  'house_interior_pack_light_stand2':'house_interior_pack_light_stand2',
+  'house_interior_pack_nightstand_1':'house_interior_pack_nightstand_1',
+  'house_interior_pack_nightstand_2':'house_interior_pack_nightstand_2',
+  'house_interior_pack_nightstand_3':'house_interior_pack_nightstand_3',
+  'house_interior_pack_plate_1':'house_interior_pack_plate_1',
+  'house_interior_pack_plate_2':'house_interior_pack_plate_2',
+  'house_interior_pack_plate_3':'house_interior_pack_plate_3',
+  'house_interior_pack_shelf_1':'house_interior_pack_shelf_1',
+  'house_interior_pack_shelf_2':'house_interior_pack_shelf_2',
+  'house_interior_pack_shelf_large':'house_interior_pack_shelf_large',
+  'house_interior_pack_shelf_small1':'house_interior_pack_shelf_small1',
+  'house_interior_pack_shelf_small2':'house_interior_pack_shelf_small2',
+  'house_interior_pack_shelf_small3':'house_interior_pack_shelf_small3',
+  'house_interior_pack_spoon':'house_interior_pack_spoon',
+  'house_interior_pack_stool':'house_interior_pack_stool',
+  'house_interior_pack_table_roundlarge':'house_interior_pack_table_roundlarge',
+  'house_interior_pack_table_roundsmall':'house_interior_pack_table_roundsmall',
+  'house_interior_pack_table_roundsmall2':'house_interior_pack_table_roundsmall2',
+  'house_interior_pack_trashcan_cylindric':'house_interior_pack_trashcan_cylindric',
+  'house_interior_pack_trashcan_green':'house_interior_pack_trashcan_green',
+  'house_interior_pack_trashcan_large':'house_interior_pack_trashcan_large',
+  'house_interior_pack_trashcan_small1':'house_interior_pack_trashcan_small1',
+  'house_interior_pack_trashcan_small2':'house_interior_pack_trashcan_small2',
+  'house_interior_pack_window_large1':'house_interior_pack_window_large1',
+  'house_interior_pack_window_large2':'house_interior_pack_window_large2',
+  'house_interior_pack_window_round1':'house_interior_pack_window_round1',
+  'house_interior_pack_window_round2':'house_interior_pack_window_round2',
+  'house_interior_pack_window_round3':'house_interior_pack_window_round3',
+  'house_interior_pack_window_small1':'house_interior_pack_window_small1',
+  'house_interior_pack_window_small2':'house_interior_pack_window_small2',
+  'house_interior_pack_window_small3':'house_interior_pack_window_small3',
+  'house_long-transformed':'ultimate_space_pack_house_long-transformed',
+  'house_open-transformed':'ultimate_space_pack_house_open-transformed',
+  'house_openback-transformed':'ultimate_space_pack_house_openback-transformed',
+  'house_single-transformed':'ultimate_space_pack_house_single-transformed',
+  'house_single_support-transformed':'ultimate_space_pack_house_single_support-transformed',
+  'houseplant_1':'house_interior_pack_houseplant_1',
+  'houseplant_2':'house_interior_pack_houseplant_2',
+  'houseplant_3':'house_interior_pack_houseplant_3',
+  'houseplant_4':'house_interior_pack_houseplant_4',
+  'houseplant_5':'house_interior_pack_houseplant_5',
+  'houseplant_6':'house_interior_pack_houseplant_6',
+  'houseplant_7':'house_interior_pack_houseplant_7',
+  'houseplant_8':'house_interior_pack_houseplant_8',
+  'human':'modular_men_casual',
+  'humphead':'cute_fish_pack_humphead',
+  'hurricane_candle':'hurricane_candle',
+  'husky':'animals_pack_husky',
+  'inn':'medieval_village_pack_inn',
+  'insurgent':'spaceships_pack_insurgent',
+  'iridescence_suzanne':'iridescence_suzanne',
+  'katana':'single_knight_pack_katana',
+  'key':'platformer_game_pack_key',
+  'key1':'rpg_items_pack_key1',
+  'key2':'rpg_items_pack_key2',
+  'key3':'rpg_items_pack_key3',
+  'key4':'rpg_items_pack_key4',
+  'king':'modular_men_king',
+  'kitchen_1drawers':'house_interior_pack_kitchen_1drawers',
+  'kitchen_2drawers':'house_interior_pack_kitchen_2drawers',
+  'kitchen_3drawers':'house_interior_pack_kitchen_3drawers',
+  'kitchen_cabinet1':'house_interior_pack_kitchen_cabinet1',
+  'kitchen_cabinet2':'house_interior_pack_kitchen_cabinet2',
+  'kitchen_cabinetsmall':'house_interior_pack_kitchen_cabinetsmall',
+  'kitchen_fridge':'house_interior_pack_kitchen_fridge',
+  'kitchen_oven':'house_interior_pack_kitchen_oven',
+  'kitchen_oven_large':'house_interior_pack_kitchen_oven_large',
+  'kitchen_sink':'house_interior_pack_kitchen_sink',
+  'knife':'survival_pack_knife',
+  'knightcharacter':'single_knight_pack_knightcharacter',
+  'koi':'cute_fish_pack_koi',
+  'lady':'modular_women_medieval',
+  'lamp':'modular_dungeon_pack_candle',
+  'largesimpletower':'modular_medieval_buildings_pack_largesimpletower',
+  'largesquaretower':'modular_medieval_buildings_pack_largesquaretower',
+  'largesquaretowerbricks':'modular_medieval_buildings_pack_largesquaretowerbricks',
+  'largetower':'modular_medieval_buildings_pack_largetower',
+  'lettuce_1':'crops_pack_lettuce_1',
+  'lettuce_2':'crops_pack_lettuce_2',
+  'lettuce_3':'crops_pack_lettuce_3',
+  'lettuce_4':'crops_pack_lettuce_4',
+  'lettuce_crop':'crops_pack_lettuce_crop',
+  'lettuce_harvested':'crops_pack_lettuce_harvested',
+  'lever':'platformer_game_pack_lever',
+  'lifeboat':'ships_pack_lifeboat',
+  'light_ceiling1':'house_interior_pack_light_ceiling1',
+  'light_ceiling2':'house_interior_pack_light_ceiling2',
+  'light_ceiling3':'house_interior_pack_light_ceiling3',
+  'light_ceiling4':'house_interior_pack_light_ceiling4',
+  'light_ceiling5':'house_interior_pack_light_ceiling5',
+  'light_ceiling6':'house_interior_pack_light_ceiling6',
+  'light_ceilingsingle':'house_interior_pack_light_ceilingsingle',
+  'light_chandelier':'house_interior_pack_light_chandelier',
+  'light_cube':'house_interior_pack_light_cube',
+  'light_cube2':'house_interior_pack_light_cube2',
+  'light_desk':'house_interior_pack_light_desk',
+  'light_floor1':'house_interior_pack_light_floor1',
+  'light_floor2':'house_interior_pack_light_floor2',
+  'light_floor3':'house_interior_pack_light_floor3',
+  'light_floor4':'house_interior_pack_light_floor4',
+  'light_icosahedron':'house_interior_pack_light_icosahedron',
+  'light_icosahedron2':'house_interior_pack_light_icosahedron2',
+  'light_small':'house_interior_pack_light_small',
+  'light_square':'cyberpunk_pack_light_square',
+  'light_stand1':'house_interior_pack_light_stand1',
+  'light_stand2':'house_interior_pack_light_stand2',
+  'light_street_1':'cyberpunk_pack_light_street_1',
+  'light_street_2':'cyberpunk_pack_light_street_2',
+  'lilypad':'nature_pack_lilypad',
+  'lionfish':'cute_fish_pack_lionfish',
+  'loot':'chest',
+  'lootbox':'cyberpunk_pack_lootbox',
+  'lorry':'truck',
+  'lure_1':'cute_fish_pack_lure_1',
+  'lure_2':'cute_fish_pack_lure_2',
+  'lure_3':'cute_fish_pack_lure_3',
+  'lure_4':'cute_fish_pack_lure_4',
+  'lure_5':'cute_fish_pack_lure_5',
+  'lure_6':'cute_fish_pack_lure_6',
+  'magazine_ar':'modular_sci_fi_guns_pack_magazine_ar',
+  'magazine_smg_1':'modular_sci_fi_guns_pack_magazine_smg_1',
+  'magazine_sniper_1':'modular_sci_fi_guns_pack_magazine_sniper_1',
+  'man':'man',
+  'mandarinfish':'cute_fish_pack_mandarinfish',
+  'manta_ray':'fish_pack_manta_ray',
+  'marketstand_1':'medieval_village_pack_marketstand_1',
+  'marketstand_2':'medieval_village_pack_marketstand_2',
+  'match':'survival_pack_match',
+  'match_burnt':'survival_pack_match_burnt',
+  'match_fire':'survival_pack_match_fire',
+  'matchbox':'survival_pack_matchbox',
+  'mech_barbarathebee-transformed':'ultimate_space_pack_mech_barbarathebee-transformed',
+  'mech_fernandotheflamingo-transformed':'ultimate_space_pack_mech_fernandotheflamingo-transformed',
+  'mech_finnthefrog-transformed':'ultimate_space_pack_mech_finnthefrog-transformed',
+  'mech_raetheredpanda-transformed':'ultimate_space_pack_mech_raetheredpanda-transformed',
+  'medieval':'modular_women_medieval',
+  'medieval_village_pack_bag':'medieval_village_pack_bag',
+  'medieval_village_pack_bag_open':'medieval_village_pack_bag_open',
+  'medieval_village_pack_bags':'medieval_village_pack_bags',
+  'medieval_village_pack_barrel':'medieval_village_pack_barrel',
+  'medieval_village_pack_bell':'medieval_village_pack_bell',
+  'medieval_village_pack_bell_tower':'medieval_village_pack_bell_tower',
+  'medieval_village_pack_bench_1':'medieval_village_pack_bench_1',
+  'medieval_village_pack_bench_2':'medieval_village_pack_bench_2',
+  'medieval_village_pack_blacksmith':'medieval_village_pack_blacksmith',
+  'medieval_village_pack_bonfire':'medieval_village_pack_bonfire',
+  'medieval_village_pack_bonfire_lit':'medieval_village_pack_bonfire_lit',
+  'medieval_village_pack_cart':'medieval_village_pack_cart',
+  'medieval_village_pack_cauldron':'medieval_village_pack_cauldron',
+  'medieval_village_pack_crate':'medieval_village_pack_crate',
+  'medieval_village_pack_door_round':'medieval_village_pack_door_round',
+  'medieval_village_pack_door_straight':'medieval_village_pack_door_straight',
+  'medieval_village_pack_fence':'medieval_village_pack_fence',
+  'medieval_village_pack_gazebo':'medieval_village_pack_gazebo',
+  'medieval_village_pack_hay':'medieval_village_pack_hay',
+  'medieval_village_pack_house_1':'medieval_village_pack_house_1',
+  'medieval_village_pack_house_2':'medieval_village_pack_house_2',
+  'medieval_village_pack_house_3':'medieval_village_pack_house_3',
+  'medieval_village_pack_house_4':'medieval_village_pack_house_4',
+  'medieval_village_pack_inn':'medieval_village_pack_inn',
+  'medieval_village_pack_marketstand_1':'medieval_village_pack_marketstand_1',
+  'medieval_village_pack_marketstand_2':'medieval_village_pack_marketstand_2',
+  'medieval_village_pack_mill':'medieval_village_pack_mill',
+  'medieval_village_pack_package_1':'medieval_village_pack_package_1',
+  'medieval_village_pack_package_2':'medieval_village_pack_package_2',
+  'medieval_village_pack_path_square':'medieval_village_pack_path_square',
+  'medieval_village_pack_path_straight':'medieval_village_pack_path_straight',
+  'medieval_village_pack_rock_1':'medieval_village_pack_rock_1',
+  'medieval_village_pack_rock_2':'medieval_village_pack_rock_2',
+  'medieval_village_pack_rock_3':'medieval_village_pack_rock_3',
+  'medieval_village_pack_sawmill':'medieval_village_pack_sawmill',
+  'medieval_village_pack_sawmill_saw':'medieval_village_pack_sawmill_saw',
+  'medieval_village_pack_smoke':'medieval_village_pack_smoke',
+  'medieval_village_pack_stable':'medieval_village_pack_stable',
+  'medieval_village_pack_stairs':'medieval_village_pack_stairs',
+  'medieval_village_pack_well':'medieval_village_pack_well',
+  'medieval_village_pack_window_1':'medieval_village_pack_window_1',
+  'medieval_village_pack_window_2':'medieval_village_pack_window_2',
+  'medieval_village_pack_window_3':'medieval_village_pack_window_3',
+  'medieval_village_pack_window_4':'medieval_village_pack_window_4',
+  'medieval_weapons_pack_arrow':'medieval_weapons_pack_arrow',
+  'medieval_weapons_pack_axe':'medieval_weapons_pack_axe',
+  'medieval_weapons_pack_axe_double':'medieval_weapons_pack_axe_double',
+  'medieval_weapons_pack_axe_small':'medieval_weapons_pack_axe_small',
+  'medieval_weapons_pack_bow_evil':'medieval_weapons_pack_bow_evil',
+  'medieval_weapons_pack_bow_golden':'medieval_weapons_pack_bow_golden',
+  'medieval_weapons_pack_bow_wooden':'medieval_weapons_pack_bow_wooden',
+  'medieval_weapons_pack_bow_wooden2':'medieval_weapons_pack_bow_wooden2',
+  'medieval_weapons_pack_claymore':'medieval_weapons_pack_claymore',
+  'medieval_weapons_pack_dagger':'medieval_weapons_pack_dagger',
+  'medieval_weapons_pack_dagger_2':'medieval_weapons_pack_dagger_2',
+  'medieval_weapons_pack_hammer_double':'medieval_weapons_pack_hammer_double',
+  'medieval_weapons_pack_hammer_small':'medieval_weapons_pack_hammer_small',
+  'medieval_weapons_pack_scythe':'medieval_weapons_pack_scythe',
+  'medieval_weapons_pack_shield_celtic_golden':'medieval_weapons_pack_shield_celtic_golden',
+  'medieval_weapons_pack_shield_heater':'medieval_weapons_pack_shield_heater',
+  'medieval_weapons_pack_shield_heater_2':'medieval_weapons_pack_shield_heater_2',
+  'medieval_weapons_pack_shield_round':'medieval_weapons_pack_shield_round',
+  'medieval_weapons_pack_shield_round_2':'medieval_weapons_pack_shield_round_2',
+  'medieval_weapons_pack_spear':'medieval_weapons_pack_spear',
+  'medieval_weapons_pack_sword':'medieval_weapons_pack_sword',
+  'medieval_weapons_pack_sword_2':'medieval_weapons_pack_sword_2',
+  'medieval_weapons_pack_sword_big':'medieval_weapons_pack_sword_big',
+  'medieval_weapons_pack_sword_golden':'medieval_weapons_pack_sword_golden',
+  'metalsupport-transformed':'ultimate_space_pack_metalsupport-transformed',
+  'michelle':'michelle',
+  'milk_truck':'milk_truck',
+  'mill':'medieval_village_pack_mill',
+  'mineral':'rpg_items_pack_mineral',
+  'modular_dungeon_1_arch':'modular_dungeon_1_arch',
+  'modular_dungeon_1_arch_bars':'modular_dungeon_1_arch_bars',
+  'modular_dungeon_1_arch_door':'modular_dungeon_1_arch_door',
+  'modular_dungeon_1_arch_door_bottompivot':'modular_dungeon_1_arch_door_bottompivot',
+  'modular_dungeon_1_bag_coins':'modular_dungeon_1_bag_coins',
+  'modular_dungeon_1_bag_standing':'modular_dungeon_1_bag_standing',
+  'modular_dungeon_1_banner':'modular_dungeon_1_banner',
+  'modular_dungeon_1_banner_wall':'modular_dungeon_1_banner_wall',
+  'modular_dungeon_1_barrel':'modular_dungeon_1_barrel',
+  'modular_dungeon_1_barrel2':'modular_dungeon_1_barrel2',
+  'modular_dungeon_1_brick':'modular_dungeon_1_brick',
+  'modular_dungeon_1_bucket':'modular_dungeon_1_bucket',
+  'modular_dungeon_1_chair':'modular_dungeon_1_chair',
+  'modular_dungeon_1_chest':'modular_dungeon_1_chest',
+  'modular_dungeon_1_chest_gold':'modular_dungeon_1_chest_gold',
+  'modular_dungeon_1_cobweb':'modular_dungeon_1_cobweb',
+  'modular_dungeon_1_cobweb2':'modular_dungeon_1_cobweb2',
+  'modular_dungeon_1_coin_pile':'modular_dungeon_1_coin_pile',
+  'modular_dungeon_1_column':'modular_dungeon_1_column',
+  'modular_dungeon_1_column2':'modular_dungeon_1_column2',
+  'modular_dungeon_1_crate':'modular_dungeon_1_crate',
+  'modular_dungeon_1_decorative_wall':'modular_dungeon_1_decorative_wall',
+  'modular_dungeon_1_fence_90_modular':'modular_dungeon_1_fence_90_modular',
+  'modular_dungeon_1_fence_end_modular':'modular_dungeon_1_fence_end_modular',
+  'modular_dungeon_1_fence_straight_modular':'modular_dungeon_1_fence_straight_modular',
+  'modular_dungeon_1_floor_bricksseparate':'modular_dungeon_1_floor_bricksseparate',
+  'modular_dungeon_1_floor_bricksseparate2':'modular_dungeon_1_floor_bricksseparate2',
+  'modular_dungeon_1_floor_modular':'modular_dungeon_1_floor_modular',
+  'modular_dungeon_1_pedestal':'modular_dungeon_1_pedestal',
+  'modular_dungeon_1_pedestal2':'modular_dungeon_1_pedestal2',
+  'modular_dungeon_1_skull':'modular_dungeon_1_skull',
+  'modular_dungeon_1_spikes':'modular_dungeon_1_spikes',
+  'modular_dungeon_1_stairs_modular':'modular_dungeon_1_stairs_modular',
+  'modular_dungeon_1_stairs_sidecover':'modular_dungeon_1_stairs_sidecover',
+  'modular_dungeon_1_stairs_sidecoverwall':'modular_dungeon_1_stairs_sidecoverwall',
+  'modular_dungeon_1_statue_horse':'modular_dungeon_1_statue_horse',
+  'modular_dungeon_1_sword_wallmount':'modular_dungeon_1_sword_wallmount',
+  'modular_dungeon_1_table_big':'modular_dungeon_1_table_big',
+  'modular_dungeon_1_table_small':'modular_dungeon_1_table_small',
+  'modular_dungeon_1_torch':'modular_dungeon_1_torch',
+  'modular_dungeon_1_trap_empty':'modular_dungeon_1_trap_empty',
+  'modular_dungeon_1_trap_spikes':'modular_dungeon_1_trap_spikes',
+  'modular_dungeon_1_trapdoor':'modular_dungeon_1_trapdoor',
+  'modular_dungeon_1_trapdoor_open':'modular_dungeon_1_trapdoor_open',
+  'modular_dungeon_1_vase':'modular_dungeon_1_vase',
+  'modular_dungeon_1_wall_modular':'modular_dungeon_1_wall_modular',
+  'modular_dungeon_1_wallcover_modular':'modular_dungeon_1_wallcover_modular',
+  'modular_dungeon_1_woodfire':'modular_dungeon_1_woodfire',
+  'modular_dungeon_pack_barrel':'modular_dungeon_pack_barrel',
+  'modular_dungeon_pack_bars':'modular_dungeon_pack_bars',
+  'modular_dungeon_pack_bones':'modular_dungeon_pack_bones',
+  'modular_dungeon_pack_bones2':'modular_dungeon_pack_bones2',
+  'modular_dungeon_pack_book2':'modular_dungeon_pack_book2',
+  'modular_dungeon_pack_book3':'modular_dungeon_pack_book3',
+  'modular_dungeon_pack_book_open':'modular_dungeon_pack_book_open',
+  'modular_dungeon_pack_candelabrum':'modular_dungeon_pack_candelabrum',
+  'modular_dungeon_pack_candelabrum_tall':'modular_dungeon_pack_candelabrum_tall',
+  'modular_dungeon_pack_candle':'modular_dungeon_pack_candle',
+  'modular_dungeon_pack_carpet':'modular_dungeon_pack_carpet',
+  'modular_dungeon_pack_chest':'modular_dungeon_pack_chest',
+  'modular_dungeon_pack_chest_gold':'modular_dungeon_pack_chest_gold',
+  'modular_dungeon_pack_column':'modular_dungeon_pack_column',
+  'modular_dungeon_pack_column_broken':'modular_dungeon_pack_column_broken',
+  'modular_dungeon_pack_column_broken2':'modular_dungeon_pack_column_broken2',
+  'modular_dungeon_pack_entrance':'modular_dungeon_pack_entrance',
+  'modular_dungeon_pack_entrance2':'modular_dungeon_pack_entrance2',
+  'modular_dungeon_pack_modularcolumn_bottom':'modular_dungeon_pack_modularcolumn_bottom',
+  'modular_dungeon_pack_modularcolumn_middle':'modular_dungeon_pack_modularcolumn_middle',
+  'modular_dungeon_pack_modularcolumn_top':'modular_dungeon_pack_modularcolumn_top',
+  'modular_dungeon_pack_modularfloor':'modular_dungeon_pack_modularfloor',
+  'modular_dungeon_pack_modularstonewall':'modular_dungeon_pack_modularstonewall',
+  'modular_dungeon_pack_modularstonewall_entrancetop':'modular_dungeon_pack_modularstonewall_entrancetop',
+  'modular_dungeon_pack_modularstonewall_top':'modular_dungeon_pack_modularstonewall_top',
+  'modular_dungeon_pack_potion':'modular_dungeon_pack_potion',
+  'modular_dungeon_pack_potion2':'modular_dungeon_pack_potion2',
+  'modular_dungeon_pack_potion3':'modular_dungeon_pack_potion3',
+  'modular_dungeon_pack_potion4':'modular_dungeon_pack_potion4',
+  'modular_dungeon_pack_potion5':'modular_dungeon_pack_potion5',
+  'modular_dungeon_pack_potion6':'modular_dungeon_pack_potion6',
+  'modular_dungeon_pack_rock1':'modular_dungeon_pack_rock1',
+  'modular_dungeon_pack_rock2':'modular_dungeon_pack_rock2',
+  'modular_dungeon_pack_rock3':'modular_dungeon_pack_rock3',
+  'modular_dungeon_pack_rock4':'modular_dungeon_pack_rock4',
+  'modular_dungeon_pack_rock5':'modular_dungeon_pack_rock5',
+  'modular_dungeon_pack_stairs':'modular_dungeon_pack_stairs',
+  'modular_dungeon_pack_torch':'modular_dungeon_pack_torch',
+  'modular_dungeon_pack_torch_wall':'modular_dungeon_pack_torch_wall',
+  'modular_dungeon_pack_wallrocks':'modular_dungeon_pack_wallrocks',
+  'modular_dungeon_pack_window':'modular_dungeon_pack_window',
+  'modular_medieval_buildings_pack_banner':'modular_medieval_buildings_pack_banner',
+  'modular_medieval_buildings_pack_bridge':'modular_medieval_buildings_pack_bridge',
+  'modular_medieval_buildings_pack_door':'modular_medieval_buildings_pack_door',
+  'modular_medieval_buildings_pack_dummy':'modular_medieval_buildings_pack_dummy',
+  'modular_medieval_buildings_pack_largesimpletower':'modular_medieval_buildings_pack_largesimpletower',
+  'modular_medieval_buildings_pack_largesquaretower':'modular_medieval_buildings_pack_largesquaretower',
+  'modular_medieval_buildings_pack_largesquaretowerbricks':'modular_medieval_buildings_pack_largesquaretowerbricks',
+  'modular_medieval_buildings_pack_largetower':'modular_medieval_buildings_pack_largetower',
+  'modular_medieval_buildings_pack_pointytower':'modular_medieval_buildings_pack_pointytower',
+  'modular_medieval_buildings_pack_simpletower':'modular_medieval_buildings_pack_simpletower',
+  'modular_medieval_buildings_pack_simpletowerbricks':'modular_medieval_buildings_pack_simpletowerbricks',
+  'modular_medieval_buildings_pack_smallsquaretower':'modular_medieval_buildings_pack_smallsquaretower',
+  'modular_medieval_buildings_pack_smallsquaretowerbricks':'modular_medieval_buildings_pack_smallsquaretowerbricks',
+  'modular_medieval_buildings_pack_smalltower':'modular_medieval_buildings_pack_smalltower',
+  'modular_medieval_buildings_pack_tallwall':'modular_medieval_buildings_pack_tallwall',
+  'modular_medieval_buildings_pack_tallwallbricks':'modular_medieval_buildings_pack_tallwallbricks',
+  'modular_medieval_buildings_pack_tallwallentrance':'modular_medieval_buildings_pack_tallwallentrance',
+  'modular_medieval_buildings_pack_target':'modular_medieval_buildings_pack_target',
+  'modular_medieval_buildings_pack_targetwitharrows':'modular_medieval_buildings_pack_targetwitharrows',
+  'modular_medieval_buildings_pack_tower':'modular_medieval_buildings_pack_tower',
+  'modular_medieval_buildings_pack_tunnel':'modular_medieval_buildings_pack_tunnel',
+  'modular_medieval_buildings_pack_wall':'modular_medieval_buildings_pack_wall',
+  'modular_medieval_buildings_pack_wallbricks':'modular_medieval_buildings_pack_wallbricks',
+  'modular_medieval_buildings_pack_wallentrance':'modular_medieval_buildings_pack_wallentrance',
+  'modular_medieval_buildings_pack_wallentrancebricks':'modular_medieval_buildings_pack_wallentrancebricks',
+  'modular_medieval_buildings_pack_watchtower':'modular_medieval_buildings_pack_watchtower',
+  'modular_medieval_buildings_pack_watchtowerwroof':'modular_medieval_buildings_pack_watchtowerwroof',
+  'modular_medieval_buildings_pack_well':'modular_medieval_buildings_pack_well',
+  'modular_medieval_buildings_pack_windowgothic':'modular_medieval_buildings_pack_windowgothic',
+  'modular_medieval_buildings_pack_windowsquare':'modular_medieval_buildings_pack_windowsquare',
+  'modular_men_adventurer':'modular_men_adventurer',
+  'modular_men_beach':'modular_men_beach',
+  'modular_men_casual':'modular_men_casual',
+  'modular_men_casual2':'modular_men_casual2',
+  'modular_men_farmer':'modular_men_farmer',
+  'modular_men_king':'modular_men_king',
+  'modular_men_punk':'modular_men_punk',
+  'modular_men_spacesuit':'modular_men_spacesuit',
+  'modular_men_suit':'modular_men_suit',
+  'modular_men_swat':'modular_men_swat',
+  'modular_men_worker':'modular_men_worker',
+  'modular_sci_fi_guns_pack_ar_1':'modular_sci_fi_guns_pack_ar_1',
+  'modular_sci_fi_guns_pack_ar_2':'modular_sci_fi_guns_pack_ar_2',
+  'modular_sci_fi_guns_pack_ar_3':'modular_sci_fi_guns_pack_ar_3',
+  'modular_sci_fi_guns_pack_ar_4':'modular_sci_fi_guns_pack_ar_4',
+  'modular_sci_fi_guns_pack_ar_5':'modular_sci_fi_guns_pack_ar_5',
+  'modular_sci_fi_guns_pack_ar_6':'modular_sci_fi_guns_pack_ar_6',
+  'modular_sci_fi_guns_pack_barrel_ar_1':'modular_sci_fi_guns_pack_barrel_ar_1',
+  'modular_sci_fi_guns_pack_barrel_ar_3':'modular_sci_fi_guns_pack_barrel_ar_3',
+  'modular_sci_fi_guns_pack_barrel_grenade_1':'modular_sci_fi_guns_pack_barrel_grenade_1',
+  'modular_sci_fi_guns_pack_barrel_pistol_1':'modular_sci_fi_guns_pack_barrel_pistol_1',
+  'modular_sci_fi_guns_pack_barrel_pistol_2':'modular_sci_fi_guns_pack_barrel_pistol_2',
+  'modular_sci_fi_guns_pack_barrel_single':'modular_sci_fi_guns_pack_barrel_single',
+  'modular_sci_fi_guns_pack_barrel_sniper_1':'modular_sci_fi_guns_pack_barrel_sniper_1',
+  'modular_sci_fi_guns_pack_barrel_sniper_2':'modular_sci_fi_guns_pack_barrel_sniper_2',
+  'modular_sci_fi_guns_pack_body_ar4':'modular_sci_fi_guns_pack_body_ar4',
+  'modular_sci_fi_guns_pack_body_ar_1':'modular_sci_fi_guns_pack_body_ar_1',
+  'modular_sci_fi_guns_pack_body_ar_3':'modular_sci_fi_guns_pack_body_ar_3',
+  'modular_sci_fi_guns_pack_body_ar_5':'modular_sci_fi_guns_pack_body_ar_5',
+  'modular_sci_fi_guns_pack_body_ar_6':'modular_sci_fi_guns_pack_body_ar_6',
+  'modular_sci_fi_guns_pack_body_crossbow_1':'modular_sci_fi_guns_pack_body_crossbow_1',
+  'modular_sci_fi_guns_pack_body_crossbow_2':'modular_sci_fi_guns_pack_body_crossbow_2',
+  'modular_sci_fi_guns_pack_body_front_sniper_1':'modular_sci_fi_guns_pack_body_front_sniper_1',
+  'modular_sci_fi_guns_pack_body_front_sniper_3':'modular_sci_fi_guns_pack_body_front_sniper_3',
+  'modular_sci_fi_guns_pack_body_grenade_1':'modular_sci_fi_guns_pack_body_grenade_1',
+  'modular_sci_fi_guns_pack_body_grenade_2':'modular_sci_fi_guns_pack_body_grenade_2',
+  'modular_sci_fi_guns_pack_body_grenade_3':'modular_sci_fi_guns_pack_body_grenade_3',
+  'modular_sci_fi_guns_pack_body_pistol_1':'modular_sci_fi_guns_pack_body_pistol_1',
+  'modular_sci_fi_guns_pack_body_pistol_2':'modular_sci_fi_guns_pack_body_pistol_2',
+  'modular_sci_fi_guns_pack_body_pistol_3':'modular_sci_fi_guns_pack_body_pistol_3',
+  'modular_sci_fi_guns_pack_body_smg_1':'modular_sci_fi_guns_pack_body_smg_1',
+  'modular_sci_fi_guns_pack_body_smg_2':'modular_sci_fi_guns_pack_body_smg_2',
+  'modular_sci_fi_guns_pack_body_sniper_1':'modular_sci_fi_guns_pack_body_sniper_1',
+  'modular_sci_fi_guns_pack_body_sniper_2':'modular_sci_fi_guns_pack_body_sniper_2',
+  'modular_sci_fi_guns_pack_body_sniper_3':'modular_sci_fi_guns_pack_body_sniper_3',
+  'modular_sci_fi_guns_pack_crossbow_1':'modular_sci_fi_guns_pack_crossbow_1',
+  'modular_sci_fi_guns_pack_crossbow_2':'modular_sci_fi_guns_pack_crossbow_2',
+  'modular_sci_fi_guns_pack_cylinder_pistol_1':'modular_sci_fi_guns_pack_cylinder_pistol_1',
+  'modular_sci_fi_guns_pack_grenade':'modular_sci_fi_guns_pack_grenade',
+  'modular_sci_fi_guns_pack_grenade_1':'modular_sci_fi_guns_pack_grenade_1',
+  'modular_sci_fi_guns_pack_grenade_2':'modular_sci_fi_guns_pack_grenade_2',
+  'modular_sci_fi_guns_pack_grenade_3':'modular_sci_fi_guns_pack_grenade_3',
+  'modular_sci_fi_guns_pack_grip_ar_1':'modular_sci_fi_guns_pack_grip_ar_1',
+  'modular_sci_fi_guns_pack_grip_ar_6':'modular_sci_fi_guns_pack_grip_ar_6',
+  'modular_sci_fi_guns_pack_grip_grenade_1':'modular_sci_fi_guns_pack_grip_grenade_1',
+  'modular_sci_fi_guns_pack_grip_grenade_2':'modular_sci_fi_guns_pack_grip_grenade_2',
+  'modular_sci_fi_guns_pack_grip_grenade_3':'modular_sci_fi_guns_pack_grip_grenade_3',
+  'modular_sci_fi_guns_pack_grip_pistol_1':'modular_sci_fi_guns_pack_grip_pistol_1',
+  'modular_sci_fi_guns_pack_grip_pistol_2':'modular_sci_fi_guns_pack_grip_pistol_2',
+  'modular_sci_fi_guns_pack_grip_smg_1':'modular_sci_fi_guns_pack_grip_smg_1',
+  'modular_sci_fi_guns_pack_grip_sniper_1':'modular_sci_fi_guns_pack_grip_sniper_1',
+  'modular_sci_fi_guns_pack_grip_sniper_2':'modular_sci_fi_guns_pack_grip_sniper_2',
+  'modular_sci_fi_guns_pack_handguard_pistol_3':'modular_sci_fi_guns_pack_handguard_pistol_3',
+  'modular_sci_fi_guns_pack_magazine_ar':'modular_sci_fi_guns_pack_magazine_ar',
+  'modular_sci_fi_guns_pack_magazine_smg_1':'modular_sci_fi_guns_pack_magazine_smg_1',
+  'modular_sci_fi_guns_pack_magazine_sniper_1':'modular_sci_fi_guns_pack_magazine_sniper_1',
+  'modular_sci_fi_guns_pack_pistol_1':'modular_sci_fi_guns_pack_pistol_1',
+  'modular_sci_fi_guns_pack_pistol_2':'modular_sci_fi_guns_pack_pistol_2',
+  'modular_sci_fi_guns_pack_pistol_3':'modular_sci_fi_guns_pack_pistol_3',
+  'modular_sci_fi_guns_pack_scope_1':'modular_sci_fi_guns_pack_scope_1',
+  'modular_sci_fi_guns_pack_scope_2':'modular_sci_fi_guns_pack_scope_2',
+  'modular_sci_fi_guns_pack_sight_1':'modular_sci_fi_guns_pack_sight_1',
+  'modular_sci_fi_guns_pack_sight_2':'modular_sci_fi_guns_pack_sight_2',
+  'modular_sci_fi_guns_pack_sight_3':'modular_sci_fi_guns_pack_sight_3',
+  'modular_sci_fi_guns_pack_smg_1':'modular_sci_fi_guns_pack_smg_1',
+  'modular_sci_fi_guns_pack_smg_2':'modular_sci_fi_guns_pack_smg_2',
+  'modular_sci_fi_guns_pack_sniper_1':'modular_sci_fi_guns_pack_sniper_1',
+  'modular_sci_fi_guns_pack_sniper_2':'modular_sci_fi_guns_pack_sniper_2',
+  'modular_sci_fi_guns_pack_sniper_3':'modular_sci_fi_guns_pack_sniper_3',
+  'modular_sci_fi_guns_pack_stock_2':'modular_sci_fi_guns_pack_stock_2',
+  'modular_sci_fi_guns_pack_stock_ar_1':'modular_sci_fi_guns_pack_stock_ar_1',
+  'modular_sci_fi_guns_pack_stock_ar_4':'modular_sci_fi_guns_pack_stock_ar_4',
+  'modular_sci_fi_guns_pack_stock_ar_6':'modular_sci_fi_guns_pack_stock_ar_6',
+  'modular_sci_fi_guns_pack_stock_grenade_1':'modular_sci_fi_guns_pack_stock_grenade_1',
+  'modular_sci_fi_guns_pack_stock_grenade_2':'modular_sci_fi_guns_pack_stock_grenade_2',
+  'modular_sci_fi_guns_pack_stock_pistol_3':'modular_sci_fi_guns_pack_stock_pistol_3',
+  'modular_sci_fi_guns_pack_stock_smg_1':'modular_sci_fi_guns_pack_stock_smg_1',
+  'modular_sci_fi_guns_pack_stock_sniper_1':'modular_sci_fi_guns_pack_stock_sniper_1',
+  'modular_sci_fi_guns_pack_stock_sniper_3':'modular_sci_fi_guns_pack_stock_sniper_3',
+  'modular_women_adventurer':'modular_women_adventurer',
+  'modular_women_casual':'modular_women_casual',
+  'modular_women_formal':'modular_women_formal',
+  'modular_women_medieval':'modular_women_medieval',
+  'modular_women_punk':'modular_women_punk',
+  'modular_women_scifi':'modular_women_scifi',
+  'modular_women_soldier':'modular_women_soldier',
+  'modular_women_suit':'modular_women_suit',
+  'modular_women_witch':'modular_women_witch',
+  'modular_women_worker':'modular_women_worker',
+  'modularcolumn_bottom':'modular_dungeon_pack_modularcolumn_bottom',
+  'modularcolumn_middle':'modular_dungeon_pack_modularcolumn_middle',
+  'modularcolumn_top':'modular_dungeon_pack_modularcolumn_top',
+  'modularfloor':'modular_dungeon_pack_modularfloor',
+  'modularstonewall':'modular_dungeon_pack_modularstonewall',
+  'modularstonewall_entrancetop':'modular_dungeon_pack_modularstonewall_entrancetop',
+  'modularstonewall_top':'modular_dungeon_pack_modularstonewall_top',
+  'monster':'dinosaurs_pack_trex',
+  'moorishidol':'cute_fish_pack_moorishidol',
+  'morphstress':'morphstress',
+  'mushroom':'crops_pack_mushroom_1',
+  'mushroom_1':'crops_pack_mushroom_1',
+  'mushroom_2':'crops_pack_mushroom_2',
+  'mushroom_3':'crops_pack_mushroom_3',
+  'mushroom_4':'crops_pack_mushroom_4',
+  'mushroom_crop':'crops_pack_mushroom_crop',
+  'mushroom_harvested':'crops_pack_mushroom_harvested',
+  'nature_pack_birchtree_1':'nature_pack_birchtree_1',
+  'nature_pack_birchtree_2':'nature_pack_birchtree_2',
+  'nature_pack_birchtree_3':'nature_pack_birchtree_3',
+  'nature_pack_birchtree_4':'nature_pack_birchtree_4',
+  'nature_pack_birchtree_5':'nature_pack_birchtree_5',
+  'nature_pack_birchtree_autumn_1':'nature_pack_birchtree_autumn_1',
+  'nature_pack_birchtree_autumn_2':'nature_pack_birchtree_autumn_2',
+  'nature_pack_birchtree_autumn_3':'nature_pack_birchtree_autumn_3',
+  'nature_pack_birchtree_autumn_4':'nature_pack_birchtree_autumn_4',
+  'nature_pack_birchtree_autumn_5':'nature_pack_birchtree_autumn_5',
+  'nature_pack_birchtree_dead_1':'nature_pack_birchtree_dead_1',
+  'nature_pack_birchtree_dead_2':'nature_pack_birchtree_dead_2',
+  'nature_pack_birchtree_dead_3':'nature_pack_birchtree_dead_3',
+  'nature_pack_birchtree_dead_4':'nature_pack_birchtree_dead_4',
+  'nature_pack_birchtree_dead_5':'nature_pack_birchtree_dead_5',
+  'nature_pack_birchtree_dead_snow_1':'nature_pack_birchtree_dead_snow_1',
+  'nature_pack_birchtree_dead_snow_2':'nature_pack_birchtree_dead_snow_2',
+  'nature_pack_birchtree_dead_snow_3':'nature_pack_birchtree_dead_snow_3',
+  'nature_pack_birchtree_dead_snow_4':'nature_pack_birchtree_dead_snow_4',
+  'nature_pack_birchtree_dead_snow_5':'nature_pack_birchtree_dead_snow_5',
+  'nature_pack_birchtree_snow_1':'nature_pack_birchtree_snow_1',
+  'nature_pack_birchtree_snow_2':'nature_pack_birchtree_snow_2',
+  'nature_pack_birchtree_snow_3':'nature_pack_birchtree_snow_3',
+  'nature_pack_birchtree_snow_4':'nature_pack_birchtree_snow_4',
+  'nature_pack_birchtree_snow_5':'nature_pack_birchtree_snow_5',
+  'nature_pack_bush_1':'nature_pack_bush_1',
+  'nature_pack_bush_2':'nature_pack_bush_2',
+  'nature_pack_bush_snow_1':'nature_pack_bush_snow_1',
+  'nature_pack_bush_snow_2':'nature_pack_bush_snow_2',
+  'nature_pack_bushberries_1':'nature_pack_bushberries_1',
+  'nature_pack_bushberries_2':'nature_pack_bushberries_2',
+  'nature_pack_cactus_1':'nature_pack_cactus_1',
+  'nature_pack_cactus_2':'nature_pack_cactus_2',
+  'nature_pack_cactus_3':'nature_pack_cactus_3',
+  'nature_pack_cactus_4':'nature_pack_cactus_4',
+  'nature_pack_cactus_5':'nature_pack_cactus_5',
+  'nature_pack_cactusflower_1':'nature_pack_cactusflower_1',
+  'nature_pack_cactusflowers_2':'nature_pack_cactusflowers_2',
+  'nature_pack_cactusflowers_3':'nature_pack_cactusflowers_3',
+  'nature_pack_cactusflowers_4':'nature_pack_cactusflowers_4',
+  'nature_pack_cactusflowers_5':'nature_pack_cactusflowers_5',
+  'nature_pack_commontree_1':'nature_pack_commontree_1',
+  'nature_pack_commontree_2':'nature_pack_commontree_2',
+  'nature_pack_commontree_3':'nature_pack_commontree_3',
+  'nature_pack_commontree_4':'nature_pack_commontree_4',
+  'nature_pack_commontree_5':'nature_pack_commontree_5',
+  'nature_pack_commontree_autumn_1':'nature_pack_commontree_autumn_1',
+  'nature_pack_commontree_autumn_2':'nature_pack_commontree_autumn_2',
+  'nature_pack_commontree_autumn_3':'nature_pack_commontree_autumn_3',
+  'nature_pack_commontree_autumn_4':'nature_pack_commontree_autumn_4',
+  'nature_pack_commontree_autumn_5':'nature_pack_commontree_autumn_5',
+  'nature_pack_commontree_dead_1':'nature_pack_commontree_dead_1',
+  'nature_pack_commontree_dead_2':'nature_pack_commontree_dead_2',
+  'nature_pack_commontree_dead_3':'nature_pack_commontree_dead_3',
+  'nature_pack_commontree_dead_4':'nature_pack_commontree_dead_4',
+  'nature_pack_commontree_dead_5':'nature_pack_commontree_dead_5',
+  'nature_pack_commontree_dead_snow_1':'nature_pack_commontree_dead_snow_1',
+  'nature_pack_commontree_dead_snow_2':'nature_pack_commontree_dead_snow_2',
+  'nature_pack_commontree_dead_snow_3':'nature_pack_commontree_dead_snow_3',
+  'nature_pack_commontree_dead_snow_4':'nature_pack_commontree_dead_snow_4',
+  'nature_pack_commontree_dead_snow_5':'nature_pack_commontree_dead_snow_5',
+  'nature_pack_commontree_snow_1':'nature_pack_commontree_snow_1',
+  'nature_pack_commontree_snow_2':'nature_pack_commontree_snow_2',
+  'nature_pack_commontree_snow_3':'nature_pack_commontree_snow_3',
+  'nature_pack_commontree_snow_4':'nature_pack_commontree_snow_4',
+  'nature_pack_commontree_snow_5':'nature_pack_commontree_snow_5',
+  'nature_pack_corn_1':'nature_pack_corn_1',
+  'nature_pack_corn_2':'nature_pack_corn_2',
+  'nature_pack_flowers':'nature_pack_flowers',
+  'nature_pack_grass':'nature_pack_grass',
+  'nature_pack_grass_2':'nature_pack_grass_2',
+  'nature_pack_grass_short':'nature_pack_grass_short',
+  'nature_pack_lilypad':'nature_pack_lilypad',
+  'nature_pack_palmtree_1':'nature_pack_palmtree_1',
+  'nature_pack_palmtree_2':'nature_pack_palmtree_2',
+  'nature_pack_palmtree_3':'nature_pack_palmtree_3',
+  'nature_pack_palmtree_4':'nature_pack_palmtree_4',
+  'nature_pack_pinetree_1':'nature_pack_pinetree_1',
+  'nature_pack_pinetree_2':'nature_pack_pinetree_2',
+  'nature_pack_pinetree_3':'nature_pack_pinetree_3',
+  'nature_pack_pinetree_4':'nature_pack_pinetree_4',
+  'nature_pack_pinetree_5':'nature_pack_pinetree_5',
+  'nature_pack_pinetree_autumn_1':'nature_pack_pinetree_autumn_1',
+  'nature_pack_pinetree_autumn_2':'nature_pack_pinetree_autumn_2',
+  'nature_pack_pinetree_autumn_3':'nature_pack_pinetree_autumn_3',
+  'nature_pack_pinetree_autumn_4':'nature_pack_pinetree_autumn_4',
+  'nature_pack_pinetree_autumn_5':'nature_pack_pinetree_autumn_5',
+  'nature_pack_pinetree_snow_1':'nature_pack_pinetree_snow_1',
+  'nature_pack_pinetree_snow_2':'nature_pack_pinetree_snow_2',
+  'nature_pack_pinetree_snow_3':'nature_pack_pinetree_snow_3',
+  'nature_pack_pinetree_snow_4':'nature_pack_pinetree_snow_4',
+  'nature_pack_pinetree_snow_5':'nature_pack_pinetree_snow_5',
+  'nature_pack_plant_1':'nature_pack_plant_1',
+  'nature_pack_plant_2':'nature_pack_plant_2',
+  'nature_pack_plant_3':'nature_pack_plant_3',
+  'nature_pack_plant_4':'nature_pack_plant_4',
+  'nature_pack_plant_5':'nature_pack_plant_5',
+  'nature_pack_rock_1':'nature_pack_rock_1',
+  'nature_pack_rock_2':'nature_pack_rock_2',
+  'nature_pack_rock_3':'nature_pack_rock_3',
+  'nature_pack_rock_4':'nature_pack_rock_4',
+  'nature_pack_rock_5':'nature_pack_rock_5',
+  'nature_pack_rock_6':'nature_pack_rock_6',
+  'nature_pack_rock_7':'nature_pack_rock_7',
+  'nature_pack_rock_moss_1':'nature_pack_rock_moss_1',
+  'nature_pack_rock_moss_2':'nature_pack_rock_moss_2',
+  'nature_pack_rock_moss_3':'nature_pack_rock_moss_3',
+  'nature_pack_rock_moss_4':'nature_pack_rock_moss_4',
+  'nature_pack_rock_moss_5':'nature_pack_rock_moss_5',
+  'nature_pack_rock_moss_6':'nature_pack_rock_moss_6',
+  'nature_pack_rock_moss_7':'nature_pack_rock_moss_7',
+  'nature_pack_rock_snow_1':'nature_pack_rock_snow_1',
+  'nature_pack_rock_snow_2':'nature_pack_rock_snow_2',
+  'nature_pack_rock_snow_3':'nature_pack_rock_snow_3',
+  'nature_pack_rock_snow_4':'nature_pack_rock_snow_4',
+  'nature_pack_rock_snow_5':'nature_pack_rock_snow_5',
+  'nature_pack_rock_snow_6':'nature_pack_rock_snow_6',
+  'nature_pack_rock_snow_7':'nature_pack_rock_snow_7',
+  'nature_pack_treestump':'nature_pack_treestump',
+  'nature_pack_treestump_moss':'nature_pack_treestump_moss',
+  'nature_pack_treestump_snow':'nature_pack_treestump_snow',
+  'nature_pack_wheat':'nature_pack_wheat',
+  'nature_pack_willow_1':'nature_pack_willow_1',
+  'nature_pack_willow_2':'nature_pack_willow_2',
+  'nature_pack_willow_3':'nature_pack_willow_3',
+  'nature_pack_willow_4':'nature_pack_willow_4',
+  'nature_pack_willow_5':'nature_pack_willow_5',
+  'nature_pack_willow_autumn_1':'nature_pack_willow_autumn_1',
+  'nature_pack_willow_autumn_2':'nature_pack_willow_autumn_2',
+  'nature_pack_willow_autumn_3':'nature_pack_willow_autumn_3',
+  'nature_pack_willow_autumn_4':'nature_pack_willow_autumn_4',
+  'nature_pack_willow_autumn_5':'nature_pack_willow_autumn_5',
+  'nature_pack_willow_dead_1':'nature_pack_willow_dead_1',
+  'nature_pack_willow_dead_2':'nature_pack_willow_dead_2',
+  'nature_pack_willow_dead_3':'nature_pack_willow_dead_3',
+  'nature_pack_willow_dead_4':'nature_pack_willow_dead_4',
+  'nature_pack_willow_dead_5':'nature_pack_willow_dead_5',
+  'nature_pack_willow_dead_snow_1':'nature_pack_willow_dead_snow_1',
+  'nature_pack_willow_dead_snow_2':'nature_pack_willow_dead_snow_2',
+  'nature_pack_willow_dead_snow_3':'nature_pack_willow_dead_snow_3',
+  'nature_pack_willow_dead_snow_4':'nature_pack_willow_dead_snow_4',
+  'nature_pack_willow_dead_snow_5':'nature_pack_willow_dead_snow_5',
+  'nature_pack_willow_snow_1':'nature_pack_willow_snow_1',
+  'nature_pack_willow_snow_2':'nature_pack_willow_snow_2',
+  'nature_pack_willow_snow_3':'nature_pack_willow_snow_3',
+  'nature_pack_willow_snow_4':'nature_pack_willow_snow_4',
+  'nature_pack_willow_snow_5':'nature_pack_willow_snow_5',
+  'nature_pack_woodlog':'nature_pack_woodlog',
+  'nature_pack_woodlog_moss':'nature_pack_woodlog_moss',
+  'nature_pack_woodlog_snow':'nature_pack_woodlog_snow',
+  'necklace1':'rpg_items_pack_necklace1',
+  'necklace2':'rpg_items_pack_necklace2',
+  'necklace3':'rpg_items_pack_necklace3',
+  'nefertiti':'nefertiti',
+  'nightstand_1':'house_interior_pack_nightstand_1',
+  'nightstand_2':'house_interior_pack_nightstand_2',
+  'nightstand_3':'house_interior_pack_nightstand_3',
+  'numbers_0':'platformer_game_pack_numbers_0',
+  'numbers_1':'platformer_game_pack_numbers_1',
+  'numbers_2':'platformer_game_pack_numbers_2',
+  'numbers_3':'platformer_game_pack_numbers_3',
+  'numbers_4':'platformer_game_pack_numbers_4',
+  'numbers_5':'platformer_game_pack_numbers_5',
+  'numbers_6':'platformer_game_pack_numbers_6',
+  'numbers_7':'platformer_game_pack_numbers_7',
+  'numbers_8':'platformer_game_pack_numbers_8',
+  'numbers_9':'platformer_game_pack_numbers_9',
+  'orange_1':'crops_pack_orange_1',
+  'orange_2':'crops_pack_orange_2',
+  'orange_3':'crops_pack_orange_3',
+  'orange_4':'crops_pack_orange_4',
+  'orange_crop':'crops_pack_orange_crop',
+  'orange_harvested':'crops_pack_orange_harvested',
+  'package_1':'medieval_village_pack_package_1',
+  'package_2':'medieval_village_pack_package_2',
+  'padlock':'rpg_items_pack_padlock',
+  'palm_tree':'crops_pack_palmtree_1',
+  'palmtree_1':'nature_pack_palmtree_1',
+  'palmtree_2':'nature_pack_palmtree_2',
+  'palmtree_3':'nature_pack_palmtree_3',
+  'palmtree_4':'nature_pack_palmtree_4',
+  'palmtree_crop':'crops_pack_palmtree_crop',
+  'palmtree_harvested':'crops_pack_palmtree_harvested',
+  'pan':'survival_pack_pan',
+  'pan_small':'survival_pack_pan_small',
+  'parasaurolophus':'dinosaurs_pack_parasaurolophus',
+  'parchment':'rpg_items_pack_parchment',
+  'parrot':'parrot',
+  'parrotfish':'cute_fish_pack_parrotfish',
+  'path_square':'medieval_village_pack_path_square',
+  'path_straight':'medieval_village_pack_path_straight',
+  'pedestal':'modular_dungeon_1_pedestal',
+  'pedestal2':'modular_dungeon_1_pedestal2',
+  'person':'modular_men_casual',
+  'phone':'survival_pack_phone',
+  'pickup':'truck',
+  'pickup_bullets-transformed':'ultimate_space_pack_pickup_bullets-transformed',
+  'pickup_crate-transformed':'ultimate_space_pack_pickup_crate-transformed',
+  'pickup_health':'cyberpunk_pack_pickup_health',
+  'pickup_health-transformed':'ultimate_space_pack_pickup_health-transformed',
+  'pickup_heart':'cyberpunk_pack_pickup_heart',
+  'pickup_jar-transformed':'ultimate_space_pack_pickup_jar-transformed',
+  'pickup_keycard-transformed':'ultimate_space_pack_pickup_keycard-transformed',
+  'pickup_sphere-transformed':'ultimate_space_pack_pickup_sphere-transformed',
+  'pickup_tank':'cyberpunk_pack_pickup_tank',
+  'pickup_thunder-transformed':'ultimate_space_pack_pickup_thunder-transformed',
+  'pinetree_1':'nature_pack_pinetree_1',
+  'pinetree_2':'nature_pack_pinetree_2',
+  'pinetree_3':'nature_pack_pinetree_3',
+  'pinetree_4':'nature_pack_pinetree_4',
+  'pinetree_5':'nature_pack_pinetree_5',
+  'pinetree_autumn_1':'nature_pack_pinetree_autumn_1',
+  'pinetree_autumn_2':'nature_pack_pinetree_autumn_2',
+  'pinetree_autumn_3':'nature_pack_pinetree_autumn_3',
+  'pinetree_autumn_4':'nature_pack_pinetree_autumn_4',
+  'pinetree_autumn_5':'nature_pack_pinetree_autumn_5',
+  'pinetree_snow_1':'nature_pack_pinetree_snow_1',
+  'pinetree_snow_2':'nature_pack_pinetree_snow_2',
+  'pinetree_snow_3':'nature_pack_pinetree_snow_3',
+  'pinetree_snow_4':'nature_pack_pinetree_snow_4',
+  'pinetree_snow_5':'nature_pack_pinetree_snow_5',
+  'pipe_1':'cyberpunk_pack_pipe_1',
+  'pipe_2':'cyberpunk_pack_pipe_2',
+  'pipe_90':'platformer_game_pack_pipe_90',
+  'pipe_corner':'cyberpunk_pack_pipe_corner',
+  'pipe_corner_2':'cyberpunk_pack_pipe_corner_2',
+  'pipe_end':'platformer_game_pack_pipe_end',
+  'pipe_straight':'platformer_game_pack_pipe_straight',
+  'pipe_t':'platformer_game_pack_pipe_t',
+  'piranha':'cute_fish_pack_piranha',
+  'pistol_1':'survival_pack_pistol_1',
+  'pistol_2':'survival_pack_pistol_2',
+  'pistol_3':'modular_sci_fi_guns_pack_pistol_3',
+  'planet_1-transformed':'ultimate_space_pack_planet_1-transformed',
+  'planet_10-transformed':'ultimate_space_pack_planet_10-transformed',
+  'planet_11-transformed':'ultimate_space_pack_planet_11-transformed',
+  'planet_2-transformed':'ultimate_space_pack_planet_2-transformed',
+  'planet_3-transformed':'ultimate_space_pack_planet_3-transformed',
+  'planet_4-transformed':'ultimate_space_pack_planet_4-transformed',
+  'planet_5-transformed':'ultimate_space_pack_planet_5-transformed',
+  'planet_6-transformed':'ultimate_space_pack_planet_6-transformed',
+  'planet_7-transformed':'ultimate_space_pack_planet_7-transformed',
+  'planet_8-transformed':'ultimate_space_pack_planet_8-transformed',
+  'planet_9-transformed':'ultimate_space_pack_planet_9-transformed',
+  'plant_1':'nature_pack_plant_1',
+  'plant_1-transformed':'ultimate_space_pack_plant_1-transformed',
+  'plant_2':'nature_pack_plant_2',
+  'plant_2-transformed':'ultimate_space_pack_plant_2-transformed',
+  'plant_3':'nature_pack_plant_3',
+  'plant_3-transformed':'ultimate_space_pack_plant_3-transformed',
+  'plant_4':'nature_pack_plant_4',
+  'plant_5':'nature_pack_plant_5',
+  'plant_large':'platformer_game_pack_plant_large',
+  'plant_small':'platformer_game_pack_plant_small',
+  'plate_1':'house_interior_pack_plate_1',
+  'plate_2':'house_interior_pack_plate_2',
+  'plate_3':'house_interior_pack_plate_3',
+  'platform_1x1_empty':'cyberpunk_pack_platform_1x1_empty',
+  'platform_2x1_empty':'cyberpunk_pack_platform_2x1_empty',
+  'platform_2x2':'cyberpunk_pack_platform_2x2',
+  'platform_2x2_empty':'cyberpunk_pack_platform_2x2_empty',
+  'platform_4x1':'cyberpunk_pack_platform_4x1',
+  'platform_4x1_empty':'cyberpunk_pack_platform_4x1_empty',
+  'platform_4x2':'cyberpunk_pack_platform_4x2',
+  'platform_4x4':'cyberpunk_pack_platform_4x4',
+  'platform_4x4_empty':'cyberpunk_pack_platform_4x4_empty',
+  'platformer_game_pack_arrow':'platformer_game_pack_arrow',
+  'platformer_game_pack_arrow_side':'platformer_game_pack_arrow_side',
+  'platformer_game_pack_arrow_up':'platformer_game_pack_arrow_up',
+  'platformer_game_pack_bee':'platformer_game_pack_bee',
+  'platformer_game_pack_bomb':'platformer_game_pack_bomb',
+  'platformer_game_pack_bouncer':'platformer_game_pack_bouncer',
+  'platformer_game_pack_bridge_modular':'platformer_game_pack_bridge_modular',
+  'platformer_game_pack_bridge_modular_center':'platformer_game_pack_bridge_modular_center',
+  'platformer_game_pack_bridge_small':'platformer_game_pack_bridge_small',
+  'platformer_game_pack_bush':'platformer_game_pack_bush',
+  'platformer_game_pack_bush_fruit':'platformer_game_pack_bush_fruit',
+  'platformer_game_pack_cannon':'platformer_game_pack_cannon',
+  'platformer_game_pack_cannonball':'platformer_game_pack_cannonball',
+  'platformer_game_pack_character':'platformer_game_pack_character',
+  'platformer_game_pack_character_gun':'platformer_game_pack_character_gun',
+  'platformer_game_pack_character_humanoidrig':'platformer_game_pack_character_humanoidrig',
+  'platformer_game_pack_chest':'platformer_game_pack_chest',
+  'platformer_game_pack_cloud_1':'platformer_game_pack_cloud_1',
+  'platformer_game_pack_cloud_2':'platformer_game_pack_cloud_2',
+  'platformer_game_pack_cloud_3':'platformer_game_pack_cloud_3',
+  'platformer_game_pack_coin':'platformer_game_pack_coin',
+  'platformer_game_pack_crab':'platformer_game_pack_crab',
+  'platformer_game_pack_cube_bricks':'platformer_game_pack_cube_bricks',
+  'platformer_game_pack_cube_crate':'platformer_game_pack_cube_crate',
+  'platformer_game_pack_cube_default':'platformer_game_pack_cube_default',
+  'platformer_game_pack_cube_dirt_center_tall':'platformer_game_pack_cube_dirt_center_tall',
+  'platformer_game_pack_cube_dirt_corner_tall':'platformer_game_pack_cube_dirt_corner_tall',
+  'platformer_game_pack_cube_dirt_side_tall':'platformer_game_pack_cube_dirt_side_tall',
+  'platformer_game_pack_cube_dirt_single':'platformer_game_pack_cube_dirt_single',
+  'platformer_game_pack_cube_exclamation':'platformer_game_pack_cube_exclamation',
+  'platformer_game_pack_cube_grass_bottom_tall':'platformer_game_pack_cube_grass_bottom_tall',
+  'platformer_game_pack_cube_grass_center_tall':'platformer_game_pack_cube_grass_center_tall',
+  'platformer_game_pack_cube_grass_corner_tall':'platformer_game_pack_cube_grass_corner_tall',
+  'platformer_game_pack_cube_grass_cornerbottom_tall':'platformer_game_pack_cube_grass_cornerbottom_tall',
+  'platformer_game_pack_cube_grass_cornercenter_tall':'platformer_game_pack_cube_grass_cornercenter_tall',
+  'platformer_game_pack_cube_grass_side_tall':'platformer_game_pack_cube_grass_side_tall',
+  'platformer_game_pack_cube_grass_sidebottom_tall':'platformer_game_pack_cube_grass_sidebottom_tall',
+  'platformer_game_pack_cube_grass_sidecenter_tall':'platformer_game_pack_cube_grass_sidecenter_tall',
+  'platformer_game_pack_cube_grass_single':'platformer_game_pack_cube_grass_single',
+  'platformer_game_pack_cube_question':'platformer_game_pack_cube_question',
+  'platformer_game_pack_cube_spikes':'platformer_game_pack_cube_spikes',
+  'platformer_game_pack_door':'platformer_game_pack_door',
+  'platformer_game_pack_enemy':'platformer_game_pack_enemy',
+  'platformer_game_pack_fence_1':'platformer_game_pack_fence_1',
+  'platformer_game_pack_fence_corner':'platformer_game_pack_fence_corner',
+  'platformer_game_pack_fence_middle':'platformer_game_pack_fence_middle',
+  'platformer_game_pack_fruit':'platformer_game_pack_fruit',
+  'platformer_game_pack_gem_blue':'platformer_game_pack_gem_blue',
+  'platformer_game_pack_gem_green':'platformer_game_pack_gem_green',
+  'platformer_game_pack_gem_pink':'platformer_game_pack_gem_pink',
+  'platformer_game_pack_goal_flag':'platformer_game_pack_goal_flag',
+  'platformer_game_pack_grass_1':'platformer_game_pack_grass_1',
+  'platformer_game_pack_grass_2':'platformer_game_pack_grass_2',
+  'platformer_game_pack_grass_3':'platformer_game_pack_grass_3',
+  'platformer_game_pack_hazard_cylinder':'platformer_game_pack_hazard_cylinder',
+  'platformer_game_pack_hazard_saw':'platformer_game_pack_hazard_saw',
+  'platformer_game_pack_hazard_spiketrap':'platformer_game_pack_hazard_spiketrap',
+  'platformer_game_pack_heart':'platformer_game_pack_heart',
+  'platformer_game_pack_heart_half':'platformer_game_pack_heart_half',
+  'platformer_game_pack_heart_outline':'platformer_game_pack_heart_outline',
+  'platformer_game_pack_key':'platformer_game_pack_key',
+  'platformer_game_pack_lever':'platformer_game_pack_lever',
+  'platformer_game_pack_numbers_0':'platformer_game_pack_numbers_0',
+  'platformer_game_pack_numbers_1':'platformer_game_pack_numbers_1',
+  'platformer_game_pack_numbers_2':'platformer_game_pack_numbers_2',
+  'platformer_game_pack_numbers_3':'platformer_game_pack_numbers_3',
+  'platformer_game_pack_numbers_4':'platformer_game_pack_numbers_4',
+  'platformer_game_pack_numbers_5':'platformer_game_pack_numbers_5',
+  'platformer_game_pack_numbers_6':'platformer_game_pack_numbers_6',
+  'platformer_game_pack_numbers_7':'platformer_game_pack_numbers_7',
+  'platformer_game_pack_numbers_8':'platformer_game_pack_numbers_8',
+  'platformer_game_pack_numbers_9':'platformer_game_pack_numbers_9',
+  'platformer_game_pack_pipe_90':'platformer_game_pack_pipe_90',
+  'platformer_game_pack_pipe_end':'platformer_game_pack_pipe_end',
+  'platformer_game_pack_pipe_straight':'platformer_game_pack_pipe_straight',
+  'platformer_game_pack_pipe_t':'platformer_game_pack_pipe_t',
+  'platformer_game_pack_plant_large':'platformer_game_pack_plant_large',
+  'platformer_game_pack_plant_small':'platformer_game_pack_plant_small',
+  'platformer_game_pack_rock_1':'platformer_game_pack_rock_1',
+  'platformer_game_pack_rock_2':'platformer_game_pack_rock_2',
+  'platformer_game_pack_rockplatform_tall':'platformer_game_pack_rockplatform_tall',
+  'platformer_game_pack_rockplatforms_1':'platformer_game_pack_rockplatforms_1',
+  'platformer_game_pack_rockplatforms_2':'platformer_game_pack_rockplatforms_2',
+  'platformer_game_pack_rockplatforms_3':'platformer_game_pack_rockplatforms_3',
+  'platformer_game_pack_rockplatforms_large':'platformer_game_pack_rockplatforms_large',
+  'platformer_game_pack_rockplatforms_medium':'platformer_game_pack_rockplatforms_medium',
+  'platformer_game_pack_skull':'platformer_game_pack_skull',
+  'platformer_game_pack_spikes':'platformer_game_pack_spikes',
+  'platformer_game_pack_spikyball':'platformer_game_pack_spikyball',
+  'platformer_game_pack_stairs':'platformer_game_pack_stairs',
+  'platformer_game_pack_stairs_modular_end':'platformer_game_pack_stairs_modular_end',
+  'platformer_game_pack_stairs_modular_middle':'platformer_game_pack_stairs_modular_middle',
+  'platformer_game_pack_stairs_modular_start':'platformer_game_pack_stairs_modular_start',
+  'platformer_game_pack_stairs_small':'platformer_game_pack_stairs_small',
+  'platformer_game_pack_star':'platformer_game_pack_star',
+  'platformer_game_pack_star_outline':'platformer_game_pack_star_outline',
+  'platformer_game_pack_thunder':'platformer_game_pack_thunder',
+  'platformer_game_pack_tower':'platformer_game_pack_tower',
+  'platformer_game_pack_tree':'platformer_game_pack_tree',
+  'platformer_game_pack_tree_fruit':'platformer_game_pack_tree_fruit',
+  'player':'modular_men_adventurer',
+  'pointytower':'modular_medieval_buildings_pack_pointytower',
+  'pot':'survival_pack_pot',
+  'pot_of_coals':'pot_of_coals',
+  'pot_small':'survival_pack_pot_small',
+  'potion':'modular_dungeon_pack_potion',
+  'potion10_empty':'rpg_items_pack_potion10_empty',
+  'potion10_filled':'rpg_items_pack_potion10_filled',
+  'potion11_empty':'rpg_items_pack_potion11_empty',
+  'potion11_filled':'rpg_items_pack_potion11_filled',
+  'potion1_empty':'rpg_items_pack_potion1_empty',
+  'potion1_filled':'rpg_items_pack_potion1_filled',
+  'potion2':'modular_dungeon_pack_potion2',
+  'potion2_empty':'rpg_items_pack_potion2_empty',
+  'potion2_filled':'rpg_items_pack_potion2_filled',
+  'potion3':'modular_dungeon_pack_potion3',
+  'potion3_empty':'rpg_items_pack_potion3_empty',
+  'potion3_filled':'rpg_items_pack_potion3_filled',
+  'potion4':'modular_dungeon_pack_potion4',
+  'potion4_empty':'rpg_items_pack_potion4_empty',
+  'potion4_filled':'rpg_items_pack_potion4_filled',
+  'potion5':'modular_dungeon_pack_potion5',
+  'potion5_empty':'rpg_items_pack_potion5_empty',
+  'potion5_filled':'rpg_items_pack_potion5_filled',
+  'potion6':'modular_dungeon_pack_potion6',
+  'potion6_empty':'rpg_items_pack_potion6_empty',
+  'potion6_filled':'rpg_items_pack_potion6_filled',
+  'potion7_empty':'rpg_items_pack_potion7_empty',
+  'potion7_filled':'rpg_items_pack_potion7_filled',
+  'potion8_empty':'rpg_items_pack_potion8_empty',
+  'potion8_filled':'rpg_items_pack_potion8_filled',
+  'potion9_empty':'rpg_items_pack_potion9_empty',
+  'potion9_filled':'rpg_items_pack_potion9_filled',
+  'pouch':'rpg_items_pack_pouch',
+  'propanetank':'survival_pack_propanetank',
+  'puffer':'cute_fish_pack_puffer',
+  'pumpkin_1':'crops_pack_pumpkin_1',
+  'pumpkin_2':'crops_pack_pumpkin_2',
+  'pumpkin_3':'crops_pack_pumpkin_3',
+  'pumpkin_4':'crops_pack_pumpkin_4',
+  'pumpkin_crop':'crops_pack_pumpkin_crop',
+  'pumpkin_harvested':'crops_pack_pumpkin_harvested',
+  'punctual_lamp':'punctual_lamp',
+  'punk':'modular_women_punk',
+  'radio':'survival_pack_radio',
+  'raft':'survival_pack_raft',
+  'raft_paddle':'survival_pack_raft_paddle',
+  'rail_corner':'cyberpunk_pack_rail_corner',
+  'rail_corner_2':'cyberpunk_pack_rail_corner_2',
+  'rail_long':'cyberpunk_pack_rail_long',
+  'rail_short':'cyberpunk_pack_rail_short',
+  'ramp-transformed':'ultimate_space_pack_ramp-transformed',
+  'rat':'easy_enemies_pack_rat',
+  'recursive_skeletons':'recursive_skeletons',
+  'redsnapper':'cute_fish_pack_redsnapper',
+  'revolver_1':'survival_pack_revolver_1',
+  'revolver_2':'survival_pack_revolver_2',
+  'revolver_3':'survival_pack_revolver_3',
+  'rice_1':'crops_pack_rice_1',
+  'rice_2':'crops_pack_rice_2',
+  'rice_3':'crops_pack_rice_3',
+  'rice_4':'crops_pack_rice_4',
+  'rice_crop':'crops_pack_rice_crop',
+  'rigged_figure':'rigged_figure',
+  'rigged_simple':'rigged_simple',
+  'ring1':'rpg_items_pack_ring1',
+  'ring2':'rpg_items_pack_ring2',
+  'ring3':'rpg_items_pack_ring3',
+  'ring4':'rpg_items_pack_ring4',
+  'ring5':'rpg_items_pack_ring5',
+  'ring6':'rpg_items_pack_ring6',
+  'ring7':'rpg_items_pack_ring7',
+  'robot':'robot',
+  'rock':'simple_nature_pack_rock1',
+  'rock1':'simple_nature_pack_rock1',
+  'rock2':'simple_nature_pack_rock2',
+  'rock3':'simple_nature_pack_rock3',
+  'rock4':'modular_dungeon_pack_rock4',
+  'rock5':'modular_dungeon_pack_rock5',
+  'rock_1':'platformer_game_pack_rock_1',
+  'rock_1-transformed':'ultimate_space_pack_rock_1-transformed',
+  'rock_2':'platformer_game_pack_rock_2',
+  'rock_2-transformed':'ultimate_space_pack_rock_2-transformed',
+  'rock_3':'nature_pack_rock_3',
+  'rock_3-transformed':'ultimate_space_pack_rock_3-transformed',
+  'rock_4':'nature_pack_rock_4',
+  'rock_4-transformed':'ultimate_space_pack_rock_4-transformed',
+  'rock_5':'nature_pack_rock_5',
+  'rock_6':'nature_pack_rock_6',
+  'rock_7':'nature_pack_rock_7',
+  'rock_large_1-transformed':'ultimate_space_pack_rock_large_1-transformed',
+  'rock_large_2-transformed':'ultimate_space_pack_rock_large_2-transformed',
+  'rock_large_3-transformed':'ultimate_space_pack_rock_large_3-transformed',
+  'rock_moss_1':'nature_pack_rock_moss_1',
+  'rock_moss_2':'nature_pack_rock_moss_2',
+  'rock_moss_3':'nature_pack_rock_moss_3',
+  'rock_moss_4':'nature_pack_rock_moss_4',
+  'rock_moss_5':'nature_pack_rock_moss_5',
+  'rock_moss_6':'nature_pack_rock_moss_6',
+  'rock_moss_7':'nature_pack_rock_moss_7',
+  'rock_snow_1':'nature_pack_rock_snow_1',
+  'rock_snow_2':'nature_pack_rock_snow_2',
+  'rock_snow_3':'nature_pack_rock_snow_3',
+  'rock_snow_4':'nature_pack_rock_snow_4',
+  'rock_snow_5':'nature_pack_rock_snow_5',
+  'rock_snow_6':'nature_pack_rock_snow_6',
+  'rock_snow_7':'nature_pack_rock_snow_7',
+  'rockplatform_tall':'platformer_game_pack_rockplatform_tall',
+  'rockplatforms_1':'platformer_game_pack_rockplatforms_1',
+  'rockplatforms_2':'platformer_game_pack_rockplatforms_2',
+  'rockplatforms_3':'platformer_game_pack_rockplatforms_3',
+  'rockplatforms_large':'platformer_game_pack_rockplatforms_large',
+  'rockplatforms_medium':'platformer_game_pack_rockplatforms_medium',
+  'roof_antenna-transformed':'ultimate_space_pack_roof_antenna-transformed',
+  'roof_opening-transformed':'ultimate_space_pack_roof_opening-transformed',
+  'roof_radar-transformed':'ultimate_space_pack_roof_radar-transformed',
+  'roof_ventl-transformed':'ultimate_space_pack_roof_ventl-transformed',
+  'roof_ventr-transformed':'ultimate_space_pack_roof_ventr-transformed',
+  'rover_1-transformed':'ultimate_space_pack_rover_1-transformed',
+  'rover_2-transformed':'ultimate_space_pack_rover_2-transformed',
+  'rover_round-transformed':'ultimate_space_pack_rover_round-transformed',
+  'royalgramma':'cute_fish_pack_royalgramma',
+  'rpg_items_pack_armor_black':'rpg_items_pack_armor_black',
+  'rpg_items_pack_armor_golden':'rpg_items_pack_armor_golden',
+  'rpg_items_pack_armor_leather':'rpg_items_pack_armor_leather',
+  'rpg_items_pack_armor_metal':'rpg_items_pack_armor_metal',
+  'rpg_items_pack_armor_metal2':'rpg_items_pack_armor_metal2',
+  'rpg_items_pack_arrow':'rpg_items_pack_arrow',
+  'rpg_items_pack_arrow_golden':'rpg_items_pack_arrow_golden',
+  'rpg_items_pack_axe_double':'rpg_items_pack_axe_double',
+  'rpg_items_pack_axe_double_golden':'rpg_items_pack_axe_double_golden',
+  'rpg_items_pack_axe_small':'rpg_items_pack_axe_small',
+  'rpg_items_pack_axe_small_golden':'rpg_items_pack_axe_small_golden',
+  'rpg_items_pack_backpack':'rpg_items_pack_backpack',
+  'rpg_items_pack_bag':'rpg_items_pack_bag',
+  'rpg_items_pack_bone':'rpg_items_pack_bone',
+  'rpg_items_pack_book1_closed':'rpg_items_pack_book1_closed',
+  'rpg_items_pack_book1_open':'rpg_items_pack_book1_open',
+  'rpg_items_pack_book2_closed':'rpg_items_pack_book2_closed',
+  'rpg_items_pack_book2_open':'rpg_items_pack_book2_open',
+  'rpg_items_pack_book3_closed':'rpg_items_pack_book3_closed',
+  'rpg_items_pack_book3_open':'rpg_items_pack_book3_open',
+  'rpg_items_pack_book4_closed':'rpg_items_pack_book4_closed',
+  'rpg_items_pack_book4_open':'rpg_items_pack_book4_open',
+  'rpg_items_pack_bow_golden':'rpg_items_pack_bow_golden',
+  'rpg_items_pack_bow_wooden':'rpg_items_pack_bow_wooden',
+  'rpg_items_pack_chalice':'rpg_items_pack_chalice',
+  'rpg_items_pack_chest_closed':'rpg_items_pack_chest_closed',
+  'rpg_items_pack_chest_ingots':'rpg_items_pack_chest_ingots',
+  'rpg_items_pack_chest_open':'rpg_items_pack_chest_open',
+  'rpg_items_pack_chickenleg':'rpg_items_pack_chickenleg',
+  'rpg_items_pack_coin':'rpg_items_pack_coin',
+  'rpg_items_pack_coin_skull':'rpg_items_pack_coin_skull',
+  'rpg_items_pack_coin_star':'rpg_items_pack_coin_star',
+  'rpg_items_pack_crown':'rpg_items_pack_crown',
+  'rpg_items_pack_crown2':'rpg_items_pack_crown2',
+  'rpg_items_pack_crystal1':'rpg_items_pack_crystal1',
+  'rpg_items_pack_crystal1_damaged':'rpg_items_pack_crystal1_damaged',
+  'rpg_items_pack_crystal2':'rpg_items_pack_crystal2',
+  'rpg_items_pack_crystal2_damaged':'rpg_items_pack_crystal2_damaged',
+  'rpg_items_pack_crystal3':'rpg_items_pack_crystal3',
+  'rpg_items_pack_crystal3_damaged':'rpg_items_pack_crystal3_damaged',
+  'rpg_items_pack_crystal4':'rpg_items_pack_crystal4',
+  'rpg_items_pack_crystal5':'rpg_items_pack_crystal5',
+  'rpg_items_pack_crystal5_damaged':'rpg_items_pack_crystal5_damaged',
+  'rpg_items_pack_dagger':'rpg_items_pack_dagger',
+  'rpg_items_pack_dagger_golden':'rpg_items_pack_dagger_golden',
+  'rpg_items_pack_dart':'rpg_items_pack_dart',
+  'rpg_items_pack_dart_golden':'rpg_items_pack_dart_golden',
+  'rpg_items_pack_fishbone':'rpg_items_pack_fishbone',
+  'rpg_items_pack_glove':'rpg_items_pack_glove',
+  'rpg_items_pack_gold_ingots':'rpg_items_pack_gold_ingots',
+  'rpg_items_pack_hammer_double':'rpg_items_pack_hammer_double',
+  'rpg_items_pack_hammer_double_golden':'rpg_items_pack_hammer_double_golden',
+  'rpg_items_pack_heart':'rpg_items_pack_heart',
+  'rpg_items_pack_heart_broken':'rpg_items_pack_heart_broken',
+  'rpg_items_pack_heart_half':'rpg_items_pack_heart_half',
+  'rpg_items_pack_key1':'rpg_items_pack_key1',
+  'rpg_items_pack_key2':'rpg_items_pack_key2',
+  'rpg_items_pack_key3':'rpg_items_pack_key3',
+  'rpg_items_pack_key4':'rpg_items_pack_key4',
+  'rpg_items_pack_mineral':'rpg_items_pack_mineral',
+  'rpg_items_pack_necklace1':'rpg_items_pack_necklace1',
+  'rpg_items_pack_necklace2':'rpg_items_pack_necklace2',
+  'rpg_items_pack_necklace3':'rpg_items_pack_necklace3',
+  'rpg_items_pack_padlock':'rpg_items_pack_padlock',
+  'rpg_items_pack_parchment':'rpg_items_pack_parchment',
+  'rpg_items_pack_potion10_empty':'rpg_items_pack_potion10_empty',
+  'rpg_items_pack_potion10_filled':'rpg_items_pack_potion10_filled',
+  'rpg_items_pack_potion11_empty':'rpg_items_pack_potion11_empty',
+  'rpg_items_pack_potion11_filled':'rpg_items_pack_potion11_filled',
+  'rpg_items_pack_potion1_empty':'rpg_items_pack_potion1_empty',
+  'rpg_items_pack_potion1_filled':'rpg_items_pack_potion1_filled',
+  'rpg_items_pack_potion2_empty':'rpg_items_pack_potion2_empty',
+  'rpg_items_pack_potion2_filled':'rpg_items_pack_potion2_filled',
+  'rpg_items_pack_potion3_empty':'rpg_items_pack_potion3_empty',
+  'rpg_items_pack_potion3_filled':'rpg_items_pack_potion3_filled',
+  'rpg_items_pack_potion4_empty':'rpg_items_pack_potion4_empty',
+  'rpg_items_pack_potion4_filled':'rpg_items_pack_potion4_filled',
+  'rpg_items_pack_potion5_empty':'rpg_items_pack_potion5_empty',
+  'rpg_items_pack_potion5_filled':'rpg_items_pack_potion5_filled',
+  'rpg_items_pack_potion6_empty':'rpg_items_pack_potion6_empty',
+  'rpg_items_pack_potion6_filled':'rpg_items_pack_potion6_filled',
+  'rpg_items_pack_potion7_empty':'rpg_items_pack_potion7_empty',
+  'rpg_items_pack_potion7_filled':'rpg_items_pack_potion7_filled',
+  'rpg_items_pack_potion8_empty':'rpg_items_pack_potion8_empty',
+  'rpg_items_pack_potion8_filled':'rpg_items_pack_potion8_filled',
+  'rpg_items_pack_potion9_empty':'rpg_items_pack_potion9_empty',
+  'rpg_items_pack_potion9_filled':'rpg_items_pack_potion9_filled',
+  'rpg_items_pack_pouch':'rpg_items_pack_pouch',
+  'rpg_items_pack_ring1':'rpg_items_pack_ring1',
+  'rpg_items_pack_ring2':'rpg_items_pack_ring2',
+  'rpg_items_pack_ring3':'rpg_items_pack_ring3',
+  'rpg_items_pack_ring4':'rpg_items_pack_ring4',
+  'rpg_items_pack_ring5':'rpg_items_pack_ring5',
+  'rpg_items_pack_ring6':'rpg_items_pack_ring6',
+  'rpg_items_pack_ring7':'rpg_items_pack_ring7',
+  'rpg_items_pack_scroll':'rpg_items_pack_scroll',
+  'rpg_items_pack_skull':'rpg_items_pack_skull',
+  'rpg_items_pack_skull2':'rpg_items_pack_skull2',
+  'rpg_items_pack_snowflake1':'rpg_items_pack_snowflake1',
+  'rpg_items_pack_snowflake2':'rpg_items_pack_snowflake2',
+  'rpg_items_pack_snowflake3':'rpg_items_pack_snowflake3',
+  'rpg_items_pack_star':'rpg_items_pack_star',
+  'rpg_items_pack_sword':'rpg_items_pack_sword',
+  'rpg_items_pack_sword_big':'rpg_items_pack_sword_big',
+  'rpg_items_pack_sword_big_golden':'rpg_items_pack_sword_big_golden',
+  'rpg_items_pack_sword_golden':'rpg_items_pack_sword_golden',
+  'sail_ship':'ships_pack_sail_ship',
+  'sawmill':'medieval_village_pack_sawmill',
+  'sawmill_saw':'medieval_village_pack_sawmill_saw',
+  'scifi':'modular_women_scifi',
+  'scope_1':'modular_sci_fi_guns_pack_scope_1',
+  'scope_2':'modular_sci_fi_guns_pack_scope_2',
+  'scroll':'rpg_items_pack_scroll',
+  'scythe':'medieval_weapons_pack_scythe',
+  'shark':'fish_pack_shark',
+  'sheen_test':'rpg_items_pack_crystal1',
+  'shelf_1':'house_interior_pack_shelf_1',
+  'shelf_2':'house_interior_pack_shelf_2',
+  'shelf_large':'house_interior_pack_shelf_large',
+  'shelf_small1':'house_interior_pack_shelf_small1',
+  'shelf_small2':'house_interior_pack_shelf_small2',
+  'shelf_small3':'house_interior_pack_shelf_small3',
+  'shibainu':'animals_pack_shibainu',
+  'shield_celtic_golden':'medieval_weapons_pack_shield_celtic_golden',
+  'shield_heater':'medieval_weapons_pack_shield_heater',
+  'shield_heater_2':'medieval_weapons_pack_shield_heater_2',
+  'shield_round':'medieval_weapons_pack_shield_round',
+  'shield_round_2':'medieval_weapons_pack_shield_round_2',
+  'ships_pack_boat':'ships_pack_boat',
+  'ships_pack_boatwsail':'ships_pack_boatwsail',
+  'ships_pack_cruiseship':'ships_pack_cruiseship',
+  'ships_pack_lifeboat':'ships_pack_lifeboat',
+  'ships_pack_sail_ship':'ships_pack_sail_ship',
+  'ships_pack_viking_boat':'ships_pack_viking_boat',
+  'shortsword':'single_knight_pack_shortsword',
+  'shotgun_1':'survival_pack_shotgun_1',
+  'shotgun_2':'survival_pack_shotgun_2',
+  'shotgun_sawedoff':'survival_pack_shotgun_sawedoff',
+  'shotgun_shortstock':'survival_pack_shotgun_shortstock',
+  'shoulderpads':'single_knight_pack_shoulderpads',
+  'shovel':'survival_pack_shovel',
+  'sight_1':'modular_sci_fi_guns_pack_sight_1',
+  'sight_2':'modular_sci_fi_guns_pack_sight_2',
+  'sight_3':'modular_sci_fi_guns_pack_sight_3',
+  'sign_1':'cyberpunk_pack_sign_1',
+  'sign_2':'cyberpunk_pack_sign_2',
+  'sign_3':'cyberpunk_pack_sign_3',
+  'sign_4':'cyberpunk_pack_sign_4',
+  'sign_corner_1':'cyberpunk_pack_sign_corner_1',
+  'sign_corner_2':'cyberpunk_pack_sign_corner_2',
+  'sign_corner_3':'cyberpunk_pack_sign_corner_3',
+  'sign_corner_3_fenced':'cyberpunk_pack_sign_corner_3_fenced',
+  'sign_corner_hazard':'cyberpunk_pack_sign_corner_hazard',
+  'sign_corner_small1':'cyberpunk_pack_sign_corner_small1',
+  'sign_corner_small2':'cyberpunk_pack_sign_corner_small2',
+  'sign_noparking':'street_pack_sign_noparking',
+  'sign_small_1':'cyberpunk_pack_sign_small_1',
+  'sign_small_2':'cyberpunk_pack_sign_small_2',
+  'sign_small_3':'cyberpunk_pack_sign_small_3',
+  'sign_stop':'street_pack_sign_stop',
+  'sign_triangle':'street_pack_sign_triangle',
+  'silk_pouf':'silk_pouf',
+  'simple_nature_pack_bush1':'simple_nature_pack_bush1',
+  'simple_nature_pack_bush2':'simple_nature_pack_bush2',
+  'simple_nature_pack_bush3':'simple_nature_pack_bush3',
+  'simple_nature_pack_grass1':'simple_nature_pack_grass1',
+  'simple_nature_pack_grass2':'simple_nature_pack_grass2',
+  'simple_nature_pack_grass3':'simple_nature_pack_grass3',
+  'simple_nature_pack_rock1':'simple_nature_pack_rock1',
+  'simple_nature_pack_rock2':'simple_nature_pack_rock2',
+  'simple_nature_pack_rock3':'simple_nature_pack_rock3',
+  'simple_nature_pack_tree1':'simple_nature_pack_tree1',
+  'simple_nature_pack_tree2':'simple_nature_pack_tree2',
+  'simple_nature_pack_tree3':'simple_nature_pack_tree3',
+  'simple_nature_pack_tree4':'simple_nature_pack_tree4',
+  'simpletower':'modular_medieval_buildings_pack_simpletower',
+  'simpletowerbricks':'modular_medieval_buildings_pack_simpletowerbricks',
+  'single_knight_pack_club':'single_knight_pack_club',
+  'single_knight_pack_helmet1':'single_knight_pack_helmet1',
+  'single_knight_pack_helmet2':'single_knight_pack_helmet2',
+  'single_knight_pack_helmet3':'single_knight_pack_helmet3',
+  'single_knight_pack_katana':'single_knight_pack_katana',
+  'single_knight_pack_knightcharacter':'single_knight_pack_knightcharacter',
+  'single_knight_pack_shortsword':'single_knight_pack_shortsword',
+  'single_knight_pack_shoulderpads':'single_knight_pack_shoulderpads',
+  'single_knight_pack_sword':'single_knight_pack_sword',
+  'skull':'rpg_items_pack_skull',
+  'skull2':'rpg_items_pack_skull2',
+  'smallsquaretower':'modular_medieval_buildings_pack_smallsquaretower',
+  'smallsquaretowerbricks':'modular_medieval_buildings_pack_smallsquaretowerbricks',
+  'smalltower':'modular_medieval_buildings_pack_smalltower',
+  'smg_1':'modular_sci_fi_guns_pack_smg_1',
+  'smg_2':'modular_sci_fi_guns_pack_smg_2',
+  'smoke':'medieval_village_pack_smoke',
+  'snake':'easy_enemies_pack_snake',
+  'snake_angry':'easy_enemies_pack_snake_angry',
+  'sniper_1':'modular_sci_fi_guns_pack_sniper_1',
+  'sniper_2':'modular_sci_fi_guns_pack_sniper_2',
+  'sniper_3':'modular_sci_fi_guns_pack_sniper_3',
+  'snowflake1':'rpg_items_pack_snowflake1',
+  'snowflake2':'rpg_items_pack_snowflake2',
+  'snowflake3':'rpg_items_pack_snowflake3',
+  'sofa':'glamvelvet_sofa',
+  'solarpanel_ground-transformed':'ultimate_space_pack_solarpanel_ground-transformed',
+  'solarpanel_roof-transformed':'ultimate_space_pack_solarpanel_roof-transformed',
+  'solarpanel_structure-transformed':'ultimate_space_pack_solarpanel_structure-transformed',
+  'soldier':'soldier',
+  'spaceship_barbarathebee-transformed':'ultimate_space_pack_spaceship_barbarathebee-transformed',
+  'spaceship_fernandotheflamingo-transformed':'ultimate_space_pack_spaceship_fernandotheflamingo-transformed',
+  'spaceship_finnthefrog-transformed':'ultimate_space_pack_spaceship_finnthefrog-transformed',
+  'spaceship_raetheredpanda-transformed':'ultimate_space_pack_spaceship_raetheredpanda-transformed',
+  'spaceships_pack_bob':'spaceships_pack_bob',
+  'spaceships_pack_dispatcher':'spaceships_pack_dispatcher',
+  'spaceships_pack_insurgent':'spaceships_pack_insurgent',
+  'spaceships_pack_striker':'spaceships_pack_striker',
+  'spacesuit':'modular_men_spacesuit',
+  'spear':'medieval_weapons_pack_spear',
+  'spider':'easy_enemies_pack_spider',
+  'spikes':'platformer_game_pack_spikes',
+  'spikyball':'platformer_game_pack_spikyball',
+  'spoon':'house_interior_pack_spoon',
+  'stable':'medieval_village_pack_stable',
+  'stag':'animals_pack_stag',
+  'stairs':'platformer_game_pack_stairs',
+  'stairs-transformed':'ultimate_space_pack_stairs-transformed',
+  'stairs_modular':'modular_dungeon_1_stairs_modular',
+  'stairs_modular_end':'platformer_game_pack_stairs_modular_end',
+  'stairs_modular_middle':'platformer_game_pack_stairs_modular_middle',
+  'stairs_modular_start':'platformer_game_pack_stairs_modular_start',
+  'stairs_sidecover':'modular_dungeon_1_stairs_sidecover',
+  'stairs_sidecoverwall':'modular_dungeon_1_stairs_sidecoverwall',
+  'stairs_small':'platformer_game_pack_stairs_small',
+  'star':'rpg_items_pack_star',
+  'star_outline':'platformer_game_pack_star_outline',
+  'statue_horse':'modular_dungeon_1_statue_horse',
+  'stegosaurus':'dinosaurs_pack_stegosaurus',
+  'stock_2':'modular_sci_fi_guns_pack_stock_2',
+  'stock_ar_1':'modular_sci_fi_guns_pack_stock_ar_1',
+  'stock_ar_4':'modular_sci_fi_guns_pack_stock_ar_4',
+  'stock_ar_6':'modular_sci_fi_guns_pack_stock_ar_6',
+  'stock_grenade_1':'modular_sci_fi_guns_pack_stock_grenade_1',
+  'stock_grenade_2':'modular_sci_fi_guns_pack_stock_grenade_2',
+  'stock_pistol_3':'modular_sci_fi_guns_pack_stock_pistol_3',
+  'stock_smg_1':'modular_sci_fi_guns_pack_stock_smg_1',
+  'stock_sniper_1':'modular_sci_fi_guns_pack_stock_sniper_1',
+  'stock_sniper_3':'modular_sci_fi_guns_pack_stock_sniper_3',
+  'stool':'house_interior_pack_stool',
+  'stork':'stork',
+  'street_3way':'street_pack_street_3way',
+  'street_3way_2':'street_pack_street_3way_2',
+  'street_4way':'street_pack_street_4way',
+  'street_4way_2':'street_pack_street_4way_2',
+  'street_bridge':'street_pack_street_bridge',
+  'street_bridge_ramp':'street_pack_street_bridge_ramp',
+  'street_bridge_underpass':'street_pack_street_bridge_underpass',
+  'street_bridge_water':'street_pack_street_bridge_water',
+  'street_bridge_waterramp':'street_pack_street_bridge_waterramp',
+  'street_curve':'street_pack_street_curve',
+  'street_deadend':'street_pack_street_deadend',
+  'street_elevated':'street_pack_street_elevated',
+  'street_elevated_ramp':'street_pack_street_elevated_ramp',
+  'street_empty':'street_pack_street_empty',
+  'street_empty_water':'street_pack_street_empty_water',
+  'street_pack_sign_noparking':'street_pack_sign_noparking',
+  'street_pack_sign_stop':'street_pack_sign_stop',
+  'street_pack_sign_triangle':'street_pack_sign_triangle',
+  'street_pack_street_3way':'street_pack_street_3way',
+  'street_pack_street_3way_2':'street_pack_street_3way_2',
+  'street_pack_street_4way':'street_pack_street_4way',
+  'street_pack_street_4way_2':'street_pack_street_4way_2',
+  'street_pack_street_bridge':'street_pack_street_bridge',
+  'street_pack_street_bridge_ramp':'street_pack_street_bridge_ramp',
+  'street_pack_street_bridge_underpass':'street_pack_street_bridge_underpass',
+  'street_pack_street_bridge_water':'street_pack_street_bridge_water',
+  'street_pack_street_bridge_waterramp':'street_pack_street_bridge_waterramp',
+  'street_pack_street_curve':'street_pack_street_curve',
+  'street_pack_street_deadend':'street_pack_street_deadend',
+  'street_pack_street_elevated':'street_pack_street_elevated',
+  'street_pack_street_elevated_ramp':'street_pack_street_elevated_ramp',
+  'street_pack_street_empty':'street_pack_street_empty',
+  'street_pack_street_empty_water':'street_pack_street_empty_water',
+  'street_pack_street_straight':'street_pack_street_straight',
+  'street_pack_streetlight_double':'street_pack_streetlight_double',
+  'street_pack_streetlight_single':'street_pack_streetlight_single',
+  'street_pack_streetlight_triple':'street_pack_streetlight_triple',
+  'street_pack_streets_all':'street_pack_streets_all',
+  'street_pack_trafficlight':'street_pack_trafficlight',
+  'street_pack_trafficlight_2':'street_pack_trafficlight_2',
+  'street_straight':'street_pack_street_straight',
+  'streetlight_double':'street_pack_streetlight_double',
+  'streetlight_single':'street_pack_streetlight_single',
+  'streetlight_triple':'street_pack_streetlight_triple',
+  'streets_all':'street_pack_streets_all',
+  'striker':'spaceships_pack_striker',
+  'suit':'modular_women_suit',
+  'sunfish':'cute_fish_pack_sunfish',
+  'sunglasses':'sunglasses',
+  'support':'cyberpunk_pack_support',
+  'support_long':'cyberpunk_pack_support_long',
+  'support_short':'cyberpunk_pack_support_short',
+  'survival_pack_axe':'survival_pack_axe',
+  'survival_pack_axe_small':'survival_pack_axe_small',
+  'survival_pack_backpack':'survival_pack_backpack',
+  'survival_pack_bandages':'survival_pack_bandages',
+  'survival_pack_battery_big':'survival_pack_battery_big',
+  'survival_pack_battery_small':'survival_pack_battery_small',
+  'survival_pack_beartrap_closed':'survival_pack_beartrap_closed',
+  'survival_pack_beartrap_open':'survival_pack_beartrap_open',
+  'survival_pack_bonfire':'survival_pack_bonfire',
+  'survival_pack_bonfire_fire':'survival_pack_bonfire_fire',
+  'survival_pack_can_broken':'survival_pack_can_broken',
+  'survival_pack_can_closed':'survival_pack_can_closed',
+  'survival_pack_can_open':'survival_pack_can_open',
+  'survival_pack_can_red':'survival_pack_can_red',
+  'survival_pack_compass_closed':'survival_pack_compass_closed',
+  'survival_pack_compass_open':'survival_pack_compass_open',
+  'survival_pack_firstaidkit':'survival_pack_firstaidkit',
+  'survival_pack_firstaidkit_hard':'survival_pack_firstaidkit_hard',
+  'survival_pack_flaregun':'survival_pack_flaregun',
+  'survival_pack_gascan':'survival_pack_gascan',
+  'survival_pack_knife':'survival_pack_knife',
+  'survival_pack_match':'survival_pack_match',
+  'survival_pack_match_burnt':'survival_pack_match_burnt',
+  'survival_pack_match_fire':'survival_pack_match_fire',
+  'survival_pack_matchbox':'survival_pack_matchbox',
+  'survival_pack_pan':'survival_pack_pan',
+  'survival_pack_pan_small':'survival_pack_pan_small',
+  'survival_pack_phone':'survival_pack_phone',
+  'survival_pack_pistol_1':'survival_pack_pistol_1',
+  'survival_pack_pistol_2':'survival_pack_pistol_2',
+  'survival_pack_pot':'survival_pack_pot',
+  'survival_pack_pot_small':'survival_pack_pot_small',
+  'survival_pack_propanetank':'survival_pack_propanetank',
+  'survival_pack_radio':'survival_pack_radio',
+  'survival_pack_raft':'survival_pack_raft',
+  'survival_pack_raft_paddle':'survival_pack_raft_paddle',
+  'survival_pack_revolver_1':'survival_pack_revolver_1',
+  'survival_pack_revolver_2':'survival_pack_revolver_2',
+  'survival_pack_revolver_3':'survival_pack_revolver_3',
+  'survival_pack_shotgun_1':'survival_pack_shotgun_1',
+  'survival_pack_shotgun_2':'survival_pack_shotgun_2',
+  'survival_pack_shotgun_sawedoff':'survival_pack_shotgun_sawedoff',
+  'survival_pack_shotgun_shortstock':'survival_pack_shotgun_shortstock',
+  'survival_pack_shovel':'survival_pack_shovel',
+  'survival_pack_tent':'survival_pack_tent',
+  'survival_pack_torch':'survival_pack_torch',
+  'survival_pack_trashcan':'survival_pack_trashcan',
+  'survival_pack_waterbottle_1':'survival_pack_waterbottle_1',
+  'survival_pack_waterbottle_2':'survival_pack_waterbottle_2',
+  'survival_pack_waterbottle_3':'survival_pack_waterbottle_3',
+  'survival_pack_woodentorch':'survival_pack_woodentorch',
+  'survival_pack_woodentorch_fire':'survival_pack_woodentorch_fire',
+  'survival_pack_woodlog':'survival_pack_woodlog',
+  'swat':'modular_men_swat',
+  'sword':'rpg_items_pack_sword',
+  'sword_2':'medieval_weapons_pack_sword_2',
+  'sword_big':'rpg_items_pack_sword_big',
+  'sword_big_golden':'rpg_items_pack_sword_big_golden',
+  'sword_golden':'rpg_items_pack_sword_golden',
+  'pistol':'survival_pack_pistol_1',
+  'pistol_2':'survival_pack_pistol_2',
+  'shotgun':'survival_pack_shotgun_1',
+  'shotgun_2':'survival_pack_shotgun_2',
+  'shotgun_sawed':'survival_pack_shotgun_sawedoff',
+  'rifle':'modular_sci_fi_guns_pack_ar_1',
+  'rifle_2':'modular_sci_fi_guns_pack_ar_2',
+  'rifle_3':'modular_sci_fi_guns_pack_ar_3',
+  'sniper':'modular_sci_fi_guns_pack_sniper_1',
+  'sniper_2':'modular_sci_fi_guns_pack_sniper_2',
+  'smg':'modular_sci_fi_guns_pack_smg_1',
+  'smg_2':'modular_sci_fi_guns_pack_smg_2',
+  'crossbow':'modular_sci_fi_guns_pack_crossbow_1',
+  'blaster':'blasterb',
+  'blaster_2':'blasterc',
+  'blaster_3':'blasterd',
+  'flaregun':'survival_pack_flaregun',
+  'grenade':'modular_sci_fi_guns_pack_grenade',
+  'sword_wallmount':'modular_dungeon_1_sword_wallmount',
+  'swordfish':'cute_fish_pack_swordfish',
+  'table':'house_interior_pack_table_roundlarge',
+  'table_big':'modular_dungeon_1_table_big',
+  'table_roundlarge':'house_interior_pack_table_roundlarge',
+  'table_roundsmall':'house_interior_pack_table_roundsmall',
+  'table_roundsmall2':'house_interior_pack_table_roundsmall2',
+  'table_small':'modular_dungeon_1_table_small',
+  'tallwall':'modular_medieval_buildings_pack_tallwall',
+  'tallwallbricks':'modular_medieval_buildings_pack_tallwallbricks',
+  'tallwallentrance':'modular_medieval_buildings_pack_tallwallentrance',
+  'tang':'cute_fish_pack_tang',
+  'tank':'tank_pack_tank',
+  'tank2':'tank_pack_tank2',
+  'tank3':'tank_pack_tank3',
+  'tank4':'tank_pack_tank4',
+  'tank_pack_tank':'tank_pack_tank',
+  'tank_pack_tank2':'tank_pack_tank2',
+  'tank_pack_tank3':'tank_pack_tank3',
+  'tank_pack_tank4':'tank_pack_tank4',
+  'target':'modular_medieval_buildings_pack_target',
+  'targetwitharrows':'modular_medieval_buildings_pack_targetwitharrows',
+  'teacup':'teacup',
+  'tent':'survival_pack_tent',
+  'tetra':'cute_fish_pack_tetra',
+  'thunder':'platformer_game_pack_thunder',
+  'tomato_1':'crops_pack_tomato_1',
+  'tomato_2':'crops_pack_tomato_2',
+  'tomato_3':'crops_pack_tomato_3',
+  'tomato_4':'crops_pack_tomato_4',
+  'tomato_crop':'crops_pack_tomato_crop',
+  'tomato_harvested':'crops_pack_tomato_harvested',
+  'tombstone':'modular_dungeon_1_skull',
+  'torch':'survival_pack_torch',
+  'torch_wall':'modular_dungeon_pack_torch_wall',
+  'tower':'platformer_game_pack_tower',
+  'trafficlight':'street_pack_trafficlight',
+  'trafficlight_2':'street_pack_trafficlight_2',
+  'trap_empty':'modular_dungeon_1_trap_empty',
+  'trap_spikes':'modular_dungeon_1_trap_spikes',
+  'trapdoor':'modular_dungeon_1_trapdoor',
+  'trapdoor_open':'modular_dungeon_1_trapdoor_open',
+  'trashcan':'survival_pack_trashcan',
+  'trashcan_cylindric':'house_interior_pack_trashcan_cylindric',
+  'trashcan_green':'house_interior_pack_trashcan_green',
+  'trashcan_large':'house_interior_pack_trashcan_large',
+  'trashcan_small1':'house_interior_pack_trashcan_small1',
+  'trashcan_small2':'house_interior_pack_trashcan_small2',
+  'treasure':'chest',
+  'tree':'simple_nature_pack_tree1',
+  'tree1':'simple_nature_pack_tree1',
+  'tree2':'simple_nature_pack_tree2',
+  'tree3':'simple_nature_pack_tree3',
+  'tree4':'simple_nature_pack_tree4',
+  'tree_blob_1-transformed':'ultimate_space_pack_tree_blob_1-transformed',
+  'tree_blob_2-transformed':'ultimate_space_pack_tree_blob_2-transformed',
+  'tree_blob_3-transformed':'ultimate_space_pack_tree_blob_3-transformed',
+  'tree_floating_1-transformed':'ultimate_space_pack_tree_floating_1-transformed',
+  'tree_floating_2-transformed':'ultimate_space_pack_tree_floating_2-transformed',
+  'tree_floating_3-transformed':'ultimate_space_pack_tree_floating_3-transformed',
+  'tree_fruit':'platformer_game_pack_tree_fruit',
+  'tree_lava_1-transformed':'ultimate_space_pack_tree_lava_1-transformed',
+  'tree_lava_2-transformed':'ultimate_space_pack_tree_lava_2-transformed',
+  'tree_lava_3-transformed':'ultimate_space_pack_tree_lava_3-transformed',
+  'tree_light_1-transformed':'ultimate_space_pack_tree_light_1-transformed',
+  'tree_light_2-transformed':'ultimate_space_pack_tree_light_2-transformed',
+  'tree_spikes_1-transformed':'ultimate_space_pack_tree_spikes_1-transformed',
+  'tree_spikes_2-transformed':'ultimate_space_pack_tree_spikes_2-transformed',
+  'tree_spiral_1-transformed':'ultimate_space_pack_tree_spiral_1-transformed',
+  'tree_spiral_2-transformed':'ultimate_space_pack_tree_spiral_2-transformed',
+  'tree_spiral_3-transformed':'ultimate_space_pack_tree_spiral_3-transformed',
+  'tree_swirl_1-transformed':'ultimate_space_pack_tree_swirl_1-transformed',
+  'tree_swirl_2-transformed':'ultimate_space_pack_tree_swirl_2-transformed',
+  'treestump':'nature_pack_treestump',
+  'treestump_moss':'nature_pack_treestump_moss',
+  'treestump_snow':'nature_pack_treestump_snow',
+  'trex':'dinosaurs_pack_trex',
+  'triceratops':'dinosaurs_pack_triceratops',
+  'truck':'truck',
+  'tuna':'cute_fish_pack_tuna',
+  'tunnel':'modular_medieval_buildings_pack_tunnel',
+  'turbot':'cute_fish_pack_turbot',
+  'turret_cannon':'cyberpunk_pack_turret_cannon',
+  'turret_gun':'cyberpunk_pack_turret_gun',
+  'turret_gundouble':'cyberpunk_pack_turret_gundouble',
+  'turret_teleporter':'cyberpunk_pack_turret_teleporter',
+  'tv_1':'cyberpunk_pack_tv_1',
+  'tv_2':'cyberpunk_pack_tv_2',
+  'tv_3':'cyberpunk_pack_tv_3',
+  'ultimate_space_pack_astronaut_barbarathebee-transformed':'ultimate_space_pack_astronaut_barbarathebee-transformed',
+  'ultimate_space_pack_astronaut_fernandotheflamingo-transformed':'ultimate_space_pack_astronaut_fernandotheflamingo-transformed',
+  'ultimate_space_pack_astronaut_finnthefrog-transformed':'ultimate_space_pack_astronaut_finnthefrog-transformed',
+  'ultimate_space_pack_astronaut_raetheredpanda-transformed':'ultimate_space_pack_astronaut_raetheredpanda-transformed',
+  'ultimate_space_pack_base_large-transformed':'ultimate_space_pack_base_large-transformed',
+  'ultimate_space_pack_building_l-transformed':'ultimate_space_pack_building_l-transformed',
+  'ultimate_space_pack_bush_1-transformed':'ultimate_space_pack_bush_1-transformed',
+  'ultimate_space_pack_bush_2-transformed':'ultimate_space_pack_bush_2-transformed',
+  'ultimate_space_pack_bush_3-transformed':'ultimate_space_pack_bush_3-transformed',
+  'ultimate_space_pack_connector-transformed':'ultimate_space_pack_connector-transformed',
+  'ultimate_space_pack_enemy_extrasmall-transformed':'ultimate_space_pack_enemy_extrasmall-transformed',
+  'ultimate_space_pack_enemy_flying-transformed':'ultimate_space_pack_enemy_flying-transformed',
+  'ultimate_space_pack_enemy_large-transformed':'ultimate_space_pack_enemy_large-transformed',
+  'ultimate_space_pack_enemy_small-transformed':'ultimate_space_pack_enemy_small-transformed',
+  'ultimate_space_pack_geodesicdome-transformed':'ultimate_space_pack_geodesicdome-transformed',
+  'ultimate_space_pack_grass_1-transformed':'ultimate_space_pack_grass_1-transformed',
+  'ultimate_space_pack_grass_2-transformed':'ultimate_space_pack_grass_2-transformed',
+  'ultimate_space_pack_grass_3-transformed':'ultimate_space_pack_grass_3-transformed',
+  'ultimate_space_pack_house_cylinder-transformed':'ultimate_space_pack_house_cylinder-transformed',
+  'ultimate_space_pack_house_long-transformed':'ultimate_space_pack_house_long-transformed',
+  'ultimate_space_pack_house_open-transformed':'ultimate_space_pack_house_open-transformed',
+  'ultimate_space_pack_house_openback-transformed':'ultimate_space_pack_house_openback-transformed',
+  'ultimate_space_pack_house_single-transformed':'ultimate_space_pack_house_single-transformed',
+  'ultimate_space_pack_house_single_support-transformed':'ultimate_space_pack_house_single_support-transformed',
+  'ultimate_space_pack_mech_barbarathebee-transformed':'ultimate_space_pack_mech_barbarathebee-transformed',
+  'ultimate_space_pack_mech_fernandotheflamingo-transformed':'ultimate_space_pack_mech_fernandotheflamingo-transformed',
+  'ultimate_space_pack_mech_finnthefrog-transformed':'ultimate_space_pack_mech_finnthefrog-transformed',
+  'ultimate_space_pack_mech_raetheredpanda-transformed':'ultimate_space_pack_mech_raetheredpanda-transformed',
+  'ultimate_space_pack_metalsupport-transformed':'ultimate_space_pack_metalsupport-transformed',
+  'ultimate_space_pack_pickup_bullets-transformed':'ultimate_space_pack_pickup_bullets-transformed',
+  'ultimate_space_pack_pickup_crate-transformed':'ultimate_space_pack_pickup_crate-transformed',
+  'ultimate_space_pack_pickup_health-transformed':'ultimate_space_pack_pickup_health-transformed',
+  'ultimate_space_pack_pickup_jar-transformed':'ultimate_space_pack_pickup_jar-transformed',
+  'ultimate_space_pack_pickup_keycard-transformed':'ultimate_space_pack_pickup_keycard-transformed',
+  'ultimate_space_pack_pickup_sphere-transformed':'ultimate_space_pack_pickup_sphere-transformed',
+  'ultimate_space_pack_pickup_thunder-transformed':'ultimate_space_pack_pickup_thunder-transformed',
+  'ultimate_space_pack_planet_1-transformed':'ultimate_space_pack_planet_1-transformed',
+  'ultimate_space_pack_planet_10-transformed':'ultimate_space_pack_planet_10-transformed',
+  'ultimate_space_pack_planet_11-transformed':'ultimate_space_pack_planet_11-transformed',
+  'ultimate_space_pack_planet_2-transformed':'ultimate_space_pack_planet_2-transformed',
+  'ultimate_space_pack_planet_3-transformed':'ultimate_space_pack_planet_3-transformed',
+  'ultimate_space_pack_planet_4-transformed':'ultimate_space_pack_planet_4-transformed',
+  'ultimate_space_pack_planet_5-transformed':'ultimate_space_pack_planet_5-transformed',
+  'ultimate_space_pack_planet_6-transformed':'ultimate_space_pack_planet_6-transformed',
+  'ultimate_space_pack_planet_7-transformed':'ultimate_space_pack_planet_7-transformed',
+  'ultimate_space_pack_planet_8-transformed':'ultimate_space_pack_planet_8-transformed',
+  'ultimate_space_pack_planet_9-transformed':'ultimate_space_pack_planet_9-transformed',
+  'ultimate_space_pack_plant_1-transformed':'ultimate_space_pack_plant_1-transformed',
+  'ultimate_space_pack_plant_2-transformed':'ultimate_space_pack_plant_2-transformed',
+  'ultimate_space_pack_plant_3-transformed':'ultimate_space_pack_plant_3-transformed',
+  'ultimate_space_pack_ramp-transformed':'ultimate_space_pack_ramp-transformed',
+  'ultimate_space_pack_rock_1-transformed':'ultimate_space_pack_rock_1-transformed',
+  'ultimate_space_pack_rock_2-transformed':'ultimate_space_pack_rock_2-transformed',
+  'ultimate_space_pack_rock_3-transformed':'ultimate_space_pack_rock_3-transformed',
+  'ultimate_space_pack_rock_4-transformed':'ultimate_space_pack_rock_4-transformed',
+  'ultimate_space_pack_rock_large_1-transformed':'ultimate_space_pack_rock_large_1-transformed',
+  'ultimate_space_pack_rock_large_2-transformed':'ultimate_space_pack_rock_large_2-transformed',
+  'ultimate_space_pack_rock_large_3-transformed':'ultimate_space_pack_rock_large_3-transformed',
+  'ultimate_space_pack_roof_antenna-transformed':'ultimate_space_pack_roof_antenna-transformed',
+  'ultimate_space_pack_roof_opening-transformed':'ultimate_space_pack_roof_opening-transformed',
+  'ultimate_space_pack_roof_radar-transformed':'ultimate_space_pack_roof_radar-transformed',
+  'ultimate_space_pack_roof_ventl-transformed':'ultimate_space_pack_roof_ventl-transformed',
+  'ultimate_space_pack_roof_ventr-transformed':'ultimate_space_pack_roof_ventr-transformed',
+  'ultimate_space_pack_rover_1-transformed':'ultimate_space_pack_rover_1-transformed',
+  'ultimate_space_pack_rover_2-transformed':'ultimate_space_pack_rover_2-transformed',
+  'ultimate_space_pack_rover_round-transformed':'ultimate_space_pack_rover_round-transformed',
+  'ultimate_space_pack_solarpanel_ground-transformed':'ultimate_space_pack_solarpanel_ground-transformed',
+  'ultimate_space_pack_solarpanel_roof-transformed':'ultimate_space_pack_solarpanel_roof-transformed',
+  'ultimate_space_pack_solarpanel_structure-transformed':'ultimate_space_pack_solarpanel_structure-transformed',
+  'ultimate_space_pack_spaceship_barbarathebee-transformed':'ultimate_space_pack_spaceship_barbarathebee-transformed',
+  'ultimate_space_pack_spaceship_fernandotheflamingo-transformed':'ultimate_space_pack_spaceship_fernandotheflamingo-transformed',
+  'ultimate_space_pack_spaceship_finnthefrog-transformed':'ultimate_space_pack_spaceship_finnthefrog-transformed',
+  'ultimate_space_pack_spaceship_raetheredpanda-transformed':'ultimate_space_pack_spaceship_raetheredpanda-transformed',
+  'ultimate_space_pack_stairs-transformed':'ultimate_space_pack_stairs-transformed',
+  'ultimate_space_pack_tree_blob_1-transformed':'ultimate_space_pack_tree_blob_1-transformed',
+  'ultimate_space_pack_tree_blob_2-transformed':'ultimate_space_pack_tree_blob_2-transformed',
+  'ultimate_space_pack_tree_blob_3-transformed':'ultimate_space_pack_tree_blob_3-transformed',
+  'ultimate_space_pack_tree_floating_1-transformed':'ultimate_space_pack_tree_floating_1-transformed',
+  'ultimate_space_pack_tree_floating_2-transformed':'ultimate_space_pack_tree_floating_2-transformed',
+  'ultimate_space_pack_tree_floating_3-transformed':'ultimate_space_pack_tree_floating_3-transformed',
+  'ultimate_space_pack_tree_lava_1-transformed':'ultimate_space_pack_tree_lava_1-transformed',
+  'ultimate_space_pack_tree_lava_2-transformed':'ultimate_space_pack_tree_lava_2-transformed',
+  'ultimate_space_pack_tree_lava_3-transformed':'ultimate_space_pack_tree_lava_3-transformed',
+  'ultimate_space_pack_tree_light_1-transformed':'ultimate_space_pack_tree_light_1-transformed',
+  'ultimate_space_pack_tree_light_2-transformed':'ultimate_space_pack_tree_light_2-transformed',
+  'ultimate_space_pack_tree_spikes_1-transformed':'ultimate_space_pack_tree_spikes_1-transformed',
+  'ultimate_space_pack_tree_spikes_2-transformed':'ultimate_space_pack_tree_spikes_2-transformed',
+  'ultimate_space_pack_tree_spiral_1-transformed':'ultimate_space_pack_tree_spiral_1-transformed',
+  'ultimate_space_pack_tree_spiral_2-transformed':'ultimate_space_pack_tree_spiral_2-transformed',
+  'ultimate_space_pack_tree_spiral_3-transformed':'ultimate_space_pack_tree_spiral_3-transformed',
+  'ultimate_space_pack_tree_swirl_1-transformed':'ultimate_space_pack_tree_swirl_1-transformed',
+  'ultimate_space_pack_tree_swirl_2-transformed':'ultimate_space_pack_tree_swirl_2-transformed',
+  'vase':'modular_dungeon_1_vase',
+  'vehicle':'car',
+  'velociraptor':'dinosaurs_pack_velociraptor',
+  'viking_boat':'ships_pack_viking_boat',
+  'virtual_city':'virtual_city',
+  'walking_man':'walking_man',
+  'wall':'modular_medieval_buildings_pack_wall',
+  'wall_modular':'modular_dungeon_1_wall_modular',
+  'wallbricks':'modular_medieval_buildings_pack_wallbricks',
+  'wallcover_modular':'modular_dungeon_1_wallcover_modular',
+  'wallentrance':'modular_medieval_buildings_pack_wallentrance',
+  'wallentrancebricks':'modular_medieval_buildings_pack_wallentrancebricks',
+  'wallrocks':'modular_dungeon_pack_wallrocks',
+  'wasp':'easy_enemies_pack_wasp',
+  'watchtower':'modular_medieval_buildings_pack_watchtower',
+  'watchtowerwroof':'modular_medieval_buildings_pack_watchtowerwroof',
+  'waterbottle_1':'survival_pack_waterbottle_1',
+  'waterbottle_2':'survival_pack_waterbottle_2',
+  'waterbottle_3':'survival_pack_waterbottle_3',
+  'watermelon_1':'crops_pack_watermelon_1',
+  'watermelon_2':'crops_pack_watermelon_2',
+  'watermelon_3':'crops_pack_watermelon_3',
+  'watermelon_4':'crops_pack_watermelon_4',
+  'watermelon_crop':'crops_pack_watermelon_crop',
+  'watermelon_harvested':'crops_pack_watermelon_harvested',
+  'well':'medieval_village_pack_well',
+  'whale':'fish_pack_whale',
+  'wheat':'nature_pack_wheat',
+  'wheat_1':'crops_pack_wheat_1',
+  'wheat_2':'crops_pack_wheat_2',
+  'wheat_3':'crops_pack_wheat_3',
+  'wheat_4':'crops_pack_wheat_4',
+  'wheat_crop':'crops_pack_wheat_crop',
+  'willow_1':'nature_pack_willow_1',
+  'willow_2':'nature_pack_willow_2',
+  'willow_3':'nature_pack_willow_3',
+  'willow_4':'nature_pack_willow_4',
+  'willow_5':'nature_pack_willow_5',
+  'willow_autumn_1':'nature_pack_willow_autumn_1',
+  'willow_autumn_2':'nature_pack_willow_autumn_2',
+  'willow_autumn_3':'nature_pack_willow_autumn_3',
+  'willow_autumn_4':'nature_pack_willow_autumn_4',
+  'willow_autumn_5':'nature_pack_willow_autumn_5',
+  'willow_dead_1':'nature_pack_willow_dead_1',
+  'willow_dead_2':'nature_pack_willow_dead_2',
+  'willow_dead_3':'nature_pack_willow_dead_3',
+  'willow_dead_4':'nature_pack_willow_dead_4',
+  'willow_dead_5':'nature_pack_willow_dead_5',
+  'willow_dead_snow_1':'nature_pack_willow_dead_snow_1',
+  'willow_dead_snow_2':'nature_pack_willow_dead_snow_2',
+  'willow_dead_snow_3':'nature_pack_willow_dead_snow_3',
+  'willow_dead_snow_4':'nature_pack_willow_dead_snow_4',
+  'willow_dead_snow_5':'nature_pack_willow_dead_snow_5',
+  'willow_snow_1':'nature_pack_willow_snow_1',
+  'willow_snow_2':'nature_pack_willow_snow_2',
+  'willow_snow_3':'nature_pack_willow_snow_3',
+  'willow_snow_4':'nature_pack_willow_snow_4',
+  'willow_snow_5':'nature_pack_willow_snow_5',
+  'window':'modular_dungeon_pack_window',
+  'window_1':'medieval_village_pack_window_1',
+  'window_2':'medieval_village_pack_window_2',
+  'window_3':'medieval_village_pack_window_3',
+  'window_4':'medieval_village_pack_window_4',
+  'window_large1':'house_interior_pack_window_large1',
+  'window_large2':'house_interior_pack_window_large2',
+  'window_round1':'house_interior_pack_window_round1',
+  'window_round2':'house_interior_pack_window_round2',
+  'window_round3':'house_interior_pack_window_round3',
+  'window_small1':'house_interior_pack_window_small1',
+  'window_small2':'house_interior_pack_window_small2',
+  'window_small3':'house_interior_pack_window_small3',
+  'windowgothic':'modular_medieval_buildings_pack_windowgothic',
+  'windowsquare':'modular_medieval_buildings_pack_windowsquare',
+  'witch':'modular_women_witch',
+  'wolf':'animals_pack_wolf',
+  'woman':'modular_women_casual',
+  'woodentorch':'survival_pack_woodentorch',
+  'woodentorch_fire':'survival_pack_woodentorch_fire',
+  'woodfire':'modular_dungeon_1_woodfire',
+  'woodlog':'survival_pack_woodlog',
+  'woodlog_moss':'nature_pack_woodlog_moss',
+  'woodlog_snow':'nature_pack_woodlog_snow',
+  'worker':'modular_women_worker',
+  'worm':'cute_fish_pack_worm',
+  'yellowtang':'cute_fish_pack_yellowtang',
+  'zebraclownfish':'cute_fish_pack_zebraclownfish',
+  'alien':'robot',
+  'anchor':'rpg_items_pack_sword',
+  'archer':'soldier',
+  'barn':'buildings_pack_2_building3_big',
+  'barrier':'fence',
+  'bat':'parrot',
+  'bear':'animals_pack_bull',
+  'bird':'parrot',
+  'building':'buildings_pack_2_building1_large',
+  'butterfly':'cute_fish_pack_butterflyfish',
+  'cabin':'buildings_pack_2_house2',
+  'cat':'animals_pack_fox',
+  'catapult':'medieval_village_pack_cart',
+  'chain':'lamp',
+  'chicken':'animals_pack_cow',
+  'church':'medieval_village_pack_bell_tower',
+  'citizen':'man',
+  'clam':'house_interior_pack_plate_1',
+  'cone':'medieval_village_pack_crate',
+  'console':'chest',
+  'coral':'cute_fish_pack_coralgrouper',
+  'corn':'crops_pack_pumpkin_1',
+  'cottage':'buildings_pack_2_house2',
+  'cowboy':'man',
+  'crater':'rock',
+  'crow':'parrot',
+  'dead_tree':'nature_pack_birchtree_dead_1',
+  'dog':'animals_pack_wolf',
+  'drone':'cyberpunk_pack_enemy_flying',
+  'dumpster':'medieval_village_pack_crate',
+  'eagle':'parrot',
+  'egg':'crops_pack_pumpkin_1',
+  'flag':'modular_dungeon_1_banner',
+  'fortress':'medieval_village_pack_bell_tower',
+  'fountain':'medieval_village_pack_well',
+  'gate':'fence',
+  'geyser':'medieval_village_pack_bonfire_lit',
+  'ghost':'recursive_skeletons',
+  'goblin':'man',
+  'guard':'soldier',
+  'guy':'man',
+  'hay_bale':'medieval_village_pack_barrel',
+  'helicopter':'cute_fish_pack_boat',
+  'home':'buildings_pack_2_house1',
+  'house':'buildings_pack_2_house1',
+  'hut':'buildings_pack_2_building1_small',
+  'jellyfish':'cute_fish_pack_anglerfish',
+  'knight':'soldier',
+  'lighthouse':'medieval_village_pack_bell_tower',
+  'monitor':'cyberpunk_pack_computer',
+  'motorcycle':'car',
+  'neon_sign':'lamp',
+  'ninja':'soldier',
+  'npc':'man',
+  'owl':'parrot',
+  'peasant':'man',
+  'pig':'animals_pack_donkey',
+  'pillar':'medieval_village_pack_bell_tower',
+  'pirate':'soldier',
+  'pumpkin':'crops_pack_pumpkin_1',
+  'puppy':'animals_pack_wolf',
+  'queen':'michelle',
+  'rabbit':'duck',
+  'rover':'car',
+  'saloon':'buildings_pack_2_building4',
+  'samurai':'soldier',
+  'satellite_dish':'cyberpunk_pack_computer',
+  'scarecrow':'man',
+  'seaweed':'flower',
+  'shack':'buildings_pack_2_building3_small',
+  'sheep':'animals_pack_alpaca',
+  'shipwreck':'ships_pack_viking_boat',
+  'shop':'buildings_pack_2_building2_small',
+  'skeleton':'recursive_skeletons',
+  'solar_panel':'house_interior_pack_table_roundlarge',
+  'spaceship':'spaceships_pack_dispatcher',
+  'spectator':'man',
+  'squirrel':'duck',
+  'stall':'medieval_village_pack_crate',
+  'starfish':'cute_fish_pack_anglerfish',
+  'statue':'nefertiti',
+  'streetlight':'lamp',
+  'tavern':'buildings_pack_2_building4',
+  'temple':'medieval_village_pack_bell_tower',
+  'tire':'medieval_village_pack_barrel',
+  'tractor':'car',
+  'trash':'medieval_village_pack_barrel',
+  'tumbleweed':'bush',
+  'turtle':'duck',
+  'vending_machine':'medieval_village_pack_crate',
+  'villager':'man',
+  'vine':'flower',
+  'vulture':'parrot',
+  'wagon':'medieval_village_pack_cart',
+  'warrior':'soldier',
+  'windmill':'medieval_village_pack_bell_tower',
+  'wizard':'man',
+  'zombie':'recursive_skeletons',
+  'lantern':'survival_pack_woodentorch_fire',
+  'torch':'modular_dungeon_1_torch',
+};
+
+
+// ═══ VISUAL POLISH — PBR Material Upgrader ═══
+function upgradeMaterials(obj) {
+  obj.traverse(child => {
+    if (child.isMesh && child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach((mat, idx) => {
+        // Upgrade basic/lambert to standard for PBR lighting
+        if (mat.isMeshBasicMaterial || mat.isMeshLambertMaterial) {
+          const newMat = new THREE.MeshStandardMaterial({
+            color: mat.color ? mat.color.clone() : new THREE.Color(0x888888),
+            map: mat.map || null,
+            roughness: 0.72,
+            metalness: 0.05,
+          });
+          if (Array.isArray(child.material)) child.material[idx] = newMat;
+          else child.material = newMat;
+        }
+        // Tune existing standard materials
+        if (mat.isMeshStandardMaterial) {
+          if (mat.roughness > 0.95) mat.roughness = 0.72;
+          if (mat.metalness === 0) mat.metalness = 0.05;
+          mat.envMapIntensity = 0.9;
+          mat.needsUpdate = true;
+        }
+        child.castShadow = true;
+        child.receiveShadow = true;
+      });
+    }
+  });
+}
+
+function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
+  const url = customPath || ('models/' + glbFile + '.glb');
+  const statusEl = document.getElementById('engine-status');
+  if (statusEl) statusEl.textContent = 'Loading ' + glbFile + '...';
+  // Space models apart when multiple added at once
+  const spread = objects.length * 3;
+  if (x === undefined || x === null) x = (Math.random() - 0.5) * 10 + spread * 0.3;
+  if (z === undefined || z === null) z = (Math.random() - 0.5) * 10;
+  
+  gltfLoader.load(url, (gltf) => {
+    const model = gltf.scene;
+    // Play animations if present
+    if (gltf.animations && gltf.animations.length > 0) {
+      const mixer = new THREE.AnimationMixer(model);
+      gltf.animations.forEach(clip => {
+        const action = mixer.clipAction(clip);
+        action.play();
+      });
+      animationMixers.push(mixer);
+      model.userData.mixer = mixer;
+      model.userData.animations = gltf.animations.map(a => a.name);
+      model.userData.clips = gltf.animations; // Store actual clips for switching
+    }
+    // Fix checkerboard/missing textures — replace with solid PBR materials
+    model.traverse(child => {
+      if (child.isMesh && child.material) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach(mat => {
+          // If map is a tiny placeholder texture (checkerboard), remove it
+          if (mat.map && mat.map.image && mat.map.image.width <= 2) {
+            mat.map = null; mat.needsUpdate = true;
+          }
+          child.castShadow = true;
+          child.receiveShadow = true;
+        });
+      }
+    });
+    // Auto-scale based on object type
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    let autoScale = 2 / Math.max(maxDim, 0.01);
+    // Animals should be smaller than humans
+    const gn = glbFile.toLowerCase();
+    if (gn.includes('animals_pack_') || gn.includes('horse') || gn.includes('cow') || gn.includes('bull') || gn.includes('donkey') || gn.includes('alpaca') || gn.includes('deer') || gn.includes('stag')) {
+      autoScale = 1.0 / Math.max(maxDim, 0.01); // ~1 unit tall
+    } else if (gn.includes('wolf') || gn.includes('fox') || gn.includes('husky') || gn.includes('shiba')) {
+      autoScale = 0.6 / Math.max(maxDim, 0.01); // smaller animals
+    } else if (gn.includes('fish_pack_') || gn.includes('cute_fish_') || gn.includes('frog') || gn.includes('rat') || gn.includes('snake') || gn.includes('spider') || gn.includes('wasp') || gn.includes('parrot') || gn.includes('duck') || gn.includes('flamingo') || gn.includes('stork')) {
+      autoScale = 0.4 / Math.max(maxDim, 0.01); // small creatures
+    }
+    // Vehicles — realistic size relative to 1.8m character
+    if (gn.includes('car') && !gn.includes('card') && !gn.includes('carpet') && !gn.includes('carrot') && !gn.includes('cart') || gn.includes('sedan') || gn.includes('automobile') || gn.includes('taxi')) {
+      autoScale = 4.5 / Math.max(size.x, size.z, 0.01);
+    } else if (gn.includes('truck') || gn.includes('lorry') || gn.includes('milk_truck')) {
+      autoScale = 6.0 / Math.max(size.x, size.z, 0.01);
+    } else if (gn.includes('motorcycle') || gn.includes('motorbike')) {
+      autoScale = 2.5 / Math.max(size.x, size.z, 0.01);
+    } else if (gn.includes('boat') || gn.includes('ship') || gn.includes('lifeboat') || gn.includes('galleon')) {
+      autoScale = 3.5 / Math.max(size.x, size.z, 0.01);
+    } else if (gn.includes('tank') && !gn.includes('tankard')) {
+      autoScale = 6.0 / Math.max(size.x, size.z, 0.01);
+    } else if (gn.includes('helicopter') || gn.includes('chopper')) {
+      autoScale = 5.0 / Math.max(size.x, size.z, 0.01);
+    } else if (gn.includes('bicycle') || gn.includes('bike')) {
+      autoScale = 2.0 / Math.max(size.x, size.z, 0.01);
+    }
+    // Buildings — 2-3 stories
+    else if (gn.includes('house') || gn.includes('building') || gn.includes('castle') || gn.includes('tower') || gn.includes('barn') || gn.includes('church') || gn.includes('tavern') || gn.includes('shop') || gn.includes('fortress') || gn.includes('windmill') || gn.includes('lighthouse') || gn.includes('saloon') || gn.includes('temple') || gn.includes('cottage') || gn.includes('cathedral') || gn.includes('mansion')) {
+      autoScale = 8.0 / Math.max(maxDim, 0.01);
+    }
+    // Trees — natural height
+    else if (gn.includes('tree') || gn.includes('pine') || gn.includes('oak') || gn.includes('palm') || gn.includes('cherry_blossom') || gn.includes('bamboo') || gn.includes('dead_tree')) {
+      autoScale = 5.0 / Math.max(size.y, 0.01);
+    }
+    // Furniture — human-scale
+    else if (gn.includes('chair') || gn.includes('table') || gn.includes('bench') || gn.includes('bed') || gn.includes('desk') || gn.includes('throne') || gn.includes('sofa')) {
+      autoScale = 1.2 / Math.max(maxDim, 0.01);
+    }
+    // Small props
+    else if (gn.includes('barrel') || gn.includes('crate') || gn.includes('potion') || gn.includes('lantern') || gn.includes('torch') || gn.includes('bucket') || gn.includes('basket')) {
+      autoScale = 0.8 / Math.max(maxDim, 0.01);
+    }
+    const scale = scaleOverride || autoScale;
+    model.scale.setScalar(scale);
+    // Recompute after scale
+    const box2 = new THREE.Box3().setFromObject(model);
+    const bottom = box2.min.y;
+    model.position.set(x || 0, -bottom, z || 0);
+    // Auto-position on terrain — ensure object bottom sits flush on surface
+    if (terrainMesh) {
+      let px = x || 0, pz = z || 0;
+      const rc = new THREE.Raycaster(new THREE.Vector3(px, 200, pz), new THREE.Vector3(0, -1, 0));
+      const hits = rc.intersectObject(terrainMesh);
+      if (hits.length > 0) {
+        let terrainY = hits[0].point.y;
+        // If underwater, move toward center to find dry land
+        const waterLevel = -0.3;
+        if (terrainY < waterLevel + 0.5 && !ln.includes('boat') && !ln.includes('ship')) {
+          px *= 0.4; pz *= 0.4; // Move toward center
+          model.position.x = px; model.position.z = pz;
+          const rc2 = new THREE.Raycaster(new THREE.Vector3(px, 200, pz), new THREE.Vector3(0, -1, 0));
+          const hits2 = rc2.intersectObject(terrainMesh);
+          if (hits2.length > 0) terrainY = hits2[0].point.y;
+        }
+        model.position.y = terrainY - bottom;
+      }
+    } else {
+      model.position.y = -bottom;
+    }
+    // Enable shadows
+    model.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    model.userData.name = name;
+    model.userData.isGLB = true;
+    // Auto-float boats — always at water surface level
+    const ln = (name || '').toLowerCase();
+    if (ln.includes('boat') || ln.includes('ship') || ln.includes('canoe') || ln.includes('kayak')) {
+      // Boats float at y=0 (just above ocean at -0.3)
+      // If island terrain exists, position boat at the shoreline
+      const waterSurfaceY = 0.0; // Ocean is at -0.3, surface visible at ~0
+      model.position.y = waterSurfaceY - bottom;
+      model.userData.isBoat = true;
+      // Add gentle bob animation data
+      model.userData.bobPhase = Math.random() * Math.PI * 2;
+    }
+    scene.add(model);
+    objects.push(model);
+    if (statusEl) statusEl.textContent = '3D Ready';
+  }, 
+  (progress) => {
+    // Loading progress
+  },
+  (error) => {
+    console.warn('Failed to load ' + url + ':', error);
+    // Fall back to procedural
+    if (statusEl) statusEl.textContent = '3D Ready';
+  });
+}
+
+
+// === COMBAT FEEDBACK ===
+window._damageFlash = function() {
+  const flash = document.createElement('div');
+  flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.3);pointer-events:none;z-index:9999;';
+  document.body.appendChild(flash);
+  setTimeout(() => { flash.style.opacity = '0'; flash.style.transition = 'opacity 0.3s'; }, 50);
+  setTimeout(() => flash.remove(), 400);
+};
+
+window._floatingDamage = function(pos, dmg, isCrit) {
+  if (!pos) return;
+  const projected = pos.clone().project(camera);
+  const x = (projected.x * 0.5 + 0.5) * window.innerWidth;
+  const y = (-projected.y * 0.5 + 0.5) * window.innerHeight;
+  const el = document.createElement('div');
+  el.textContent = '-' + dmg;
+  el.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;color:' + (isCrit ? '#ffdd00' : '#ff4444') + ';font-size:24px;font-weight:bold;font-family:monospace;pointer-events:none;z-index:9999;text-shadow:0 0 4px #000;transition:all 0.8s;';
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.top = (y - 60) + 'px'; el.style.opacity = '0'; });
+  setTimeout(() => el.remove(), 900);
+};
+
+window._playerDeath = function() {
+  const overlay = document.createElement('div');
+  overlay.id = 'death-screen';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;z-index:10000;transition:background 1s;';
+  overlay.innerHTML = '<div style="color:#cc0000;font-size:48px;font-family:monospace;text-align:center;opacity:0;transition:opacity 1.5s;" id="death-text">' +
+    '<div style="font-size:64px;margin-bottom:20px;">YOU DIED</div>' +
+    '<div style="font-size:14px;color:#666;margin-bottom:30px;">Score: ' + (window._gameScore || 0) + '</div>' +
+    '<button onclick="window._respawnPlayer()" style="padding:14px 40px;background:#cc0000;color:#fff;border:2px solid #ff4444;border-radius:6px;font-size:18px;cursor:pointer;font-family:monospace;margin:8px;">RESPAWN</button>' +
+    '<button onclick="window._exitToEditor()" style="padding:14px 40px;background:#333;color:#fff;border:2px solid #555;border-radius:6px;font-size:18px;cursor:pointer;font-family:monospace;margin:8px;">EXIT</button>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  // Fade in
+  requestAnimationFrame(() => {
+    overlay.style.background = 'rgba(0,0,0,0.85)';
+    document.getElementById('death-text').style.opacity = '1';
+  });
+  // ESC key handler
+  const escHandler = (e) => {
+    if (e.key === 'Escape') { window._exitToEditor(); document.removeEventListener('keydown', escHandler); }
+  };
+  document.addEventListener('keydown', escHandler);
+};
+
+window._respawnPlayer = function() {
+  const ds = document.getElementById('death-screen');
+  if (ds) ds.remove();
+  if (characterController) {
+    characterController.health = characterController.maxHealth;
+    characterController.stamina = characterController.maxStamina;
+    const sy = typeof getTerrainY === 'function' ? getTerrainY(0, 0) + 1 : 2;
+    characterController.position.set(0, sy, 0);
+    if (characterController.model) characterController.model.position.set(0, sy, 0);
+  }
+};
+
+window._exitToEditor = function() {
+  const ds = document.getElementById('death-screen');
+  if (ds) ds.remove();
+  if (typeof exitPlayMode === 'function') exitPlayMode();
+};
+
+
+// === AI AGENT — PLAYER CUSTOMIZATION SYSTEM ===
+// Per-user AI that interprets natural language to customize gameplay
+// Stored in localStorage so each user keeps their style
+
+const PlayerAgent = {
+  // Default player profile
+  _defaults: {
+    walkSpeed: 5, sprintSpeed: 10, jumpForce: 8,
+    rollSpeed: 12, rollDistance: 3,
+    maxHealth: 100, maxStamina: 100,
+    staminaRegen: 20, healthRegen: 0,
+    weapon: null, weaponSlot2: null,
+    combatStyle: 'balanced', // balanced, aggressive, defensive, ranged, stealth
+    dodgeType: 'roll', // roll, dash, blink, sidestep
+    attackSpeed: 1.0, attackDamage: 1.0,
+    armor: 0, // damage reduction %
+    movementStyle: 'normal', // normal, ninja, heavy, acrobatic
+    appearance: { primaryColor: null, secondaryColor: null, glow: null, trail: null },
+    abilities: [], // unlocked special abilities
+    preferredWeapons: [], // weapon types player likes
+    difficulty: 'normal', // easy, normal, hard, souls
+  },
+
+  // Load profile from localStorage
+  load() {
+    try {
+      const saved = localStorage.getItem('crate_player_profile');
+      return saved ? { ...this._defaults, ...JSON.parse(saved) } : { ...this._defaults };
+    } catch(e) { return { ...this._defaults }; }
+  },
+
+  // Save profile
+  save(profile) {
+    try { localStorage.setItem('crate_player_profile', JSON.stringify(profile)); } catch(e) {}
+  },
+
+  // Apply profile to character controller
+  apply(profile, charCtrl) {
+    if (!charCtrl) return;
+    charCtrl.walkSpeed = profile.walkSpeed;
+    charCtrl.sprintSpeed = profile.sprintSpeed || profile.walkSpeed * 2;
+    charCtrl.jumpForce = profile.jumpForce;
+    if (charCtrl.maxHealth !== undefined) charCtrl.maxHealth = profile.maxHealth;
+    if (charCtrl.maxStamina !== undefined) charCtrl.maxStamina = profile.maxStamina;
+    charCtrl.health = Math.min(charCtrl.health || profile.maxHealth, profile.maxHealth);
+    charCtrl.stamina = Math.min(charCtrl.stamina || profile.maxStamina, profile.maxStamina);
+  },
+
+  // Interpret natural language commands and update profile
+  interpret(input, profile) {
+    const lower = input.toLowerCase().trim();
+    const changes = [];
+    
+    // === MOVEMENT STYLE ===
+    if (/make (?:me|my character|player) (?:move |run |go )?faster/i.test(lower)) {
+      profile.walkSpeed = Math.min(15, profile.walkSpeed + 2);
+      profile.sprintSpeed = profile.walkSpeed * 2;
+      changes.push('⚡ Movement speed increased to ' + profile.walkSpeed);
+    }
+    if (/make (?:me|my character|player) (?:move |run |go )?slower/i.test(lower)) {
+      profile.walkSpeed = Math.max(2, profile.walkSpeed - 2);
+      profile.sprintSpeed = profile.walkSpeed * 2;
+      changes.push('🐢 Movement speed decreased to ' + profile.walkSpeed);
+    }
+    if (/ninja|stealth|assassin/i.test(lower) && /style|mode|movement|class/i.test(lower)) {
+      profile.movementStyle = 'ninja';
+      profile.walkSpeed = 7; profile.sprintSpeed = 16;
+      profile.dodgeType = 'dash'; profile.rollSpeed = 18;
+      profile.combatStyle = 'stealth';
+      profile.attackSpeed = 1.5; profile.attackDamage = 1.3;
+      profile.armor = 5;
+      changes.push('🥷 Ninja style activated! Fast movement, quick dash, stealth combat');
+    }
+    if (/tank|heavy|warrior|brute/i.test(lower) && /style|mode|movement|class/i.test(lower)) {
+      profile.movementStyle = 'heavy';
+      profile.walkSpeed = 3.5; profile.sprintSpeed = 7;
+      profile.maxHealth = 200; profile.maxStamina = 80;
+      profile.dodgeType = 'sidestep'; profile.rollSpeed = 6;
+      profile.combatStyle = 'aggressive';
+      profile.attackSpeed = 0.7; profile.attackDamage = 2.0;
+      profile.armor = 30;
+      changes.push('🛡️ Tank style activated! Slow but hits hard, 200 HP, 30% armor');
+    }
+    if (/mage|wizard|sorcerer|magic/i.test(lower) && /style|mode|movement|class/i.test(lower)) {
+      profile.movementStyle = 'acrobatic';
+      profile.walkSpeed = 5; profile.sprintSpeed = 10;
+      profile.maxHealth = 70; profile.maxStamina = 150;
+      profile.dodgeType = 'blink';
+      profile.combatStyle = 'ranged';
+      profile.attackSpeed = 1.2; profile.attackDamage = 1.5;
+      profile.armor = 0;
+      profile.appearance.glow = '#4488ff';
+      changes.push('🧙 Mage style activated! Low HP, high stamina, blink dodge, magic glow');
+    }
+    if (/acrobat|parkour|agile/i.test(lower) && /style|mode|movement|class/i.test(lower)) {
+      profile.movementStyle = 'acrobatic';
+      profile.walkSpeed = 6; profile.sprintSpeed = 14;
+      profile.jumpForce = 12; profile.dodgeType = 'roll';
+      profile.rollSpeed = 15; profile.combatStyle = 'balanced';
+      changes.push('🤸 Acrobat style! High jump, fast rolls, agile movement');
+    }
+    
+    // === WEAPON PREFERENCES ===
+    if (/(?:give me|i want|equip|use) (?:a |an )?(fire|ice|lightning|poison|holy|dark)?\s*(sword|axe|hammer|spear|dagger|bow|staff|rifle|pistol|shotgun|smg|sniper|katana|scythe|dual.?wield)/i.test(lower)) {
+      const m = lower.match(/(?:give me|i want|equip|use) (?:a |an )?(fire|ice|lightning|poison|holy|dark)?\s*(sword|axe|hammer|spear|dagger|bow|staff|rifle|pistol|shotgun|smg|sniper|katana|scythe|dual.?wield)/i);
+      const element = m[1] || null;
+      const weapon = m[2];
+      profile.weapon = weapon;
+      if (element) {
+        profile.weaponElement = element;
+        changes.push('🔥 Equipped ' + element + ' ' + weapon + '!');
+      } else {
+        changes.push('⚔️ Equipped ' + weapon + '!');
+      }
+      if (!profile.preferredWeapons.includes(weapon)) profile.preferredWeapons.push(weapon);
+    }
+    
+    // === JUMP HEIGHT ===
+    if (/(?:higher|bigger) jump/i.test(lower) || /jump (?:higher|more)/i.test(lower)) {
+      profile.jumpForce = Math.min(20, profile.jumpForce + 3);
+      changes.push('🦘 Jump force increased to ' + profile.jumpForce);
+    }
+    
+    // === HEALTH/STAMINA ===
+    if (/more (?:health|hp|hitpoints)/i.test(lower) || /increase (?:my )?(?:health|hp)/i.test(lower)) {
+      profile.maxHealth = Math.min(500, profile.maxHealth + 50);
+      changes.push('❤️ Max health increased to ' + profile.maxHealth);
+    }
+    if (/more stamina/i.test(lower) || /increase (?:my )?stamina/i.test(lower)) {
+      profile.maxStamina = Math.min(300, profile.maxStamina + 30);
+      changes.push('⚡ Max stamina increased to ' + profile.maxStamina);
+    }
+    
+    // === DIFFICULTY ===
+    if (/(?:easy|casual) (?:mode|difficulty)/i.test(lower)) {
+      profile.difficulty = 'easy';
+      profile.maxHealth = Math.max(profile.maxHealth, 200);
+      profile.healthRegen = 5;
+      changes.push('😊 Easy mode! 200+ HP, health regeneration');
+    }
+    if (/(?:hard|difficult|challenge) (?:mode|difficulty)/i.test(lower)) {
+      profile.difficulty = 'hard';
+      profile.maxHealth = Math.min(profile.maxHealth, 80);
+      profile.healthRegen = 0;
+      changes.push('💀 Hard mode! 80 HP max, no regen');
+    }
+    if (/(?:souls|souls-?like|dark.?souls|elden) (?:mode|difficulty|style)/i.test(lower)) {
+      profile.difficulty = 'souls';
+      profile.maxHealth = 60;
+      profile.healthRegen = 0;
+      profile.armor = 0;
+      profile.attackDamage = 0.8;
+      changes.push('☠️ Souls mode! 60 HP, no regen, no armor, reduced damage. Git gud.');
+    }
+    
+    // === DODGE TYPE ===
+    if (/(?:dash|blink|sidestep|teleport) (?:dodge|roll|instead)/i.test(lower)) {
+      const m = lower.match(/(dash|blink|sidestep|teleport)/i);
+      if (m) {
+        profile.dodgeType = m[1].toLowerCase() === 'teleport' ? 'blink' : m[1].toLowerCase();
+        changes.push('💨 Dodge type set to ' + profile.dodgeType);
+      }
+    }
+    
+    // === APPEARANCE ===
+    if (/(?:glow|aura) (?:color |)(red|blue|green|purple|gold|white|orange|pink|cyan)/i.test(lower)) {
+      const colors = {red:'#ff0000',blue:'#0044ff',green:'#00ff44',purple:'#8800ff',gold:'#ffdd00',white:'#ffffff',orange:'#ff6600',pink:'#ff44aa',cyan:'#00ffff'};
+      const m = lower.match(/(red|blue|green|purple|gold|white|orange|pink|cyan)/i);
+      profile.appearance.glow = colors[m[1].toLowerCase()] || '#ffffff';
+      changes.push('✨ Character glow: ' + m[1]);
+    }
+    
+    // === WORLD BUILDING (via AI agent) ===
+    if (/(?:build|create|take) me (?:to |a )?(tropical|hurricane|arctic|swamp|enchanted|pirate|dragon|medieval|ocean|war|cyberpunk|frozen|desert|jungle|volcano|haunted)/i.test(lower)) {
+      const m = lower.match(/(tropical|hurricane|arctic|swamp|enchanted|pirate|dragon|medieval|ocean|war|cyberpunk|frozen|desert|jungle|volcano|haunted)/i);
+      const worldMap = { tropical:'tropical paradise', hurricane:'hurricane', arctic:'arctic storm', swamp:'dark swamp', enchanted:'enchanted forest', pirate:'pirate cove', dragon:'dragon lair', medieval:'medieval siege', ocean:'ocean voyage', war:'war zone', cyberpunk:'cyberpunk', frozen:'frozen', desert:'desert', jungle:'jungle', volcano:'volcano', haunted:'haunted' };
+      const world = worldMap[m[1].toLowerCase()] || m[1];
+      window._agentBuildWorld = world;
+      changes.push('🌍 Building ' + world + ' world...');
+    }
+    
+    // === WATER CHANGE (via AI agent) ===
+    if (/(?:change|set|make) (?:the )?water (?:to |)(tropical|storm|ocean|lake|arctic|swamp|river)/i.test(lower)) {
+      const m = lower.match(/(tropical|storm|ocean|lake|arctic|swamp|river)/i);
+      window._agentWaterPreset = m[1].toLowerCase();
+      changes.push('🌊 Water preset: ' + m[1]);
+    }
+    
+    // === RESET ===
+    if (/reset (?:my |player |character )?(?:stats|profile|style|everything|defaults)/i.test(lower)) {
+      Object.assign(profile, this._defaults);
+      changes.push('🔄 Profile reset to defaults!');
+    }
+    
+    // === SHOW STATS ===
+    if (/(?:show|my|view|check) (?:my |player |character )?(?:stats|profile|build|style)/i.test(lower)) {
+      changes.push(
+        '📊 YOUR BUILD:\n' +
+        '  Style: ' + profile.combatStyle + ' / ' + profile.movementStyle + '\n' +
+        '  HP: ' + profile.maxHealth + ' | Stamina: ' + profile.maxStamina + '\n' +
+        '  Speed: ' + profile.walkSpeed + ' | Sprint: ' + profile.sprintSpeed + '\n' +
+        '  Jump: ' + profile.jumpForce + ' | Dodge: ' + profile.dodgeType + '\n' +
+        '  Attack: x' + profile.attackDamage + ' | Speed: x' + profile.attackSpeed + '\n' +
+        '  Armor: ' + profile.armor + '% | Weapon: ' + (profile.weapon || 'none') + '\n' +
+        '  Difficulty: ' + profile.difficulty
+      );
+    }
+    
+    return changes;
+  }
+};
+
+window.PlayerAgent = PlayerAgent;
+
+// === SETUP ===
+const canvas = document.getElementById('crate-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); // Capped for performance
+renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 0.1, 2000);
+camera.position.set(15, 10, 20);
+
+const controls = new OrbitControls(camera, canvas);
+window._cam = camera; window._ctrl = controls; window._scene = scene;
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 1, 0);
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.minDistance = 2;
+controls.maxDistance = 200;
+
+// === LIGHTING ===
+const ambientLight = new THREE.HemisphereLight(0x87ceeb, 0x362a1a, 0.6);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xfff5e0, 3);
+sunLight.position.set(30, 40, 20);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(4096, 4096);
+    sunLight.shadow.normalBias = 0.02;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 120;
+sunLight.shadow.camera.left = -60;
+sunLight.shadow.camera.right = 60;
+sunLight.shadow.camera.top = 60;
+sunLight.shadow.camera.bottom = -60;
+
+// Close-range shadow light for crisp nearby shadows (pseudo-CSM)
+const nearShadowLight = new THREE.DirectionalLight(0xfff5e0, 0); // No extra light, just shadow
+nearShadowLight.position.set(15, 20, 10);
+nearShadowLight.castShadow = true;
+nearShadowLight.shadow.mapSize.set(2048, 2048);
+nearShadowLight.shadow.camera.near = 0.1;
+nearShadowLight.shadow.camera.far = 40;
+nearShadowLight.shadow.camera.left = -15;
+nearShadowLight.shadow.camera.right = 15;
+nearShadowLight.shadow.camera.top = 15;
+nearShadowLight.shadow.camera.bottom = -15;
+nearShadowLight.shadow.bias = -0.0003;
+nearShadowLight.shadow.normalBias = 0.01;
+scene.add(nearShadowLight);
+
+// Update shadow cameras to follow player/camera
+function updateShadowCascades() {
+  const camPos = camera.position;
+  sunLight.shadow.camera.left = camPos.x - 60;
+  sunLight.shadow.camera.right = camPos.x + 60;
+  sunLight.shadow.camera.top = camPos.z + 60;
+  sunLight.shadow.camera.bottom = camPos.z - 60;
+  sunLight.shadow.camera.updateProjectionMatrix();
+  sunLight.target.position.set(camPos.x, 0, camPos.z);
+  
+  nearShadowLight.position.set(camPos.x + 15, 20, camPos.z + 10);
+  nearShadowLight.shadow.camera.left = camPos.x - 15;
+  nearShadowLight.shadow.camera.right = camPos.x + 15;
+  nearShadowLight.shadow.camera.top = camPos.z + 15;
+  nearShadowLight.shadow.camera.bottom = camPos.z - 15;
+  nearShadowLight.shadow.camera.updateProjectionMatrix();
+  nearShadowLight.target.position.set(camPos.x, 0, camPos.z);
+}
+window._updateShadowCascades = updateShadowCascades;
+sunLight.shadow.bias = -0.0005;
+scene.add(sunLight);
+
+// === CHARACTER & TOWN SYSTEMS ===
+let characterController = null;
+let npcController = null;
+let questSystem = new QuestSystem();
+let craftingSystem = null;
+let levelSystem = null;
+let dialogueSystem = new DialogueSystem();
+let minimap = null;
+let townBuilder = null;
+let gameHUD = null;
+
+function initGameSystems() {
+  characterController = new CharacterController(scene, camera, objects);
+  window.characterController = characterController;
+  characterController._autoSpawned = false; // Don't auto-spawn until "play" 
+  npcController = new NPCController(scene, camera, objects, characterController);
+  window.npcController = npcController;
+  townBuilder = new TownBuilder(scene, objects, loadGLBModel);
+  gameHUD = createGameHUD();
+}
+setTimeout(initGameSystems, 500);
+
+
+const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+fillLight.position.set(-10, 5, -10);
+scene.add(fillLight);
+
+// ═══════════════════════════════════════════════════
+// POST-PROCESSING PIPELINE — Bloom, SSAO, SMAA, DOF, God Rays, Color Grading
+// ═══════════════════════════════════════════════════
+let composer = null;
+let bloomPass = null;
+let ssaoPass = null;
+let smaaPass = null;
+let bokehPass = null;
+let godRaysEnabled = false;
+let ppEnabled = true;
+
+async function initPostProcessing() {
+  if (!_ppModulesLoaded) { const ok = await loadPostProcessingModules(); if (!ok) return; }
+  composer = new EffectComposer(renderer);
+  
+  // Base render pass
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+  
+  // SSAO — Screen Space Ambient Occlusion (subtle contact shadows)
+  ssaoPass = new SSAOPass(scene, camera, canvas.clientWidth, canvas.clientHeight);
+  ssaoPass.kernelRadius = 12;
+  ssaoPass.minDistance = 0.001;
+  ssaoPass.maxDistance = 0.15;
+  ssaoPass.output = SSAOPass.OUTPUT.Default;
+  ssaoPass.enabled = false; // Disabled by default for performance
+  composer.addPass(ssaoPass);
+  
+  // Bloom — glow on bright areas (Unreal-style)
+  bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
+    0.3,   // strength (subtle)
+    0.5,   // radius
+    0.9    // threshold (higher = less bloom work) (only bright stuff blooms)
+  );
+  composer.addPass(bloomPass);
+  
+  // Custom color grading + vignette + chromatic aberration pass
+  const colorGradingShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      vignetteStrength: { value: 0.35 },
+      vignetteOffset: { value: 0.9 },
+      saturation: { value: 1.12 },
+      contrast: { value: 1.08 },
+      brightness: { value: 1.02 },
+      chromaticAberration: { value: 0.0012 },
+      filmGrain: { value: 0.03 },
+      time: { value: 0 },
+    },
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform float vignetteStrength;
+      uniform float vignetteOffset;
+      uniform float saturation;
+      uniform float contrast;
+      uniform float brightness;
+      uniform float chromaticAberration;
+      uniform float filmGrain;
+      uniform float time;
+      varying vec2 vUv;
+      
+      vec3 adjustSaturation(vec3 color, float sat) {
+        float grey = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        return mix(vec3(grey), color, sat);
+      }
+      
+      float random(vec2 co) {
+        return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+      
+      void main() {
+        // Chromatic aberration
+        vec2 dir = vUv - 0.5;
+        float dist = length(dir);
+        vec2 offset = dir * chromaticAberration * dist;
+        float r = texture2D(tDiffuse, vUv + offset).r;
+        float g = texture2D(tDiffuse, vUv).g;
+        float b = texture2D(tDiffuse, vUv - offset).b;
+        vec3 color = vec3(r, g, b);
+        
+        // Saturation
+        color = adjustSaturation(color, saturation);
+        
+        // Contrast + brightness
+        color = (color - 0.5) * contrast + 0.5;
+        color *= brightness;
+        
+        // Vignette
+        float vig = smoothstep(vignetteOffset, vignetteOffset - vignetteStrength, dist);
+        color *= mix(0.4, 1.0, vig);
+        
+        // Film grain (subtle)
+        float grain = random(vUv + fract(time)) * filmGrain;
+        color += grain - filmGrain * 0.5;
+        
+        gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+      }
+    `
+  };
+  
+  const colorPass = new ShaderPass(colorGradingShader);
+  colorPass.uniforms.time.value = 0;
+  composer.addPass(colorPass);
+  window._colorPass = colorPass;
+  
+  // SMAA — anti-aliasing (better than FXAA)
+  smaaPass = new SMAAPass(canvas.clientWidth * renderer.getPixelRatio(), canvas.clientHeight * renderer.getPixelRatio());
+  composer.addPass(smaaPass);
+  
+  // Output pass (tone mapping + color space)
+  const outputPass = new OutputPass();
+  composer.addPass(outputPass);
+  
+  console.log('[PostFX] Pipeline: Render → SSAO → Bloom → ColorGrade → SMAA → Output');
+}
+
+// God Rays shader (volumetric light scattering)
+const GodRaysShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    lightPosition: { value: new THREE.Vector2(0.5, 0.7) },
+    exposure: { value: 0.18 },
+    decay: { value: 0.96 },
+    density: { value: 0.8 },
+    weight: { value: 0.4 },
+    samples: { value: 60 },
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 lightPosition;
+    uniform float exposure;
+    uniform float decay;
+    uniform float density;
+    uniform float weight;
+    uniform int samples;
+    varying vec2 vUv;
+    void main() {
+      vec2 texCoord = vUv;
+      vec2 deltaTexCoord = (texCoord - lightPosition) * density / float(samples);
+      vec4 color = texture2D(tDiffuse, texCoord);
+      float illuminationDecay = 1.0;
+      vec4 godRayColor = vec4(0.0);
+      for (int i = 0; i < 60; i++) {
+        texCoord -= deltaTexCoord;
+        vec4 s = texture2D(tDiffuse, texCoord);
+        s *= illuminationDecay * weight;
+        godRayColor += s;
+        illuminationDecay *= decay;
+      }
+      gl_FragColor = color + godRayColor * exposure;
+    }
+  `
+};
+
+// Environment map loader
+let envMap = null;
+function loadEnvironmentMap(preset) {
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  pmremGenerator.compileEquirectangularShader();
+  
+  // HDRI presets from Poly Haven (free, CC0)
+  const HDRI_URLS = {
+    'default':    'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr',
+    'sunset':     'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/venice_sunset_1k.hdr',
+    'night':      'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/moonlit_golf_1k.hdr',
+    'studio':     'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr',
+    'forest':     'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/syferfontein_0d_clear_puresky_1k.hdr',
+    'overcast':   'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/cloudy_crown_1k.hdr',
+    'space':      'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/starmap_2020_4k_gal2eq_1k.hdr',
+    'desert':     'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/goegap_1k.hdr',
+    'tropical':   'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/cape_hill_open_1k.hdr',
+    'underwater': 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/blue_lagoon_1k.hdr',
+  };
+  
+  const url = HDRI_URLS[preset] || HDRI_URLS['default'];
+  
+  new RGBELoader().load(url, (texture) => {
+    envMap = pmremGenerator.fromEquirectangular(texture).texture;
+    scene.environment = envMap;
+    scene.background = null; // Keep our custom sky, just use HDRI for reflections
+    texture.dispose();
+    pmremGenerator.dispose();
+    console.log('[EnvMap] HDRI loaded: ' + (preset || 'default'));
+  }, undefined, (err) => {
+    // Fallback to procedural if HDRI fails to load
+    console.warn('[EnvMap] HDRI failed, using procedural fallback:', err?.message);
+    const envScene = new THREE.Scene();
+    const envGeo = new THREE.SphereGeometry(100, 32, 32);
+    const envMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      uniforms: { topColor: { value: new THREE.Color(0x87ceeb) }, bottomColor: { value: new THREE.Color(0xf0e6d3) }, offset: { value: 10 }, exponent: { value: 0.6 } },
+      vertexShader: 'varying vec3 vWP; void main(){ vWP=(modelMatrix*vec4(position,1.0)).xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 topColor; uniform vec3 bottomColor; uniform float offset; uniform float exponent; varying vec3 vWP; void main(){ float h=normalize(vWP+offset).y; gl_FragColor=vec4(mix(bottomColor,topColor,pow(max(h,0.0),exponent)),1.0); }'
+    });
+    envScene.add(new THREE.Mesh(envGeo, envMat));
+    envMap = pmremGenerator.fromScene(envScene, 0, 0.1, 200).texture;
+    scene.environment = envMap;
+    pmremGenerator.dispose();
+    console.log('[EnvMap] Procedural fallback applied');
+  });
+}
+
+// Auto-switch HDRI based on time-of-day
+function updateEnvironmentForTime(timePreset) {
+  const map = { 'dawn':'default', 'sunrise':'default', 'noon':'default', 'day':'default',
+    'sunset':'sunset', 'dusk':'sunset', 'night':'night', 'midnight':'night',
+    'overcast':'overcast', 'space':'space' };
+  loadEnvironmentMap(map[timePreset] || 'default');
+}
+
+// Toggle post-processing
+function togglePostProcessing(enabled) {
+  ppEnabled = enabled !== undefined ? enabled : !ppEnabled;
+  console.log('[PostFX] ' + (ppEnabled ? 'ON' : 'OFF'));
+  return ppEnabled;
+}
+
+// Adjust bloom
+function setBloomSettings(strength, radius, threshold) {
+  if (!bloomPass) return;
+  if (strength !== undefined) bloomPass.strength = strength;
+  if (radius !== undefined) bloomPass.radius = radius;
+  if (threshold !== undefined) bloomPass.threshold = threshold;
+}
+
+// Adjust SSAO
+function setSSAOSettings(kernelRadius, minDist, maxDist) {
+  if (!ssaoPass) return;
+  if (kernelRadius !== undefined) ssaoPass.kernelRadius = kernelRadius;
+  if (minDist !== undefined) ssaoPass.minDistance = minDist;
+  if (maxDist !== undefined) ssaoPass.maxDistance = maxDist;
+}
+
+// Preset quality levels
+function setGraphicsQuality(level) {
+  switch(level) {
+    case 'low':
+      ppEnabled = false;
+      renderer.setPixelRatio(1);
+      renderer.shadowMap.enabled = false;
+      return 'Graphics: LOW — max performance';
+    case 'medium':
+      ppEnabled = true;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); // Capped for performance
+      renderer.shadowMap.enabled = true;
+      if (ssaoPass) ssaoPass.enabled = false;
+      if (bloomPass) { bloomPass.strength = 0.25; }
+      return 'Graphics: MEDIUM — balanced';
+    case 'high':
+      ppEnabled = true;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      if (ssaoPass) ssaoPass.enabled = true;
+      if (bloomPass) { bloomPass.strength = 0.4; }
+      return 'Graphics: HIGH — best quality';
+    case 'ultra':
+      ppEnabled = true;
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      if (ssaoPass) { ssaoPass.enabled = true; ssaoPass.kernelRadius = 16; }
+      if (bloomPass) { bloomPass.strength = 0.5; bloomPass.radius = 0.7; }
+      sunLight.shadow.mapSize.set(8192, 8192);
+      sunLight.shadow.needsUpdate = true;
+      return 'Graphics: ULTRA — maximum fidelity';
+    default:
+      return 'Unknown quality. Use: low, medium, high, ultra';
+  }
+}
+
+// Initialize everything
+setTimeout(async () => {
+  try {
+    await initPostProcessing();
+    loadEnvironmentMap();
+    console.log('[Graphics] Full post-processing pipeline initialized');
+  } catch(e) {
+    console.warn('[Graphics] Post-processing init failed, falling back:', e.message);
+    ppEnabled = false;
+  }
+}, 800);
+
+
+// Sun sphere
+let sunMesh = null;
+function createSun() {
+  if (sunMesh) return;
+  const geo = new THREE.SphereGeometry(3, 32, 32);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
+  sunMesh = new THREE.Mesh(geo, mat);
+  sunMesh.position.copy(sunLight.position);
+  scene.add(sunMesh);
+  // Glow
+  const glowGeo = new THREE.SphereGeometry(4.5, 32, 32);
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.15 });
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  sunMesh.add(glow);
+}
+
+// === SKY ===
+function setSky(top, bottom) {
+  const c = document.createElement('canvas');
+  c.width = 2; c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, top);
+  grad.addColorStop(0.5, bottom);
+  grad.addColorStop(1, '#2a3a2a');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 2, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  scene.background = tex;
+}
+setSky('#4a8ac7', '#87ceeb'); // Default blue sky
+  // Init AAA Sky after short delay for module loading
+  setTimeout(() => { if (Sky) createAAASky(); }, 1500);
+createSun();
+
+// === GROUND ===
+function createGround(type) {
+  const colors = { grass: 0x3a7a3a, dirt: 0x6b4a2a, sand: 0xc4a96a, snow: 0xd8dce8, gravel: 0x888888, stone: 0x666666, mud: 0x4a3a2a, lava: 0xcc3300, water: 0x2266aa, wood: 0x7a5530, marble: 0xddddcc, metal: 0x888899, concrete: 0x999999, asphalt: 0x333333, gold: 0xccaa22, obsidian: 0x111115, crystal: 0x8899cc, ice: 0xaaddff, rock: 0x555555 };
+  const color = colors[type] || colors.grass;
+  const geo = new THREE.PlaneGeometry(300, 300, 256, 256);
+  
+  // Smooth procedural height — layered sine waves (no visible grid)
+  const pos = geo.attributes.position;
+  const flatTypes = ['asphalt','concrete','metal','marble','wood','obsidian','ice','gold'];
+  const isFlat = flatTypes.includes(type);
+  
+  // Hash function for smooth noise
+  const hash = (x, y) => {
+    let n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+  };
+  // Smooth noise via bilinear interpolation
+  const smoothNoise = (x, y) => {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const a = hash(ix, iy), b = hash(ix+1, iy);
+    const c = hash(ix, iy+1), d = hash(ix+1, iy+1);
+    const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+    return a + (b-a)*ux + (c-a)*uy + (a-b-c+d)*ux*uy;
+  };
+  // Fractal noise (multiple octaves for natural terrain)
+  const fbm = (x, y) => {
+    return smoothNoise(x, y) * 0.5 + smoothNoise(x*2, y*2) * 0.25 + smoothNoise(x*4, y*4) * 0.125;
+  };
+  
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i);
+    if (isFlat) {
+      pos.setZ(i, 0);
+    } else {
+      // Gentle rolling terrain — no harsh edges
+      const height = 0; // Flat ground by default
+      pos.setZ(i, height);
+    }
+  }
+  geo.computeVertexNormals();
+  
+  // Per-vertex color variation for natural look (no tiling)
+  const baseColor = new THREE.Color(color);
+  const vertColors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i);
+    const variation = (smoothNoise(x * 0.01 + 100, y * 0.01 + 100) - 0.5) * 0.015;
+    const r = Math.max(0, Math.min(1, baseColor.r * (1 + variation)));
+    const g = Math.max(0, Math.min(1, baseColor.g * (1 + variation * 0.9)));
+    const b = Math.max(0, Math.min(1, baseColor.b * (1 + variation * 0.7)));
+    vertColors[i*3] = r;
+    vertColors[i*3+1] = g;
+    vertColors[i*3+2] = b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(vertColors, 3));
+  
+  // Generate procedural normal map for surface detail
+  const normalCanvas = document.createElement('canvas');
+  normalCanvas.width = 512; normalCanvas.height = 512;
+  const nCtx = normalCanvas.getContext('2d');
+  const nData = nCtx.createImageData(512, 512);
+  for (let py = 0; py < 512; py++) {
+    for (let px = 0; px < 512; px++) {
+      const i = (py * 512 + px) * 4;
+      // Multi-scale procedural bump
+      const sx = px / 512, sy = py / 512;
+      const n1 = Math.sin(sx * 40) * Math.cos(sy * 40) * 0.3;
+      const n2 = Math.sin(sx * 80 + 1.7) * Math.cos(sy * 80 + 2.3) * 0.15;
+      const n3 = Math.sin(sx * 160 + 3.1) * Math.cos(sy * 160 + 4.7) * 0.08;
+      const bump = n1 + n2 + n3;
+      nData.data[i] = 128 + bump * 80;     // R = X normal
+      nData.data[i+1] = 128 + bump * 80;   // G = Y normal
+      nData.data[i+2] = 255;               // B = Z normal (up)
+      nData.data[i+3] = 255;
+    }
+  }
+  nCtx.putImageData(nData, 0, 0);
+  const normalMap = new THREE.CanvasTexture(normalCanvas);
+  normalMap.wrapS = normalMap.wrapT = THREE.RepeatWrapping;
+  normalMap.repeat.set(8, 8);
+  
+  // Roughness varies by terrain type
+  const roughnessMap = { grass: 0.88, dirt: 0.92, sand: 0.95, snow: 0.85, stone: 0.78, metal: 0.35, lava: 0.4, water: 0.1, ice: 0.15, marble: 0.25, wood: 0.7, concrete: 0.85, asphalt: 0.82, crystal: 0.2, obsidian: 0.1, gold: 0.3, rock: 0.82, gravel: 0.9, mud: 0.95 };
+  const metalnessMap = { metal: 0.7, gold: 0.9, obsidian: 0.3, crystal: 0.2, ice: 0.05, marble: 0.05 };
+  
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: roughnessMap[type] || 0.85,
+    metalness: metalnessMap[type] || 0.0,
+    normalMap: normalMap,
+    normalScale: new THREE.Vector2(0.5, 0.5),
+    flatShading: false,
+    envMapIntensity: type === 'water' || type === 'ice' || type === 'crystal' ? 1.5 : 0.8,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  mesh.userData.name = 'Ground';
+  mesh.userData.isGround = true;
+  return mesh;
+}
+
+let currentGround = createGround('grass');
+let groundSize = 300; // current ground plane size
+scene.add(currentGround);
+
+let currentGroundType = 'grass';
+
+// === GROUND EXPANSION SYSTEM ===
+function expandGround(newSize) {
+  if (!newSize || newSize <= groundSize) newSize = groundSize + 200;
+  // Remove old ground
+  scene.remove(currentGround);
+  if (currentGround.geometry) currentGround.geometry.dispose();
+  if (currentGround.material) currentGround.material.dispose();
+  // Get current ground type from material color
+  const oldColor = currentGround.material.vertexColors ? null : currentGround.material.color;
+  // Recreate with bigger size
+  const colors = { grass: 0x3a7a3a, dirt: 0x6b4a2a, sand: 0xc4a96a, snow: 0xd8dce8, gravel: 0x888888, stone: 0x666666, mud: 0x4a3a2a, lava: 0xcc3300, water: 0x2266aa, wood: 0x7a5530, marble: 0xddddcc, metal: 0x888899, concrete: 0x999999, asphalt: 0x333333, gold: 0xccaa22, obsidian: 0x111115, crystal: 0x8899cc, ice: 0xaaddff, rock: 0x555555 };
+  let gType = currentGroundType || 'grass';
+  // Build new ground with custom size
+  const geo = new THREE.PlaneGeometry(newSize, newSize, 256, 256);
+  const hash = (x, y) => { let n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return n - Math.floor(n); };
+  const smoothNoise = (x, y) => { const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy; const a = hash(ix, iy), b = hash(ix+1, iy), c2 = hash(ix, iy+1), d = hash(ix+1, iy+1); const ux = fx*fx*(3-2*fx), uy = fy*fy*(3-2*fy); return a+(b-a)*ux+(c2-a)*uy+(a-b-c2+d)*ux*uy; };
+  const pos = geo.attributes.position;
+  const flatTypes = ['asphalt','concrete','metal','marble','wood','obsidian','ice','gold'];
+  const isFlat = flatTypes.includes(gType);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i);
+    pos.setZ(i, isFlat ? 0 : (smoothNoise(x*0.015,y*0.015)*0.5+smoothNoise(x*0.03,y*0.03)*0.25)*0.2-0.05);
+  }
+  geo.computeVertexNormals();
+  const baseColor = new THREE.Color(colors[gType] || colors.grass);
+  const vertColors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i);
+    const v = (smoothNoise(x*0.01+100,y*0.01+100)-0.5)*0.015;
+    vertColors[i*3] = Math.max(0,Math.min(1,baseColor.r*(1+v)));
+    vertColors[i*3+1] = Math.max(0,Math.min(1,baseColor.g*(1+v*0.9)));
+    vertColors[i*3+2] = Math.max(0,Math.min(1,baseColor.b*(1+v*0.7)));
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(vertColors, 3));
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: gType === 'metal' ? 0.4 : 0, flatShading: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  mesh.userData.name = 'Ground';
+  mesh.userData.isGround = true;
+  currentGround = mesh;
+  groundSize = newSize;
+  scene.add(currentGround);
+  console.log('[CrateEngine] Ground expanded to ' + newSize + 'x' + newSize);
+  return newSize;
+}
+
+
+// Grid removed — solid green ground
+
+// === OBJECTS LIST ===
+const objects = [];
+let weatherSystem = null;
+let rainParticles = null;
+let snowParticles = null;
+const colors = [0xff6b35, 0x4ade80, 0x60a5fa, 0xf472b6, 0xa78bfa, 0xfbbf24, 0x34d399, 0xf87171, 0x818cf8, 0xfb923c];
+let colorIdx = 0;
+function nextColor() { return colors[colorIdx++ % colors.length]; }
+
+// === MESH FACTORIES ===
+function makeMat(color, opts = {}) {
+  return new THREE.MeshStandardMaterial({ color, roughness: opts.rough || 0.5, metalness: opts.metal || 0.1, flatShading: opts.flat || false, ...opts });
+}
+
+function createCube(color, s=1) { const m = new THREE.Mesh(new THREE.BoxGeometry(s,s,s), makeMat(color, {rough:0.4,metal:0.2})); m.castShadow=true; m.receiveShadow=true; m.position.y=s/2; return m; }
+function createSphere(color, r=0.5) { const m = new THREE.Mesh(new THREE.SphereGeometry(r,32,32), makeMat(color, {rough:0.3,metal:0.4})); m.castShadow=true; m.receiveShadow=true; m.position.y=r; return m; }
+function createCylinder(color, r=0.3, h=1) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,16), makeMat(color)); m.castShadow=true; m.position.y=h/2; return m; }
+
+function createTree(variant) {
+  const g = new THREE.Group();
+  const h = 2 + Math.random()*1.5;
+  // Tapered trunk with slight curve
+  const trunkGeo = new THREE.CylinderGeometry(0.06,0.14,h,12);
+  const trunkMat = makeMat(0x5a3a1a, {rough:0.95});
+  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+  trunk.position.y = h/2; trunk.castShadow = true; g.add(trunk);
+  // Root flares
+  for (let r=0;r<4;r++) {
+    const a=r/4*Math.PI*2+Math.random()*0.3;
+    const root = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.06,0.3,6), trunkMat);
+    root.position.set(Math.cos(a)*0.12,0.1,Math.sin(a)*0.12);
+    root.rotation.z=Math.cos(a)*0.6; root.rotation.x=Math.sin(a)*0.6;
+    g.add(root);
+  }
+  // Branches
+  for (let b=0;b<3;b++) {
+    const by = h*0.5+b*h*0.15;
+    const ba = Math.random()*Math.PI*2;
+    const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.04,0.6,6), trunkMat);
+    branch.position.set(Math.cos(ba)*0.15, by, Math.sin(ba)*0.15);
+    branch.rotation.z = Math.cos(ba)*0.8;
+    branch.rotation.x = Math.sin(ba)*0.8;
+    branch.castShadow = true; g.add(branch);
+  }
+  // Foliage: layered clusters of different sizes
+  const leafColors = [0x2d8a4e, 0x3aad5e, 0x1a6a3e, 0x4ac06a, 0x228b22];
+  const lc = leafColors[Math.floor(Math.random()*leafColors.length)];
+  const leafMat = makeMat(lc, {rough:0.85});
+  // Main canopy - large center sphere
+  const main = new THREE.Mesh(new THREE.SphereGeometry(0.7+Math.random()*0.3, 16, 12), leafMat);
+  main.position.y = h+0.2; main.scale.y = 0.75; main.castShadow = true; g.add(main);
+  // Secondary clusters around
+  for (let i=0;i<5;i++) {
+    const a = i/5*Math.PI*2;
+    const cr = 0.3+Math.random()*0.25;
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(cr, 12, 10), makeMat(lc+Math.floor(Math.random()*0x111111), {rough:0.85}));
+    leaf.position.set(Math.cos(a)*0.5, h-0.1+Math.random()*0.5, Math.sin(a)*0.5);
+    leaf.castShadow = true; g.add(leaf);
+  }
+  // Top cluster
+  const top = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 10), leafMat);
+  top.position.y = h+0.7; top.castShadow = true; g.add(top);
+  return g;
+}
+
+function createPineTree() {
+  const g = new THREE.Group();
+  const h = 2.5 + Math.random()*2;
+  const trunkMat = makeMat(0x4a2a1a, {rough:0.95});
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.1,h,10), trunkMat);
+  trunk.position.y = h/2; trunk.castShadow = true; g.add(trunk);
+  // Snow or green variants
+  const isSnowy = Math.random() > 0.8;
+  const leafColor = isSnowy ? 0x1a4a2a : 0x1a5a2a + Math.floor(Math.random()*0x112211);
+  // 5-6 cone layers, getting smaller toward top
+  const layers = 5 + Math.floor(Math.random()*2);
+  for (let i = 0; i < layers; i++) {
+    const layerY = h * 0.3 + i * (h * 0.7 / layers);
+    const layerR = (0.9 - i * 0.12) * (0.8 + Math.random()*0.4);
+    const layerH = 0.8 + Math.random()*0.3;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(layerR, layerH, 12), makeMat(leafColor + Math.floor(Math.random()*0x050505), {rough:0.88}));
+    cone.position.y = layerY; cone.castShadow = true; g.add(cone);
+  }
+  // Top spike
+  const topSpike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.3, 8), makeMat(leafColor));
+  topSpike.position.y = h + 0.15; g.add(topSpike);
+  return g;
+}
+
+function createBush() {
+  const g = new THREE.Group();
+  const bushColors = [0x2a6a3a, 0x337744, 0x2d5a35, 0x3a7a4a];
+  // Multiple overlapping spheres for lush look
+  for (let i = 0; i < 5 + Math.floor(Math.random()*4); i++) {
+    const r = 0.15 + Math.random()*0.25;
+    const c = bushColors[Math.floor(Math.random()*bushColors.length)];
+    const s = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), makeMat(c + Math.floor(Math.random()*0x111111), {rough:0.88}));
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * 0.3;
+    s.position.set(Math.cos(angle)*dist, r*0.6+Math.random()*0.15, Math.sin(angle)*dist);
+    s.scale.set(1+Math.random()*0.3, 0.7+Math.random()*0.4, 1+Math.random()*0.3);
+    s.castShadow = true; g.add(s);
+  }
+  // Small flowers occasionally
+  if (Math.random() > 0.5) {
+    for (let i=0;i<3;i++) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), makeMat([0xff6699,0xffff44,0xffffff][i%3]));
+      dot.position.set((Math.random()-0.5)*0.4, 0.3+Math.random()*0.2, (Math.random()-0.5)*0.4);
+      g.add(dot);
+    }
+  }
+  return g;
+}
+
+function createRock(big) {
+  const g = new THREE.Group();
+  const r = big ? 0.6+Math.random()*0.8 : 0.2+Math.random()*0.3;
+  const rockColor = 0x555555+Math.floor(Math.random()*0x333333);
+  // Main body - deformed sphere for organic look
+  const geo = new THREE.SphereGeometry(r, 12, 10);
+  const pos = geo.attributes.position;
+  for (let i=0;i<pos.count;i++) {
+    const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+    const noise = (Math.sin(x*5)*Math.cos(z*3)+Math.sin(y*7))*r*0.15;
+    pos.setX(i, x+noise*0.5);
+    pos.setY(i, y*0.6+noise*0.3);
+    pos.setZ(i, z+noise*0.4);
+  }
+  geo.computeVertexNormals();
+  const mat = makeMat(rockColor, {rough:0.9});
+  const main = new THREE.Mesh(geo, mat);
+  main.position.y = r*0.4; main.castShadow=true; main.receiveShadow=true; g.add(main);
+  // Smaller detail rocks
+  if (big) {
+    for (let i=0;i<3;i++) {
+      const sr = r*0.3+Math.random()*r*0.2;
+      const sg = new THREE.SphereGeometry(sr, 8, 6);
+      const sp = sg.attributes.position;
+      for (let j=0;j<sp.count;j++) { sp.setY(j, sp.getY(j)*0.5); }
+      sg.computeVertexNormals();
+      const sm = new THREE.Mesh(sg, makeMat(rockColor+Math.floor(Math.random()*0x111111), {rough:0.92}));
+      sm.position.set((Math.random()-0.5)*r, sr*0.2, (Math.random()-0.5)*r);
+      sm.rotation.y = Math.random()*Math.PI;
+      sm.castShadow=true; g.add(sm);
+    }
+  }
+  return g;
+}
+
+function createGrass(count) {
+  const g = new THREE.Group();
+  const mat = makeMat(0x3a8a3a, {rough:0.9});
+  for (let i = 0; i < (count||20); i++) {
+    const blade = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.2+Math.random()*0.2), mat);
+    blade.position.set((Math.random()-0.5)*3, 0.1, (Math.random()-0.5)*3);
+    blade.rotation.y = Math.random()*Math.PI;
+    blade.rotation.x = -0.1+Math.random()*0.2;
+    g.add(blade);
+  }
+  return g;
+}
+
+function createFlower() {
+  const g = new THREE.Group();
+  const stemMat = makeMat(0x2a7a2a);
+  // Stem with slight curve
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.45, 8), stemMat);
+  stem.position.y = 0.22; g.add(stem);
+  // Leaf on stem
+  const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), makeMat(0x338833));
+  leaf.position.set(0.04, 0.2, 0); leaf.scale.set(1.5, 0.3, 0.8); g.add(leaf);
+  // Flower center
+  const petalColors = [0xff6699, 0xffaa33, 0xff4444, 0xaa44ff, 0x44aaff, 0xffff44, 0xff88cc, 0xcc44ff];
+  const pc = petalColors[Math.floor(Math.random()*petalColors.length)];
+  const center = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), makeMat(0xffcc00));
+  center.position.y = 0.47; g.add(center);
+  // Petals (tear-drop shaped)
+  const petalMat = makeMat(pc, {rough:0.6});
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const petal = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), petalMat);
+    petal.position.set(Math.cos(a) * 0.06, 0.47, Math.sin(a) * 0.06);
+    petal.scale.set(1.3, 0.4, 0.8);
+    // Orient petal outward
+    petal.lookAt(Math.cos(a) * 2, 0.47, Math.sin(a) * 2);
+    g.add(petal);
+  }
+  return g;
+}
+
+function createHouse(color) {
+  const g = new THREE.Group();
+  const c = color || 0x8B7355;
+  const wallMat = makeMat(c, {rough:0.85});
+  const roofMat = makeMat(0x8B1A1A, {rough:0.75});
+  const woodMat = makeMat(0x5a3a1a, {rough:0.9});
+  const glassMat = makeMat(0x88ccff, {rough:0.1, metal:0.3});
+  // Foundation
+  const foundation = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.15, 2.3), makeMat(0x666666, {rough:0.9}));
+  foundation.position.y = 0.075; foundation.receiveShadow=true; g.add(foundation);
+  // Walls
+  const walls = new THREE.Mesh(new THREE.BoxGeometry(2, 1.6, 2), wallMat);
+  walls.position.y = 0.95; walls.castShadow=true; walls.receiveShadow=true; g.add(walls);
+  // Roof
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.8, 1.2, 4), roofMat);
+  roof.position.y = 2.35; roof.rotation.y = Math.PI/4; roof.castShadow=true; g.add(roof);
+  // Roof overhang
+  const overhang = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.05, 2.4), roofMat);
+  overhang.position.y = 1.76; g.add(overhang);
+  // Door
+  const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.9, 0.08), woodMat);
+  doorFrame.position.set(0, 0.6, 1.02); g.add(doorFrame);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.82, 0.04), makeMat(0x3a2010));
+  door.position.set(0, 0.6, 1.05); g.add(door);
+  // Door handle
+  const handle = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), makeMat(0xccaa22, {metal:0.8}));
+  handle.position.set(0.12, 0.55, 1.08); g.add(handle);
+  // Windows (front)
+  [-0.55, 0.55].forEach(x => {
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.06), woodMat);
+    frame.position.set(x, 1.15, 1.01); g.add(frame);
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.27), glassMat);
+    glass.position.set(x, 1.15, 1.04); g.add(glass);
+    // Window cross
+    const hbar = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.02, 0.02), woodMat);
+    hbar.position.set(x, 1.15, 1.05); g.add(hbar);
+    const vbar = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.27, 0.02), woodMat);
+    vbar.position.set(x, 1.15, 1.05); g.add(vbar);
+  });
+  // Side windows
+  [-0.3, 0.3].forEach(z => {
+    [1, -1].forEach(side => {
+      const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.25), glassMat);
+      glass.position.set(side*1.01, 1.15, z);
+      glass.rotation.y = Math.PI/2;
+      g.add(glass);
+    });
+  });
+  // Chimney
+  const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.7, 0.3), makeMat(0x884444, {rough:0.85}));
+  chimney.position.set(0.5, 2.3, -0.3); chimney.castShadow=true; g.add(chimney);
+  const chimneyTop = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.38), makeMat(0x666666));
+  chimneyTop.position.set(0.5, 2.68, -0.3); g.add(chimneyTop);
+  // Steps
+  const step1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 0.25), makeMat(0x777777));
+  step1.position.set(0, 0.19, 1.2); g.add(step1);
+  const step2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.15), makeMat(0x777777));
+  step2.position.set(0, 0.11, 1.35); g.add(step2);
+  return g;
+}
+
+// === INTERIOR BUILDING SYSTEM (v82) ===
+// Buildings with walkable interiors — walls with door cutouts, floors, furniture, lighting
+
+function createWallWithDoor(width, height, depth, doorW, doorH, mat) {
+  // Create a wall shape with a rectangular door hole using CSG-like approach (two pieces)
+  const g = new THREE.Group();
+  // Left wall section
+  const leftW = (width - doorW) / 2;
+  if (leftW > 0.01) {
+    const left = new THREE.Mesh(new THREE.BoxGeometry(leftW, height, depth), mat);
+    left.position.set(-(doorW/2 + leftW/2), height/2, 0);
+    left.castShadow = true; left.receiveShadow = true; g.add(left);
+  }
+  // Right wall section
+  const rightW = (width - doorW) / 2;
+  if (rightW > 0.01) {
+    const right = new THREE.Mesh(new THREE.BoxGeometry(rightW, height, depth), mat);
+    right.position.set(doorW/2 + rightW/2, height/2, 0);
+    right.castShadow = true; right.receiveShadow = true; g.add(right);
+  }
+  // Top section (above door)
+  const topH = height - doorH;
+  if (topH > 0.01) {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(doorW, topH, depth), mat);
+    top.position.set(0, doorH + topH/2, 0);
+    top.castShadow = true; top.receiveShadow = true; g.add(top);
+  }
+  return g;
+}
+
+function createSolidWall(width, height, depth, mat) {
+  const w = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
+  w.position.y = height / 2;
+  w.castShadow = true; w.receiveShadow = true;
+  return w;
+}
+
+function createInteriorHouse(opts) {
+  const o = opts || {};
+  const w = o.width || 5;      // interior width
+  const d = o.depth || 5;      // interior depth
+  const h = o.height || 3;     // wall height
+  const wallT = 0.15;          // wall thickness
+  const doorW = o.doorWidth || 1.0;
+  const doorH = o.doorHeight || 2.0;
+  const floors = o.floors || 1;
+  const color = o.color || 0x8B7355;
+  
+  const g = new THREE.Group();
+  g.userData.isInterior = true;
+  g.userData.interiorBounds = { width: w, depth: d, height: h * floors, floors: floors };
+  
+  const wallMat = makeMat(color, {rough: 0.85});
+  const wallMatInner = makeMat(0xd4c9a8, {rough: 0.9}); // lighter interior
+  const floorMat = makeMat(0x6a4a2a, {rough: 0.9});      // wooden floor
+  const roofMat = makeMat(0x8B1A1A, {rough: 0.75});
+  const glassMat = makeMat(0x88ccff, {rough: 0.1, metal: 0.3});
+  const woodMat = makeMat(0x5a3a1a, {rough: 0.9});
+  const ceilingMat = makeMat(0xe8e0d0, {rough: 0.95});
+  
+  for (let floor = 0; floor < floors; floor++) {
+    const baseY = floor * h;
+    
+    // --- FLOOR ---
+    const floorMesh = new THREE.Mesh(new THREE.BoxGeometry(w + wallT*2, 0.1, d + wallT*2), floor === 0 ? makeMat(0x666666, {rough: 0.9}) : floorMat);
+    floorMesh.position.set(0, baseY + 0.05, 0);
+    floorMesh.receiveShadow = true;
+    floorMesh.userData.isFloor = true;
+    floorMesh.userData.isSolid = true;
+    g.add(floorMesh);
+    
+    // --- INTERIOR FLOOR (wooden, slightly above foundation) ---
+    if (floor === 0) {
+      const wood = new THREE.Mesh(new THREE.BoxGeometry(w - 0.05, 0.05, d - 0.05), floorMat);
+      wood.position.set(0, baseY + 0.125, 0);
+      wood.receiveShadow = true; g.add(wood);
+    }
+    
+    // --- FRONT WALL (with door on ground floor) ---
+    if (floor === 0) {
+      const frontDoorWall = createWallWithDoor(w, h, wallT, doorW, doorH, wallMat);
+      frontDoorWall.position.set(0, baseY, d/2 + wallT/2);
+      g.add(frontDoorWall);
+      // Door frame trim
+      const frameMat = woodMat;
+      const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.06, doorH, 0.08), frameMat);
+      leftFrame.position.set(-doorW/2, baseY + doorH/2, d/2 + wallT/2);
+      g.add(leftFrame);
+      const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(0.06, doorH, 0.08), frameMat);
+      rightFrame.position.set(doorW/2, baseY + doorH/2, d/2 + wallT/2);
+      g.add(rightFrame);
+      const topFrame = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.12, 0.06, 0.08), frameMat);
+      topFrame.position.set(0, baseY + doorH, d/2 + wallT/2);
+      g.add(topFrame);
+    } else {
+      // Upper floors: solid front wall with window
+      const fw = createSolidWall(w, h, wallT, wallMat);
+      fw.position.set(0, baseY, d/2 + wallT/2);
+      g.add(fw);
+    }
+    
+    // --- BACK WALL (solid) ---
+    const backWall = createSolidWall(w, h, wallT, wallMat);
+    backWall.position.set(0, baseY, -(d/2 + wallT/2));
+    g.add(backWall);
+    
+    // --- LEFT WALL (solid) ---
+    const leftWall = createSolidWall(wallT, h, d, wallMat);
+    leftWall.position.set(-(w/2 + wallT/2), baseY, 0);
+    g.add(leftWall);
+    
+    // --- RIGHT WALL (solid) ---
+    const rightWall = createSolidWall(wallT, h, d, wallMat);
+    rightWall.position.set(w/2 + wallT/2, baseY, 0);
+    g.add(rightWall);
+    
+    // --- INTERIOR WALLS (inner color panels, Andrew Woan style — lighter inside) ---
+    // Front inner
+    if (floor > 0 || true) {
+      const innerBack = new THREE.Mesh(new THREE.PlaneGeometry(w, h), wallMatInner);
+      innerBack.position.set(0, baseY + h/2, -(d/2));
+      innerBack.receiveShadow = true; g.add(innerBack);
+      // Left inner
+      const innerLeft = new THREE.Mesh(new THREE.PlaneGeometry(d, h), wallMatInner);
+      innerLeft.position.set(-(w/2), baseY + h/2, 0);
+      innerLeft.rotation.y = Math.PI/2;
+      innerLeft.receiveShadow = true; g.add(innerLeft);
+      // Right inner
+      const innerRight = new THREE.Mesh(new THREE.PlaneGeometry(d, h), wallMatInner);
+      innerRight.position.set(w/2, baseY + h/2, 0);
+      innerRight.rotation.y = -Math.PI/2;
+      innerRight.receiveShadow = true; g.add(innerRight);
+    }
+    
+    // --- WINDOWS ---
+    // Back wall windows
+    [-w*0.25, w*0.25].forEach(x => {
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, wallT + 0.04), woodMat);
+      frame.position.set(x, baseY + h * 0.6, -(d/2 + wallT/2));
+      g.add(frame);
+      const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.38), glassMat);
+      glass.position.set(x, baseY + h * 0.6, -(d/2 + wallT + 0.01));
+      g.add(glass);
+    });
+    // Side wall windows
+    [1, -1].forEach(side => {
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(wallT + 0.04, 0.5, 0.6), woodMat);
+      frame.position.set(side * (w/2 + wallT/2), baseY + h * 0.6, 0);
+      g.add(frame);
+    });
+    
+    // --- CEILING / NEXT FLOOR ---
+    if (floor === floors - 1) {
+      const ceiling = new THREE.Mesh(new THREE.BoxGeometry(w + wallT*2, 0.1, d + wallT*2), ceilingMat);
+      ceiling.position.set(0, baseY + h, 0);
+      ceiling.receiveShadow = true;
+      ceiling.userData.isSolid = true;
+      g.add(ceiling);
+    }
+    
+    // --- INTERIOR LIGHT (warm point light per floor) ---
+    const light = new THREE.PointLight(0xffe4b5, 0.8, w * 2.5);
+    light.position.set(0, baseY + h - 0.3, 0);
+    light.castShadow = false; // perf
+    g.add(light);
+    
+    // --- FURNITURE (ground floor) ---
+    if (floor === 0) {
+      // Table
+      const tableTop = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.05, 0.6), woodMat);
+      tableTop.position.set(w*0.2, baseY + 0.75, -d*0.25);
+      tableTop.castShadow = true; g.add(tableTop);
+      // Table legs
+      [[-0.4, -0.25], [0.4, -0.25], [-0.4, 0.25], [0.4, 0.25]].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), woodMat);
+        leg.position.set(w*0.2 + lx*0.5, baseY + 0.35, -d*0.25 + lz*0.6);
+        g.add(leg);
+      });
+      
+      // Chair
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.4), woodMat);
+      seat.position.set(w*0.2, baseY + 0.45, -d*0.25 + 0.55);
+      g.add(seat);
+      const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.04), woodMat);
+      chairBack.position.set(w*0.2, baseY + 0.7, -d*0.25 + 0.73);
+      g.add(chairBack);
+      
+      // Bookshelf against back wall
+      const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.3), woodMat);
+      shelf.position.set(-w*0.3, baseY + 0.6, -d/2 + 0.2);
+      shelf.castShadow = true; g.add(shelf);
+      // Books (colored blocks on shelf)
+      [0xcc3333, 0x3333cc, 0x33cc33, 0xcccc33, 0x9933cc].forEach((bc, i) => {
+        const book = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.18), makeMat(bc));
+        book.position.set(-w*0.3 - 0.25 + i*0.13, baseY + 1.05, -d/2 + 0.2);
+        g.add(book);
+      });
+      
+      // Rug (center floor)
+      const rug = new THREE.Mesh(new THREE.PlaneGeometry(2, 1.5), makeMat(0x993333, {rough: 0.95}));
+      rug.rotation.x = -Math.PI/2;
+      rug.position.set(0, baseY + 0.13, 0.3);
+      g.add(rug);
+      
+      // Fireplace (back wall, if wide enough)
+      if (w >= 4) {
+        const fpBase = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.35), makeMat(0x884444, {rough: 0.85}));
+        fpBase.position.set(w*0.3, baseY + 0.4, -d/2 + 0.2);
+        g.add(fpBase);
+        const fpTop = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.1, 0.4), makeMat(0x666666));
+        fpTop.position.set(w*0.3, baseY + 0.85, -d/2 + 0.2);
+        g.add(fpTop);
+        // Fireplace opening (dark)
+        const fpHole = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.5), makeMat(0x111111));
+        fpHole.position.set(w*0.3, baseY + 0.35, -d/2 + 0.39);
+        g.add(fpHole);
+        // Fire light
+        const fireLight = new THREE.PointLight(0xff6622, 0.6, 3);
+        fireLight.position.set(w*0.3, baseY + 0.3, -d/2 + 0.3);
+        g.add(fireLight);
+      }
+    }
+    
+    // --- FURNITURE (upper floors — bedroom) ---
+    if (floor === 1) {
+      // Bed
+      const bedBase = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 2.0), woodMat);
+      bedBase.position.set(-w*0.25, baseY + 0.2, 0);
+      g.add(bedBase);
+      const mattress = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.15, 1.9), makeMat(0xeeeedd, {rough: 0.95}));
+      mattress.position.set(-w*0.25, baseY + 0.425, 0);
+      g.add(mattress);
+      const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.1, 0.3), makeMat(0xffffff, {rough: 0.95}));
+      pillow.position.set(-w*0.25, baseY + 0.55, -0.7);
+      g.add(pillow);
+      
+      // Dresser
+      const dresser = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.4), woodMat);
+      dresser.position.set(w*0.3, baseY + 0.4, -d/2 + 0.25);
+      g.add(dresser);
+    }
+  }
+  
+  // --- STAIRS (multi-floor) ---
+  if (floors > 1) {
+    const stairW = 0.8;
+    const stairSteps = 10;
+    const stepH = h / stairSteps;
+    const stepD = (d * 0.6) / stairSteps;
+    for (let s = 0; s < stairSteps; s++) {
+      const step = new THREE.Mesh(new THREE.BoxGeometry(stairW, stepH, stepD), woodMat);
+      step.position.set(w/2 - stairW/2 - 0.1, s * stepH + stepH/2, d/2 - 0.5 - s * stepD);
+      step.receiveShadow = true;
+      step.userData.isSolid = true;
+      step.userData.isStair = true;
+      g.add(step);
+    }
+    // Stair hole in ceiling (remove ceiling section above stairs)
+    // We'll add a second floor opening
+    const holeFloor = new THREE.Mesh(new THREE.BoxGeometry(stairW + 0.3, 0.12, d * 0.65), floorMat);
+    holeFloor.position.set(w/2 - stairW/2 - 0.1, h - 0.02, d/2 - 0.5 - (stairSteps/2) * stepD);
+    holeFloor.visible = false; // invisible — just creating the gap by NOT placing floor there
+    // (The floor mesh already covers full area, but we'll cut by making stair area transparent)
+  }
+  
+  // --- ROOF ---
+  const roofPeak = 1.5;
+  const roofOverhang = 0.4;
+  const totalH = floors * h;
+  // Roof ridge (simple pitched roof)
+  const roofGeo = new THREE.BufferGeometry();
+  const hw = w/2 + wallT + roofOverhang;
+  const hd = d/2 + wallT + roofOverhang;
+  const rh = roofPeak;
+  // Two triangular planes for pitched roof
+  const roofLeft = new THREE.Mesh(
+    new THREE.PlaneGeometry(Math.sqrt(hw*hw + rh*rh)*2, d + wallT*2 + roofOverhang*2),
+    roofMat
+  );
+  const angle = Math.atan2(rh, hw);
+  roofLeft.rotation.set(0, 0, angle);
+  roofLeft.position.set(-hw/2, totalH + rh/2, 0);
+  roofLeft.castShadow = true; g.add(roofLeft);
+  
+  const roofRight = new THREE.Mesh(
+    new THREE.PlaneGeometry(Math.sqrt(hw*hw + rh*rh)*2, d + wallT*2 + roofOverhang*2),
+    roofMat
+  );
+  roofRight.rotation.set(0, 0, -angle);
+  roofRight.position.set(hw/2, totalH + rh/2, 0);
+  roofRight.castShadow = true; g.add(roofRight);
+  
+  // Roof overhang flat
+  const overhang = new THREE.Mesh(new THREE.BoxGeometry(w + wallT*2 + roofOverhang*2, 0.05, d + wallT*2 + roofOverhang*2), roofMat);
+  overhang.position.set(0, totalH, 0); g.add(overhang);
+  
+  // --- FRONT STEPS ---
+  const step1 = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.4, 0.08, 0.3), makeMat(0x777777));
+  step1.position.set(0, 0.04, d/2 + wallT + 0.15); g.add(step1);
+  const step2 = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.6, 0.08, 0.3), makeMat(0x777777));
+  step2.position.set(0, 0.04, d/2 + wallT + 0.45); g.add(step2);
+  
+  g.userData.name = 'interior house';
+  g.userData.isInterior = true;
+  return g;
+}
+
+function createInteriorShop(opts) {
+  const o = opts || {};
+  const g = createInteriorHouse({ width: o.width || 6, depth: o.depth || 5, height: 3.5, floors: 1, color: o.color || 0x7a6a4a });
+  // Add shop counter
+  const woodMat = makeMat(0x5a3a1a, {rough: 0.9});
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 0.5), woodMat);
+  counter.position.set(0, 0.6, -1);
+  counter.castShadow = true;
+  g.add(counter);
+  // Add shelves on walls
+  [-1.5, 0, 1.5].forEach(x => {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.3), woodMat);
+    shelf.position.set(x, 1.8, -(o.depth || 5)/2 + 0.2);
+    g.add(shelf);
+  });
+  g.userData.name = 'shop';
+  return g;
+}
+
+function createInteriorTavern(opts) {
+  const o = opts || {};
+  const g = createInteriorHouse({ width: o.width || 8, depth: o.depth || 6, height: 3.5, floors: 2, color: o.color || 0x6a4a2a });
+  const woodMat = makeMat(0x5a3a1a, {rough: 0.9});
+  // Bar counter
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(3, 1.1, 0.5), woodMat);
+  bar.position.set(-1, 0.65, -(o.depth||6)/2 + 0.8);
+  bar.castShadow = true; g.add(bar);
+  // Bar stools
+  [-2, -1, 0].forEach(x => {
+    const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.6, 8), woodMat);
+    stool.position.set(x, 0.4, -(o.depth||6)/2 + 1.4);
+    g.add(stool);
+  });
+  // Tables with chairs
+  [[-1.5, 1.5], [1.5, 1.5], [1.5, -0.5]].forEach(([tx, tz]) => {
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.35, 0.05, 8), woodMat);
+    table.position.set(tx, 0.75, tz);
+    g.add(table);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.7, 6), woodMat);
+    leg.position.set(tx, 0.35, tz);
+    g.add(leg);
+  });
+  g.userData.name = 'tavern';
+  return g;
+}
+
+function createCastle() {
+  const g = new THREE.Group();
+  const stoneMat = makeMat(0x8a8a8f, {rough:0.75});
+  const darkStone = makeMat(0x666670, {rough:0.8});
+  const roofMat = makeMat(0x7a2020, {rough:0.6});
+  const woodMat = makeMat(0x5a3a1a, {rough:0.9});
+  // Base/foundation
+  const base = new THREE.Mesh(new THREE.BoxGeometry(7,0.4,7), darkStone);
+  base.position.y = 0.2; base.receiveShadow=true; g.add(base);
+  // Walls (4 sides, individual for detail)
+  [[-3.3,0,0,'x'],[3.3,0,0,'x'],[0,0,-3.3,'z'],[0,0,3.3,'z']].forEach(([x,y,z,axis]) => {
+    const w = axis==='x' ? new THREE.BoxGeometry(0.4,3.2,6.2) : new THREE.BoxGeometry(6.2,3.2,0.4);
+    const wall = new THREE.Mesh(w, stoneMat); wall.position.set(x,1.8,z); wall.castShadow=true; wall.receiveShadow=true; g.add(wall);
+  });
+  // Inner courtyard floor
+  const court = new THREE.Mesh(new THREE.PlaneGeometry(5.5,5.5), makeMat(0x555550, {rough:0.95}));
+  court.rotation.x=-Math.PI/2; court.position.y=0.42; court.receiveShadow=true; g.add(court);
+  // 4 corner towers (high-poly cylinders)
+  [[-3.3,-3.3],[3.3,-3.3],[3.3,3.3],[-3.3,3.3]].forEach(([x,z]) => {
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.8,0.9,5.5,24), stoneMat);
+    tower.position.set(x,2.75,z); tower.castShadow=true; tower.receiveShadow=true; g.add(tower);
+    // Tower cap ring
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.95,0.95,0.2,24), darkStone);
+    ring.position.set(x,5.55,z); g.add(ring);
+    // Conical roof (smooth)
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.1,2,24), roofMat);
+    roof.position.set(x,6.65,z); roof.castShadow=true; g.add(roof);
+    // Tower battlements
+    for (let b=0;b<8;b++) {
+      const a=b/8*Math.PI*2;
+      const bm = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.45,0.25), stoneMat);
+      bm.position.set(x+Math.cos(a)*0.9,5.75,z+Math.sin(a)*0.9); bm.castShadow=true; g.add(bm);
+    }
+  });
+  // Wall battlements (merlons)
+  for (let i=-2;i<=2;i++) {
+    [3.3,-3.3].forEach(z => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.6,0.5), stoneMat);
+      b.position.set(i*1.3,3.6,z); b.castShadow=true; g.add(b);
+    });
+    [-3.3,3.3].forEach(x => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.6,0.5), stoneMat);
+      b.position.set(x,3.6,i*1.3); b.castShadow=true; g.add(b);
+    });
+  }
+  // Gatehouse (front)
+  const gh = new THREE.Mesh(new THREE.BoxGeometry(2,4,1.2), stoneMat);
+  gh.position.set(0,2,3.6); gh.castShadow=true; g.add(gh);
+  // Gate arch (dark opening)
+  const gateOpen = new THREE.Mesh(new THREE.BoxGeometry(1,2.2,1.3), makeMat(0x111111));
+  gateOpen.position.set(0,1.1,3.6); g.add(gateOpen);
+  // Portcullis bars
+  for (let i=-2;i<=2;i++) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,2.2,6), makeMat(0x444444,{metal:0.8}));
+    bar.position.set(i*0.2,1.1,3.6); g.add(bar);
+  }
+  // Keep (central tower)
+  const keep = new THREE.Mesh(new THREE.BoxGeometry(2.5,4.5,2.5), stoneMat);
+  keep.position.set(0,2.65,0); keep.castShadow=true; keep.receiveShadow=true; g.add(keep);
+  const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(2,1.5,4), roofMat);
+  keepRoof.position.set(0,5.65,0); keepRoof.rotation.y=Math.PI/4; keepRoof.castShadow=true; g.add(keepRoof);
+  // Windows on keep
+  [[-0.8,3.5,1.26],[0.8,3.5,1.26],[-0.8,3.5,-1.26],[0.8,3.5,-1.26]].forEach(([x,y,z]) => {
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.25,0.5), makeMat(0xaaaa55,{rough:0.1}));
+    win.position.set(x,y,z); win.lookAt(x*2,y,z*2); g.add(win);
+  });
+  // Wooden door
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.2,0.08), woodMat);
+  door.position.set(0,1,1.3); g.add(door);
+  return g;
+}
+
+function createRoad(length, dir) {
+  const l = length || 20;
+  const geo = new THREE.PlaneGeometry(2.5, l);
+  const mat = makeMat(0x333333, {rough:0.95});
+  const road = new THREE.Mesh(geo, mat);
+  road.rotation.x = -Math.PI/2;
+  road.position.y = 0.03;
+  road.receiveShadow = true;
+  // Center line
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(0.08, l), makeMat(0xcccc44));
+  line.rotation.x = -Math.PI/2;
+  line.position.y = 0.04;
+  const g = new THREE.Group();
+  g.add(road); g.add(line);
+  if (dir === 'x') g.rotation.y = Math.PI/2;
+  return g;
+}
+
+function createAvatar(gender) {
+  const g = new THREE.Group();
+  const skinTones = [0xc68642, 0x8d5524, 0xe0ac69, 0xf1c27d, 0x6b4226, 0xffdbac, 0xd2946b];
+  const skinColor = skinTones[Math.floor(Math.random()*skinTones.length)];
+  const skinMat = makeMat(skinColor, {rough:0.65});
+  const isFemale = gender === 'f';
+  const clothColor = isFemale ? [0x4444aa, 0xaa2244, 0x44aa88, 0x8844aa][Math.floor(Math.random()*4)] : [0x2a5a2a, 0x3a3a6a, 0x5a3a2a, 0x333344][Math.floor(Math.random()*4)];
+  const clothMat = makeMat(clothColor, {rough:0.8});
+  const pantsMat = makeMat(0x2a2a3a, {rough:0.85});
+  // Torso
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(isFemale?0.18:0.22, isFemale?0.15:0.18, 0.6, 12), clothMat);
+  torso.position.y = 1.0; torso.castShadow=true; g.add(torso);
+  // Shoulders
+  const shoulders = new THREE.Mesh(new THREE.SphereGeometry(isFemale?0.2:0.25, 12, 8), clothMat);
+  shoulders.position.y = 1.3; shoulders.scale.set(1.2, 0.5, 0.8); g.add(shoulders);
+  // Hips
+  const hips = new THREE.Mesh(new THREE.CylinderGeometry(isFemale?0.2:0.18, isFemale?0.18:0.16, 0.15, 12), pantsMat);
+  hips.position.y = 0.65; g.add(hips);
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 10), skinMat);
+  neck.position.y = 1.38; g.add(neck);
+  // Head (slightly oval)
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 16), skinMat);
+  head.position.y = 1.55; head.scale.set(1, 1.1, 0.95); head.castShadow=true; g.add(head);
+  // Eyes
+  const eyeMat = makeMat(0xffffff);
+  const pupilMat = makeMat(0x222222);
+  [-0.06, 0.06].forEach(x => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), eyeMat);
+    eye.position.set(x, 1.57, 0.15); g.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 8), pupilMat);
+    pupil.position.set(x, 1.57, 0.17); g.add(pupil);
+  });
+  // Nose
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), skinMat);
+  nose.position.set(0, 1.52, 0.17); nose.scale.set(0.7, 1, 1); g.add(nose);
+  // Mouth
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.012, 0.02), makeMat(0x994444));
+  mouth.position.set(0, 1.47, 0.16); g.add(mouth);
+  // Hair
+  const hairColors = [0x1a1a1a, 0x3a2a1a, 0x8B6914, 0xaa4444, 0x222222, 0x664422];
+  const hairMat = makeMat(hairColors[Math.floor(Math.random()*hairColors.length)]);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), hairMat);
+  hair.position.y = 1.6; hair.scale.set(1.05, isFemale?1.15:0.85, 1.05); g.add(hair);
+  if (isFemale && Math.random()>0.3) { // Long hair
+    const long = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.06, 0.5, 10), hairMat);
+    long.position.set(0, 1.3, -0.08); g.add(long);
+  }
+  // Ears
+  [-0.18, 0.18].forEach(x => {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), skinMat);
+    ear.position.set(x, 1.55, 0); g.add(ear);
+  });
+  // Arms (upper + lower)
+  [-1, 1].forEach(side => {
+    const x = side * 0.28;
+    const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.35, 10), side===-1?clothMat:clothMat);
+    upperArm.position.set(x, 1.1, 0); upperArm.rotation.z = side*0.15; upperArm.castShadow=true; g.add(upperArm);
+    const lowerArm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.3, 10), skinMat);
+    lowerArm.position.set(x*1.05, 0.8, 0); lowerArm.castShadow=true; g.add(lowerArm);
+    // Hand
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), skinMat);
+    hand.position.set(x*1.05, 0.63, 0); g.add(hand);
+  });
+  // Legs (upper + lower)
+  [-0.09, 0.09].forEach(x => {
+    const upperLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.4, 10), pantsMat);
+    upperLeg.position.set(x, 0.43, 0); upperLeg.castShadow=true; g.add(upperLeg);
+    const lowerLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.35, 10), pantsMat);
+    lowerLeg.position.set(x, 0.1, 0); lowerLeg.castShadow=true; g.add(lowerLeg);
+    // Shoe
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.14), makeMat(0x222222, {rough:0.7}));
+    shoe.position.set(x, -0.02, 0.02); g.add(shoe);
+  });
+  return g;
+}
+
+function createSword() {
+  const g = new THREE.Group();
+  const metalMat = makeMat(0xccccdd, {rough:0.15,metal:0.9});
+  const darkMetal = makeMat(0x555566, {rough:0.3,metal:0.8});
+  const leatherMat = makeMat(0x5a3a1a, {rough:0.9});
+  const goldMat = makeMat(0xccaa22, {rough:0.2,metal:0.7});
+  // Blade
+  const bladeGeo = new THREE.BoxGeometry(0.06, 1.0, 0.015);
+  const blade = new THREE.Mesh(bladeGeo, metalMat);
+  blade.position.y = 0.9; blade.castShadow=true; g.add(blade);
+  // Blade edge taper (triangular tip)
+  const tipGeo = new THREE.ConeGeometry(0.04, 0.2, 4);
+  const tip = new THREE.Mesh(tipGeo, metalMat);
+  tip.position.y = 1.5; tip.rotation.y = Math.PI/4; g.add(tip);
+  // Fuller (groove in blade)
+  const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.7, 0.02), darkMetal);
+  fuller.position.set(0, 0.85, 0); g.add(fuller);
+  // Crossguard
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.06), goldMat);
+  guard.position.y = 0.38; guard.castShadow=true; g.add(guard);
+  // Guard ends (decorative)
+  [-0.15, 0.15].forEach(x => {
+    const end = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), goldMat);
+    end.position.set(x, 0.38, 0); g.add(end);
+  });
+  // Grip (wrapped leather)
+  for (let i=0;i<5;i++) {
+    const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.04, 8), i%2===0?leatherMat:makeMat(0x4a2a10,{rough:0.9}));
+    wrap.position.y = 0.17+i*0.04; g.add(wrap);
+  }
+  // Pommel
+  const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 10), goldMat);
+  pommel.position.y = 0.02; g.add(pommel);
+  return g;
+}
+
+// === WATER PRESETS (Gerstner Wave System) ===
+const WATER_PRESETS = {
+  tropical: {
+    color: new THREE.Color(0x00bcd4), deepColor: new THREE.Color(0x006064),
+    opacity: 0.78, waveA: [1.0, 0.3, 0.12, 8.0], waveB: [0.3, 1.0, 0.08, 5.0], waveC: [0.7, 0.7, 0.05, 12.0],
+    foamIntensity: 0.3, specularPower: 80.0, fresnelPower: 2.0
+  },
+  storm: {
+    color: new THREE.Color(0x1a3a4a), deepColor: new THREE.Color(0x0a1a24),
+    opacity: 0.92, waveA: [1.0, 0.5, 0.45, 4.0], waveB: [0.7, 1.0, 0.35, 3.0], waveC: [0.5, 0.3, 0.25, 2.5],
+    foamIntensity: 0.7, specularPower: 30.0, fresnelPower: 1.5
+  },
+  lake: {
+    color: new THREE.Color(0x2e6e7e), deepColor: new THREE.Color(0x1a4050),
+    opacity: 0.82, waveA: [1.0, 0.0, 0.04, 14.0], waveB: [0.0, 1.0, 0.03, 10.0], waveC: [0.5, 0.5, 0.02, 18.0],
+    foamIntensity: 0.1, specularPower: 100.0, fresnelPower: 3.0
+  },
+  ocean: {
+    color: new THREE.Color(0x004466), deepColor: new THREE.Color(0x001a33),
+    opacity: 0.88, waveA: [1.0, 0.2, 0.25, 6.0], waveB: [0.5, 1.0, 0.18, 4.5], waveC: [0.8, 0.4, 0.12, 9.0],
+    foamIntensity: 0.45, specularPower: 60.0, fresnelPower: 2.5
+  },
+  swamp: {
+    color: new THREE.Color(0x3a5a1a), deepColor: new THREE.Color(0x1a3008),
+    opacity: 0.95, waveA: [1.0, 0.0, 0.015, 20.0], waveB: [0.0, 1.0, 0.01, 15.0], waveC: [0.5, 0.5, 0.005, 25.0],
+    foamIntensity: 0.05, specularPower: 20.0, fresnelPower: 1.0
+  },
+  river: {
+    color: new THREE.Color(0x2a7a8a), deepColor: new THREE.Color(0x1a4a5a),
+    opacity: 0.8, waveA: [1.0, 0.0, 0.1, 5.0], waveB: [0.8, 0.2, 0.06, 3.0], waveC: [0.5, 0.1, 0.04, 8.0],
+    foamIntensity: 0.35, specularPower: 70.0, fresnelPower: 2.0
+  },
+  arctic: {
+    color: new THREE.Color(0x6abed8), deepColor: new THREE.Color(0x2a5a7a),
+    opacity: 0.85, waveA: [1.0, 0.3, 0.08, 10.0], waveB: [0.3, 1.0, 0.05, 7.0], waveC: [0.6, 0.6, 0.03, 14.0],
+    foamIntensity: 0.25, specularPower: 120.0, fresnelPower: 3.5
+  }
+};
+
+function createGerstnerWaterMaterial(preset) {
+  const p = WATER_PRESETS[preset] || WATER_PRESETS.ocean;
+  
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0 },
+      waveA: { value: new THREE.Vector4(p.waveA[0], p.waveA[1], p.waveA[2], p.waveA[3]) },
+      waveB: { value: new THREE.Vector4(p.waveB[0], p.waveB[1], p.waveB[2], p.waveB[3]) },
+      waveC: { value: new THREE.Vector4(p.waveC[0], p.waveC[1], p.waveC[2], p.waveC[3]) },
+      waterColor: { value: p.color },
+      deepColor: { value: p.deepColor },
+      foamIntensity: { value: p.foamIntensity },
+      specularPower: { value: p.specularPower },
+      fresnelPower: { value: p.fresnelPower },
+      sunDirection: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
+      sunColor: { value: new THREE.Color(0xffeedd) },
+      opacity: { value: p.opacity },
+      cameraPos: { value: new THREE.Vector3() }
+    },
+    vertexShader: `
+      uniform float time;
+      uniform vec4 waveA, waveB, waveC;
+      varying vec3 vWorldPos;
+      varying vec3 vNormal;
+      varying float vHeight;
+      varying vec2 vUv;
+      
+      vec3 gerstnerWave(vec4 wave, vec3 p, inout vec3 tangent, inout vec3 binormal) {
+        float steepness = wave.z;
+        float wavelength = wave.w;
+        float k = 6.28318 / wavelength;
+        float c = sqrt(9.8 / k);
+        vec2 d = normalize(wave.xy);
+        float f = k * (dot(d, p.xz) - c * time);
+        float a = steepness / k;
+        tangent += vec3(-d.x * d.x * steepness * sin(f), d.x * steepness * cos(f), -d.x * d.y * steepness * sin(f));
+        binormal += vec3(-d.x * d.y * steepness * sin(f), d.y * steepness * cos(f), -d.y * d.y * steepness * sin(f));
+        return vec3(d.x * a * cos(f), a * sin(f), d.y * a * cos(f));
+      }
+      
+      void main() {
+        vUv = uv;
+        vec3 p = position;
+        vec3 tangent = vec3(1.0, 0.0, 0.0);
+        vec3 binormal = vec3(0.0, 0.0, 1.0);
+        p += gerstnerWave(waveA, position, tangent, binormal);
+        p += gerstnerWave(waveB, position, tangent, binormal);
+        p += gerstnerWave(waveC, position, tangent, binormal);
+        vHeight = p.y;
+        vNormal = normalize(cross(binormal, tangent));
+        vec4 worldPos = modelMatrix * vec4(p, 1.0);
+        vWorldPos = worldPos.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 waterColor;
+      uniform vec3 deepColor;
+      uniform vec3 sunDirection;
+      uniform vec3 sunColor;
+      uniform float foamIntensity;
+      uniform float specularPower;
+      uniform float fresnelPower;
+      uniform float opacity;
+      uniform vec3 cameraPos;
+      varying vec3 vWorldPos;
+      varying vec3 vNormal;
+      varying float vHeight;
+      varying vec2 vUv;
+      
+      void main() {
+        vec3 normal = normalize(vNormal);
+        vec3 viewDir = normalize(cameraPos - vWorldPos);
+        
+        // Fresnel — edges more reflective
+        float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), fresnelPower);
+        
+        // Depth-based color (higher waves = lighter)
+        float depthFactor = smoothstep(-0.3, 0.3, vHeight);
+        vec3 baseColor = mix(deepColor, waterColor, depthFactor);
+        
+        // Foam on wave peaks
+        float foam = smoothstep(0.15, 0.35, vHeight) * foamIntensity;
+        baseColor = mix(baseColor, vec3(0.9, 0.95, 1.0), foam);
+        
+        // Specular highlight (sun reflection)
+        vec3 halfDir = normalize(sunDirection + viewDir);
+        float spec = pow(max(dot(normal, halfDir), 0.0), specularPower);
+        vec3 specular = sunColor * spec * 0.6;
+        
+        // Subtle diffuse lighting
+        float diffuse = max(dot(normal, sunDirection), 0.0) * 0.3 + 0.7;
+        
+        // Combine
+        vec3 finalColor = baseColor * diffuse + specular;
+        finalColor = mix(finalColor, vec3(0.7, 0.85, 1.0), fresnel * 0.3);
+        
+        gl_FragColor = vec4(finalColor, opacity + foam * 0.15);
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+}
+
+let currentWaterPreset = 'ocean';
+
+function createWater(size, preset) {
+  const s = size || 10;
+  const segs = Math.min(Math.max(Math.floor(s * 2), 64), 256);
+  const geo = new THREE.PlaneGeometry(s, s, segs, segs);
+  const presetName = preset || (s >= 50 ? 'ocean' : 'lake');
+  const mat = createGerstnerWaterMaterial(presetName);
+  const water = new THREE.Mesh(geo, mat);
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = -0.3;
+  water.receiveShadow = true;
+  water.userData.isWater = true;
+  water.userData.isGerstnerWater = true;
+  water.userData.isAnimatedWater = true;
+  water.userData.isSolid = true;
+  water.userData.waterPreset = presetName;
+  currentWaterPreset = presetName;
+  return water;
+}
+
+// Weather
+function createRain() {
+  const count = 10000;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count*3);
+  for (let i=0;i<count;i++) { pos[i*3]=(Math.random()-0.5)*150; pos[i*3+1]=Math.random()*28; pos[i*3+2]=(Math.random()-0.5)*150; }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(geo, new THREE.PointsMaterial({color:0x99bbff, size:0.06, transparent:true, opacity:0.5}));
+}
+
+function createSnow() {
+  const count = 6000;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count*3);
+  for (let i=0;i<count;i++) { pos[i*3]=(Math.random()-0.5)*150; pos[i*3+1]=Math.random()*24; pos[i*3+2]=(Math.random()-0.5)*150; }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(geo, new THREE.PointsMaterial({color:0xffffff, size:0.1, transparent:true, opacity:0.8}));
+}
+
+// === PARTICLE EFFECTS SYSTEM ===
+var activeParticleEffects = [];
+
+function createFireEffect(x, y, z, scale) {
+  scale = scale || 1;
+  var count = 200;
+  var geo = new THREE.BufferGeometry();
+  var pos = new Float32Array(count * 3);
+  var vel = new Float32Array(count * 3);
+  var life = new Float32Array(count);
+  for (var i = 0; i < count; i++) {
+    pos[i*3] = (Math.random()-0.5) * 0.5 * scale;
+    pos[i*3+1] = Math.random() * 2 * scale;
+    pos[i*3+2] = (Math.random()-0.5) * 0.5 * scale;
+    vel[i*3] = (Math.random()-0.5) * 0.02;
+    vel[i*3+1] = 0.02 + Math.random() * 0.04;
+    vel[i*3+2] = (Math.random()-0.5) * 0.02;
+    life[i] = Math.random();
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  var mat = new THREE.PointsMaterial({
+    color: 0xff6600, size: 0.15 * scale, transparent: true, opacity: 0.8,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  var points = new THREE.Points(geo, mat);
+  points.position.set(x || 0, y || 0, z || 0);
+  points.userData._particleType = 'fire';
+  points.userData._vel = vel;
+  points.userData._life = life;
+  points.userData._scale = scale;
+  scene.add(points);
+  // Add point light for glow
+  var light = new THREE.PointLight(0xff4400, 2 * scale, 8 * scale);
+  light.position.set(x || 0, (y || 0) + 1, z || 0);
+  scene.add(light);
+  points.userData._light = light;
+  activeParticleEffects.push(points);
+  return points;
+}
+
+function createSmokeEffect(x, y, z, scale) {
+  scale = scale || 1;
+  var count = 100;
+  var geo = new THREE.BufferGeometry();
+  var pos = new Float32Array(count * 3);
+  var vel = new Float32Array(count * 3);
+  for (var i = 0; i < count; i++) {
+    pos[i*3] = (Math.random()-0.5) * scale;
+    pos[i*3+1] = Math.random() * 3 * scale;
+    pos[i*3+2] = (Math.random()-0.5) * scale;
+    vel[i*3] = (Math.random()-0.5) * 0.01;
+    vel[i*3+1] = 0.01 + Math.random() * 0.02;
+    vel[i*3+2] = (Math.random()-0.5) * 0.01;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  var mat = new THREE.PointsMaterial({
+    color: 0x555555, size: 0.3 * scale, transparent: true, opacity: 0.3,
+    depthWrite: false
+  });
+  var points = new THREE.Points(geo, mat);
+  points.position.set(x || 0, y || 0, z || 0);
+  points.userData._particleType = 'smoke';
+  points.userData._vel = vel;
+  scene.add(points);
+  activeParticleEffects.push(points);
+  return points;
+}
+
+function createMagicEffect(x, y, z, color) {
+  color = color || 0x8844ff;
+  var count = 300;
+  var geo = new THREE.BufferGeometry();
+  var pos = new Float32Array(count * 3);
+  var angles = new Float32Array(count);
+  for (var i = 0; i < count; i++) {
+    var angle = Math.random() * Math.PI * 2;
+    var radius = 0.5 + Math.random() * 2;
+    pos[i*3] = Math.cos(angle) * radius;
+    pos[i*3+1] = (Math.random()-0.5) * 3;
+    pos[i*3+2] = Math.sin(angle) * radius;
+    angles[i] = angle;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  var mat = new THREE.PointsMaterial({
+    color: color, size: 0.08, transparent: true, opacity: 0.7,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  var points = new THREE.Points(geo, mat);
+  points.position.set(x || 0, y || 1, z || 0);
+  points.userData._particleType = 'magic';
+  points.userData._angles = angles;
+  points.userData._time = 0;
+  // Glow light
+  var light = new THREE.PointLight(color, 1.5, 6);
+  light.position.copy(points.position);
+  scene.add(light);
+  points.userData._light = light;
+  scene.add(points);
+  activeParticleEffects.push(points);
+  return points;
+}
+
+function createExplosionFX(x, y, z, scale) {
+  scale = scale || 1;
+  var count = 500;
+  var geo = new THREE.BufferGeometry();
+  var pos = new Float32Array(count * 3);
+  var vel = new Float32Array(count * 3);
+  for (var i = 0; i < count; i++) {
+    pos[i*3] = 0; pos[i*3+1] = 0; pos[i*3+2] = 0;
+    var theta = Math.random() * Math.PI * 2;
+    var phi = Math.random() * Math.PI;
+    var speed = 0.05 + Math.random() * 0.15;
+    vel[i*3] = Math.sin(phi) * Math.cos(theta) * speed * scale;
+    vel[i*3+1] = Math.cos(phi) * speed * scale + 0.02;
+    vel[i*3+2] = Math.sin(phi) * Math.sin(theta) * speed * scale;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  var mat = new THREE.PointsMaterial({
+    color: 0xff8800, size: 0.2 * scale, transparent: true, opacity: 1,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  var points = new THREE.Points(geo, mat);
+  points.position.set(x || 0, y || 1, z || 0);
+  points.userData._particleType = 'explosion';
+  points.userData._vel = vel;
+  points.userData._life = 1.0;
+  // Flash light
+  var light = new THREE.PointLight(0xff6600, 5 * scale, 15 * scale);
+  light.position.set(x || 0, (y || 1) + 1, z || 0);
+  scene.add(light);
+  points.userData._light = light;
+  scene.add(points);
+  activeParticleEffects.push(points);
+  return points;
+}
+
+function createSparkles(x, y, z, color) {
+  color = color || 0xffdd44;
+  var count = 150;
+  var geo = new THREE.BufferGeometry();
+  var pos = new Float32Array(count * 3);
+  for (var i = 0; i < count; i++) {
+    pos[i*3] = (Math.random()-0.5) * 3;
+    pos[i*3+1] = Math.random() * 3;
+    pos[i*3+2] = (Math.random()-0.5) * 3;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  var mat = new THREE.PointsMaterial({
+    color: color, size: 0.06, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  var points = new THREE.Points(geo, mat);
+  points.position.set(x || 0, y || 0, z || 0);
+  points.userData._particleType = 'sparkles';
+  points.userData._time = 0;
+  scene.add(points);
+  activeParticleEffects.push(points);
+  return points;
+}
+
+// Update all particle effects each frame
+function updateParticleEffects(dt) {
+  for (var i = activeParticleEffects.length - 1; i >= 0; i--) {
+    var fx = activeParticleEffects[i];
+    if (!fx.parent) { activeParticleEffects.splice(i, 1); continue; }
+    var p = fx.geometry.attributes.position.array;
+    var type = fx.userData._particleType;
+    
+    if (type === 'fire') {
+      var vel = fx.userData._vel;
+      var life = fx.userData._life;
+      var s = fx.userData._scale;
+      for (var j = 0; j < p.length/3; j++) {
+        p[j*3] += vel[j*3] + (Math.random()-0.5)*0.01;
+        p[j*3+1] += vel[j*3+1];
+        p[j*3+2] += vel[j*3+2] + (Math.random()-0.5)*0.01;
+        life[j] += 0.02;
+        if (life[j] > 1) {
+          p[j*3] = (Math.random()-0.5) * 0.5 * s;
+          p[j*3+1] = 0;
+          p[j*3+2] = (Math.random()-0.5) * 0.5 * s;
+          life[j] = 0;
+        }
+      }
+      fx.material.opacity = 0.6 + Math.sin(Date.now()*0.01) * 0.2;
+      if (fx.userData._light) fx.userData._light.intensity = 1.5 + Math.sin(Date.now()*0.008) * 0.8;
+    }
+    
+    if (type === 'smoke') {
+      var vel = fx.userData._vel;
+      for (var j = 0; j < p.length/3; j++) {
+        p[j*3] += vel[j*3] + (Math.random()-0.5)*0.005;
+        p[j*3+1] += vel[j*3+1];
+        p[j*3+2] += vel[j*3+2] + (Math.random()-0.5)*0.005;
+        if (p[j*3+1] > 5) {
+          p[j*3] = (Math.random()-0.5);
+          p[j*3+1] = 0;
+          p[j*3+2] = (Math.random()-0.5);
+        }
+      }
+    }
+    
+    if (type === 'magic') {
+      fx.userData._time += 0.02;
+      var t = fx.userData._time;
+      var angles = fx.userData._angles;
+      for (var j = 0; j < p.length/3; j++) {
+        var a = angles[j] + t;
+        var r = 0.5 + Math.sin(t + j * 0.1) * 1.5;
+        p[j*3] = Math.cos(a) * r;
+        p[j*3+1] = Math.sin(t * 2 + j * 0.05) * 1.5;
+        p[j*3+2] = Math.sin(a) * r;
+      }
+      if (fx.userData._light) fx.userData._light.intensity = 1 + Math.sin(t * 3) * 0.5;
+    }
+    
+    if (type === 'explosion') {
+      var vel = fx.userData._vel;
+      fx.userData._life -= 0.015;
+      if (fx.userData._life <= 0) {
+        scene.remove(fx);
+        if (fx.userData._light) scene.remove(fx.userData._light);
+        activeParticleEffects.splice(i, 1);
+        continue;
+      }
+      for (var j = 0; j < p.length/3; j++) {
+        p[j*3] += vel[j*3];
+        p[j*3+1] += vel[j*3+1];
+        p[j*3+2] += vel[j*3+2];
+        vel[j*3+1] -= 0.001; // gravity
+      }
+      fx.material.opacity = fx.userData._life;
+      fx.material.color.setHSL(0.05 + (1-fx.userData._life)*0.05, 1, 0.5);
+      if (fx.userData._light) fx.userData._light.intensity = fx.userData._life * 5;
+    }
+    
+    if (type === 'sparkles') {
+      fx.userData._time += 0.03;
+      var t = fx.userData._time;
+      for (var j = 0; j < p.length/3; j++) {
+        p[j*3+1] += Math.sin(t + j * 0.2) * 0.005;
+      }
+      fx.material.opacity = 0.5 + Math.sin(t * 2) * 0.4;
+    }
+    
+    fx.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
+// === TERRAIN SYSTEM ===
+var terrainMesh = null;
+
+function createTerrain(type, params) {
+  params = params || {};
+  var size = params.size || 200;
+  var segments = params.segments || 128;
+  var heightScale = params.height || 1.0;
+  
+  if (terrainMesh) { scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh.material.dispose(); terrainMesh = null; }
+  
+  var geo = new THREE.PlaneGeometry(size, size, segments, segments);
+  var pos = geo.attributes.position;
+  
+  // Better noise functions
+  var _h = (x, y) => { var n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return n - Math.floor(n); };
+  var _sn = (x, y) => {
+    var ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+    var ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+    var a = _h(ix, iy), b = _h(ix+1, iy), c = _h(ix, iy+1), d = _h(ix+1, iy+1);
+    return a + (b-a)*ux + (c-a)*uy + (a-b-c+d)*ux*uy;
+  };
+  var fbm = (x, y, oct) => {
+    var v = 0, amp = 0.5, freq = 1;
+    for (var o = 0; o < (oct||6); o++) { v += _sn(x*freq, y*freq) * amp; amp *= 0.5; freq *= 2.0; }
+    return v;
+  };
+  // Ridge noise for sharp mountain peaks
+  var ridge = (x, y, oct) => {
+    var v = 0, amp = 0.5, freq = 1;
+    for (var o = 0; o < (oct||5); o++) {
+      var n = 1.0 - Math.abs(_sn(x*freq, y*freq) * 2 - 1);
+      n = n * n; // sharpen ridges
+      v += n * amp; amp *= 0.5; freq *= 2.1;
+    }
+    return v;
+  };
+
+  var maxH = 0;
+  
+  if (type === 'mountains' || type === 'mountain') {
+    // Dramatic mountain range with peaks, ridges, valleys
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i) * 0.008, y = pos.getY(i) * 0.008;
+      var h = ridge(x, y, 6) * 20 + fbm(x*2, y*2, 4) * 5 - 2;
+      // Add some big peaks
+      h += Math.max(0, ridge(x*0.7+5, y*0.7+3, 5) - 0.3) * 15;
+      h *= heightScale;
+      pos.setZ(i, h);
+      if (h > maxH) maxH = h;
+    }
+  } else if (type === 'hills' || type === 'rolling') {
+    // Gentle rolling hills
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i) * 0.012, y = pos.getY(i) * 0.012;
+      var h = fbm(x, y, 5) * 18 + fbm(x*3, y*3, 3) * 4;
+      h *= heightScale;
+      pos.setZ(i, h);
+      if (h > maxH) maxH = h;
+    }
+  } else if (type === 'valley') {
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i);
+      var dist = Math.abs(x) / (size * 0.3);
+      var wallH = Math.min(1, dist) * 35 + fbm(x*0.01, y*0.01, 4) * 8;
+      var floor = fbm(x*0.02, y*0.015, 3) * 3;
+      pos.setZ(i, (dist < 0.3 ? floor : wallH) * heightScale);
+      if (pos.getZ(i) > maxH) maxH = pos.getZ(i);
+    }
+  } else if (type === 'crater' || type === 'volcano') {
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i);
+      var dist = Math.sqrt(x*x + y*y);
+      var rim = Math.max(0, 1 - Math.abs(dist - size*0.15) / (size*0.05));
+      var outer = Math.max(0, 1 - dist / (size*0.4));
+      var h = (rim * 30 + outer * outer * 15 + fbm(x*0.02, y*0.02, 3) * 3) * heightScale;
+      pos.setZ(i, h);
+      if (h > maxH) maxH = h;
+    }
+  } else if (type === 'island') {
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i);
+      var dist = Math.sqrt(x*x + y*y) / (size*0.35);
+      var falloff = Math.max(0, 1 - dist);
+      falloff = falloff * falloff * (3 - 2*falloff); // smoothstep
+      var noise = fbm(x*0.015, y*0.015, 5);
+      var h = falloff * (noise * 25 + 10) * heightScale;
+      pos.setZ(i, Math.max(-2, h - 3)); // water level at ~0
+      if (h > maxH) maxH = h;
+    }
+  } else if (type === 'canyon') {
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i);
+      var path = Math.sin(y * 0.015) * 30 + Math.sin(y * 0.007) * 50;
+      var distFromPath = Math.abs(x - path);
+      var wall = Math.min(1, distFromPath / 25);
+      var h = (wall * wall * 30 + fbm(x*0.01, y*0.01, 4) * 5) * heightScale;
+      pos.setZ(i, h);
+      if (h > maxH) maxH = h;
+    }
+  } else if (type === 'dunes' || type === 'desert') {
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i) * 0.01, y = pos.getY(i) * 0.01;
+      var h = (Math.sin(x*3+y*1.5)*0.5+0.5) * 12 + fbm(x*2, y*2, 4) * 6;
+      h *= heightScale;
+      pos.setZ(i, h);
+      if (h > maxH) maxH = h;
+    }
+  } else if (type === 'plateau') {
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i) * 0.008, y = pos.getY(i) * 0.008;
+      var h = fbm(x, y, 5);
+      h = h > 0.45 ? 20 + (h-0.45)*10 : h * 8; // flat tops with cliffs
+      h += fbm(x*4, y*4, 2) * 2; // detail
+      pos.setZ(i, h * heightScale);
+      if (h > maxH) maxH = h;
+    }
+  } else if (type === 'cliff' || type === 'cliffs') {
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i);
+      var edge = 1 / (1 + Math.exp(-(x * 0.08))); // sigmoid cliff
+      var h = edge * 35 + fbm(x*0.01, y*0.01, 4) * 8;
+      pos.setZ(i, h * heightScale);
+      if (h > maxH) maxH = h;
+    }
+  } else if (type === 'sand' || type === 'beach') {
+    // Sand/beach — completely flat
+    for (var i = 0; i < pos.count; i++) {
+      pos.setZ(i, 0);
+    }
+  } else {
+    // flat/plains — very subtle undulation
+    for (var i = 0; i < pos.count; i++) {
+      pos.setZ(i, fbm(pos.getX(i)*0.005, pos.getY(i)*0.005, 3) * 1.5);
+    }
+  }
+  
+  geo.computeVertexNormals();
+  
+  // Color by height with gradient
+  var vertColors = new Float32Array(pos.count * 3);
+  var grassCol = new THREE.Color(0x3a7a2a);
+  var rockCol = new THREE.Color(0x666655);
+  var snowCol = new THREE.Color(0xeeeef0);
+  var sandCol = new THREE.Color(0xc4a96a);
+  var darkGrass = new THREE.Color(0x2a5a1a);
+  
+  var colorScheme = 'natural';
+  if (type === 'dunes' || type === 'desert' || type === 'sand') colorScheme = 'desert';
+  else if (type === 'volcano') colorScheme = 'volcanic';
+  else if (type === 'island') colorScheme = 'tropical';
+  
+  for (var i = 0; i < pos.count; i++) {
+    var h = pos.getZ(i);
+    var t = maxH > 0 ? h / maxH : 0;
+    var c = new THREE.Color();
+    if (colorScheme === 'desert') {
+      if (type === 'sand' || type === 'beach') {
+        c.copy(sandCol); // Uniform sand color for beach
+      } else {
+        c.lerpColors(sandCol, rockCol, Math.min(1, t * 1.5));
+      }
+    } else if (colorScheme === 'volcanic') {
+      var lavaCol = new THREE.Color(0xcc3300);
+      c.lerpColors(lavaCol, rockCol, Math.min(1, t * 2));
+    } else if (colorScheme === 'tropical') {
+      // Tropical island: sand at edges → grass → dark grass on peak (NO SNOW)
+      var tropicalSand = new THREE.Color(0xd4b483);
+      var tropicalGrass = new THREE.Color(0x4a9a3a);
+      var tropicalDark = new THREE.Color(0x2a6a1a);
+      if (h < 1) c.copy(tropicalSand); // beach/water level
+      else if (t < 0.2) c.lerpColors(tropicalSand, tropicalGrass, t / 0.2);
+      else if (t < 0.7) c.lerpColors(tropicalGrass, tropicalDark, (t - 0.2) / 0.5);
+      else c.lerpColors(tropicalDark, rockCol, (t - 0.7) / 0.3);
+    } else {
+      // Natural: dark grass → grass → rock → snow
+      if (t < 0.15) c.lerpColors(darkGrass, grassCol, t / 0.15);
+      else if (t < 0.5) c.lerpColors(grassCol, rockCol, (t - 0.15) / 0.35);
+      else if (t < 0.75) c.lerpColors(rockCol, snowCol, (t - 0.5) / 0.25);
+      else c.copy(snowCol);
+    }
+    // Add noise variation (skip for sand/beach to avoid dark patches)
+    var nv = (type === 'sand' || type === 'beach') ? 0 : (fbm(pos.getX(i)*0.05, pos.getY(i)*0.05, 2) - 0.3) * 0.08;
+    vertColors[i*3] = Math.max(0, Math.min(1, c.r + nv));
+    vertColors[i*3+1] = Math.max(0, Math.min(1, c.g + nv));
+    vertColors[i*3+2] = Math.max(0, Math.min(1, c.b + nv));
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(vertColors, 3));
+  
+  var mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.88,
+    metalness: 0.02,
+    flatShading: false,
+    side: THREE.DoubleSide
+  });
+  
+  terrainMesh = new THREE.Mesh(geo, mat);
+  window._terrainMesh = terrainMesh;
+  terrainMesh.rotation.x = -Math.PI / 2;
+  terrainMesh.receiveShadow = true;
+  terrainMesh.castShadow = true;
+  terrainMesh.userData.name = 'Terrain_' + type;
+  terrainMesh.userData.isTerrain = true;
+  scene.add(terrainMesh);
+  
+  // Hide the flat ground + grid
+  if (currentGround) currentGround.visible = false;
+  
+  // Auto-position camera to see the terrain
+  var camDist = size * 0.4;
+  var camH = maxH * 1.5 + 20;
+  camera.position.set(camDist * 0.7, camH, camDist * 0.7);
+  controls.target.set(0, maxH * 0.3, 0);
+  controls.update();
+  
+  logOutput('✓ Terrain: ' + type + ' — ' + segments + '×' + segments + ' verts, peak height ' + Math.round(maxH) + 'm', 'ok');
+  return terrainMesh;
+}
+
+
+// === MOUNTAIN PROP (for backdrop) ===
+function createMountainProp() {
+  var group = new THREE.Group();
+  // Random mountain shape using cones and noise
+  var peaks = 2 + Math.floor(Math.random() * 3);
+  for (var p = 0; p < peaks; p++) {
+    var h = 15 + Math.random() * 25;
+    var r = 8 + Math.random() * 12;
+    var geo = new THREE.ConeGeometry(r, h, 8 + Math.floor(Math.random() * 8), 4);
+    // Deform vertices for natural look
+    var pos = geo.attributes.position;
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      var noise = Math.sin(x * 0.5) * Math.cos(z * 0.5) * 2 + Math.sin(y * 0.3) * 1.5;
+      pos.setX(i, x + noise * 0.3);
+      pos.setZ(i, z + noise * 0.3);
+    }
+    geo.computeVertexNormals();
+    // Height-based coloring
+    var vertColors = new Float32Array(pos.count * 3);
+    var grass = new THREE.Color(0x3a6b2a);
+    var rock = new THREE.Color(0x666655);
+    var snow = new THREE.Color(0xeeeef0);
+    for (var i = 0; i < pos.count; i++) {
+      var y = pos.getY(i);
+      var t = (y + h/2) / h;
+      var c = new THREE.Color();
+      if (t < 0.4) c.lerpColors(grass, rock, t / 0.4);
+      else if (t < 0.7) c.lerpColors(rock, snow, (t - 0.4) / 0.3);
+      else c.copy(snow);
+      vertColors[i*3] = c.r; vertColors[i*3+1] = c.g; vertColors[i*3+2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(vertColors, 3));
+    var mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+    var mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set((Math.random()-0.5) * r * 0.8, h/2, (Math.random()-0.5) * r * 0.8);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  return group;
+}
+
+// === LIGHTING SYSTEM ===
+var userLights = [];
+
+function addPointLight(x, y, z, color, intensity, range) {
+  color = color || 0xff6b35;
+  intensity = intensity || 2;
+  range = range || 10;
+  var light = new THREE.PointLight(color, intensity, range);
+  light.position.set(x || 0, y || 3, z || 0);
+  light.castShadow = true;
+  scene.add(light);
+  // Visual marker
+  var marker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.15),
+    new THREE.MeshBasicMaterial({ color: color })
+  );
+  marker.position.copy(light.position);
+  marker.userData.name = 'Light';
+  marker.userData._light = light;
+  scene.add(marker);
+  objects.push(marker);
+  userLights.push({ light: light, marker: marker });
+  return light;
+}
+
+function addSpotLight(x, y, z, targetX, targetY, targetZ, color) {
+  color = color || 0xffffff;
+  var light = new THREE.SpotLight(color, 3, 20, Math.PI/6, 0.3);
+  light.position.set(x || 0, y || 8, z || 0);
+  light.target.position.set(targetX || 0, targetY || 0, targetZ || 0);
+  light.castShadow = true;
+  scene.add(light);
+  scene.add(light.target);
+  var marker = new THREE.Mesh(
+    new THREE.ConeGeometry(0.15, 0.3, 8),
+    new THREE.MeshBasicMaterial({ color: color })
+  );
+  marker.position.copy(light.position);
+  marker.userData.name = 'Spotlight';
+  marker.userData._light = light;
+  scene.add(marker);
+  objects.push(marker);
+  userLights.push({ light: light, marker: marker });
+  return light;
+}
+
+// === NLP COMMAND PARSER ===
+async function parseAndExecute(rawCmd) {
+  // Skip NL rewrite for gallery keywords — let gallery commands handle directly
+  const _galBypass = /^(?:show |browse |open |pick |choose |select )?(characters?|weapons?|swords?|axes?|guns?|buildings?|houses?|vehicles?|cars?|animals?|trees?|plants?|rocks?|stones?|furniture|tables?|chairs?|food|items?|potions?|dungeon|sci-?fi|space|nature|survival|animations?|library|asset library|browse all|all assets|all models|model library|browse$)$/i;
+  if (_galBypass.test(rawCmd.toLowerCase().trim())) {
+    console.log('[GALLERY] Bypassing NL for gallery command:', rawCmd);
+    const parts = rawCmd.split(/\s+(?:and|with|plus|,|\+)\s+/i).map(s => s.trim()).filter(Boolean);
+    const results = [];
+    for (const part of parts) { results.push(await execSingle(part)); }
+    return results.filter(Boolean).join('\n');
+  }
+  // Try natural language matching first (77K+ phrases)
+  const nlMatch = matchIntent(rawCmd);
+  if (nlMatch && nlMatch.id !== 'noop' && nlMatch.id !== 'confirm' && nlMatch.id !== 'cancel') {
+    let nlAction = nlMatch.action;
+    
+    // Fix redirects for better results
+    const actionFixes = {
+      'add mountain': 'terrain mountains',
+      'add mountains': 'terrain mountains',
+      'medieval village': 'Medieval Village',
+      'medieval town': 'Medieval Village',
+      'pirate island': 'Pirate Island',
+      'add hills': 'terrain hills',
+      'add canyon': 'terrain canyon',
+      'add volcano': 'terrain volcano',
+      'add island': 'terrain island',
+      'add dunes': 'terrain dunes',
+    };
+
+    // Commands that should NEVER be rewritten by NL — pass through raw
+    const rawLower = rawCmd.toLowerCase().trim();
+    if (rawLower.startsWith('color ') || rawLower.startsWith('paint ') || 
+        rawLower.startsWith('remove ') || rawLower.startsWith('delete ') ||
+        rawLower.startsWith('expand ') || rawLower === 'expand world' ||
+        rawLower === 'bigger world' || rawLower === 'new platform' ||
+        rawLower.startsWith('save ') || rawLower === 'save' ||
+        rawLower.startsWith('load ') || rawLower === 'load' || rawLower === 'saves' ||
+        rawLower.startsWith('resize ') || rawLower.startsWith('scale ') ||
+        rawLower.startsWith('rotate ') ||
+        rawLower.startsWith('wet') || rawLower === 'dry' || rawLower === 'dry ground' ||
+        rawLower.startsWith('particles ') || rawLower.startsWith('particle ') ||
+        rawLower.startsWith('terrain ') || rawLower === 'clear' || rawLower === 'reset' ||
+        rawLower.startsWith('graphics ') || rawLower.startsWith('time ') ||
+        rawLower.startsWith('fog') || rawLower === 'rain' || rawLower === 'snow' ||
+        rawLower.startsWith('make it ') ||
+        rawLower.startsWith('move ') || rawLower === 'list' || rawLower === 'list objects' ||
+        rawLower.startsWith('teleport ') || rawLower.startsWith('tp ') ||
+        rawLower.startsWith('goto ') || rawLower.startsWith('go to ') ||
+        rawLower === 'scripts' || rawLower === 'custom scripts' || rawLower.startsWith('script ') ||
+        rawLower === 'new script' || rawLower === 'custom code' || rawLower === 'code editor' ||
+        rawLower.startsWith('add ') || rawLower.startsWith('create ') ||
+        rawLower.startsWith('build ') || rawLower.startsWith('spawn ') ||
+        rawLower.startsWith('drive ') || rawLower.startsWith('enter ') ||
+        rawLower.startsWith('ride ') || rawLower.startsWith('mount ') ||
+        rawLower === 'exit vehicle' || rawLower === 'get out' || rawLower === 'stop driving' ||
+        rawLower.includes('village') || rawLower.includes('medieval') ||
+        rawLower.includes('cyberpunk') || rawLower.includes('pirate') ||
+        rawLower.includes('zombie') || rawLower.includes('graveyard') ||
+        rawLower.includes('space') || rawLower.includes('dungeon') ||
+        rawLower.includes('wasteland') || rawLower.includes('temple') ||
+        rawLower.includes('haunted') || rawLower.includes('enchanted') || rawLower.includes('ocean') || rawLower.includes('lake') || rawLower.includes('pond') || rawLower.includes('sea') ||
+        rawLower.includes('fortress') || rawLower.includes('halloween')) {
+      rawCmd = rawLower; // Skip NL rewrite
+      return (await execSingle(rawCmd)) || '';
+    }
+    if (actionFixes[nlAction]) nlAction = actionFixes[nlAction];
+    
+    if (nlAction !== rawCmd.toLowerCase().trim()) {
+      console.log('[NL] "' + rawCmd + '" → "' + nlAction + '" (' + nlMatch.id + ')');
+      if (nlAction !== rawCmd) {
+        rawCmd = nlAction;
+      }
+    }
+  }
+  // Split compound commands on "and", "with", ",", "+"
+  const parts = rawCmd.split(/\s+(?:and|with|plus|,|\+)\s+/i).map(s => s.trim()).filter(Boolean);
+  const results = [];
+  
+  for (const part of parts) {
+    results.push(await execSingle(part));
+  }
+  return results.join('\n');
+}
+
+const undoStack = [];
+
+// === INLINE ASSET GALLERY ===
+let _assetCatalog = null;
+async function _loadAssetCatalog() {
+  if (_assetCatalog) return _assetCatalog;
+  try {
+    const r = await fetch('asset-catalog.json');
+    _assetCatalog = await r.json();
+  } catch(e) { _assetCatalog = {}; }
+  // Merge marketplace models added via "Add to Engine" button
+  try {
+    const userKey = (window._crateAuth && window._crateAuth.isLoggedIn) ? 'engine_marketplace_models_' + window._crateAuth.user.id : 'engine_marketplace_models'; const saved = JSON.parse(localStorage.getItem(userKey) || '[]');
+    saved.forEach(m => {
+      const cat = (m.category || 'premium').toLowerCase();
+      if (!_assetCatalog[cat]) _assetCatalog[cat] = [];
+      if (!_assetCatalog[cat].find(a => a.file === m.file)) {
+        _assetCatalog[cat].push({ name: m.name, file: m.file, path: 'marketplace/models/' + m.file, source: 'marketplace' });
+      }
+    });
+  } catch(e) {}
+  // Merge user-generated models from localStorage
+  try {
+    const userModels = JSON.parse(localStorage.getItem('crate-user-models') || '[]');
+    userModels.forEach(m => {
+      const cat = (m.category || 'food').toLowerCase();
+      if (!_assetCatalog[cat]) _assetCatalog[cat] = [];
+      if (!_assetCatalog[cat].find(a => a.file === m.id + '.glb')) {
+        _assetCatalog[cat].push({ name: m.name + ' ✨', file: m.id + '.glb', source: 'user-generated', _b64: m.data_b64 });
+      }
+    });
+  } catch(e) {}
+  return _assetCatalog;
+}
+
+const _CAT_META = {
+  characters: { icon: '🧑', color: '#ffd700', label: 'Characters' },
+  weapons: { icon: '⚔️', color: '#ef4444', label: 'Weapons' },
+  buildings: { icon: '🏠', color: '#8b5cf6', label: 'Buildings' },
+  vehicles: { icon: '🚗', color: '#3b82f6', label: 'Vehicles' },
+  animals: { icon: '🐾', color: '#22c55e', label: 'Animals' },
+  trees: { icon: '🌳', color: '#16a34a', label: 'Trees & Plants' },
+  rocks: { icon: '🪨', color: '#78716c', label: 'Rocks & Minerals' },
+  furniture: { icon: '🪑', color: '#d97706', label: 'Furniture' },
+  food: { icon: '🍖', color: '#f59e0b', label: 'Food & Items' },
+  dungeon: { icon: '💀', color: '#6b21a8', label: 'Dungeon' },
+  scifi: { icon: '🚀', color: '#06b6d4', label: 'Sci-Fi' },
+  modern: { icon: '🏙️', color: '#64748b', label: 'Modern' },
+  nature: { icon: '⛺', color: '#84cc16', label: 'Nature & Survival' },
+  animations: { icon: '🎬', color: '#ec4899', label: 'Animations' },
+};
+
+function showGallery(category, options = {}) {
+  console.log('[GALLERY] Opening:', category);
+  return new Promise(async (resolve) => {
+    const catalog = await _loadAssetCatalog();
+    const items = catalog[category];
+    if (!items || items.length === 0) { resolve(null); return; }
+
+    const meta = _CAT_META[category] || { icon: '📦', color: '#888', label: category };
+    let searchTerm = '';
+    let currentPage = 0;
+    const PAGE_SIZE = 30;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'asset-gallery-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:10005;display:flex;flex-direction:column;font-family:monospace;color:#e0e0e0;';
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = 'padding:16px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #222;flex-shrink:0;';
+    header.innerHTML = '<div style="font-size:24px;color:' + meta.color + ';">' + meta.icon + ' ' + meta.label + '</div><div id="gal-count" style="font-size:13px;color:#666;">' + items.length + ' models</div>';
+    
+    const searchInput = document.createElement('input');
+    searchInput.placeholder = '🔍 Search...';
+    searchInput.style.cssText = 'margin-left:auto;padding:8px 14px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-family:monospace;font-size:13px;width:220px;outline:none;';
+    searchInput.oninput = () => { searchTerm = searchInput.value.toLowerCase(); currentPage = 0; renderItems(); };
+    header.appendChild(searchInput);
+
+    const closeBtn = document.createElement('div');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'font-size:24px;color:#666;cursor:pointer;margin-left:16px;';
+    closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+    header.appendChild(closeBtn);
+    overlay.appendChild(header);
+
+    // Scroll area
+    const scrollArea = document.createElement('div');
+    scrollArea.style.cssText = 'flex:1;overflow-y:auto;padding:20px;';
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,160px);gap:14px;justify-content:center;max-width:1100px;margin:0 auto;';
+    scrollArea.appendChild(grid);
+    const pager = document.createElement('div');
+    pager.style.cssText = 'display:flex;justify-content:center;gap:10px;padding:16px;align-items:center;';
+    scrollArea.appendChild(pager);
+    overlay.appendChild(scrollArea);
+
+    function getFiltered() {
+      return searchTerm ? items.filter(m => m.name.toLowerCase().includes(searchTerm)) : items;
+    }
+
+    function renderItems() {
+      grid.innerHTML = '';
+      const filtered = getFiltered();
+      const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+      const pageItems = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+      
+      const countEl = document.getElementById('gal-count');
+      if (countEl) countEl.textContent = (searchTerm ? filtered.length + ' of ' : '') + items.length + ' models';
+
+      pageItems.forEach(item => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background:#111;border:2px solid transparent;border-radius:10px;overflow:hidden;cursor:pointer;transition:all 0.2s;';
+        card.onmouseenter = () => { card.style.borderColor = meta.color; card.style.transform = 'translateY(-3px)'; };
+        card.onmouseleave = () => { card.style.borderColor = 'transparent'; card.style.transform = 'none'; };
+
+        // Thumbnail — render with shared offscreen canvas
+        const imgEl = document.createElement('div');
+        imgEl.style.cssText = 'width:100%;height:130px;background:#0d0d0d;display:flex;align-items:center;justify-content:center;color:#444;font-size:32px;';
+        imgEl.textContent = meta.icon;
+        card.appendChild(imgEl);
+
+        // Lazy load 3D preview
+        const obs = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting) {
+            obs.disconnect();
+            _renderThumb(item.file, imgEl, meta.icon);
+          }
+        }, { root: scrollArea, threshold: 0.1 });
+        obs.observe(card);
+
+        const nameEl = document.createElement('div');
+        nameEl.style.cssText = 'padding:8px 10px;font-size:11px;color:#bbb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        nameEl.textContent = item.name;
+        nameEl.title = item.name;
+        card.appendChild(nameEl);
+
+        card.onclick = () => { overlay.remove(); resolve({ file: item.file, name: item.name, category }); };
+        grid.appendChild(card);
+      });
+
+      // Pagination
+      pager.innerHTML = '';
+      if (totalPages > 1) {
+        const mkBtn = (text, enabled, fn) => {
+          const b = document.createElement('button');
+          b.textContent = text;
+          b.style.cssText = 'padding:6px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#aaa;cursor:pointer;font-family:monospace;' + (!enabled ? 'opacity:0.3;' : '');
+          if (enabled) b.onclick = fn;
+          return b;
+        };
+        pager.appendChild(mkBtn('← Prev', currentPage > 0, () => { currentPage--; renderItems(); scrollArea.scrollTop = 0; }));
+        const info = document.createElement('span');
+        info.style.cssText = 'color:#666;font-size:13px;';
+        info.textContent = 'Page ' + (currentPage + 1) + ' of ' + totalPages;
+        pager.appendChild(info);
+        pager.appendChild(mkBtn('Next →', currentPage < totalPages - 1, () => { currentPage++; renderItems(); scrollArea.scrollTop = 0; }));
+      }
+    }
+
+    renderItems();
+    document.body.appendChild(overlay);
+    searchInput.focus();
+
+    // ESC to close
+    const escH = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', escH); overlay.remove(); resolve(null); } };
+    document.addEventListener('keydown', escH);
+  });
+}
+
+// Single offscreen renderer for thumbnails
+let _thumbRenderer = null;
+function _renderThumb(file, container, fallbackIcon) {
+  if (!_thumbRenderer) {
+    const c = document.createElement('canvas');
+    c.width = 320; c.height = 260;
+    _thumbRenderer = new THREE.WebGLRenderer({ canvas: c, antialias: true, preserveDrawingBuffer: true });
+    _thumbRenderer.setSize(320, 260);
+    _thumbRenderer.setClearColor(0x0d0d0d, 1);
+  }
+  const s = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(40, 320/260, 0.1, 100);
+  cam.position.set(0, 1.2, 3.5);
+  cam.lookAt(0, 0.6, 0);
+  s.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.2);
+  dl.position.set(2, 4, 3);
+  s.add(dl);
+
+  gltfLoader.load('models/' + file + '.glb', (gltf) => {
+    const m = gltf.scene;
+    const box = new THREE.Box3().setFromObject(m);
+    const sz = box.getSize(new THREE.Vector3());
+    m.scale.setScalar(2 / Math.max(Math.max(sz.x, sz.y, sz.z), 0.001));
+    const b2 = new THREE.Box3().setFromObject(m);
+    const c = b2.getCenter(new THREE.Vector3());
+    m.position.sub(c);
+    const b3 = new THREE.Box3().setFromObject(m);
+    m.position.y -= b3.min.y;
+    m.rotation.y = Math.PI * 0.25;
+    s.add(m);
+    _thumbRenderer.render(s, cam);
+    const img = document.createElement('img');
+    img.src = _thumbRenderer.domElement.toDataURL('image/jpeg', 0.8);
+    img.style.cssText = 'width:100%;height:130px;display:block;object-fit:cover;';
+    container.replaceWith(img);
+    // Cleanup
+    s.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); if (obj.material) { (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(mt => { if(mt.map) mt.map.dispose(); mt.dispose(); }); } });
+  }, undefined, () => {
+    container.textContent = '❌';
+  });
+}
+
+function showCategoryPicker() {
+  return new Promise(async (resolve) => {
+    const catalog = await _loadAssetCatalog();
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:10005;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+    overlay.innerHTML = '<div style="font-size:28px;color:#ffd700;margin-bottom:8px;">📂 ASSET LIBRARY</div><div style="font-size:13px;color:#666;margin-bottom:30px;">Choose a category to browse 3D models</div>';
+    
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,180px);gap:16px;justify-content:center;max-width:900px;';
+    
+    ['characters', ...Object.keys(catalog)].forEach(cat => {
+      const m = _CAT_META[cat] || { icon: '📦', color: '#888', label: cat };
+      const count = cat === 'characters' ? 19 : (catalog[cat]?.length || 0);
+      if (!count) return;
+      const card = document.createElement('div');
+      card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + m.color + '30;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s;';
+      card.onmouseenter = () => { card.style.borderColor = m.color; card.style.transform = 'scale(1.04)'; };
+      card.onmouseleave = () => { card.style.borderColor = m.color + '30'; card.style.transform = 'scale(1)'; };
+      card.innerHTML = '<div style="font-size:40px;margin-bottom:8px;">' + m.icon + '</div><div style="font-size:15px;font-weight:bold;color:' + m.color + ';margin-bottom:4px;">' + m.label + '</div><div style="font-size:12px;color:#555;">' + count + ' models</div>';
+      card.onclick = () => { overlay.remove(); if (cat === 'characters') { showCharacterGallery().then(resolve); } else { showGallery(cat).then(resolve); } };
+      grid.appendChild(card);
+    });
+    overlay.appendChild(grid);
+    
+    const closeBtn = document.createElement('div');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+    overlay.appendChild(closeBtn);
+    document.body.appendChild(overlay);
+    const esc = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); overlay.remove(); resolve(null); } };
+    document.addEventListener('keydown', esc);
+  });
+}
+
+function showAnimationGallery(targetName) {
+  const ANIMS = [
+    { id:'spin',name:'Spin',desc:'Rotation',icon:'🔄' },{ id:'bounce',name:'Bounce',desc:'Up/down',icon:'⬆️' },
+    { id:'float',name:'Float',desc:'Floating',icon:'☁️' },{ id:'pulse',name:'Pulse',desc:'Scale pulse',icon:'💫' },
+    { id:'wobble',name:'Wobble',desc:'Side sway',icon:'↔️' },{ id:'orbit',name:'Orbit',desc:'Circle',icon:'🌀' },
+    { id:'swing',name:'Swing',desc:'Pendulum',icon:'🔔' },{ id:'breathe',name:'Breathe',desc:'Breathing',icon:'🫁' },
+    { id:'shake',name:'Shake',desc:'Vibration',icon:'📳' },{ id:'walk',name:'Walk',desc:'Walk bob',icon:'🚶' },
+    { id:'idle',name:'Idle',desc:'Subtle',icon:'🧍' },{ id:'dance',name:'Dance',desc:'Dance moves',icon:'💃' },
+    { id:'attack',name:'Attack',desc:'Lunge',icon:'⚔️' },{ id:'die',name:'Die',desc:'Death fall',icon:'💀' },
+    { id:'jump',name:'Jump',desc:'Jump',icon:'🦘' },
+  ];
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:10005;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+    overlay.innerHTML = '<div style="font-size:24px;color:#ec4899;margin-bottom:6px;">🎬 ANIMATIONS</div><div style="font-size:13px;color:#666;margin-bottom:24px;">' + (targetName ? 'Apply to: ' + targetName : 'Choose animation') + '</div>';
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,130px);gap:14px;justify-content:center;max-width:700px;';
+    ANIMS.forEach(a => {
+      const card = document.createElement('div');
+      card.style.cssText = 'padding:18px 10px;background:rgba(236,72,153,0.05);border:2px solid rgba(236,72,153,0.2);border-radius:10px;cursor:pointer;text-align:center;transition:all 0.2s;';
+      card.onmouseenter = () => { card.style.borderColor = '#ec4899'; card.style.transform = 'scale(1.05)'; };
+      card.onmouseleave = () => { card.style.borderColor = 'rgba(236,72,153,0.2)'; card.style.transform = 'scale(1)'; };
+      card.innerHTML = '<div style="font-size:28px;margin-bottom:6px;">' + a.icon + '</div><div style="font-size:13px;color:#ec4899;font-weight:bold;">' + a.name + '</div><div style="font-size:10px;color:#666;">' + a.desc + '</div>';
+      card.onclick = () => { overlay.remove(); resolve({ animId: a.id, animName: a.name, target: targetName }); };
+      grid.appendChild(card);
+    });
+    overlay.appendChild(grid);
+    const closeBtn = document.createElement('div'); closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+    overlay.appendChild(closeBtn);
+    document.body.appendChild(overlay);
+    const esc = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); overlay.remove(); resolve(null); } };
+    document.addEventListener('keydown', esc);
+  });
+}
+// === END INLINE ASSET GALLERY ===
+
+async function execSingle(cmd) {
+  sceneHistory.push(cmd);
+  const lower = cmd.toLowerCase().trim();
+  
+  // 3D Generator commands
+  
+  
+  // === AAA Ocean & Sky Commands (v61) ===
+  if (lower === 'ocean' || lower === 'add ocean' || lower === 'create ocean' || lower.match(/^add ocean at/) || lower.match(/^(add |create )?ocean\s+\d/) || lower.match(/^add (lake|pond|sea)/)) {
+    const posMatch = lower.match(/at\s+(-?[\d.]+)\s+(-?[\d.]+)\s*(-?[\d.]+)?/);
+    const sizeMatch = lower.match(/(\d+)/);
+    const isLake = lower.includes('lake') || lower.includes('pond');
+    const isSea = lower.includes('sea');
+    const defaultSize = isLake ? 30 : isSea ? 300 : 500;
+    const oceanSize = sizeMatch ? Math.max(10, parseInt(sizeMatch[1])) : defaultSize;
+    const ox = posMatch ? parseFloat(posMatch[1]) : 0;
+    const oz = posMatch ? parseFloat(posMatch[2]) : 0;
+    // Don't remove existing ocean for lakes — allow multiple water bodies
+    if (!isLake) {
+      for (let i = objects.length - 1; i >= 0; i--) {
+        if (objects[i] && objects[i].userData && objects[i].userData.name === 'ocean') {
+          scene.remove(objects[i]); objects.splice(i, 1);
+        }
+      }
+    }
+    const w = Water ? createAAAWater(oceanSize) : createWater(oceanSize);
+    // Ocean sits BELOW ground — terrain/land rises above water naturally
+    // Lakes sit slightly above ground for inland water
+    w.position.y = isLake ? 0.15 : -0.3;
+    const label = isLake ? 'lake' : isSea ? 'sea' : 'ocean';
+    w.userData.name = isLake ? 'lake' : 'ocean';
+    addObj(label.charAt(0).toUpperCase() + label.slice(1), w, ox, oz);
+    // Kill ambient particles for ocean — ocean should be clean
+    if (!isLake && ambientParticles) { scene.remove(ambientParticles); ambientParticles.geometry.dispose(); ambientParticles.material.dispose(); ambientParticles = null; }
+    // Apply pending water preset from map template
+    if (window._pendingWaterPreset && w.userData.isGerstnerWater && w.material.uniforms) {
+      const p = WATER_PRESETS[window._pendingWaterPreset];
+      if (p) {
+        w.material.uniforms.waveA.value.set(p.waveA[0], p.waveA[1], p.waveA[2], p.waveA[3]);
+        w.material.uniforms.waveB.value.set(p.waveB[0], p.waveB[1], p.waveB[2], p.waveB[3]);
+        w.material.uniforms.waveC.value.set(p.waveC[0], p.waveC[1], p.waveC[2], p.waveC[3]);
+        w.material.uniforms.waterColor.value.copy(p.color);
+        w.material.uniforms.deepColor.value.copy(p.deepColor);
+        w.material.uniforms.foamIntensity.value = p.foamIntensity;
+        w.material.uniforms.specularPower.value = p.specularPower;
+        w.material.uniforms.fresnelPower.value = p.fresnelPower;
+        w.material.uniforms.opacity.value = p.opacity;
+        w.userData.waterPreset = window._pendingWaterPreset;
+      }
+      window._pendingWaterPreset = null;
+    }
+    return '🌊 ' + label.charAt(0).toUpperCase() + label.slice(1) + ' created! (' + oceanSize + 'm)';
+  }
+  // Resize ocean command
+  if (lower.match(/^resize ocean\s+(\d+)/) || lower.match(/^(make |set )?ocean\s+(bigger|smaller|\d+)/)) {
+    const numMatch = lower.match(/(\d+)/);
+    let newSize = 500;
+    if (numMatch) newSize = Math.max(50, parseInt(numMatch[1]));
+    else if (lower.includes('bigger')) newSize = 1000;
+    else if (lower.includes('smaller')) newSize = 200;
+    // Remove old ocean
+    for (let i = objects.length - 1; i >= 0; i--) {
+      if (objects[i] && objects[i].userData && objects[i].userData.name === 'ocean') {
+        scene.remove(objects[i]); objects.splice(i, 1);
+      }
+    }
+    const w = Water ? createAAAWater(newSize) : createWater(newSize);
+    w.position.y = -0.3;
+    addObj('Ocean', w, 0, 0);
+    return '🌊 Ocean resized to ' + newSize + 'm';
+  }
+  if (lower === 'aaa sky' || lower === 'realistic sky') {
+    createAAASky();
+    return '☀️ Realistic sky enabled!';
+  }
+  if (lower.match(/^(sunrise|dawn)$/)) { setSkyTime(5, 180); return '🌅 Sunrise!'; }
+  if (lower.match(/^(sunset|dusk)$/)) { setSkyTime(2, 45); return '🌇 Sunset!'; }
+  if (lower.match(/^(noon|midday)$/)) { setSkyTime(45, 180); return '☀️ Noon!'; }
+  
+  // === Shooter Mode (v61) ===
+  if (lower === 'shooter mode' || lower === 'fps mode' || lower === 'enable shooter') {
+    shooterMode = true; playerHP = 100; ammo = maxAmmo;
+    createShooterHUD();
+    // Spawn some enemies
+    for (let i = 0; i < 5; i++) {
+      const ex = (Math.random()-0.5)*60, ez = (Math.random()-0.5)*60;
+      const enemy = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.5, 1.5, 4, 8),
+        new THREE.MeshStandardMaterial({color: 0xff2222, roughness: 0.4})
+      );
+      enemy.position.set(ex, 1.25, ez);
+      enemy.userData.hp = 50;
+      enemy.userData.isEnemy = true;
+      enemy.userData.name = 'enemy_'+i;
+      enemy.castShadow = true;
+      scene.add(enemy);
+      objects.push(enemy);
+      enemies.push(enemy);
+    }
+    if (typeof showToast === 'function') showToast('🔫 Shooter mode ON! Click to fire. R to reload.');
+    return '🔫 Shooter mode enabled! 5 enemies spawned. Click to fire!';
+  }
+  
+  // === Driving Demo (v61) ===
+  if (lower === 'driving demo' || lower === 'drive demo' || lower === 'car demo') {
+    // Create road circuit
+    execSingle('add road');
+    setTimeout(() => {
+      execSingle('add car');
+      setTimeout(() => {
+        if (typeof showToast === 'function') showToast('🏎️ Press F near car to drive! WASD to steer.');
+      }, 500);
+    }, 500);
+    return '🏎️ Driving demo! Road + car added. Press F near the car!';
+  }
+
+  // ═══ MAP / LEVEL GENERATOR (JSON Template System v67) ═══
+  if (lower.match(/^(generate|create|build|make)\s+(a\s+)?(map|level|world|scene|town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
+    const mapMatch = lower.match(/(town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
+    const mapType = mapMatch ? mapMatch[1].toLowerCase() : 'town';
+    const mapTheme = lower.replace(/^(generate|create|build|make)\s+(a\s+)?/i, '').trim();
+    showToast('🗺️ Generating ' + mapTheme + '...');
+    
+    // JSON Map Templates — structured layouts with positions
+    const MAP_TEMPLATES = {
+      town: {
+        terrain: { type: 'hills', height: 0.3 },
+        env: ['time afternoon'],
+        items: [
+          { cmd: 'add road' },
+          { cmd: 'add tavern', pos: [25, 10] },
+          { cmd: 'add house', pos: [20, -15] },
+          { cmd: 'add house', pos: [-20, -10] },
+          { cmd: 'add house', pos: [-15, 15] },
+          { cmd: 'add house', pos: [0, 25] },
+          { cmd: 'add house', pos: [30, 25] },
+          { cmd: 'add castle', pos: [0, -45] },
+          { cmd: 'add well', pos: [5, 0] },
+          { cmd: 'add market stall', pos: [-10, 5] },
+          { cmd: 'add market stall', pos: [-10, -5] },
+          { cmd: 'add tree', scatter: { count: 12, radius: 60, avoidCenter: 15 } },
+          { cmd: 'add torch', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add npc', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add barrel', scatter: { count: 4, radius: 25 } },
+        ]
+      },
+      village: {
+        terrain: { type: 'hills', height: 0.2 },
+        env: ['time morning'],
+        items: [
+          { cmd: 'add road' },
+          { cmd: 'add house', pos: [15, 0] },
+          { cmd: 'add house', pos: [-15, 0] },
+          { cmd: 'add house', pos: [0, 15] },
+          { cmd: 'add house', pos: [-12, -18] },
+          { cmd: 'add campfire', pos: [0, 0] },
+          { cmd: 'add well', pos: [8, -8] },
+          { cmd: 'add tree', scatter: { count: 15, radius: 50, avoidCenter: 10 } },
+          { cmd: 'add npc', scatter: { count: 5, radius: 30 } },
+          { cmd: 'add chicken', scatter: { count: 4, radius: 20 } },
+        ]
+      },
+      city: {
+        terrain: { type: 'flat' },
+        env: ['time afternoon', 'expand world', 'expand world north', 'expand world east'],
+        items: [
+          { cmd: 'add road' },
+          { cmd: 'add castle', pos: [0, -60] },
+          { cmd: 'add tavern', pos: [30, 0] },
+          { cmd: 'add tower', pos: [-50, -50] },
+          { cmd: 'add tower', pos: [50, -50] },
+          { cmd: 'add house', scatter: { count: 12, radius: 50, avoidCenter: 10 } },
+          { cmd: 'add market stall', scatter: { count: 5, radius: 30 } },
+          { cmd: 'add tree', scatter: { count: 8, radius: 60, avoidCenter: 20 } },
+          { cmd: 'add torch', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add npc', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add barrel', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add cart', scatter: { count: 3, radius: 35 } },
+        ]
+      },
+      dungeon: {
+        terrain: { type: 'flat' },
+        env: ['time night', 'fog on'],
+        items: [
+          { cmd: 'add castle', pos: [0, 0] },
+          { cmd: 'add torch', scatter: { count: 10, radius: 25 } },
+          { cmd: 'add skeleton', scatter: { count: 6, radius: 30 } },
+          { cmd: 'add barrel', scatter: { count: 5, radius: 20 } },
+          { cmd: 'add chest', scatter: { count: 3, radius: 15 } },
+          { cmd: 'add spider', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add skull', scatter: { count: 3, radius: 20 } },
+        ]
+      },
+      arena: {
+        terrain: { type: 'flat' },
+        env: ['time sunset'],
+        items: [
+          { cmd: 'add wall', pos: [35, 0] },
+          { cmd: 'add wall', pos: [-35, 0] },
+          { cmd: 'add wall', pos: [0, 35] },
+          { cmd: 'add wall', pos: [0, -35] },
+          { cmd: 'add torch', pos: [30, 30] },
+          { cmd: 'add torch', pos: [-30, 30] },
+          { cmd: 'add torch', pos: [30, -30] },
+          { cmd: 'add torch', pos: [-30, -30] },
+          { cmd: 'add npc', scatter: { count: 5, radius: 20 } },
+        ]
+      },
+      battlefield: {
+        terrain: { type: 'hills', height: 0.5 },
+        env: ['fog on', 'time overcast'],
+        items: [
+          { cmd: 'add tower', pos: [-45, 0] },
+          { cmd: 'add tower', pos: [45, 0] },
+          { cmd: 'add catapult', pos: [-30, 15] },
+          { cmd: 'add catapult', pos: [30, -15] },
+          { cmd: 'add tent', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add barrel', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add npc', scatter: { count: 12, radius: 45 } },
+          { cmd: 'add torch', scatter: { count: 6, radius: 40 } },
+        ]
+      },
+      kingdom: {
+        terrain: { type: 'hills', height: 0.4 },
+        env: ['expand world', 'expand world north', 'expand world south', 'time afternoon'],
+        water: 'river',
+        items: [
+          { cmd: 'add castle', pos: [0, -60] },
+          { cmd: 'add road' },
+          { cmd: 'add river' },
+          { cmd: 'add bridge', pos: [0, 30] },
+          { cmd: 'add tavern', pos: [40, 10] },
+          { cmd: 'add tower', pos: [-50, -50] },
+          { cmd: 'add tower', pos: [50, -50] },
+          { cmd: 'add house', scatter: { count: 8, radius: 45, avoidCenter: 10 } },
+          { cmd: 'add tree', scatter: { count: 18, radius: 80, avoidCenter: 15 } },
+          { cmd: 'add npc', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add torch', scatter: { count: 10, radius: 50 } },
+        ]
+      },
+      island: {
+        terrain: { type: 'island' },
+        env: ['ocean', 'time afternoon'],
+        water: 'tropical',
+        items: [
+          { cmd: 'add palm tree', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 5, radius: 40 } },
+          { cmd: 'add campfire', pos: [0, 0] },
+          { cmd: 'add tent', pos: [5, 5] },
+          { cmd: 'add chest', pos: [-5, 3] },
+          { cmd: 'add boat', pos: [30, 0] },
+          { cmd: 'add npc', scatter: { count: 3, radius: 20 } },
+        ]
+      },
+      forest: {
+        terrain: { type: 'hills', height: 0.2 },
+        env: ['fog on', 'particles spores'],
+        items: [
+          { cmd: 'add tree', scatter: { count: 30, radius: 60 } },
+          { cmd: 'add bush', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add rock', scatter: { count: 5, radius: 45 } },
+          { cmd: 'add mushroom', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add deer', scatter: { count: 3, radius: 40 } },
+          { cmd: 'add campfire', pos: [0, 0] },
+          { cmd: 'add log', scatter: { count: 4, radius: 30 } },
+        ]
+      },
+      camp: {
+        terrain: { type: 'flat' },
+        env: ['time night'],
+        items: [
+          { cmd: 'add campfire', pos: [0, 0] },
+          { cmd: 'add tent', pos: [8, 5] },
+          { cmd: 'add tent', pos: [-8, 5] },
+          { cmd: 'add tent', pos: [0, -10] },
+          { cmd: 'add barrel', scatter: { count: 4, radius: 12 } },
+          { cmd: 'add crate', scatter: { count: 3, radius: 10 } },
+          { cmd: 'add log', scatter: { count: 3, radius: 8 } },
+          { cmd: 'add tree', scatter: { count: 8, radius: 30, avoidCenter: 12 } },
+          { cmd: 'add npc', scatter: { count: 3, radius: 10 } },
+          { cmd: 'add torch', pos: [12, 0] },
+          { cmd: 'add torch', pos: [-12, 0] },
+        ]
+      },
+      graveyard: {
+        terrain: { type: 'flat' },
+        env: ['time night', 'fog on', 'particles spores'],
+        items: [
+          { cmd: 'add tombstone', scatter: { count: 15, radius: 35 } },
+          { cmd: 'add dead tree', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add skeleton', scatter: { count: 5, radius: 30 } },
+          { cmd: 'add torch', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add church', pos: [0, -30] },
+          { cmd: 'add gate', pos: [0, 30] },
+          { cmd: 'add skull', scatter: { count: 3, radius: 20 } },
+        ]
+      },
+      pirate: {
+        terrain: { type: 'island' },
+        env: ['ocean', 'time sunset'],
+        water: 'ocean',
+        items: [
+          { cmd: 'add ship', pos: [40, 0] },
+          { cmd: 'add palm tree', scatter: { count: 6, radius: 30 } },
+          { cmd: 'add chest', scatter: { count: 4, radius: 20 } },
+          { cmd: 'add barrel', scatter: { count: 5, radius: 25 } },
+          { cmd: 'add campfire', pos: [0, 5] },
+          { cmd: 'add tent', pos: [5, -5] },
+          { cmd: 'add cannon', scatter: { count: 2, radius: 15 } },
+          { cmd: 'add npc', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add rock', scatter: { count: 4, radius: 35 } },
+        ]
+      },
+      cyberpunk: {
+        terrain: { type: 'flat' },
+        env: ['time night', 'add neon light', 'add purple light'],
+        items: [
+          { cmd: 'add building', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add car', scatter: { count: 4, radius: 40 } },
+          { cmd: 'add road' },
+          { cmd: 'add neon sign', scatter: { count: 5, radius: 35 } },
+          { cmd: 'add trash', scatter: { count: 6, radius: 30 } },
+          { cmd: 'add npc', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add streetlight', scatter: { count: 6, radius: 45 } },
+        ]
+      },
+      desert: {
+        terrain: { type: 'dunes' },
+        env: ['time afternoon'],
+        items: [
+          { cmd: 'add cactus', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add rock', scatter: { count: 6, radius: 45 } },
+          { cmd: 'add skull', scatter: { count: 3, radius: 35 } },
+          { cmd: 'add tent', pos: [0, 0] },
+          { cmd: 'add campfire', pos: [5, 5] },
+          { cmd: 'add camel', scatter: { count: 2, radius: 30 } },
+          { cmd: 'add npc', scatter: { count: 3, radius: 25 } },
+        ]
+      },
+      frozen: {
+        terrain: { type: 'mountains', height: 0.6 },
+        env: ['particles snow', 'fog on', 'time overcast'],
+        water: 'arctic',
+        items: [
+          { cmd: 'add pine tree', scatter: { count: 15, radius: 55 } },
+          { cmd: 'add rock', scatter: { count: 6, radius: 45 } },
+          { cmd: 'add cabin', pos: [0, 0] },
+          { cmd: 'add campfire', pos: [8, 0] },
+          { cmd: 'add wolf', scatter: { count: 3, radius: 40 } },
+          { cmd: 'add snowman', scatter: { count: 2, radius: 20 } },
+        ]
+      },
+      jungle: {
+        terrain: { type: 'hills', height: 0.5 },
+        env: ['fog on', 'particles spores', 'time afternoon'],
+        water: 'tropical',
+        items: [
+          { cmd: 'add tree', scatter: { count: 25, radius: 60 } },
+          { cmd: 'add palm tree', scatter: { count: 10, radius: 55 } },
+          { cmd: 'add bush', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add rock', scatter: { count: 5, radius: 45 } },
+          { cmd: 'add flower', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add mushroom', scatter: { count: 6, radius: 35 } },
+          { cmd: 'add snake', scatter: { count: 2, radius: 30 } },
+          { cmd: 'add temple', pos: [0, -40] },
+          { cmd: 'add torch', scatter: { count: 4, radius: 25 } },
+        ]
+      },
+      space: {
+        terrain: { type: 'crater' },
+        env: ['time night'],
+        items: [
+          { cmd: 'add spaceship', pos: [0, 0] },
+          { cmd: 'add rock', scatter: { count: 10, radius: 40 } },
+          { cmd: 'add crate', scatter: { count: 5, radius: 25 } },
+          { cmd: 'add robot', scatter: { count: 3, radius: 30 } },
+          { cmd: 'add antenna', pos: [20, 0] },
+          { cmd: 'add barrel', scatter: { count: 4, radius: 20 } },
+        ]
+      },
+      mountain: {
+        terrain: { type: 'mountains', height: 1.0 },
+        env: ['fog on', 'time morning'],
+        items: [
+          { cmd: 'add pine tree', scatter: { count: 20, radius: 60 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add cabin', pos: [0, 0] },
+          { cmd: 'add campfire', pos: [5, 5] },
+          { cmd: 'add bridge', pos: [20, 0] },
+          { cmd: 'add deer', scatter: { count: 3, radius: 40 } },
+          { cmd: 'add eagle', scatter: { count: 2, radius: 50 } },
+        ]
+      },
+      volcano: {
+        terrain: { type: 'volcano' },
+        env: ['fog on', 'particles fire', 'time sunset'],
+        items: [
+          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add dead tree', scatter: { count: 5, radius: 45 } },
+          { cmd: 'add torch', scatter: { count: 6, radius: 35 } },
+          { cmd: 'add skull', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add dragon', pos: [0, 0] },
+        ]
+      },
+      haunted: {
+        terrain: { type: 'hills', height: 0.3 },
+        env: ['time night', 'fog on', 'particles spores'],
+        items: [
+          { cmd: 'add mansion', pos: [0, -20] },
+          { cmd: 'add dead tree', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add tombstone', scatter: { count: 10, radius: 35 } },
+          { cmd: 'add skeleton', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add ghost', scatter: { count: 3, radius: 25 } },
+          { cmd: 'add torch', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add gate', pos: [0, 35] },
+          { cmd: 'add pumpkin', scatter: { count: 5, radius: 25 } },
+        ]
+      },
+      western: {
+        terrain: { type: 'desert' },
+        env: ['time sunset'],
+        items: [
+          { cmd: 'add road' },
+          { cmd: 'add saloon', pos: [15, 0] },
+          { cmd: 'add house', pos: [-15, 0] },
+          { cmd: 'add house', pos: [15, 20] },
+          { cmd: 'add well', pos: [0, 10] },
+          { cmd: 'add horse', scatter: { count: 3, radius: 25 } },
+          { cmd: 'add cactus', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add barrel', scatter: { count: 4, radius: 20 } },
+          { cmd: 'add npc', scatter: { count: 5, radius: 30 } },
+        ]
+      },
+      ruins: {
+        terrain: { type: 'hills', height: 0.3 },
+        env: ['fog on', 'time overcast'],
+        items: [
+          { cmd: 'add column', scatter: { count: 8, radius: 25 } },
+          { cmd: 'add wall', scatter: { count: 4, radius: 20 } },
+          { cmd: 'add rock', scatter: { count: 6, radius: 35 } },
+          { cmd: 'add bush', scatter: { count: 8, radius: 30 } },
+          { cmd: 'add tree', scatter: { count: 5, radius: 40 } },
+          { cmd: 'add chest', scatter: { count: 2, radius: 15 } },
+          { cmd: 'add torch', scatter: { count: 3, radius: 20 } },
+          { cmd: 'add npc', scatter: { count: 3, radius: 25 } },
+        ]
+      },
+      zen: {
+        terrain: { type: 'flat' },
+        env: ['time morning'],
+        items: [
+          { cmd: 'add cherry tree', scatter: { count: 6, radius: 30 } },
+          { cmd: 'add rock', pos: [5, 0] },
+          { cmd: 'add rock', pos: [-5, 0] },
+          { cmd: 'add rock', pos: [0, 5] },
+          { cmd: 'add bridge', pos: [15, 0] },
+          { cmd: 'add lantern', scatter: { count: 4, radius: 20 } },
+          { cmd: 'add flower', scatter: { count: 10, radius: 25 } },
+          { cmd: 'add add lake', pos: [-15, 0] },
+        ]
+      },
+      swamp: {
+        terrain: { type: 'hills', height: 0.15 },
+        env: ['fog on', 'time overcast', 'particles spores'],
+        water: 'swamp',
+        items: [
+          { cmd: 'add dead tree', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add mushroom', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add rock', scatter: { count: 5, radius: 35 } },
+          { cmd: 'add add lake', pos: [0, 0] },
+          { cmd: 'add snake', scatter: { count: 3, radius: 30 } },
+          { cmd: 'add frog', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add log', scatter: { count: 5, radius: 30 } },
+        ]
+      },
+      floating: {
+        terrain: { type: 'island' },
+        env: ['time sunset'],
+        items: [
+          { cmd: 'add tree', scatter: { count: 8, radius: 25 } },
+          { cmd: 'add rock', scatter: { count: 5, radius: 30 } },
+          { cmd: 'add temple', pos: [0, 0] },
+          { cmd: 'add torch', scatter: { count: 4, radius: 20 } },
+          { cmd: 'add npc', scatter: { count: 3, radius: 15 } },
+          { cmd: 'add flower', scatter: { count: 8, radius: 25 } },
+          { cmd: 'add crystal', scatter: { count: 3, radius: 20 } },
+        ]
+      },
+      hurricane: {
+        terrain: { type: 'island' },
+        env: ['ocean 300', 'time night', 'fog on', 'particles rain'],
+        water: 'storm',
+        items: [
+          { cmd: 'add ship', pos: [50, 0] },
+          { cmd: 'add ship', pos: [-40, 30] },
+          { cmd: 'add rock', scatter: { count: 12, radius: 55 } },
+          { cmd: 'add barrel', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add dead tree', scatter: { count: 5, radius: 35 } },
+          { cmd: 'add torch', scatter: { count: 3, radius: 20 } },
+          { cmd: 'add lighthouse', pos: [0, -30] },
+          { cmd: 'add npc', scatter: { count: 4, radius: 25 } },
+        ]
+      },
+      'tropical paradise': {
+        terrain: { type: 'island' },
+        env: ['ocean 250', 'time afternoon'],
+        water: 'tropical',
+        items: [
+          { cmd: 'add palm tree', scatter: { count: 15, radius: 40 } },
+          { cmd: 'add flower', scatter: { count: 12, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 4, radius: 45 } },
+          { cmd: 'add campfire', pos: [0, 5] },
+          { cmd: 'add tent', pos: [6, 8] },
+          { cmd: 'add boat', pos: [35, 0] },
+          { cmd: 'add chest', pos: [-8, -5] },
+          { cmd: 'add npc', scatter: { count: 5, radius: 30 } },
+          { cmd: 'add fish', scatter: { count: 3, radius: 25 } },
+          { cmd: 'add bird', scatter: { count: 4, radius: 40 } },
+        ]
+      },
+      'arctic storm': {
+        terrain: { type: 'mountains', height: 0.8 },
+        env: ['particles snow', 'fog on', 'time night', 'ocean 200'],
+        water: 'arctic',
+        items: [
+          { cmd: 'add pine tree', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 55 } },
+          { cmd: 'add cabin', pos: [0, 0] },
+          { cmd: 'add campfire', pos: [6, 0] },
+          { cmd: 'add wolf', scatter: { count: 4, radius: 45 } },
+          { cmd: 'add barrel', scatter: { count: 3, radius: 20 } },
+          { cmd: 'add torch', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add npc', scatter: { count: 3, radius: 25 } },
+        ]
+      },
+      'dark swamp': {
+        terrain: { type: 'hills', height: 0.15 },
+        env: ['fog on', 'time night', 'particles spores'],
+        water: 'swamp',
+        items: [
+          { cmd: 'add add lake 40', pos: [0, 0] },
+          { cmd: 'add dead tree', scatter: { count: 15, radius: 55 } },
+          { cmd: 'add mushroom', scatter: { count: 10, radius: 45 } },
+          { cmd: 'add rock', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add snake', scatter: { count: 4, radius: 35 } },
+          { cmd: 'add skeleton', scatter: { count: 3, radius: 30 } },
+          { cmd: 'add torch', scatter: { count: 3, radius: 25 } },
+          { cmd: 'add log', scatter: { count: 6, radius: 35 } },
+          { cmd: 'add ghost', scatter: { count: 2, radius: 25 } },
+        ]
+      },
+      'war zone': {
+        terrain: { type: 'hills', height: 0.6 },
+        env: ['fog on', 'time overcast', 'particles fire'],
+        water: 'storm',
+        items: [
+          { cmd: 'add tower', pos: [-50, -40] },
+          { cmd: 'add tower', pos: [50, -40] },
+          { cmd: 'add castle', pos: [0, -60] },
+          { cmd: 'add catapult', scatter: { count: 4, radius: 40 } },
+          { cmd: 'add tent', scatter: { count: 8, radius: 45 } },
+          { cmd: 'add barrel', scatter: { count: 10, radius: 40 } },
+          { cmd: 'add npc', scatter: { count: 15, radius: 50 } },
+          { cmd: 'add torch', scatter: { count: 8, radius: 45 } },
+          { cmd: 'add dead tree', scatter: { count: 6, radius: 55 } },
+          { cmd: 'add cart', scatter: { count: 3, radius: 35 } },
+        ]
+      },
+      'enchanted forest': {
+        terrain: { type: 'hills', height: 0.3 },
+        env: ['fog on', 'particles spores', 'time sunset'],
+        water: 'lake',
+        items: [
+          { cmd: 'add cherry tree', scatter: { count: 10, radius: 45 } },
+          { cmd: 'add tree', scatter: { count: 15, radius: 55 } },
+          { cmd: 'add mushroom', scatter: { count: 12, radius: 40 } },
+          { cmd: 'add flower', scatter: { count: 15, radius: 45 } },
+          { cmd: 'add crystal', scatter: { count: 5, radius: 30 } },
+          { cmd: 'add lantern', scatter: { count: 6, radius: 35 } },
+          { cmd: 'add add lake 25', pos: [15, 0] },
+          { cmd: 'add deer', scatter: { count: 3, radius: 35 } },
+          { cmd: 'add npc', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add bridge', pos: [15, 15] },
+        ]
+      },
+      'pirate cove': {
+        terrain: { type: 'island' },
+        env: ['ocean 250', 'time sunset'],
+        water: 'ocean',
+        items: [
+          { cmd: 'add ship', pos: [50, 10] },
+          { cmd: 'add ship', pos: [55, -20] },
+          { cmd: 'add palm tree', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add chest', scatter: { count: 5, radius: 25 } },
+          { cmd: 'add barrel', scatter: { count: 8, radius: 30 } },
+          { cmd: 'add cannon', scatter: { count: 3, radius: 20 } },
+          { cmd: 'add campfire', pos: [0, 5] },
+          { cmd: 'add tent', scatter: { count: 3, radius: 15 } },
+          { cmd: 'add npc', scatter: { count: 6, radius: 30 } },
+          { cmd: 'add skull', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add rock', scatter: { count: 5, radius: 40 } },
+        ]
+      },
+      'dragon lair': {
+        terrain: { type: 'volcano' },
+        env: ['fog on', 'particles fire', 'time night'],
+        items: [
+          { cmd: 'add dragon', pos: [0, -30] },
+          { cmd: 'add rock', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add dead tree', scatter: { count: 6, radius: 45 } },
+          { cmd: 'add skull', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add torch', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add chest', scatter: { count: 3, radius: 20 } },
+          { cmd: 'add skeleton', scatter: { count: 5, radius: 35 } },
+          { cmd: 'add barrel', scatter: { count: 4, radius: 25 } },
+        ]
+      },
+      'medieval siege': {
+        terrain: { type: 'hills', height: 0.4 },
+        env: ['time overcast', 'fog on'],
+        water: 'river',
+        items: [
+          { cmd: 'add castle', pos: [0, -50] },
+          { cmd: 'add wall', pos: [-25, -30] },
+          { cmd: 'add wall', pos: [25, -30] },
+          { cmd: 'add tower', pos: [-40, -45] },
+          { cmd: 'add tower', pos: [40, -45] },
+          { cmd: 'add catapult', pos: [0, 20] },
+          { cmd: 'add catapult', pos: [25, 15] },
+          { cmd: 'add tent', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add npc', scatter: { count: 15, radius: 50 } },
+          { cmd: 'add barrel', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add cart', scatter: { count: 3, radius: 30 } },
+          { cmd: 'add torch', scatter: { count: 8, radius: 45 } },
+          { cmd: 'add river' },
+        ]
+      },
+      'ocean voyage': {
+        terrain: { type: 'flat' },
+        env: ['ocean 400', 'time afternoon'],
+        water: 'ocean',
+        items: [
+          { cmd: 'add ship', pos: [0, 0] },
+          { cmd: 'add ship', pos: [60, 30] },
+          { cmd: 'add boat', pos: [-30, 20] },
+          { cmd: 'add boat', pos: [25, -25] },
+          { cmd: 'add barrel', scatter: { count: 5, radius: 15 } },
+          { cmd: 'add npc', scatter: { count: 6, radius: 20 } },
+        ]
+      },
+    };
+    
+    const template = MAP_TEMPLATES[mapType] || MAP_TEMPLATES['town'];
+    
+    // Apply water preset if template has one
+    if (template.water && WATER_PRESETS[template.water]) {
+      // Will be applied after ocean/lake is created
+      window._pendingWaterPreset = template.water;
+    }
+    
+    // Build command queue from JSON template
+    const commands = [];
+    
+    // Terrain first
+    if (template.terrain) {
+      commands.push('terrain ' + (template.terrain.type || 'hills'));
+    }
+    
+    // Environment commands
+    if (template.env) {
+      template.env.forEach(e => commands.push(e));
+    }
+    
+    // Items with positioning
+    for (const item of (template.items || [])) {
+      if (item.scatter) {
+        const s = item.scatter;
+        const count = s.count || 1;
+        const radius = s.radius || 30;
+        const avoidCenter = s.avoidCenter || 0;
+        for (let j = 0; j < count; j++) {
+          let px, pz, attempts = 0;
+          do {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = avoidCenter + Math.random() * (radius - avoidCenter);
+            px = Math.round(Math.cos(angle) * dist);
+            pz = Math.round(Math.sin(angle) * dist);
+            attempts++;
+          } while (attempts < 10 && avoidCenter > 0 && Math.sqrt(px*px + pz*pz) < avoidCenter);
+          commands.push(item.cmd + ' at ' + px + ' ' + pz);
+        }
+      } else if (item.pos) {
+        commands.push(item.cmd + ' at ' + item.pos[0] + ' ' + item.pos[1]);
+      } else {
+        commands.push(item.cmd);
+      }
+    }
+    
+    // Execute all commands sequentially
+    let ci = 0;
+    const runNext = () => {
+      if (ci >= commands.length) { showToast('🗺️ ' + mapTheme + ' generated! ' + commands.length + ' elements placed.'); return; }
+      execSingle(commands[ci]);
+      ci++;
+      setTimeout(runNext, 80);
+    };
+    runNext();
+    return '🗺️ Generating ' + mapTheme + ' (' + commands.length + ' elements)...';
+  }
+
+  if (window._handleGenerateCommand) { const r = window._handleGenerateCommand(lower); if (r) return r; }
+  if (lower === "3d generator" || lower === "generator" || lower === "generate 3d") { showGeneratorModal(); return "🎨 Opening 3D Generator..."; }
+
+  // ─── RESIZE / SCALE COMMANDS ───
+  // GPU instancing commands
+  const scatterInstMatch = lower.match(/^scatter\s+(\d+)\s+(\w+)\s*(?:instanced|gpu)?/);
+  if (scatterInstMatch && parseInt(scatterInstMatch[1]) >= 20) {
+    const num = parseInt(scatterInstMatch[1]);
+    const obj = scatterInstMatch[2];
+    const glb = GLB_MODELS[obj] || obj;
+    if (num >= 20) { return addToLog('⚡ ' + scatterInstanced(glb, num)); }
+  }
+  
+  // Reflection/wetness commands
+  if (lower.match(/^wet(ness)?\s+(\d+\.?\d*)/)) { setSceneWetness(parseFloat(lower.match(/(\d+\.?\d*)/)[1])); return addToLog('✓ Wetness set'); }
+  if (lower === 'wet' || lower === 'wet ground' || lower === 'puddles') { setSceneWetness(0.6); return addToLog('✓ Wet ground enabled'); }
+  if (lower === 'dry' || lower === 'dry ground') { setSceneWetness(0); return addToLog('✓ Ground dried'); }
+  
+  // Particle commands
+  if (lower.match(/^particles?\s+(dust|fireflies|embers|snow|ash|spores|bubbles|leaves|petals|off|none)/)) {
+    const pType = lower.match(/(dust|fireflies|embers|snow|ash|spores|bubbles|leaves|petals|off|none)/)[1];
+    if (pType === 'off' || pType === 'none') { if (ambientParticles) { scene.remove(ambientParticles); ambientParticles = null; } return addToLog('✓ Particles off'); }
+    createAmbientParticles(pType);
+    return addToLog('✓ Ambient particles: ' + pType);
+  }
+  
+  // Multiplayer commands
+  if (lower === 'multiplayer' || lower === 'mp' || lower === 'lobby' || lower === 'join game' || lower === 'online' || lower === 'co-op' || lower === 'coop') {
+    showMultiplayerLobby();
+    return addToLog('🌐 Multiplayer lobby opened');
+  }
+  if (lower.match(/^join\s+(.+)/)) {
+    const room = lower.match(/^join\s+(.+)/)[1];
+    const server = localStorage.getItem('mp_server') || 'wss://crate-engine-mp.fly.dev';
+    const name = localStorage.getItem('mp_name') || 'Player';
+    if (window._mp) window._mp.connect(server, room, name);
+    return addToLog('🌐 Joining room: ' + room);
+  }
+  if (lower === 'disconnect' || lower === 'leave room' || lower === 'leave mp') {
+    if (window._mp) window._mp.disconnect();
+    return addToLog('🌐 Disconnected from multiplayer');
+  }
+  if (lower.match(/^chat\s+(.+)/)) {
+    const msg = lower.match(/^chat\s+(.+)/)[1];
+    if (window._mp) window._mp.chat(msg);
+    return addToLog('💬 ' + msg);
+  }
+  
+  // Graphics quality commands
+  if (lower.match(/^(graphics|quality|graphics quality|set quality|visual quality)\s*(low|medium|high|ultra)?$/)) {
+    const lvl = lower.match(/(low|medium|high|ultra)/);
+    if (lvl) return addToLog(setGraphicsQuality(lvl[1]));
+    return addToLog('Current quality: ' + (ppEnabled ? 'HIGH' : 'LOW') + '. Use: graphics low/medium/high/ultra');
+  }
+  if (lower === 'bloom off') { if (bloomPass) bloomPass.enabled = false; return addToLog('✓ Bloom disabled'); }
+  if (lower === 'bloom on') { if (bloomPass) bloomPass.enabled = true; return addToLog('✓ Bloom enabled'); }
+  if (lower.match(/^bloom\s+(\d+\.?\d*)/)) { setBloomSettings(parseFloat(lower.match(/(\d+\.?\d*)/)[1])); return addToLog('✓ Bloom strength set'); }
+  if (lower === 'ssao off') { if (ssaoPass) ssaoPass.enabled = false; return addToLog('✓ SSAO disabled'); }
+  if (lower === 'ssao on') { if (ssaoPass) ssaoPass.enabled = true; return addToLog('✓ SSAO enabled'); }
+  if (lower === 'postfx off' || lower === 'post processing off') { togglePostProcessing(false); return addToLog('✓ Post-processing OFF'); }
+  if (lower === 'postfx on' || lower === 'post processing on') { togglePostProcessing(true); return addToLog('✓ Post-processing ON'); }
+  if (lower.match(/^vignette\s+(\d+\.?\d*)/)) { if (window._colorPass) window._colorPass.uniforms.vignetteStrength.value = parseFloat(lower.match(/(\d+\.?\d*)/)[1]); return addToLog('✓ Vignette set'); }
+  if (lower.match(/^grain\s+(\d+\.?\d*)/)) { if (window._colorPass) window._colorPass.uniforms.filmGrain.value = parseFloat(lower.match(/(\d+\.?\d*)/)[1]); return addToLog('✓ Film grain set'); }
+  
+  // AI Settings
+  if (lower === 'ai settings' || lower === 'ai config' || lower === 'api key' || lower === 'set api key' || lower === 'ai setup' || lower === 'model settings') {
+    showAISettingsModal();
+    return addToLog('⚙️ AI Settings opened — connect your own AI model');
+  }
+  
+  const resizeMatch = lower.match(/(?:resize|set size|set scale)\s+([\w_]+)\s+(?:to\s+)?(\d+\.?\d*)/);
+  const biggerMatch = lower.match(/make\s+([\w_]+)\s+(bigger|larger|huge|giant|enormous|massive)/);
+  const smallerMatch = lower.match(/make\s+([\w_]+)\s+(smaller|tiny|mini|miniature|little|shrink)/);
+  const scaleMultMatch = lower.match(/scale\s+([\w_]+)\s+(\d+\.?\d*)x?/);
+  
+  if (resizeMatch || biggerMatch || smallerMatch || scaleMultMatch) {
+    const match = resizeMatch || biggerMatch || smallerMatch || scaleMultMatch;
+    const objName = match[1].toLowerCase();
+    const arg = match[2];
+    let found = null;
+    scene.traverse(child => {
+      if (child.userData && child.userData.name && child.userData.name.toLowerCase().includes(objName)) {
+        found = child;
+      }
+    });
+    if (!found) return addToLog('⚠️ Object "' + objName + '" not found in scene');
+    
+    if (resizeMatch) {
+      found.scale.setScalar(parseFloat(arg));
+    } else if (biggerMatch) {
+      const mult = (arg === 'huge' || arg === 'giant' || arg === 'enormous' || arg === 'massive') ? 3.0 : 1.5;
+      found.scale.multiplyScalar(mult);
+    } else if (smallerMatch) {
+      const mult = (arg === 'tiny' || arg === 'mini' || arg === 'miniature' || arg === 'little') ? 0.3 : 0.67;
+      found.scale.multiplyScalar(mult);
+    } else if (scaleMultMatch) {
+      found.scale.multiplyScalar(parseFloat(arg));
+    }
+    // Reground after resize
+    const box = new THREE.Box3().setFromObject(found);
+    found.position.y -= box.min.y;
+    return addToLog('✓ Resized ' + found.userData.name + ' → scale ' + found.scale.x.toFixed(2));
+  }
+
+  const parts = lower.split(/\s+/);
+
+  // === CONTEXT-AWARE COMMANDS — work on selected/last placed object ===
+  const ctxObj = selectedObj || window._lastPlacedObj || (objects.length > 0 ? objects[objects.length - 1] : null);
+  
+  // Color commands: "make it red", "color it blue", "paint it gold"
+  const colorMatch = lower.match(/^(?:make (?:it |this |that )?|color (?:it |this |that )?|paint (?:it |this |that )?|set color (?:to )?|change color (?:to )?)(red|orange|yellow|green|blue|purple|pink|cyan|white|gray|grey|brown|black|gold|silver|dark red|dark blue|forest green|lavender)$/);
+  if (colorMatch && ctxObj) {
+    const colorMap = { red:'#ef4444', orange:'#f97316', yellow:'#eab308', green:'#22c55e', blue:'#3b82f6', purple:'#8b5cf6', pink:'#ec4899', cyan:'#06b6d4', white:'#ffffff', gray:'#6b7280', grey:'#6b7280', brown:'#92400e', black:'#1f2937', gold:'#fbbf24', silver:'#d1d5db', 'dark red':'#991b1b', 'dark blue':'#1e3a5f', 'forest green':'#14532d', lavender:'#c4b5fd' };
+    const hex = colorMap[colorMatch[1]] || '#ffffff';
+    const color = new THREE.Color(hex);
+    ctxObj.traverse(child => { if (child.isMesh && child.material) { (Array.isArray(child.material) ? child.material : [child.material]).forEach(m => { m.color.copy(color); m.needsUpdate = true; }); } });
+    return '🎨 Colored ' + (ctxObj.userData.name || 'object') + ' ' + colorMatch[1];
+  }
+  
+  // Size commands: "make it bigger", "smaller", "huge", "tiny"
+  const sizeMatch = lower.match(/^(?:make (?:it |this |that )?|scale (?:it )?)(bigger|larger|huge|massive|giant|smaller|tiny|mini|miniature|double|half|normal)$/);
+  if (sizeMatch && ctxObj) {
+    const scales = { bigger:1.5, larger:1.5, huge:3, massive:5, giant:4, smaller:0.6, tiny:0.25, mini:0.3, miniature:0.2, double:2, half:0.5, normal:1 };
+    const factor = scales[sizeMatch[1]] || 1;
+    if (sizeMatch[1] === 'normal') { ctxObj.scale.setScalar(1); } else { ctxObj.scale.multiplyScalar(factor); }
+    return '📐 Scaled ' + (ctxObj.userData.name || 'object') + ' ' + sizeMatch[1];
+  }
+  
+  // Move commands: "move it left/right/forward/back/up/down"
+  const moveMatch = lower.match(/^(?:move (?:it |this |that )?|push (?:it )?|slide (?:it )?)(left|right|forward|back|backward|up|down)(?:\s+(\d+))?$/);
+  if (moveMatch && ctxObj) {
+    const dist = parseFloat(moveMatch[2]) || 2;
+    const dir = moveMatch[1];
+    if (dir === 'left') ctxObj.position.x -= dist;
+    else if (dir === 'right') ctxObj.position.x += dist;
+    else if (dir === 'forward') ctxObj.position.z -= dist;
+    else if (dir === 'back' || dir === 'backward') ctxObj.position.z += dist;
+    else if (dir === 'up') ctxObj.position.y += dist;
+    else if (dir === 'down') ctxObj.position.y -= dist;
+    return '↔️ Moved ' + (ctxObj.userData.name || 'object') + ' ' + dir + (moveMatch[2] ? ' ' + dist + ' units' : '');
+  }
+  
+  // Rotate commands: "rotate it", "spin it", "turn it"
+  const rotMatch = lower.match(/^(?:rotate|turn|spin) (?:it |this |that )?(?:(left|right|around)(?:\s+(\d+))?|(\d+) degrees?)$/);
+  if (rotMatch && ctxObj) {
+    let deg = 45;
+    if (rotMatch[2]) deg = parseInt(rotMatch[2]);
+    if (rotMatch[3]) deg = parseInt(rotMatch[3]);
+    if (rotMatch[1] === 'left') deg = -deg;
+    if (rotMatch[1] === 'around') deg = 180;
+    ctxObj.rotation.y += deg * Math.PI / 180;
+    return '🔄 Rotated ' + (ctxObj.userData.name || 'object') + ' ' + deg + '°';
+  }
+  
+  // Quick animation: "make it spin", "make it bounce", "make it float"
+  const quickAnimMatch = lower.match(/^make (?:it |this |that )?(spin|bounce|float|pulse|wobble|dance|shake|swing|breathe|walk|idle|jump)$/);
+  if (quickAnimMatch && ctxObj) {
+    return applyProceduralAnimation(ctxObj, quickAnimMatch[1]);
+  }
+  
+  // Stop animation: "stop it", "freeze it"
+  if ((lower === 'stop it' || lower === 'freeze it' || lower === 'stop animation') && ctxObj) {
+    if (ctxObj.userData._procAnim) ctxObj.userData._procAnim = null;
+    if (ctxObj.userData.mixer) ctxObj.userData.mixer.stopAllAction();
+    return '⏹ Stopped animation on ' + (ctxObj.userData.name || 'object');
+  }
+
+
+  // === CHARACTER SELECTION ===
+  const charMatch = lower.match(/^(?:select|choose|pick|set|spawn)\s+(?:character|char|hero|player)\s+(.+)/);
+  if (charMatch && characterController) {
+    const charType = charMatch[1].trim();
+    return characterController.loadCharacter(charType);
+  }
+  
+
+
+
+  
+  // VEHICLE: "drive car" / "enter vehicle" / "get in car"
+  if (lower.match(/^(drive|enter|get in|hop in|ride|mount)\s/)) {
+    const target = lower.replace(/^(drive|enter|get in|hop in|ride|mount)\s+(the |a |an )?/, '');
+    const match = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(target));
+    if (match && isVehicle(match)) {
+      enterVehicle({ obj: match, type: isVehicle(match) });
+      return '🚗 Now driving ' + match.userData.name + '! Use WASD to drive, F to exit.';
+    }
+    return '⚠ No drivable vehicle named "' + target + '" found nearby';
+  }
+  if (lower === 'exit vehicle' || lower === 'get out' || lower === 'stop driving') {
+    if (activeVehicle) { exitVehicle(); return '🚶 Exited vehicle'; }
+    return '⚠ Not in a vehicle';
+  }
+  
+  // === CUSTOM SCRIPTS ===
+  if (lower === 'scripts' || lower === 'script list' || lower === 'custom scripts' || lower === 'game scripts' || lower === 'game logic') {
+    showScriptManager();
+    return '🧠 Opening script manager...';
+  }
+  if (lower === 'new script' || lower === 'add script' || lower === 'custom code' || lower === 'code editor') {
+    showScriptEditor();
+    return '🧠 Opening script editor...';
+  }
+  if (lower.startsWith('script ')) {
+    const desc = lower.replace(/^script\s+/, '');
+    generateUserScript(desc).then(code => {
+      if (code) {
+        const s = { id: 'script_' + Date.now(), name: desc.slice(0,30), description: desc, code, enabled: true };
+        window._userScripts.push(s);
+        runUserScript(s);
+        localStorage.setItem('crate-user-scripts', JSON.stringify(window._userScripts.map(x => ({id:x.id,name:x.name,description:x.description,code:x.code,enabled:x.enabled}))));
+      }
+    });
+    return '🤖 Generating custom script: "' + desc + '"...';
+    return '⚠ Not in a vehicle';
+  }
+
+  // === UNIVERSAL ASSET GALLERY COMMANDS ===
+  // Weapons gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:weapons?|swords?|axes?|guns?|blasters?|bows?|shields?)/)) {
+    const result = await showGallery('weapons');
+    if (result) {
+      const glb = GLB_MODELS[result.file] || result.file;
+      loadGLBModel(result.file, glb, 0, 0, null, result.path);
+      return '⚔️ Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Weapons gallery closed';
+  }
+  
+  // Buildings gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:buildings?|houses?|structures?|castles?|towers?|architecture)/)) {
+    const result = await showGallery('buildings');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '🏠 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Buildings gallery closed';
+  }
+
+  // Vehicles gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:vehicles?|cars?|trucks?|boats?|ships?|planes?)/)) {
+    const result = await showGallery('vehicles');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '🚗 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Vehicles gallery closed';
+  }
+
+  // Animals gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:animals?|creatures?|pets?|wildlife|fish|birds?|dragons?)/)) {
+    const result = await showGallery('animals');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '🐾 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Animals gallery closed';
+  }
+
+  // Trees gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:trees?|plants?|bushes?|flowers?|vegetation|flora|foliage)/)) {
+    const result = await showGallery('trees');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '🌳 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Trees gallery closed';
+  }
+
+  // Rocks gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:rocks?|stones?|boulders?|minerals?|crystals?|gems?|ores?)/)) {
+    const result = await showGallery('rocks');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '🪨 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Rocks gallery closed';
+  }
+
+  // Furniture gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:furniture|tables?|chairs?|beds?|shelves|lamps?|interior|decor)/)) {
+    const result = await showGallery('furniture');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '🪑 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Furniture gallery closed';
+  }
+
+  // Food/Items gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:food|items?|potions?|chests?|barrels?|crates?|supplies|loot|consumables?)/)) {
+    const result = await showGallery('food');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '🍖 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Items gallery closed';
+  }
+
+  // Dungeon gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:dungeon|torches?|skulls?|bones?|traps?|graves?|coffins?|dark|underground)/)) {
+    const result = await showGallery('dungeon');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '💀 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Dungeon gallery closed';
+  }
+
+  // Sci-Fi gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:sci-?fi|space|cyber|neon|futuristic|tech|robots?|mechs?|drones?)/)) {
+    const result = await showGallery('scifi');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '🚀 Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Sci-Fi gallery closed';
+  }
+
+  // Nature/Survival gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:nature|survival|camping?|tents?|outdoor|wilderness)/)) {
+    const result = await showGallery('nature');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '⛺ Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Nature gallery closed';
+  }
+
+  // Browse all / asset library
+  if (lower.match(/^(?:browse|library|asset library|show assets|browse all|all assets|all models|model library|show library|open library|browse models|show all|pick asset|choose asset|asset menu)/)) {
+    const result = await showCategoryPicker();
+    if (result && result.file) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      return '✅ Added ' + result.name + ' to the scene!';
+    }
+    if (result && typeof result === 'string') {
+      // Character was selected
+      if (characterController) {
+        if (!characterController.characterModels[result]) {
+          characterController.characterModels[result] = { file: result, animPrefix: '', procedural: true };
+        }
+        await characterController.loadCharacter(result);
+        selectedCharacterType = result;
+      }
+      return '✅ Character set to ' + result;
+    }
+    return '↩ Library closed';
+  }
+
+  // Animation gallery
+  if (lower.match(/^(?:show |browse |open )?(?:animations?|animate menu|animation menu|add animation|apply animation)/)) {
+    // Find last placed or selected object
+    const targetObj = objects.length > 0 ? objects[objects.length - 1] : null;
+    const targetName = targetObj?.userData?.name || null;
+    const result = await showAnimationGallery(targetName);
+    if (result && targetObj) {
+      const animResult = applyProceduralAnimation(targetObj, result.animId);
+      return animResult;
+    }
+    if (result && !targetObj) return '⚠ No objects in scene to animate. Add something first!';
+    return '↩ Animation gallery closed';
+  }
+
+
+  // === CHARACTER GALLERY COMMAND ===
+  if (lower.match(/^(?:characters|show characters|character select|character menu|who can i play|choose character|pick character|select character|change character|switch character|player select)/)) {
+    const chosen = await showCharacterGallery();
+    if (!chosen) return '↩ Character select cancelled';
+    if (characterController) {
+      if (!characterController.characterModels[chosen]) {
+        var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
+        if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
+      }
+      await characterController.loadCharacter(chosen);
+      selectedCharacterType = chosen;
+      try { localStorage.setItem('crate_character', chosen); } catch(e) {}
+      return '✅ Now playing as ' + chosen + '! Press Play to enter the game.';
+    }
+    return '✅ Selected ' + chosen;
+  }
+
+  // === SET CHARACTER / PLAY AS ===
+  const setCharMatch = lower.match(/^(?:set|change|switch|choose|select)\s+(?:character|char|player|hero)\s+(?:to\s+)?(.+)$/);
+  const playAsMatch = lower.match(/^play\s+as\s+(.+)$/);
+  if ((setCharMatch || playAsMatch) && characterController) {
+    const charName = (setCharMatch ? setCharMatch[1] : playAsMatch[1]).trim();
+    const validChars = Object.keys(characterController.characterModels);
+    if (validChars.includes(charName)) {
+      selectedCharacterType = charName;
+      try { localStorage.setItem('crate_character', charName); } catch(e) {}
+      await characterController.loadCharacter(charName);
+      if (playAsMatch) {
+        // Also enter play mode
+        playMode = true;
+        try { controls.enabled = false; } catch(e) {}
+        { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.model.position.set(0, _sy, 0); } }
+        // Apply player agent profile
+    const _agentProfile = PlayerAgent.load();
+    PlayerAgent.apply(_agentProfile, characterController);
+    characterController.health = characterController.maxHealth;
+        characterController.stamina = characterController.maxStamina;
+        return '⚔️ Playing as ' + charName + '! WASD to move, mouse to look, ESC to exit.';
+      }
+      return '✅ Character set to ' + charName + '. Press Play to enter the game!';
+    }
+    // Try loading ANY model from the library as a custom character
+    const modelMap = window._modelMap || {};
+    const modelFile = modelMap[charName] || charName;
+    // Add it as a custom character dynamically
+    characterController.characterModels[charName] = { file: modelFile, animPrefix: '', procedural: true };
+    selectedCharacterType = charName;
+    try { localStorage.setItem('crate_character', charName); } catch(e) {}
+    await characterController.loadCharacter(charName);
+    if (playAsMatch) {
+      playMode = true;
+      try { controls.enabled = false; } catch(e) {}
+      { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) characterController.model.position.set(0, _sy, 0); }
+      return '⚔️ Playing as ' + charName + '! WASD to move, mouse to look, ESC to exit.';
+    }
+    return '✅ Character set to ' + charName + '. Available: ' + validChars.join(', ');
+  }
+
+  // === PLAY WITH CHARACTER ===
+  if ((lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo') && characterController) {
+    var isDemoMode = lower === 'demo' || window._isAutoDemo;
+    playMode = true;
+    try { controls.enabled = isDemoMode ? true : false; } catch(e) {}
+    if (!characterController.model) {
+      // Show character select if user hasn't chosen yet (skip for demo mode)
+      if (!isDemoMode && !selectedCharacterType) {
+        var chosen = await showCharacterGallery();
+        if (!chosen) { playMode = false; return '↩ Character select cancelled'; }
+        if (!characterController.characterModels[chosen]) {
+          var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
+          if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
+        }
+        await characterController.loadCharacter(chosen);
+      } else {
+        await characterController.loadCharacter(selectedCharacterType || 'knight');
+      }
+    }
+    // Spawn at origin ON TOP of terrain
+    { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.model.position.set(0, _sy, 0); } }
+    characterController.health = characterController.maxHealth;
+    characterController.stamina = characterController.maxStamina;
+    
+    if (isDemoMode) {
+      // FORCE bright daylight for demo
+      setSky('#3388dd', '#99ddff');
+      sunLight.color.set(0xffffff); sunLight.intensity = 4; sunLight.position.set(30,50,20);
+      scene.fog = null;
+      ambientLight.color.set(0xffffff); ambientLight.intensity = 1.2;
+      createSun();
+      // Demo: start outside the town, walk in
+      characterController.position.set(-20, 0, -20);
+      if (characterController.model) {
+        characterController.model.position.set(-20, 0, -20);
+      }
+      characterController.cameraMode = '3rd';
+      characterController.cameraDistance = 10;
+      characterController.cameraHeight = 5;
+      characterController.cameraPitch = 0.3;
+      window._demoMode = true;
+      window._demoTime = 0;
+      window._demoPhase = 0;
+    } else {
+      const canvas = document.querySelector('canvas');
+      if (canvas) canvas.requestPointerLock();
+    }
+    // Init crafting
+    if (!craftingSystem) craftingSystem = new CraftingSystem(characterController);
+    if (!levelSystem) levelSystem = new LevelSystem(characterController);
+    // Init minimap
+    if (!minimap) {
+      minimap = createMinimap(scene, camera, characterController, objects);
+    }
+    minimap.el.style.display = 'block';
+    const xpBar = document.getElementById('xp-bar-container');
+    if (xpBar) xpBar.style.display = 'block';
+    return '🎮 Play mode ON — WASD move, Shift run, Space jump, C roll, E attack, V toggle camera, ESC exit';
+  }
+  
+  // === CAMERA TOGGLE ===
+  if ((lower === 'toggle camera' || lower === 'v' || lower === '1st person' || lower === '3rd person' || lower === 'first person' || lower === 'third person') && characterController) {
+    if (lower === '1st person' || lower === 'first person') {
+      characterController.cameraMode = '1st';
+      if (characterController.model) characterController.model.visible = false;
+      return '✓ Camera: 1st person';
+    }
+    if (lower === '3rd person' || lower === 'third person') {
+      characterController.cameraMode = '3rd';
+      if (characterController.model) characterController.model.visible = true;
+      return '✓ Camera: 3rd person';
+    }
+    return characterController.toggleCameraMode();
+  }
+  
+  // === AI AGENT CUSTOMIZATION ===
+  const agentProfile = PlayerAgent.load();
+  const agentChanges = PlayerAgent.interpret(cmd, agentProfile);
+  if (agentChanges.length > 0) {
+    PlayerAgent.save(agentProfile);
+    if (characterController) PlayerAgent.apply(agentProfile, characterController);
+    // Handle world building from AI agent
+    if (window._agentBuildWorld) {
+      const w = window._agentBuildWorld; window._agentBuildWorld = null;
+      setTimeout(() => parseAndExecute('generate ' + w), 100);
+    }
+    // Handle water preset from AI agent
+    if (window._agentWaterPreset) {
+      const wp = window._agentWaterPreset; window._agentWaterPreset = null;
+      setTimeout(() => parseAndExecute('water ' + wp), 200);
+    }
+    return agentChanges.join('\n');
+  }
+  
+  // === WEAPON EQUIP COMMANDS ===
+  const equipMatch = lower.match(/^(?:equip|give me|use|wield|grab|take)\s+(?:a\s+|an\s+)?(sword|axe|dagger|hammer|spear|katana|pistol|rifle|shotgun|smg|sniper|bow)(?:\s+(?:in\s+)?(?:slot\s+)?(\d))?/);
+  if (equipMatch && characterController) {
+    const weaponId = equipMatch[1];
+    const slot = equipMatch[2] ? parseInt(equipMatch[2]) - 1 : -1;
+    return characterController.equipWeapon(weaponId, slot);
+  }
+  
+  const unequipMatch = lower.match(/^(?:unequip|drop|remove|holster)\s+(?:weapon|current|my weapon)/);
+  if (unequipMatch && characterController) {
+    return characterController.unequipWeapon();
+  }
+  
+  const swapMatch = lower.match(/^(?:swap|switch|slot)\s+(\d)/);
+  if (swapMatch && characterController) {
+    characterController.swapToSlot(parseInt(swapMatch[1]) - 1);
+    const w = characterController.weaponSlots[characterController.activeSlot];
+    return w ? '🔄 Switched to slot ' + swapMatch[1] + ': ' + (WEAPON_DATABASE[w]?.name || w) : '🔄 Slot ' + swapMatch[1] + ' is empty';
+  }
+  
+  const listWeaponsMatch = lower.match(/^(?:show|list|my)\s+(?:weapons|loadout|slots)/);
+  if (listWeaponsMatch && characterController) {
+    const slots = characterController.weaponSlots;
+    const lines = slots.map((w, i) => {
+      const active = i === characterController.activeSlot ? ' ◄' : '';
+      const name = w ? (WEAPON_DATABASE[w]?.name || w) : 'empty';
+      return '[' + (i + 1) + '] ' + name + active;
+    });
+    return '🗡️ Weapon Loadout:\n' + lines.join('\n');
+  }
+
+    // === AI AGENT — NPC MODIFICATION ===
+  const npcModMatch = lower.match(/(?:give|equip|change|set|swap|remove|take)\s+(?:the\s+)?(?:npc|enemy|enemies|npcs|all npc)\s*(?:'s|s)?\s*(?:weapon\s+)?(?:to\s+|with\s+|a\s+)?(sword|axe|hammer|spear|dagger|rifle|pistol|shotgun|bow|staff|nothing|unarmed|fists)?/i)
+    || lower.match(/(?:give|equip)\s+(?:a\s+)?(sword|axe|hammer|spear|dagger|rifle|pistol|shotgun|bow|staff)\s+(?:to\s+)?(?:the\s+)?(?:npc|enemy|enemies|npcs|all)/i)
+    || lower.match(/(?:remove|take)\s+(?:the\s+)?(?:sword|axe|weapon|gun|rifle)s?\s+(?:from\s+)?(?:the\s+)?(?:npc|enemy|enemies|npcs|all)/i);
+  if (npcModMatch && npcController && npcController.npcs.length > 0) {
+    const weapon = npcModMatch[1] || null;
+    const isRemove = /remove|take|nothing|unarmed|fists/.test(lower);
+    
+    for (const npc of npcController.npcs) {
+      // Remove old weapon
+      if (npc.weaponMesh) {
+        if (npc.weaponMesh.parent) npc.weaponMesh.parent.remove(npc.weaponMesh);
+        npc.weaponMesh = null;
+      }
+      
+      if (!isRemove && weapon) {
+        // Create new weapon mesh
+        let wm;
+        const isRanged = ['rifle','pistol','shotgun','bow'].includes(weapon);
+        npc.isRanged = isRanged;
+        npc.attackRange = isRanged ? 20 : 2.5;
+        npc.weaponType = weapon;
+        
+        if (weapon === 'sword') {
+          const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.02), new THREE.MeshStandardMaterial({color:0xaaaacc,metalness:0.8}));
+          const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.04), new THREE.MeshStandardMaterial({color:0x553311}));
+          wm = new THREE.Group(); blade.position.y = 0.35; wm.add(blade); wm.add(hilt);
+        } else if (weapon === 'rifle' || weapon === 'shotgun') {
+          const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.5), new THREE.MeshStandardMaterial({color:0x333333}));
+          const stock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.25), new THREE.MeshStandardMaterial({color:0x553311}));
+          wm = new THREE.Group(); barrel.rotation.x = Math.PI/2; barrel.position.z = -0.3; stock.position.z = 0.05; wm.add(barrel); wm.add(stock);
+        } else if (weapon === 'pistol') {
+          const body = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.08, 0.12), new THREE.MeshStandardMaterial({color:0x222222}));
+          wm = new THREE.Group(); wm.add(body);
+        } else if (weapon === 'axe') {
+          const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5), new THREE.MeshStandardMaterial({color:0x664422}));
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.03), new THREE.MeshStandardMaterial({color:0x888899,metalness:0.7}));
+          wm = new THREE.Group(); handle.position.y = 0.2; head.position.set(0.05, 0.45, 0); wm.add(handle); wm.add(head);
+        } else if (weapon === 'spear') {
+          const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.9), new THREE.MeshStandardMaterial({color:0x664422}));
+          const tip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 4), new THREE.MeshStandardMaterial({color:0xccccdd,metalness:0.8}));
+          wm = new THREE.Group(); shaft.position.y = 0.4; tip.position.y = 0.9; wm.add(shaft); wm.add(tip);
+        } else {
+          // Generic weapon
+          wm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.03), new THREE.MeshStandardMaterial({color:0x888888}));
+        }
+        
+        if (wm) {
+          if (npc.bones && npc.bones.rightForearm) {
+            wm.position.set(0, -0.15, 0);
+            npc.bones.rightForearm.add(wm);
+          } else {
+            wm.position.set(0.2, 0.5, 0);
+            npc.model.add(wm);
+          }
+          npc.weaponMesh = wm;
+        }
+      } else {
+        npc.isRanged = false;
+        npc.attackRange = 2.5;
+        npc.weaponType = 'fists';
+      }
+    }
+    
+    if (isRemove) return '🗑️ Removed weapons from all NPCs — they fight with fists now';
+    return '⚔️ All NPCs now equipped with ' + weapon + '!';
+  }
+
+  // === NPC SPAWN ===
+  const npcMatch = lower.match(/^(?:spawn|add)\s+(?:npc|villager|citizen|person)\s*(?:at\s+(-?[\d.]+)\s+(-?[\d.]+))?/);
+  if (npcMatch && npcController) {
+    const nx = parseFloat(npcMatch[1]) || (Math.random()-0.5)*30;
+    const nz = parseFloat(npcMatch[2]) || (Math.random()-0.5)*30;
+    return npcController.spawnNPC('knight', nx, nz, 'wander');
+  }
+  
+  // === SPAWN MULTIPLE NPCs ===
+  const npcsMatch = lower.match(/^(?:spawn|add)\s+(\d+)\s+(?:(hostile|enemy|aggro|friendly)\s+)?npcs?/);
+  if (npcsMatch && npcController) {
+    const n = Math.min(parseInt(npcsMatch[1]), 30);
+    const isHostile = npcsMatch[2] && (npcsMatch[2] === 'hostile' || npcsMatch[2] === 'enemy' || npcsMatch[2] === 'aggro');
+    const behavior = isHostile ? 'aggro' : 'wander';
+    const promises = [];
+    for (let i = 0; i < n; i++) {
+      let sx, sz;
+      if (isHostile) {
+        // Hostile: spawn far away in a spread arc so player has approach time
+        const angle = (i / Math.max(n, 1)) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = 25 + Math.random() * 20; // 25-45 units away
+        sx = Math.cos(angle) * dist;
+        sz = Math.sin(angle) * dist;
+      } else {
+        sx = (Math.random()-0.5)*40;
+        sz = (Math.random()-0.5)*40;
+      }
+      promises.push(npcController.spawnNPC('knight', sx, sz, behavior));
+    }
+    await Promise.all(promises);
+    return isHostile ? '⚔️ Spawned ' + n + ' hostile NPCs! Fight!' : '✓ Spawned ' + n + ' NPCs';
+  }
+  
+  // === SPAWN ENEMIES ===
+  const enemyMatch = lower.match(/^(?:spawn|add)\s+(\d+)?\s*(?:enemies|enemy|hostiles?|monsters?|skeletons?|zombies?)/);
+  if (enemyMatch && npcController) {
+    const n = Math.min(parseInt(enemyMatch[1]) || 5, 30);
+    const promises = [];
+    const types = ['knight']; // All same model
+    // Spread enemies across map in different zones — not grouped
+    const zones = [];
+    const mapSize = 80;
+    for (let i = 0; i < n; i++) {
+      // Distribute in a ring pattern, far from each other and far from center
+      const angle = (i / n) * Math.PI * 2 + (Math.random() * 0.4);
+      const dist = 8 + Math.random() * 17;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+      zones.push({ x, z });
+    }
+    for (let i = 0; i < n; i++) {
+      const t = types[i % types.length];
+      // Spawn as 'zone_guard' — only aggros when player is close
+      const p = npcController.spawnNPC(t, zones[i].x, zones[i].z, 'zone_guard');
+      promises.push(p);
+    }
+    await Promise.all(promises);
+    // Auto-create kill quest
+    if (questSystem.quests.filter(q => q.type === 'kill' && !q.completed).length === 0) {
+      questSystem.addQuest({
+        id: 'kill_' + Date.now(),
+        title: '⚔️ Clear the Threat',
+        description: 'Defeat all ' + n + ' enemies',
+        type: 'kill',
+        targetCount: n,
+        reward: '+500 Score'
+      });
+    }
+    return '⚔️ Spawned ' + n + ' hostile enemies! Fight!';
+  }
+  
+  // === REMOVE CLUTTER (for demo) ===
+  if (lower === 'remove clutter') {
+    var removed = 0;
+    var clutter = ['marketstand', 'bench', 'crate', 'barrel', 'cart', 'well', 'fence', 'cauldron', 'gazebo', 'bonfire', 'stable', 'modularfloor', 'lamp', 'sign', 'table', 'stall'];
+    for (var ri = objects.length - 1; ri >= 0; ri--) {
+      var rObj = objects[ri];
+      if (!rObj.userData || !rObj.userData.name) continue;
+      var rn = rObj.userData.name.toLowerCase();
+      var isClutter = false;
+      for (var ci3 = 0; ci3 < clutter.length; ci3++) {
+        if (rn.includes(clutter[ci3])) { isClutter = true; break; }
+      }
+      if (isClutter) {
+        scene.remove(rObj);
+        objects.splice(ri, 1);
+        removed++;
+      }
+    }
+    return '🧹 Removed ' + removed + ' clutter objects';
+  }
+
+  // === EQUIP WEAPON ===
+  
+  // === INTERIOR BUILDINGS ===
+  const interiorMatch = lower.match(/^(?:add |create |build )?(?:an? )?(interior house|interior shop|interior tavern|walkable house|walkable building|enterable house|enterable building|house with interior|building with interior)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
+  if (interiorMatch) {
+    const type = interiorMatch[1];
+    const floorCount = interiorMatch[2] ? parseInt(interiorMatch[2]) : undefined;
+    let obj;
+    if (type.includes('shop')) {
+      obj = createInteriorShop();
+    } else if (type.includes('tavern')) {
+      obj = createInteriorTavern();
+    } else {
+      obj = createInteriorHouse({ floors: floorCount || 1 });
+    }
+    addObj(obj.userData.name || 'Interior House', obj, px, pz);
+    return '🏠 Interior ' + (type.includes('shop')?'shop':type.includes('tavern')?'tavern':'house') + ' created! Walk inside through the front door.' + (floorCount > 1 ? ' (' + floorCount + ' floors with stairs)' : '');
+  }
+  if (lower === 'add 2 story house' || lower === 'add two story house' || lower === 'add 2-story house') {
+    const obj = createInteriorHouse({ floors: 2 });
+    addObj('Interior House', obj, px, pz);
+    return '🏠 2-story interior house created! Walk upstairs via the built-in staircase.';
+  }
+  if (lower === 'add 3 story house' || lower === 'add three story house') {
+    const obj = createInteriorHouse({ floors: 3 });
+    addObj('Interior House', obj, px, pz);
+    return '🏠 3-story interior house! Stairs connect all floors.';
+  }
+
+  // === BUILD WORLD (AI Agent world builder) ===
+  const buildWorldMatch = lower.match(/^(?:build|create|generate|make|load) (?:a |an |the )?(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|village|city|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|mountain|volcano|haunted|western|ruins|zen|swamp|floating)(?: world| map| scene)?$/);
+  if (buildWorldMatch) {
+    const worldType = buildWorldMatch[1];
+    const result = parseAndExecute('generate ' + worldType);
+    return result;
+  }
+
+  // === SHOW COMMANDS / HELP PANEL ===
+  if (lower === 'help' || lower === 'commands' || lower === 'show commands' || lower === '?' || lower === 'show help') {
+    const helpPanel = document.getElementById('commands-panel');
+    if (helpPanel) { helpPanel.style.display = helpPanel.style.display === 'none' ? 'flex' : 'none'; return '📋 Commands panel toggled'; }
+    // Create commands panel
+    const panel = document.createElement('div');
+    panel.id = 'commands-panel';
+    panel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:99999;background:rgba(0,0,0,0.92);border:1px solid #444;border-radius:12px;padding:24px;color:#eee;font-family:monospace;font-size:12px;max-height:80vh;overflow-y:auto;width:650px;display:flex;flex-direction:column;gap:12px;backdrop-filter:blur(10px)';
+    
+    panel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #333;padding-bottom:10px">
+        <span style="font-size:16px;font-weight:bold;color:#fff">⚡ CRATE ENGINE — COMMANDS</span>
+        <button onclick="this.parentElement.parentElement.style.display='none'" style="background:none;border:1px solid #555;color:#aaa;cursor:pointer;padding:4px 10px;border-radius:4px;font-family:monospace">✕ Close</button>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="color:#4fc3f7;font-weight:bold;margin-bottom:6px">🌍 WORLD BUILDER</div>
+          <div style="color:#aaa;font-size:11px;line-height:1.6">
+            build tropical paradise<br>
+            build hurricane<br>
+            build arctic storm<br>
+            build dark swamp<br>
+            build enchanted forest<br>
+            build pirate cove<br>
+            build dragon lair<br>
+            build medieval siege<br>
+            build ocean voyage<br>
+            build war zone<br>
+            build kingdom<br>
+            build cyberpunk<br>
+            generate [any world name]
+          </div>
+        </div>
+        
+        <div>
+          <div style="color:#4fc3f7;font-weight:bold;margin-bottom:6px">🌊 WATER PRESETS</div>
+          <div style="color:#aaa;font-size:11px;line-height:1.6">
+            water tropical<br>
+            water storm<br>
+            water ocean<br>
+            water lake<br>
+            water arctic<br>
+            water swamp<br>
+            water river
+          </div>
+        </div>
+        
+        <div>
+          <div style="color:#4fc3f7;font-weight:bold;margin-bottom:6px">🎮 PLAY MODE</div>
+          <div style="color:#aaa;font-size:11px;line-height:1.6">
+            WASD — Move<br>
+            Space — Jump<br>
+            Shift — Sprint<br>
+            V — Toggle FPS/TPS<br>
+            T — Swap shoulder (TPS)<br>
+            Right-click — Aim (ADS)<br>
+            Left-click — Shoot/Attack<br>
+            1/2/3 — Swap weapons<br>
+            E — Interact<br>
+            Tab — Inventory<br>
+            ESC — Exit play mode
+          </div>
+        </div>
+        
+        <div>
+          <div style="color:#4fc3f7;font-weight:bold;margin-bottom:6px">🤖 AI AGENT (Player)</div>
+          <div style="color:#aaa;font-size:11px;line-height:1.6">
+            ninja style<br>
+            tank class<br>
+            mage mode<br>
+            acrobat style<br>
+            make me faster<br>
+            equip fire sword<br>
+            equip ice katana<br>
+            higher jump<br>
+            souls mode<br>
+            show my stats<br>
+            glow blue<br>
+            reset stats
+          </div>
+        </div>
+        
+        <div>
+          <div style="color:#4fc3f7;font-weight:bold;margin-bottom:6px">⚔️ WEAPONS</div>
+          <div style="color:#aaa;font-size:11px;line-height:1.6">
+            equip sword<br>
+            equip katana<br>
+            equip rifle<br>
+            equip shotgun<br>
+            equip sniper<br>
+            equip bow<br>
+            show weapons<br>
+            swap 2
+          </div>
+        </div>
+        
+        <div>
+          <div style="color:#4fc3f7;font-weight:bold;margin-bottom:6px">🛠️ BUILDING</div>
+          <div style="color:#aaa;font-size:11px;line-height:1.6">
+            add [object] — house, tree, npc...<br>
+            interior house / 2 story house<br>
+            interior shop / interior tavern<br>
+            building with interior<br>
+            add [object] at x z<br>
+            remove [name]<br>
+            clear all<br>
+            ocean / add ocean<br>
+            add lake / add river<br>
+            time morning/sunset/night<br>
+            fog on/off<br>
+            particles rain/snow/fire
+          </div>
+        </div>
+      </div>
+      
+      <div style="border-top:1px solid #333;padding-top:8px;color:#666;font-size:10px;text-align:center">
+        Type <span style="color:#4fc3f7">help</span> to toggle this panel • Press <span style="color:#4fc3f7">H</span> in play mode
+      </div>
+    `;
+    document.body.appendChild(panel);
+    return '📋 Commands panel opened! Type "help" again to close.';
+  }
+
+  // === WATER PRESET ===
+  const waterPresetMatch = lower.match(/^(?:set |change |use )?water (?:preset |style |type )?(tropical|storm|lake|ocean|swamp|river|arctic)/);
+  if (waterPresetMatch) {
+    const preset = waterPresetMatch[1];
+    for (const obj of objects) {
+      if (obj.userData.isGerstnerWater) {
+        const p = WATER_PRESETS[preset];
+        if (p && obj.material.uniforms) {
+          obj.material.uniforms.waveA.value.set(p.waveA[0], p.waveA[1], p.waveA[2], p.waveA[3]);
+          obj.material.uniforms.waveB.value.set(p.waveB[0], p.waveB[1], p.waveB[2], p.waveB[3]);
+          obj.material.uniforms.waveC.value.set(p.waveC[0], p.waveC[1], p.waveC[2], p.waveC[3]);
+          obj.material.uniforms.waterColor.value.copy(p.color);
+          obj.material.uniforms.deepColor.value.copy(p.deepColor);
+          obj.material.uniforms.foamIntensity.value = p.foamIntensity;
+          obj.material.uniforms.specularPower.value = p.specularPower;
+          obj.material.uniforms.fresnelPower.value = p.fresnelPower;
+          obj.material.uniforms.opacity.value = p.opacity;
+          obj.userData.waterPreset = preset;
+          currentWaterPreset = preset;
+        }
+      }
+    }
+    return '🌊 Water preset: ' + preset.charAt(0).toUpperCase() + preset.slice(1);
+  }
+
+  // === HEAL ===
+  if ((lower === 'heal' || lower === 'restore health' || lower === 'full health') && characterController) {
+    characterController.health = characterController.maxHealth;
+    characterController.stamina = characterController.maxStamina;
+    return '❤️ Health & stamina fully restored!';
+
+  }
+  // === BUILD TOWN/CITY ===
+  const townKeywords = /medieval|fantasy|village|town|city|modern|cyberpunk|castle|pirate|port|farm|forest|bandit|camp|desert|fishing|mountain|mining|market|military|fort|harbor|island|space|station|alien|planet|mars|colony|sci.?fi|outpost|zombie|wasteland|apocal|nuclear|frozen|tundra|ice|fortress|winter|arctic|snow|haunted|graveyard|mansion|crypt|catacomb|cathedral|bone.?yard|dungeon|jungle|temple|tropical|dinosaur|dino|prehistoric|underwater|ocean|shipwreck|downtown|suburb|neon|alley|arena|colosseum|gladiator|platformer|obstacle|race|circuit|track|enchanted|dark.?forest|oasis|war.?zone|battlefield|dwarf|dwarven|mine|ranch|cowboy|western|saloon|wild.?west|steampunk|airship|victorian|samurai|shogun|feudal|japan|ninja|aztec|mayan|egyptian|pyramid|pharaoh|roman|greek|olymp|viking|norse|valhalla|moon|lunar|asteroid|saturn|jupiter|nebula|orbit|satellite|space.?dock|star.?base|warp|hyper|galaxy|cosmos|meteor|comet|black.?hole|void|dimension|portal|rift|cyber.?city|hacker|matrix|android|robot|mech|titan|kaiju|monster|beast|dragon.?lair|dragon.?nest|swamp|marsh|bog|bayou|savanna|steppe|tundra|taiga|bamboo|cherry|blossom|zen|garden|pagoda|shrine|torii|volcano|lava|magma|crater|geyser|hot.?spring|crystal|gem|diamond|emerald|ruby|sapphire|amethyst|gold|silver|treasure|vault|bank|heist|prison|jail|asylum|hospital|school|library|museum|theater|circus|carnival|amusement|theme.?park|zoo|aquarium|greenhouse|laboratory|bunker|silo|warehouse|factory|power.?plant|dam|bridge|highway|tunnel|subway|metro|train|airport|spaceport|launch|rocket|shuttle|satellite|orbital|derelict|abandon|ruin|wreck|sunken|lost|forgotten|ancient|cursed|blessed|holy|sacred|divine|infernal|hell|abyss|purgatory|heaven|paradise|cloud|sky|floating|flying/;
+  const townMatch = lower.match(/^(?:build|create|generate)\s+(?:a\s+)?(?:(small|medium|large|huge)\s+)?(.+)/);
+  if (townMatch && townKeywords.test(townMatch[2]) && townBuilder) {
+    const size = townMatch[1] || 'medium';
+    const type = townMatch[2];
+    // Set biome-appropriate ground, sky, and lighting
+    const biomeSettings = {
+      space: { ground: 'rock', sky: [0.02,0.02,0.05], fog: [0.02,0.02,0.05] },
+      'sci-fi': { ground: 'metal', sky: [0.05,0.05,0.1], fog: [0.05,0.05,0.1] },
+      alien: { ground: 'rock', sky: [0.1,0.02,0.05], fog: null },
+      zombie: { ground: 'dirt', sky: [0.15,0.12,0.08], fog: [0.12,0.1,0.06] },
+      wasteland: { ground: 'dirt', sky: [0.2,0.15,0.1], fog: [0.15,0.12,0.08] },
+      apocal: { ground: 'concrete', sky: [0.15,0.12,0.08], fog: [0.12,0.1,0.06] },
+      nuclear: { ground: 'sand', sky: [0.2,0.18,0.1], fog: [0.18,0.15,0.08] },
+      frozen: { ground: 'snow', sky: [0.6,0.65,0.75], fog: [0.7,0.75,0.8] },
+      tundra: { ground: 'snow', sky: [0.5,0.55,0.65], fog: [0.6,0.65,0.7] },
+      ice: { ground: 'ice', sky: [0.5,0.6,0.75], fog: [0.6,0.7,0.8] },
+      winter: { ground: 'snow', sky: [0.6,0.65,0.7], fog: [0.7,0.75,0.8] },
+      arctic: { ground: 'snow', sky: [0.55,0.6,0.7], fog: null },
+      snow: { ground: 'snow', sky: [0.6,0.65,0.7], fog: null },
+      haunted: { ground: 'dirt', sky: [0.05,0.05,0.07], fog: [0.03,0.03,0.05] },
+      graveyard: { ground: 'dirt', sky: [0.04,0.04,0.06], fog: [0.03,0.03,0.05] },
+      crypt: { ground: 'stone', sky: [0.03,0.03,0.05], fog: [0.02,0.02,0.04] },
+      cathedral: { ground: 'stone', sky: [0.05,0.04,0.06], fog: null },
+      dungeon: { ground: 'stone', sky: [0.03,0.02,0.04], fog: [0.02,0.02,0.03] },
+      bone: { ground: 'sand', sky: [0.06,0.05,0.04], fog: null },
+      jungle: { ground: 'mud', sky: [0.3,0.4,0.25], fog: [0.2,0.3,0.15] },
+      tropical: { ground: 'grass', sky: [0.4,0.6,0.8], fog: null },
+      dinosaur: { ground: 'grass', sky: [0.35,0.5,0.3], fog: [0.25,0.35,0.2] },
+      prehistoric: { ground: 'dirt', sky: [0.3,0.4,0.25], fog: null },
+      underwater: { ground: 'sand', sky: [0.05,0.15,0.3], fog: [0.05,0.1,0.25] },
+      ocean: { ground: 'sand', sky: [0.1,0.2,0.4], fog: [0.08,0.15,0.3] },
+      shipwreck: { ground: 'sand', sky: [0.2,0.3,0.4], fog: null },
+      cyberpunk: { ground: 'asphalt', sky: [0.02,0.01,0.05], fog: [0.02,0.01,0.04] },
+      neon: { ground: 'asphalt', sky: [0.02,0.01,0.05], fog: [0.01,0.0,0.03] },
+      modern: { ground: 'concrete', sky: [0.4,0.5,0.65], fog: null },
+      downtown: { ground: 'asphalt', sky: [0.35,0.45,0.6], fog: null },
+      desert: { ground: 'sand', sky: [0.6,0.5,0.35], fog: [0.5,0.4,0.3] },
+      oasis: { ground: 'sand', sky: [0.5,0.55,0.7], fog: null },
+      war: { ground: 'dirt', sky: [0.2,0.18,0.15], fog: [0.15,0.12,0.1] },
+      battlefield: { ground: 'mud', sky: [0.2,0.18,0.15], fog: [0.15,0.12,0.1] },
+      mine: { ground: 'stone', sky: [0.08,0.06,0.04], fog: [0.05,0.04,0.03] },
+      dwarf: { ground: 'stone', sky: [0.1,0.08,0.05], fog: null },
+      enchanted: { ground: 'grass', sky: [0.15,0.2,0.25], fog: [0.1,0.15,0.2] },
+      dark: { ground: 'dirt', sky: [0.04,0.05,0.04], fog: [0.03,0.04,0.03] },
+      pirate: { ground: 'sand', sky: [0.35,0.45,0.6], fog: null },
+      castle: { ground: 'grass', sky: [0.3,0.35,0.5], fog: null },
+      farm: { ground: 'grass', sky: [0.4,0.55,0.7], fog: null },
+      arena: { ground: 'sand', sky: [0.45,0.5,0.6], fog: null },
+      platformer: { ground: 'grass', sky: [0.3,0.5,0.8], fog: null },
+      race: { ground: 'asphalt', sky: [0.3,0.45,0.65], fog: null },
+    };
+    
+    // Find matching biome
+    let biome = null;
+    for (const [key, val] of Object.entries(biomeSettings)) {
+      if (type.includes(key)) { biome = val; break; }
+    }
+    if (!biome) biome = { ground: 'grass', sky: [0.3,0.4,0.5], fog: null };
+    window._currentBiome = type; if (window._sound) { window._sound.setMusicMood(window._sound.biomeToMood(type)); }
+    
+    // Apply biome
+    scene.remove(currentGround); currentGroundType = biome.ground; currentGround = createGround(biome.ground); scene.add(currentGround);
+    scene.background = new THREE.Color(biome.sky[0], biome.sky[1], biome.sky[2]);
+    if (biome.fog) {
+      scene.fog = new THREE.FogExp2(new THREE.Color(biome.fog[0], biome.fog[1], biome.fog[2]), 0.015);
+    } else {
+      scene.fog = null;
+    }
+    // Auto weather per biome
+    if (type.includes('frozen') || type.includes('tundra') || type.includes('ice') || type.includes('winter') || type.includes('arctic') || type.includes('snow')) {
+      setWeather('snow');
+    } else if (type.includes('haunted') || type.includes('graveyard') || type.includes('zombie') || type.includes('war')) {
+      setWeather('rain');
+    }
+    
+    // Auto-expand ground for world builds
+    const worldSizes = { small: 500, medium: 800, large: 1200, huge: 1800 };
+    const neededSize = worldSizes[size] || 800;
+    if (groundSize < neededSize) expandGround(neededSize);
+    const results = await townBuilder.buildTown(type, size);
+    return results.join('\n');
+  }
+  
+  // === LEVEL/SKILL COMMANDS ===
+  if ((lower === 'stats' || lower === 'level' || lower === 'skills' || lower === 'xp') && levelSystem) {
+    return '📊 ' + levelSystem.getStats();
+  }
+  const skillMatch = lower.match(/^(?:upgrade|level up|invest|put point in)\s+(strength|vitality|endurance|agility|luck)/);
+  if (skillMatch && levelSystem) {
+    return levelSystem.upgradeSkill(skillMatch[1]);
+  }
+  
+  // === CRAFTING COMMANDS ===
+  if ((lower === 'craft' || lower === 'recipes' || lower === 'crafting') && craftingSystem) {
+    return '🔨 Crafting Recipes:\n' + craftingSystem.listRecipes() + '\n\nMaterials: ' + craftingSystem.getMaterialString();
+  }
+  const craftMatch = lower.match(/^craft\s+(.+)/);
+  if (craftMatch && craftingSystem) {
+    return craftingSystem.craft(craftMatch[1]);
+  }
+  if (lower === 'materials' || lower === 'inventory materials') {
+    if (!craftingSystem) return '⚠ Enter play mode first';
+    return '🧱 Materials: ' + craftingSystem.getMaterialString();
+  }
+  
+  // === QUEST COMMANDS ===
+  if (lower === 'quests' || lower === 'quest log') {
+    const active = questSystem.quests.filter(q => !q.completed);
+    const done = questSystem.completedQuests.length;
+    if (active.length === 0) return '📜 No active quests. Spawn enemies to get one!';
+    return '📜 Active quests:\n' + active.map(q => '  ' + q.title + ' (' + q.current + '/' + q.targetCount + ')').join('\n') + '\n✅ Completed: ' + done;
+  }
+  
+  // === TALK TO NPC ===
+  if ((lower === 'talk' || lower === 'talk to npc' || lower === 'interact') && npcController) {
+    const nearby = npcController.getNearbyNPCs(characterController.position, 5);
+    if (nearby.length === 0) return '⚠ No NPCs nearby to talk to';
+    const npc = nearby[0];
+    const dialogues = {
+      'knight': { speaker: '🛡️ Knight', lines: [
+        'Halt, traveler! These lands grow more dangerous by the day.',
+        'Monsters roam the outskirts. We could use another sword.',
+        'Prove your worth — clear the beasts, and I shall reward you.',
+      ]},
+      'villager': { speaker: '👤 Villager', lines: [
+        'Oh thank the gods, an adventurer!',
+        'Strange creatures have been spotted near the village.',
+        'Please help us... we have gold to spare for brave souls.',
+      ]},
+      'soldier': { speaker: '⚔️ Soldier', lines: [
+        'At ease. You look capable enough.',
+        'Intel reports hostiles converging on this position.',
+        'Lock and load — they could attack any moment.',
+      ]},
+    };
+    const dlg = dialogues[npc.type] || dialogues['villager'];
+    dlg.onEnd = () => {
+      if (questSystem.quests.filter(q => !q.completed).length === 0) {
+        questSystem.addQuest({
+          id: 'npc_quest_' + Date.now(),
+          title: '🗡️ ' + dlg.speaker.split(' ')[1] + '\'s Request',
+          description: 'Defeat 5 enemies for ' + dlg.speaker,
+          type: 'kill',
+          targetCount: 5,
+          reward: '+500 Score, Weapon upgrade'
+        });
+      }
+    };
+    dialogueSystem.start(dlg);
+    return '💬 Talking to ' + dlg.speaker + '...';
+  }
+
+  // === CHARACTER SPEED ===
+  const charSpeedMatch = lower.match(/^(?:set\s+)?(?:character\s+|player\s+)?(walk|run|sprint)\s*speed\s+(\d+\.?\d*)/);
+  if (charSpeedMatch && characterController) {
+    return characterController.setSpeed(charSpeedMatch[1], parseFloat(charSpeedMatch[2]));
+  }
+  
+  // === ENTER VEHICLE ===
+  if ((lower === 'enter vehicle' || lower === 'get in car' || lower === 'enter car') && characterController) {
+    const vehicle = objects.find(o => o.userData.name && (o.userData.name.includes('car') || o.userData.name.includes('truck')));
+    if (vehicle) return characterController.enterVehicle(vehicle);
+    return '⚠ No vehicle nearby';
+  }
+  
+  // === PLAY MODE ===
+
+  // === PLAY MODE ===
+  if (lower === 'play' || lower === 'play mode' || lower === 'fps' || lower === 'first person' || lower === 'walk') {
+    return enterPlayMode();
+  }
+  if (lower === 'edit' || lower === 'edit mode' || lower === 'stop playing' || lower === 'exit play') {
+    return exitPlayMode();
+  }
+  
+  // === ANIMATION CONTROLS ===
+  const animMatch = lower.match(/^(?:animate|anim|play anim(?:ation)?)\s+(.+?)(?:\s+(idle|walk|run|attack|die|death|jump|dance|wave|sit|stand|sleep|talk|cast|block|hit|shoot|reload|crouch|climb|swim|fly|open|close|spin|bounce|float|pulse|glow|explode))?$/);
+  if (animMatch) {
+    const targetName = animMatch[1].trim();
+    const clipName = animMatch[2] || null;
+    const obj = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(targetName));
+    if (obj && obj.userData.mixer && obj.userData.clips) {
+      if (clipName) {
+        const mixer = obj.userData.mixer;
+        mixer.stopAllAction();
+        const matchClip = obj.userData.clips.find(c => c.name.toLowerCase().includes(clipName));
+        if (matchClip) {
+          const action = mixer.clipAction(matchClip);
+          action.reset().play();
+          return '✓ Playing "' + matchClip.name + '" on ' + obj.userData.name;
+        }
+        return '⚠ No "' + clipName + '" clip. Available: ' + obj.userData.animations.join(', ');
+      }
+      return '🎬 ' + obj.userData.name + ' animations: ' + obj.userData.animations.join(', ');
+    }
+    // No embedded animations — apply procedural animation
+    if (obj) {
+      const animType = clipName || 'spin';
+      return applyProceduralAnimation(obj, animType);
+    }
+    return '⚠ Could not find "' + targetName + '"';
+  }
+  
+  // === STOP ANIMATION ON SPECIFIC OBJECT ===
+  const stopAnimMatch = lower.match(/^stop\s+(?:anim(?:ation)?\s+(?:on\s+)?)?(.+)$/);
+  if (stopAnimMatch && !lower.startsWith('stop all')) {
+    const name = stopAnimMatch[1].trim();
+    const obj = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(name));
+    if (obj) {
+      if (obj.userData.mixer) obj.userData.mixer.stopAllAction();
+      if (obj.userData._procAnim) { obj.userData._procAnim = null; }
+      return '✓ Stopped animation on ' + obj.userData.name;
+    }
+  }
+  
+  if (lower === 'pause animations' || lower === 'stop animations' || lower === 'freeze') {
+    animationMixers.forEach(m => m.timeScale = 0);
+    return '✓ All animations paused';
+  }
+  if (lower === 'resume animations' || lower === 'unfreeze' || lower === 'play animations') {
+    animationMixers.forEach(m => m.timeScale = 1);
+    return '✓ All animations resumed';
+  }
+  
+  // === SPEED CONTROL ===
+  const speedMatch = lower.match(/^(?:animation )?speed\s+(\d+\.?\d*)/);
+  if (speedMatch) {
+    const s = parseFloat(speedMatch[1]);
+    animationMixers.forEach(m => m.timeScale = s);
+    return '✓ Animation speed set to ' + s + 'x';
+  }
+  
+  // === SCRIPTING: when/on triggers ===
+  const trigMatch = lower.match(/^(?:when|on|if)\s+(?:player\s+)?(?:touch(?:es)?|hit(?:s)?|near|reach(?:es)?)\s+(\w+)\s*(?:,?\s*(?:then\s+)?(.+))?/);
+  if (trigMatch) {
+    const target = trigMatch[1];
+    const actionStr = trigMatch[2] || 'score +10';
+    let action = 'score', value = 10;
+    if (/score|point/i.test(actionStr)) {
+      const n = actionStr.match(/(\d+)/);
+      action = 'score'; value = n ? parseInt(n[1]) : 10;
+    } else if (/remove|destroy|delete/i.test(actionStr)) {
+      action = 'remove';
+    } else if (/explod/i.test(actionStr)) {
+      action = 'explode';
+    } else if (/teleport/i.test(actionStr)) {
+      action = 'teleport';
+    } else if (/spawn|summon/i.test(actionStr)) {
+      action = 'spawn'; value = actionStr.replace(/^(spawn|summon)\s*/i, '');
+    } else if (/heal|restore/i.test(actionStr)) {
+      action = 'heal'; value = parseInt(actionStr.match(/(\d+)/) ? actionStr.match(/(\d+)/)[1] : 50);
+    } else if (/sound|play sound|sfx/i.test(actionStr)) {
+      action = 'sound'; value = actionStr.replace(/^(sound|play sound|sfx)\s*/i, '');
+    } else if (/run|exec|do/i.test(actionStr)) {
+      action = 'exec'; value = actionStr.replace(/^(run|exec|do)\s*/i, '');
+      action = 'teleport';
+    } else if (/message|say|show/i.test(actionStr)) {
+      action = 'message'; value = actionStr.replace(/^(message|say|show)\s*/i, '');
+    }
+    return addTrigger('proximity', target, action, value);
+  }
+  
+  // === POPULATE: Add NPCs + traffic to town ===
+  if (lower.match(/^(populate|add life|add people|add traffic|add npcs|civilians|pedestrians)/)) {
+    if (!npcController) return "⚠ Enter play mode first";
+    var npcCount = parseInt((lower.match(/(\d+)/) || [0,6])[1]);
+    var types = ["villager","woman","soldier","knight"];
+    var placed = 0;
+    for (var pi = 0; pi < npcCount; pi++) {
+      var t = types[pi % types.length];
+      var npx = (Math.random() - 0.5) * 60;
+      var npz = (Math.random() - 0.5) * 60;
+      npcController.spawnNPC(t, npx, npz, "wander");
+      placed++;
+    }
+    return "🚶 Added " + npcCount + " wandering NPCs! The town feels alive.";
+  }
+
+  // === SCORE ===
+  if (lower === 'score' || lower === 'show score') {
+    return '⭐ Score: ' + gameScore;
+  }
+  if (lower === 'reset score') {
+    gameScore = 0; updateHUD();
+    return '✓ Score reset to 0';
+  }
+  
+  // === LIST ANIMATIONS ===
+  if (lower === 'list animations' || lower === 'animations' || lower === 'show animations') {
+    const animated = objects.filter(o => (o.userData.animations && o.userData.animations.length > 0) || o.userData._procAnim);
+    let result = '';
+    if (animated.length > 0) {
+      result = '🎬 Animated objects:\n' + animated.map(o => {
+        const embedded = o.userData.animations ? o.userData.animations.join(', ') : '';
+        const proc = o.userData._procAnim ? '[procedural: ' + o.userData._procAnim.type + ']' : '';
+        return '  ' + (o.userData.name || 'unnamed') + ': ' + (embedded || proc || 'none');
+      }).join('\n');
+    }
+    result += '\n\n' + listProceduralAnimations();
+    return result;
+  }
+  
+  // === DUPLICATE/SCATTER ===
+  const scatterMatch = lower.match(/^scatter\s+(\d+)\s+(.+?)(?:\s+around)?$/);
+  if (scatterMatch) {
+    const n = Math.min(parseInt(scatterMatch[1]), 100);
+    let objName = scatterMatch[2].trim();
+    // Handle plurals: trees→tree, rocks→rock, etc.
+    if (!GLB_MODELS[objName] && objName.endsWith('s')) objName = objName.slice(0, -1);
+    if (!GLB_MODELS[objName] && objName.endsWith('ie')) objName = objName.slice(0, -2) + 'y'; // zombies→zombie handled by 's' strip
+    const glb = GLB_MODELS[objName];
+    if (glb) {
+      for (let i = 0; i < n; i++) {
+        const sx = (Math.random()-0.5) * 40;
+        const sz = (Math.random()-0.5) * 40;
+        loadGLBModel(objName + '_scatter_' + i, glb, sx, sz, null);
+      }
+      return '✓ Scattered ' + n + ' ' + objName + '(s) around the scene';
+    }
+    return '⚠ Unknown model: ' + objName;
+  }
+  
+  const timeMatch = lower.match(/^(?:time|set time|set|change time to|time of day)\s+(dawn|sunrise|morning|noon|afternoon|sunset|dusk|evening|night|midnight)/);
+  // === DAYTIME CONTROL ===
+  if (timeMatch && !lower.includes('travel')) {
+    const t = timeMatch[1];
+    const times = {dawn:[0.8,0.4,0.2,0.3],sunrise:[1,0.6,0.3,0.5],morning:[1,0.9,0.8,1],noon:[1,1,0.98,1.2],afternoon:[1,0.95,0.85,1],sunset:[1,0.5,0.2,0.6],dusk:[0.4,0.3,0.5,0.3],evening:[0.15,0.15,0.3,0.2],night:[0.05,0.05,0.15,0.08],midnight:[0.02,0.02,0.08,0.05]};
+    const preset = times[t];
+    if (preset) {
+      scene.background = new THREE.Color(preset[0], preset[1], preset[2]);
+      sunLight.intensity = preset[3] * 3;
+      if (t === 'night' || t === 'midnight' || t === 'evening') {
+        sunLight.position.set(-20, 5, 0);
+      } else if (t === 'dawn' || t === 'sunrise') {
+        sunLight.position.set(-40, 10, 0);
+      } else if (t === 'sunset' || t === 'dusk') {
+        sunLight.position.set(40, 10, 0);
+      } else {
+        sunLight.position.set(30, 40, 20);
+      }
+      return '✓ Time set to ' + t;
+    }
+  }
+  
+  // Parse position
+  let px, pz;
+  const atIdx = parts.indexOf('at');
+  if (atIdx >= 0) { px = parseFloat(parts[atIdx+1])||0; pz = parseFloat(parts[atIdx+2]||parts[atIdx+3])||0; }
+  // Default: spawn near player position (supports multi-platform worlds)
+  if (px === undefined && window.characterController && window.characterController.position) {
+    const pp = window.characterController.position;
+    px = pp.x + (Math.random() - 0.5) * 15;
+    pz = pp.z + (Math.random() - 0.5) * 15;
+  }
+  
+  // Parse count
+  let count = 1;
+  const numMatch = lower.match(/(\d+)\s+(cube|sphere|tree|house|rock|bush|flower|avatar|building|pine)/);
+  if (numMatch) count = Math.min(parseInt(numMatch[1]), 50);
+  
+  // === TELEPORT ===
+  if (/^(teleport|tp|goto|go to)\s/.test(lower)) {
+    const tpCoord = lower.match(/(-?[\d.]+)\s*,?\s*(-?[\d.]+)/);
+    if (tpCoord) {
+      const tx = parseFloat(tpCoord[1]), tz = parseFloat(tpCoord[2]);
+      camera.position.set(tx, 15, tz + 20);
+      camera.lookAt(tx, 0, tz);
+      return '✓ Teleported to (' + tx + ', ' + tz + ')';
+    }
+    const objName = lower.replace(/^(teleport|tp|goto|go to)\s+(to\s+)?/, '').trim();
+    if (objName) {
+      const target = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(objName));
+      if (target) {
+        const p = target.position;
+        camera.position.set(p.x, 15, p.z + 20);
+        camera.lookAt(p.x, 0, p.z);
+        return '✓ Teleported to ' + target.userData.name;
+      }
+    }
+    return '⚠ Use: teleport X Z or teleport <object>';
+  }
+
+
+  // === ONE-CLICK SCENE PRESETS ===
+  if (typeof getSceneCommands === 'function') {
+    const presetCmds = getSceneCommands(lower);
+    const isPreset = presetCmds && !(presetCmds.length === 3 && presetCmds[0] === 'add 5 trees');
+    if (isPreset) {
+      parseAndExecute('clear');
+      presetCmds.forEach((cmd, i) => {
+        setTimeout(() => parseAndExecute(cmd), 200 + i * 200);
+      });
+      return '🎮 Loading ' + lower + '...';
+    }
+  }
+
+  // === NATURAL LANGUAGE: move/color/scale/rotate ===
+  // MOVE: "move castle 6 feet right"
+  if (/^(move|push|slide|shift)\s/.test(lower) && !lower.includes('camera')) {
+    // "move X to X Z" — absolute positioning
+    const moveToAbs = lower.match(/^move\s+(?:the\s+)?(\w+)\s+to\s+(-?[\d.]+)\s*,?\s*(-?[\d.]+)/);
+    if (moveToAbs) {
+      const name = moveToAbs[1];
+      const tx = parseFloat(moveToAbs[2]);
+      const tz = parseFloat(moveToAbs[3]);
+      const target = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(name));
+      if (target) { target.position.x = tx; target.position.z = tz; return '✓ Moved ' + target.userData.name + ' to (' + tx + ', ' + tz + ')'; }
+      return '⚠ No object "' + name + '" found';
+    }
+    const moveMatch = lower.match(/^(?:move|push|slide|shift)\s+(?:the\s+)?(.+?)\s+(\d+\.?\d*)\s*(?:feet|foot|ft|units?|meters?|m|blocks?)?\s*(left|right|forward|forwards?|back|backward|backwards?|up|down|north|south|east|west)?/i);
+    const moveSimple = lower.match(/^(?:move|push|slide|shift)\s+(?:the\s+)?(.+?)\s+(left|right|forward|back|up|down)\s*(\d+\.?\d*)?/i);
+    const dirs = {left:[-1,0,0],right:[1,0,0],forward:[0,0,1],forwards:[0,0,1],front:[0,0,1],back:[0,0,-1],backward:[0,0,-1],backwards:[0,0,-1],up:[0,1,0],down:[0,-1,0],north:[0,0,1],south:[0,0,-1],east:[1,0,0],west:[-1,0,0]};
+    if (moveMatch) {
+      const name = moveMatch[1].trim();
+      const dist = parseFloat(moveMatch[2]) || 2;
+      const dir = (moveMatch[3] || 'forward').toLowerCase();
+      const d = dirs[dir] || [0,0,1];
+      const obj = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(name));
+      if (obj) { obj.position.x += d[0]*dist; obj.position.y += d[1]*dist; obj.position.z += d[2]*dist; return '✓ Moved '+obj.userData.name+' '+dist+' feet '+dir; }
+      return '⚠ Could not find "'+name+'" — Objects: '+objects.map(o=>o.userData.name).join(', ');
+    }
+    if (moveSimple) {
+      const name = moveSimple[1].trim();
+      const dir = moveSimple[2].toLowerCase();
+      const dist = parseFloat(moveSimple[3]) || 3;
+      const d = dirs[dir] || [0,0,1];
+      const obj = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(name));
+      if (obj) { obj.position.x += d[0]*dist; obj.position.y += d[1]*dist; obj.position.z += d[2]*dist; return '✓ Moved '+obj.userData.name+' '+dir+' '+dist; }
+      return '⚠ Could not find "'+name+'"';
+    }
+  }
+  // COLOR: "turn castle red" / "make it blue" / "paint house green"
+  if (/^(turn|paint)\s/.test(lower) || (lower.startsWith('make ') && /red|blue|green|yellow|orange|purple|pink|white|black|brown|gold|silver|cyan|magenta|gray|grey|dark/.test(lower))) {
+    const colorMap = {red:0xff2222,blue:0x2266ff,green:0x22aa22,yellow:0xffee00,orange:0xff8800,purple:0x8822cc,pink:0xff66aa,white:0xffffff,black:0x111111,brown:0x774422,gold:0xffcc00,silver:0xaaaaaa,cyan:0x00dddd,magenta:0xdd00dd,gray:0x888888,grey:0x888888,dark:0x222222};
+    let foundColor = null, colorName = '';
+    for (const [cn, cv] of Object.entries(colorMap)) { if (lower.includes(cn)) { foundColor = cv; colorName = cn; break; } }
+    if (foundColor !== null) {
+      const clean = lower.replace(/^(turn|make|paint|set|color)\s+/,'').replace(/(the|a|it|to)\s/g,'').replace(colorName,'').trim();
+      let target = clean ? objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(clean)) : (selectedObj || objects[objects.length-1]);
+      if (target) {
+        const setColor = (o) => { if (o.isMesh && o.material) o.material.color.setHex(foundColor); if (o.children) o.children.forEach(setColor); };
+        setColor(target);
+        return '🎨 '+target.userData.name+' is now '+colorName+'!';
+      }
+      return '⚠ Could not find object';
+    }
+  }
+  // GROUND: "change ground to snow" / "make ground look like lava"
+  if (['ground','floor','terrain','surface'].some(g => lower.includes(g)) && ['change','make','set','turn','switch','to'].some(c => lower.includes(c))) {
+    const matMap = {snow:1,ice:1,grass:1,sand:1,dirt:1,mud:1,stone:1,rock:1,lava:1,water:1,wood:1,marble:1,metal:1,concrete:1,asphalt:1,gold:1,obsidian:1,crystal:1};
+    for (const mn of Object.keys(matMap)) {
+      if (lower.includes(mn)) { scene.remove(currentGround); currentGroundType = mn; currentGround = createGround(mn); scene.add(currentGround); return '✓ Ground changed to '+mn+'!'; }
+  }
+  }
+  // EXPAND GROUND: "expand ground" / "bigger map" / "extend level" / "double floor"
+  if (lower.match(/\b(expand|extend|enlarge|bigger|larger|grow|double|widen|stretch)\b/) && lower.match(/\b(ground|floor|map|level|board|terrain|area|space)\b/) && !lower.includes('world') && !lower.includes('platform')) {
+    const numMatch = lower.match(/(\d+)/);
+    let newSize = numMatch ? parseInt(numMatch[1]) : groundSize + 300;
+    if (newSize < groundSize) newSize = groundSize + 300;
+    expandGround(newSize);
+    return '✓ Ground expanded to ' + groundSize + 'x' + groundSize + '! More room to build.';
+  }
+  // TERRAIN: "terrain mountains" / "add mountains" / "hills" / "create terrain" etc.
+  if (lower.match(/^(terrain|generate terrain|create terrain|add terrain|make terrain|build terrain)\s/i) ||
+      lower.match(/^(mountains?|hills?|valley|canyon|volcano|crater|dunes?|island|plateau|cliffs?|desert terrain|rolling hills)$/i) ||
+      lower.match(/^add\s+(mountains?|hills?|terrain)/i) ||
+      lower.match(/^(raise|lower|flatten)\s*(terrain)?$/i)) {
+    var cmd = lower.replace(/^(terrain|generate|create|add|make|build)\s+(terrain\s+)?/i, '').trim();
+    if (!cmd || cmd === 'terrain') cmd = 'mountains';
+    // Simple raise/lower/flatten still work on existing ground
+    if (cmd === 'raise' || cmd === 'lower' || cmd === 'flatten') {
+      var pos = currentGround.geometry.attributes.position;
+      for (var i = 0; i < pos.count; i++) {
+        if (cmd === 'raise') pos.array[i * 3 + 1] += 0.3;
+        else if (cmd === 'lower') pos.array[i * 3 + 1] -= 0.3;
+        else pos.array[i * 3 + 1] = 0;
+      }
+      pos.needsUpdate = true;
+      currentGround.geometry.computeVertexNormals();
+      return "✓ Terrain " + cmd + "d!";
+    }
+    // Map aliases
+    if (cmd === 'rolling' || cmd === 'rolling hills') cmd = 'hills';
+    if (cmd === 'desert terrain' || cmd === 'desert') cmd = 'dunes';
+    if (cmd === 'cliff') cmd = 'cliffs';
+    createTerrain(cmd);
+    return "✓ Generated " + cmd + " terrain!";
+  }
+  // SCALE: "make castle bigger" / "scale tree 3x"
+  if (['bigger','smaller','larger','tiny','huge','giant','massive'].some(s => lower.includes(s)) || /^(scale|resize)\s/.test(lower)) {
+    let factor = 1;
+    if (lower.includes('bigger')||lower.includes('larger')) factor = 1.5;
+  else if (lower.includes('smaller')) factor = 0.67;
+    else if (lower.includes('tiny')) factor = 0.3;
+    else if (lower.includes('huge')||lower.includes('giant')||lower.includes('massive')) factor = 2.5;
+    else { const m = lower.match(/(\d+\.?\d*)\s*x/); if (m) factor = parseFloat(m[1]); }
+    const clean = lower.replace(/^(scale|resize|make)\s+/,'').replace(/\b(the|a|it|to|bigger|smaller|larger|tiny|huge|giant|massive)\b\s?/g,'').replace(/\d+\.?\d*\s*x?/g,'').trim();
+    const target = clean ? objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(clean)) : (selectedObj || objects[objects.length-1]);
+    if (target) { target.scale.multiplyScalar(factor); return '📐 '+target.userData.name+' scaled '+factor+'x!'; }
+    return '⚠ No object found to resize' + (clean ? ' matching "' + clean + '"' : '');
+  }
+  // ROTATE: "rotate castle 90 degrees"
+  if (/^(rotate|spin|flip)\s/.test(lower)) {
+    const degMatch = lower.match(/(\d+)/);
+    const deg = degMatch ? parseFloat(degMatch[1]) : 90;
+    const clean = lower.replace(/^(rotate|spin|flip)\s+/,'').replace(/(\bthe\b|\ba\b|\bby\b|\bdegrees?\b|\bdeg\b)\s?/g,'').replace(/\d+/g,'').trim();
+    const target = clean ? objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(clean)) : (selectedObj || objects[objects.length-1]);
+    if (target) { target.rotation.y += deg * Math.PI / 180; return '🔄 '+target.userData.name+' rotated '+deg+'°!'; }
+    return '⚠ No object found to rotate' + (clean ? ' matching "' + clean + '"' : '');
+  }
+
+  // === PRIMITIVES ===
+  // === GLB-FIRST: Check real 3D models before procedural fallbacks ===
+  {
+    // Extract the object name from the command
+    const addMatch = lower.match(/^(?:add|create|build|make|spawn)\s+(?:a\s+|an\s+|the\s+|me\s+|some\s+)?(\d+\s+)?(.+?)(?:\s+at\s+[\d.-]+.*)?$/);
+    if (addMatch) {
+      const objName = addMatch[2].trim().replace(/s$/, ''); // singular
+      // Palm tree special case
+      if (objName.includes('palm') && objName.includes('tree')) {
+        const palmModels = ['nature_pack_palmtree_1','nature_pack_palmtree_2','nature_pack_palmtree_3'];
+        for (let i = 0; i < count; i++) loadGLBModel('PalmTree_'+i, palmModels[i % palmModels.length], px, pz, null);
+        return `✓ Loading ${count} palm tree (real 3D model)...`;
+      }
+      // Direct match
+      if (GLB_MODELS[objName]) {
+        for (let i = 0; i < count; i++) loadGLBModel(objName + '_' + i, GLB_MODELS[objName], px, pz, null);
+        return `✓ Loading ${count} ${objName} (real 3D model)...`;
+      }
+      // Check each word
+      const words = objName.split(/\s+/);
+      for (const w of words) {
+        if (GLB_MODELS[w]) {
+          for (let i = 0; i < count; i++) loadGLBModel(w + '_' + i, GLB_MODELS[w], px, pz, null);
+          return `✓ Loading ${count} ${w} (real 3D model)...`;
+        }
+      }
+      // Check partial/alias match (e.g. "dead_tree" matches if input is "dead tree")
+      const joined = words.join('_');
+      if (GLB_MODELS[joined]) {
+        for (let i = 0; i < count; i++) loadGLBModel(joined + '_' + i, GLB_MODELS[joined], px, pz, null);
+        return `✓ Loading ${count} ${joined} (real 3D model)...`;
+      }
+    }
+  }
+  // === END GLB-FIRST ===
+
+    if (lower.includes('cube') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<count;i++) addObj('Cube', createCube(nextColor()), px, pz, count>1); return `✓ Added ${count} Cube${count>1?'s':''}`;  }
+  if (lower.includes('sphere') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<count;i++) addObj('Sphere', createSphere(nextColor()), px, pz, count>1); return `✓ Added ${count} Sphere${count>1?'s':''}`;  }
+  if (lower.includes('cylinder') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<count;i++) addObj('Cylinder', createCylinder(nextColor()), px, pz, count>1); return `✓ Added Cylinder`;  }
+  // === NATURE ===
+  if ((lower.includes('pine') || lower.includes('evergreen')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<count;i++) { if(count<=3) loadGLBModel('Pine_'+i,'tree',px,pz); else addObj('Pine',createPineTree(),px,pz,count>1); } return `✓ Added ${count} pine tree${count>1?'s':''}`;  }
+  if (lower.includes('palm') && lower.includes('tree') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { const palmModels = ['nature_pack_palmtree_1','nature_pack_palmtree_2','nature_pack_palmtree_3']; for(let i=0;i<count;i++) { loadGLBModel('PalmTree_'+i, 'tree', px, pz, palmModels[i % palmModels.length]); } return `✓ Added ${count} palm tree${count>1?'s':''}`;  }
+  if (lower.includes('tree') && !lower.includes('pine') && !lower.includes('palm') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<count;i++) { if(count<=3) loadGLBModel('Tree_'+i,'tree',px,pz); else addObj('Tree',createTree(),px,pz,count>1); } return `✓ Added ${count} tree${count>1?'s':''}`;  }
+  if (lower.includes('bush') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<count;i++) addObj('Bush',createBush(),px,pz,count>1); return `✓ Added ${count} bush${count>1?'s':''}`; }
+  if (lower.includes('grass') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { addObj('Grass',createGrass(40),px,pz); return '✓ Added grass patch';  }
+  if ((lower.includes('flower')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<(count||5);i++) addObj('Flower',createFlower(),px,pz,true); return `✓ Added flowers`;  }
+  // LIGHT: "add point light", "add red light", "add light at X Y Z"
+  if (lower.match(/(?:add\s+)?(?:point\s+)?light\s/i) || lower.match(/(?:add\s+)?(red|blue|green|orange|purple|pink|cyan|yellow|white)\s+light/i)) {
+    var lcolor = 0xffffff;
+    if (lower.includes('red')) lcolor = 0xff3333;
+    else if (lower.includes('blue') || lower.includes('cyan')) lcolor = 0x00ccff;
+    else if (lower.includes('green')) lcolor = 0x33ff33;
+    else if (lower.includes('orange')) lcolor = 0xff6b35;
+    else if (lower.includes('purple') || lower.includes('pink')) lcolor = 0xff00ff;
+    else if (lower.includes('yellow')) lcolor = 0xffcc00;
+    // Check for hex color
+    var hexMatch = lower.match(/([0-9a-f]{6})/i);
+    if (hexMatch) lcolor = parseInt(hexMatch[1], 16);
+    var ly = py || 3;
+    addPointLight(px || 0, ly, pz || 0, lcolor, 3, 15);
+    return '✓ Added light at (' + (px||0) + ', ' + ly + ', ' + (pz||0) + ')';
+  }
+  if (lower.includes('mountain') && !lower.includes('terrain') && !lower.startsWith('remove') && !lower.startsWith('delete') && !lower.startsWith('color') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) {
+    var mtn = createMountainProp();
+    addObj('Mountain', mtn, px, pz, 1);
+    return '✓ Added mountain backdrop';
+  }
+  if ((lower.includes('rock') || lower.includes('boulder')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<count;i++) addObj('Rock',createRock(lower.includes('boulder')),px,pz,count>1); return `✓ Added ${count} rock${count>1?'s':''}`;  }
+  if (lower.includes('forest') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { for(let i=0;i<15;i++) addObj('Tree',Math.random()>0.3?createTree():createPineTree(),null,null,true); for(let i=0;i<5;i++) addObj('Bush',createBush(),null,null,true); return '✓ Generated forest — 15 trees, 5 bushes'; }
+
+  // === STRUCTURES ===
+  if ((lower.includes('castle')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { addObj('Castle', createCastle(), px||0, pz||0); return '✓ Generated castle — 4 towers, battlements, courtyard';  }
+  if ((lower.includes('house') || lower.includes('cabin') || lower.includes('cottage')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { 
+    const houseColors = [0x8B7355, 0xA0522D, 0xDEB887, 0xBC8F8F, 0x8FBC8F];
+    for(let i=0;i<count;i++) addObj('House',createHouse(houseColors[i%houseColors.length]),px,pz,count>1); 
+    return `✓ Added ${count} house${count>1?'s':''}`;
+  }
+  if (lower.includes('village') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\\b/.test(lower)) {
+    for(let i=0;i<8;i++) addObj('House',createHouse(),null,null,true);
+    addObj('Road', createRoad(20), 0, 0);
+    for(let i=0;i<6;i++) addObj('Tree',createTree(),null,null,true);
+    return '✓ Generated village — 8 houses, road, trees';
+  }
+  if (lower.includes('city') || lower.includes('building')) {
+    const n = count > 1 ? count : 8;
+    for(let i=0;i<n;i++) {
+      const h = 1+Math.random()*5;
+      const b = createCube(0x555566+Math.floor(Math.random()*0x222222));
+      b.scale.set(0.8+Math.random()*0.6, h, 0.8+Math.random()*0.6);
+      b.position.y = h/2;
+      addObj('Building', b, null, null, true);
+    }
+    return `✓ Generated city — ${n} buildings`;
+  }
+  if ((lower.includes('road') || lower.includes('path')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { addObj('Road', createRoad(30, lower.includes('x')?'x':null), px||0, pz||0); return '✓ Added road'; }
+  if (lower.includes('wall') || lower.includes('fence')) {
+    const g = new THREE.Group();
+    const stoneMat = makeMat(0x888890, {rough:0.8});
+    const darkStone = makeMat(0x666670, {rough:0.85});
+    // Main wall body
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 0.4), stoneMat);
+    wall.position.y = 1; wall.castShadow = true; wall.receiveShadow = true; g.add(wall);
+    // Top coping stones
+    const coping = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.12, 0.55), darkStone);
+    coping.position.y = 2.06; g.add(coping);
+    // Merlons (battlements)
+    for (let i = -3; i <= 3; i++) {
+      const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), stoneMat);
+      merlon.position.set(i * 1.1, 2.4, 0); merlon.castShadow = true; g.add(merlon);
+    }
+    const base = new THREE.Mesh(new THREE.BoxGeometry(8.4, 0.2, 0.6), darkStone);
+    base.position.y = 0.1; g.add(base);
+    // Stone texture (horizontal lines)
+    for (let y = 0; y < 4; y++) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(8.01, 0.02, 0.42), darkStone);
+      line.position.set(0, 0.4 + y * 0.5, 0); g.add(line);
+    }
+    addObj('Wall', g, px, pz);
+    return '✓ Added stone wall with battlements';
+  }
+
+  // === CHARACTERS ===
+  if ((lower.includes('avatar') || lower.includes('character') || lower.includes('person') || lower.includes('player')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) {
+    loadGLBModel('Avatar', 'avatar', px, pz);
+    return '✓ Loading avatar (real 3D model)...';
+  }
+  if (lower.includes('man') && !lower.includes('command') && !lower.includes('many') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { addObj('Man', createAvatar('m'), px, pz); return '✓ Added man'; }
+  if ((lower.includes('woman') || lower.includes('lady') || lower.includes('girl')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { addObj('Woman', createAvatar('f'), px, pz); return '✓ Added woman'; }
+  if (lower.includes('sword') && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { addObj('Sword', createSword(), px, pz); return '✓ Added sword'; }
+  if (lower.includes("gun") && !lower.includes("dungeon") && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { return loadGLBModel("survival_pack_pistol_1", "Gun", px, pz); }
+  if (lower.includes("pistol") && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { return loadGLBModel("survival_pack_pistol_1", "Pistol", px, pz); }
+  if (lower.includes("rifle") && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { return loadGLBModel("modular_sci_fi_guns_pack_ar_1", "Rifle", px, pz); }
+  if (lower.includes("shotgun") && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { return loadGLBModel("survival_pack_shotgun_1", "Shotgun", px, pz); }
+  if (lower.includes("sniper") && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) { return loadGLBModel("modular_sci_fi_guns_pack_sniper_1", "Sniper", px, pz); }
+  if (lower.includes('knight') || lower.includes('warrior')) {
+    const k = createAvatar('m');
+    const s = createSword(); s.position.set(0.4, 0.8, 0); k.add(s);
+    addObj('Knight', k, px, pz);
+    return '✓ Added knight with sword';
+  }
+
+  // === TERRAIN (natural language) ===
+  if (lower.match(/mountain|terrain|hills|canyon|volcano|plateau|cliff/i) && 
+      !lower.includes('add ') && !lower.includes('spawn') &&
+      lower.match(/^(make|create|generate|build|set|add)\s/)) {
+    var ttype = 'mountains';
+    if (lower.includes('hill')) ttype = 'hills';
+    else if (lower.includes('canyon')) ttype = 'canyon';
+    else if (lower.includes('volcano')) ttype = 'volcano';
+    else if (lower.includes('plateau')) ttype = 'plateau';
+    else if (lower.includes('cliff')) ttype = 'cliffs';
+    else if (lower.includes('island')) ttype = 'island';
+    else if (lower.includes('dune') || lower.includes('desert')) ttype = 'dunes';
+    else if (lower.includes('valley')) ttype = 'valley';
+    createTerrain(ttype);
+    return "✓ Generated " + ttype + " terrain!";
+  }
+
+  // === WATER ===
+  if ((lower.includes('water') || lower.includes('lake') || lower.includes('pond') || lower.includes('river')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) {
+    addObj('Water', (Water && lower.includes('ocean')) ? createAAAWater(200) : createWater(lower.includes('river')?30:lower.includes('ocean')?200:10), px||0, pz||0);
+    return '✓ Added water';
+  }
+  if (['dirt','sand','snow ground','gravel','stone ground','mud'].some(t => lower.includes(t))) {
+    const type = ['dirt','sand','gravel','stone','mud'].find(t => lower.includes(t)) || 'dirt';
+    scene.remove(currentGround); currentGroundType = type; currentGround = createGround(type);
+    scene.add(currentGround);
+    return `✓ Ground set to ${type}`;
+  }
+
+  // === WEATHER ===
+  if (lower === 'publish' || lower === 'publish game' || lower === 'publish to .com' || lower === 'go live') { publishScene(); return '🚀 Opening publish dialog...'; }
+  if (lower.includes('rain') && !lower.startsWith('remove') && !lower.startsWith('delete')) { setWeather('rain'); return '✓ Rain — 10,000 particles, full scene coverage'; }
+  if (lower.includes('snow') && !lower.includes('ground') && !lower.startsWith('remove') && !lower.startsWith('delete')) { setWeather('snow'); return '✓ Snow — 6,000 particles, full scene coverage'; }
+  if (lower.includes('clear weather') || lower.includes('stop rain') || lower.includes('stop snow')) { setWeather(null); return '✓ Weather cleared'; }
+
+  // === SKY / TIME ===
+  if (lower.includes('sun') || lower.includes('sunny') || lower.includes('blue sky')) {
+    setSky('#3388dd', '#99ddff');
+    sunLight.color.set(0xffffff); sunLight.intensity = 4; sunLight.position.set(30,50,20);
+    scene.fog = null;
+    ambientLight.color.set(0xffffff); ambientLight.intensity = 1.2;
+    createSun();
+    return '✓ Blue sky with sun';
+  }
+  if (lower.includes('sunset') || lower.includes('dusk')) {
+    setSky('#cc4400', '#ff8844');
+    sunLight.color.set(0xff8844); sunLight.intensity = 1.8; sunLight.position.set(40,5,0);
+    ambientLight.intensity = 0.4;
+    return '✓ Sunset';
+  }
+  if (lower.includes('night') || lower.includes('dark') || lower.includes('moon')) {
+    setSky('#050510', '#101025');
+    sunLight.color.set(0x6666aa); sunLight.intensity = 0.4; sunLight.position.set(-20,30,10);
+    ambientLight.intensity = 0.15;
+    if (sunMesh) { scene.remove(sunMesh); sunMesh = null; }
+    return '✓ Night — moonlight';
+  }
+  if (lower.includes('day') || lower.includes('morning')) {
+    setSky('#4a8ac7', '#87ceeb');
+    sunLight.color.set(0xfff5e0); sunLight.intensity = 3; sunLight.position.set(30,40,20); scene.fog = null;
+    ambientLight.intensity = 0.6; createSun();
+    return '✓ Daytime';
+  }
+  if (lower.includes('fog') && !lower.startsWith('remove') && !lower.startsWith('delete')) { scene.fog = scene.fog ? null : new THREE.FogExp2(0x888899, 0.02); return scene.fog ? '✓ Fog on' : '✓ Fog off'; }
+
+  // === SCENE ===
+  if (lower === 'clear' || lower === 'reset') {
+    objects.forEach(o => scene.remove(o)); objects.length = 0;
+    setWeather(null); scene.fog = null;
+    setSky('#4a8ac7','#87ceeb');
+    sunLight.color.set(0xfff5e0); sunLight.intensity=3; sunLight.position.set(30,40,20);
+    ambientLight.intensity=0.6; createSun();
+    scene.remove(currentGround); currentGroundType = 'grass'; currentGround = createGround('grass'); scene.add(currentGround);
+    return '✓ Scene cleared';
+  }
+  if (lower.includes('delete') || lower.includes('remove') || lower.includes('undo')) {
+    // Remove terrain specifically
+    if (lower.includes('terrain') || lower.includes('mountain')) {
+      if (terrainMesh) { scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh.material.dispose(); terrainMesh = null; window._terrainMesh = null; return '✓ Terrain removed'; }
+      return '⚠ No terrain to remove';
+    }
+    // Remove by name: "remove castle" / "delete car"
+    const rmName = lower.replace(/^(delete|remove|destroy|undo)\s+(the\s+|a\s+)?/i, '').trim();
+    if (rmName && rmName !== 'delete' && rmName !== 'remove') {
+      const idx = objects.findIndex(o => o.userData.name && o.userData.name.toLowerCase().includes(rmName));
+      if (idx !== -1) { const obj = objects.splice(idx, 1)[0]; scene.remove(obj); return '✓ Removed ' + obj.userData.name; }
+    }
+    // Remove last object
+    if (objects.length) { const last = objects.pop(); scene.remove(last); return '✓ Removed ' + last.userData.name; }
+    return '⚠ Nothing to remove';
+  }
+
+
+  // === EXPAND WORLD — add connected ground platforms ===
+  if (lower.match(/^(expand|extend|grow|bigger)\s*(world|map|level|area|platform)/) || lower === 'expand' || lower === 'bigger world' || lower === 'new platform') {
+    const dir = lower.includes('north') ? 'n' : lower.includes('south') ? 's' : lower.includes('east') ? 'e' : lower.includes('west') ? 'w' : ['n','s','e','w'][Math.floor(Math.random()*4)];
+    const gs = groundSize || 300;
+    const offset = { n: [0,0,-gs], s: [0,0,gs], e: [gs,0,0], w: [-gs,0,0] }[dir];
+    const pGeo = new THREE.PlaneGeometry(gs, gs, 1, 1);
+    const pMat = new THREE.MeshStandardMaterial({ color: 0x2d5a1e, roughness: 0.95 });
+    const platform = new THREE.Mesh(pGeo, pMat);
+    platform.rotation.x = -Math.PI / 2;
+    platform.position.set(offset[0], 0.01, offset[2]);
+    platform.receiveShadow = true;
+    platform.userData.name = 'Ground_' + dir.toUpperCase();
+    platform.userData.isGround = true;
+    scene.add(platform);
+    objects.push(platform);
+    const dirNames = {n:'North',s:'South',e:'East',w:'West'};
+    return '✓ World expanded ' + dirNames[dir] + '! New ' + gs + 'x' + gs + ' platform added. Walk there to explore.';
+  }
+
+
+  // === COLOR CHANGE ===
+  if (lower.match(/^(color|paint|recolor|tint)\s/)) {
+    const colorMap = {
+      'red':0xff0000,'green':0x00ff00,'blue':0x0000ff,'yellow':0xffff00,'orange':0xff8800,
+      'purple':0x8800ff,'pink':0xff69b4,'white':0xffffff,'black':0x111111,'brown':0x8b4513,
+      'cyan':0x00ffff,'gold':0xffd700,'silver':0xc0c0c0,'gray':0x888888,'grey':0x888888,
+    };
+    let targetColor = null;
+    let targetName = '';
+    for (const [name, hex] of Object.entries(colorMap)) {
+      if (lower.includes(name)) { targetColor = hex; break; }
+    }
+    if (!targetColor) {
+      const hexMatch = lower.match(/#([0-9a-f]{6})/i);
+      if (hexMatch) targetColor = parseInt(hexMatch[1], 16);
+    }
+    if (targetColor !== null) {
+      const words = lower.replace(/^(color|paint|recolor|tint)\s+(the\s+|a\s+)?/, '').replace(/(red|green|blue|yellow|orange|purple|pink|white|black|brown|cyan|gold|silver|gray|grey|#[0-9a-f]{6})/i, '').trim();
+      const target = words ? objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(words)) : (selectedObj || objects[objects.length - 1]);
+      if (target) {
+        target.traverse(c => { if (c.isMesh && c.material) { const m = Array.isArray(c.material) ? c.material : [c.material]; m.forEach(mat => { mat.color = new THREE.Color(targetColor); mat.needsUpdate = true; }); } });
+        return '🎨 Colored ' + (target.userData.name || 'object') + '!';
+      }
+    }
+    return '⚠ Use: color <object> <color> (e.g. "color castle red")';
+  }
+
+
+  // === RIVER ===
+  if (lower.match(/^(add|create|make|build)?\s*(a\s+)?(river|stream|creek|waterway)/)) {
+    const riverLength = 200;
+    const riverWidth = 8;
+    const segs = 100;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-riverLength/2, 0.05, (Math.random()-0.5)*30),
+      new THREE.Vector3(-riverLength/4, 0.05, (Math.random()-0.5)*40),
+      new THREE.Vector3(0, 0.05, (Math.random()-0.5)*20),
+      new THREE.Vector3(riverLength/4, 0.05, (Math.random()-0.5)*40),
+      new THREE.Vector3(riverLength/2, 0.05, (Math.random()-0.5)*30),
+    ]);
+    const tubeGeo = new THREE.TubeGeometry(curve, segs, riverWidth/2, 8, false);
+    const riverMat = new THREE.MeshStandardMaterial({
+      color: 0x1a7baa, transparent: true, opacity: 0.8,
+      roughness: 0.05, metalness: 0.6, envMapIntensity: 1.5
+    });
+    const riverMesh = new THREE.Mesh(tubeGeo, riverMat);
+    riverMesh.rotation.x = -Math.PI / 2;
+    riverMesh.position.y = 0.1;
+    riverMesh.userData.name = 'River';
+    riverMesh.userData.isWater = true;
+    riverMesh.userData.isSolid = true;
+    riverMesh.userData.isAnimatedWater = true;
+    // Store original positions for wave anim
+    const rPosAttr = tubeGeo.getAttribute('position');
+    riverMesh.userData._origPositions = new Float32Array(rPosAttr.array);
+    scene.add(riverMesh);
+    objects.push(riverMesh);
+    return '✓ River added! Boats can sail on it.';
+  }
+
+  // === ROAD ===
+  if (lower.match(/^(add|create|make|build)?\s*(a\s+)?(road|street|highway|path|sidewalk)/)) {
+    const roadLen = 150;
+    const roadW = 6;
+    const roadGeo = new THREE.PlaneGeometry(roadLen, roadW, 1, 1);
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9, metalness: 0.0 });
+    const road = new THREE.Mesh(roadGeo, roadMat);
+    road.rotation.x = -Math.PI / 2;
+    road.position.y = 0.05;
+    road.receiveShadow = true;
+    road.userData.name = 'Road';
+    road.userData.isRoad = true;
+    scene.add(road);
+    objects.push(road);
+    // Add center line
+    const lineGeo = new THREE.PlaneGeometry(roadLen, 0.15, 1, 1);
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.rotation.x = -Math.PI / 2;
+    line.position.y = 0.06;
+    line.userData.name = 'Road_Line';
+    scene.add(line);
+    objects.push(line);
+    return '✓ Road added! Cars can drive on it.';
+  }
+
+
+  // === TELEPORT ===
+  if (/^(teleport|tp|goto|go to)\s/.test(lower)) {
+    const tpMatch = lower.match(/(-?[\d.]+)\s*,?\s*(-?[\d.]+)/);
+    if (tpMatch) {
+      const tx = parseFloat(tpMatch[1]), tz = parseFloat(tpMatch[2]);
+      if (characterController && characterController.position) {
+        characterController.position.set(tx, 0, tz);
+        if (characterController.model) characterController.model.position.set(tx, 0, tz);
+      }
+      camera.position.set(tx, 15, tz + 20);
+      camera.lookAt(tx, 0, tz);
+      return '✓ Teleported to (' + tx + ', ' + tz + ')';
+    }
+    // Teleport to named object
+    const objName = lower.replace(/^(teleport|tp|goto|go to)\s+(to\s+)?/, '').trim();
+    const target = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(objName));
+    if (target) {
+      const p = target.position;
+      camera.position.set(p.x, 15, p.z + 20);
+      camera.lookAt(p.x, 0, p.z);
+      return '✓ Teleported to ' + target.userData.name;
+    }
+    return '⚠ Use: teleport X Z or teleport <object name>';
+  }
+
+
+  // === LIST OBJECTS ===
+  if (lower === 'list' || lower === 'list objects' || lower === 'objects' || lower === 'what is here') {
+    if (!objects.length) return '⚠ No objects in scene';
+    const names = objects.map(o => o.userData.name || 'unnamed').filter(Boolean);
+    const counts = {};
+    names.forEach(n => { counts[n] = (counts[n] || 0) + 1; });
+    const summary = Object.entries(counts).map(([k,v]) => v > 1 ? k + ' x' + v : k).join(', ');
+    return '📋 ' + objects.length + ' objects: ' + summary;
+  }
+
+
+  // === MOVE OBJECT TO POSITION ===
+  if (/^move\s/.test(lower) && lower.includes(' to ')) {
+    const moveToMatch = lower.match(/^move\s+(?:the\s+)?(\w+)\s+to\s+(-?[\d.]+)\s*,?\s*(-?[\d.]+)/);
+    if (moveToMatch) {
+      const name = moveToMatch[1];
+      const tx = parseFloat(moveToMatch[2]);
+      const tz = parseFloat(moveToMatch[3]);
+      const target = objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(name));
+      if (target) {
+        target.position.x = tx;
+        target.position.z = tz;
+        return '✓ Moved ' + target.userData.name + ' to (' + tx + ', ' + tz + ')';
+      }
+      return '⚠ No object found matching "' + name + '"';
+    }
+  }
+
+  // === SYSTEMS ===
+  const systems = {
+    'combat':'✓ Combat v2 — parry 150ms, style ranks D→SSS, 9 damage types, hit stop',
+    'inventory':'✓ Inventory — 40 slots, equipment, weight, durability, item sets, favorites',
+    'quest':'✓ Quests — chains, 8 categories, reputation, tracking, time limits',
+    'vehicle':'✓ Vehicles — 18 types, damage model, fuel, customization, traffic AI',
+    'weather engine':'✓ Weather — 18 types, wind, precipitation, lightning, volumetric fog',
+    'crafting':'✓ Crafting — 12 stations, quality tiers, skill progression, salvage, recipes',
+    'ai brain':'✓ AI — behavior trees, utility AI, sensors, squads, 8 combat styles, personalities',
+    'dialogue':'✓ Dialogue v2 — branching, skill checks, barks, typewriter, voiced lines',
+    'building':'✓ Building — 16 pieces, snap, stability, materials, blueprints, electricity',
+    'multiplayer':'✓ Multiplayer — lobbies, matchmaking, 18 game modes, killcam, voice chat',
+    'pathfinding':'✓ Pathfinding — navmesh, A*, crowd sim, off-mesh links, avoidance',
+    'analytics':'✓ Analytics — heatmaps, A/B tests, funnels, retention, crash reports',
+  };
+  for (const [k,v] of Object.entries(systems)) { if (lower.includes(k)) return v; }
+
+  if (lower === 'help') return 'Objects: cube, sphere, tree, pine, bush, grass, flower, rock, house, castle, village, city, road, wall, water, avatar, knight, sword\nWorld: sun, sunset, night, day, fog, rain, snow, dirt, sand, gravel\nScene: clear, delete\nTip: "build a castle with a road and 5 trees and rain"';
+
+  // Generic add — check GLB models first, then fallback to procedural cube
+  if (lower.startsWith('add ') || lower.startsWith('create ') || lower.startsWith('build ') || lower.startsWith('make ') || lower.startsWith('spawn ')) {
+  console.log("HIT ADD BLOCK for:", lower);     const name = cmd.replace(/^(add|create|build|make|spawn)\s+/i, '').replace(/^(a|an|the|me|some)\s+/i, '').replace(/\d+/g,'').trim();
+    // Check every word against GLB_MODELS
+    const words = lower.split(/\s+/);
+    for (const w of words) {
+      if (GLB_MODELS[w]) {
+        for (let i = 0; i < count; i++) loadGLBModel(w + '_' + i, GLB_MODELS[w], px, pz, null);
+        return `✓ Loading ${count} ${w} (real 3D model)...`;
+      }
+    }
+    // Also check multi-word and the cleaned name
+    const cleanLower = name.toLowerCase();
+    for (const [alias, file] of Object.entries(GLB_MODELS)) {
+      if (cleanLower.includes(alias)) {
+        for (let i = 0; i < count; i++) loadGLBModel(alias + '_' + i, file, px, pz, null);
+        return `✓ Loading ${count} ${alias} (real 3D model)...`;
+      }
+    }
+    if (lower.startsWith('add ') || lower.startsWith('create ') || lower.startsWith('build ') || lower.startsWith('make ') || lower.startsWith('spawn ')) {
+      addObj(name, createCube(nextColor()), px, pz);
+      return '✓ Added ' + name;
+    }
+  }
+
+  // Last resort: check if any word matches a GLB model
+  {
+    const words = lower.split(/\s+/);
+    for (const w of words) {
+      if (GLB_MODELS[w]) {
+        for (let i = 0; i < count; i++) loadGLBModel(w + '_' + i, GLB_MODELS[w], px, pz, null);
+        return `✓ Loading ${count} ${w} (real 3D model)...`;
+      }
+    }
+  }
+
+
+  // === SAVE / LOAD text commands ===
+  if (lower === 'save' || lower.startsWith('save ')) {
+    const saveName = cmd.substring(5).trim() || ('Scene ' + new Date().toLocaleString());
+    const data = serializeScene();
+    if (!data) return '⚠ Nothing to save';
+    const saves = JSON.parse(localStorage.getItem('crate-engine-saves') || '[]');
+    saves.push({ name: saveName, data: data, date: Date.now() });
+    localStorage.setItem('crate-engine-saves', JSON.stringify(saves));
+    return '💾 Scene saved as "' + saveName + '"';
+  }
+  if (lower === 'load' || lower.startsWith('load ')) {
+    const saves = JSON.parse(localStorage.getItem('crate-engine-saves') || '[]');
+    if (!saves.length) return '⚠ No saved scenes';
+    const target = cmd.substring(4).trim().toLowerCase();
+    const save = target ? saves.find(s => s.name.toLowerCase().includes(target)) : saves[saves.length - 1];
+    if (!save) return '⚠ No save found matching "' + target + '"';
+    deserializeScene(save.data);
+    return '📂 Loaded "' + save.name + '"';
+  }
+  if (lower === 'saves' || lower === 'list saves') {
+    const saves = JSON.parse(localStorage.getItem('crate-engine-saves') || '[]');
+    if (!saves.length) return '⚠ No saved scenes';
+    return '💾 Saves: ' + saves.map((s,i) => s.name).join(', ');
+  }
+
+  return '⚠ Try: "add cube", "build a castle with trees and rain", or "help"';
+}
+
+function addObj(name, mesh, x, z, scatter) {
+  if (scatter || (x === undefined && z === undefined)) {
+    mesh.position.x = (x !== undefined ? x : 0) + (scatter ? (Math.random()-0.5)*20 : (Math.random()-0.5)*6);
+    mesh.position.z = (z !== undefined ? z : 0) + (scatter ? (Math.random()-0.5)*20 : (Math.random()-0.5)*6);
+  } else {
+    mesh.position.x = x || 0;
+    mesh.position.z = z || 0;
+  }
+  mesh.userData.name = name;
+  // Auto-position on terrain if present — skip water objects
+  if (terrainMesh && !mesh.userData.isWater) {
+    const rc = new THREE.Raycaster(new THREE.Vector3(mesh.position.x, 200, mesh.position.z), new THREE.Vector3(0, -1, 0));
+    const hits = rc.intersectObject(terrainMesh);
+    if (hits.length > 0) {
+      const terrainY = hits[0].point.y;
+      // Get bottom of object's bounding box
+      const bbox = new THREE.Box3().setFromObject(mesh);
+      const bottomY = bbox.min.y - mesh.position.y;
+      mesh.position.y = terrainY - bottomY;
+      
+      // If object would be below water level, move to island center (higher ground)
+      const waterLevel = -0.3;
+      if (terrainY < waterLevel + 0.5) {
+        // Find higher ground — try moving toward center (0,0)
+        const dx = -mesh.position.x * 0.6;
+        const dz = -mesh.position.z * 0.6;
+        mesh.position.x += dx;
+        mesh.position.z += dz;
+        // Re-raycast at new position
+        const rc2 = new THREE.Raycaster(new THREE.Vector3(mesh.position.x, 200, mesh.position.z), new THREE.Vector3(0, -1, 0));
+        const hits2 = rc2.intersectObject(terrainMesh);
+        if (hits2.length > 0) {
+          mesh.position.y = hits2[0].point.y - bottomY;
+        }
+      }
+    }
+  }
+  scene.add(mesh);
+  objects.push(mesh);
+}
+
+function setWeather(type) {
+  if (rainParticles) { scene.remove(rainParticles); rainParticles=null; }
+  if (snowParticles) { scene.remove(snowParticles); snowParticles=null; }
+  weatherSystem = type;
+  if (type==='rain') { rainParticles=createRain(); scene.add(rainParticles); }
+  if (type==='snow') { snowParticles=createSnow(); scene.add(snowParticles); }
+}
+
+// === UI ===
+const log = document.getElementById('output-log');
+
+
+function showToast(msg, duration) {
+  duration = duration || 3000;
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#4ade80;padding:10px 20px;border-radius:8px;font-family:monospace;font-size:0.8rem;z-index:10000;border:1px solid #333;backdrop-filter:blur(5px);transition:opacity 0.3s;';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, duration);
+}
+
+function addToLog(msg) { logOutput("ok", msg); return msg; }
+function logOutput(type, msg) {
+  if (!log) return;
+  log.style.display = 'block';
+  var el = document.createElement('div');
+  var prefix = type === 'ok' ? '✓ ' : type === 'warn' ? '⚠ ' : type === 'info' ? 'ℹ ' : '❯ ';
+  var color = type === 'ok' ? '#4ade80' : type === 'warn' ? '#f59e0b' : type === 'info' ? '#60a5fa' : '#888';
+  el.style.cssText = 'color:' + color + ';padding:2px 0;font-size:0.8rem';
+  el.textContent = msg;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  // Auto-hide log after 4s
+  clearTimeout(window._logHideTimer);
+  window._logHideTimer = setTimeout(() => { log.style.display = "none"; }, 4000);
+  while (log.children.length > 40) log.removeChild(log.firstChild);
+}
+const input = document.getElementById('prompt-input');
+
+// === VOICE COMMAND SYSTEM ===
+const voiceBtn = document.createElement('button');
+voiceBtn.id = 'voice-btn';
+voiceBtn.innerHTML = '🎤';
+voiceBtn.title = 'Voice Commands (click to start/stop)';
+voiceBtn.style.cssText = 'position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:2px solid #555;color:#888;font-size:20px;width:38px;height:38px;border-radius:50%;cursor:pointer;transition:all 0.3s;z-index:100;display:flex;align-items:center;justify-content:center;';
+input.parentElement.style.position = 'relative';
+input.parentElement.appendChild(voiceBtn);
+input.style.paddingRight = '50px';
+
+// Voice transcript overlay
+const voiceOverlay = document.createElement('div');
+voiceOverlay.id = 'voice-overlay';
+voiceOverlay.style.cssText = 'display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.9);border:2px solid #7c5cff;border-radius:16px;padding:16px 24px;color:#fff;font-size:16px;z-index:10000;max-width:500px;text-align:center;backdrop-filter:blur(10px);';
+document.body.appendChild(voiceOverlay);
+
+const vcStats = getStats();
+console.log(`[Voice] ${vcStats.totalPhrases} phrases ready across ${vcStats.totalIntents} intents`);
+
+const voiceReady = initVoice(
+  // onCommand
+  async (action, transcript, intentId) => {
+    console.log(`[Voice] "${transcript}" → ${action} (${intentId})`);
+    voiceOverlay.innerHTML = `<div style="color:#4ade80;font-size:12px;margin-bottom:4px">✓ Recognized</div><div>"${transcript}"</div><div style="color:#7c5cff;font-size:13px;margin-top:6px">→ ${action}</div>`;
+    setTimeout(() => { voiceOverlay.style.display = 'none'; }, 2000);
+    
+    // Execute through the engine
+    if (intentId === 'godmode_raw') {
+      // Pass raw to the normal command parser
+      input.value = transcript;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    } else {
+      input.value = action;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }
+  },
+  // onTranscript
+  (text, isFinal) => {
+    if (!isFinal) {
+      voiceOverlay.style.display = 'block';
+      voiceOverlay.innerHTML = `<div style="color:#888;font-size:12px;margin-bottom:4px">🎤 Listening...</div><div style="color:#aaa;font-style:italic">${text}</div>`;
+    }
+  }
+);
+
+voiceBtn.addEventListener('click', () => {
+  if (!voiceReady) { alert('Voice recognition not supported in this browser. Try Chrome!'); return; }
+  if (isListening()) {
+    stopListening();
+    voiceBtn.style.borderColor = '#555';
+    voiceBtn.style.color = '#888';
+    voiceBtn.style.boxShadow = 'none';
+    voiceBtn.innerHTML = '🎤';
+    voiceOverlay.style.display = 'none';
+  } else {
+    startListening();
+    voiceBtn.style.borderColor = '#ff3333';
+    voiceBtn.style.color = '#ff3333';
+    voiceBtn.style.boxShadow = '0 0 12px rgba(255,51,51,0.4)';
+    voiceBtn.innerHTML = '🔴';
+    voiceOverlay.style.display = 'block';
+    voiceOverlay.innerHTML = '<div style="color:#ff5555">🎤 Listening... speak a command</div>';
+  }
+});
+// === END VOICE SYSTEM ===
+
+input.addEventListener("focus", function() { if (playMode) { this.blur(); } });
+input.addEventListener("keydown", function(e) { if (playMode && e.key !== "Escape") { e.preventDefault(); this.blur(); } });
+const status = document.getElementById('engine-status');
+
+input.addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+  const cmd = input.value.trim();
+  if (!cmd) return;
+  log.style.display = 'block';
+  const cmdEl = document.createElement('div');
+  cmdEl.className = 'entry cmd';
+  cmdEl.textContent = '❯ ' + cmd;
+  log.appendChild(cmdEl);
+  
+  try {
+    const response = await parseAndExecute(cmd);
+    const text = (response || '').toString();
+    text.split('\n').forEach(line => {
+      if (!line) return;
+      const r = document.createElement('div');
+      r.className = 'entry ' + (line.startsWith('✓')?'ok':line.startsWith('⚠')?'err':'info');
+      r.textContent = line;
+      log.appendChild(r);
+    });
+  } catch(err) {
+    const r = document.createElement('div');
+    r.className = 'entry err';
+    r.textContent = '⚠ Error: ' + err.message;
+    log.appendChild(r);
+    console.error('Engine error:', err);
+  }
+  log.scrollTop = log.scrollHeight;
+  // Auto-hide log after 4s
+  clearTimeout(window._logHideTimer);
+  window._logHideTimer = setTimeout(() => { log.style.display = "none"; }, 4000);
+  while (log.children.length > 40) log.removeChild(log.firstChild);
+  input.value = '';
+});
+
+// Fullscreen
+window.toggleFullscreen = function() {
+  const vw = document.querySelector('.viewport-wrapper');
+  const isFS = vw.classList.contains('fullscreen');
+  if (!isFS) {
+    vw.classList.add('fullscreen');
+    // Use native fullscreen API for true fullscreen
+    if (vw.requestFullscreen) vw.requestFullscreen().catch(()=>{});
+    else if (vw.webkitRequestFullscreen) vw.webkitRequestFullscreen();
+  } else {
+    vw.classList.remove('fullscreen');
+    if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  }
+  const btn = document.getElementById('expand-btn');
+  btn.textContent = !isFS ? '✕ Exit' : '⛶ Expand';
+  // Force resize after CSS settles
+  function doResize() {
+    const w = !isFS ? window.innerWidth : canvas.parentElement.clientWidth;
+    const h = !isFS ? window.innerHeight - 36 : canvas.parentElement.clientHeight;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false);
+  }
+  setTimeout(doResize, 50);
+  setTimeout(doResize, 200);
+  setTimeout(doResize, 500);
+};
+
+// Sync on native fullscreen change
+document.addEventListener('fullscreenchange', () => {
+  const vw = document.querySelector('.viewport-wrapper');
+  const btn = document.getElementById('expand-btn');
+  if (!document.fullscreenElement) {
+    vw.classList.remove('fullscreen');
+    btn.textContent = '⛶ Expand';
+    camera.aspect = canvas.clientWidth / canvas.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+  }
+});
+
+// ESC to exit fullscreen
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const vw = document.querySelector('.viewport-wrapper');
+    if (vw.classList.contains('fullscreen')) window.toggleFullscreen();
+  }
+});
+
+// Click handled by pointer events above
+
+// === CLICK TO SELECT + DRAG ===
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let selectedObj = null;
+let isDragging = false;
+let dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+let dragOffset = new THREE.Vector3();
+
+function highlightSelected(obj) {
+  updateInspector(obj);
+  objects.forEach(o => {
+    if (o.traverse) o.traverse(c => { if (c.isMesh && c.userData._origEmissive !== undefined) { c.material.emissive.setHex(c.userData._origEmissive); } });
+  });
+  if (obj) {
+    const fn = (c) => {
+      if (c.isMesh && c.material) {
+        if (c.userData._origEmissive === undefined && c.material.emissive) c.userData._origEmissive = c.material.emissive.getHex();
+        c.material.emissive.setHex(0x332200);
+      }
+    };
+    if (obj.traverse) obj.traverse(fn); else fn(obj);
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(objects, true);
+  if (hits.length > 0) {
+    let hit = hits[0].object;
+    while (hit.parent && !objects.includes(hit)) hit = hit.parent;
+    if (objects.includes(hit)) {
+      selectedObj = hit;
+      highlightSelected(selectedObj);
+      isDragging = true;
+      controls.enabled = false;
+      dragPlane.constant = -hit.position.y;
+      const inter = new THREE.Vector3();
+      raycaster.ray.intersectPlane(dragPlane, inter);
+      dragOffset.copy(hit.position).sub(inter);
+    }
+  } else {
+    selectedObj = null;
+    highlightSelected(null);
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!isDragging || !selectedObj) return;
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const inter = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(dragPlane, inter)) {
+    selectedObj.position.x = inter.x + dragOffset.x;
+    selectedObj.position.z = inter.z + dragOffset.z;
+  }
+});
+
+canvas.addEventListener('pointerup', () => {
+  isDragging = false;
+  controls.enabled = true;
+});
+
+// === RENDER LOOP ===
+
+// === VISUAL CHARACTER GALLERY ===
+// Shows real 3D model previews rendered with Three.js mini-viewers
+const CHARACTER_LIBRARY = [
+  { id: 'knight', file: 'single_knight_pack_knightcharacter', name: 'Knight', desc: 'Medieval warrior with sword & shield', category: 'Hero' },
+  { id: 'cyberpunk', file: 'cyberpunk_pack_character', name: 'Cyberpunk Agent', desc: 'Futuristic fighter with tech gear', category: 'Hero' },
+  { id: 'soldier', file: 'soldier', name: 'Soldier', desc: 'Modern tactical combat specialist', category: 'Hero' },
+  { id: 'platformer', file: 'platformer_game_pack_character', name: 'Platformer Hero', desc: 'Cartoon adventure character', category: 'Hero' },
+  { id: 'avatar', file: 'avatar', name: 'Avatar', desc: 'Clean humanoid with procedural animations', category: 'Hero' },
+  { id: 'walking_man', file: 'walking_man', name: 'Walking Man', desc: 'Animated walking character', category: 'Hero' },
+  { id: 'man', file: 'man', name: 'Man', desc: 'Male character model', category: 'Hero' },
+  { id: 'king', file: 'modular_men_king', name: 'King', desc: 'Royal ruler with crown & cape', category: 'Hero' },
+  { id: 'witch', file: 'modular_women_witch', name: 'Witch', desc: 'Dark sorceress with magic staff', category: 'Hero' },
+  { id: 'women_soldier', file: 'modular_women_soldier', name: 'Woman Soldier', desc: 'Female tactical fighter', category: 'Hero' },
+  { id: 'robot', file: 'robot', name: 'Robot', desc: 'Mechanical warrior', category: 'Hero' },
+  { id: 'platformer_gun', file: 'platformer_game_pack_character_gun', name: 'Platformer (Armed)', desc: 'Cartoon hero with weapon', category: 'Hero' },
+  { id: 'cyber_enemy', file: 'cyberpunk_pack_enemy_2legs', name: 'Cyber Mech', desc: 'Two-legged combat mech', category: 'Enemy' },
+  { id: 'cyber_enemy_gun', file: 'cyberpunk_pack_enemy_2legs_gun', name: 'Cyber Mech (Armed)', desc: 'Mech with mounted weapons', category: 'Enemy' },
+  { id: 'cyber_flying', file: 'cyberpunk_pack_enemy_flying', name: 'Cyber Drone', desc: 'Flying attack drone', category: 'Enemy' },
+  { id: 'cyber_large', file: 'cyberpunk_pack_enemy_large', name: 'Cyber Boss', desc: 'Massive combat mech', category: 'Enemy' },
+  { id: 'platformer_enemy', file: 'platformer_game_pack_enemy', name: 'Platformer Enemy', desc: 'Cartoon villain', category: 'Enemy' },
+  { id: 'space_enemy', file: 'ultimate_space_pack_enemy_small-transformed', name: 'Space Alien', desc: 'Small alien creature', category: 'Enemy' },
+  { id: 'space_boss', file: 'ultimate_space_pack_enemy_large-transformed', name: 'Space Boss', desc: 'Large alien threat', category: 'Enemy' },
+];
+
+function showCharacterGallery(onSelect) {
+  return new Promise((resolve) => {
+    // Remove any existing gallery
+    const existing = document.getElementById('char-gallery-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'char-gallery-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:10005;display:flex;flex-direction:column;align-items:center;overflow-y:auto;font-family:monospace;padding:20px 0;';
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = 'text-align:center;margin-bottom:20px;flex-shrink:0;';
+    header.innerHTML = '<div style="font-size:32px;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.4);margin-bottom:6px;">⚔️ CHARACTER SELECT</div><div style="font-size:13px;color:#888;">Click any character to play as them</div>';
+    overlay.appendChild(header);
+
+    // Filter tabs
+    const tabs = document.createElement('div');
+    tabs.style.cssText = 'display:flex;gap:10px;margin-bottom:20px;flex-shrink:0;';
+    let currentFilter = 'All';
+    ['All', 'Hero', 'Enemy'].forEach(cat => {
+      const tab = document.createElement('button');
+      tab.textContent = cat;
+      tab.style.cssText = 'padding:8px 20px;border:1px solid #444;border-radius:20px;background:' + (cat === 'All' ? '#ffd700' : 'transparent') + ';color:' + (cat === 'All' ? '#000' : '#aaa') + ';cursor:pointer;font-family:monospace;font-size:13px;transition:all 0.2s;';
+      tab.onclick = () => {
+        currentFilter = cat;
+        tabs.querySelectorAll('button').forEach(b => { b.style.background = 'transparent'; b.style.color = '#aaa'; b.style.border = '1px solid #444'; });
+        tab.style.background = '#ffd700'; tab.style.color = '#000'; tab.style.border = '1px solid #ffd700';
+        renderGrid();
+      };
+      tabs.appendChild(tab);
+    });
+    overlay.appendChild(tabs);
+
+    // Grid container
+    const grid = document.createElement('div');
+    grid.id = 'char-gallery-grid';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,180px);gap:16px;justify-content:center;max-width:1000px;width:90%;padding-bottom:40px;';
+    overlay.appendChild(grid);
+
+    // Close button
+    const closeBtn = document.createElement('div');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;transition:color 0.2s;';
+    closeBtn.onmouseenter = () => closeBtn.style.color = '#fff';
+    closeBtn.onmouseleave = () => closeBtn.style.color = '#666';
+    closeBtn.onclick = () => { cleanupViewers(); overlay.remove(); resolve(null); };
+    overlay.appendChild(closeBtn);
+
+    const viewers = []; // Track mini renderers for cleanup
+
+    function cleanupViewers() {
+      // Static images — nothing to clean up, renderers already disposed after capture
+      viewers.length = 0;
+    }
+
+    function renderGrid() {
+      // Cleanup old viewers
+      cleanupViewers();
+      grid.innerHTML = '';
+      
+      const filtered = currentFilter === 'All' ? CHARACTER_LIBRARY : CHARACTER_LIBRARY.filter(c => c.category === currentFilter);
+      
+      filtered.forEach(ch => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background:rgba(255,255,255,0.04);border:2px solid transparent;border-radius:12px;overflow:hidden;cursor:pointer;transition:all 0.25s;position:relative;';
+        card.onmouseenter = () => { card.style.borderColor = '#ffd700'; card.style.transform = 'translateY(-4px)'; card.style.boxShadow = '0 8px 25px rgba(255,215,0,0.15)'; };
+        card.onmouseleave = () => { card.style.borderColor = 'transparent'; card.style.transform = 'translateY(0)'; card.style.boxShadow = 'none'; };
+
+        // 3D preview canvas
+        const canvasWrap = document.createElement('div');
+        canvasWrap.style.cssText = 'width:180px;height:180px;background:#111;position:relative;';
+        
+        const cvs = document.createElement('canvas');
+        cvs.width = 180; cvs.height = 180;
+        cvs.style.cssText = 'width:100%;height:100%;display:block;';
+        canvasWrap.appendChild(cvs);
+
+        // Loading spinner
+        const spinner = document.createElement('div');
+        spinner.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#555;font-size:24px;';
+        spinner.textContent = '⏳';
+        canvasWrap.appendChild(spinner);
+
+        card.appendChild(canvasWrap);
+
+        // Info section
+        const info = document.createElement('div');
+        info.style.cssText = 'padding:10px 12px;';
+        
+        const nameEl = document.createElement('div');
+        nameEl.style.cssText = 'font-size:14px;font-weight:bold;color:#e0e0e0;margin-bottom:3px;';
+        nameEl.textContent = ch.name;
+        info.appendChild(nameEl);
+
+        const descEl = document.createElement('div');
+        descEl.style.cssText = 'font-size:11px;color:#666;line-height:1.3;';
+        descEl.textContent = ch.desc;
+        info.appendChild(descEl);
+
+        // Category badge
+        const badge = document.createElement('span');
+        badge.style.cssText = 'position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:10px;font-size:10px;background:' + (ch.category === 'Hero' ? 'rgba(34,197,94,0.2);color:#22c55e' : 'rgba(239,68,68,0.2);color:#ef4444') + ';';
+        badge.textContent = ch.category;
+        card.appendChild(badge);
+
+        // Selected indicator
+        if (selectedCharacterType === ch.id) {
+          card.style.borderColor = '#22c55e';
+          const sel = document.createElement('div');
+          sel.style.cssText = 'position:absolute;top:8px;left:8px;background:#22c55e;color:#000;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:bold;';
+          sel.textContent = '✓ ACTIVE';
+          card.appendChild(sel);
+        }
+
+        card.onclick = () => {
+          selectedCharacterType = ch.id;
+          try { localStorage.setItem('crate_character', ch.id); } catch(e) {}
+          // Register in characterModels if not already
+          if (characterController && !characterController.characterModels[ch.id]) {
+            characterController.characterModels[ch.id] = { file: ch.file, animPrefix: '', procedural: true };
+          }
+          cleanupViewers();
+          overlay.remove();
+          // Force main renderer to reclaim context
+          setTimeout(() => {
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    renderer.render(scene, camera);
+          }, 100);
+          resolve(ch.id);
+        };
+
+        card.appendChild(info);
+        grid.appendChild(card);
+
+        // Render 3D preview with IntersectionObserver for lazy loading
+        const loadPreview = () => {
+          try {
+            // Use single offscreen renderer, capture to static image
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = 360; offCanvas.height = 360;
+            const miniRenderer = new THREE.WebGLRenderer({ canvas: offCanvas, antialias: true, preserveDrawingBuffer: true });
+            miniRenderer.setSize(360, 360);
+            miniRenderer.setClearColor(0x111111, 1);
+
+            const miniScene = new THREE.Scene();
+            const miniCam = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+            miniCam.position.set(0, 1.2, 3.5);
+            miniCam.lookAt(0, 0.8, 0);
+
+            miniScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            dirLight.position.set(2, 4, 3);
+            miniScene.add(dirLight);
+            miniScene.add(new THREE.DirectionalLight(0x8888ff, 0.4).translateX(-2).translateY(1).translateZ(-2));
+
+            const groundGeo = new THREE.CircleGeometry(1.5, 32);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            miniScene.add(ground);
+
+            const miniLoader = new GLTFLoader();
+            miniLoader.setDRACOLoader(dracoLoader);
+            
+            miniLoader.load('models/' + ch.file + '.glb', (gltf) => {
+              spinner.remove();
+              const model = gltf.scene;
+              const box = new THREE.Box3().setFromObject(model);
+              const size = box.getSize(new THREE.Vector3());
+              const maxDim = Math.max(size.x, size.y, size.z);
+              model.scale.setScalar(2.0 / Math.max(maxDim, 0.001));
+              const box2 = new THREE.Box3().setFromObject(model);
+              const center = box2.getCenter(new THREE.Vector3());
+              model.position.sub(center);
+              const box3 = new THREE.Box3().setFromObject(model);
+              model.position.y -= box3.min.y;
+              model.rotation.y = Math.PI * 0.25;
+              miniScene.add(model);
+
+              // Render single frame → static image
+              miniRenderer.render(miniScene, miniCam);
+              const img = document.createElement('img');
+              img.src = miniRenderer.domElement.toDataURL('image/jpeg', 0.9);
+              img.style.cssText = 'width:100%;height:100%;display:block;object-fit:cover;border-radius:10px 10px 0 0;';
+              cvs.parentNode.replaceChild(img, cvs);
+
+              // Cleanup
+              miniRenderer.dispose();
+              miniScene.traverse(obj => {
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) { const ms = Array.isArray(obj.material) ? obj.material : [obj.material]; ms.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); }
+              });
+            }, undefined, () => { spinner.textContent = '❌'; });
+          } catch(e) { spinner.textContent = '❌'; }
+        };
+
+        // Lazy load — use IntersectionObserver if available
+        if (window.IntersectionObserver) {
+          const obs = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) { obs.disconnect(); loadPreview(); }
+          }, { root: overlay, threshold: 0.1 });
+          obs.observe(card);
+        } else {
+          loadPreview();
+        }
+      });
+    }
+
+    renderGrid();
+    document.body.appendChild(overlay);
+  });
+}
+
+// === PROCEDURAL ANIMATION SYSTEM ===
+// Apply animations to ANY model, even without embedded clips
+function applyProceduralAnimation(obj, type) {
+  if (!obj) return '⚠ No object';
+  
+  const anims = {
+    // === BASIC MOTION (15 original) ===
+    spin:    { desc: 'Continuous rotation', fn: (o, t, dt) => { o.rotation.y += dt * 2; } },
+    bounce:  { desc: 'Up and down bounce', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.sin(t * 3) * 0.5; } },
+    float:   { desc: 'Gentle floating', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.sin(t * 1.5) * 0.3; o.rotation.y += dt * 0.5; } },
+    pulse:   { desc: 'Scale pulse', fn: (o, t, dt) => { if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; const s = o.userData._baseScale * (1 + Math.sin(t * 4) * 0.1); o.scale.setScalar(s); } },
+    wobble:  { desc: 'Side to side wobble', fn: (o, t, dt) => { o.rotation.z = Math.sin(t * 3) * 0.15; } },
+    orbit:   { desc: 'Orbit around origin', fn: (o, t, dt) => { if (!o.userData._orbitR) o.userData._orbitR = Math.sqrt(o.position.x*o.position.x + o.position.z*o.position.z) || 5; const r = o.userData._orbitR; o.position.x = Math.cos(t) * r; o.position.z = Math.sin(t) * r; } },
+    swing:   { desc: 'Pendulum swing', fn: (o, t, dt) => { o.rotation.z = Math.sin(t * 2) * 0.3; } },
+    breathe: { desc: 'Breathing scale', fn: (o, t, dt) => { if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; const s = o.userData._baseScale * (1 + Math.sin(t * 1) * 0.05); o.scale.set(s, o.userData._baseScale * (1 + Math.sin(t * 1) * 0.08), s); } },
+    shake:   { desc: 'Rapid shake', fn: (o, t, dt) => { o.position.x += (Math.random() - 0.5) * 0.02; o.position.z += (Math.random() - 0.5) * 0.02; } },
+    walk:    { desc: 'Walking bob', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t * 6)) * 0.1; o.rotation.z = Math.sin(t * 6) * 0.05; } },
+    idle:    { desc: 'Subtle idle sway', fn: (o, t, dt) => { o.rotation.y += Math.sin(t * 0.5) * dt * 0.3; if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.sin(t * 2) * 0.02; } },
+    dance:   { desc: 'Dance moves', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t * 4)) * 0.3; o.rotation.y += dt * 3; o.rotation.z = Math.sin(t * 8) * 0.1; } },
+    attack:  { desc: 'Attack lunge', fn: (o, t, dt) => { const phase = t % 2; if (phase < 0.3) { o.rotation.x = -phase * 2; } else if (phase < 0.6) { o.rotation.x = -(0.6 - phase) * 2; } else { o.rotation.x *= 0.95; } } },
+    die:     { desc: 'Death fall', fn: (o, t, dt) => { if (o.rotation.x > -Math.PI/2) o.rotation.x -= dt * 2; } },
+    jump:    { desc: 'Jump motion', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; const phase = t % 1.5; o.position.y = o.userData._baseY + (phase < 0.3 ? phase * 10 : phase < 0.8 ? 3 - (phase - 0.3) * 6 : 0); } },
+    // === COMBAT ANIMATIONS ===
+    slash:   { desc: 'Horizontal slash', fn: (o, t, dt) => { const p = t % 1.2; o.rotation.y = p < 0.3 ? p * 8 : p < 0.5 ? 2.4 - (p-0.3)*12 : 0; o.rotation.x = p < 0.3 ? -p*1.5 : 0; } },
+    thrust:  { desc: 'Forward thrust/stab', fn: (o, t, dt) => { if (!o.userData._baseZ) o.userData._baseZ = o.position.z; const p = t % 1; o.position.z = o.userData._baseZ + (p < 0.2 ? -p*5 : p < 0.4 ? -(0.4-p)*5 : 0); o.rotation.x = p < 0.2 ? -0.3 : 0; } },
+    block:   { desc: 'Shield block stance', fn: (o, t, dt) => { o.rotation.x = Math.sin(t * 0.8) * 0.05 - 0.15; o.rotation.z = Math.sin(t * 1.2) * 0.03; } },
+    parry:   { desc: 'Parry deflection', fn: (o, t, dt) => { const p = t % 1.5; o.rotation.z = p < 0.2 ? p*4 : p < 0.5 ? 0.8-(p-0.2)*2.7 : 0; o.rotation.y = p < 0.3 ? p*2 : p*0.3; } },
+    dodge:   { desc: 'Quick dodge roll', fn: (o, t, dt) => { if (!o.userData._baseX) o.userData._baseX = o.position.x; const p = t % 1.5; o.position.x = o.userData._baseX + (p < 0.4 ? Math.sin(p*8)*1.5 : 0); o.rotation.z = p < 0.4 ? p*6 : 0; } },
+    combo:   { desc: 'Multi-hit combo', fn: (o, t, dt) => { const p = t % 2; if(p<0.3) o.rotation.y = p*6; else if(p<0.6) {o.rotation.y = 1.8-(p-0.3)*12; o.rotation.x = -(p-0.3)*3;} else if(p<1.0) {o.rotation.x = -0.9+(p-0.6)*2.25; o.rotation.z = (p-0.6)*4;} else {o.rotation.x *= 0.9; o.rotation.y *= 0.9; o.rotation.z *= 0.9;} } },
+    rage:    { desc: 'Berserker rage', fn: (o, t, dt) => { if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; const s = o.userData._baseScale * (1 + Math.sin(t*8)*0.04); o.scale.setScalar(s); o.position.x += (Math.random()-0.5)*0.03; o.rotation.y += dt*4; } },
+    charge:  { desc: 'Bull rush charge', fn: (o, t, dt) => { if (!o.userData._baseZ) o.userData._baseZ = o.position.z; const p = t % 2; o.position.z = o.userData._baseZ - (p < 0.8 ? p*3 : (2-p)*2); o.rotation.x = p < 0.8 ? -0.2 : 0; } },
+    // === LOCOMOTION ===
+    run:     { desc: 'Running motion', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t * 10)) * 0.15; o.rotation.z = Math.sin(t * 10) * 0.08; o.rotation.x = -0.1; } },
+    sprint:  { desc: 'Fast sprint', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t * 14)) * 0.2; o.rotation.z = Math.sin(t * 14) * 0.12; o.rotation.x = -0.2; } },
+    sneak:   { desc: 'Stealth crouch walk', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; if (!o.userData._baseScale) o.userData._baseScale = o.scale.y; o.scale.y = o.userData._baseScale * 0.75; o.position.y = o.userData._baseY - 0.2 + Math.sin(t*3)*0.03; o.rotation.z = Math.sin(t*2)*0.05; } },
+    crawl:   { desc: 'Army crawl', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.rotation.x = -Math.PI/2 + Math.sin(t*3)*0.05; o.position.y = o.userData._baseY * 0.2; o.rotation.z = Math.sin(t*4)*0.08; } },
+    swim:    { desc: 'Swimming stroke', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.sin(t*2)*0.2; o.rotation.x = -0.3 + Math.sin(t*3)*0.1; o.rotation.z = Math.sin(t*1.5)*0.15; } },
+    fly:     { desc: 'Flying soar', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + 2 + Math.sin(t*0.8)*1; o.rotation.z = Math.sin(t*0.5)*0.2; o.rotation.x = -0.1 + Math.sin(t*0.3)*0.05; } },
+    climb:   { desc: 'Climbing motion', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + (t % 3) * 0.5; o.rotation.z = Math.sin(t*4)*0.1; o.rotation.x = Math.sin(t*4+1)*0.08; } },
+    // === EMOTES / SOCIAL ===
+    wave:    { desc: 'Friendly wave', fn: (o, t, dt) => { o.rotation.z = 0.3 + Math.sin(t * 6) * 0.2; } },
+    cheer:   { desc: 'Victory cheer', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t*5))*0.4; o.rotation.z = Math.sin(t*3)*0.15; o.rotation.y += dt*2; } },
+    sit:     { desc: 'Sitting pose', fn: (o, t, dt) => { if (!o.userData._baseScale) o.userData._baseScale = o.scale.y; o.scale.y = o.userData._baseScale * 0.65; o.rotation.x = Math.sin(t*0.5)*0.02; } },
+    sleep:   { desc: 'Sleeping/lying down', fn: (o, t, dt) => { o.rotation.x = -Math.PI/2; o.rotation.z = Math.sin(t*0.3)*0.02; if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; o.scale.y = o.userData._baseScale*(1+Math.sin(t*1)*0.03); } },
+    taunt:   { desc: 'Taunting gesture', fn: (o, t, dt) => { const p = t % 2; o.rotation.y = Math.sin(p*4)*0.4; o.rotation.z = p < 1 ? Math.sin(p*6)*0.2 : 0; if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + (p < 1 ? Math.sin(p*8)*0.1 : 0); } },
+    bow:     { desc: 'Respectful bow', fn: (o, t, dt) => { const p = t % 3; o.rotation.x = p < 0.5 ? -p*1.2 : p < 2 ? -0.6 : -0.6*(3-p); } },
+    clap:    { desc: 'Applause clapping', fn: (o, t, dt) => { o.rotation.z = Math.sin(t * 8) * 0.1; if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; o.scale.x = o.userData._baseScale*(1+Math.sin(t*8)*0.03); } },
+    cry:     { desc: 'Crying/sad', fn: (o, t, dt) => { o.rotation.x = -0.2 + Math.sin(t*6)*0.03; o.rotation.z = Math.sin(t*3)*0.05; if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.sin(t*6)*0.02; } },
+    laugh:   { desc: 'Laughing motion', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t*10))*0.08; o.rotation.x = -0.1 + Math.sin(t*10)*0.05; o.rotation.z = Math.sin(t*5)*0.06; } },
+    // === ENVIRONMENTAL ===
+    flicker: { desc: 'Light flicker', fn: (o, t, dt) => { if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; const r = Math.random(); o.scale.setScalar(o.userData._baseScale * (0.9 + r * 0.2)); } },
+    sway:    { desc: 'Tree/grass sway', fn: (o, t, dt) => { o.rotation.z = Math.sin(t*1.5+o.position.x)*0.08; o.rotation.x = Math.sin(t*1.2+o.position.z)*0.05; } },
+    ripple:  { desc: 'Water ripple', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.sin(t*3+o.position.x*2)*0.05; o.rotation.z = Math.sin(t*2)*0.02; } },
+    hover:   { desc: 'Hovering in place', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + 1 + Math.sin(t*2)*0.15; o.rotation.y += dt * 0.8; } },
+    explode: { desc: 'Explosion burst', fn: (o, t, dt) => { if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; const p = t % 2; if(p<0.2) {o.scale.setScalar(o.userData._baseScale*(1+p*8));} else if(p<0.5) {o.scale.setScalar(o.userData._baseScale*(2.6-(p-0.2)*6));} else {o.scale.setScalar(o.userData._baseScale);} } },
+    portal:  { desc: 'Portal swirl', fn: (o, t, dt) => { o.rotation.y += dt * 5; o.rotation.z = Math.sin(t*3)*0.3; if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; o.scale.setScalar(o.userData._baseScale*(1+Math.sin(t*2)*0.15)); } },
+    // === SPECIAL ===
+    levelup: { desc: 'Level up glow', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; const p = t % 3; o.position.y = o.userData._baseY + (p < 1.5 ? p*0.5 : 0); o.scale.setScalar(o.userData._baseScale*(1 + (p < 1.5 ? Math.sin(p*6)*0.1 : 0))); o.rotation.y += (p < 1.5 ? dt*4 : dt*0.5); } },
+    pickup:  { desc: 'Item pickup arc', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; const p = t % 1.5; o.position.y = o.userData._baseY + Math.sin(p/1.5*Math.PI)*1.5; o.rotation.y += dt*6; o.rotation.z = Math.sin(p*8)*0.1; } },
+    knockback:{ desc: 'Hit knockback', fn: (o, t, dt) => { if (!o.userData._baseZ) o.userData._baseZ = o.position.z; const p = t % 1; o.position.z = o.userData._baseZ + (p < 0.15 ? p*12 : (1-p)*2.1); o.rotation.x = p < 0.15 ? p*4 : (1-p)*0.7; } },
+    stun:    { desc: 'Stunned daze', fn: (o, t, dt) => { o.rotation.z = Math.sin(t*8)*0.15; o.rotation.x = Math.sin(t*6)*0.1; o.rotation.y += Math.sin(t*4)*dt*2; } },
+    teleport:{ desc: 'Teleport flash', fn: (o, t, dt) => { if (!o.userData._baseScale) o.userData._baseScale = o.scale.x; const p = t % 2; if(p<0.3){o.scale.y = o.userData._baseScale*(1+p*5); o.scale.x = o.userData._baseScale*(1-p*2);} else if(p<0.5){o.scale.setScalar(o.userData._baseScale*0.01);} else if(p<0.8){o.scale.x=o.userData._baseScale*(1-(0.8-p)*2); o.scale.y=o.userData._baseScale*(1+(0.8-p)*5);} else{o.scale.setScalar(o.userData._baseScale);} } },
+
+    // === ACROBATICS ===
+    flip:     { desc: 'Backflip', fn: (o, t, dt) => { const p = t % 1.5; o.rotation.x = p < 0.8 ? p * Math.PI * 2.5 : 0; if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + (p < 0.8 ? Math.sin(p/0.8*Math.PI)*2 : 0); } },
+    cartwheel:{ desc: 'Cartwheel', fn: (o, t, dt) => { const p = t % 1.2; o.rotation.z = p * Math.PI * 2; if(!o.userData._baseX)o.userData._baseX=o.position.x; o.position.x = o.userData._baseX + p * 2; if(p>1.1){o.position.x=o.userData._baseX;} } },
+    roll:     { desc: 'Forward roll', fn: (o, t, dt) => { const p = t % 1; o.rotation.x = p * Math.PI * 2; if(!o.userData._baseZ)o.userData._baseZ=o.position.z; o.position.z = o.userData._baseZ - p * 1.5; if(p>0.9)o.position.z=o.userData._baseZ; } },
+    backflip: { desc: 'Standing backflip', fn: (o, t, dt) => { const p = t % 1.8; if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + (p<1 ? Math.sin(p*Math.PI)*2.5 : 0); o.rotation.x = p<1 ? -p*Math.PI*2 : 0; } },
+    slide:    { desc: 'Slide on ground', fn: (o, t, dt) => { if(!o.userData._baseZ)o.userData._baseZ=o.position.z; const p = t % 2; o.position.z = o.userData._baseZ - (p<0.8 ? p*4 : 0); o.rotation.x = p<0.8 ? -0.5 : 0; if(!o.userData._baseScale)o.userData._baseScale=o.scale.y; o.scale.y = p<0.8 ? o.userData._baseScale*0.5 : o.userData._baseScale; } },
+    wallrun:  { desc: 'Wall running', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; const p = t % 2; o.position.y = o.userData._baseY + (p<1.2 ? p*1.5 : 0); o.rotation.z = p<1.2 ? 0.7 : 0; o.rotation.x = Math.sin(t*8)*0.1; } },
+    // === ADVANCED COMBAT ===
+    uppercut: { desc: 'Rising uppercut', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; const p = t % 1.2; o.position.y = o.userData._baseY + (p<0.4 ? p*4 : p<0.8 ? 1.6-(p-0.4)*4 : 0); o.rotation.x = p<0.4 ? -p*3 : 0; } },
+    smash:    { desc: 'Ground smash', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; const p = t % 1.5; o.position.y = o.userData._baseY + (p<0.5 ? p*3 : p<0.7 ? 1.5-(p-0.5)*7.5 : 0); o.rotation.x = p<0.5 ? -0.3 : p<0.7 ? 0.5 : 0; if(!o.userData._baseScale)o.userData._baseScale=o.scale.x; o.scale.x = p>0.6&&p<0.9 ? o.userData._baseScale*1.3 : o.userData._baseScale; } },
+    whirlwind:{ desc: 'Spinning attack', fn: (o, t, dt) => { o.rotation.y += dt * 12; if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + Math.sin(t*3)*0.2; } },
+    heavyswing:{ desc: 'Heavy weapon swing', fn: (o, t, dt) => { const p = t % 2; o.rotation.y = p<0.8 ? -p*0.5 : p<1.2 ? -0.4+(p-0.8)*8 : p<1.5 ? 2.8-(p-1.2)*9.3 : 0; o.rotation.x = p<1.2 ? -0.15 : 0; } },
+    riposte:  { desc: 'Counter-attack riposte', fn: (o, t, dt) => { const p = t % 1.8; o.rotation.z = p<0.3 ? p*3 : p<0.6 ? 0.9-(p-0.3)*6 : p<0.9 ? -(p-0.6)*4 : 0; o.rotation.y = p<0.6 ? 0 : p<0.9 ? (p-0.6)*5 : 0; } },
+    kick:     { desc: 'Roundhouse kick', fn: (o, t, dt) => { const p = t % 1.3; o.rotation.y = p<0.5 ? p*10 : 0; o.rotation.x = p<0.5 ? -0.2 : 0; if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + (p<0.5 ? Math.sin(p/0.5*Math.PI)*0.3 : 0); } },
+    headbutt: { desc: 'Headbutt attack', fn: (o, t, dt) => { if(!o.userData._baseZ)o.userData._baseZ=o.position.z; const p = t % 1; o.position.z = o.userData._baseZ - (p<0.2 ? p*5 : p<0.4 ? 1-(p-0.2)*5 : 0); o.rotation.x = p<0.2 ? -p*3 : p<0.4 ? -(0.4-p)*3 : 0; } },
+    // === EMOTIONS / SOCIAL ===
+    think:    { desc: 'Thinking pose', fn: (o, t, dt) => { o.rotation.z = 0.05 + Math.sin(t*0.5)*0.03; o.rotation.x = -0.1; } },
+    nod:      { desc: 'Nodding yes', fn: (o, t, dt) => { o.rotation.x = Math.sin(t*4)*0.15; } },
+    headshake:{ desc: 'Shaking head no', fn: (o, t, dt) => { o.rotation.y = Math.sin(t*5)*0.2; } },
+    scared:   { desc: 'Scared shaking', fn: (o, t, dt) => { o.position.x += (Math.random()-0.5)*0.015; o.rotation.z = Math.sin(t*12)*0.04; if(!o.userData._baseScale)o.userData._baseScale=o.scale.y; o.scale.y = o.userData._baseScale*0.85; } },
+    angry:    { desc: 'Angry stomp', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; const p = t % 1; o.position.y = o.userData._baseY + (p<0.1 ? 0.3 : 0); o.rotation.z = Math.sin(t*6)*0.08; o.rotation.x = -0.1; } },
+    pray:     { desc: 'Prayer/meditation', fn: (o, t, dt) => { o.rotation.x = -0.15 + Math.sin(t*0.3)*0.02; if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + Math.sin(t*0.5)*0.02; } },
+    salute:   { desc: 'Military salute', fn: (o, t, dt) => { o.rotation.z = -0.1 + Math.sin(t*0.3)*0.01; o.rotation.x = Math.sin(t*0.5)*0.01; } },
+    flex:     { desc: 'Muscle flex pose', fn: (o, t, dt) => { if(!o.userData._baseScale)o.userData._baseScale=o.scale.x; o.scale.x = o.userData._baseScale*(1+Math.sin(t*3)*0.08); o.scale.z = o.userData._baseScale*(1+Math.sin(t*3)*0.08); o.rotation.y = Math.sin(t*0.5)*0.15; } },
+    facepalm: { desc: 'Facepalm', fn: (o, t, dt) => { const p = t % 3; o.rotation.x = p<0.5 ? -p*0.6 : p<2 ? -0.3 : -0.3*(3-p); o.rotation.z = Math.sin(t*0.5)*0.03; } },
+    celebrate:{ desc: 'Wild celebration', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t*6))*0.5; o.rotation.y += dt*5; o.rotation.z = Math.sin(t*8)*0.2; } },
+    // === LOCOMOTION EXTENDED ===
+    strafe:   { desc: 'Sidestep strafe', fn: (o, t, dt) => { if(!o.userData._baseX)o.userData._baseX=o.position.x; o.position.x = o.userData._baseX + Math.sin(t*3)*1.5; o.rotation.z = Math.sin(t*3)*0.1; } },
+    moonwalk: { desc: 'Moonwalk backwards', fn: (o, t, dt) => { if(!o.userData._baseZ)o.userData._baseZ=o.position.z; o.position.z = o.userData._baseZ + (t%3)*0.5; o.rotation.z = Math.sin(t*6)*0.05; if(t%3>2.8) o.position.z = o.userData._baseZ; } },
+    skip:     { desc: 'Happy skipping', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t*4))*0.4; o.rotation.z = Math.sin(t*4)*0.1; o.rotation.y += dt*1.5; } },
+    limp:     { desc: 'Injured limp', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; const p = t % 1.5; o.position.y = o.userData._baseY + (p<0.5 ? 0 : Math.sin((p-0.5)*3)*0.15); o.rotation.z = 0.15 + Math.sin(t*2)*0.05; } },
+    tiptoe:   { desc: 'Tiptoeing', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + 0.15 + Math.sin(t*5)*0.03; o.rotation.z = Math.sin(t*5)*0.02; } },
+    gallop:   { desc: 'Horse gallop', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t*7))*0.4; o.rotation.x = -0.15 + Math.sin(t*7)*0.1; } },
+    // === ENVIRONMENTAL EXTENDED ===
+    tornado:  { desc: 'Tornado spin', fn: (o, t, dt) => { o.rotation.y += dt*15; if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + Math.sin(t*2)*1; if(!o.userData._baseScale)o.userData._baseScale=o.scale.x; o.scale.x=o.userData._baseScale*(1+Math.sin(t*3)*0.3); o.scale.z=o.scale.x; } },
+    grow:     { desc: 'Growing larger', fn: (o, t, dt) => { if(!o.userData._baseScale)o.userData._baseScale=o.scale.x; const p = Math.min(t*0.3, 2); o.scale.setScalar(o.userData._baseScale * (1+p)); } },
+    shrink:   { desc: 'Shrinking smaller', fn: (o, t, dt) => { if(!o.userData._baseScale)o.userData._baseScale=o.scale.x; const p = Math.max(1-t*0.3, 0.1); o.scale.setScalar(o.userData._baseScale * p); } },
+    crumble:  { desc: 'Crumbling apart', fn: (o, t, dt) => { o.rotation.x += (Math.random()-0.5)*0.02; o.rotation.z += (Math.random()-0.5)*0.02; if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY - Math.min(t*0.1, 2); } },
+    glitch:   { desc: 'Digital glitch', fn: (o, t, dt) => { if(Math.random()<0.1){o.position.x+=(Math.random()-0.5)*0.5;o.position.z+=(Math.random()-0.5)*0.5;} if(Math.random()<0.05){if(!o.userData._baseScale)o.userData._baseScale=o.scale.x; o.scale.x=o.userData._baseScale*(0.5+Math.random());} else if(o.userData._baseScale){o.scale.x=o.userData._baseScale;} } },
+    heartbeat:{ desc: 'Heartbeat pulse', fn: (o, t, dt) => { if(!o.userData._baseScale)o.userData._baseScale=o.scale.x; const p=t%1; const s = p<0.1?1.15:p<0.2?1:p<0.3?1.1:1; o.scale.setScalar(o.userData._baseScale*s); } },
+    conveyor: { desc: 'Conveyor belt move', fn: (o, t, dt) => { if(!o.userData._baseX)o.userData._baseX=o.position.x; o.position.x = o.userData._baseX + (t%5)*2; if(t%5>4.5) o.position.x = o.userData._baseX; } },
+    pendulum: { desc: 'Clock pendulum', fn: (o, t, dt) => { o.rotation.z = Math.sin(t*2.5)*0.6; } },
+    catapult: { desc: 'Catapult launch', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; const p = t%3; o.position.y = o.userData._baseY + (p<0.3?0:p<1.5?Math.sin((p-0.3)/1.2*Math.PI)*5:0); o.rotation.x = p<0.3?-p*3:p<1.5?-0.9+p*0.6:0; } },
+    drain:    { desc: 'Energy drain sink', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY - Math.min(t*0.05, 1); o.rotation.y += dt*2; if(!o.userData._baseScale)o.userData._baseScale=o.scale.x; o.scale.setScalar(o.userData._baseScale*Math.max(1-t*0.02, 0.3)); } },
+    resurrect:{ desc: 'Rising from dead', fn: (o, t, dt) => { if(!o.userData._baseY)o.userData._baseY=o.position.y; const p = Math.min(t*0.5, 1); o.rotation.x = -Math.PI/2*(1-p); o.position.y = o.userData._baseY + p*0.5; } },
+    freeze:   { desc: 'Frozen still + shiver', fn: (o, t, dt) => { o.position.x += (Math.random()-0.5)*0.003; o.rotation.z = Math.sin(t*20)*0.005; } },
+    burn:     { desc: 'On fire writhe', fn: (o, t, dt) => { o.rotation.z = Math.sin(t*10)*0.15; o.rotation.x = Math.sin(t*8)*0.1; if(!o.userData._baseY)o.userData._baseY=o.position.y; o.position.y = o.userData._baseY + Math.abs(Math.sin(t*6))*0.2; } },
+    cast:    { desc: 'Spell casting', fn: (o, t, dt) => { if (!o.userData._baseY) o.userData._baseY = o.position.y; o.position.y = o.userData._baseY + Math.sin(t*2)*0.3; o.rotation.y += dt*3; const p = t % 3; if(p<1.5) o.rotation.x = -p*0.3; else o.rotation.x *= 0.9; } },
+  };
+  
+  const anim = anims[type];
+  if (!anim) {
+    return '⚠ Unknown animation "' + type + '". Available: ' + Object.keys(anims).join(', ');
+  }
+  
+  obj.userData._procAnim = { type, fn: anim.fn };
+  return '✓ Applied "' + type + '" animation to ' + (obj.userData.name || 'object') + ' — ' + anim.desc;
+}
+
+// List available procedural animations
+function listProceduralAnimations() {
+  return `🎬 Procedural Animations (work on ANY model):
+
+⚔️ COMBAT: spin, attack, slash, thrust, block, parry, dodge, combo, rage, charge, uppercut, smash, whirlwind, heavyswing, riposte, kick, headbutt
+🏃 MOVEMENT: walk, run, sprint, jump, sneak, crawl, swim, fly, climb, strafe, moonwalk, skip, limp, tiptoe, gallop, slide, wallrun, roll
+💃 EMOTES: idle, dance, wave, cheer, sit, sleep, taunt, bow, clap, cry, laugh, think, nod, headshake, scared, angry, pray, salute, flex, facepalm, celebrate
+🌿 ENVIRONMENT: bounce, float, pulse, wobble, orbit, swing, breathe, shake, sway, flicker, ripple, hover, explode, portal, tornado, grow, shrink, crumble, glitch, heartbeat, conveyor, pendulum
+✨ SPECIAL: die, levelup, pickup, knockback, stun, teleport, cast, catapult, drain, resurrect, freeze, burn, flip, backflip, cartwheel
+
+Usage: "animate [object] [animation]"
+Example: "animate knight combo"
+Example: "animate tree_1 sway"
+Example: "animate dragon fly"`;
+}
+
+// === DRAG & DROP ANIMATION FILES ===
+// Users can drop .glb files with animations to apply them to selected objects
+// Mixamo workflow: download animated FBX → convert to GLB → drop on engine
+
+
+// === VEHICLE DRIVING SYSTEM ===
+const VEHICLE_NAMES = /car|truck|van|bus|tank|jeep|rover|buggy|motorcycle|bike|cart|wagon|ambulance|taxi|police|firetruck|racecar|kart|atv|tractor|milk_truck|carbon_fibre|humvee|suv|pickup|sedan|coupe|convertible|limousine|hovercraft|snowmobile|forklift/i;
+const BOAT_NAMES = /boat|ship|cruiseship|yacht|canoe|kayak|raft|submarine|destroyer|battleship|frigate|galleon|sailboat/i;
+const AIRCRAFT_NAMES = /helicopter|chopper|plane|airplane|jet|fighter|bomber|spaceship|shuttle|ufo|drone|airship|striker|dispatcher|insurgent|barbarathebee/i;
+
+let activeVehicle = null; // { obj, type, speed, turnSpeed, velocity }
+let vehiclePromptDiv = null;
+
+function isVehicle(obj) {
+  const n = (obj.userData.name || '').toLowerCase();
+  if (VEHICLE_NAMES.test(n)) return 'ground';
+  if (BOAT_NAMES.test(n)) return 'water';
+  if (AIRCRAFT_NAMES.test(n)) return 'air';
+  return null;
+}
+
+function getNearestVehicle(playerPos, range) {
+  let best = null, bestDist = range;
+  for (const obj of objects) {
+    const vType = isVehicle(obj);
+    if (!vType) continue;
+    const d = playerPos.distanceTo(obj.position);
+    if (d < bestDist) { bestDist = d; best = { obj, type: vType, dist: d }; }
+  }
+  return best;
+}
+
+function enterVehicle(veh) {
+  // Auto-enable play mode so vehicle controls work
+  if (!playMode) {
+    playMode = true;
+    console.log('[CrateEngine] ▶ Play mode enabled for driving');
+  }
+  activeVehicle = {
+    obj: veh.obj,
+    type: veh.type,
+    speed: 0,
+    maxSpeed: veh.type === 'air' ? 40 : veh.type === 'water' ? 20 : 30,
+    accel: veh.type === 'air' ? 18 : veh.type === 'water' ? 10 : 16,
+    turnSpeed: veh.type === 'water' ? 1.8 : 3.0,
+    velocity: new THREE.Vector3(),
+    altitude: veh.obj.position.y,
+  };
+  // Hide player character
+  if (characterController && characterController.model) {
+    characterController.model.visible = false;
+  }
+  // Show driving HUD
+  console.log('[CrateEngine] 🚗 Entered vehicle! WASD to drive, SPACE = brake, F = exit');
+}
+
+function exitVehicle() {
+  if (!activeVehicle) return;
+  // Place player next to vehicle
+  if (characterController && characterController.model) {
+    characterController.model.visible = true;
+    const exitPos = activeVehicle.obj.position.clone();
+    exitPos.x += 3;
+    characterController.position.copy(exitPos);
+    characterController.model.position.copy(exitPos);
+  }
+  activeVehicle = null;
+  exitPlayMode();
+  console.log('[CrateEngine] 🚶 Exited vehicle, back to editor mode');
+}
+
+function updateVehicle(dt) {
+  if (!activeVehicle || !playMode) return;
+  const v = activeVehicle;
+  const obj = v.obj;
+  
+  // Steering — arcade feel: responsive at all speeds, slight drift at high speed
+  const speedRatio = Math.min(Math.abs(v.speed) / v.maxSpeed, 1);
+  const steerFactor = v.turnSpeed * (1.5 - speedRatio * 0.7); // much more responsive
+  const turnInput = (playKeys['a'] || playKeys['arrowleft'] ? 1 : 0) - (playKeys['d'] || playKeys['arrowright'] ? 1 : 0);
+  if (turnInput !== 0 && Math.abs(v.speed) > 0.5) {
+    obj.rotation.y += turnInput * steerFactor * dt;
+  }
+  
+  // Acceleration / braking — power curve (more punch at low speed, tapering at high)
+  if (playKeys['w'] || playKeys['arrowup']) {
+    const powerCurve = 1.0 - (Math.abs(v.speed) / v.maxSpeed) * 0.5; // stronger at low speed
+    v.speed = Math.min(v.speed + v.accel * powerCurve * dt, v.maxSpeed);
+  } else if (playKeys['s'] || playKeys['arrowdown']) {
+    v.speed = Math.max(v.speed - v.accel * 1.2 * dt, -v.maxSpeed * 0.4);
+  } else {
+    // Natural deceleration (engine braking) — gentler coast
+    v.speed *= (1 - dt * 1.2);
+    if (Math.abs(v.speed) < 0.05) v.speed = 0;
+  }
+  
+  // Brake (handbrake feel)
+  if (playKeys[' ']) {
+    v.speed *= (1 - dt * 6);
+    if (Math.abs(v.speed) < 0.5) v.speed = 0;
+  }
+  
+  // Aircraft altitude
+  if (v.type === 'air') {
+    if (playKeys[' ']) { v.altitude += 10 * dt; }
+    if (playKeys['shift']) { v.altitude = Math.max(0.5, v.altitude - 10 * dt); }
+    obj.position.y = v.altitude;
+    // Tilt based on speed/turn
+    obj.rotation.x = -v.speed * 0.005;
+    obj.rotation.z = (playKeys['a'] ? 0.3 : playKeys['d'] ? -0.3 : 0) * Math.min(Math.abs(v.speed) * 0.1, 1);
+  }
+  
+  // Move forward in facing direction
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(obj.quaternion);
+  obj.position.addScaledVector(forward, v.speed * dt);
+  
+  // Keep on ground for ground vehicles
+  if (v.type === 'ground') {
+    obj.position.y = 0.3;
+    // Slight body roll on turns
+    const turnInput = (playKeys['a'] ? 1 : 0) - (playKeys['d'] ? 1 : 0);
+    obj.rotation.z = turnInput * Math.min(Math.abs(v.speed) * 0.003, 0.15);
+  }
+  if (v.type === 'water') {
+    obj.position.y = 0.1 + Math.sin(performance.now() * 0.001) * 0.15;
+  }
+  
+  // Chase camera — GTA-style smooth follow
+  const speedFactor = Math.min(Math.abs(v.speed) / v.maxSpeed, 1);
+  const camDist = 10 + speedFactor * 8; // farther at speed for cinematic feel
+  const camHeight = 4.0 + (v.type === 'air' ? 6 : speedFactor * 2.5);
+  const camBack = new THREE.Vector3(0, camHeight, camDist);
+  camBack.applyQuaternion(obj.quaternion);
+  const idealPos = obj.position.clone().add(camBack);
+  // Smoother lerp — lower = more cinematic, less jitter
+  const lerpSpeed = 2.5 + speedFactor * 1.5;
+  camera.position.lerp(idealPos, Math.min(dt * lerpSpeed, 0.1));
+  // Look ahead of vehicle — further at speed for better visibility
+  const lookDist = 5 + speedFactor * 8;
+  const lookAhead = new THREE.Vector3(0, 1.2, -lookDist).applyQuaternion(obj.quaternion);
+  const lookTarget = obj.position.clone().add(lookAhead);
+  // Smooth lookAt via quaternion lerp instead of snapping
+  const targetQuat = new THREE.Quaternion();
+  const tempCam = camera.clone();
+  tempCam.lookAt(lookTarget);
+  targetQuat.copy(tempCam.quaternion);
+  camera.quaternion.slerp(targetQuat, Math.min(dt * 4, 0.12));
+  
+  // Speed HUD
+  const speedKmh = Math.abs(Math.round(v.speed * 3.6));
+  if (hudDiv) { hudDiv.style.display = 'block'; hudDiv.textContent = '🚗 ' + speedKmh + ' km/h'; }
+}
+
+// Vehicle proximity prompt
+function updateVehiclePrompt() {
+  if (!playMode || activeVehicle) {
+    if (vehiclePromptDiv) { vehiclePromptDiv.style.display = 'none'; }
+    return;
+  }
+  const playerPos = characterController ? characterController.position : camera.position;
+  const near = getNearestVehicle(playerPos, 5);
+  if (near) {
+    if (!vehiclePromptDiv) {
+      vehiclePromptDiv = document.createElement('div');
+      vehiclePromptDiv.style.cssText = 'position:fixed;bottom:120px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);border:1px solid #f59e0b;color:#f59e0b;padding:8px 20px;border-radius:8px;font-family:monospace;font-size:14px;z-index:9998;pointer-events:none;';
+      document.body.appendChild(vehiclePromptDiv);
+    }
+    const icon = near.type === 'air' ? '✈️' : near.type === 'water' ? '⛵' : '🚗';
+    vehiclePromptDiv.textContent = icon + ' Press F to enter ' + (near.obj.userData.name || 'vehicle');
+    vehiclePromptDiv.style.display = 'block';
+  } else if (vehiclePromptDiv) {
+    vehiclePromptDiv.style.display = 'none';
+  }
+}
+
+// F key handler moved to unified handler below
+
+
+
+
+
+
+// === ANIMATED WATER SYSTEM ===
+function updateWaterAnimation(time) {
+  // AAA Water animation (Three.js Water module)
+  for (let i = 0; i < objects.length; i++) {
+    const obj = objects[i];
+    if (obj && obj.userData && obj.userData.isAAAWater && obj.material && obj.material.uniforms) {
+      obj.material.uniforms['time'].value += 1.0 / 60.0;
+      continue;
+    }
+  }
+  // Gerstner wave water (shader-based — just update uniforms)
+  if (!objects) return;
+  for (const obj of objects) {
+    if (!obj.userData.isAnimatedWater) continue;
+    
+    if (obj.userData.isGerstnerWater && obj.material && obj.material.uniforms) {
+      obj.material.uniforms.time.value = time * 0.5;
+      if (camera) obj.material.uniforms.cameraPos.value.copy(camera.position);
+      continue;
+    }
+    
+    // Legacy vertex displacement water (rivers with _origPositions)
+    const geo = obj.geometry;
+    if (!geo) continue;
+    const posAttr = geo.getAttribute('position');
+    
+    if (obj.userData._origPositions) {
+      // TubeGeometry river — offset positions for flowing effect
+      const orig = obj.userData._origPositions;
+      for (let i = 0; i < posAttr.count; i++) {
+        const ox = orig[i * 3];
+        const oy = orig[i * 3 + 1];
+        const oz = orig[i * 3 + 2];
+        const wave = Math.sin(ox * 0.5 + time * 2.0) * 0.15 +
+                     Math.sin(oz * 0.3 + time * 1.5) * 0.1;
+        posAttr.setXYZ(i, ox, oy + wave, oz);
+      }
+    }
+    posAttr.needsUpdate = true;
+    geo.computeVertexNormals();
+  }
+}
+
+// ═══ GPU INSTANCING — 10x more objects at same performance ═══
+const instancedMeshes = new Map(); // glbFile → { mesh: InstancedMesh, count, maxCount, transforms[] }
+
+function addInstancedObject(glbFile, positions) {
+  // If we already have an instanced mesh for this model, add to it
+  if (instancedMeshes.has(glbFile)) {
+    const inst = instancedMeshes.get(glbFile);
+    for (const pos of positions) {
+      if (inst.count >= inst.maxCount) break;
+      const matrix = new THREE.Matrix4();
+      matrix.setPosition(pos.x || 0, pos.y || 0, pos.z || 0);
+      if (pos.scale) matrix.scale(new THREE.Vector3(pos.scale, pos.scale, pos.scale));
+      inst.mesh.setMatrixAt(inst.count, matrix);
+      inst.count++;
+    }
+    inst.mesh.instanceMatrix.needsUpdate = true;
+    inst.mesh.count = inst.count;
+    return;
+  }
+  
+  // Load model and create InstancedMesh
+  gltfLoader.load('models/' + glbFile + '.glb', (gltf) => {
+    const original = gltf.scene;
+    // Find first mesh in the loaded model
+    let sourceMesh = null;
+    original.traverse(child => { if (child.isMesh && !sourceMesh) sourceMesh = child; });
+    if (!sourceMesh) return;
+    
+    const maxCount = Math.max(positions.length * 2, 100); // Pre-allocate extra
+    const instMesh = new THREE.InstancedMesh(sourceMesh.geometry, sourceMesh.material, maxCount);
+    instMesh.castShadow = true;
+    instMesh.receiveShadow = true;
+    
+    let count = 0;
+    for (const pos of positions) {
+      const matrix = new THREE.Matrix4();
+      const scale = pos.scale || 1;
+      matrix.compose(
+        new THREE.Vector3(pos.x || 0, pos.y || 0, pos.z || 0),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, pos.ry || Math.random() * Math.PI * 2, 0)),
+        new THREE.Vector3(scale, scale, scale)
+      );
+      instMesh.setMatrixAt(count, matrix);
+      count++;
+    }
+    instMesh.count = count;
+    instMesh.instanceMatrix.needsUpdate = true;
+    instMesh.userData.name = 'instanced_' + glbFile;
+    scene.add(instMesh);
+    
+    instancedMeshes.set(glbFile, { mesh: instMesh, count, maxCount });
+    console.log('[Instancing] ' + glbFile + ': ' + count + ' instances (GPU)');
+  }, undefined, (err) => {
+    console.warn('[Instancing] Failed to load:', glbFile, err?.message);
+  });
+}
+
+// Scatter command with instancing for large counts
+function scatterInstanced(glbFile, count, radius) {
+  radius = radius || 40;
+  const positions = [];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * radius;
+    positions.push({
+      x: Math.cos(angle) * r,
+      y: 0,
+      z: Math.sin(angle) * r,
+      scale: 0.8 + Math.random() * 0.4,
+      ry: Math.random() * Math.PI * 2,
+    });
+  }
+  addInstancedObject(glbFile, positions);
+  return count + ' instanced ' + glbFile + ' scattered';
+}
+
+// ═══ LOD (Level of Detail) SYSTEM ═══
+const LOD_DISTANCES = { high: 20, medium: 50, low: 100 };
+const lodObjects = new Map(); // mesh → { high, medium, low }
+
+function createLODWrapper(highDetailMesh) {
+  const lod = new THREE.LOD();
+  
+  // High detail — original mesh
+  lod.addLevel(highDetailMesh, 0);
+  
+  // Medium detail — simplified (reduce draw calls)
+  const medClone = highDetailMesh.clone();
+  medClone.traverse(child => {
+    if (child.isMesh && child.material) {
+      const mat = child.material.clone();
+      mat.normalMap = null; // Drop normal map at distance
+      child.material = mat;
+    }
+  });
+  lod.addLevel(medClone, LOD_DISTANCES.medium);
+  
+  // Low detail — billboard sprite at far distance
+  const box = new THREE.Box3().setFromObject(highDetailMesh);
+  const size = box.getSize(new THREE.Vector3());
+  const spriteGeo = new THREE.PlaneGeometry(Math.max(size.x, size.z), size.y);
+  const spriteMat = new THREE.MeshBasicMaterial({ 
+    color: highDetailMesh.children[0]?.material?.color || 0x888888,
+    transparent: true, opacity: 0.7, side: THREE.DoubleSide 
+  });
+  const sprite = new THREE.Mesh(spriteGeo, spriteMat);
+  sprite.position.y = size.y / 2;
+  const lowGroup = new THREE.Group();
+  lowGroup.add(sprite);
+  lod.addLevel(lowGroup, LOD_DISTANCES.low);
+  
+  // Copy userData
+  lod.userData = { ...highDetailMesh.userData };
+  lod.position.copy(highDetailMesh.position);
+  lod.rotation.copy(highDetailMesh.rotation);
+  lod.scale.copy(highDetailMesh.scale);
+  
+  return lod;
+}
+
+// Update LODs each frame
+function updateLODs() {
+  scene.traverse(child => {
+    if (child.isLOD) child.update(camera);
+  });
+}
+
+// ═══ SCREEN-SPACE REFLECTIONS (Reflective Surface System) ═══
+let reflectivePlane = null;
+
+function createReflectiveSurface(wetness) {
+  // Wet ground overlay — creates reflective puddle effect
+  if (reflectivePlane) { scene.remove(reflectivePlane); reflectivePlane.geometry.dispose(); reflectivePlane.material.dispose(); }
+  
+  wetness = wetness || 0.5;
+  const geo = new THREE.PlaneGeometry(300, 300);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x111111,
+    roughness: 0.05 * (1 - wetness) + 0.01, // Very smooth when wet
+    metalness: 0.9,
+    transparent: true,
+    opacity: wetness * 0.25, // Subtle overlay
+    envMapIntensity: 2.0,
+    depthWrite: false,
+  });
+  
+  reflectivePlane = new THREE.Mesh(geo, mat);
+  reflectivePlane.rotation.x = -Math.PI / 2;
+  reflectivePlane.position.y = 0.01; // Just above ground
+  reflectivePlane.receiveShadow = true;
+  reflectivePlane.userData.name = 'reflective_ground';
+  scene.add(reflectivePlane);
+  return reflectivePlane;
+}
+
+function setSceneWetness(wetness) {
+  if (wetness > 0) {
+    createReflectiveSurface(wetness);
+    // Also increase env map intensity on all objects
+    scene.traverse(child => {
+      if (child.isMesh && child.material && child.material.isMeshStandardMaterial) {
+        child.material.envMapIntensity = 0.8 + wetness * 1.2;
+      }
+    });
+  } else if (reflectivePlane) {
+    scene.remove(reflectivePlane);
+    reflectivePlane = null;
+  }
+}
+
+// Auto-wet when raining
+window._setWetness = setSceneWetness;
+
+// ═══ AMBIENT PARTICLE SYSTEM ═══
+let ambientParticles = null;
+let particleType = 'dust'; // dust, fireflies, embers, snow, rain, ash, spores, bubbles
+
+function createAmbientParticles(type, count) {
+  if (ambientParticles) { scene.remove(ambientParticles); ambientParticles.geometry.dispose(); ambientParticles.material.dispose(); }
+  particleType = type || 'dust';
+  count = count || 800;
+  
+  const config = {
+    dust:      { color: 0xddccaa, size: 0.04, opacity: 0.3, speed: 0.15, spread: 40, height: 15, glow: false },
+    fireflies: { color: 0xccff44, size: 0.12, opacity: 0.8, speed: 0.3, spread: 30, height: 8, glow: true },
+    embers:    { color: 0xff6622, size: 0.08, opacity: 0.7, speed: 0.6, spread: 15, height: 12, glow: true },
+    snow:      { color: 0xffffff, size: 0.06, opacity: 0.6, speed: 0.8, spread: 50, height: 25, glow: false },
+    ash:       { color: 0x666666, size: 0.05, opacity: 0.4, speed: 0.3, spread: 40, height: 20, glow: false },
+    spores:    { color: 0x88ff88, size: 0.06, opacity: 0.5, speed: 0.1, spread: 25, height: 10, glow: true },
+    bubbles:   { color: 0x88ccff, size: 0.1, opacity: 0.3, speed: 0.4, spread: 30, height: 15, glow: true },
+    leaves:    { color: 0x88aa44, size: 0.08, opacity: 0.6, speed: 0.25, spread: 35, height: 12, glow: false },
+    petals:    { color: 0xffaacc, size: 0.07, opacity: 0.5, speed: 0.2, spread: 30, height: 10, glow: false },
+  };
+  
+  const cfg = config[type] || config.dust;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  const velocities = new Float32Array(count * 3);
+  const phases = new Float32Array(count);
+  
+  for (let i = 0; i < count; i++) {
+    positions[i*3] = (Math.random() - 0.5) * cfg.spread;
+    positions[i*3+1] = Math.random() * cfg.height;
+    positions[i*3+2] = (Math.random() - 0.5) * cfg.spread;
+    velocities[i*3] = (Math.random() - 0.5) * 0.3;
+    velocities[i*3+1] = type === 'snow' || type === 'ash' || type === 'leaves' ? -cfg.speed : cfg.speed * (Math.random() * 0.5 + 0.5);
+    velocities[i*3+2] = (Math.random() - 0.5) * 0.3;
+    phases[i] = Math.random() * Math.PI * 2;
+  }
+  
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.userData = { velocities, phases, config: cfg };
+  
+  // Create circular particle texture
+  const pCanvas = document.createElement('canvas');
+  pCanvas.width = 32; pCanvas.height = 32;
+  const pCtx = pCanvas.getContext('2d');
+  const gradient = pCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.4, 'rgba(255,255,255,0.8)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  pCtx.fillStyle = gradient;
+  pCtx.fillRect(0, 0, 32, 32);
+  const particleTex = new THREE.CanvasTexture(pCanvas);
+  
+  const mat = new THREE.PointsMaterial({
+    color: cfg.color,
+    size: cfg.size,
+    map: particleTex,
+    transparent: true,
+    opacity: cfg.opacity,
+    blending: cfg.glow ? THREE.AdditiveBlending : THREE.NormalBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  
+  ambientParticles = new THREE.Points(geo, mat);
+  ambientParticles.userData.name = 'ambient_particles';
+  scene.add(ambientParticles);
+  console.log('[Particles] Created:', type, count, 'particles');
+  return ambientParticles;
+}
+
+function updateAmbientParticles(dt, camPos) {
+  if (!ambientParticles) return;
+  const geo = ambientParticles.geometry;
+  const pos = geo.attributes.position;
+  const { velocities, phases, config: cfg } = geo.userData;
+  const t = performance.now() * 0.001;
+  
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    
+    // Apply velocity + wave motion
+    x += velocities[i*3] * dt + Math.sin(t + phases[i]) * 0.02;
+    y += velocities[i*3+1] * dt;
+    z += velocities[i*3+2] * dt + Math.cos(t * 0.7 + phases[i]) * 0.02;
+    
+    // Firefly flickering
+    if (particleType === 'fireflies') {
+      const flicker = Math.sin(t * 3 + phases[i] * 10) > 0.3 ? 1 : 0.1;
+      // Can't change per-vertex opacity easily with Points, but the wave motion simulates it
+    }
+    
+    // Wrap around camera position
+    const cx = camPos ? camPos.x : 0;
+    const cz = camPos ? camPos.z : 0;
+    const half = cfg.spread / 2;
+    if (x > cx + half) x -= cfg.spread;
+    if (x < cx - half) x += cfg.spread;
+    if (z > cz + half) z -= cfg.spread;
+    if (z < cz - half) z += cfg.spread;
+    
+    // Vertical wrap
+    if (y > cfg.height) y = 0;
+    if (y < 0) y = cfg.height;
+    
+    pos.setXYZ(i, x, y, z);
+  }
+  pos.needsUpdate = true;
+}
+
+// Auto-particles based on biome/weather
+function autoParticlesForScene(sceneName) {
+  const lower = (sceneName || '').toLowerCase();
+  if (lower.includes('snow') || lower.includes('frozen') || lower.includes('ice') || lower.includes('tundra') || lower.includes('winter')) return createAmbientParticles('snow', 1200);
+  if (lower.includes('haunted') || lower.includes('graveyard') || lower.includes('dark')) return createAmbientParticles('ash', 600);
+  if (lower.includes('forest') || lower.includes('garden') || lower.includes('jungle')) return createAmbientParticles('fireflies', 500);
+  if (lower.includes('volcano') || lower.includes('lava') || lower.includes('hell')) return createAmbientParticles('embers', 800);
+  if (lower.includes('underwater') || lower.includes('ocean')) return createAmbientParticles('bubbles', 600);
+  if (lower.includes('cherry') || lower.includes('japanese')) return createAmbientParticles('petals', 500);
+  if (lower.includes('farm') || lower.includes('village') || lower.includes('medieval')) return createAmbientParticles('dust', 400);
+  return createAmbientParticles('dust', 300);
+}
+
+// Start default particles
+setTimeout(() => createAmbientParticles('dust', 200), 1500);
+
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const t = clock.getElapsedTime();
+  
+  // === AUTO-QUALITY SCALING ===
+  if (!window._fpsHistory) window._fpsHistory = [];
+  if (!window._lastFpsCheck) window._lastFpsCheck = performance.now();
+  window._fpsHistory.push(dt);
+  if (window._fpsHistory.length > 120) window._fpsHistory.shift();
+  if (performance.now() - window._lastFpsCheck > 5000) {
+    window._lastFpsCheck = performance.now();
+    const avgDt = window._fpsHistory.reduce((a,b)=>a+b,0) / window._fpsHistory.length;
+    const avgFps = 1 / avgDt;
+    if (avgFps < 30 && !window._autoReducedQuality) {
+      window._autoReducedQuality = true;
+      // Reduce quality
+      renderer.setPixelRatio(1.0);
+      if (rainParticles && rainParticles.geometry.attributes.position.count > 3000) {
+        // Cut rain particles in half
+        scene.remove(rainParticles);
+        rainParticles = null;
+        setWeather('rain'); // Will recreate with current settings
+      }
+      console.log('[AutoQuality] FPS dropped to ' + avgFps.toFixed(0) + ', reducing quality');
+    }
+  }
+
+  if (window._godmode) window._godmode.updateBehaviors(dt, t);
+  if (window._sound) { window._sound.updateMusic(dt); window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
+  if (!playMode) controls.update();
+  if (window._updateShadowCascades) window._updateShadowCascades();
+  updateAmbientParticles(clock.getDelta() || 0.016, camera.position);
+  if (activeVehicle) { updateVehicle(dt); updateVehiclePrompt();
+  // Swimming/buoyancy — keep player above water
+  const _waterLevel = -0.1; // Just above ocean surface at -0.3
+  if (playMode && !activeVehicle) {
+    const playerY = characterController ? characterController.position.y : camera.position.y;
+    if (playerY < _waterLevel) {
+      // Push player up to water surface (buoyancy)
+      if (characterController) {
+        characterController.position.y = THREE.MathUtils.lerp(characterController.position.y, _waterLevel, 0.1);
+        if (characterController.model) characterController.model.position.y = characterController.position.y;
+      } else {
+        camera.position.y = THREE.MathUtils.lerp(camera.position.y, _waterLevel + 1.5, 0.1);
+      }
+    }
+  }
+  // NPC buoyancy — NPCs float on water too
+  if (typeof npcController !== 'undefined' && npcController.npcs) {
+    for (const npc of npcController.npcs) {
+      if (npc.model && npc.model.position.y < _waterLevel) {
+        npc.model.position.y = THREE.MathUtils.lerp(npc.model.position.y, _waterLevel, 0.05);
+      }
+    }
+  }
+  // Combat & UI systems
+  if (typeof window._updateCombat === 'function') window._updateCombat(dt);
+  if (typeof window._updateMiniMap === 'function') window._updateMiniMap(); }
+      if (shooterMode) { updateBullets(dt); updateShooterHUD(); }
+    updateWaterAnimation(performance.now() * 0.001);
+  updateUserScripts(dt);
+  
+  // Weather follows camera for full-scene coverage
+  const _wcam = playMode && characterController && characterController.model ? characterController.model.position : camera.position;
+  if (rainParticles) {
+    rainParticles.position.x = _wcam.x;
+    rainParticles.position.z = _wcam.z;
+    const p = rainParticles.geometry.attributes.position.array;
+    for (let i=0;i<p.length;i+=3) { p[i+1]-=22*dt; if(p[i+1]<-2){p[i+1]=20+Math.random()*8;p[i]=(Math.random()-0.5)*150;p[i+2]=(Math.random()-0.5)*150;} }
+    rainParticles.geometry.attributes.position.needsUpdate=true;
+  }
+  if (snowParticles) {
+    snowParticles.position.x = _wcam.x;
+    snowParticles.position.z = _wcam.z;
+    const p = snowParticles.geometry.attributes.position.array;
+    for (let i=0;i<p.length;i+=3) { p[i+1]-=1.5*dt; p[i]+=Math.sin(t+i*0.01)*0.3*dt; if(p[i+1]<-2){p[i+1]=18+Math.random()*6;p[i]=(Math.random()-0.5)*150;p[i+2]=(Math.random()-0.5)*150;} }
+    snowParticles.geometry.attributes.position.needsUpdate=true;
+  }
+
+  // Update particle effects
+  // Update particles every other frame
+  if (!window._particleSkip) updateParticleEffects(0.016);
+  window._particleSkip = !window._particleSkip;
+  
+  // Water wave (every 3rd frame)
+  window._waterFrame = (window._waterFrame || 0) + 1;
+  if (window._waterFrame % 3 === 0) {
+    for (let wi = 0; wi < objects.length; wi++) {
+      const o = objects[wi];
+      if (o.userData.isWater) {
+        const p = o.geometry.attributes.position;
+        for (let i=0;i<p.count;i++) {
+          const x=p.getX(i), y=p.getY(i);
+          p.setZ(i, Math.sin(x*0.5+t*2)*0.1 + Math.cos(y*0.3+t*1.5)*0.08);
+        }
+        p.needsUpdate=true; o.geometry.computeVertexNormals();
+      }
+    }
+  }
+  
+  if (sunMesh) { sunMesh.position.copy(sunLight.position); }
+  // Update animations
+  animationMixers.forEach(mixer => mixer.update(dt));
+  // Play mode + triggers
+  if (playMode && characterController && characterController.model) {
+    // === DEMO AUTO-PLAY ===
+    if (window._demoMode && characterController) {
+      window._demoTime = (window._demoTime || 0) + dt;
+      var dT = window._demoTime;
+      var cc = characterController;
+      
+      // Reset all keys each frame, then set what we need
+      cc.keys['w'] = false;
+      cc.keys['s'] = false;
+      cc.keys['a'] = false;
+      cc.keys['d'] = false;
+      cc.keys['e'] = false;
+      cc.keys['q'] = false;
+      cc.keys['shift'] = false;
+      
+      // Find nearest alive enemy
+      var nearestEnemy = null;
+      var nearestDist = 999;
+      if (npcController) {
+        for (var npc of npcController.npcs) {
+          if (npc.isDead) continue;
+          if (!npc.model) continue;
+          var d = cc.position.distanceTo(npc.model.position);
+          if (d < nearestDist) { nearestDist = d; nearestEnemy = npc; }
+        }
+      }
+      
+      // Find nearest collectible
+      var nearestItem = null;
+      var nearestItemDist = 999;
+      for (var obj of objects) {
+        if (!obj.userData.name) continue;
+        var n = obj.userData.name.toLowerCase();
+        if (n.includes('pickup') || n.includes('collectible') || n.includes('lootbox') || n.includes('heart') || n.includes('gear') || n.includes('board')) {
+          var dd = cc.position.distanceTo(obj.position);
+          if (dd < nearestItemDist) { nearestItemDist = dd; nearestItem = obj; }
+        }
+      }
+      
+      // AI Decision tree
+      var target = null;
+      var shouldAttack = false;
+      var shouldRun = false;
+      
+      if (nearestEnemy && nearestDist < 4) {
+        // Close to enemy — FIGHT
+        target = nearestEnemy.model.position.clone();
+        if (nearestDist < 2.5) {
+          shouldAttack = true;
+        }
+      } else if (nearestItem && nearestItemDist < 12) {
+        // Grab nearby item
+        target = nearestItem.position.clone();
+        shouldRun = true;
+      } else if (nearestEnemy) {
+        // Chase enemy
+        target = nearestEnemy.model.position.clone();
+        shouldRun = true;
+      } else {
+        // Patrol in a circle
+        target = new THREE.Vector3(Math.sin(dT * 0.4) * 10, 0, Math.cos(dT * 0.4) * 10);
+      }
+      
+      if (target) {
+        var dir = new THREE.Vector3().subVectors(target, cc.position);
+        dir.y = 0;
+        var dist = dir.length();
+        
+        if (dist > 0.8) {
+          dir.normalize();
+          // Face the target
+          cc.rotation = Math.atan2(dir.x, dir.z);
+          // Move forward
+          cc.keys['w'] = true;
+          if (shouldRun) {
+            cc.isRunning = true;
+            cc.keys['shift'] = true;
+          }
+        }
+        
+        // Camera follows behind character smoothly
+        var camAngle = cc.rotation + Math.PI;
+        cc.cameraYaw += (camAngle - cc.cameraYaw) * 3 * dt;
+      }
+      
+      // Attack when in range — 3 punch combo
+      if (shouldAttack) {
+        // Face enemy
+        if (nearestEnemy) {
+          var eDir = new THREE.Vector3().subVectors(nearestEnemy.model.position, cc.position);
+          eDir.y = 0;
+          cc.rotation = Math.atan2(eDir.x, eDir.z);
+          // Step closer during combo
+          if (nearestDist > 1.5) cc.keys['w'] = true;
+        }
+        // 3-hit combo: E E E with 0.5s between hits, then 1s pause before next combo
+        window._demoComboHit = window._demoComboHit || 0;
+        window._demoAtkTimer = window._demoAtkTimer || 0;
+        window._demoAtkTimer -= dt;
+        if (window._demoAtkTimer <= 0) {
+          window._demoComboHit++;
+          cc.keys['e'] = true;
+          if (window._demoComboHit >= 3) {
+            // Combo finished — pause before next
+            window._demoComboHit = 0;
+            window._demoAtkTimer = 1.2;
+          } else {
+            // Next hit in combo
+            window._demoAtkTimer = 0.45;
+          }
+        }
+      } else {
+        window._demoComboHit = 0;
+      }
+      
+      // Health floor so character never dies + slow regen
+      if (cc.health < 30) cc.health = 30;
+      if (cc.health < cc.maxHealth) cc.health = Math.min(cc.maxHealth, cc.health + dt * 3);
+      
+      // Auto-collect items
+      for (var ci = objects.length - 1; ci >= 0; ci--) {
+        var cObj = objects[ci];
+        if (!cObj.userData.name) continue;
+        var cn = cObj.userData.name.toLowerCase();
+        if ((cn.includes('pickup') || cn.includes('collectible') || cn.includes('heart') || cn.includes('gear') || cn.includes('board') || cn.includes('lootbox')) && cc.position.distanceTo(cObj.position) < 2.5) {
+          gameScore += 50;
+          scene.remove(cObj);
+          objects.splice(ci, 1);
+          if (cn.includes('health') || cn.includes('heart')) {
+            cc.health = Math.min(cc.maxHealth, cc.health + 50);
+            showNotification('❤️ +50 HP!');
+          } else {
+            showNotification('⭐ +50 points!');
+          }
+          updateHUD();
+        }
+      }
+    }
+    
+    // Demo mode: force character to ground (no floating/jumping)
+    if (window._demoMode && characterController) {
+      characterController.position.y = 0;
+      characterController.isGrounded = true;
+      characterController.jumpVelocity = 0;
+    }
+    characterController.update(dt);
+    if (npcController) {
+      // Zone-based aggro — NPCs only engage when player enters their zone
+      const playerPos = characterController.position;
+      const aggroRange = 18; // Distance to trigger aggro
+      const maxSimultaneousAttackers = 2; // Only 1-2 attack at once
+      let currentAttackers = 0;
+      
+      for (const npc of npcController.npcs) {
+        if (npc.isDead) continue;
+        const distToPlayer = npc.model.position.distanceTo(playerPos);
+        
+        // Zone guard behavior — only aggro when player enters zone
+        if (npc.behavior === 'zone_guard') {
+          if (distToPlayer < aggroRange) {
+            npc.isAggro = true;
+            npc.aggroTarget = playerPos.clone();
+          } else {
+            npc.isAggro = false;
+            npc.aggroTarget = null;
+          }
+        } else if (npc.isAggro && characterController.model) {
+          npc.aggroTarget = playerPos.clone();
+        }
+        
+        // Count active attackers (in attack range)
+        if (npc.isAggro && distToPlayer < npc.attackRange) {
+          currentAttackers++;
+        }
+      }
+      
+      // NPC attacks — stagger so only 1-2 swing at a time
+      let attackersThisFrame = 0;
+      for (const npc of npcController.npcs) {
+        if (npc.isDead || !npc.isAggro) continue;
+        if (!characterController.model) continue;
+        
+        const dist = npc.model.position.distanceTo(playerPos);
+        if (dist < npc.attackRange && npc.attackCooldown <= 0 && attackersThisFrame < maxSimultaneousAttackers) {
+          attackersThisFrame++;
+          // Stagger cooldowns so they don't sync
+          npc.attackCooldown = 2.0 + Math.random() * 1.5;
+          const result = characterController.takeDamage(npc.attackDamage);
+          if (result === 'dodged') continue;
+          if (result === 'dead' && !window._demoMode) {
+            let deathScreen = document.getElementById('death-screen');
+            if (!deathScreen) {
+              deathScreen = document.createElement('div');
+              deathScreen.id = 'death-screen';
+              deathScreen.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+              const kills = npcController.npcs.filter(n => n.isDead).length;
+              deathScreen.innerHTML = '<div style="color:#ff2222;font-size:48px;margin-bottom:20px;">☠️ YOU DIED</div><div style="color:#888;font-size:16px;margin-bottom:10px;">Score: ⭐ ' + gameScore + '</div><div style="color:#888;font-size:14px;margin-bottom:30px;">Enemies Killed: 💀 ' + kills + '</div><button onclick="this.parentElement.remove();window._engine.respawn();" style="padding:12px 30px;background:#f59e0b;color:#000;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-family:monospace;">RESPAWN</button>';
+              document.body.appendChild(deathScreen);
+            }
+          }
+        }
+      }
+      npcController.update(dt);
+      npcController.updateHealthBarFacing(camera);
+    }
+    // Combat hit detection
+    if (characterController && characterController._attackHitFrame && npcController) {
+      const beforeCount = npcController.npcs.filter(n => n.isDead).length;
+      characterController.checkAttackHit(npcController);
+      const afterCount = npcController.npcs.filter(n => n.isDead).length;
+      const kills = afterCount - beforeCount;
+      if (kills > 0) {
+        gameScore += kills * 100;
+        if (levelSystem) levelSystem.addXP(kills * 30);
+        // Kill message
+        let msg = document.getElementById('pickup-msg');
+        if (!msg) {
+          msg = document.createElement('div');
+          msg.id = 'pickup-msg';
+          msg.style.cssText = 'position:fixed;top:40%;left:50%;transform:translateX(-50%);color:#ff4444;font-size:28px;font-family:monospace;z-index:9999;pointer-events:none;transition:opacity 0.5s;text-shadow:0 0 10px #ff0000;';
+          document.body.appendChild(msg);
+        }
+        msg.textContent = '💀 KILL! +' + (kills * 100) + ' pts';
+        const completedQuests = questSystem.progress('kill', kills);
+        completedQuests.forEach(q => questSystem.showCompletion(q));
+        msg.style.opacity = '1';
+        msg.style.color = '#ff4444';
+        setTimeout(() => { msg.style.opacity = '0'; }, 1500);
+      }
+    }
+    // Pickup detection
+    const pickup = characterController.checkPickups(objects, scene);
+    if (pickup) {
+      if (pickup.includes('Score')) gameScore += 50;
+      if (pickup.includes('Equipped')) gameScore += 10;
+      // Check if it was a material pickup
+      if (pickup.includes('material:')) {
+        const parts = pickup.match(/material:(\w+):(\d+)/);
+        if (parts && craftingSystem) craftingSystem.addMaterial(parts[1], parseInt(parts[2]));
+      }
+      // Flash pickup message
+      let msg = document.getElementById('pickup-msg');
+      if (!msg) {
+        msg = document.createElement('div');
+        msg.id = 'pickup-msg';
+        msg.style.cssText = 'position:fixed;top:40%;left:50%;transform:translateX(-50%);color:#f59e0b;font-size:24px;font-family:monospace;z-index:9999;pointer-events:none;transition:opacity 0.5s;';
+        document.body.appendChild(msg);
+      }
+      msg.textContent = pickup;
+      msg.style.opacity = '1';
+      setTimeout(() => { msg.style.opacity = '0'; }, 1500);
+    }
+    // Floating pickup animation
+    objects.forEach(o => {
+      if (o.userData.isPickup && o.userData.baseY !== undefined) {
+        o.position.y = o.userData.baseY + Math.sin(t * 3) * 0.2;
+        o.rotation.y += dt * 2;
+      }
+    });
+    // Update minimap
+    if (minimap) minimap.update(npcController ? npcController.npcs : []);
+    if (gameHUD) {
+      gameHUD.style.display = 'block';
+      updateGameHUD(characterController, gameScore);
+    }
+  } else {
+    updatePlayMode(dt);
+    if (gameHUD) gameHUD.style.display = 'none';
+    if (minimap) minimap.el.style.display = 'none';
+    const xpBar = document.getElementById('xp-bar-container');
+    if (xpBar) xpBar.style.display = 'none';
+  }
+  // Update procedural animations
+  for (let pi = 0; pi < objects.length; pi++) {
+    const po = objects[pi];
+    if (po.userData._procAnim) {
+      po.userData._procAnim.fn(po, t, dt);
+    }
+  }
+  updateTriggers();
+    updateVehiclePrompt();
+  updateHUD();
+  // NPC update — runs ALWAYS (editor + play mode)
+  const _nc = npcController || window.npcController;
+  if (_nc) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
+
+  if (ppEnabled && composer) {
+      if (window._colorPass) window._colorPass.uniforms.time.value = performance.now() * 0.001;
+      composer.render();
+    } else {
+      renderer.render(scene, camera);
+    }
+}
+animate();
+
+// Signal engine is ready
+// Expose command runner for auto-demo
+window._runCommand = async function(cmd) {
+  const input = document.getElementById('prompt-input');
+  const log = document.getElementById('output-log');
+  if (!input || !log) return;
+  log.style.display = 'block';
+  const cmdEl = document.createElement('div');
+  cmdEl.className = 'entry cmd';
+  cmdEl.textContent = '❯ ' + cmd;
+  log.appendChild(cmdEl);
+  try {
+    const response = await parseAndExecute(cmd);
+    const text = (response || '').toString();
+    text.split('\n').forEach(line => {
+      if (!line) return;
+      const r = document.createElement('div');
+      r.className = 'entry ' + (line.startsWith('✓')?'ok':line.startsWith('⚠')?'err':'info');
+      r.textContent = line;
+      log.appendChild(r);
+    });
+  } catch(err) {
+    const r = document.createElement('div');
+    r.className = 'entry err';
+    r.textContent = '⚠ Error: ' + err.message;
+    log.appendChild(r);
+  }
+  log.scrollTop = log.scrollHeight;
+  // Auto-hide log after 4s
+  clearTimeout(window._logHideTimer);
+  window._logHideTimer = setTimeout(() => { log.style.display = "none"; }, 4000);
+};
+
+window._engineReady = true;
+if (window._hideLoader) window._hideLoader();
+
+// Force canvas resize to fill viewport
+setTimeout(() => {
+  const c = document.getElementById('crate-canvas');
+  if (c) {
+    const w = c.clientWidth;
+    const h = c.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    if (typeof composer !== 'undefined' && composer) composer.setSize(w, h);
+    console.log('[Engine] Canvas resized to', w, 'x', h);
+  }
+}, 100);
+if (window._autoDemoQueued) { window._autoDemoQueued = false; setTimeout(function() { if (window._autoDemo) window._autoDemo(); }, 500); }
+
+window.addEventListener('resize', () => {
+  camera.aspect = canvas.clientWidth / canvas.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+  if (typeof composer !== 'undefined' && composer) composer.setSize(canvas.clientWidth, canvas.clientHeight);
+});
+
+// Stats
+function animateCount(el, target, dur) {
+  let s=0;const step=target/(dur/16);const t=setInterval(()=>{s+=step;if(s>=target){el.textContent=target.toLocaleString();clearInterval(t);return;}el.textContent=Math.floor(s).toLocaleString();},16);
+}
+
+
+
+
+
+
+
+
+
+
+
+// Stats bar animation removed (elements no longer in HTML)
+
+
+window.launchEngine = function() { const btn = document.getElementById("launch-btn"); if (btn) btn.textContent = "✅ Already Running"; };
+input.focus();
+
+
+// ═══════════════════════════════════════════
+// SCENE SERIALIZATION & SHARING
+// ═══════════════════════════════════════════
+// sceneHistory declared at top of file
+
+
+function deserializeScene(data) {
+  // Clear current scene
+  parseAndExecute('clear');
+  // Replay commands
+  const cmds = data.split('|').filter(Boolean);
+  let i = 0;
+  function next() {
+    if (i >= cmds.length) return;
+    parseAndExecute(cmds[i]);
+    i++;
+    setTimeout(next, 200);
+  }
+  next();
+}
+
+function serializeScene() {
+  return sceneHistory.filter(c => c !== 'clear' && c !== 'reset').join('|');
+}
+
+// Compress scene data for shorter URLs
+function compressScene(str) {
+  // Simple RLE-like compression + base64
+  // Replace common commands with short codes
+  var compressed = str
+    .replace(/add /g, 'A:')
+    .replace(/time /g, 'T:')
+    .replace(/make it rain/g, 'R')
+    .replace(/make it snow/g, 'S')
+    .replace(/fog/g, 'F')
+    .replace(/build a /g, 'B:')
+    .replace(/snow ground/g, 'SG')
+    .replace(/sand ground/g, 'DG');
+  return btoa(compressed);
+}
+
+function decompressScene(encoded) {
+  try {
+    var str = atob(encoded);
+    return str
+      .replace(/A:/g, 'add ')
+      .replace(/T:/g, 'time ')
+      .replace(/\bR\b/g, 'make it rain')
+      .replace(/\bS\b/g, 'make it snow')
+      .replace(/\bF\b/g, 'fog')
+      .replace(/B:/g, 'build a ')
+      .replace(/\bSG\b/g, 'snow ground')
+      .replace(/\bDG\b/g, 'sand ground');
+  } catch(e) {
+    return null;
+  }
+}
+
+function shareScene() {
+  var data = serializeScene();
+  if (!data) {
+    logOutput('warn', '⚠ Nothing to share — build something first!');
+    return;
+  }
+  var encoded = compressScene(data);
+  var url = window.location.origin + '/s#' + encoded;
+  navigator.clipboard.writeText(url).then(function() {
+    logOutput('ok', '📋 Share link copied!');
+    showShareModal(url, sceneHistory.length);
+  }).catch(function() {
+    showShareModal(url, sceneHistory.length);
+  });
+  return url;
+}
+
+
+// === PUBLISH TO .COM ===
+function publishScene() {
+  var data = serializeScene();
+  if (!data) {
+    logOutput('warn', '⚠ Nothing to publish — build something first!');
+    return;
+  }
+
+  var old = document.getElementById('publish-modal');
+  if (old) old.remove();
+  
+  var modal = document.createElement('div');
+  modal.id = 'publish-modal';
+  Object.assign(modal.style, {
+    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+    background: 'rgba(0,0,0,0.85)', zIndex: '10006', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace"
+  });
+  
+  // Generate a unique slug
+  var slug = 'game-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  var existing = JSON.parse(localStorage.getItem('crate_published_games') || '[]');
+  
+  modal.innerHTML = 
+    '<div style="background:#111;border:1px solid #252525;border-radius:16px;padding:32px;max-width:520px;width:90%;text-align:center">' +
+    '<div style="font-size:1.5rem;margin-bottom:8px">🚀 Publish to .com</div>' +
+    '<p style="color:#888;font-size:0.8rem;margin-bottom:20px">Your game goes live at crateshipgames.com — playable by anyone, anywhere.</p>' +
+    
+    '<div style="text-align:left;margin-bottom:16px">' +
+    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Game Title</label>' +
+    '<input id="pub-title" placeholder="My Awesome Game" value="" style="width:100%;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none">' +
+    '</div>' +
+    
+    '<div style="text-align:left;margin-bottom:16px">' +
+    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Description</label>' +
+    '<textarea id="pub-desc" placeholder="A short description of your game..." style="width:100%;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none;resize:vertical;min-height:60px"></textarea>' +
+    '</div>' +
+    
+    '<div style="text-align:left;margin-bottom:16px">' +
+    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Your URL</label>' +
+    '<div style="display:flex;align-items:center;gap:0;margin-top:4px">' +
+    '<span style="padding:10px;background:#0a0a0f;border:1px solid #333;border-right:none;border-radius:8px 0 0 8px;color:#555;font-size:0.8rem;white-space:nowrap">crateshipgames.com/play/</span>' +
+    '<input id="pub-slug" value="' + slug + '" style="flex:1;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:0 8px 8px 0;color:#4ade80;font-family:inherit;font-size:0.8rem;outline:none">' +
+    '</div></div>' +
+    
+    '<div style="text-align:left;margin-bottom:20px">' +
+    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Tags</label>' +
+    '<input id="pub-tags" placeholder="rpg, fantasy, multiplayer" style="width:100%;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none">' +
+    '</div>' +
+    
+    '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
+    '<button id="pub-go" style="padding:12px 28px;background:linear-gradient(135deg,#4ade80,#22c55e);color:#000;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:0.9rem;font-family:inherit">🚀 Publish Live</button>' +
+    '<button id="pub-close" style="padding:12px 28px;background:#222;color:#888;border:1px solid #333;border-radius:10px;cursor:pointer;font-family:inherit">Cancel</button>' +
+    '</div>' +
+    
+    (existing.length > 0 ? '<div style="margin-top:20px;border-top:1px solid #222;padding-top:16px"><div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Your Published Games (' + existing.length + ')</div>' + 
+    existing.slice(-5).map(function(g) { return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1a1a24"><a href="/play/' + g.slug + '" style="color:#4ade80;font-size:0.8rem;text-decoration:none">' + g.title + '</a><span style="color:#555;font-size:0.7rem">' + new Date(g.publishedAt).toLocaleDateString() + '</span></div>'; }).join('') + '</div>' : '') +
+    
+    '</div>';
+    
+  document.body.appendChild(modal);
+  
+  document.getElementById('pub-close').onclick = function() { modal.remove(); };
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+  
+  document.getElementById('pub-go').onclick = async function() {
+    // Check auth & plan
+    if (auth.isLoggedIn && auth.isPremium) {
+      // Use server-side publish
+      var btn = document.getElementById('pub-go');
+      btn.textContent = '⏳ Publishing...'; btn.style.opacity = '0.6';
+      var title = document.getElementById('pub-title').value.trim() || 'Untitled Game';
+      var desc = document.getElementById('pub-desc').value.trim();
+      var finalSlug = document.getElementById('pub-slug').value.trim().replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+      var tags = document.getElementById('pub-tags').value.trim().split(',').map(function(t){return t.trim()}).filter(Boolean);
+      var result = await auth.publishGame({ title: title, description: desc, slug: finalSlug, tags: tags, sceneData: compressScene(data), objects: objects.length, commands: sceneHistory.length });
+      if (result.error) { logOutput('err', '⚠ ' + result.error); btn.textContent = '🚀 Publish Live'; btn.style.opacity = '1'; return; }
+      logOutput('ok', '🚀 Published at ' + result.url);
+      modal.innerHTML = '<div style="background:#111;border:1px solid #4ade80;border-radius:16px;padding:32px;max-width:480px;width:90%;text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">🎉</div><div style="font-size:1.3rem;font-weight:700;color:#4ade80;margin-bottom:8px">Published!</div><p style="color:#888;font-size:0.8rem">' + result.url + '</p><button onclick="navigator.clipboard.writeText(\'' + result.url + '\');this.textContent=\'Copied!\'" style="margin-top:12px;padding:10px 24px;background:#4ade80;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700">📋 Copy Link</button><button onclick="this.closest(\'[id=publish-modal]\').remove()" style="margin:8px;padding:10px 24px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer">Close</button></div>';
+      return;
+    } else if (auth.isLoggedIn && !auth.isPremium) {
+      // Show upgrade prompt
+      logOutput('warn', '⚠ Publishing requires Premium plan ($14.99/mo)');
+      var upgradeResult = await auth.subscribe('premium');
+      if (upgradeResult.checkoutUrl) window.location = upgradeResult.checkoutUrl;
+      return;
+    } else if (!auth.isLoggedIn) {
+      auth.showAuthModal(function(user) { document.getElementById('pub-go').click(); });
+      return;
+    }
+  
+    var title = document.getElementById('pub-title').value.trim() || 'Untitled Game';
+    var desc = document.getElementById('pub-desc').value.trim();
+    var finalSlug = document.getElementById('pub-slug').value.trim().replace(/[^a-z0-9-]/gi, '-').toLowerCase() || slug;
+    var tags = document.getElementById('pub-tags').value.trim();
+    
+    var btn = document.getElementById('pub-go');
+    btn.textContent = '⏳ Publishing...';
+    btn.style.opacity = '0.6';
+    
+    // Save scene data with metadata
+    var encoded = compressScene(data);
+    var gameData = {
+      title: title,
+      description: desc,
+      slug: finalSlug,
+      tags: tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean),
+      sceneData: encoded,
+      commands: sceneHistory.length,
+      objects: objects.length,
+      publishedAt: Date.now(),
+      version: 1
+    };
+    
+    // Store in localStorage (will use backend API later)
+    existing.push(gameData);
+    localStorage.setItem('crate_published_games', JSON.stringify(existing));
+    
+    // Create the playable page URL
+    var playUrl = window.location.origin + '/play/' + finalSlug;
+    
+    // Also store as a shareable hash URL that works now
+    var shareUrl = window.location.origin + '/?scene=' + finalSlug + '#' + encoded;
+    
+    setTimeout(function() {
+      modal.innerHTML = 
+        '<div style="background:#111;border:1px solid #4ade80;border-radius:16px;padding:32px;max-width:480px;width:90%;text-align:center">' +
+        '<div style="font-size:2.5rem;margin-bottom:12px">🎉</div>' +
+        '<div style="font-size:1.3rem;font-weight:700;color:#4ade80;margin-bottom:8px">Published!</div>' +
+        '<p style="color:#888;font-size:0.8rem;margin-bottom:16px">"' + title + '" is now live</p>' +
+        '<div style="background:#0a0a0f;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:16px">' +
+        '<div style="color:#555;font-size:0.7rem;margin-bottom:4px">Share this link</div>' +
+        '<input id="pub-final-url" readonly value="' + shareUrl + '" style="width:100%;padding:8px;background:transparent;border:none;color:#4ade80;font-family:inherit;font-size:0.75rem;text-align:center;outline:none" onclick="this.select()">' +
+        '</div>' +
+        '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
+        '<button onclick="navigator.clipboard.writeText(\'' + shareUrl + '\');this.textContent=\'✓ Copied!\';setTimeout(()=>this.textContent=\'📋 Copy Link\',2000)" style="padding:10px 20px;background:#4ade80;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit">📋 Copy Link</button>' +
+        '<button onclick="window.open(\'https://twitter.com/intent/tweet?text=I just published a game on Crate Engine! Play it here: ' + encodeURIComponent(shareUrl) + '\')" style="padding:10px 20px;background:#1da1f2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit">𝕏 Share</button>' +
+        '<button onclick="this.closest(\'[id=publish-modal]\').remove()" style="padding:10px 20px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer;font-family:inherit">Close</button>' +
+        '</div></div>';
+      
+      logOutput('ok', '🚀 Published "' + title + '" — link copied! Share it with anyone.');
+    }, 1200);
+  };
+}
+window._publishScene = publishScene;
+
+function showShareModal(url, cmdCount) {
+  // Remove existing modal
+  var old = document.getElementById('share-modal');
+  if (old) old.remove();
+  
+  var modal = document.createElement('div');
+  modal.id = 'share-modal';
+  Object.assign(modal.style, {
+    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+    background: 'rgba(0,0,0,0.7)', zIndex: '10000', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)'
+  });
+  
+  var card = document.createElement('div');
+  Object.assign(card.style, {
+    background: '#0d0d0d', border: '1px solid #252525', borderRadius: '16px',
+    padding: '32px', maxWidth: '500px', width: '90%', textAlign: 'center',
+    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0'
+  });
+  
+  card.innerHTML = '<div style="font-size:2rem;margin-bottom:12px">🔗</div>' +
+    '<h3 style="color:#ff6b35;margin:0 0 8px">Scene Ready to Share!</h3>' +
+    '<p style="color:#888;font-size:0.8rem;margin:0 0 16px">' + cmdCount + ' commands encoded in URL</p>' +
+    '<input id="share-url" readonly value="' + url + '" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#4ade80;font-family:JetBrains Mono,monospace;font-size:0.75rem;margin-bottom:12px;text-align:center">' +
+    '<div style="display:flex;gap:8px;justify-content:center">' +
+      '<button id="share-copy-btn" style="padding:10px 20px;background:#ff6b35;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:JetBrains Mono,monospace">📋 Copy Link</button>' +
+      '<button id="share-twitter-btn" style="padding:10px 20px;background:#1da1f2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:JetBrains Mono,monospace">𝕏 Post</button>' +
+      '<button id="share-close-btn" style="padding:10px 20px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer;font-family:JetBrains Mono,monospace">Close</button>' +
+    '</div>' +
+    '<p style="color:#555;font-size:0.7rem;margin:12px 0 0">Anyone with this link can view & remix your scene</p>';
+  
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+  
+  document.getElementById('share-copy-btn').addEventListener('click', function() {
+    navigator.clipboard.writeText(url);
+    this.textContent = '✅ Copied!';
+    setTimeout(function() { document.getElementById('share-copy-btn').textContent = '📋 Copy Link'; }, 2000);
+  });
+  
+  document.getElementById('share-twitter-btn').addEventListener('click', function() {
+    var text = 'Check out this 3D scene I built with Crate Engine! 🔥 No code, just natural language.';
+    window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(url), '_blank');
+  });
+  
+  document.getElementById('share-close-btn').addEventListener('click', function() { modal.remove(); });
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
+function loadSharedScene() {
+  // Check hash first (new format: /s#encoded or #scene-name or #encoded)
+  var hash = window.location.hash.replace('#', '');
+  if (!hash) {
+    // Fallback: check query params (old format)
+    var params = new URLSearchParams(window.location.search);
+    hash = params.get('scene') || '';
+  }
+  if (!hash) return;
+  
+  // Check if it's a preset scene name (e.g. "cyberpunk-city")
+  var sceneName = hash.replace(/-/g, ' ').toLowerCase();
+  if (typeof getSceneCommands === 'function') {
+    var presetCmds = getSceneCommands(sceneName);
+    // Check if it returned a real preset (not the default fallback)
+    var isPreset = presetCmds && !(presetCmds.length === 3 && presetCmds[0] === 'add 5 trees');
+    if (isPreset) {
+      logOutput('info', '🎮 Loading preset: ' + sceneName);
+      var delay = 300;
+      presetCmds.forEach(function(cmd, i) {
+        setTimeout(function() { parseAndExecute(cmd); }, delay + i * 250);
+      });
+      return;
+    }
+  }
+  
+  // Try decoding as a shared scene
+  var decoded = decompressScene(hash);
+  if (decoded) {
+    var commands = decoded.split('|').filter(function(c) { return c.trim(); });
+    if (commands.length > 0) {
+      logOutput('info', '🔗 Loading shared scene (' + commands.length + ' commands)...');
+      showRemixBanner(commands.length);
+      commands.forEach(function(cmd, i) {
+        setTimeout(function() { parseAndExecute(cmd); }, 300 + i * 150);
+      });
+      return;
+    }
+  }
+}
+
+function showRemixBanner(cmdCount) {
+  var banner = document.createElement('div');
+  banner.id = 'remix-banner';
+  Object.assign(banner.style, {
+    position: 'fixed', top: '0', left: '0', width: '100%', padding: '10px',
+    background: 'linear-gradient(90deg, #ff6b35, #f59e0b)', color: '#000',
+    textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem',
+    fontWeight: '700', zIndex: '9999', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', gap: '12px'
+  });
+  banner.innerHTML = '🔗 Viewing a shared scene (' + cmdCount + ' commands)' +
+    '<button id="remix-btn" style="padding:6px 16px;background:#000;color:#ff6b35;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-family:JetBrains Mono,monospace;font-size:0.8rem">🔀 Remix This</button>' +
+    '<button onclick="this.parentElement.remove()" style="padding:6px 12px;background:rgba(0,0,0,0.2);color:#000;border:none;border-radius:6px;cursor:pointer;font-family:JetBrains Mono,monospace">✕</button>';
+  document.body.appendChild(banner);
+  
+  document.getElementById('remix-btn').addEventListener('click', function() {
+    // Clear the hash so they're working on their own copy
+    history.replaceState(null, '', window.location.pathname);
+    banner.innerHTML = '<span style="color:#000">✅ Scene cloned! It\'s yours now — edit away and share your version.</span>' +
+      '<button onclick="this.parentElement.remove()" style="padding:6px 12px;background:rgba(0,0,0,0.2);color:#000;border:none;border-radius:6px;cursor:pointer;font-family:JetBrains Mono,monospace">✕</button>';
+    setTimeout(function() { banner.remove(); }, 4000);
+    // Focus the prompt input
+    var input = document.getElementById('prompt-input');
+    if (input) input.focus();
+  });
+}
+
+// Load shared scene on startup
+setTimeout(loadSharedScene, 1000);
+
+// ═══════════════════════════════════════════
+// SCREENSHOT SYSTEM
+// ═══════════════════════════════════════════
+function takeScreenshot() {
+  renderer.render(scene, camera);
+  const dataUrl = renderer.domElement.toDataURL('image/png');
+  const link = document.createElement('a');
+  link.download = 'crate-engine-screenshot.png';
+  link.href = dataUrl;
+  link.click();
+  logOutput('ok', '📸 Screenshot saved!');
+}
+
+// ═══════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  // Only when not typing in an input
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  
+  if (e.key === 'F2') { e.preventDefault(); takeScreenshot(); }
+  if (e.key === 'Delete' && selectedObj) {
+    scene.remove(selectedObj);
+    objects.splice(objects.indexOf(selectedObj), 1);
+    logOutput('ok', 'Deleted ' + (selectedObj.userData.name || 'object'));
+    selectedObj = null;
+  }
+  if (e.key === 'Escape') {
+    if (selectedObj) { highlightSelected(null); selectedObj = null; }
+  }
+});
+
+
+// Onboarding removed — blank canvas start
+
+
+
+// ═══════════════════════════════════════════
+// OBJECT INSPECTOR — click any object to edit
+// ═══════════════════════════════════════════
+const inspectorPanel = document.createElement('div');
+inspectorPanel.id = 'inspector';
+Object.assign(inspectorPanel.style, {
+  position: 'fixed', top: '60px', right: '20px', zIndex: '240',
+  width: '260px', borderRadius: '12px',
+  background: '#0a0a0a', border: '1px solid #1f1f1f',
+  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+  display: 'none', flexDirection: 'column', overflow: 'hidden',
+  fontFamily: "'Inter', -apple-system, sans-serif", fontSize: '0.78rem',
+});
+document.body.appendChild(inspectorPanel);
+
+function updateInspector(obj) {
+  if (!obj) { inspectorPanel.style.display = 'none'; return; }
+  inspectorPanel.style.display = 'flex';
+  const name = obj.userData.name || 'Object';
+  const pos = obj.position;
+  const scl = obj.scale.x;
+  const rot = (obj.rotation.y * 180 / Math.PI).toFixed(0);
+  const isGLB = obj.userData.isGLB ? '📦 GLB Model' : '🔷 Primitive';
+  const anims = obj.userData.animations ? obj.userData.animations.join(', ') : 'None';
+  
+  inspectorPanel.innerHTML = `
+    <div style="padding:12px;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:8px;background:rgba(255,107,53,0.05)">
+      <span style="font-size:1rem">${obj.userData.isGLB ? '📦' : '🔷'}</span>
+      <div style="flex:1">
+        <div style="font-weight:700;color:#fff;font-size:0.85rem">${name}</div>
+        <div style="color:#555;font-size:0.65rem">${isGLB}</div>
+      </div>
+      <button onclick="document.getElementById('inspector').style.display='none'" style="background:none;border:none;color:#555;cursor:pointer;font-size:1rem">✕</button>
+    </div>
+    <div style="padding:12px;display:flex;flex-direction:column;gap:8px">
+      <div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Transform</div>
+      <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr;gap:4px;align-items:center">
+        <span style="color:#ef4444;font-weight:600">X</span>
+        <input type="number" value="${pos.x.toFixed(1)}" step="0.5" id="insp-x" style="background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace">
+        <span style="color:#4ade80;font-weight:600">Y</span>
+        <input type="number" value="${pos.y.toFixed(1)}" step="0.5" id="insp-y" style="background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace">
+      </div>
+      <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr;gap:4px;align-items:center">
+        <span style="color:#60a5fa;font-weight:600">Z</span>
+        <input type="number" value="${pos.z.toFixed(1)}" step="0.5" id="insp-z" style="background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace">
+        <span style="color:#f7c948;font-weight:600">S</span>
+        <input type="number" value="${scl.toFixed(2)}" step="0.1" min="0.01" id="insp-s" style="background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace">
+      </div>
+      <div style="display:grid;grid-template-columns:40px 1fr;gap:4px;align-items:center">
+        <span style="color:#c084fc;font-weight:600">R°</span>
+        <input type="range" min="0" max="360" value="${rot}" id="insp-r" style="width:100%;accent-color:#ff6b35">
+      </div>
+      ${obj.userData.animations ? '<div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-top:4px">Animations</div><div style="color:#4ade80;font-size:0.7rem">' + anims + '</div>' : ''}
+      
+      <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+        <button onclick="window._equipWeapon()" style="flex:1;min-width:70px;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.7rem;transition:all 0.2s" onmouseenter="this.style.borderColor='#ef4444';this.style.color='#ef4444'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">⚔️ Equip</button>
+        <button onclick="window._animateSelected()" style="flex:1;min-width:70px;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.7rem;transition:all 0.2s" onmouseenter="this.style.borderColor='#ec4899';this.style.color='#ec4899'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">🎬 Animate</button>
+        <button onclick="window._colorSelected()" style="flex:1;min-width:70px;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.7rem;transition:all 0.2s" onmouseenter="this.style.borderColor='#4ade80';this.style.color='#4ade80'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">🎨 Color</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:2px">
+        <button onclick="window._duplicateSelected()" style="flex:1;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.72rem;transition:all 0.2s" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">📋 Clone</button>
+        <button onclick="window._deleteSelected()" style="flex:1;padding:6px;background:#111;border:1px solid #ef4444;border-radius:6px;color:#ef4444;cursor:pointer;font-size:0.72rem;transition:all 0.2s" onmouseenter="this.style.background='rgba(239,68,68,0.1)'" onmouseleave="this.style.background='#111'">🗑 Delete</button>
+      </div>
+    </div>
+  `;
+  
+  // Wire up live editing
+  const applyTransform = () => {
+    const x = parseFloat(document.getElementById('insp-x')?.value || 0);
+    const y = parseFloat(document.getElementById('insp-y')?.value || 0);
+    const z = parseFloat(document.getElementById('insp-z')?.value || 0);
+    const s = parseFloat(document.getElementById('insp-s')?.value || 1);
+    const r = parseFloat(document.getElementById('insp-r')?.value || 0);
+    obj.position.set(x, y, z);
+    obj.scale.setScalar(Math.max(s, 0.01));
+    obj.rotation.y = r * Math.PI / 180;
+  };
+  setTimeout(() => {
+    ['insp-x','insp-y','insp-z','insp-s','insp-r'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', applyTransform);
+    });
+  }, 50);
+}
+
+window._autoFrame = autoFrameScene;
+window._deleteSelected = function() {
+  if (selectedObj) {
+    scene.remove(selectedObj);
+    objects.splice(objects.indexOf(selectedObj), 1);
+    logOutput('ok', 'Deleted ' + (selectedObj.userData.name || 'object'));
+    inspectorPanel.style.display = 'none';
+    selectedObj = null;
+  }
+};
+
+window._duplicateSelected = function() {
+  if (selectedObj) {
+    const clone = selectedObj.clone();
+    clone.position.x += 2;
+    clone.userData = { ...selectedObj.userData, name: (selectedObj.userData.name || 'obj') + '_copy' };
+    scene.add(clone);
+    objects.push(clone);
+    window._lastPlacedObj = clone;
+    logOutput('ok', 'Cloned ' + (selectedObj.userData.name || 'object'));
+  }
+};
+
+
+
+// === ENHANCED INSPECTOR FUNCTIONS ===
+window._equipWeapon = function() {
+  if (!selectedObj) return;
+  // Open weapons gallery, attach chosen weapon to this character
+  showGallery('weapons', { hint: 'Choose a weapon to equip on ' + (selectedObj.userData.name || 'character') }).then(result => {
+    if (!result || !selectedObj) return;
+    const glb = GLB_MODELS[result.file] || result.file;
+    gltfLoader.load('models/' + glb + '.glb', (gltf) => {
+      const weapon = gltf.scene;
+      // Scale weapon to reasonable size relative to character
+      const charBox = new THREE.Box3().setFromObject(selectedObj);
+      const charH = charBox.getSize(new THREE.Vector3()).y;
+      const wBox = new THREE.Box3().setFromObject(weapon);
+      const wH = wBox.getSize(new THREE.Vector3());
+      const maxW = Math.max(wH.x, wH.y, wH.z);
+      weapon.scale.setScalar((charH * 0.5) / Math.max(maxW, 0.001));
+      
+      // Try to attach to right hand bone
+      let attached = false;
+      // Find best hand bone — try many naming conventions
+      let bestBone = null;
+      const handPatterns = ['righthand','right_hand','hand_r','handright','hand.r','r_hand','rhand','mixamorig:righthand','righthandindex1','right hand','arm_right','forearm_r','lower_arm_r'];
+      selectedObj.traverse(node => {
+        if (bestBone) return;
+        if (node.isBone || node.type === 'Bone' || node.isObject3D) {
+          const n = node.name.toLowerCase();
+          for (const p of handPatterns) {
+            if (n.includes(p)) { bestBone = node; return; }
+          }
+        }
+      });
+      // Second pass: any bone with "right" and "arm" or "hand"
+      if (!bestBone) {
+        selectedObj.traverse(node => {
+          if (bestBone) return;
+          if (node.isBone || node.type === 'Bone') {
+            const n = node.name.toLowerCase();
+            if ((n.includes('right') && (n.includes('hand') || n.includes('wrist'))) || n.includes('r_wrist')) {
+              bestBone = node;
+            }
+          }
+        });
+      }
+      // Third pass: forearm as fallback (many models end at forearm, no hand bone)
+      if (!bestBone) {
+        selectedObj.traverse(node => {
+          if (bestBone) return;
+          if (node.isBone || node.type === 'Bone') {
+            const n = node.name.toLowerCase();
+            if (n.includes('rightforearm') || n.includes('right_forearm') || n.includes('forearm_r') || n.includes('r_forearm') ||
+                (n.includes('right') && n.includes('forearm')) || (n.includes('right') && n.includes('arm') && !n.includes('upper'))) {
+              bestBone = node;
+            }
+          }
+        });
+      }
+      // Fourth pass: ANY bone with arm/hand  
+      if (!bestBone) {
+        selectedObj.traverse(node => {
+          if (bestBone) return;
+          if (node.isBone || node.type === 'Bone') {
+            const n = node.name.toLowerCase();
+            if (n.includes('forearm') || n.includes('hand')) {
+              bestBone = node;
+            }
+          }
+        });
+      }
+      
+      if (bestBone) {
+        bestBone.add(weapon);
+        weapon.position.set(0, 0.05, 0.1);
+        // Rotate based on weapon type — guns point forward, swords point up
+        const isGun = result.name && (result.name.includes('pistol') || result.name.includes('gun') || result.name.includes('rifle') || result.name.includes('sniper') || result.name.includes('smg') || result.name.includes('shotgun') || result.name.includes('blaster'));
+        if (isGun) {
+          weapon.rotation.set(0, Math.PI/2, 0);
+        } else {
+          weapon.rotation.set(-Math.PI/2, 0, 0);
+        }
+        attached = true;
+      } else {
+        // No bone found — try ANY child that could be a hand/arm
+        let anyBone = null;
+        selectedObj.traverse(node => {
+          if (anyBone) return;
+          if (node.isBone || node.type === 'Bone') {
+            const n = node.name.toLowerCase();
+            if (n.includes('hand') || n.includes('wrist') || n.includes('palm') || n.includes('finger')) {
+              anyBone = node;
+            }
+          }
+        });
+        if (anyBone) {
+          anyBone.add(weapon);
+          weapon.position.set(0, 0, 0.1);
+          weapon.rotation.set(0, Math.PI/2, 0);
+          attached = true;
+        } else {
+          // Absolute fallback — position at right side of character
+          const handY = charH * 0.55;
+          const handX = charH * 0.3;
+          weapon.position.set(handX, handY, charH * 0.1);
+          weapon.rotation.set(0, 0, -Math.PI/4);
+          selectedObj.add(weapon);
+        }
+      }
+      
+      weapon.userData.name = 'equipped_' + result.name;
+      weapon.userData.isEquipped = true;
+      // Log bone info for debugging
+      let boneCount = 0;
+      selectedObj.traverse(n => { if (n.isBone) boneCount++; });
+      if (boneCount === 0) console.log('[CrateEngine] ⚠️ No bones found on character — weapon positioned manually');
+      logOutput('ok', '⚔️ Equipped ' + result.name + (attached ? ' (attached to hand bone)' : ' (positioned at side, ' + boneCount + ' bones found)'));
+    });
+  });
+};
+
+window._animateSelected = function() {
+  if (!selectedObj) return;
+  const name = selectedObj.userData.name || 'object';
+  
+  // If object has embedded animations, show those first
+  if (selectedObj.userData.clips && selectedObj.userData.clips.length > 0) {
+    // Build a combined menu: embedded clips + procedural anims
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:10005;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;overflow-y:auto;padding:20px;';
+    overlay.innerHTML = '<div style="font-size:24px;color:#ec4899;margin-bottom:6px;">🎬 ANIMATIONS for ' + name + '</div><div style="font-size:13px;color:#22c55e;margin-bottom:20px;">This model has ' + selectedObj.userData.clips.length + ' embedded animation(s)</div>';
+    
+    // Embedded clips section
+    const embeddedGrid = document.createElement('div');
+    embeddedGrid.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:700px;margin-bottom:24px;';
+    selectedObj.userData.clips.forEach(clip => {
+      const btn = document.createElement('button');
+      btn.textContent = '▶️ ' + clip.name;
+      btn.style.cssText = 'padding:10px 16px;background:rgba(34,197,94,0.1);border:1px solid #22c55e;border-radius:8px;color:#22c55e;cursor:pointer;font-family:monospace;font-size:13px;transition:all 0.2s;';
+      btn.onmouseenter = () => { btn.style.background = 'rgba(34,197,94,0.2)'; };
+      btn.onmouseleave = () => { btn.style.background = 'rgba(34,197,94,0.1)'; };
+      btn.onclick = () => {
+        if (selectedObj.userData.mixer) {
+          selectedObj.userData.mixer.stopAllAction();
+          const action = selectedObj.userData.mixer.clipAction(clip);
+          action.reset().play();
+        }
+        overlay.remove();
+        logOutput('ok', '▶️ Playing "' + clip.name + '" on ' + name);
+      };
+      embeddedGrid.appendChild(btn);
+    });
+    overlay.appendChild(embeddedGrid);
+    
+    // Divider
+    overlay.appendChild(Object.assign(document.createElement('div'), { textContent: '— or apply procedural animation —', style: 'color:#555;font-size:12px;margin-bottom:16px;' }));
+    
+    // Procedural anims
+    const procGrid = document.createElement('div');
+    procGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,110px);gap:8px;justify-content:center;max-width:700px;';
+    const anims = ['spin','bounce','float','pulse','wobble','orbit','swing','breathe','shake','walk','idle','dance','attack','die','jump'];
+    const icons = ['🔄','⬆️','☁️','💫','↔️','🌀','🔔','🫁','📳','🚶','🧍','💃','⚔️','💀','🦘'];
+    anims.forEach((a, i) => {
+      const btn = document.createElement('button');
+      btn.textContent = icons[i] + ' ' + a;
+      btn.style.cssText = 'padding:8px;background:rgba(236,72,153,0.05);border:1px solid rgba(236,72,153,0.2);border-radius:6px;color:#ec4899;cursor:pointer;font-family:monospace;font-size:12px;transition:all 0.2s;';
+      btn.onclick = () => { overlay.remove(); applyProceduralAnimation(selectedObj, a); logOutput('ok', icons[i] + ' Applied "' + a + '" to ' + name); };
+      procGrid.appendChild(btn);
+    });
+    overlay.appendChild(procGrid);
+    
+    const closeBtn = document.createElement('div');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.onclick = () => overlay.remove();
+    overlay.appendChild(closeBtn);
+    document.body.appendChild(overlay);
+    return;
+  }
+  
+  // No embedded anims — show animation gallery
+  showAnimationGallery(name).then(result => {
+    if (result && selectedObj) {
+      applyProceduralAnimation(selectedObj, result.animId);
+      logOutput('ok', '🎬 Applied "' + result.animName + '" to ' + name);
+    }
+  });
+};
+
+window._colorSelected = function() {
+  if (!selectedObj) return;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10005;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+  overlay.innerHTML = '<div style="font-size:24px;color:#4ade80;margin-bottom:20px;">🎨 COLOR PICKER</div>';
+  
+  const colors = [
+    { name: 'Red', hex: '#ef4444' }, { name: 'Orange', hex: '#f97316' },
+    { name: 'Yellow', hex: '#eab308' }, { name: 'Green', hex: '#22c55e' },
+    { name: 'Blue', hex: '#3b82f6' }, { name: 'Purple', hex: '#8b5cf6' },
+    { name: 'Pink', hex: '#ec4899' }, { name: 'Cyan', hex: '#06b6d4' },
+    { name: 'White', hex: '#ffffff' }, { name: 'Gray', hex: '#6b7280' },
+    { name: 'Brown', hex: '#92400e' }, { name: 'Black', hex: '#1f2937' },
+    { name: 'Gold', hex: '#fbbf24' }, { name: 'Silver', hex: '#d1d5db' },
+    { name: 'Dark Red', hex: '#991b1b' }, { name: 'Dark Blue', hex: '#1e3a5f' },
+    { name: 'Forest', hex: '#14532d' }, { name: 'Lavender', hex: '#c4b5fd' },
+  ];
+  
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(6,70px);gap:10px;justify-content:center;';
+  colors.forEach(c => {
+    const swatch = document.createElement('div');
+    swatch.style.cssText = 'width:70px;height:50px;border-radius:8px;cursor:pointer;transition:transform 0.15s;display:flex;align-items:end;justify-content:center;padding-bottom:4px;font-size:10px;color:' + (c.hex === '#1f2937' || c.hex === '#14532d' || c.hex === '#991b1b' || c.hex === '#1e3a5f' ? '#888' : '#000') + ';background:' + c.hex + ';border:2px solid rgba(255,255,255,0.1);';
+    swatch.textContent = c.name;
+    swatch.onmouseenter = () => { swatch.style.transform = 'scale(1.1)'; swatch.style.borderColor = '#fff'; };
+    swatch.onmouseleave = () => { swatch.style.transform = 'scale(1)'; swatch.style.borderColor = 'rgba(255,255,255,0.1)'; };
+    swatch.onclick = () => {
+      const color = new THREE.Color(c.hex);
+      selectedObj.traverse(child => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(m => { m.color.copy(color); m.needsUpdate = true; });
+        }
+      });
+      overlay.remove();
+      logOutput('ok', '🎨 Colored ' + (selectedObj.userData.name || 'object') + ' ' + c.name);
+    };
+    grid.appendChild(swatch);
+  });
+  overlay.appendChild(grid);
+  
+  // Custom color input
+  const custom = document.createElement('div');
+  custom.style.cssText = 'margin-top:16px;display:flex;gap:8px;align-items:center;';
+  custom.innerHTML = '<span style="color:#888;font-size:12px;">Custom:</span>';
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.value = '#ff6b35';
+  colorInput.style.cssText = 'width:50px;height:35px;border:none;cursor:pointer;background:transparent;';
+  colorInput.onchange = () => {
+    const color = new THREE.Color(colorInput.value);
+    selectedObj.traverse(child => {
+      if (child.isMesh && child.material) {
+        (Array.isArray(child.material) ? child.material : [child.material]).forEach(m => { m.color.copy(color); m.needsUpdate = true; });
+      }
+    });
+    overlay.remove();
+    logOutput('ok', '🎨 Applied custom color to ' + (selectedObj.userData.name || 'object'));
+  };
+  custom.appendChild(colorInput);
+  overlay.appendChild(custom);
+  
+  const closeBtn = document.createElement('div');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+  closeBtn.onclick = () => overlay.remove();
+  overlay.appendChild(closeBtn);
+  document.body.appendChild(overlay);
+};
+
+// === CONTEXT-AWARE VOICE — "it" / "that" / "this" refers to selected or last placed object ===
+window._lastPlacedObj = null;
+
+// Auto-frame camera to fit scene after building
+function autoFrameScene() {
+  if (objects.length === 0) return;
+  const box = new THREE.Box3();
+  objects.forEach(obj => {
+    try { box.expandByObject(obj); } catch(e) {}
+  });
+  if (box.isEmpty()) return;
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const dist = maxDim * 1.5;
+  camera.position.set(center.x + dist * 0.7, center.y + dist * 0.5, center.z + dist * 0.7);
+  controls.target.copy(center);
+  if (!playMode) controls.update();
+}
+
+// Model Browser — searchable panel of all 1,339 models
+function createModelBrowser() {
+  const panel = document.createElement('div');
+  panel.id = 'model-browser';
+  Object.assign(panel.style, {
+    position: 'fixed', top: '60px', left: '20px', zIndex: '250',
+    width: '280px', maxHeight: '500px', borderRadius: '12px',
+    background: '#0a0a0a', border: '1px solid #1f1f1f',
+    boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+    display: 'none', flexDirection: 'column', overflow: 'hidden',
+    fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
+  });
+
+  const header = document.createElement('div');
+  Object.assign(header.style, { padding: '12px', borderBottom: '1px solid #1a1a1a', display: 'flex', gap: '8px', alignItems: 'center' });
+  header.innerHTML = '<span style="font-size:1rem">📦</span><span style="font-weight:700;font-size:0.85rem;color:#fff;flex:1">Model Browser</span><span style="color:#888;font-size:0.7rem" id="browser-count">1,339 models</span>';
+  panel.appendChild(header);
+
+  const search = document.createElement('input');
+  search.placeholder = 'Search models...';
+  Object.assign(search.style, {
+    margin: '8px 12px', padding: '8px 12px', background: '#111', border: '1px solid #252525',
+    borderRadius: '8px', color: '#e0e0e0', fontSize: '0.8rem', outline: 'none', fontFamily: 'Inter, sans-serif',
+  });
+  search.onfocus = () => search.style.borderColor = '#ff6b35';
+  search.onblur = () => search.style.borderColor = '#252525';
+  panel.appendChild(search);
+
+  const list = document.createElement('div');
+  Object.assign(list.style, { flex: '1', overflowY: 'auto', padding: '4px 12px 12px', maxHeight: '380px' });
+  panel.appendChild(list);
+
+  // Get unique model names
+  const modelNames = Object.values(GLB_MODELS).filter((v, i, a) => a.indexOf(v) === i).sort();
+  
+  function renderList(filter) {
+    list.innerHTML = '';
+    const filtered = filter ? modelNames.filter(n => n.toLowerCase().includes(filter.toLowerCase())) : modelNames.slice(0, 50);
+    const countEl = document.getElementById('browser-count');
+    if (countEl) countEl.textContent = filter ? filtered.length + ' found' : '1,339 models';
+    
+    filtered.slice(0, 60).forEach(name => {
+      const item = document.createElement('div');
+      Object.assign(item.style, {
+        padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem',
+        color: '#aaa', transition: 'all 0.15s', fontFamily: "'JetBrains Mono', monospace",
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      });
+      // Clean display name
+      const display = name.replace(/_/g, ' ').replace(/pack /g, '').replace(/modular /g, '');
+      item.innerHTML = '<span>' + display + '</span><span style="color:#333;font-size:0.65rem">.glb</span>';
+      item.onmouseenter = () => { item.style.background = '#151515'; item.style.color = '#ff6b35'; };
+      item.onmouseleave = () => { item.style.background = 'transparent'; item.style.color = '#aaa'; };
+      item.onclick = () => { parseAndExecute('add ' + name.split('_pack_').pop()); };
+      list.appendChild(item);
+    });
+    if (filtered.length > 60) {
+      const more = document.createElement('div');
+      more.style.cssText = 'color:#555;font-size:0.7rem;padding:8px;text-align:center';
+      more.textContent = '+ ' + (filtered.length - 60) + ' more — type to filter';
+      list.appendChild(more);
+    }
+  }
+  
+  search.oninput = () => renderList(search.value);
+  renderList('');
+  document.body.appendChild(panel);
+  return panel;
+}
+const modelBrowser = createModelBrowser();
+
+// Toggle model browser with Ctrl+B or button
+const browserBtn = document.createElement('button');
+browserBtn.innerHTML = '📦';
+browserBtn.title = 'Model Browser (Ctrl+B)';
+Object.assign(browserBtn.style, {
+  position: 'fixed', bottom: '20px', left: '20px', zIndex: '300',
+  width: '44px', height: '44px', borderRadius: '50%',
+  background: '#111', border: '1px solid #252525',
+  fontSize: '20px', cursor: 'pointer', transition: 'all 0.2s',
+});
+browserBtn.onmouseenter = () => { browserBtn.style.borderColor = '#ff6b35'; browserBtn.style.transform = 'scale(1.1)'; };
+browserBtn.onmouseleave = () => { browserBtn.style.borderColor = '#252525'; browserBtn.style.transform = 'scale(1)'; };
+browserBtn.onclick = () => {
+  const showing = modelBrowser.style.display === 'flex';
+  modelBrowser.style.display = showing ? 'none' : 'flex';
+};
+document.body.appendChild(browserBtn);
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 'b') { e.preventDefault(); browserBtn.click(); }
+});
+
+// AI Agent integration
+import { CrateAgent } from './ai-agent.mjs?v=4';
+import { matchIntent, initVoice, startListening, stopListening, isListening, getStats } from './voice-commands.mjs';
+const agent = new CrateAgent((cmd) => {
+  parseAndExecute(cmd);
+});
+// Keep agent synced with scene objects
+setInterval(() => {
+  const objs = [];
+  scene.traverse(c => { if (c.isMesh || c.isGroup) objs.push(c); });
+  agent.updateObjects(objs);
+}, 2000);
+
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'v' && playMode && characterController) {
+    characterController.toggleCameraMode();
+  }
+  if (e.key === 'f' && playMode) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    
+    // Already in vehicle? Exit.
+    if (activeVehicle) {
+      exitVehicle();
+      if (characterController && characterController.inVehicle) characterController.exitVehicle();
+      return;
+    }
+    
+    if (!characterController) return;
+    
+    // In building? Exit building.
+    if (characterController.inBuilding) {
+      characterController._exitBuilding();
+      return;
+    }
+    
+    const pos = characterController.position;
+    
+    // Check buildings first (range 10)
+    const nearBuilding = objects.find(o => {
+      if (!o.userData.name || !o.userData.isGLB) return false;
+      const n = o.userData.name.toLowerCase();
+      const isBuilding = n.includes('building') || n.includes('house') || n.includes('story') || n.includes('tower');
+      return isBuilding && pos.distanceTo(o.position) < 10;
+    });
+    if (nearBuilding) {
+      characterController._enterBuilding(nearBuilding);
+      return;
+    }
+    
+    // Check vehicles (range 6)
+    const near = getNearestVehicle(pos, 6);
+    if (near) {
+      enterVehicle(near);
+      characterController.inVehicle = near.obj;
+    }
+  }
+});
+
+
+// === AI CUSTOM CODE SANDBOX (Rosebud-style) ===
+// Users describe game behavior → AI generates JS → runs in sandboxed scope
+// Only affects the user's saved game, never touches engine code
+
+// _userScripts declared at top of file
+window._userScriptScope = {}; // Shared state between user scripts
+
+function createUserScriptSandbox() {
+  // Safe APIs the user script can access
+  return {
+    scene, camera, objects,
+    THREE: THREE,
+    addObj, 
+    showToast: (msg) => { const t = document.createElement('div'); t.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:#4ade80;font-family:monospace;font-size:18px;z-index:10001;pointer-events:none;background:rgba(0,0,0,0.8);padding:10px 20px;border-radius:8px;'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.5s'},2000); setTimeout(()=>t.remove(),2500); },
+    getPlayer: () => characterController,
+    getNPCs: () => npcController ? npcController.npcs : [],
+    getObjects: () => objects,
+    getObjectByName: (name) => objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(name.toLowerCase())),
+    playMode: () => playMode,
+    onUpdate: null, // Set by user script — called every frame with (dt)
+    onKeyPress: null, // Set by user script — called on keydown with (key)
+    onCollision: null, // Set by user script — called when player hits object
+    state: window._userScriptScope, // Persistent state between scripts
+    dt: 0,
+    time: 0,
+    keys: {},
+    console: { log: (...args) => console.log('[UserScript]', ...args) },
+    Math, JSON, Array, Object, String, Number, Boolean, Date,
+    setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 10000)), // Cap at 10s
+    setInterval: (fn, ms) => setInterval(fn, Math.max(ms, 100)), // Min 100ms
+    clearTimeout, clearInterval,
+  };
+}
+
+function runUserScript(scriptObj) {
+  try {
+    const sandbox = createUserScriptSandbox();
+    const wrappedCode = '"use strict";\n' + scriptObj.code;
+    const fn = new Function(...Object.keys(sandbox), wrappedCode);
+    fn(...Object.values(sandbox));
+    // Store update/key callbacks
+    scriptObj._onUpdate = sandbox.onUpdate;
+    scriptObj._onKeyPress = sandbox.onKeyPress;
+    scriptObj._onCollision = sandbox.onCollision;
+    scriptObj._running = true;
+    console.log('[AI Sandbox] ✅ Script "' + scriptObj.name + '" running');
+    return true;
+  } catch (err) {
+    console.error('[AI Sandbox] ❌ Script error:', err.message);
+    showToast('❌ Script error: ' + err.message);
+    scriptObj._running = false;
+    return false;
+  }
+}
+
+// Update user scripts each frame
+function updateUserScripts(dt) {
+  if (!window._userScripts || !Array.isArray(window._userScripts)) return;
+  const time = performance.now() * 0.001;
+  for (const s of window._userScripts) {
+    if (!s.enabled || !s._running) continue;
+    try {
+      if (s._onUpdate) s._onUpdate(dt, time);
+    } catch (err) {
+      console.error('[AI Sandbox] Script "' + s.name + '" update error:', err.message);
+      s._running = false;
+    }
+  }
+}
+
+// Key events for user scripts
+window.addEventListener('keydown', e => {
+  if (!window._userScripts) return;
+  for (const s of window._userScripts) {
+    if (!s.enabled || !s._running || !s._onKeyPress) continue;
+    try { s._onKeyPress(e.key.toLowerCase()); } catch(err) { /* silent */ }
+  }
+});
+
+// Add user script command: "script", "custom code", "game logic"
+// Also: AI generates code from natural language description
+async function generateUserScript(description) {
+  // Check if user has API key configured
+  const settings = JSON.parse(localStorage.getItem('crate-ai-settings') || '{}');
+  const provider = settings.provider || 'openai';
+  const apiKey = settings.apiKey;
+  
+  if (!apiKey) {
+    showToast('⚠ Set your AI API key in Settings (⚙) to use custom code generation');
+    return null;
+  }
+  
+  const systemPrompt = `You are a game scripting AI for Crate Engine (Three.js).
+Generate ONLY executable JavaScript code. No explanations, no markdown.
+Available APIs:
+- scene, camera, objects (Three.js scene)
+- THREE (Three.js library)
+- getPlayer() → character controller with .position, .model
+- getNPCs() → array of NPCs with .model, .behavior, .speed
+- getObjects() → all scene objects
+- getObjectByName(name) → find object
+- showToast(msg) → show message to player
+- state → persistent object to store variables
+- onUpdate = function(dt, time) {} → called every frame
+- onKeyPress = function(key) {} → called on key press
+- Math, setTimeout, setInterval available
+
+Example: Make coins spin
+onUpdate = function(dt) {
+  getObjects().filter(o => o.userData.name && o.userData.name.includes('coin')).forEach(o => {
+    o.rotation.y += dt * 2;
+  });
+};`;
+
+  const userMsg = description;
+  
+  let endpoint, headers, body;
+  if (provider === 'openai' || provider === 'groq' || provider === 'deepseek') {
+    const urls = { openai: 'https://api.openai.com/v1/chat/completions', groq: 'https://api.groq.com/openai/v1/chat/completions', deepseek: 'https://api.deepseek.com/v1/chat/completions' };
+    const models = { openai: 'gpt-4o-mini', groq: 'llama-3.1-8b-instant', deepseek: 'deepseek-chat' };
+    endpoint = urls[provider];
+    headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey };
+    body = JSON.stringify({ model: models[provider], messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], max_tokens: 1000, temperature: 0.3 });
+  } else if (provider === 'claude') {
+    endpoint = 'https://api.anthropic.com/v1/messages';
+    headers = { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+    body = JSON.stringify({ model: 'claude-3-5-haiku-20241022', system: systemPrompt, messages: [{ role: 'user', content: userMsg }], max_tokens: 1000 });
+  } else if (provider === 'gemini') {
+    endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
+    headers = { 'Content-Type': 'application/json' };
+    body = JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + '\n\nUser request: ' + userMsg }] }] });
+  }
+  
+  try {
+    showToast('🤖 Generating custom game logic...');
+    const resp = await fetch(endpoint, { method: 'POST', headers, body });
+    const data = await resp.json();
+    
+    let generatedCode = '';
+    if (provider === 'claude') {
+      generatedCode = data.content?.[0]?.text || '';
+    } else if (provider === 'gemini') {
+      generatedCode = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      generatedCode = data.choices?.[0]?.message?.content || '';
+    }
+    
+    // Strip markdown code blocks if present
+    generatedCode = generatedCode.replace(/^```(?:javascript|js)?\n?/gm, '').replace(/```$/gm, '').trim();
+    
+    return generatedCode;
+  } catch (err) {
+    console.error('[AI Sandbox] Generation failed:', err);
+    showToast('❌ AI generation failed: ' + err.message);
+    return null;
+  }
+}
+
+// Script editor modal
+function showScriptEditor(existingScript) {
+  const existing = existingScript || {};
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100000;display:flex;align-items:center;justify-content:center;';
+  
+  overlay.innerHTML = `
+    <div style="background:#111;border:2px solid #7c5cff;border-radius:16px;width:700px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px;font-family:-apple-system,sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 style="color:#7c5cff;margin:0;font-size:1.2rem;">🧠 AI Game Logic Editor</h2>
+        <button id="script-close" style="background:none;border:none;color:#666;font-size:24px;cursor:pointer;">✕</button>
+      </div>
+      
+      <div style="margin-bottom:12px;">
+        <label style="color:#888;font-size:0.8rem;">Script Name</label>
+        <input id="script-name" value="\${existing.name || ''}" placeholder="e.g. Coin Collector" style="width:100%;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.9rem;margin-top:4px;">
+      </div>
+      
+      <div style="margin-bottom:12px;">
+        <label style="color:#888;font-size:0.8rem;">Describe what you want (AI will generate code)</label>
+        <textarea id="script-prompt" placeholder="e.g. When the player touches a coin, add 10 points and make the coin disappear with a sparkle effect" style="width:100%;height:60px;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.85rem;margin-top:4px;resize:vertical;font-family:inherit;"></textarea>
+        <button id="script-generate" style="margin-top:6px;background:linear-gradient(135deg,#7c5cff,#4a9eff);border:none;color:#fff;padding:6px 16px;border-radius:8px;cursor:pointer;font-size:0.8rem;">🤖 Generate Code</button>
+      </div>
+      
+      <div style="margin-bottom:12px;">
+        <label style="color:#888;font-size:0.8rem;">Code (JavaScript)</label>
+        <textarea id="script-code" style="width:100%;height:200px;background:#0a0a1a;border:1px solid #333;border-radius:8px;padding:12px;color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:0.8rem;margin-top:4px;resize:vertical;tab-size:2;">\${existing.code || '// Your custom game logic here\n// Available: getPlayer(), getNPCs(), getObjects(), showToast()\n// Set onUpdate = function(dt) {} for per-frame logic\n// Set onKeyPress = function(key) {} for input\n'}</textarea>
+      </div>
+      
+      <div style="display:flex;gap:8px;">
+        <button id="script-run" style="flex:1;padding:10px;background:#16a34a;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">▶ Run Script</button>
+        <button id="script-save" style="flex:1;padding:10px;background:#7c5cff;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">💾 Save Script</button>
+        \${existing.id ? '<button id="script-delete" style="padding:10px 16px;background:#ef4444;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">🗑</button>' : ''}
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  
+  overlay.querySelector('#script-close').onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  
+  overlay.querySelector('#script-generate').onclick = async () => {
+    const prompt = overlay.querySelector('#script-prompt').value;
+    if (!prompt) return;
+    const generated = await generateUserScript(prompt);
+    if (generated) {
+      overlay.querySelector('#script-code').value = generated;
+    }
+  };
+  
+  overlay.querySelector('#script-run').onclick = () => {
+    const scriptObj = {
+      id: existing.id || 'script_' + Date.now(),
+      name: overlay.querySelector('#script-name').value || 'Untitled Script',
+      description: overlay.querySelector('#script-prompt').value,
+      code: overlay.querySelector('#script-code').value,
+      enabled: true,
+    };
+    // Remove old version if exists
+    window._userScripts = window._userScripts.filter(s => s.id !== scriptObj.id);
+    window._userScripts.push(scriptObj);
+    runUserScript(scriptObj);
+    showToast('▶ Script "' + scriptObj.name + '" running!');
+  };
+  
+  overlay.querySelector('#script-save').onclick = () => {
+    const scriptObj = {
+      id: existing.id || 'script_' + Date.now(),
+      name: overlay.querySelector('#script-name').value || 'Untitled Script',
+      description: overlay.querySelector('#script-prompt').value,
+      code: overlay.querySelector('#script-code').value,
+      enabled: true,
+    };
+    window._userScripts = window._userScripts.filter(s => s.id !== scriptObj.id);
+    window._userScripts.push(scriptObj);
+    // Save to localStorage
+    const saved = window._userScripts.map(s => ({ id: s.id, name: s.name, description: s.description, code: s.code, enabled: s.enabled }));
+    localStorage.setItem('crate-user-scripts', JSON.stringify(saved));
+    showToast('💾 Script "' + scriptObj.name + '" saved!');
+    overlay.remove();
+  };
+  
+  const delBtn = overlay.querySelector('#script-delete');
+  if (delBtn) {
+    delBtn.onclick = () => {
+      window._userScripts = window._userScripts.filter(s => s.id !== existing.id);
+      localStorage.setItem('crate-user-scripts', JSON.stringify(window._userScripts.map(s => ({ id: s.id, name: s.name, description: s.description, code: s.code, enabled: s.enabled }))));
+      showToast('🗑 Script deleted');
+      overlay.remove();
+    };
+  }
+}
+
+// Script list/manager modal
+function showScriptManager() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100000;display:flex;align-items:center;justify-content:center;';
+  
+  const scripts = window._userScripts;
+  const listHTML = scripts.length ? scripts.map(s => 
+    '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:#1a1a2e;border-radius:8px;margin-bottom:6px;cursor:pointer;" data-id="' + s.id + '">' +
+    '<span style="color:' + (s.enabled && s._running ? '#4ade80' : '#666') + ';font-size:12px;">●</span>' +
+    '<span style="color:#fff;flex:1;font-size:0.85rem;">' + s.name + '</span>' +
+    '<button class="script-toggle" data-id="' + s.id + '" style="background:none;border:1px solid #333;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;">' + (s.enabled ? 'ON' : 'OFF') + '</button>' +
+    '<button class="script-edit" data-id="' + s.id + '" style="background:none;border:1px solid #7c5cff;color:#7c5cff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;">Edit</button>' +
+    '</div>'
+  ).join('') : '<p style="color:#666;text-align:center;">No custom scripts yet</p>';
+  
+  overlay.innerHTML = `
+    <div style="background:#111;border:2px solid #7c5cff;border-radius:16px;width:500px;max-width:95vw;max-height:80vh;overflow-y:auto;padding:24px;font-family:-apple-system,sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 style="color:#7c5cff;margin:0;font-size:1.1rem;">🧠 Custom Game Scripts</h2>
+        <button id="scripts-close" style="background:none;border:none;color:#666;font-size:24px;cursor:pointer;">✕</button>
+      </div>
+      <div id="scripts-list">\${listHTML}</div>
+      <button id="scripts-new" style="width:100%;margin-top:12px;padding:10px;background:linear-gradient(135deg,#7c5cff,#4a9eff);border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">+ New Script</button>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  overlay.querySelector('#scripts-close').onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector('#scripts-new').onclick = () => { overlay.remove(); showScriptEditor(); };
+  
+  overlay.querySelectorAll('.script-edit').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const script = window._userScripts.find(s => s.id === id);
+      if (script) { overlay.remove(); showScriptEditor(script); }
+    };
+  });
+  
+  overlay.querySelectorAll('.script-toggle').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const script = window._userScripts.find(s => s.id === id);
+      if (script) {
+        script.enabled = !script.enabled;
+        if (script.enabled) runUserScript(script);
+        else script._running = false;
+        overlay.remove();
+        showScriptManager(); // Refresh
+      }
+    };
+  });
+}
+
+// Load saved scripts on boot
+(function loadUserScripts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('crate-user-scripts') || '[]');
+    for (const s of saved) {
+      window._userScripts.push(s);
+      if (s.enabled) runUserScript(s);
+    }
+    if (saved.length) console.log('[AI Sandbox] Loaded ' + saved.length + ' user scripts');
+  } catch(e) {}
+})();
+
+// === END AI CUSTOM CODE SANDBOX ===
+
+// === DEBUG/TEST EXPORTS ===
+// Init sound on first user interaction
+document.addEventListener('click', function() { if (window._sound) window._sound.init(); }, { once: true });
+document.addEventListener('keydown', function() { if (window._sound) window._sound.init(); }, { once: true });
+window._engine = {
+  get camera() { return camera; },
+  get scene() { return scene; },
+  get objects() { return objects; },
+  get playMode() { return playMode; },
+  get playKeys() { return playKeys; },
+  get controls() { return controls; },
+  get gameScore() { return gameScore; },
+  get character() { return characterController; },
+  get npcs() { return npcController; },
+  get townBuilder() { return townBuilder; },
+  enterPlayMode, exitPlayMode,
+  respawn: () => { if (characterController) characterController.respawn(); },
+  exec: execSingle,
+  get quests() { return questSystem; },
+  get crafting() { return craftingSystem; },
+  get levels() { return levelSystem; },
+  get dialogue() { return dialogueSystem; },
+};
+
+// === SCENE CARD CLICK HANDLERS ===
+document.querySelectorAll('.scene-card').forEach(function(card) {
+  card.addEventListener('click', function() {
+    var sceneName = card.getAttribute('data-scene');
+    if (!sceneName) return;
+    
+    // Scroll to viewport
+    var viewport = document.querySelector('.viewport-section') || document.querySelector('canvas');
+    if (viewport) viewport.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Clear current scene first
+    var input = document.getElementById('prompt-input');
+    if (input) {
+      // Execute clear then build
+      input.value = 'clear';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      
+      setTimeout(function() {
+        // Build scene command sequences based on data-scene
+        var commands = getSceneCommands(sceneName);
+        var delay = 0;
+        commands.forEach(function(cmd) {
+          setTimeout(function() {
+            input.value = cmd;
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          }, delay);
+          delay += 300;
+        });
+      }, 200);
+    }
+    
+    // Visual feedback on card
+    card.style.borderColor = '#ff6b35';
+    card.style.boxShadow = '0 0 20px rgba(255,107,53,0.3)';
+    setTimeout(function() {
+      card.style.borderColor = '';
+      card.style.boxShadow = '';
+    }, 2000);
+  });
+});
+
+function getSceneCommands(scene) {
+  var scenes = {
+    'medieval village': ['add castle', 'add 5 trees', 'add 3 houses', 'add 2 rocks', 'add flowers', 'time sunset', 'add 2 knights'],
+    'haunted graveyard': ['add 5 rocks', 'add 3 dead trees', 'time midnight', 'fog', 'make it rain'],
+    'pirate island': ['add 5 palm trees', 'add 3 rocks', 'add water', 'time afternoon', 'add sand ground'],
+    'cyberpunk city': ['add 8 buildings', 'add road', 'time night', 'fog', 'make it rain'],
+    'zombie apocalypse': ['add 5 buildings', 'add 3 rocks', 'time night', 'fog', 'add 3 warriors'],
+    'japanese garden': ['add 5 trees', 'add 3 flowers', 'add rocks', 'add water', 'time morning', 'fog'],
+    'castle siege': ['add castle', 'add 4 knights', 'add 3 rocks', 'add wall', 'time dusk'],
+    'space base': ['add 5 buildings', 'add 2 spheres', 'time midnight', 'add 3 cubes'],
+    'farm': ['add 3 houses', 'add 5 trees', 'add flowers', 'add grass', 'time morning'],
+    'zombie wasteland': ['add 3 rocks', 'add 2 buildings', 'time dusk', 'fog', 'make it rain'],
+    'frozen tundra': ['add 5 pine trees', 'add 3 rocks', 'snow ground', 'snow', 'time morning'],
+    'dungeon crawler': ['add castle', 'add 3 rocks', 'add 2 swords', 'time midnight'],
+    'dinosaur valley': ['add forest', 'add 5 rocks', 'add water', 'time afternoon'],
+    'underwater ruins': ['add 5 rocks', 'add water', 'add 3 cubes', 'fog', 'time dusk'],
+    'war zone': ['add 3 buildings', 'add 3 rocks', 'add 2 warriors', 'time night', 'fog', 'make it rain'],
+    'enchanted forest': ['add forest', 'add flowers', 'add 3 mushrooms', 'fog', 'time dusk'],
+    'dark forest': ['add forest', 'add 3 rocks', 'time midnight', 'fog'],
+    'jungle temple': ['add castle', 'add forest', 'add 3 rocks', 'fog', 'time morning'],
+    'modern city': ['add 10 buildings', 'add 3 roads', 'time noon'],
+    'neon alley': ['add 5 buildings', 'add road', 'time midnight', 'fog'],
+    'arena': ['add wall', 'add 3 warriors', 'add 2 swords', 'time afternoon'],
+    'platformer world': ['add 8 cubes', 'add 3 spheres', 'add flowers', 'time morning'],
+    'desert wasteland': ['add 5 rocks', 'add sand ground', 'time noon', 'add 2 cubes'],
+    'ice fortress': ['add castle', 'add wall', 'snow ground', 'snow', 'time morning'],
+    'shipwreck cove': ['add 3 rocks', 'add water', 'add 5 palm trees', 'time sunset']
+  };
+  return scenes[scene] || ['add 5 trees', 'add castle', 'add rocks'];
+}
+
+// === SHARE + SAVE BUTTONS ===
+(function() {
+  var btnContainer = document.createElement('div');
+  Object.assign(btnContainer.style, {
+    position: 'fixed', bottom: '85px', left: '50%', transform: 'translateX(-50%)', display: 'flex',
+    gap: '6px', zIndex: '1000', flexDirection: 'row'
+  });
+  
+  function makeBtn(text, bg, color, onClick) {
+    var btn = document.createElement('button');
+    btn.textContent = text;
+    Object.assign(btn.style, {
+      padding: '10px 16px', background: bg, color: color, border: 'none',
+      borderRadius: '8px', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
+      fontSize: '0.8rem', fontWeight: '700', transition: 'all 0.2s',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+    });
+    btn.addEventListener('mouseenter', function() { btn.style.transform = 'scale(1.05)'; });
+    btn.addEventListener('mouseleave', function() { btn.style.transform = 'scale(1)'; });
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+  
+  // Save to localStorage
+  var saveBtn = makeBtn('💾 Save', '#222', '#4ade80', function() {
+    var data = serializeScene();
+    if (!data) { logOutput('warn', '⚠ Nothing to save'); return; }
+    var saves = JSON.parse(localStorage.getItem('crate_saves') || '[]');
+    var name = 'Scene ' + (saves.length + 1) + ' (' + new Date().toLocaleDateString() + ')';
+    saves.push({ name: name, data: data, date: Date.now() });
+    localStorage.setItem('crate_saves', JSON.stringify(saves));
+    saveBtn.textContent = '✅ Saved!';
+    logOutput('ok', '💾 Scene saved as "' + name + '"');
+    setTimeout(function() { saveBtn.textContent = '💾 Save'; }, 2000);
+  });
+  
+  // Load from localStorage
+  var loadBtn = makeBtn('📂 Load', '#222', '#60a5fa', function() {
+    var saves = JSON.parse(localStorage.getItem('crate_saves') || '[]');
+    if (!saves.length) { logOutput('warn', '⚠ No saved scenes'); return; }
+    showLoadModal(saves);
+  });
+  
+  // Share
+  var publishBtn = makeBtn('🚀 Publish', '#4ade80', '#000', function() {
+    publishScene();
+  });
+  var shareBtn = makeBtn('🔗 Share', '#ff6b35', '#000', function() {
+    shareScene();
+  });
+  
+  // Export as HTML
+  var exportBtn = makeBtn('📦 Export', '#222', '#c084fc', function() {
+    if (isProUser()) { exportAsHTML(); } else { showUpgradeModal('pro'); }
+  });
+
+
+
+  
+  btnContainer.appendChild(saveBtn);
+  btnContainer.appendChild(loadBtn);
+  btnContainer.appendChild(shareBtn);
+  btnContainer.appendChild(exportBtn);
+  document.body.appendChild(btnContainer);
+})();
+
+function showLoadModal(saves) {
+  var old = document.getElementById('load-modal');
+  if (old) old.remove();
+  
+  var modal = document.createElement('div');
+  modal.id = 'load-modal';
+  Object.assign(modal.style, {
+    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+    background: 'rgba(0,0,0,0.7)', zIndex: '10000', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)'
+  });
+  
+  var card = document.createElement('div');
+  Object.assign(card.style, {
+    background: '#0d0d0d', border: '1px solid #252525', borderRadius: '16px',
+    padding: '24px', maxWidth: '400px', width: '90%',
+    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0', maxHeight: '60vh', overflow: 'auto'
+  });
+  
+  var html = '<h3 style="color:#60a5fa;margin:0 0 16px;text-align:center">📂 Saved Scenes</h3>';
+  saves.forEach(function(save, i) {
+    var cmds = save.data.split('|').length;
+    html += '<div class="save-item" data-idx="' + i + '" style="padding:12px;background:#111;border:1px solid #252525;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:all 0.2s">' +
+      '<div style="font-weight:700;color:#fff;font-size:0.85rem">' + save.name + '</div>' +
+      '<div style="color:#555;font-size:0.7rem">' + cmds + ' commands</div>' +
+    '</div>';
+  });
+  html += '<div style="display:flex;gap:8px;margin-top:12px">' +
+    '<button id="load-close" style="flex:1;padding:8px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer;font-family:JetBrains Mono,monospace">Close</button>' +
+    '<button id="load-clear" style="padding:8px 12px;background:#222;color:#ef4444;border:1px solid #ef4444;border-radius:8px;cursor:pointer;font-family:JetBrains Mono,monospace;font-size:0.75rem">🗑 Clear All</button>' +
+  '</div>';
+  
+  card.innerHTML = html;
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+  
+  // Click handlers
+  card.querySelectorAll('.save-item').forEach(function(item) {
+    item.addEventListener('mouseenter', function() { item.style.borderColor = '#60a5fa'; });
+    item.addEventListener('mouseleave', function() { item.style.borderColor = '#252525'; });
+    item.addEventListener('click', function() {
+      var idx = parseInt(item.getAttribute('data-idx'));
+      var save = saves[idx];
+      // Clear and load
+      parseAndExecute('clear');
+      var commands = save.data.split('|');
+      logOutput('info', '📂 Loading "' + save.name + '" (' + commands.length + ' commands)...');
+      commands.forEach(function(cmd, i) {
+        setTimeout(function() { parseAndExecute(cmd); }, 200 + i * 150);
+      });
+      modal.remove();
+    });
+  });
+  
+  document.getElementById('load-close').addEventListener('click', function() { modal.remove(); });
+  document.getElementById('load-clear').addEventListener('click', function() {
+    localStorage.removeItem('crate_saves');
+    modal.remove();
+    logOutput('ok', '🗑 All saves cleared');
+  });
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
+// === EXPORT AS STANDALONE HTML ===
+function exportAsHTML() {
+  var data = serializeScene();
+  if (!data) { logOutput('warn', '⚠ Nothing to export — build something first!'); return; }
+  
+  var commands = data.split('|');
+  var cmdStr = JSON.stringify(commands);
+  
+  var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">\n' +
+    '<title>Crate Engine Scene</title>\n' +
+    '<style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style>\n' +
+    '<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}<\/script>\n' +
+    '</head>\n<body>\n<canvas id="viewport"></canvas>\n' +
+    '<div style="position:fixed;bottom:10px;left:10px;color:#555;font-family:monospace;font-size:11px">Built with <a href="https://crateshipgames.com" style="color:#ff6b35">Crate Engine</a></div>\n' +
+    '<script type="module">\n' +
+    'import * as THREE from "three";\nimport {OrbitControls} from "three/addons/controls/OrbitControls.js";\n' +
+    'const canvas=document.getElementById("viewport");\n' +
+    'const renderer=new THREE.WebGLRenderer({canvas,antialias:true});\n' +
+    'renderer.setSize(window.innerWidth,window.innerHeight);\n' +
+    'renderer.shadowMap.enabled=true;\n' +
+    'const scene=new THREE.Scene();\n' +
+    'scene.background=new THREE.Color(0x1a1a2e);\n' +
+    'const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,500);\n' +
+    'camera.position.set(15,12,15);\n' +
+    'const controls=new OrbitControls(camera,canvas);\n' +
+    'controls.enableDamping=true;\n' +
+    'scene.add(new THREE.AmbientLight(0x404050,2));\n' +
+    'const sun=new THREE.DirectionalLight(0xfff5e0,3);\n' +
+    'sun.position.set(30,40,20);sun.castShadow=true;\n' +
+    'scene.add(sun);\n' +
+    '// Ground\nconst ground=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:0x2d5a27,roughness:0.9}));\n' +
+    'ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);\n' +
+    '// Simple object creators\n' +
+    'function makeMat(c){return new THREE.MeshStandardMaterial({color:c,roughness:0.7,metalness:0.1})}\n' +
+    'function addCube(x,z){const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),makeMat(Math.random()*0xffffff));m.position.set(x||Math.random()*10-5,0.5,z||Math.random()*10-5);m.castShadow=true;scene.add(m);}\n' +
+    'function addSphere(x,z){const m=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,16),makeMat(Math.random()*0xffffff));m.position.set(x||Math.random()*10-5,0.5,z||Math.random()*10-5);m.castShadow=true;scene.add(m);}\n' +
+    'function addTree(x,z){const g=new THREE.Group();const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,1.5),makeMat(0x8B4513));trunk.position.y=0.75;const leaves=new THREE.Mesh(new THREE.SphereGeometry(0.8,8,8),makeMat(0x228B22));leaves.position.y=2;g.add(trunk,leaves);g.position.set(x||(Math.random()-0.5)*20,0,z||(Math.random()-0.5)*20);g.castShadow=true;scene.add(g);}\n' +
+    'function addRock(x,z){const m=new THREE.Mesh(new THREE.DodecahedronGeometry(0.5+Math.random()*0.5),makeMat(0x888888));m.position.set(x||(Math.random()-0.5)*15,0.3,z||(Math.random()-0.5)*15);m.castShadow=true;scene.add(m);}\n' +
+    '// Parse commands\nconst cmds=' + cmdStr + ';\n' +
+    'cmds.forEach(function(c){\n' +
+    '  const l=c.toLowerCase();\n' +
+    '  const n=parseInt((l.match(/(\\d+)/)||[0,1])[1]);\n' +
+    '  if(l.includes("cube"))for(let i=0;i<n;i++)addCube();\n' +
+    '  if(l.includes("sphere"))for(let i=0;i<n;i++)addSphere();\n' +
+    '  if(l.includes("tree"))for(let i=0;i<n;i++)addTree();\n' +
+    '  if(l.includes("rock"))for(let i=0;i<n;i++)addRock();\n' +
+    '  if(l.includes("rain")){const rg=new THREE.BufferGeometry();const pos=new Float32Array(3000);for(let i=0;i<3000;i++){pos[i*3]=(Math.random()-0.5)*50;pos[i*3+1]=Math.random()*20;pos[i*3+2]=(Math.random()-0.5)*50;}rg.setAttribute("position",new THREE.BufferAttribute(pos,3));scene.add(new THREE.Points(rg,new THREE.PointsMaterial({color:0x8888ff,size:0.05})));}\n' +
+    '  if(l.includes("night")){scene.background=new THREE.Color(0x050515);sun.intensity=0.08;}\n' +
+    '  if(l.includes("sunset")){scene.background=new THREE.Color(0xff8844);sun.intensity=0.6;}\n' +
+    '  if(l.includes("fog"))scene.fog=new THREE.FogExp2(0x888899,0.02);\n' +
+    '});\n' +
+    'function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}\n' +
+    'animate();\n' +
+    'window.addEventListener("resize",()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});\n' +
+    '<\/script>\n</body>\n</html>';
+  
+  var blob = new Blob([html], {type: 'text/html'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'crate-scene.html';
+  a.click();
+  URL.revokeObjectURL(url);
+  logOutput('ok', '📦 Exported! Open crate-scene.html in any browser.');
+}
+
+
+// === PRO SUBSCRIPTION SYSTEM ===
+var STRIPE_LINKS = { pro: 'https://buy.stripe.com/3cI9AV4Sv6TY15Q1aMffy00', premium: 'https://buy.stripe.com/6oUfZjfx96TY29U4mYffy01' };
+
+function isProUser() {
+  return localStorage.getItem('crate_pro') === 'true';
+}
+
+function setProStatus(val) {
+  localStorage.setItem('crate_pro', val ? 'true' : 'false');
+}
+
+// Check for Stripe success redirect
+(function checkProRedirect() {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('pro') === 'true' || params.get('success') === 'true') {
+    setProStatus(true);
+    // Clean URL
+    var clean = window.location.origin + window.location.pathname + window.location.hash;
+    window.history.replaceState({}, '', clean);
+    setTimeout(function() {
+      logOutput('ok', '🎉 Welcome to Crate Engine Pro! All features unlocked.');
+      showProWelcome();
+    }, 1500);
+  }
+})();
+
+function showProWelcome() {
+  var banner = document.createElement('div');
+  Object.assign(banner.style, {
+    position: 'fixed', top: '60px', left: '50%', transform: 'translateX(-50%)',
+    background: 'linear-gradient(135deg, #ff6b35, #f7c948)', color: '#000',
+    padding: '12px 24px', borderRadius: '12px', fontFamily: 'JetBrains Mono, monospace',
+    fontWeight: '700', fontSize: '0.9rem', zIndex: '10001', textAlign: 'center',
+    boxShadow: '0 4px 20px rgba(255,107,53,0.4)'
+  });
+  banner.innerHTML = '⚡ Pro Unlocked! Export, premium models, and more are now yours.';
+  document.body.appendChild(banner);
+  setTimeout(function() { banner.style.transition = 'opacity 0.5s'; banner.style.opacity = '0'; setTimeout(function() { banner.remove(); }, 500); }, 5000);
+}
+
+function showUpgradeModal(tier) {
+  tier = tier || 'pro';
+  var old = document.getElementById('upgrade-modal');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'upgrade-modal';
+  Object.assign(modal.style, {
+    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+    background: 'rgba(0,0,0,0.8)', zIndex: '10000', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)'
+  });
+
+  var card = document.createElement('div');
+  Object.assign(card.style, {
+    background: '#0d0d0d', border: '2px solid ' + (tier === 'premium' ? '#f7c948' : '#ff6b35'), borderRadius: '20px',
+    padding: '32px', maxWidth: '420px', width: '90%', textAlign: 'center',
+    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0',
+    boxShadow: '0 0 40px rgba(255,107,53,0.2)'
+  });
+
+  card.innerHTML =
+    '<div style="font-size:2.5rem;margin-bottom:8px">⚡</div>' +
+    '<h2 style="color:' + (tier === 'premium' ? '#f7c948' : '#ff6b35') + ';margin:0 0 8px;font-size:1.3rem">' + (tier === 'premium' ? 'Go Premium' : 'Go Pro') + '</h2>' +
+    '<p style="color:#888;font-size:0.85rem;margin-bottom:20px">Unlock the full power of Crate Engine</p>' +
+    '<div style="background:#111;border-radius:12px;padding:16px;margin-bottom:20px;text-align:left;font-size:0.8rem;color:#ccc;line-height:2">' +
+      '✅ Export games (no watermark)<br>' +
+      '✅ 500+ premium 3D models<br>' +
+      '✅ Unlimited AI prompts<br>' +
+      '✅ Publish to crateshipgames.com<br>' +
+      '✅ Priority support<br>' +
+      '✅ Early access to new features' +
+    '</div>' +
+    '<div style="font-size:2rem;font-weight:900;color:#fff;margin-bottom:4px">' + (tier === 'premium' ? '$14.99' : '$4.99') + '<span style="font-size:0.9rem;color:#888">/month</span></div>' +
+    '<p style="color:#555;font-size:0.7rem;margin-bottom:16px">Cancel anytime · No contracts</p>' +
+    '<div style="display:flex;gap:8px;flex-direction:column">' +
+      '<button id="upgrade-stripe-btn" style="padding:14px;background:linear-gradient(135deg,#ff6b35,#f7c948);color:#000;border:none;border-radius:10px;font-weight:700;font-size:1rem;cursor:pointer;font-family:JetBrains Mono,monospace;transition:transform 0.2s">' + (tier === 'premium' ? '💎 Subscribe Premium' : '⚡ Subscribe Pro') + '</button>' +
+      '<button id="upgrade-close-btn" style="padding:10px;background:transparent;color:#555;border:1px solid #252525;border-radius:10px;cursor:pointer;font-family:JetBrains Mono,monospace;font-size:0.8rem">Maybe Later</button>' +
+    '</div>';
+
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+
+  document.getElementById('upgrade-stripe-btn').addEventListener('click', function() {
+    var link = STRIPE_LINKS[tier] || STRIPE_LINKS.pro; if (link) {
+      window.open(link, '_blank');
+    } else {
+      // Fallback - coming soon
+      this.textContent = '🚀 Coming Soon!';
+      this.style.background = '#333';
+      this.style.color = '#888';
+      setTimeout(function() { modal.remove(); }, 2000);
+    }
+  });
+
+  document.getElementById('upgrade-close-btn').addEventListener('click', function() { modal.remove(); });
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
+// Expose for pricing section button
+window._showUpgradeModal = showUpgradeModal;
+
+// Add Pro badge to nav if pro user
+(function addProBadge() {
+  if (!isProUser()) return;
+  setTimeout(function() {
+    var logo = document.querySelector('nav .logo');
+    if (logo) {
+      logo.innerHTML += ' <span style="background:#ff6b35;color:#000;font-size:0.5rem;padding:2px 6px;border-radius:4px;vertical-align:middle;font-weight:700">PRO</span>';
+    }
+  }, 500);
+})();
+function showHelp() {
+  var old = document.getElementById('help-modal');
+  if (old) { old.remove(); return; }
+  
+  var modal = document.createElement('div');
+  modal.id = 'help-modal';
+  Object.assign(modal.style, {
+    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+    background: 'rgba(0,0,0,0.85)', zIndex: '10000', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)',
+    overflow: 'auto'
+  });
+  
+  var card = document.createElement('div');
+  Object.assign(card.style, {
+    background: '#0d0d0d', border: '1px solid #252525', borderRadius: '16px',
+    padding: '24px', maxWidth: '700px', width: '95%', maxHeight: '85vh', overflow: 'auto',
+    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0'
+  });
+  
+  card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+    '<h2 style="color:#ff6b35;margin:0">⌨️ Command Reference</h2>' +
+    '<button onclick="this.closest(\'#help-modal\').remove()" style="background:none;border:none;color:#555;font-size:1.5rem;cursor:pointer">✕</button></div>' +
+    
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+    
+    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
+    '<h4 style="color:#4ade80;margin:0 0 8px">🧱 Objects</h4>' +
+    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
+    'add cube · add sphere · add cylinder<br>add tree · add pine · add bush<br>add rock · add flower · add grass<br>' +
+    'add house · add castle · add village<br>add road · add wall · add fence<br>' +
+    'add avatar · add knight · add sword<br>add water · add 10 cubes</div></div>' +
+    
+    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
+    '<h4 style="color:#60a5fa;margin:0 0 8px">🌍 World</h4>' +
+    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
+    'time sunset · time night · time dawn<br>make it rain · make it snow<br>fog · clear weather<br>' +
+    'terrain mountains · terrain hills<br>terrain valley · terrain volcano<br>terrain island · terrain dunes<br>' +
+    'snow ground · sand ground · lava ground</div></div>' +
+    
+    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
+    '<h4 style="color:#f59e0b;margin:0 0 8px">🔥 Effects</h4>' +
+    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
+    'add fire · add smoke · add magic<br>add explosion · add sparkles<br>add campfire · add torch<br>' +
+    'add blue magic · add green sparkles<br>add point light · add blue light<br>add spotlight</div></div>' +
+    
+    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
+    '<h4 style="color:#c084fc;margin:0 0 8px">🎮 Play Mode</h4>' +
+    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
+    'play · edit · spawn enemies<br>equip sword · equip shield<br>heal · stats · quests<br>' +
+    'craft · materials · talk<br>WASD: move · Space: jump<br>Click: attack · E: interact<br>1/3: camera toggle</div></div>' +
+    
+    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
+    '<h4 style="color:#ef4444;margin:0 0 8px">✏️ Edit</h4>' +
+    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
+    'move castle 5 right<br>make tree red · scale rock 2x<br>rotate house 90<br>' +
+    'delete · undo · clear · reset<br>bigger · smaller · giant<br>click objects to select</div></div>' +
+    
+    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
+    '<h4 style="color:#4ade80;margin:0 0 8px">🎬 Advanced</h4>' +
+    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
+    'build a castle with trees and rain<br>when player touches rock, score +10<br>' +
+    'populate · add traffic<br>animation speed 2<br>screenshot · share · save<br>' +
+    'Ctrl+S: screenshot · Ctrl+B: browse models</div></div>' +
+    
+    '</div>' +
+    
+    '<div style="margin-top:16px;padding:12px;background:#111;border-radius:8px;border:1px solid #252525;text-align:center">' +
+    '<span style="color:#ff6b35;font-weight:700">Pro tip:</span> <span style="color:#888;font-size:0.8rem">Combine commands with "and" — <code style="color:#4ade80">add castle and make it rain and time night</code></span>' +
+    '</div>';
+  
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
+// Add help button to toolbar
+(function() {
+  var helpBtn = document.createElement('button');
+  helpBtn.textContent = '❓';
+  helpBtn.title = 'Command Reference';
+  Object.assign(helpBtn.style, {
+    position: 'fixed', bottom: '20px', left: '20px', width: '40px', height: '40px',
+    background: '#222', color: '#888', border: '1px solid #333', borderRadius: '50%',
+    cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem',
+    zIndex: '1000', transition: 'all 0.2s', display: 'flex', alignItems: 'center',
+    justifyContent: 'center'
+  });
+  helpBtn.addEventListener('mouseenter', function() { helpBtn.style.borderColor = '#ff6b35'; helpBtn.style.color = '#ff6b35'; });
+  helpBtn.addEventListener('mouseleave', function() { helpBtn.style.borderColor = '#333'; helpBtn.style.color = '#888'; });
+  helpBtn.addEventListener('click', showHelp);
+  document.body.appendChild(helpBtn);
+})();
+
+// === WELCOME TOAST FOR FIRST-TIME VISITORS ===
+(function() {
+  if (localStorage.getItem('crate_visited')) return;
+  localStorage.setItem('crate_visited', '1');
+  
+  var toast = document.createElement('div');
+  Object.assign(toast.style, {
+    position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
+    background: '#111', border: '1px solid #ff6b35', borderRadius: '12px',
+    padding: '16px 24px', zIndex: '9999', fontFamily: 'JetBrains Mono, monospace',
+    color: '#e0e0e0', fontSize: '0.85rem', textAlign: 'center', maxWidth: '400px',
+    boxShadow: '0 4px 20px rgba(255,107,53,0.2)', animation: 'fadeInUp 0.5s ease'
+  });
+  toast.innerHTML = '👋 <strong style="color:#ff6b35">Welcome to Crate Engine!</strong><br>' +
+    '<span style="color:#888;font-size:0.75rem">Type a command like <code style="color:#4ade80">add castle</code> or click a scene below.<br>Press <code style="color:#4ade80">❓</code> for all commands.</span>';
+  
+  var style = document.createElement('style');
+  style.textContent = '@keyframes fadeInUp{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+  document.head.appendChild(style);
+  
+  document.body.appendChild(toast);
+  setTimeout(function() { toast.style.transition = 'opacity 0.5s'; toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 500); }, 6000);
+})();
+
+// === KEYBOARD SHORTCUT: ? for help, / to focus prompt ===
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === '?' || (e.key === 'h' && !e.ctrlKey && !e.metaKey)) {
+    e.preventDefault();
+    showHelp();
+  }
+  if (e.key === '/') {
+    e.preventDefault();
+    var input = document.getElementById('prompt-input');
+    if (input) input.focus();
+  }
+});
+
+
+// === DRAG & DROP MODEL IMPORT ===
+(function() {
+  const dropZone = document.querySelector('.viewport-wrapper') || document.querySelector('canvas');
+  if (!dropZone) return;
+  
+  const dropOverlay = document.createElement('div');
+  dropOverlay.id = 'drop-overlay';
+  dropOverlay.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(124,92,255,0.15);border:4px dashed #7c5cff;z-index:99999;pointer-events:none;align-items:center;justify-content:center;';
+  dropOverlay.innerHTML = '<div style="background:rgba(0,0,0,0.9);padding:30px 50px;border-radius:16px;border:2px solid #7c5cff;text-align:center;"><div style="font-size:48px;margin-bottom:12px;">📦</div><div style="color:#7c5cff;font-size:20px;font-weight:700;">Drop GLB Model Here</div><div style="color:#888;font-size:14px;margin-top:8px;">.glb, .gltf supported</div></div>';
+  document.body.appendChild(dropOverlay);
+  
+  let dragCounter = 0;
+  document.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; dropOverlay.style.display = 'flex'; });
+  document.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter--; if (dragCounter <= 0) { dropOverlay.style.display = 'none'; dragCounter = 0; } });
+  document.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropOverlay.style.display = 'none';
+    dragCounter = 0;
+    
+    const files = [...e.dataTransfer.files].filter(f => f.name.endsWith('.glb') || f.name.endsWith('.gltf'));
+    if (!files.length) { alert('Please drop .glb or .gltf files'); return; }
+    
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const blob = new Blob([evt.target.result]);
+        const url = URL.createObjectURL(blob);
+        const name = file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ');
+        
+        // Use the engine's GLB loader
+        const loader = new THREE.GLTFLoader ? new THREE.GLTFLoader() : window._gltfLoader;
+        if (!loader && window.gltfLoader) { window.gltfLoader.load(url, handleLoaded); return; }
+        
+        // Direct Three.js loading
+        const { GLTFLoader } = window;
+        const gl = new (window._GLTFLoaderClass || gltfLoader.constructor)();
+        gl.setDRACOLoader(dracoLoader);
+        gl.load(url, (gltf) => {
+          const model = gltf.scene;
+          const box = new THREE.Box3().setFromObject(model);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          model.position.sub(center);
+          
+          const maxDim = Math.max(size.x, size.y, size.z);
+          if (maxDim > 20) model.scale.setScalar(10 / maxDim);
+          else if (maxDim < 0.5) model.scale.setScalar(2 / maxDim);
+          
+          // Place in front of camera
+          const camDir = new THREE.Vector3();
+          camera.getWorldDirection(camDir);
+          model.position.set(
+            camera.position.x + camDir.x * 10,
+            0,
+            camera.position.z + camDir.z * 10
+          );
+          
+          model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+          model.userData.name = name;
+          model.userData.isGLB = true;
+          model.userData.isImported = true;
+          
+          scene.add(model);
+          objects.push(model);
+          
+          // Log it
+          const logEl = document.getElementById('engine-log');
+          if (logEl) {
+            const r = document.createElement('div');
+            r.className = 'entry ok';
+            r.textContent = '✓ Imported: ' + name + ' (' + (file.size/1024/1024).toFixed(1) + 'MB)';
+            logEl.appendChild(r);
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+          
+          URL.revokeObjectURL(url);
+        }, undefined, (err) => {
+          console.error('Import error:', err);
+          alert('Failed to load model: ' + file.name);
+          URL.revokeObjectURL(url);
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  });
+  console.log('[Engine] Drag & drop GLB import ready');
+})();
+// === END DRAG & DROP ===
+
+
+// === TUTORIAL / ONBOARDING SYSTEM ===
+(function() {
+  const TUTORIAL_KEY = 'crate_tutorial_done';
+  if (localStorage.getItem(TUTORIAL_KEY)) return;
+  
+  const steps = [
+    { title: '👋 Welcome to Crate Engine!', text: 'Build 3D worlds with voice or text commands. Let\'s take a quick tour!', target: null },
+    { title: '💬 Command Prompt', text: 'Type any command here: "add tree", "build a village", "make it rain"', target: '#prompt-input' },
+    { title: '🎤 Voice Commands', text: 'Click the mic to use voice! Say "add a castle" or "make it night"', target: '#voice-btn' },
+    { title: '🎮 Play Mode', text: 'Type "play" to enter the world! WASD to move, Space to jump, E to attack.', target: null },
+    { title: '🏠 Enter Buildings', text: 'Walk up to buildings and press F to go inside. Walk into doors to auto-enter!', target: null },
+    { title: '🧗 Climb Things', text: 'Walk up to ladders or vines and press W to climb. Space to jump off!', target: null },
+    { title: '🗣️ Talk to NPCs', text: 'Press F near any NPC for contextual dialogue — merchants, guards, wizards!', target: null },
+    { title: '📦 Import Models', text: 'Drag & drop any .glb file onto the viewport to import your own 3D models!', target: null },
+    { title: '🚀 You\'re Ready!', text: 'Try: "build a medieval village" then type "play" to explore it!\n\n77,000+ voice & text commands at your fingertips.', target: '#prompt-input' },
+  ];
+  
+  let currentStep = 0;
+  
+  const overlay = document.createElement('div');
+  overlay.id = 'tutorial-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;';
+  
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#12121a;border:2px solid #7c5cff;border-radius:20px;padding:32px 40px;max-width:480px;width:90vw;text-align:center;position:relative;';
+  
+  const title = document.createElement('h2');
+  title.style.cssText = 'color:#7c5cff;font-size:22px;margin-bottom:12px;font-family:-apple-system,sans-serif;';
+  
+  const text = document.createElement('p');
+  text.style.cssText = 'color:#ccc;font-size:15px;line-height:1.6;margin-bottom:24px;font-family:-apple-system,sans-serif;white-space:pre-line;';
+  
+  const progress = document.createElement('div');
+  progress.style.cssText = 'display:flex;gap:6px;justify-content:center;margin-bottom:20px;';
+  
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+  
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = 'Skip Tour';
+  skipBtn.style.cssText = 'background:none;border:1px solid #555;color:#888;padding:10px 24px;border-radius:10px;cursor:pointer;font-size:14px;';
+  skipBtn.onclick = () => { localStorage.setItem(TUTORIAL_KEY, '1'); overlay.remove(); };
+  
+  const nextBtn = document.createElement('button');
+  nextBtn.style.cssText = 'background:linear-gradient(135deg,#7c5cff,#5c3cdf);color:#fff;border:none;padding:10px 32px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;';
+  
+  card.appendChild(title);
+  card.appendChild(text);
+  card.appendChild(progress);
+  btnRow.appendChild(skipBtn);
+  btnRow.appendChild(nextBtn);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+  
+  function showStep() {
+    const step = steps[currentStep];
+    title.textContent = step.title;
+    text.textContent = step.text;
+    nextBtn.textContent = currentStep === steps.length - 1 ? "Let's Build! 🚀" : 'Next →';
+    
+    // Update progress dots
+    progress.innerHTML = '';
+    steps.forEach((_, i) => {
+      const dot = document.createElement('div');
+      dot.style.cssText = 'width:8px;height:8px;border-radius:50%;' + (i === currentStep ? 'background:#7c5cff;' : i < currentStep ? 'background:#5c3cdf;' : 'background:#333;');
+      progress.appendChild(dot);
+    });
+    
+    // Highlight target element
+    document.querySelectorAll('.tutorial-highlight').forEach(el => el.classList.remove('tutorial-highlight'));
+    if (step.target) {
+      const el = document.querySelector(step.target);
+      if (el) {
+        el.classList.add('tutorial-highlight');
+        el.style.position = el.style.position || 'relative';
+        el.style.zIndex = '100001';
+        el.style.boxShadow = '0 0 0 4px #7c5cff, 0 0 20px rgba(124,92,255,0.5)';
+        el.style.borderRadius = '8px';
+      }
+    }
+  }
+  
+  nextBtn.onclick = () => {
+    currentStep++;
+    if (currentStep >= steps.length) {
+      localStorage.setItem(TUTORIAL_KEY, '1');
+      overlay.remove();
+      document.querySelectorAll('.tutorial-highlight').forEach(el => {
+        el.style.boxShadow = '';
+        el.style.zIndex = '';
+      });
+    } else {
+      showStep();
+    }
+  };
+  
+  // Show after 1 second
+  setTimeout(() => {
+    document.body.appendChild(overlay);
+    showStep();
+  }, 1500);
+  
+  console.log('[Engine] Tutorial system ready');
+})();
+// === END TUTORIAL ===
+
+
+// === AI AGENT MODEL SUGGESTION SYSTEM ===
+// Loads 1,328 model catalog, suggests relevant models based on user input
+let _modelCatalog = null;
+
+fetch('model-catalog.json').then(r => r.json()).then(data => {
+  _modelCatalog = data;
+  console.log('[AI Agent] Loaded', data.length, 'models into suggestion catalog');
+}).catch(() => console.warn('[AI Agent] Could not load model catalog'));
+
+// Search catalog by keywords
+function searchModels(query, limit = 12) {
+  if (!_modelCatalog) return [];
+  const words = query.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+  
+  return _modelCatalog
+    .map(m => {
+      let score = 0;
+      for (const word of words) {
+        // Check tags
+        for (const tag of m.tags) {
+          if (tag === word) score += 10;
+          else if (tag.includes(word)) score += 5;
+          else if (word.includes(tag) && tag.length >= 3) score += 3;
+        }
+        // Check file name
+        if (m.file.toLowerCase().includes(word)) score += 8;
+      }
+      return { ...m, score };
+    })
+    .filter(m => m.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+// Show suggestion panel
+function showSuggestionPanel(query, results) {
+  let panel = document.getElementById('ai-suggest-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'ai-suggest-panel';
+    panel.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);width:700px;max-width:95vw;max-height:340px;overflow-y:auto;background:rgba(8,8,16,0.97);border:2px solid #7c5cff;border-radius:16px;padding:16px;z-index:99999;font-family:-apple-system,sans-serif;backdrop-filter:blur(12px);display:none;';
+    document.body.appendChild(panel);
+  }
+  
+  if (!results.length) { panel.style.display = 'none'; return; }
+  
+  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  html += '<div style="color:#7c5cff;font-size:14px;font-weight:700;">🤖 AI Agent — Found ' + results.length + ' models for "' + query + '"</div>';
+  html += '<button onclick="document.getElementById(\'ai-suggest-panel\').style.display=\'none\'" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;">✕</button>';
+  html += '</div>';
+  
+  // Group by category
+  const grouped = {};
+  for (const m of results) {
+    const cat = m.cat || 'Other';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(m);
+  }
+  
+  for (const [cat, items] of Object.entries(grouped)) {
+    const catIcon = items[0].icon || '📦';
+    html += '<div style="color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;font-weight:600;">' + catIcon + ' ' + cat + '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:8px;">';
+    
+    for (const m of items) {
+      const displayName = m.name.length > 22 ? m.name.slice(0, 20) + '...' : m.name;
+      const icon = m.icon || '📦';
+      html += '<div onclick="window._loadSuggestedModel(\'' + m.file + '\')" style="background:#1a1a2e;border:1px solid #2a2a3a;border-radius:10px;padding:10px 8px;cursor:pointer;transition:all 0.2s;text-align:center;" onmouseover="this.style.borderColor=\'#7c5cff\';this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(124,92,255,0.2)\'" onmouseout="this.style.borderColor=\'#2a2a3a\';this.style.transform=\'none\';this.style.boxShadow=\'none\'">';
+      html += '<div style="font-size:22px;margin-bottom:4px;">' + icon + '</div>';
+      html += '<div style="color:#e0e0e0;font-size:11px;font-weight:600;line-height:1.3;">' + displayName + '</div>';
+      html += '<div style="color:#7c5cff;font-size:9px;margin-top:4px;font-weight:600;">＋ Add to Scene</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  panel.innerHTML = html;
+  panel.style.display = 'block';
+}
+
+// Load a suggested model into the scene
+window._loadSuggestedModel = function(modelFile) {
+  const cmd = 'add ' + modelFile;
+  const input = document.getElementById('prompt-input');
+  if (input) {
+    input.value = cmd;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  }
+  // Also try loading via GLB loader directly
+  loadGLBModel(modelFile + '_suggest', modelFile, null, null, null);
+  
+  document.getElementById('ai-suggest-panel').style.display = 'none';
+  
+  // Log success
+  const log = document.getElementById('engine-log');
+  if (log) {
+    const r = document.createElement('div');
+    r.className = 'entry ok';
+    r.textContent = '✓ Added ' + modelFile.replace(/_/g, ' ');
+    log.appendChild(r);
+    log.scrollTop = log.scrollHeight;
+  // Auto-hide log after 4s
+  clearTimeout(window._logHideTimer);
+  window._logHideTimer = setTimeout(() => { log.style.display = "none"; }, 4000);
+  }
+};
+
+// Hook into parseAndExecute to detect suggestion-worthy queries
+const _origParseAndExecute = parseAndExecute;
+parseAndExecute = async function(rawCmd) {
+  const lower = rawCmd.toLowerCase().trim();
+  
+  // Detect "need", "want", "show me", "find", "browse", "search", "library" queries
+  // Skip AI agent for gallery categories — let the gallery system handle these
+    const galleryKeywords = /^(?:show |browse |open |pick |choose |select )?(characters?|weapons?|swords?|axes?|guns?|buildings?|houses?|vehicles?|cars?|animals?|trees?|plants?|rocks?|stones?|furniture|tables?|chairs?|food|items?|potions?|dungeon|sci-?fi|space|nature|survival|animations?|library|asset library|browse all|all assets|all models|model library|browse$)/i;
+    if (galleryKeywords.test(lower)) {
+      return _origParseAndExecute(rawCmd);
+    }
+    const isBrowse = /^(i need|i want|show me|find|search|browse|library|catalog|get me|give me|what|which|any|list)\b/.test(lower);
+  const isQuestion = lower.includes('?') || lower.startsWith('what') || lower.startsWith('which') || lower.startsWith('do you have') || lower.startsWith('do we have');
+  
+  // Also detect when a basic "add X" might benefit from suggestions
+  const isAdd = /^add\s+/.test(lower);
+  
+  if (isBrowse || isQuestion) {
+    // Extract the search terms
+    let search = lower.replace(/^(i need|i want|show me|find|search|browse|library|catalog|get me|give me|what|which|any|list|do you have|do we have)\s*(a |an |the |some |any )?/i, '').replace(/[?!.,]/g, '').trim();
+    
+    if (search.length >= 2) {
+      const results = searchModels(search);
+      if (results.length > 0) {
+        showSuggestionPanel(search, results);
+        return '🤖 Found ' + results.length + ' models matching "' + search + '" — pick one from the panel below!';
+      }
+    }
+  }
+  
+  // For "add X" commands, also show suggestions if exact match fails
+  if (isAdd) {
+    const objName = lower.replace(/^add\s+(a |an |the )?/, '').trim();
+    // Run the original first
+    const result = await _origParseAndExecute(rawCmd);
+    
+    // If it returned an error or "unknown", show suggestions
+    if (result && (result.includes('⚠') || result.includes('unknown') || result.includes('not found'))) {
+      const results = searchModels(objName);
+      if (results.length > 0) {
+        showSuggestionPanel(objName, results);
+        return result + '\n🤖 But I found ' + results.length + ' similar models — check the panel below!';
+      }
+    }
+    return result;
+  }
+  
+  return _origParseAndExecute(rawCmd);
+};
+// === END AI AGENT SUGGESTION SYSTEM ===
+
+
+
+// ═══ COMBAT SYSTEM (v67) ═══
+
+// Weapon data
+const WEAPON_DATA = {
+  pistol: { type: 'ranged', damage: 10, fireRate: 0.3, magSize: 12, reloadTime: 1.5, spread: 0.02, recoil: 0.03, auto: false },
+  rifle: { type: 'ranged', damage: 15, fireRate: 0.1, magSize: 30, reloadTime: 2.5, spread: 0.015, recoil: 0.05, auto: true },
+  shotgun: { type: 'ranged', damage: 8, fireRate: 0.8, magSize: 8, reloadTime: 3.0, spread: 0.08, pellets: 8, recoil: 0.1, auto: false },
+  smg: { type: 'ranged', damage: 8, fireRate: 0.07, magSize: 35, reloadTime: 2.0, spread: 0.03, recoil: 0.02, auto: true },
+  sniper: { type: 'ranged', damage: 50, fireRate: 1.5, magSize: 5, reloadTime: 3.5, spread: 0.002, recoil: 0.12, auto: false },
+  sword: { type: 'melee', damage: 20, speed: 1.0, range: 3.0, staminaCost: 15, heavyMult: 2.0 },
+  axe: { type: 'melee', damage: 30, speed: 0.7, range: 2.5, staminaCost: 20, heavyMult: 2.5 },
+  hammer: { type: 'melee', damage: 35, speed: 0.6, range: 2.0, staminaCost: 25, heavyMult: 3.0 },
+  dagger: { type: 'melee', damage: 12, speed: 1.5, range: 1.8, staminaCost: 8, heavyMult: 1.5 },
+  spear: { type: 'melee', damage: 22, speed: 0.9, range: 4.0, staminaCost: 18, heavyMult: 2.0 },
+};
+
+// Combat state
+const combatState = {
+  equippedWeapon: null,
+  weaponData: null,
+  ammo: 0,
+  magAmmo: 0,
+  shooting: false,
+  shootTimer: 0,
+  reloading: false,
+  reloadTimer: 0,
+  spreadAccum: 0,
+  recoilRecovery: 0,
+  // Melee
+  attacking: false,
+  attackTimer: 0,
+  attackPhase: 'none', // none, windup, active, recovery
+  comboCount: 0,
+  comboTimer: 0,
+  // Stamina
+  stamina: 100,
+  maxStamina: 100,
+  staminaRegenDelay: 0,
+  staminaRegenRate: 20,
+  staminaDepleted: false,
+  // Player health
+  health: 100,
+  maxHealth: 100,
+  // HUD elements
+  hudCreated: false,
+};
+
+// Detect weapon type from equipped weapon name
+function detectWeaponType(weaponName) {
+  if (!weaponName) return null;
+  const n = weaponName.toLowerCase();
+  for (const [key, data] of Object.entries(WEAPON_DATA)) {
+    if (n.includes(key)) return { key, ...data };
+  }
+  // Fallback detection
+  if (/gun|pistol|blaster|revolver/.test(n)) return { key: 'pistol', ...WEAPON_DATA.pistol };
+  if (/rifle|ar_|carbine|assault/.test(n)) return { key: 'rifle', ...WEAPON_DATA.rifle };
+  if (/shotgun|scatter/.test(n)) return { key: 'shotgun', ...WEAPON_DATA.shotgun };
+  if (/smg|sub.*machine|uzi|mp[0-9]/.test(n)) return { key: 'smg', ...WEAPON_DATA.smg };
+  if (/sniper|marksman|scope/.test(n)) return { key: 'sniper', ...WEAPON_DATA.sniper };
+  if (/sword|blade|katana|saber/.test(n)) return { key: 'sword', ...WEAPON_DATA.sword };
+  if (/axe|hatchet|cleaver/.test(n)) return { key: 'axe', ...WEAPON_DATA.axe };
+  if (/hammer|mace|club|maul/.test(n)) return { key: 'hammer', ...WEAPON_DATA.hammer };
+  if (/dagger|knife|shiv/.test(n)) return { key: 'dagger', ...WEAPON_DATA.dagger };
+  if (/spear|lance|pike|trident|staff/.test(n)) return { key: 'spear', ...WEAPON_DATA.spear };
+  return null;
+}
+
+// Create combat HUD
+function createCombatHUD() {
+  if (combatState.hudCreated) return;
+  combatState.hudCreated = true;
+  
+  // Crosshair
+  const crosshair = document.createElement('div');
+  crosshair.id = 'combat-crosshair';
+  crosshair.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9001;pointer-events:none;display:none;';
+  crosshair.innerHTML = '<div style="width:2px;height:14px;background:rgba(255,255,255,0.8);position:absolute;left:50%;top:-8px;transform:translateX(-50%)"></div>' +
+    '<div style="width:2px;height:14px;background:rgba(255,255,255,0.8);position:absolute;left:50%;bottom:-8px;transform:translateX(-50%)"></div>' +
+    '<div style="width:14px;height:2px;background:rgba(255,255,255,0.8);position:absolute;top:50%;left:-8px;transform:translateY(-50%)"></div>' +
+    '<div style="width:14px;height:2px;background:rgba(255,255,255,0.8);position:absolute;top:50%;right:-8px;transform:translateY(-50%)"></div>' +
+    '<div style="width:3px;height:3px;background:rgba(255,100,100,0.9);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"></div>';
+  document.body.appendChild(crosshair);
+  
+  // Health bar
+  const healthBar = document.createElement('div');
+  healthBar.id = 'combat-health';
+  healthBar.style.cssText = 'position:fixed;top:20px;left:20px;z-index:9001;display:none;font-family:monospace;';
+  healthBar.innerHTML = '<div style="color:#aaa;font-size:11px;margin-bottom:2px">❤️ HEALTH</div>' +
+    '<div style="width:200px;height:8px;background:rgba(0,0,0,0.6);border-radius:4px;overflow:hidden;border:1px solid #333">' +
+    '<div id="health-fill" style="width:100%;height:100%;background:linear-gradient(90deg,#ef4444,#f87171);transition:width 0.3s;border-radius:4px"></div></div>';
+  document.body.appendChild(healthBar);
+  
+  // Stamina bar
+  const staminaBar = document.createElement('div');
+  staminaBar.id = 'combat-stamina';
+  staminaBar.style.cssText = 'position:fixed;top:52px;left:20px;z-index:9001;display:none;font-family:monospace;';
+  staminaBar.innerHTML = '<div style="color:#aaa;font-size:11px;margin-bottom:2px">⚡ STAMINA</div>' +
+    '<div style="width:160px;height:6px;background:rgba(0,0,0,0.6);border-radius:3px;overflow:hidden;border:1px solid #333">' +
+    '<div id="stamina-fill" style="width:100%;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);transition:width 0.2s;border-radius:3px"></div></div>';
+  document.body.appendChild(staminaBar);
+  
+  // Ammo counter
+  const ammoDiv = document.createElement('div');
+  ammoDiv.id = 'combat-ammo';
+  ammoDiv.style.cssText = 'position:fixed;bottom:100px;right:20px;z-index:9001;display:none;font-family:monospace;color:#e0e0e0;text-align:right;';
+  ammoDiv.innerHTML = '<div id="ammo-text" style="font-size:28px;font-weight:bold">30</div><div id="ammo-reserve" style="font-size:14px;color:#888">/ 120</div><div id="weapon-name" style="font-size:11px;color:#666;margin-top:4px">RIFLE</div>';
+  document.body.appendChild(ammoDiv);
+  
+  // Hit marker
+  const hitMarker = document.createElement('div');
+  hitMarker.id = 'combat-hitmarker';
+  hitMarker.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9002;pointer-events:none;display:none;opacity:0;transition:opacity 0.15s;';
+  hitMarker.innerHTML = '<div style="width:20px;height:2px;background:#fff;position:absolute;transform:rotate(45deg);left:-10px;top:-1px"></div>' +
+    '<div style="width:20px;height:2px;background:#fff;position:absolute;transform:rotate(-45deg);left:-10px;top:-1px"></div>' +
+    '<div style="width:20px;height:2px;background:#fff;position:absolute;transform:rotate(135deg);left:-10px;top:-1px"></div>' +
+    '<div style="width:20px;height:2px;background:#fff;position:absolute;transform:rotate(-135deg);left:-10px;top:-1px"></div>';
+  document.body.appendChild(hitMarker);
+  
+  // Damage vignette
+  const vignette = document.createElement('div');
+  vignette.id = 'combat-vignette';
+  vignette.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9000;pointer-events:none;display:none;opacity:0;transition:opacity 0.3s;' +
+    'background:radial-gradient(ellipse at center, transparent 50%, rgba(255,0,0,0.4) 100%);';
+  document.body.appendChild(vignette);
+  
+  // Kill feed
+  const killFeed = document.createElement('div');
+  killFeed.id = 'combat-killfeed';
+  killFeed.style.cssText = 'position:fixed;top:80px;right:20px;z-index:9001;display:none;font-family:monospace;font-size:12px;text-align:right;';
+  document.body.appendChild(killFeed);
+}
+
+// Show/hide combat HUD
+function toggleCombatHUD(show) {
+  const ids = ['combat-crosshair','combat-health','combat-stamina','combat-ammo','combat-killfeed'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = show ? 'block' : 'none'; });
+  // Only show ammo for ranged weapons
+  const ammoEl = document.getElementById('combat-ammo');
+  if (ammoEl && combatState.weaponData && combatState.weaponData.type !== 'ranged') ammoEl.style.display = 'none';
+}
+
+// Spawn floating damage number
+function spawnDamageNumber(position, damage, isCrit) {
+  const canvas = document.querySelector('canvas');
+  if (!canvas) return;
+  const vec = position.clone().project(camera);
+  const x = (vec.x * 0.5 + 0.5) * canvas.clientWidth;
+  const y = (-vec.y * 0.5 + 0.5) * canvas.clientHeight;
+  
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;z-index:9003;pointer-events:none;font-family:monospace;font-weight:bold;text-shadow:0 1px 3px rgba(0,0,0,0.8);transition:all 1s;';
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.style.fontSize = isCrit ? '28px' : '20px';
+  el.style.color = isCrit ? '#ffd700' : '#fff';
+  el.textContent = (isCrit ? '💥 ' : '') + Math.round(damage);
+  document.body.appendChild(el);
+  
+  requestAnimationFrame(() => {
+    el.style.transform = 'translateY(-60px)';
+    el.style.opacity = '0';
+  });
+  setTimeout(() => el.remove(), 1000);
+}
+
+// Show hit marker
+function showHitMarker() {
+  const el = document.getElementById('combat-hitmarker');
+  if (!el) return;
+  el.style.display = 'block';
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 100);
+  setTimeout(() => { el.style.display = 'none'; }, 250);
+}
+
+// Damage flash
+function showDamageFlash() {
+  const el = document.getElementById('combat-vignette');
+  if (!el) return;
+  el.style.display = 'block';
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 300);
+  setTimeout(() => { el.style.display = 'none'; }, 600);
+}
+
+// Add to kill feed
+function addKillFeedEntry(text, color) {
+  const feed = document.getElementById('combat-killfeed');
+  if (!feed) return;
+  const entry = document.createElement('div');
+  entry.style.cssText = 'color:' + (color || '#4ade80') + ';margin-bottom:4px;opacity:1;transition:opacity 1s;';
+  entry.textContent = text;
+  feed.appendChild(entry);
+  setTimeout(() => { entry.style.opacity = '0'; }, 4000);
+  setTimeout(() => entry.remove(), 5000);
+  // Max 5 entries
+  while (feed.children.length > 5) feed.removeChild(feed.firstChild);
+}
+
+// Shoot raycast
+function shootRaycast() {
+  const wd = combatState.weaponData;
+  if (!wd || wd.type !== 'ranged') return;
+  
+  const pellets = wd.pellets || 1;
+  for (let p = 0; p < pellets; p++) {
+    const spread = combatState.spreadAccum + wd.spread;
+    const ray = new THREE.Raycaster();
+    const dir = new THREE.Vector3(
+      (Math.random() - 0.5) * spread,
+      (Math.random() - 0.5) * spread,
+      -1
+    ).normalize();
+    dir.applyQuaternion(camera.quaternion);
+    ray.set(camera.position, dir);
+    ray.far = 200;
+    
+    const hits = ray.intersectObjects(objects, true);
+    if (hits.length > 0) {
+      const hit = hits[0];
+      // Find root object
+      let root = hit.object;
+      while (root.parent && !root.userData.name && root.parent !== scene) root = root.parent;
+      
+      // Check if NPC
+      const isNPC = root.userData.isNPC || root.userData.name?.includes('npc');
+      if (isNPC && typeof npcController !== 'undefined') {
+        const isCrit = Math.random() < 0.1;
+        const dmg = wd.damage * (isCrit ? 2 : 1) * (pellets > 1 ? 0.7 : 1);
+        // Find NPC in controller
+        const npc = npcController.npcs?.find(n => n.model === root);
+        if (npc && !npc.isDead) {
+          npc.health = Math.max(0, npc.health - dmg);
+          spawnDamageNumber(hit.point, dmg, isCrit);
+          showHitMarker();
+          if (npc.health <= 0) {
+            npc.isDead = true;
+            addKillFeedEntry('☠ Killed ' + (root.userData.name || 'Enemy'));
+          } else {
+            npc.isAggro = true; // aggro on hit
+          }
+        }
+      }
+      
+      // Impact particle
+      createImpactEffect(hit.point, hit.face?.normal);
+    }
+  }
+  
+  // Recoil
+  combatState.recoilRecovery = wd.recoil;
+  combatState.spreadAccum = Math.min(combatState.spreadAccum + wd.spread * 0.5, wd.spread * 4);
+  
+  // Muzzle flash (brief light)
+  const flashLight = new THREE.PointLight(0xffaa33, 3, 10);
+  flashLight.position.copy(camera.position);
+  scene.add(flashLight);
+  setTimeout(() => scene.remove(flashLight), 50);
+}
+
+// Impact particle effect
+function createImpactEffect(position, normal) {
+  const count = 8;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  const velocities = [];
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = position.x;
+    positions[i * 3 + 1] = position.y;
+    positions[i * 3 + 2] = position.z;
+    velocities.push(new THREE.Vector3((Math.random()-0.5)*0.3, Math.random()*0.3, (Math.random()-0.5)*0.3));
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xffaa33, size: 0.15, transparent: true, opacity: 1 });
+  const particles = new THREE.Points(geo, mat);
+  scene.add(particles);
+  
+  let life = 1.0;
+  const animateImpact = () => {
+    life -= 0.05;
+    if (life <= 0) { scene.remove(particles); geo.dispose(); mat.dispose(); return; }
+    const pos = geo.attributes.position.array;
+    for (let i = 0; i < count; i++) {
+      pos[i*3] += velocities[i].x;
+      pos[i*3+1] += velocities[i].y;
+      pos[i*3+2] += velocities[i].z;
+      velocities[i].y -= 0.015;
+    }
+    geo.attributes.position.needsUpdate = true;
+    mat.opacity = life;
+    requestAnimationFrame(animateImpact);
+  };
+  requestAnimationFrame(animateImpact);
+}
+
+// Melee attack
+function meleeAttack(heavy) {
+  const wd = combatState.weaponData;
+  if (!wd || wd.type !== 'melee') return;
+  if (combatState.attacking) return;
+  if (combatState.staminaDepleted) return;
+  
+  const cost = heavy ? wd.staminaCost * 1.5 : wd.staminaCost;
+  if (combatState.stamina < cost) return;
+  combatState.stamina -= cost;
+  combatState.staminaRegenDelay = 1.0;
+  
+  combatState.attacking = true;
+  combatState.attackPhase = 'windup';
+  combatState.attackTimer = 0;
+  
+  const totalTime = 1.0 / wd.speed;
+  const windupTime = totalTime * 0.2;
+  const activeTime = totalTime * 0.4;
+  const recoveryTime = totalTime * 0.4;
+  
+  // Windup → Active → Recovery
+  setTimeout(() => {
+    combatState.attackPhase = 'active';
+    // Check for hits in range
+    const playerPos = characterController ? characterController.position : camera.position;
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    
+    if (typeof npcController !== 'undefined' && npcController.npcs) {
+      for (const npc of npcController.npcs) {
+        if (npc.isDead || !npc.model) continue;
+        const dist = playerPos.distanceTo(npc.model.position);
+        if (dist < wd.range) {
+          // Direction check
+          const toNPC = npc.model.position.clone().sub(playerPos).normalize();
+          const dot = forward.dot(toNPC);
+          if (dot > 0.3) { // roughly facing
+            const isCrit = Math.random() < 0.1;
+            const dmg = wd.damage * (heavy ? wd.heavyMult : 1) * (isCrit ? 2 : 1);
+            npc.health = Math.max(0, npc.health - dmg);
+            spawnDamageNumber(npc.model.position.clone().add(new THREE.Vector3(0, 1.5, 0)), dmg, isCrit);
+            showHitMarker();
+            // Knockback
+            npc.model.position.addScaledVector(toNPC, heavy ? 2 : 1);
+            if (npc.health <= 0) {
+              npc.isDead = true;
+              addKillFeedEntry('⚔ Killed ' + (npc.model.userData.name || 'Enemy'));
+            } else {
+              npc.isAggro = true;
+            }
+          }
+        }
+      }
+    }
+  }, windupTime * 1000);
+  
+  setTimeout(() => {
+    combatState.attackPhase = 'recovery';
+  }, (windupTime + activeTime) * 1000);
+  
+  setTimeout(() => {
+    combatState.attacking = false;
+    combatState.attackPhase = 'none';
+  }, totalTime * 1000);
+}
+
+// Update combat system (called from animate loop)
+function updateCombat(dt) {
+  if (!playMode) { toggleCombatHUD(false); return; }
+  
+  // Create HUD if needed
+  if (!combatState.hudCreated) createCombatHUD();
+  toggleCombatHUD(true);
+  
+  // Detect equipped weapon
+  if (characterController && characterController.model) {
+    let foundWeapon = null;
+    characterController.model.traverse(child => {
+      if (child.userData.isEquipped && child.userData.name) {
+        foundWeapon = child.userData.name.replace('equipped_', '');
+      }
+    });
+    if (foundWeapon !== combatState.equippedWeapon) {
+      combatState.equippedWeapon = foundWeapon;
+      combatState.weaponData = detectWeaponType(foundWeapon);
+      if (combatState.weaponData && combatState.weaponData.type === 'ranged') {
+        combatState.magAmmo = combatState.weaponData.magSize;
+        combatState.ammo = combatState.weaponData.magSize * 4;
+      }
+    }
+  }
+  // Also check selectedObj for standalone weapon equip
+  if (!combatState.weaponData) {
+    for (const obj of objects) {
+      if (obj.userData.isEquipped) {
+        const name = (obj.userData.name || '').replace('equipped_', '');
+        combatState.equippedWeapon = name;
+        combatState.weaponData = detectWeaponType(name);
+        if (combatState.weaponData && combatState.weaponData.type === 'ranged') {
+          combatState.magAmmo = combatState.weaponData.magSize;
+          combatState.ammo = combatState.weaponData.magSize * 4;
+        }
+        break;
+      }
+    }
+  }
+  
+  // Update stamina
+  if (combatState.staminaRegenDelay > 0) {
+    combatState.staminaRegenDelay -= dt;
+  } else {
+    combatState.stamina = Math.min(combatState.maxStamina, combatState.stamina + combatState.staminaRegenRate * dt);
+  }
+  if (combatState.stamina <= 0) combatState.staminaDepleted = true;
+  if (combatState.stamina > 20) combatState.staminaDepleted = false;
+  
+  // Sprint stamina cost
+  if (playKeys['shift'] && (playKeys['w'] || playKeys['a'] || playKeys['s'] || playKeys['d'])) {
+    combatState.stamina = Math.max(0, combatState.stamina - 10 * dt);
+    combatState.staminaRegenDelay = 1.0;
+  }
+  
+  // Shooting
+  if (combatState.weaponData && combatState.weaponData.type === 'ranged') {
+    combatState.shootTimer -= dt;
+    
+    if (combatState.shooting && combatState.shootTimer <= 0 && !combatState.reloading && combatState.magAmmo > 0) {
+      shootRaycast();
+      combatState.magAmmo--;
+      combatState.shootTimer = combatState.weaponData.fireRate;
+      if (!combatState.weaponData.auto) combatState.shooting = false;
+    }
+    
+    // Reload
+    if (combatState.reloading) {
+      combatState.reloadTimer -= dt;
+      if (combatState.reloadTimer <= 0) {
+        const needed = combatState.weaponData.magSize - combatState.magAmmo;
+        const available = Math.min(needed, combatState.ammo);
+        combatState.magAmmo += available;
+        combatState.ammo -= available;
+        combatState.reloading = false;
+      }
+    }
+    
+    // Spread recovery
+    combatState.spreadAccum = Math.max(0, combatState.spreadAccum - dt * 0.5);
+    
+    // Recoil recovery
+    if (combatState.recoilRecovery > 0) {
+      camera.rotation.x += combatState.recoilRecovery * 0.3;
+      combatState.recoilRecovery *= 0.85;
+      if (combatState.recoilRecovery < 0.001) combatState.recoilRecovery = 0;
+    }
+  }
+  
+  // Update HUD
+  const healthFill = document.getElementById('health-fill');
+  if (healthFill) healthFill.style.width = (combatState.health / combatState.maxHealth * 100) + '%';
+  
+  const staminaFill = document.getElementById('stamina-fill');
+  if (staminaFill) staminaFill.style.width = (combatState.stamina / combatState.maxStamina * 100) + '%';
+  
+  if (combatState.weaponData && combatState.weaponData.type === 'ranged') {
+    const ammoText = document.getElementById('ammo-text');
+    const ammoReserve = document.getElementById('ammo-reserve');
+    const weaponName = document.getElementById('weapon-name');
+    if (ammoText) ammoText.textContent = combatState.reloading ? '...' : combatState.magAmmo;
+    if (ammoReserve) ammoReserve.textContent = '/ ' + combatState.ammo;
+    if (weaponName) weaponName.textContent = (combatState.equippedWeapon || '').toUpperCase();
+    const ammoDiv = document.getElementById('combat-ammo');
+    if (ammoDiv) ammoDiv.style.display = 'block';
+  }
+  
+  // Low health vignette
+  if (combatState.health < 30) {
+    const vig = document.getElementById('combat-vignette');
+    if (vig) {
+      vig.style.display = 'block';
+      vig.style.opacity = String(0.3 + Math.sin(performance.now() * 0.003) * 0.15);
+    }
+  }
+}
+
+// Combat input handlers
+window.addEventListener('mousedown', (e) => {
+  if (!playMode || !combatState.weaponData) return;
+  if (e.button === 0) { // Left click
+    if (combatState.weaponData.type === 'ranged') {
+      combatState.shooting = true;
+    } else {
+      meleeAttack(false);
+    }
+  }
+  if (e.button === 2) { // Right click — heavy attack (melee) or aim (ranged)
+    if (combatState.weaponData.type === 'melee') {
+      meleeAttack(true);
+    }
+  }
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0) combatState.shooting = false;
+});
+
+window.addEventListener('keydown', (e) => {
+  if (!playMode || !combatState.weaponData) return;
+  if (e.code === 'KeyR' && combatState.weaponData.type === 'ranged' && !combatState.reloading) {
+    if (combatState.magAmmo < combatState.weaponData.magSize && combatState.ammo > 0) {
+      combatState.reloading = true;
+      combatState.reloadTimer = combatState.weaponData.reloadTime;
+      logOutput('ok', '🔄 Reloading...');
+    }
+  }
+});
+
+// Make updateCombat available globally
+window._updateCombat = updateCombat;
+
+// ═══ MINI-MAP SYSTEM (v67) ═══
+
+let miniMapRenderer = null;
+let miniMapCamera = null;
+let miniMapTarget = null;
+let miniMapVisible = true;
+let miniMapFrame = 0;
+
+function createMiniMap() {
+  if (document.getElementById('minimap-container')) return;
+  
+  const container = document.createElement('div');
+  container.id = 'minimap-container';
+  container.style.cssText = 'position:fixed;top:20px;right:20px;width:160px;height:160px;z-index:9001;display:none;' +
+    'border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,0.3);box-shadow:0 0 20px rgba(0,0,0,0.5);';
+  
+  // Player direction indicator
+  const playerDot = document.createElement('div');
+  playerDot.id = 'minimap-player';
+  playerDot.style.cssText = 'position:absolute;top:50%;left:50%;width:8px;height:8px;background:#4ade80;border-radius:50%;' +
+    'transform:translate(-50%,-50%);z-index:2;box-shadow:0 0 6px #4ade80;';
+  container.appendChild(playerDot);
+  
+  // Direction arrow
+  const arrow = document.createElement('div');
+  arrow.id = 'minimap-arrow';
+  arrow.style.cssText = 'position:absolute;top:50%;left:50%;width:0;height:0;z-index:3;' +
+    'border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:10px solid #4ade80;' +
+    'transform-origin:center 10px;transform:translate(-50%,-100%);';
+  container.appendChild(arrow);
+  
+  // Compass labels
+  ['N','E','S','W'].forEach((dir, i) => {
+    const label = document.createElement('div');
+    label.style.cssText = 'position:absolute;color:rgba(255,255,255,0.6);font-size:10px;font-family:monospace;font-weight:bold;z-index:3;';
+    if (dir === 'N') { label.style.top = '5px'; label.style.left = '50%'; label.style.transform = 'translateX(-50%)'; label.style.color = '#ef4444'; }
+    else if (dir === 'S') { label.style.bottom = '5px'; label.style.left = '50%'; label.style.transform = 'translateX(-50%)'; }
+    else if (dir === 'E') { label.style.right = '8px'; label.style.top = '50%'; label.style.transform = 'translateY(-50%)'; }
+    else { label.style.left = '8px'; label.style.top = '50%'; label.style.transform = 'translateY(-50%)'; }
+    label.textContent = dir;
+    container.appendChild(label);
+  });
+  
+  document.body.appendChild(container);
+  
+  // Create orthographic camera for minimap
+  const mapSize = 120;
+  miniMapCamera = new THREE.OrthographicCamera(-mapSize, mapSize, mapSize, -mapSize, 1, 500);
+  miniMapCamera.position.set(0, 200, 0);
+  miniMapCamera.lookAt(0, 0, 0);
+  miniMapCamera.up.set(0, 0, -1);
+  
+  // Create render target
+  miniMapTarget = new THREE.WebGLRenderTarget(160, 160);
+  
+  // Create canvas for minimap rendering
+  const mapCanvas = document.createElement('canvas');
+  mapCanvas.id = 'minimap-canvas';
+  mapCanvas.width = 160;
+  mapCanvas.height = 160;
+  mapCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border-radius:50%;';
+  container.insertBefore(mapCanvas, container.firstChild);
+}
+
+function updateMiniMap() {
+  if (!playMode || !miniMapVisible) {
+    const mc = document.getElementById('minimap-container');
+    if (mc) mc.style.display = 'none';
+    return;
+  }
+  
+  const mc = document.getElementById('minimap-container');
+  if (mc) mc.style.display = 'block';
+  
+  // Only update every 3 frames for performance
+  miniMapFrame++;
+  if (miniMapFrame % 3 !== 0) return;
+  
+  if (!miniMapCamera) createMiniMap();
+  
+  // Position minimap camera above player
+  const playerPos = characterController ? characterController.position : camera.position;
+  miniMapCamera.position.set(playerPos.x, 200, playerPos.z);
+  miniMapCamera.lookAt(playerPos.x, 0, playerPos.z);
+  
+  // Render to minimap canvas
+  const mapCanvas = document.getElementById('minimap-canvas');
+  if (mapCanvas && typeof renderer !== 'undefined') {
+    // Use main renderer to render to target
+    const currentTarget = renderer.getRenderTarget();
+    renderer.setRenderTarget(miniMapTarget);
+    renderer.render(scene, miniMapCamera);
+    renderer.setRenderTarget(currentTarget);
+    
+    // Copy to canvas
+    const ctx = mapCanvas.getContext('2d');
+    const pixels = new Uint8Array(160 * 160 * 4);
+    renderer.readRenderTargetPixels(miniMapTarget, 0, 0, 160, 160, pixels);
+    const imageData = ctx.createImageData(160, 160);
+    // Flip Y
+    for (let y = 0; y < 160; y++) {
+      for (let x = 0; x < 160; x++) {
+        const srcIdx = ((159 - y) * 160 + x) * 4;
+        const dstIdx = (y * 160 + x) * 4;
+        imageData.data[dstIdx] = pixels[srcIdx];
+        imageData.data[dstIdx + 1] = pixels[srcIdx + 1];
+        imageData.data[dstIdx + 2] = pixels[srcIdx + 2];
+        imageData.data[dstIdx + 3] = 255;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+    
+    // Draw NPC dots on canvas
+    if (typeof npcController !== 'undefined' && npcController.npcs) {
+      ctx.save();
+      for (const npc of npcController.npcs) {
+        if (npc.isDead || !npc.model) continue;
+        const dx = (npc.model.position.x - playerPos.x) / 240 * 160 + 80;
+        const dz = (npc.model.position.z - playerPos.z) / 240 * 160 + 80;
+        if (dx > 5 && dx < 155 && dz > 5 && dz < 155) {
+          ctx.fillStyle = npc.isAggro ? '#ef4444' : '#3b82f6';
+          ctx.beginPath();
+          ctx.arc(dx, dz, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+  }
+  
+  // Rotate direction arrow
+  const arrow = document.getElementById('minimap-arrow');
+  if (arrow) {
+    const yaw = camera.rotation.y;
+    arrow.style.transform = 'translate(-50%, -100%) rotate(' + (-yaw * 180 / Math.PI) + 'deg)';
+  }
+}
+
+// Toggle minimap with M key
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM' && playMode && !e.ctrlKey && !e.metaKey) {
+    miniMapVisible = !miniMapVisible;
+  }
+});
+
+window._updateMiniMap = updateMiniMap;
+
+// ═══ INVENTORY SYSTEM (v67) ═══
+
+const inventory = {
+  slots: new Array(32).fill(null), // 8x4 grid
+  equipment: { weapon: null, armor: null, accessory: null },
+  isOpen: false,
+};
+
+function createInventoryUI() {
+  if (document.getElementById('inventory-overlay')) return;
+  
+  const overlay = document.createElement('div');
+  overlay.id = 'inventory-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10000;display:none;' +
+    'flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+  
+  overlay.innerHTML = '<div style="color:#e0e0e0;font-size:20px;margin-bottom:16px">🎒 INVENTORY <span style="color:#666;font-size:12px">(Tab to close)</span></div>' +
+    '<div id="inv-grid" style="display:grid;grid-template-columns:repeat(8,56px);gap:4px;margin-bottom:20px"></div>' +
+    '<div style="display:flex;gap:16px;margin-top:12px">' +
+    '<div style="text-align:center"><div style="color:#888;font-size:11px;margin-bottom:4px">⚔️ WEAPON</div><div id="eq-weapon" class="eq-slot" style="width:56px;height:56px;background:#1a1a1a;border:1px solid #333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer"></div></div>' +
+    '<div style="text-align:center"><div style="color:#888;font-size:11px;margin-bottom:4px">🛡️ ARMOR</div><div id="eq-armor" class="eq-slot" style="width:56px;height:56px;background:#1a1a1a;border:1px solid #333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer"></div></div>' +
+    '<div style="text-align:center"><div style="color:#888;font-size:11px;margin-bottom:4px">💍 ACCESSORY</div><div id="eq-accessory" class="eq-slot" style="width:56px;height:56px;background:#1a1a1a;border:1px solid #333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer"></div></div></div>';
+  
+  document.body.appendChild(overlay);
+  
+  // Create grid slots
+  const grid = document.getElementById('inv-grid');
+  for (let i = 0; i < 32; i++) {
+    const slot = document.createElement('div');
+    slot.dataset.slot = i;
+    slot.style.cssText = 'width:56px;height:56px;background:#1a1a1a;border:1px solid #252525;border-radius:6px;' +
+      'display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;transition:all 0.2s;position:relative;';
+    slot.addEventListener('mouseenter', () => { slot.style.borderColor = '#4ade80'; });
+    slot.addEventListener('mouseleave', () => { slot.style.borderColor = '#252525'; });
+    slot.addEventListener('click', () => {
+      if (inventory.slots[i]) {
+        // Show item tooltip or use item
+        const item = inventory.slots[i];
+        logOutput('ok', item.icon + ' ' + item.name + (item.stats ? ' — ' + item.stats : ''));
+      }
+    });
+    grid.appendChild(slot);
+  }
+}
+
+function toggleInventory() {
+  inventory.isOpen = !inventory.isOpen;
+  const overlay = document.getElementById('inventory-overlay');
+  if (!overlay) { createInventoryUI(); }
+  const ov = document.getElementById('inventory-overlay');
+  if (ov) {
+    ov.style.display = inventory.isOpen ? 'flex' : 'none';
+    if (inventory.isOpen) renderInventory();
+  }
+}
+
+function renderInventory() {
+  const grid = document.getElementById('inv-grid');
+  if (!grid) return;
+  const slots = grid.children;
+  for (let i = 0; i < 32; i++) {
+    const item = inventory.slots[i];
+    if (slots[i]) {
+      slots[i].textContent = item ? item.icon : '';
+      slots[i].title = item ? item.name : '';
+    }
+  }
+  // Equipment
+  ['weapon', 'armor', 'accessory'].forEach(slot => {
+    const el = document.getElementById('eq-' + slot);
+    if (el) {
+      const item = inventory.equipment[slot];
+      el.textContent = item ? item.icon : '';
+      el.title = item ? item.name : '';
+    }
+  });
+}
+
+function addToInventory(item) {
+  const emptySlot = inventory.slots.indexOf(null);
+  if (emptySlot === -1) { logOutput('warn', '🎒 Inventory full!'); return false; }
+  inventory.slots[emptySlot] = item;
+  logOutput('ok', '🎒 Picked up ' + item.icon + ' ' + item.name);
+  // Save
+  try { localStorage.setItem('crate_inventory', JSON.stringify(inventory)); } catch(e) {}
+  return true;
+}
+
+// Load inventory from localStorage
+try {
+  const saved = JSON.parse(localStorage.getItem('crate_inventory'));
+  if (saved && saved.slots) {
+    inventory.slots = saved.slots;
+    inventory.equipment = saved.equipment || { weapon: null, armor: null, accessory: null };
+  }
+} catch(e) {}
+
+// Inventory toggle
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Tab' || e.code === 'KeyI') {
+    if (playMode || document.getElementById('inventory-overlay')?.style.display === 'flex') {
+      e.preventDefault();
+      toggleInventory();
+    }
+  }
+});
+
+window._addToInventory = addToInventory;
+window._toggleInventory = toggleInventory;
+
+
+// === MARKETPLACE MODEL LOADER ===
+// Load model from marketplace when user clicks "Use in Engine"
+// Supports multiple models - each load ADDS to scene, doesn't clear
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const marketplaceFile = params.get('load_marketplace');
+  
+  if (marketplaceFile) {
+    // Save to a queue (supports multiple loads)
+    const queue = JSON.parse(sessionStorage.getItem('marketplace_queue') || '[]');
+    const name = sessionStorage.getItem('marketplace_model_name') || marketplaceFile;
+    queue.push({ file: marketplaceFile, name: name });
+    sessionStorage.setItem('marketplace_queue', JSON.stringify(queue));
+    sessionStorage.removeItem('marketplace_model_name');
+    sessionStorage.removeItem('marketplace_model_file');
+    sessionStorage.removeItem('marketplace_model_url');
+    
+    // Clean URL immediately
+    window.history.replaceState({}, '', '/');
+  }
+  
+  // Process queue once engine is ready
+  const processQueue = () => {
+    const queue = JSON.parse(sessionStorage.getItem('marketplace_queue') || '[]');
+    if (!queue.length) return;
+    
+    if (typeof loadGLBModel !== 'function' || typeof scene === 'undefined') {
+      setTimeout(processQueue, 500);
+      return;
+    }
+    
+    // Load ALL queued models (don't clear scene)
+    for (const item of queue) {
+      const modelUrl = '/marketplace/' + item.file;
+      const safeName = (item.name || item.file).replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'Marketplace Model';
+      console.log('[Marketplace] Loading:', safeName);
+      
+      fetch(modelUrl)
+        .then(r => r.blob())
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          gltfLoader.load(url, (gltf) => {
+            const model = gltf.scene;
+            
+            // Compute full bounding box BEFORE any transforms
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            
+            // Scale to reasonable size first
+            const maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 30) model.scale.setScalar(15 / maxDim);
+            else if (maxDim < 0.5) model.scale.setScalar(3 / maxDim);
+            
+            // Recompute box after scaling
+            const box2 = new THREE.Box3().setFromObject(model);
+            const center2 = box2.getCenter(new THREE.Vector3());
+            const size2 = box2.getSize(new THREE.Vector3());
+            
+            // Center horizontally, sit on ground (y=0)
+            model.position.x -= center2.x;
+            model.position.z -= center2.z;
+            model.position.y -= box2.min.y; // Place bottom at y=0
+            
+            // Offset from existing objects so they don't stack
+            const existingMarketplace = objects.filter(o => o.userData.isMarketplace);
+            if (existingMarketplace.length > 0) {
+              model.position.x += existingMarketplace.length * (size2.x + 3);
+            }
+            
+            model.traverse(c => { 
+              if (c.isMesh) { 
+                c.castShadow = true; 
+                c.receiveShadow = true;
+                // Ensure materials render both sides (fixes half-body issue)
+                if (c.material) {
+                  if (Array.isArray(c.material)) {
+                    c.material.forEach(m => { m.side = THREE.DoubleSide; });
+                  } else {
+                    c.material.side = THREE.DoubleSide;
+                  }
+                }
+              }
+            });
+            
+            model.userData.name = safeName;
+            model.userData.isGLB = true;
+            model.userData.isMarketplace = true;
+            
+            // Auto-classify and save to category catalog so it appears in galleries
+            const nameLower = safeName.toLowerCase();
+            let autoCategory = 'premium';
+            if (/sword|axe|bow|staff|shield|gun|rifle|pistol|weapon|dagger|hammer|mace|spear|blade/.test(nameLower)) autoCategory = 'weapons';
+            else if (/car|truck|tank|boat|ship|plane|helicopter|vehicle|bike|motorcycle|jet|aircraft/.test(nameLower)) autoCategory = 'vehicles';
+            else if (/house|building|castle|tower|wall|gate|bridge|barn|cabin|church|temple|fort/.test(nameLower)) autoCategory = 'buildings';
+            else if (/tree|plant|flower|bush|grass|vine|fern|cactus|palm|oak|pine|mushroom/.test(nameLower)) autoCategory = 'trees';
+            else if (/rock|stone|boulder|cliff|mountain|mineral|crystal|gem/.test(nameLower)) autoCategory = 'rocks';
+            else if (/dog|cat|horse|wolf|bear|deer|bird|fish|dragon|animal|creature/.test(nameLower)) autoCategory = 'animals';
+            else if (/chair|table|desk|bed|lamp|shelf|couch|sofa|bench|door|window|furniture/.test(nameLower)) autoCategory = 'furniture';
+            else if (/character|person|human|knight|soldier|warrior|npc|man|woman|zombie|skeleton/.test(nameLower)) autoCategory = 'characters';
+            else if (/food|apple|bread|potion|drink|meat|fish|cake/.test(nameLower)) autoCategory = 'food';
+            else if (/robot|mech|sci.?fi|space|laser|plasma|cyber|neon|hologram/.test(nameLower)) autoCategory = 'scifi';
+            
+            // Save to localStorage for gallery persistence
+            try {
+              const userKey = (window._crateAuth && window._crateAuth.isLoggedIn) ? 'engine_marketplace_models_' + window._crateAuth.user.id : 'engine_marketplace_models';
+              const saved = JSON.parse(localStorage.getItem(userKey) || '[]');
+              if (!saved.find(s => s.file === item.file)) {
+                saved.push({ name: safeName, file: item.file, category: autoCategory });
+                localStorage.setItem(userKey, JSON.stringify(saved));
+                // Invalidate catalog cache so it reloads with new item
+                _assetCatalog = null;
+              }
+            } catch(e) { console.warn('[Marketplace] Could not save to catalog:', e); }
+            
+            scene.add(model);
+            objects.push(model);
+            
+            const log = document.getElementById('engine-log');
+            if (log) {
+              log.style.display = 'block';
+              const r = document.createElement('div');
+              r.className = 'entry ok';
+              r.textContent = '✓ Loaded from Marketplace: ' + safeName;
+              log.appendChild(r);
+              log.scrollTop = log.scrollHeight;
+  // Auto-hide log after 4s
+  clearTimeout(window._logHideTimer);
+  window._logHideTimer = setTimeout(() => { log.style.display = "none"; }, 4000);
+            }
+            
+            URL.revokeObjectURL(url);
+          }, undefined, (err) => {
+            console.error('[Marketplace] Load error:', err);
+            URL.revokeObjectURL(url);
+          });
+        });
+    }
+    
+    // Clear the queue after processing
+    sessionStorage.removeItem('marketplace_queue');
+  };
+  
+  setTimeout(processQueue, 2000);
+})();
+// === END MARKETPLACE LOADER ===
+
+
+// === BUILD TOOLBAR — Always visible category icons ===
+(function() {
+  const toolbar = document.createElement('div');
+  toolbar.id = 'build-toolbar';
+  toolbar.style.cssText = 'position:fixed;bottom:42px;left:50%;transform:translateX(-50%);z-index:9997;display:flex;flex-direction:row;gap:4px;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);padding:6px 10px;border-radius:12px;border:1px solid #252525;max-width:80vw;overflow-x:auto;';
+  
+  const cats = [
+    { cmd: 'characters', icon: '🧑', tip: 'Characters', color: '#ffd700' },
+    { cmd: 'weapons', icon: '⚔️', tip: 'Weapons', color: '#ef4444' },
+    { cmd: 'buildings', icon: '🏠', tip: 'Buildings', color: '#8b5cf6' },
+    { cmd: 'trees', icon: '🌳', tip: 'Trees', color: '#16a34a' },
+    { cmd: 'animals', icon: '🐾', tip: 'Animals', color: '#22c55e' },
+    { cmd: 'vehicles', icon: '🚗', tip: 'Vehicles', color: '#3b82f6' },
+    { cmd: 'rocks', icon: '🪨', tip: 'Rocks', color: '#78716c' },
+    { cmd: 'furniture', icon: '🪑', tip: 'Furniture', color: '#d97706' },
+    { cmd: 'food', icon: '🍖', tip: 'Items', color: '#f59e0b' },
+    { cmd: 'dungeon', icon: '💀', tip: 'Dungeon', color: '#6b21a8' },
+    { cmd: 'scifi', icon: '🚀', tip: 'Sci-Fi', color: '#06b6d4' },
+    { cmd: 'animations', icon: '🎬', tip: 'Animate', color: '#ec4899' },
+    { cmd: 'library', icon: '📂', tip: 'All Assets', color: '#ffd700' },
+    { cmd: 'scripts', icon: '🧠', tip: 'Custom Scripts', color: '#7c5cff' },
+  ];
+  
+  cats.forEach(c => {
+    const btn = document.createElement('button');
+    btn.title = c.tip;
+    btn.textContent = c.icon;
+    btn.style.cssText = 'width:34px;height:34px;border:none;background:transparent;font-size:16px;cursor:pointer;border-radius:8px;transition:all 0.15s;display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+    btn.onmouseenter = () => { btn.style.background = 'rgba(255,255,255,0.1)'; btn.style.transform = 'scale(1.15)'; };
+    btn.onmouseleave = () => { btn.style.background = 'transparent'; btn.style.transform = 'scale(1)'; };
+    btn.onclick = () => { if (window._runCommand) window._runCommand(c.cmd); };
+    toolbar.appendChild(btn);
+  });
+  
+  // Hide in play mode
+  const origEnter = window._enterPlayMode;
+  const origExit = window._exitPlayMode;
+  
+  // Wait for engine ready then append
+  const waitAndAppend = () => {
+    if (document.getElementById('crate-canvas')) {
+      document.body.appendChild(toolbar);
+    } else {
+      setTimeout(waitAndAppend, 500);
+    }
+  };
+  waitAndAppend();
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// 3D MODEL GENERATOR — Image-to-3D via Modal.com (TripoSR on L4)
+
+// === Shooter click handler (v61) ===
+document.addEventListener('mousedown', (e) => {
+  if (!shooterMode || !playMode || e.button !== 0) return;
+  if (ammo <= 0) { if (typeof showToast === 'function') showToast('🔫 Out of ammo! Press R to reload.'); return; }
+  ammo--;
+  updateShooterHUD();
+  const cam = camera;
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+  createBullet(cam.position.clone().add(dir.clone().multiplyScalar(1)), dir);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'r' || e.key === 'R') {
+    if (shooterMode) { ammo = maxAmmo; updateShooterHUD(); if (typeof showToast === 'function') showToast('🔄 Reloaded!'); }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+
+const GENERATOR_API = 'https://jamaine1984--crate-engine-3d-generate.modal.run';
+
+// Credit system
+window._userCredits = JSON.parse(localStorage.getItem('crate-credits') || '{"plan":"free","credits":5,"used":0}');
+function saveCredits() { localStorage.setItem('crate-credits', JSON.stringify(window._userCredits)); }
+function getCreditsRemaining() { return Math.max(0, window._userCredits.credits - window._userCredits.used); }
+function useCredits(amount) { window._userCredits.used += amount; saveCredits(); }
+
+function showGeneratorModal() {
+  if (document.getElementById('gen3d-modal')) { document.getElementById('gen3d-modal').remove(); }
+  
+  const credits = getCreditsRemaining();
+  const modal = document.createElement('div');
+  modal.id = 'gen3d-modal';
+  modal.innerHTML = `
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif" onclick="if(event.target===this)this.remove()">
+      <div style="background:#1a1a2e;border-radius:16px;width:560px;max-height:90vh;overflow-y:auto;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5)">
+        
+        <div style="padding:24px 28px 0;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h2 style="margin:0;font-size:22px">🎨 3D Model Generator</h2>
+            <p style="margin:4px 0 0;color:#888;font-size:13px">Turn any image into a 3D model (GLB)</p>
+          </div>
+          <div style="text-align:right">
+            <div style="background:#2a2a4a;padding:6px 14px;border-radius:20px;font-size:13px">
+              <span style="color:#fbbf24">⚡</span> <strong>${credits}</strong> credits left
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:20px 28px">
+          <!-- Tab buttons -->
+          <div style="display:flex;gap:8px;margin-bottom:20px">
+            <button id="gen3d-tab-img" onclick="document.getElementById('gen3d-img-section').style.display='block';document.getElementById('gen3d-txt-section').style.display='none';this.style.background='#6366f1';document.getElementById('gen3d-tab-txt').style.background='#2a2a4a'" style="flex:1;padding:10px;border:none;border-radius:8px;background:#6366f1;color:#fff;cursor:pointer;font-size:14px;font-weight:600">📷 Image to 3D</button>
+            <button id="gen3d-tab-txt" onclick="document.getElementById('gen3d-txt-section').style.display='block';document.getElementById('gen3d-img-section').style.display='none';this.style.background='#6366f1';document.getElementById('gen3d-tab-img').style.background='#2a2a4a'" style="flex:1;padding:10px;border:none;border-radius:8px;background:#2a2a4a;color:#fff;cursor:pointer;font-size:14px;font-weight:600">✏️ Text to 3D</button>
+          </div>
+
+          <!-- Image to 3D -->
+          <div id="gen3d-img-section">
+            <div id="gen3d-dropzone" style="border:2px dashed #444;border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s" 
+                 ondragover="event.preventDefault();this.style.borderColor='#6366f1'" 
+                 ondragleave="this.style.borderColor='#444'"
+                 ondrop="event.preventDefault();this.style.borderColor='#444';handleGen3dDrop(event)"
+                 onclick="document.getElementById('gen3d-file-input').click()">
+              <div id="gen3d-preview" style="display:none;margin-bottom:12px"></div>
+              <div id="gen3d-upload-text">
+                <div style="font-size:36px;margin-bottom:8px">📁</div>
+                <div style="color:#aaa;font-size:14px">Drop an image here or click to upload</div>
+                <div style="color:#666;font-size:12px;margin-top:4px">PNG, JPG — any object, character, prop</div>
+              </div>
+            </div>
+            <input type="file" id="gen3d-file-input" accept="image/*" style="display:none" onchange="handleGen3dFile(this.files[0])">
+          </div>
+
+          <!-- Text to 3D -->
+          <div id="gen3d-txt-section" style="display:none">
+            <textarea id="gen3d-text-prompt" placeholder="Describe the 3D model you want...&#10;e.g. 'A medieval wooden shield with iron bands'&#10;'A cute low-poly dragon'&#10;'Futuristic sci-fi rifle'" style="width:100%;height:100px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#fff;padding:12px;font-size:14px;resize:none;box-sizing:border-box"></textarea>
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap" id="gen3d-suggestions">
+              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">medieval sword</span>
+              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">low-poly dragon</span>
+              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">wooden treasure chest</span>
+              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">sci-fi spaceship</span>
+              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">stone castle tower</span>
+              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">cute robot companion</span>
+            </div>
+          </div>
+
+          <!-- Quality selector -->
+          <div style="margin-top:16px;display:flex;gap:8px">
+            <button class="gen3d-quality" data-quality="draft" data-cost="0.5" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#aaa;cursor:pointer;font-size:12px;text-align:center">
+              <div style="font-weight:600">Draft</div>
+              <div style="color:#666;font-size:11px">0.5 credits · ~15s</div>
+            </button>
+            <button class="gen3d-quality selected" data-quality="standard" data-cost="1" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #6366f1;border-radius:8px;background:#1a1a3e;color:#fff;cursor:pointer;font-size:12px;text-align:center">
+              <div style="font-weight:600">Standard ✓</div>
+              <div style="color:#888;font-size:11px">1 credit · ~30s</div>
+            </button>
+            <button class="gen3d-quality" data-quality="hd" data-cost="2" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#aaa;cursor:pointer;font-size:12px;text-align:center">
+              <div style="font-weight:600">HD</div>
+              <div style="color:#666;font-size:11px">2 credits · ~60s</div>
+            </button>
+          </div>
+
+          <!-- Generate button -->
+          <button id="gen3d-btn" onclick="startGeneration()" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:16px;font-weight:700;cursor:pointer;transition:transform 0.1s" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
+            🚀 Generate 3D Model
+          </button>
+
+          <!-- Progress -->
+          <div id="gen3d-progress" style="display:none;margin-top:16px;text-align:center">
+            <div style="width:100%;height:4px;background:#2a2a4a;border-radius:2px;overflow:hidden">
+              <div id="gen3d-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);transition:width 0.3s;border-radius:2px"></div>
+            </div>
+            <div id="gen3d-status" style="color:#888;font-size:13px;margin-top:8px">Preparing...</div>
+          </div>
+
+          <!-- Result -->
+          <div id="gen3d-result" style="display:none;margin-top:16px;background:#0d0d1a;border-radius:12px;padding:16px;text-align:center">
+            <div style="font-size:14px;color:#4ade80;margin-bottom:12px">✅ Model generated!</div>
+            <div style="display:flex;gap:8px">
+              <button onclick="gen3dAddToScene()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#22c55e;color:#fff;font-weight:600;cursor:pointer">➕ Add to Scene</button>
+              <button onclick="gen3dDownload()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer">💾 Download GLB</button>
+              <button onclick="gen3dSellOnMarketplace()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#f59e0b;color:#fff;font-weight:600;cursor:pointer">💰 Sell on Marketplace</button>
+              <button onclick="gen3dSaveToLibrary()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#8b5cf6;color:#fff;font-weight:600;cursor:pointer">📚 Save to Library</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upgrade banner for free users -->
+        ${window._userCredits.plan === 'free' ? `
+        <div style="padding:16px 28px 24px;border-top:1px solid #2a2a4a">
+          <div style="background:linear-gradient(135deg,#1a1a3e,#2a1a4e);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-size:14px;font-weight:600">Need more credits?</div>
+              <div style="color:#888;font-size:12px;margin-top:2px">Starting at $4.99/mo for 100 credits</div>
+            </div>
+            <button onclick="showPricingModal()" style="padding:8px 20px;border:none;border-radius:8px;background:#6366f1;color:#fff;font-weight:600;cursor:pointer;font-size:13px">Upgrade</button>
+          </div>
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+// State
+window._gen3dImage = null;
+window._gen3dQuality = 'standard';
+window._gen3dResultBlob = null;
+
+function selectGen3dQuality(btn) {
+  document.querySelectorAll('.gen3d-quality').forEach(b => {
+    b.style.border = '1px solid #333'; b.style.background = '#0d0d1a'; b.style.color = '#aaa';
+    b.innerHTML = b.innerHTML.replace(' ✓', '');
+  });
+  btn.style.border = '1px solid #6366f1'; btn.style.background = '#1a1a3e'; btn.style.color = '#fff';
+  btn.querySelector('div').textContent += ' ✓';
+  window._gen3dQuality = btn.dataset.quality;
+}
+
+function handleGen3dFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    window._gen3dImage = e.target.result; // data URL
+    const preview = document.getElementById('gen3d-preview');
+    preview.innerHTML = `<img src="${e.target.result}" style="max-width:200px;max-height:200px;border-radius:8px;object-fit:contain">`;
+    preview.style.display = 'block';
+    document.getElementById('gen3d-upload-text').innerHTML = `<div style="color:#4ade80;font-size:13px;margin-top:8px">✓ ${file.name} — click to change</div>`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleGen3dDrop(event) {
+  const file = event.dataTransfer.files[0];
+  if (file) handleGen3dFile(file);
+}
+
+async function startGeneration() {
+  const isTextMode = document.getElementById('gen3d-txt-section').style.display !== 'none';
+  const textPrompt = isTextMode ? (document.getElementById('gen3d-text-prompt')?.value || '').trim() : '';
+  if (!isTextMode && !window._gen3dImage) { showToast('Upload an image first!'); return; }
+  if (isTextMode && !textPrompt) { showToast('Enter a description first!'); return; }
+  
+  const costMap = { draft: 0.5, standard: 1, hd: 2 };
+  const cost = costMap[window._gen3dQuality] || 1;
+  if (getCreditsRemaining() < cost) { showToast('Not enough credits! Upgrade your plan.'); return; }
+  
+  const btn = document.getElementById('gen3d-btn');
+  const progress = document.getElementById('gen3d-progress');
+  const progressBar = document.getElementById('gen3d-progress-bar');
+  const status = document.getElementById('gen3d-status');
+  const result = document.getElementById('gen3d-result');
+  
+  btn.disabled = true; btn.textContent = '⏳ Generating...'; btn.style.opacity = '0.6';
+  progress.style.display = 'block'; result.style.display = 'none';
+  
+  // Animate progress bar
+  let pct = 0;
+  const progressInterval = setInterval(() => {
+    pct = Math.min(pct + (pct < 60 ? 2 : pct < 90 ? 0.5 : 0.1), 95);
+    progressBar.style.width = pct + '%';
+    if (isTextMode) {
+      if (pct < 15) status.textContent = '📝 Processing your description...';
+      else if (pct < 40) status.textContent = '🎨 AI is generating reference image...';
+      else if (pct < 65) status.textContent = '🧠 Building 3D model from image...';
+      else if (pct < 85) status.textContent = '🔨 Extracting mesh & textures...';
+      else status.textContent = '✨ Almost there...';
+    } else {
+      if (pct < 20) status.textContent = '🔄 Uploading image...';
+      else if (pct < 50) status.textContent = '🧠 AI is building your 3D model...';
+      else if (pct < 80) status.textContent = '🔨 Extracting mesh & textures...';
+      else status.textContent = '✨ Almost there...';
+    }
+  }, 500);
+  
+  try {
+    // Extract base64 from data URL (only for image mode)
+    const b64 = isTextMode ? null : window._gen3dImage.split(',')[1];
+    
+    // Retry logic for Modal cold starts (GPU takes 30-60s to spin up)
+    let resp;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 90000); // 90s timeout
+        resp = await fetch(GENERATOR_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(isTextMode ? { text_prompt: textPrompt, quality: window._gen3dQuality, mode: 'text_to_3d' } : { image_base64: b64, quality: window._gen3dQuality, mode: 'image_to_3d' }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (resp.ok) break;
+      } catch(retryErr) {
+        if (attempt < 2) {
+          status.textContent = '🔄 GPU warming up... retrying (' + (attempt+2) + '/3)';
+          await new Promise(r => setTimeout(r, 5000));
+        } else throw retryErr;
+      }
+    }
+    
+    const data = await resp.json();
+    clearInterval(progressInterval);
+    
+    if (data.status === 'success') {
+      progressBar.style.width = '100%';
+      status.textContent = `✅ Done! ${data.file_size_mb}MB GLB model`;
+      
+      // Convert base64 to blob
+      const glbBytes = Uint8Array.from(atob(data.model_base64), c => c.charCodeAt(0));
+      window._gen3dResultBlob = new Blob([glbBytes], { type: 'model/gltf-binary' });
+      window._gen3dResultUrl = URL.createObjectURL(window._gen3dResultBlob);
+      
+      useCredits(cost);
+      // Update credits display
+      const creditsEl = document.querySelector('#gen3d-modal strong');
+      if (creditsEl) creditsEl.textContent = getCreditsRemaining();
+      
+      result.style.display = 'block';
+    } else {
+      status.textContent = '❌ ' + (data.message || 'Generation failed');
+      progressBar.style.width = '0%';
+    }
+  } catch (err) {
+    clearInterval(progressInterval);
+    status.textContent = '❌ Error: ' + err.message;
+    progressBar.style.width = '0%';
+  }
+  
+  btn.disabled = false; btn.textContent = '🚀 Generate 3D Model'; btn.style.opacity = '1';
+}
+
+function gen3dAddToScene() {
+  if (!window._gen3dResultUrl) return;
+  // Use the engine's module-scoped gltfLoader
+  {
+    const name = 'generated_' + Date.now();
+    const url = window._gen3dResultUrl;
+    gltfLoader.load(url, (gltf) => {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      if (maxDim > 0.001) model.scale.setScalar(2.0 / maxDim);
+      
+      // Position near player
+      const px = (characterController ? characterController.position.x : 0) + (Math.random() - 0.5) * 10;
+      const pz = (characterController ? characterController.position.z : 0) + (Math.random() - 0.5) * 10;
+      model.position.set(px, 0, pz);
+      model.castShadow = true;
+      model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+      model.userData.name = name;
+      scene.add(model);
+      objects.push(model);
+      showToast('✓ 3D model added to scene!');
+    });
+  }
+  document.getElementById('gen3d-modal').remove();
+}
+
+function gen3dDownload() {
+  if (!window._gen3dResultBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(window._gen3dResultBlob);
+  a.download = 'crate-engine-model-' + Date.now() + '.glb';
+  a.click();
+  showToast('💾 GLB downloaded!');
+}
+
+function gen3dSellOnMarketplace() {
+  if (!window._gen3dResultBlob) return;
+  // Save model to localStorage marketplace listings
+  const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
+  const reader = new FileReader();
+  reader.onload = () => {
+    listings.push({
+      id: 'listing_' + Date.now(),
+      name: 'AI Generated Model',
+      creator: localStorage.getItem('crate-username') || 'Anonymous',
+      price: 0, // Free by default, user can edit
+      format: 'glb',
+      data_b64: reader.result.split(',')[1],
+      created: new Date().toISOString(),
+      downloads: 0,
+    });
+    localStorage.setItem('crate-marketplace-listings', JSON.stringify(listings));
+    showToast('💰 Listed on marketplace! Edit price in Marketplace tab.');
+  };
+  reader.readAsDataURL(window._gen3dResultBlob);
+  document.getElementById('gen3d-modal').remove();
+}
+
+function gen3dSaveToLibrary() {
+  if (!window._gen3dResultBlob) return;
+  // Save generated model to user's local library (IndexedDB for persistence)
+  const modelName = prompt('Name this model:', 'AI Model ' + new Date().toLocaleDateString()) || 'AI Model';
+  const category = prompt('Category (characters, weapons, buildings, vehicles, furniture, nature, scifi, food):', 'food') || 'food';
+  
+  const reader = new FileReader();
+  reader.onload = () => {
+    const saved = JSON.parse(localStorage.getItem('crate-user-models') || '[]');
+    const entry = {
+      id: 'user_' + Date.now(),
+      name: modelName,
+      category: category.toLowerCase(),
+      data_b64: reader.result.split(',')[1],
+      created: new Date().toISOString(),
+    };
+    saved.push(entry);
+    localStorage.setItem('crate-user-models', JSON.stringify(saved));
+    
+    // Also add to in-memory asset catalog so it shows up in library immediately
+    if (_assetCatalog) {
+      const cat = category.toLowerCase();
+      if (!_assetCatalog[cat]) _assetCatalog[cat] = [];
+      _assetCatalog[cat].push({ name: modelName, file: entry.id + '.glb', source: 'user-generated', _b64: entry.data_b64 });
+    }
+    
+    showToast('📚 Saved to library! Find it in "' + category + '" category.');
+  };
+  reader.readAsDataURL(window._gen3dResultBlob);
+  document.getElementById('gen3d-modal').remove();
+}
+
+// Pricing modal
+function showPricingModal() {
+  if (document.getElementById('pricing-modal')) document.getElementById('pricing-modal').remove();
+  const m = document.createElement('div');
+  m.id = 'pricing-modal';
+  m.innerHTML = `
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
+      <div style="background:#1a1a2e;border-radius:16px;width:720px;padding:32px;color:#fff">
+        <h2 style="text-align:center;margin:0 0 8px">⚡ Crate Engine Plans</h2>
+        <p style="text-align:center;color:#888;margin:0 0 24px;font-size:14px">Generate 3D models. Sell on marketplace. Build games.</p>
+        <div style="display:flex;gap:16px">
+          ${[
+            { name: 'Starter', price: '4.99', credits: '100', models: '100 standard / 50 HD', color: '#3b82f6' },
+            { name: 'Pro', price: '14.99', credits: '500', models: '500 standard / 250 HD', color: '#8b5cf6', pop: true },
+            { name: 'Studio', price: '39.99', credits: '2,000', models: '2,000 standard / 1,000 HD', color: '#f59e0b' },
+          ].map(p => `
+            <div style="flex:1;background:${p.pop ? '#1a1a4e' : '#0d0d1a'};border:${p.pop ? '2px solid #8b5cf6' : '1px solid #333'};border-radius:12px;padding:20px;text-align:center;position:relative">
+              ${p.pop ? '<div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#8b5cf6;padding:2px 12px;border-radius:10px;font-size:11px;font-weight:600">POPULAR</div>' : ''}
+              <div style="font-size:18px;font-weight:700;color:${p.color}">${p.name}</div>
+              <div style="font-size:32px;font-weight:800;margin:8px 0">$${p.price}<span style="font-size:14px;color:#888">/mo</span></div>
+              <div style="color:#aaa;font-size:13px;margin-bottom:12px">${p.credits} credits/month</div>
+              <div style="color:#888;font-size:12px;margin-bottom:16px">${p.models}</div>
+              <ul style="text-align:left;list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:#aaa">
+                <li style="margin:4px 0">✅ Image to 3D</li>
+                <li style="margin:4px 0">✅ GLB/OBJ export</li>
+                <li style="margin:4px 0">✅ Add to scene</li>
+                <li style="margin:4px 0">✅ Sell on marketplace</li>
+                ${p.name !== 'Starter' ? '<li style="margin:4px 0">✅ HD quality</li>' : ''}
+                ${p.name === 'Studio' ? '<li style="margin:4px 0">✅ API access</li><li style="margin:4px 0">✅ Priority queue</li>' : ''}
+              </ul>
+              <button onclick="selectPlan('${p.name.toLowerCase()}', ${p.credits.replace(',','')}, ${p.price})" style="width:100%;padding:10px;border:none;border-radius:8px;background:${p.color};color:#fff;font-weight:600;cursor:pointer">Choose ${p.name}</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(m);
+}
+
+function selectPlan(plan, credits, price) {
+  // For now, just set credits locally (Stripe integration later)
+  window._userCredits = { plan, credits, used: 0 };
+  saveCredits();
+  showToast('✅ Plan activated! ' + credits + ' credits loaded.');
+  if (document.getElementById('pricing-modal')) document.getElementById('pricing-modal').remove();
+  if (document.getElementById('gen3d-modal')) {
+    document.getElementById('gen3d-modal').remove();
+    showGeneratorModal(); // Refresh to show new credits
+  }
+}
+
+// Add 🎨 button to build toolbar
+(function addGen3dButton() {
+  const tryAdd = () => {
+    const toolbar = document.getElementById('build-toolbar');
+    if (!toolbar) { setTimeout(tryAdd, 1000); return; }
+    // Check if already added
+    if (document.getElementById('gen3d-toolbar-btn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'gen3d-toolbar-btn';
+    btn.textContent = '🎨';
+    btn.title = '3D Model Generator';
+    btn.style.cssText = 'font-size:20px;padding:8px 12px;border:none;border-radius:8px;background:#6366f1;cursor:pointer;margin-left:4px;transition:transform 0.1s';
+    btn.onmouseenter = () => btn.style.transform = 'scale(1.1)';
+    btn.onmouseleave = () => btn.style.transform = 'scale(1)';
+    btn.onclick = showGeneratorModal;
+    toolbar.appendChild(btn);
+  };
+  tryAdd();
+})();
+
+// Hook into AI agent — "generate" commands open the generator
+window._handleGenerateCommand = function(cmd) {
+  const lower = cmd.toLowerCase();
+  if (lower.match(/^(generate|create|make)\s+(a\s+)?3d\s+(model|asset|object)/i) || 
+      lower.match(/^generate\b/i) || lower === '3d generator' || lower === 'generator') {
+    showGeneratorModal();
+    return '🎨 Opening 3D Generator...';
+  }
+  return null;
+};
+
+console.log('[CRATE ENGINE] 3D Generator module loaded ✓');

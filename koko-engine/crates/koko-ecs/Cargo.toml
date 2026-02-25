@@ -1,0 +1,11 @@
+[package]
+name = "koko-ecs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+koko-core = { path = "../koko-core" }
+hecs = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }

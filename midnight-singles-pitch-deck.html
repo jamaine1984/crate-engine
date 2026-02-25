@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@page { size: 1280px 720px; margin: 0; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.slide { width: 1280px; height: 720px; padding: 60px 80px; display: flex; flex-direction: column; justify-content: center; page-break-after: always; position: relative; overflow: hidden; }
+.slide:last-child { page-break-after: avoid; }
+
+/* Slide styles */
+.s-dark { background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a0a1a 100%); color: #fff; }
+.s-accent { background: linear-gradient(135deg, #1a0a2e 0%, #2d1b69 100%); color: #fff; }
+.s-light { background: #fafafa; color: #1a1a2e; }
+.s-gradient { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+
+h1 { font-size: 52px; font-weight: 800; line-height: 1.1; margin-bottom: 20px; }
+h2 { font-size: 38px; font-weight: 700; line-height: 1.2; margin-bottom: 16px; }
+h3 { font-size: 28px; font-weight: 600; margin-bottom: 12px; }
+p { font-size: 22px; line-height: 1.5; opacity: 0.9; }
+.subtitle { font-size: 26px; opacity: 0.8; margin-bottom: 30px; }
+.tag { display: inline-block; background: rgba(255,255,255,0.15); border-radius: 20px; padding: 6px 18px; font-size: 16px; margin: 4px; }
+.tag-dark { background: rgba(0,0,0,0.08); color: #1a1a2e; }
+.big-number { font-size: 72px; font-weight: 900; background: linear-gradient(135deg, #667eea, #f093fb); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.big-number-dark { font-size: 72px; font-weight: 900; color: #1a1a2e; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; margin-top: 20px; }
+.card { background: rgba(255,255,255,0.08); border-radius: 16px; padding: 28px; border: 1px solid rgba(255,255,255,0.1); }
+.card-light { background: #fff; border-radius: 16px; padding: 28px; border: 1px solid #e0e0e0; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+.card h3 { font-size: 22px; margin-bottom: 8px; }
+.card p { font-size: 18px; }
+.emoji { font-size: 36px; margin-bottom: 10px; }
+.footer { position: absolute; bottom: 30px; left: 80px; right: 80px; display: flex; justify-content: space-between; font-size: 14px; opacity: 0.5; }
+.highlight { color: #a78bfa; }
+.highlight-dark { color: #7c3aed; }
+.pill { display: inline-block; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 30px; padding: 8px 24px; font-size: 18px; color: #fff; font-weight: 600; }
+.vs-table { width: 100%; margin-top: 20px; }
+.vs-table td { padding: 10px 16px; font-size: 18px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.vs-table td:first-child { font-weight: 600; width: 200px; }
+.check { color: #4ade80; }
+.cross { color: #f87171; }
+ul { list-style: none; margin-top: 12px; }
+ul li { font-size: 20px; padding: 6px 0; padding-left: 28px; position: relative; }
+ul li:before { content: "→"; position: absolute; left: 0; color: #a78bfa; }
+.bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #667eea, #f093fb); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<!-- SLIDE 1: TITLE -->
+<div class="slide s-dark">
+  <div style="margin-bottom: 30px;">
+    <span style="font-size: 80px;">🌙</span>
+  </div>
+  <h1 style="font-size: 64px;">Midnight Singles<br>International</h1>
+  <p class="subtitle">The AI-powered dating platform for the world that never sleeps.</p>
+  <div style="margin-top: 20px;">
+    <span class="tag">🎥 Video Speed Dating</span>
+    <span class="tag">🤖 AI-Native</span>
+    <span class="tag">📺 Ad-Supported + Premium</span>
+    <span class="tag">🌍 29 Languages</span>
+  </div>
+  <div class="footer"><span>Jamaine Martin — Founder & CEO</span><span>midnightsingles.com</span></div>
+</div>
+
+<!-- SLIDE 2: THE PROBLEM -->
+<div class="slide s-light">
+  <h2 style="color: #7c3aed;">The Problem 💔</h2>
+  <p style="font-size: 26px; margin-bottom: 30px;">Dating apps are broken for millions of people.</p>
+  <div class="grid-3">
+    <div class="card-light">
+      <div class="emoji">🔒</div>
+      <h3>Pay-to-Play</h3>
+      <p>Every major app locks features behind $30+/mo paywalls. Free users get crippled experiences.</p>
+    </div>
+    <div class="card-light">
+      <div class="emoji">👻</div>
+      <h3>No Real Connection</h3>
+      <p>Swipe-based matching leads to ghosting. Zero real-time interaction before meeting. No chemistry check.</p>
+    </div>
+    <div class="card-light">
+      <div class="emoji">🌙</div>
+      <h3>Night Shift = Invisible</h3>
+      <p>15M+ US night shift workers are ignored. Apps die after 10pm. Algorithms deprioritize late-night users.</p>
+    </div>
+  </div>
+  <div class="footer"><span>Midnight Singles International</span><span>The Problem</span></div>
+</div>
+
+<!-- SLIDE 3: THE OPPORTUNITY -->
+<div class="slide s-accent">
+  <h2>The Overlooked Market 🎯</h2>
+  <div class="grid-2" style="margin-top: 30px;">
+    <div>
+      <div class="big-number">15M+</div>
+      <p style="font-size: 24px; margin-bottom: 30px;">Night shift workers in the US alone</p>
+      <div class="big-number">$10.5B</div>
+      <p style="font-size: 24px; margin-bottom: 30px;">Global online dating market (2024)</p>
+      <div class="big-number">$0</div>
+      <p style="font-size: 24px;">Competition targeting 11pm-3am</p>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom: 20px;">
+        <h3>Who are they?</h3>
+        <p>Healthcare workers, logistics, security, manufacturing, hospitality, gig workers, international users across time zones</p>
+      </div>
+      <div class="card" style="margin-bottom: 20px;">
+        <h3>Why now?</h3>
+        <p>Post-pandemic shift work is up 23%. AI translation enables global cross-border dating. Ad tech makes free tiers viable.</p>
+      </div>
+      <div class="card">
+        <h3>The ad arbitrage</h3>
+        <p>Late-night ad impressions cost LESS, but our users are MOST active then. Unit economics flip in our favor.</p>
+      </div>
+    </div>
+  </div>
+  <div class="footer"><span>Midnight Singles International</span><span>Market Opportunity</span></div>
+</div>
+
+<!-- SLIDE 4: THE SOLUTION -->
+<div class="slide s-dark">
+  <h2>Our Solution 🚀</h2>
+  <p class="subtitle">Dating reimagined: real-time, AI-powered, and free to use.</p>
+  <div class="grid-2" style="margin-top: 20px;">
+    <div class="card">
+      <div class="emoji">🎥</div>
+      <h3>Video Speed Dating</h3>
+      <p>1-on-1 live video rooms connecting people globally in real-time. See real chemistry instantly. No catfishing. No ghosting.</p>
+    </div>
+    <div class="card">
+      <div class="emoji">💰</div>
+      <h3>Dual Revenue Model</h3>
+      <p>Free tier with ads (like Spotify) + premium subscriptions. First dating app to crack ad-supported dating.</p>
+    </div>
+    <div class="card">
+      <div class="emoji">🤖</div>
+      <h3>AI-Native Features</h3>
+      <p>Real-time translation (29 langs), AI date coach, voice icebreakers, smart matching — all powered by Gemini & ElevenLabs.</p>
+    </div>
+    <div class="card">
+      <div class="emoji">🌙</div>
+      <h3>Night Owl Optimized</h3>
+      <p>Built for 11pm-3am. Active matching, live speed dating rooms, and community when the rest of the dating world sleeps.</p>
+    </div>
+  </div>
+  <div class="footer"><span>Midnight Singles International</span><span>Solution</span></div>
+</div>
+
+<!-- SLIDE 5: COMPETITIVE ADVANTAGE -->
+<div class="slide s-light">
+  <h2 style="color: #7c3aed;">Why We Win 🏆</h2>
+  <table class="vs-table" style="margin-top: 20px;">
+    <tr style="font-weight: 700; font-size: 20px; border-bottom: 2px solid #e0e0e0;">
+      <td>Feature</td>
+      <td>Tinder</td>
+      <td>Bumble</td>
+      <td>Hinge</td>
+      <td style="color: #7c3aed;">Midnight Singles</td>
+    </tr>
+    <tr><td>Video Speed Dating</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check" style="font-weight:700;">✓ Core Feature</td></tr>
+    <tr><td>Free Ad-Supported Tier</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check" style="font-weight:700;">✓</td></tr>
+    <tr><td>AI Translation (29 langs)</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check" style="font-weight:700;">✓</td></tr>
+    <tr><td>AI Voice Icebreakers</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check" style="font-weight:700;">✓</td></tr>
+    <tr><td>AI Date Coach</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check" style="font-weight:700;">✓</td></tr>
+    <tr><td>Night Shift Optimized</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check" style="font-weight:700;">✓</td></tr>
+    <tr><td>Selfie Verification</td><td>Paid</td><td class="cross">✗</td><td class="cross">✗</td><td class="check" style="font-weight:700;">✓ Free</td></tr>
+  </table>
+  <div class="footer"><span>Midnight Singles International</span><span>Competitive Advantage</span></div>
+</div>
+
+<!-- SLIDE 6: BUSINESS MODEL -->
+<div class="slide s-gradient">
+  <h2>Business Model 💵</h2>
+  <p class="subtitle">Two revenue engines. One platform.</p>
+  <div class="grid-2" style="margin-top: 30px;">
+    <div class="card" style="background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3);">
+      <h3 style="font-size: 28px;">📺 Ad-Supported Free Tier</h3>
+      <p style="margin-top: 16px; font-size: 20px;">• Full access to matching & messaging<br>• Video speed dating with ads between rounds<br>• Late-night CPMs = better unit economics<br>• Target: $2-4 ARPU/month</p>
+    </div>
+    <div class="card" style="background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3);">
+      <h3 style="font-size: 28px;">⭐ Premium Subscriptions</h3>
+      <p style="margin-top: 16px; font-size: 20px;">• Ad-free experience<br>• Unlimited video speed dating<br>• AI date coach & advanced features<br>• Priority matching<br>• $14.99/month</p>
+    </div>
+  </div>
+  <div style="margin-top: 30px; text-align: center;">
+    <p style="font-size: 24px; font-weight: 700;">Projected at scale: $3M-$5M/month revenue</p>
+    <p style="font-size: 18px; margin-top: 8px;">Night shift beachhead → Global expansion → $500M+ TAM</p>
+  </div>
+  <div class="footer"><span>Midnight Singles International</span><span>Business Model</span></div>
+</div>
+
+<!-- SLIDE 7: PRODUCT -->
+<div class="slide s-dark">
+  <h2>Built & Ready to Launch 🛠️</h2>
+  <p class="subtitle">Full-stack app built by a solo founder. Zero funding.</p>
+  <div class="grid-3" style="margin-top: 20px;">
+    <div class="card">
+      <h3>Core Platform</h3>
+      <p>• Video calls & speed dating<br>• AI matching algorithm<br>• Selfie verification<br>• Audio messages<br>• Gift system</p>
+    </div>
+    <div class="card">
+      <h3>AI Features</h3>
+      <p>• Gemini AI service<br>• ElevenLabs voice AI<br>• 29-language translation<br>• AI date coach<br>• Voice icebreakers</p>
+    </div>
+    <div class="card">
+      <h3>Infrastructure</h3>
+      <p>• Flutter (iOS + Android)<br>• Firebase backend<br>• Content moderation<br>• Admin panel<br>• Marketing dashboard</p>
+    </div>
+  </div>
+  <div style="margin-top: 30px; text-align: center;">
+    <span class="pill">🔴 Pre-launch — Code complete, ready for users</span>
+  </div>
+  <div class="footer"><span>Midnight Singles International</span><span>Product</span></div>
+</div>
+
+<!-- SLIDE 8: GO TO MARKET -->
+<div class="slide s-light">
+  <h2 style="color: #7c3aed;">Go-to-Market Strategy 📣</h2>
+  <div class="grid-2" style="margin-top: 30px;">
+    <div>
+      <h3 style="color: #1a1a2e; font-size: 24px; margin-bottom: 16px;">Phase 1: Night Owl Launch</h3>
+      <ul>
+        <li>TikTok content targeting night shift workers (11pm-3am posting)</li>
+        <li>Reddit communities: r/nightshift, r/nurses, r/truckers</li>
+        <li>"Night Owl" brand identity — dating for people who don't sleep</li>
+        <li>Influencer partnerships with night shift content creators</li>
+      </ul>
+      <h3 style="color: #1a1a2e; font-size: 24px; margin-top: 24px; margin-bottom: 16px;">Phase 2: Global Expansion</h3>
+      <ul>
+        <li>AI translation makes cross-border dating seamless</li>
+        <li>Launch in markets with large shift worker populations</li>
+        <li>International video speed dating events</li>
+      </ul>
+    </div>
+    <div>
+      <div class="card-light" style="margin-bottom: 16px;">
+        <h3 style="color: #7c3aed;">Content Engine</h3>
+        <p>AI-generated marketing content using ElevenLabs (voice), Gemini (copy), automated pipeline from creation → approval → posting</p>
+      </div>
+      <div class="card-light" style="margin-bottom: 16px;">
+        <h3 style="color: #7c3aed;">Viral Loop</h3>
+        <p>Video speed dating clips (with consent) → TikTok/YouTube Shorts → organic growth. Real connections are the content.</p>
+      </div>
+      <div class="card-light">
+        <h3 style="color: #7c3aed;">Channels</h3>
+        <p>TikTok: @midnightsingles<br>YouTube: @MidnightSinglesInternational<br>LinkedIn: Company page active</p>
+      </div>
+    </div>
+  </div>
+  <div class="footer"><span>Midnight Singles International</span><span>Go-to-Market</span></div>
+</div>
+
+<!-- SLIDE 9: THE ASK -->
+<div class="slide s-accent">
+  <h2>The Ask 🤝</h2>
+  <div style="margin-top: 40px; text-align: center;">
+    <div class="big-number" style="font-size: 80px;">$250K - $500K</div>
+    <p style="font-size: 28px; margin-top: 16px; margin-bottom: 40px;">Pre-seed investment to take Midnight Singles from built to launched.</p>
+  </div>
+  <div class="grid-3">
+    <div class="card">
+      <h3>40% — Engineering</h3>
+      <p>Scale infrastructure, hire mobile engineer, optimize video speed dating for 10K+ concurrent users</p>
+    </div>
+    <div class="card">
+      <h3>35% — Growth</h3>
+      <p>TikTok ad spend, influencer partnerships, Night Owl content campaign, community building</p>
+    </div>
+    <div class="card">
+      <h3>25% — Operations</h3>
+      <p>App store launch, legal (Delaware C-Corp), content moderation team, 6-month runway</p>
+    </div>
+  </div>
+  <div class="footer"><span>Midnight Singles International</span><span>The Ask</span></div>
+</div>
+
+<!-- SLIDE 10: FOUNDER -->
+<div class="slide s-dark">
+  <div class="grid-2">
+    <div>
+      <h2>The Founder 👋</h2>
+      <h3 style="margin-top: 20px; font-size: 32px;">Jamaine Martin</h3>
+      <p style="font-size: 22px; margin-top: 8px; color: #a78bfa;">Founder & CEO</p>
+      <ul style="margin-top: 24px;">
+        <li>Built entire platform solo — zero funding, zero team</li>
+        <li>Former night shift worker — lived the problem firsthand</li>
+        <li>Self-taught developer: Flutter, Firebase, AI integrations</li>
+        <li>Full-time on Midnight Singles</li>
+        <li>Applied to 3 grant programs in one week</li>
+        <li>Relentless builder who ships, not just talks</li>
+      </ul>
+    </div>
+    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
+      <div style="width: 280px; height: 280px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 120px;">🌙</div>
+      <div style="margin-top: 30px; text-align: center;">
+        <p style="font-size: 18px;">jamaine@midnightsingles.com</p>
+        <p style="font-size: 18px; margin-top: 6px;">linkedin.com/in/jamaine-martin-680a713b1</p>
+        <p style="font-size: 18px; margin-top: 6px;">midnightsingles.com</p>
+      </div>
+    </div>
+  </div>
+  <div class="footer"><span>Midnight Singles International</span><span>Founder</span></div>
+</div>
+
+</body>
+</html>

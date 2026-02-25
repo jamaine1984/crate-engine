@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@page { size: landscape; margin: 0; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #0a0a0a; color: #fff; }
+
+.slide {
+  width: 1280px; height: 720px;
+  padding: 55px 75px;
+  page-break-after: always;
+  position: relative;
+  overflow: hidden;
+}
+
+.slide-1 { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+.slide-2 { background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%); }
+.slide-3 { background: linear-gradient(135deg, #1a1a2e 0%, #0d1b2a 100%); }
+.slide-4 { background: linear-gradient(135deg, #0f3460 0%, #1a1a2e 100%); }
+.slide-5 { background: linear-gradient(135deg, #1b2838 0%, #0f3460 100%); }
+.slide-6 { background: linear-gradient(135deg, #0d1b2a 0%, #16213e 100%); }
+.slide-7 { background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%); }
+.slide-8 { background: linear-gradient(135deg, #0f3460 0%, #1a1a2e 100%); }
+.slide-9 { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
+.slide-10 { background: linear-gradient(135deg, #0d1b2a 0%, #1b2838 100%); }
+.slide-11 { background: linear-gradient(135deg, #0f3460 0%, #0d1b2a 100%); }
+.slide-12 { background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%); }
+
+.slide::before {
+  content: ''; position: absolute; top: -50%; right: -20%;
+  width: 600px; height: 600px; border-radius: 50%;
+  background: rgba(59, 130, 246, 0.05); z-index: 0;
+}
+
+.content { position: relative; z-index: 1; height: 100%; }
+
+h1 { font-size: 46px; font-weight: 700; margin-bottom: 14px; line-height: 1.1; }
+h2 { font-size: 34px; font-weight: 600; margin-bottom: 20px; color: #60a5fa; }
+h3 { font-size: 21px; font-weight: 600; margin-bottom: 8px; color: #93c5fd; }
+p { font-size: 17px; line-height: 1.5; color: #cbd5e1; }
+.subtitle { font-size: 24px; color: #94a3b8; margin-bottom: 10px; }
+.highlight { color: #60a5fa; }
+.green { color: #4ade80; }
+.gold { color: #fbbf24; }
+.accent-line { width: 80px; height: 4px; background: #3b82f6; margin: 20px 0; border-radius: 2px; }
+
+.tag { display: inline-block; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); padding: 5px 14px; border-radius: 20px; font-size: 13px; color: #93c5fd; margin: 3px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 18px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 22px; margin-top: 18px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; margin-top: 14px; }
+
+.card {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px; padding: 22px;
+}
+.card h3 { margin-bottom: 8px; }
+.card p { font-size: 15px; }
+
+.stat-box {
+  background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
+  border-radius: 12px; padding: 18px; text-align: center;
+}
+.stat-number { font-size: 36px; font-weight: 700; color: #60a5fa; }
+.stat-label { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+
+.table-row {
+  display: flex; justify-content: space-between; padding: 11px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 16px;
+}
+.table-row:nth-child(odd) { background: rgba(255,255,255,0.03); border-radius: 8px; }
+.table-header { color: #60a5fa; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+
+.icon { font-size: 30px; margin-bottom: 8px; }
+.bottom-bar { position: absolute; bottom: 22px; left: 75px; right: 75px; display: flex; justify-content: space-between; align-items: center; }
+.page-num { color: #475569; font-size: 13px; }
+.company-footer { color: #475569; font-size: 13px; }
+
+.bullet { padding-left: 18px; margin: 5px 0; font-size: 16px; color: #cbd5e1; position: relative; }
+.bullet::before { content: '▸'; position: absolute; left: 0; color: #3b82f6; }
+
+.sm-bullet { padding-left: 16px; margin: 4px 0; font-size: 14px; color: #cbd5e1; position: relative; }
+.sm-bullet::before { content: '▸'; position: absolute; left: 0; color: #3b82f6; }
+
+.big-quote { font-size: 22px; font-style: italic; color: #e2e8f0; line-height: 1.5; border-left: 4px solid #3b82f6; padding-left: 22px; margin: 16px 0; }
+
+.platform-box {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; padding: 12px; text-align: center;
+}
+.platform-box h3 { font-size: 15px; margin-bottom: 4px; }
+.platform-box p { font-size: 12px; }
+
+.route-card {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; padding: 14px;
+}
+.route-card h3 { font-size: 16px; margin-bottom: 6px; }
+.route-card p { font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- SLIDE 1: Title -->
+<div class="slide slide-1">
+  <div class="content" style="display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
+    <div style="font-size:60px; margin-bottom:14px;">🚛</div>
+    <h1 style="font-size:52px;">VW Logistics</h1>
+    <div class="accent-line" style="margin:14px auto;"></div>
+    <p class="subtitle" style="font-size:28px;">26-Foot Box Truck Business Proposal</p>
+    <p style="font-size:22px; margin-top:14px; color:#94a3b8;">Commercial Vehicle Financing Request</p>
+    <div class="stat-box" style="display:inline-block; padding:14px 50px; margin-top:18px;">
+      <div class="stat-number" style="font-size:44px;">$30,000 – $60,000</div>
+    </div>
+    <div style="margin-top:24px;">
+      <span class="tag">Non-CDL Operations</span>
+      <span class="tag">Owner-Operator</span>
+      <span class="tag">Local & OTR Routes</span>
+      <span class="tag">Fleet Expansion Ready</span>
+    </div>
+    <div style="margin-top:24px;">
+      <p style="font-size:16px; color:#64748b;">Chicago, Illinois • vwalker0262@gmail.com</p>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">Confidential — VW Logistics</span><span class="page-num">1</span></div>
+</div>
+
+<!-- SLIDE 2: Executive Summary -->
+<div class="slide slide-2">
+  <div class="content">
+    <h2>Executive Summary</h2>
+    <div class="big-quote">VW Logistics is seeking $30,000–$60,000 in commercial vehicle financing to acquire a 26-foot non-CDL box truck for multi-service freight, delivery, moving, and hauling operations — serving both the Greater Chicago local market and over-the-road (OTR) regional/long-haul routes across the Midwest and nationwide.</div>
+    <div class="grid-2" style="margin-top:14px;">
+      <div>
+        <h3>The Opportunity</h3>
+        <div class="bullet">Chicago is the #1 freight hub in North America</div>
+        <div class="bullet">Local routes: 0–100 miles, same-day delivery & moving</div>
+        <div class="bullet">OTR routes: 100–1,500+ miles, premium per-mile rates</div>
+        <div class="bullet">Thousands of loads available daily — local AND long-haul</div>
+        <div class="bullet">No CDL required — immediate start, low barrier</div>
+        <div class="bullet">Revenue begins within 1-2 weeks of purchase</div>
+      </div>
+      <div>
+        <h3>Key Financial Highlights</h3>
+        <div class="bullet"><span class="green">Monthly revenue:</span> $10,000–$18,000</div>
+        <div class="bullet"><span class="green">Monthly net profit:</span> $5,700–$10,000</div>
+        <div class="bullet"><span class="green">Annual net profit:</span> $68,000–$120,000</div>
+        <div class="bullet"><span class="green">Profit margin:</span> 50–60%</div>
+        <div class="bullet"><span class="green">Breakeven:</span> Month 2-3</div>
+        <div class="bullet"><span class="green">Loan payback capacity:</span> 24-36 months</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px; padding:14px 22px;">
+      <p style="font-size:15px;"><span class="highlight">Growth Plan:</span> Prove profitability with Truck #1 running local + OTR, then scale to a 3-5 truck fleet within 18-24 months by hiring additional drivers — creating jobs and multiplying revenue across both local and long-distance lanes.</p>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">2</span></div>
+</div>
+
+<!-- SLIDE 3: Market Opportunity -->
+<div class="slide slide-3">
+  <div class="content">
+    <h2>Market Opportunity</h2>
+    <div class="grid-4">
+      <div class="stat-box"><div class="stat-number">$1.9T</div><div class="stat-label">U.S. Trucking<br>Industry Revenue</div></div>
+      <div class="stat-box"><div class="stat-number">47%</div><div class="stat-label">Last-Mile Delivery<br>Growth Since 2020</div></div>
+      <div class="stat-box"><div class="stat-number">#1</div><div class="stat-label">Chicago: Largest<br>U.S. Freight Hub</div></div>
+      <div class="stat-box"><div class="stat-number">80K+</div><div class="stat-label">Daily Loads Posted<br>on Load Boards</div></div>
+    </div>
+    <div class="grid-2" style="margin-top:18px;">
+      <div class="card">
+        <h3>🏙️ Chicago — The Perfect Home Base</h3>
+        <div class="sm-bullet">9.5M+ metro population — massive consumer demand</div>
+        <div class="sm-bullet">Intersection of 6 Class I railroads + I-90/I-94/I-55/I-80</div>
+        <div class="sm-bullet">30+ Amazon fulfillment/distribution centers</div>
+        <div class="sm-bullet">FedEx, UPS, USPS regional hubs all in metro</div>
+        <div class="sm-bullet">Central U.S. location = reach 50% of U.S. population within one day's drive</div>
+        <div class="sm-bullet">Year-round construction and industrial hauling demand</div>
+      </div>
+      <div class="card">
+        <h3>📈 Industry Tailwinds</h3>
+        <div class="sm-bullet">Chronic driver shortage = premium rates for operators</div>
+        <div class="sm-bullet">ATA reports 78,000+ driver shortage nationwide</div>
+        <div class="sm-bullet">E-commerce $1.1T+ and still growing</div>
+        <div class="sm-bullet">Companies outsourcing delivery to independents</div>
+        <div class="sm-bullet">FedEx, Amazon actively recruiting box truck contractors</div>
+        <div class="sm-bullet">Freight brokers paying $2–$5/mile for box trucks</div>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">3</span></div>
+</div>
+
+<!-- SLIDE 4: Local vs OTR Detailed Breakdown -->
+<div class="slide slide-4">
+  <div class="content">
+    <h2>Service Range — Local & Over-the-Road (OTR)</h2>
+    <div class="grid-2">
+      <div>
+        <div class="card" style="border-top: 3px solid #4ade80; height:100%;">
+          <h3 style="color:#4ade80; font-size:24px;">📍 Local Routes (0–150 miles)</h3>
+          <p style="font-size:15px; margin-bottom:12px;">Same-day and next-day delivery, moving, and hauling within the Chicagoland metro and surrounding suburbs.</p>
+          <div class="sm-bullet"><strong>Distance:</strong> 0–150 miles round trip</div>
+          <div class="sm-bullet"><strong>Rate:</strong> $150–$800 per job / $25–$75 per hour</div>
+          <div class="sm-bullet"><strong>Frequency:</strong> 2-4 jobs per day possible</div>
+          <div class="sm-bullet"><strong>Turnaround:</strong> Same-day, home every night</div>
+          <div class="sm-bullet"><strong>Fuel cost:</strong> Low — short distances, minimal highway</div>
+          <div style="margin-top:12px;">
+            <p style="font-size:14px; color:#93c5fd; font-weight:600;">Typical Local Jobs:</p>
+            <div class="sm-bullet">Furniture & appliance delivery</div>
+            <div class="sm-bullet">Residential & apartment moves</div>
+            <div class="sm-bullet">Construction materials to job sites</div>
+            <div class="sm-bullet">Retail store restocking & distribution</div>
+            <div class="sm-bullet">Amazon same-day/next-day overflow</div>
+            <div class="sm-bullet">Junk removal & cleanout services</div>
+          </div>
+          <div style="margin-top:10px;">
+            <p style="font-size:14px; color:#93c5fd; font-weight:600;">Coverage Area:</p>
+            <div class="sm-bullet">Chicago city, Naperville, Aurora, Joliet, Elgin, Waukegan, Gary (IN), Kenosha (WI)</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="border-top: 3px solid #60a5fa; height:100%;">
+          <h3 style="color:#60a5fa; font-size:24px;">🛣️ Over-the-Road / OTR (150–1,500+ miles)</h3>
+          <p style="font-size:15px; margin-bottom:12px;">Regional and long-haul freight runs from Chicago to destinations across the Midwest, East Coast, South, and nationwide.</p>
+          <div class="sm-bullet"><strong>Distance:</strong> 150–1,500+ miles one-way</div>
+          <div class="sm-bullet"><strong>Rate:</strong> $2.00–$5.00 per mile (loaded)</div>
+          <div class="sm-bullet"><strong>Per-run revenue:</strong> $500–$5,000+ per load</div>
+          <div class="sm-bullet"><strong>Turnaround:</strong> 1-5 days depending on distance</div>
+          <div class="sm-bullet"><strong>Strategy:</strong> Haul out, pick up backhaul load returning</div>
+          <div style="margin-top:12px;">
+            <p style="font-size:14px; color:#93c5fd; font-weight:600;">High-Demand OTR Lanes from Chicago:</p>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:6px;">
+            <div class="route-card"><h3>Chicago → Indianapolis</h3><p>185 mi • $400–$700</p></div>
+            <div class="route-card"><h3>Chicago → Detroit</h3><p>280 mi • $600–$1,100</p></div>
+            <div class="route-card"><h3>Chicago → St. Louis</h3><p>300 mi • $650–$1,200</p></div>
+            <div class="route-card"><h3>Chicago → Nashville</h3><p>470 mi • $900–$1,800</p></div>
+            <div class="route-card"><h3>Chicago → Columbus</h3><p>350 mi • $700–$1,400</p></div>
+            <div class="route-card"><h3>Chicago → Atlanta</h3><p>720 mi • $1,500–$3,000</p></div>
+            <div class="route-card"><h3>Chicago → Dallas</h3><p>920 mi • $1,800–$3,500</p></div>
+            <div class="route-card"><h3>Chicago → New York</h3><p>790 mi • $1,600–$3,200</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">4</span></div>
+</div>
+
+<!-- SLIDE 5: OTR Strategy Deep Dive -->
+<div class="slide slide-5">
+  <div class="content">
+    <h2>OTR Strategy — Maximizing Per-Mile Revenue</h2>
+    <div class="grid-2">
+      <div>
+        <h3 style="margin-bottom:12px;">The Backhaul Advantage</h3>
+        <div class="card" style="padding:18px; margin-bottom:14px;">
+          <p style="font-size:15px;">The key to OTR profitability is <span class="green">never driving empty</span>. Chicago's central location means there are always loads going out AND loads coming back.</p>
+          <div style="margin-top:10px;">
+            <div class="sm-bullet"><strong>Outbound:</strong> Pick high-paying load to destination</div>
+            <div class="sm-bullet"><strong>Backhaul:</strong> Pick return load from destination city</div>
+            <div class="sm-bullet"><strong>Result:</strong> Get paid BOTH directions</div>
+            <div class="sm-bullet"><strong>Example:</strong> Chicago→Atlanta ($2,500) + Atlanta→Chicago ($2,000) = <span class="green">$4,500 in 3 days</span></div>
+          </div>
+        </div>
+        <div class="card" style="padding:18px;">
+          <h3>Weekly OTR Revenue Example</h3>
+          <div class="table-row table-header" style="padding:8px 12px;"><span>Route</span><span>Revenue</span></div>
+          <div class="table-row" style="padding:8px 12px;"><span>Mon-Tue: Chicago → Nashville</span><span class="green">$1,400</span></div>
+          <div class="table-row" style="padding:8px 12px;"><span>Tue-Wed: Nashville → Chicago (backhaul)</span><span class="green">$1,100</span></div>
+          <div class="table-row" style="padding:8px 12px;"><span>Thu: Local jobs (2-3 deliveries)</span><span class="green">$600</span></div>
+          <div class="table-row" style="padding:8px 12px;"><span>Fri: Chicago → Indianapolis + back</span><span class="green">$900</span></div>
+          <div class="table-row" style="padding:8px 12px; border-top:2px solid #3b82f6; font-weight:700;"><span>Weekly Total (5 days)</span><span class="green">$4,000</span></div>
+        </div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:12px;">OTR Operating Details</h3>
+        <div class="card" style="padding:18px; margin-bottom:14px;">
+          <h3>⏱️ Hours of Service (Non-CDL 26ft)</h3>
+          <p style="font-size:14px; margin-bottom:8px;">A major advantage of a non-CDL box truck (under 26,001 lbs GVWR):</p>
+          <div class="sm-bullet"><span class="green">No federal HOS regulations</span> for non-CDL vehicles under 10,001 lbs in most cases</div>
+          <div class="sm-bullet">For 26ft trucks (10,001-26,000 lbs): HOS applies IF crossing state lines commercially</div>
+          <div class="sm-bullet">ELD required for interstate commerce over 10,001 lbs</div>
+          <div class="sm-bullet">14-hour driving window / 11 hours max driving per day</div>
+          <div class="sm-bullet">Still far more flexible than CDL-required vehicles</div>
+        </div>
+        <div class="card" style="padding:18px; margin-bottom:14px;">
+          <h3>⛽ Fuel Economics (OTR)</h3>
+          <div class="sm-bullet">26ft diesel box truck: 8-12 MPG</div>
+          <div class="sm-bullet">Diesel avg: $3.50-$4.00/gal (Midwest)</div>
+          <div class="sm-bullet">Cost per mile: ~$0.35-$0.50</div>
+          <div class="sm-bullet">Rate per mile: $2.00-$5.00</div>
+          <div class="sm-bullet"><span class="green">Net margin per loaded mile: $1.50-$4.50</span></div>
+        </div>
+        <div class="card" style="padding:18px;">
+          <h3>🗺️ OTR Reach from Chicago</h3>
+          <div class="sm-bullet"><strong>300 miles (1 day):</strong> Indianapolis, Detroit, St. Louis, Milwaukee, Minneapolis</div>
+          <div class="sm-bullet"><strong>600 miles (1-2 days):</strong> Nashville, Columbus, KC, Memphis, Pittsburgh</div>
+          <div class="sm-bullet"><strong>1,000+ miles (2-3 days):</strong> Atlanta, Dallas, NYC, Denver, Miami</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">5</span></div>
+</div>
+
+<!-- SLIDE 6: Load Boards -->
+<div class="slide slide-6">
+  <div class="content">
+    <h2>Freight Access — Loads Are Everywhere</h2>
+    <p style="margin-bottom:12px; font-size:17px;">Securing freight is <span class="green">immediate and effortless</span> — both local and OTR. Thousands of loads post every hour. Sign up, get approved, start hauling within 48 hours.</p>
+    <div class="grid-4">
+      <div class="platform-box">
+        <div class="icon">📦</div>
+        <h3 style="color:#ff9900;">Amazon Relay</h3>
+        <p>Direct Amazon freight. Box trucks in high demand. Local & regional. Approved in days.</p>
+      </div>
+      <div class="platform-box">
+        <div class="icon">🟣</div>
+        <h3 style="color:#7c3aed;">FedEx Custom Critical</h3>
+        <p>Contract routes. Dedicated lanes. Premium rates. Local & OTR options.</p>
+      </div>
+      <div class="platform-box">
+        <div class="icon">🟢</div>
+        <h3 style="color:#4ade80;">DAT Load Board</h3>
+        <p>Largest marketplace. 500M+ loads/yr. Filter by distance, truck size, rate. #1 for OTR.</p>
+      </div>
+      <div class="platform-box">
+        <div class="icon">🔵</div>
+        <h3 style="color:#60a5fa;">Truckstop.com</h3>
+        <p>250K+ loads daily. Rate tools. Broker credit checks. Local + long-haul.</p>
+      </div>
+    </div>
+    <div class="grid-4" style="margin-top:10px;">
+      <div class="platform-box">
+        <div class="icon">🟠</div>
+        <h3 style="color:#fb923c;">Uber Freight</h3>
+        <p>Book instantly via app. Upfront pricing. Fast pay. Great for OTR runs.</p>
+      </div>
+      <div class="platform-box">
+        <div class="icon">🔴</div>
+        <h3 style="color:#f87171;">CH Robinson / Convoy</h3>
+        <p>Top freight brokers. Consistent contracts. Automated matching. Regional & national.</p>
+      </div>
+      <div class="platform-box">
+        <div class="icon">🏠</div>
+        <h3 style="color:#fbbf24;">GoShare / Dolly / Bungii</h3>
+        <p>On-demand local moving & delivery gigs. $50–$200+ per job from your phone.</p>
+      </div>
+      <div class="platform-box">
+        <div class="icon">📋</div>
+        <h3 style="color:#93c5fd;">Direct Contracts</h3>
+        <p>Local businesses, retailers, manufacturers. Recurring weekly revenue. Best margins.</p>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-top:10px;">
+      <div class="card" style="text-align:center; padding:14px;">
+        <p style="font-size:28px; font-weight:700; color:#4ade80;">12:1</p>
+        <p style="font-size:13px;">Load-to-Truck Ratio on DAT<br>12 loads waiting for every available truck</p>
+      </div>
+      <div class="card" style="text-align:center; padding:14px;">
+        <p style="font-size:28px; font-weight:700; color:#4ade80;">78,000+</p>
+        <p style="font-size:13px;">National Driver Shortage<br>More demand than supply = premium rates</p>
+      </div>
+      <div class="card" style="text-align:center; padding:14px;">
+        <p style="font-size:28px; font-weight:700; color:#4ade80;">48 Hours</p>
+        <p style="font-size:13px;">Time to First Load<br>Sign up → approved → hauling in 2 days</p>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">6</span></div>
+</div>
+
+<!-- SLIDE 7: Services & Revenue -->
+<div class="slide slide-7">
+  <div class="content">
+    <h2>Services & Revenue Streams</h2>
+    <div class="grid-2">
+      <div class="card">
+        <div class="icon">📦</div>
+        <h3>Freight & Cargo — Local & OTR</h3>
+        <p>Load board freight via DAT, Truckstop, Amazon Relay, Uber Freight. Local same-day + regional/long-haul OTR.</p>
+        <div class="sm-bullet">Local: 0-150 mi, $200-$800/load, 2-4/day</div>
+        <div class="sm-bullet">OTR: 150-1,500+ mi, $500-$5,000/load</div>
+        <div class="sm-bullet">Projected: <span class="green">$6,000–$9,000/month</span></div>
+      </div>
+      <div class="card">
+        <div class="icon">🏠</div>
+        <h3>Local Moving Services</h3>
+        <p>Residential & small commercial moves. Hourly + mileage rates. High margin, repeat customers.</p>
+        <div class="sm-bullet">4-8 jobs/month via Dolly, GoShare, Thumbtack</div>
+        <div class="sm-bullet">Average $400-$1,200/job</div>
+        <div class="sm-bullet">Projected: <span class="green">$2,500–$4,000/month</span></div>
+      </div>
+      <div class="card">
+        <div class="icon">🚚</div>
+        <h3>Last-Mile Delivery</h3>
+        <p>Contract delivery for retailers, furniture stores, appliance companies. FedEx routes, Amazon overflow.</p>
+        <div class="sm-bullet">Local radius: 0-75 miles</div>
+        <div class="sm-bullet">$150-$500/delivery</div>
+        <div class="sm-bullet">Projected: <span class="green">$2,000–$3,000/month</span></div>
+      </div>
+      <div class="card">
+        <div class="icon">🏗️</div>
+        <h3>Construction & Materials Hauling</h3>
+        <p>Building materials, equipment to job sites. Chicago construction market is massive year-round.</p>
+        <div class="sm-bullet">Local: lumber yards, contractors, suppliers</div>
+        <div class="sm-bullet">$500-$1,500/day</div>
+        <div class="sm-bullet">Projected: <span class="green">$1,500–$3,000/month</span></div>
+      </div>
+    </div>
+    <div style="margin-top:10px; text-align:center;">
+      <p style="font-size:17px;">Combined Monthly Revenue (Local + OTR): <span class="green" style="font-size:22px; font-weight:700;">$12,000 – $19,000</span></p>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">7</span></div>
+</div>
+
+<!-- SLIDE 8: Financial Projections -->
+<div class="slide slide-8">
+  <div class="content">
+    <h2>Financial Projections — Year 1 (Conservative)</h2>
+    <div class="grid-2">
+      <div>
+        <h3 style="margin-bottom:12px;">Monthly Revenue Breakdown</h3>
+        <div class="table-row table-header"><span>Revenue Source</span><span>Monthly</span></div>
+        <div class="table-row"><span>OTR freight (DAT, Amazon, Uber)</span><span class="green">$4,500</span></div>
+        <div class="table-row"><span>Local freight & delivery</span><span class="green">$3,000</span></div>
+        <div class="table-row"><span>Moving jobs (GoShare, Dolly)</span><span class="green">$2,500</span></div>
+        <div class="table-row"><span>Construction / materials hauling</span><span class="green">$1,500</span></div>
+        <div class="table-row" style="border-top: 2px solid #3b82f6; font-weight:700;"><span>Total Monthly Revenue</span><span class="green">$11,500</span></div>
+        <div style="margin-top:14px;">
+          <h3 style="margin-bottom:8px;">Annual Summary</h3>
+          <div class="table-row" style="font-weight:600;"><span>Annual Gross Revenue</span><span class="green">$138,000</span></div>
+          <div class="table-row" style="font-weight:600;"><span>Annual Total Expenses</span><span class="gold">$57,600</span></div>
+          <div class="table-row" style="font-weight:700; border-top:2px solid #4ade80;"><span>Annual Net Profit</span><span class="green">$80,400</span></div>
+        </div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:12px;">Monthly Operating Expenses</h3>
+        <div class="table-row table-header"><span>Expense</span><span>Monthly</span></div>
+        <div class="table-row"><span>Loan payment (48mo @ 8%)</span><span class="gold">$1,100</span></div>
+        <div class="table-row"><span>Commercial auto insurance</span><span class="gold">$900</span></div>
+        <div class="table-row"><span>Fuel (local + OTR, ~4,000 mi/mo)</span><span class="gold">$1,800</span></div>
+        <div class="table-row"><span>Maintenance & repairs reserve</span><span class="gold">$500</span></div>
+        <div class="table-row"><span>Load boards & software (DAT, ELD)</span><span class="gold">$250</span></div>
+        <div class="table-row"><span>Tolls, parking, misc</span><span class="gold">$250</span></div>
+        <div class="table-row" style="border-top: 2px solid #fbbf24; font-weight:700;"><span>Total Monthly Expenses</span><span class="gold">$4,800</span></div>
+      </div>
+    </div>
+    <div class="grid-4" style="margin-top:14px;">
+      <div class="stat-box"><div class="stat-number" style="color:#4ade80;">$6,700</div><div class="stat-label">Monthly Net Profit</div></div>
+      <div class="stat-box"><div class="stat-number" style="color:#4ade80;">$80,400</div><div class="stat-label">Annual Net Profit</div></div>
+      <div class="stat-box"><div class="stat-number" style="color:#4ade80;">58%</div><div class="stat-label">Profit Margin</div></div>
+      <div class="stat-box"><div class="stat-number" style="color:#4ade80;">Month 2</div><div class="stat-label">Breakeven Point</div></div>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">8</span></div>
+</div>
+
+<!-- SLIDE 9: 3-Year Growth -->
+<div class="slide slide-9">
+  <div class="content">
+    <h2>3-Year Growth & Fleet Expansion Plan</h2>
+    <div class="grid-3">
+      <div class="card" style="border-top: 3px solid #60a5fa;">
+        <h3 style="color:#60a5fa;">📅 Year 1 — Foundation</h3>
+        <div style="font-size:24px; font-weight:700; color:#4ade80; margin:8px 0;">1 Truck • Owner-Operator</div>
+        <div class="sm-bullet">Acquire 26ft box truck</div>
+        <div class="sm-bullet">Run local + OTR mix (60/40 split)</div>
+        <div class="sm-bullet">Establish accounts on all platforms</div>
+        <div class="sm-bullet">Build direct client relationships</div>
+        <div class="sm-bullet">Build business credit & payment history</div>
+        <div class="sm-bullet">Pay down loan aggressively</div>
+        <div class="sm-bullet">Net profit: <span class="green">$80,400</span></div>
+      </div>
+      <div class="card" style="border-top: 3px solid #a78bfa;">
+        <h3 style="color:#a78bfa;">📅 Year 2 — Scale</h3>
+        <div style="font-size:24px; font-weight:700; color:#4ade80; margin:8px 0;">2-3 Trucks • Hiring Drivers</div>
+        <div class="sm-bullet">Purchase 2nd truck from Year 1 profits</div>
+        <div class="sm-bullet">Hire first driver ($1,000-$1,400/wk)</div>
+        <div class="sm-bullet">Driver runs OTR, owner runs local</div>
+        <div class="sm-bullet">Secure dedicated contract routes</div>
+        <div class="sm-bullet">Add 3rd truck by Q4</div>
+        <div class="sm-bullet">Revenue: <span class="green">$28,000–$40,000/mo</span></div>
+        <div class="sm-bullet">Owner transitions to dispatch + driving</div>
+      </div>
+      <div class="card" style="border-top: 3px solid #fbbf24;">
+        <h3 style="color:#fbbf24;">📅 Year 3 — Fleet</h3>
+        <div style="font-size:24px; font-weight:700; color:#4ade80; margin:8px 0;">5 Trucks • Full Fleet</div>
+        <div class="sm-bullet">5-truck fleet with dedicated drivers</div>
+        <div class="sm-bullet">Mix of local, OTR, and contract work</div>
+        <div class="sm-bullet">FedEx Ground or Amazon DSP contracts</div>
+        <div class="sm-bullet">Dedicated OTR lanes (Chicago↔Atlanta, etc.)</div>
+        <div class="sm-bullet">Owner focuses on management & growth</div>
+        <div class="sm-bullet">Revenue: <span class="green">$55,000–$80,000/mo</span></div>
+        <div class="sm-bullet">Annual gross: <span class="green">$660K–$960K</span></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px; padding:12px 22px; text-align:center;">
+      <p style="font-size:15px;">This financing is the <span class="highlight">seed capital for a fleet logistics company</span>. Each truck added multiplies revenue. Hired drivers run OTR routes while the owner manages dispatch and local operations — a proven, scalable model.</p>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">9</span></div>
+</div>
+
+<!-- SLIDE 10: Use of Funds -->
+<div class="slide slide-10">
+  <div class="content">
+    <h2>Use of Funds</h2>
+    <div class="grid-2">
+      <div>
+        <h3 style="margin-bottom:12px;">Financing Breakdown ($45,000 Target)</h3>
+        <div class="table-row table-header"><span>Item</span><span>Cost</span></div>
+        <div class="table-row"><span>26ft Box Truck (used, 2018+, low mi)</span><span>$30,000–$45,000</span></div>
+        <div class="table-row"><span>Commercial auto insurance (3 months)</span><span>$2,700</span></div>
+        <div class="table-row"><span>USDOT Number & MC Authority</span><span>$500</span></div>
+        <div class="table-row"><span>Business licensing & LLC formation</span><span>$400</span></div>
+        <div class="table-row"><span>Load board subs (DAT, Truckstop)</span><span>$600</span></div>
+        <div class="table-row"><span>ELD device (electronic logging)</span><span>$300</span></div>
+        <div class="table-row"><span>Moving equip (dollies, straps, ramps)</span><span>$1,000</span></div>
+        <div class="table-row"><span>Operating reserve (fuel + month 1)</span><span>$3,000</span></div>
+        <div class="table-row" style="border-top: 2px solid #3b82f6; font-weight:700;"><span>Total Required</span><span class="highlight">$38,500–$53,500</span></div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:12px;">
+          <h3>🎯 Target Vehicle Specifications</h3>
+          <div class="sm-bullet">26-foot box truck (non-CDL)</div>
+          <div class="sm-bullet">GVWR: 25,999 lbs or under</div>
+          <div class="sm-bullet">Liftgate equipped (hydraulic)</div>
+          <div class="sm-bullet">Model year 2018 or newer</div>
+          <div class="sm-bullet">Under 150,000 miles</div>
+          <div class="sm-bullet">Diesel preferred (longevity + OTR fuel economy)</div>
+          <div class="sm-bullet">Makes: Freightliner M2, International MV, Hino 268, Ford F-750, Isuzu FTR</div>
+        </div>
+        <div class="card">
+          <h3>💰 Loan Terms Requested</h3>
+          <div class="sm-bullet">Amount: <span class="highlight">$30,000 – $60,000</span></div>
+          <div class="sm-bullet">Term: 36–60 months</div>
+          <div class="sm-bullet">Vehicle serves as primary collateral</div>
+          <div class="sm-bullet">Monthly payment capacity: $1,100–$1,500</div>
+          <div class="sm-bullet">Revenue starts within 1-2 weeks of purchase</div>
+          <div class="sm-bullet">Willing to provide monthly P&L updates</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">10</span></div>
+</div>
+
+<!-- SLIDE 11: Risk Mitigation -->
+<div class="slide slide-11">
+  <div class="content">
+    <h2>Risk Mitigation & Competitive Advantage</h2>
+    <div class="grid-2">
+      <div>
+        <h3 style="margin-bottom:12px;">Low-Risk Investment</h3>
+        <div class="card" style="margin-bottom:10px; padding:16px;">
+          <div class="icon">🔒</div>
+          <h3>Asset-Backed Collateral</h3>
+          <p style="font-size:14px;">The truck secures the loan. Commercial box trucks retain 60-70% value after 5 years. Lender's capital is protected by a tangible, resalable asset.</p>
+        </div>
+        <div class="card" style="margin-bottom:10px; padding:16px;">
+          <div class="icon">📱</div>
+          <h3>Immediate, Provable Revenue</h3>
+          <p style="font-size:14px;">Load boards show real-time market rates. Amazon Relay and FedEx provide guaranteed contract rates. Income is verifiable and starts within days of vehicle purchase.</p>
+        </div>
+        <div class="card" style="margin-bottom:10px; padding:16px;">
+          <div class="icon">🔄</div>
+          <h3>Diversified Revenue — Local + OTR</h3>
+          <p style="font-size:14px;">Four revenue streams across two distance models. If local slows, OTR compensates. If freight dips, moving peaks. Seasonality is naturally balanced.</p>
+        </div>
+        <div class="card" style="padding:16px;">
+          <div class="icon">💪</div>
+          <h3>Recession-Resistant</h3>
+          <p style="font-size:14px;">People always need to move. Goods always need to ship. E-commerce grew during the 2020 recession. Trucking is one of the most essential industries in America.</p>
+        </div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:12px;">Competitive Advantages</h3>
+        <div class="card" style="margin-bottom:10px; padding:16px;">
+          <div class="icon">👤</div>
+          <h3>Solo Operator = Maximum Margin</h3>
+          <p style="font-size:14px;">No payroll, no office, no employees initially. Nearly every revenue dollar flows to profit minus direct costs. Overhead is minimal by design.</p>
+        </div>
+        <div class="card" style="margin-bottom:10px; padding:16px;">
+          <div class="icon">📍</div>
+          <h3>Chicago — #1 U.S. Freight Hub</h3>
+          <p style="font-size:14px;">More freight passes through Chicago than anywhere else. Central location means loads in every direction — east, west, north, south — 365 days a year.</p>
+        </div>
+        <div class="card" style="margin-bottom:10px; padding:16px;">
+          <div class="icon">🛣️</div>
+          <h3>Local + OTR Flexibility</h3>
+          <p style="font-size:14px;">Can switch between local jobs and OTR runs based on market rates and demand. Slow local week? Take an OTR run. Want to be home? Run local. Full flexibility.</p>
+        </div>
+        <div class="card" style="padding:16px;">
+          <div class="icon">📈</div>
+          <h3>Clear Path to Fleet Scale</h3>
+          <p style="font-size:14px;">Each additional truck adds $5K-$8K/mo revenue with driver cost of $4K-$5.6K/mo. Positive unit economics from truck #2 onward. Proven, repeatable model.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics</span><span class="page-num">11</span></div>
+</div>
+
+<!-- SLIDE 12: The Ask -->
+<div class="slide slide-12">
+  <div class="content" style="display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
+    <h1 style="font-size:44px; margin-bottom:10px;">The Ask</h1>
+    <div class="accent-line" style="margin:14px auto;"></div>
+    <div class="stat-box" style="display:inline-block; padding:28px 70px; margin:14px 0;">
+      <div class="stat-number" style="font-size:50px;">$30,000 – $60,000</div>
+      <div class="stat-label" style="font-size:18px;">Commercial Vehicle Financing • 36–60 Month Term</div>
+    </div>
+    <div class="grid-4" style="width:100%; margin-top:14px;">
+      <div class="card" style="text-align:center;">
+        <p style="font-size:28px; font-weight:700; color:#4ade80;">$11.5K+</p>
+        <p style="font-size:13px;">Monthly Revenue<br>(Local + OTR)</p>
+      </div>
+      <div class="card" style="text-align:center;">
+        <p style="font-size:28px; font-weight:700; color:#4ade80;">58%</p>
+        <p style="font-size:13px;">Profit Margin</p>
+      </div>
+      <div class="card" style="text-align:center;">
+        <p style="font-size:28px; font-weight:700; color:#4ade80;">Week 2</p>
+        <p style="font-size:13px;">First Revenue</p>
+      </div>
+      <div class="card" style="text-align:center;">
+        <p style="font-size:28px; font-weight:700; color:#4ade80;">5 Trucks</p>
+        <p style="font-size:13px;">Year 3 Fleet Goal</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px; padding:14px 30px; max-width:900px;">
+      <p style="font-size:16px;">This is a proven business model operating from the #1 freight hub in America — running both local delivery and over-the-road freight. The truck pays for itself. The demand is there. The platforms are ready. All that's needed is the vehicle.</p>
+    </div>
+    <div style="margin-top:22px;">
+      <p style="font-size:24px; color:#e2e8f0; font-weight:600;">VW Logistics</p>
+      <p style="font-size:18px; color:#94a3b8; margin-top:6px;">Chicago, Illinois</p>
+      <p style="font-size:18px; color:#94a3b8;">📧 vwalker0262@gmail.com</p>
+    </div>
+  </div>
+  <div class="bottom-bar"><span class="company-footer">VW Logistics — Confidential</span><span class="page-num">12</span></div>
+</div>
+
+</body>
+</html>

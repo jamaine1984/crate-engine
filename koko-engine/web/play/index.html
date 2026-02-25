@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Play — Crate Engine</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e0;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.container{text-align:center;max-width:500px;padding:40px 20px}
+h1{font-size:2rem;margin-bottom:12px;background:linear-gradient(135deg,#4ade80,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+p{color:#888;margin-bottom:24px;line-height:1.6}
+.btn{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#4ade80,#22c55e);color:#000;font-weight:700;border-radius:12px;text-decoration:none;font-size:1rem;transition:all 0.2s}
+.btn:hover{transform:scale(1.05);box-shadow:0 8px 30px rgba(74,222,128,0.3)}
+.games{margin-top:30px;text-align:left}
+.game-card{background:#111;border:1px solid #252525;border-radius:12px;padding:16px;margin-bottom:12px;cursor:pointer;transition:all 0.2s}
+.game-card:hover{border-color:#4ade80;transform:translateY(-2px)}
+.game-card h3{font-size:0.95rem;color:#fff;margin-bottom:4px}
+.game-card .meta{font-size:0.75rem;color:#666}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎮 Crate Engine Games</h1>
+  <p>Games published by creators using Crate Engine. Click to play instantly in your browser.</p>
+  <a href="/" class="btn">⚙️ Create Your Own</a>
+  <div class="games" id="games"></div>
+</div>
+<script>
+  // Load published games from localStorage
+  var games = JSON.parse(localStorage.getItem('crate_published_games') || '[]');
+  var el = document.getElementById('games');
+  if (games.length === 0) {
+    el.innerHTML = '<p style="text-align:center;color:#555;font-size:0.85rem;margin-top:20px">No games published yet. Be the first!</p>';
+  } else {
+    games.reverse().forEach(function(g) {
+      var card = document.createElement('div');
+      card.className = 'game-card';
+      card.innerHTML = '<h3>' + g.title + '</h3>' +
+        '<div class="meta">' + g.objects + ' objects · ' + g.commands + ' commands · ' + new Date(g.publishedAt).toLocaleDateString() + '</div>' +
+        (g.description ? '<p style="color:#aaa;font-size:0.8rem;margin-top:6px">' + g.description + '</p>' : '');
+      card.onclick = function() {
+        window.location.href = '/?scene=' + g.slug + '#' + g.sceneData;
+      };
+      el.appendChild(card);
+    });
+  }
+</script>
+</body>
+</html>

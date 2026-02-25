@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><body>
+<canvas id="c" width="64" height="64"></canvas>
+<script>
+const c = document.getElementById('c').getContext('2d');
+// Orange gradient box
+const g = c.createLinearGradient(0,0,64,64);
+g.addColorStop(0,'#ff6b35'); g.addColorStop(1,'#f7c948');
+c.fillStyle = g;
+c.beginPath(); c.roundRect(4,4,56,56,12); c.fill();
+// White "C" letter
+c.fillStyle = '#fff'; c.font = 'bold 44px Arial';
+c.textAlign = 'center'; c.textBaseline = 'middle';
+c.fillText('C', 32, 35);
+</script>
+</body></html>

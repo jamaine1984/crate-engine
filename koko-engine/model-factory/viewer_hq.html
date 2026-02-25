@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>HQ Model Viewer</title>
+<style>
+body{margin:0;background:#111;font-family:system-ui;color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr);gap:20px;padding:20px;max-width:1200px;margin:auto}
+.card{background:#1a1a2e;border-radius:12px;overflow:hidden;border:1px solid #333}
+.card canvas{width:100%;height:250px;display:block}
+.card .label{padding:12px;font-size:15px;text-align:center;color:#e94560;font-weight:bold}
+.card .info{padding:0 12px 12px;font-size:12px;color:#888;text-align:center}
+h1{text-align:center;padding:30px 0 5px;color:#e94560;font-size:28px}
+p{text-align:center;color:#666;margin:0 0 10px}
+</style>
+</head><body>
+<h1>⚔️ High Quality Blender Models</h1>
+<p>Subdivision surfaces, PBR materials, bump mapping, organic displacement</p>
+<div class="grid" id="grid"></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"}}</script>
+<script type="module">
+import*as THREE from'three';
+import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
+import{OrbitControls}from'three/addons/controls/OrbitControls.js';
+
+const models=[{"path": "output_hq_prod/armor/helmets/dark-helmet-0000.glb", "name": "Dark Helmet"}, {"path": "output_hq_prod/buildings/bridges/azure-bridge-0000.glb", "name": "Azure Bridge"}, {"path": "output_hq_prod/buildings/houses/battle-house-0001.glb", "name": "Battle House"}, {"path": "output_hq_prod/buildings/towers/mystic-tower-0001.glb", "name": "Mystic Tower"}, {"path": "output_hq_prod/buildings/walls/ivory-wall-0001.glb", "name": "Ivory Wall"}, {"path": "output_hq_prod/dungeon/crystals/sacred-crystal-0001.glb", "name": "Sacred Crystal"}, {"path": "output_hq_prod/dungeon/pillars/jade-pillar-0000.glb", "name": "Jade Pillar"}, {"path": "output_hq_prod/furniture/barrels/crimson-barrel-0000.glb", "name": "Crimson Barrel"}, {"path": "output_hq_prod/furniture/beds/dark-bed-0000.glb", "name": "Dark Bed"}, {"path": "output_hq_prod/furniture/bookshelves/obsidian-bookshelve-0000.glb", "name": "Obsidian Bookshelve"}, {"path": "output_hq_prod/furniture/chairs/mystic-chair-0001.glb", "name": "Mystic Chair"}, {"path": "output_hq_prod/furniture/tables/rustic-table-0001.glb", "name": "Rustic Table"}, {"path": "output_hq_prod/items/chests/crimson-chest-0001.glb", "name": "Crimson Chest"}, {"path": "output_hq_prod/items/gems/azure-gem-0000.glb", "name": "Azure Gem"}, {"path": "output_hq_prod/items/potions/azure-potion-0001.glb", "name": "Azure Potion"}, {"path": "output_hq_prod/items/torches/royal-torche-0001.glb", "name": "Royal Torche"}, {"path": "output_hq_prod/nature/bushes/crimson-bushe-0000.glb", "name": "Crimson Bushe"}, {"path": "output_hq_prod/nature/flowers/crystal-flower-0001.glb", "name": "Crystal Flower"}, {"path": "output_hq_prod/nature/mushrooms/elegant-mushroom-0000.glb", "name": "Elegant Mushroom"}, {"path": "output_hq_prod/nature/rocks/ember-rock-0000.glb", "name": "Ember Rock"}, {"path": "output_hq_prod/nature/trees/iron-tree-0000.glb", "name": "Iron Tree"}, {"path": "output_hq_prod/props/anvils/frost-anvil-0001.glb", "name": "Frost Anvil"}, {"path": "output_hq_prod/props/campfires/dawn-campfire-0001.glb", "name": "Dawn Campfire"}, {"path": "output_hq_prod/props/cauldrons/crystal-cauldron-0001.glb", "name": "Crystal Cauldron"}, {"path": "output_hq_prod/props/fences/battle-fence-0000.glb", "name": "Battle Fence"}, {"path": "output_hq_prod/props/gravestones/battle-gravestone-0000.glb", "name": "Battle Gravestone"}, {"path": "output_hq_prod/props/ladders/rustic-ladder-0000.glb", "name": "Rustic Ladder"}, {"path": "output_hq_prod/props/mushrooms_giant/golden-mushrooms_giant-0000.glb", "name": "Golden Mushrooms_Giant"}, {"path": "output_hq_prod/props/signs/dawn-sign-0001.glb", "name": "Dawn Sign"}, {"path": "output_hq_prod/props/wells/crystal-well-0000.glb", "name": "Crystal Well"}, {"path": "output_hq_prod/terrain/hills/golden-hill-0001.glb", "name": "Golden Hill"}, {"path": "output_hq_prod/terrain/mountains/elegant-mountain-0000.glb", "name": "Elegant Mountain"}, {"path": "output_hq_prod/weapons/axes/ancient-axe-0001.glb", "name": "Ancient Axe"}, {"path": "output_hq_prod/weapons/bows/azure-bow-0001.glb", "name": "Azure Bow"}, {"path": "output_hq_prod/weapons/daggers/rustic-dagger-0000.glb", "name": "Rustic Dagger"}, {"path": "output_hq_prod/weapons/hammers/frost-hammer-0001.glb", "name": "Frost Hammer"}, {"path": "output_hq_prod/weapons/shields/dark-shield-0000.glb", "name": "Dark Shield"}, {"path": "output_hq_prod/weapons/spears/ancient-spear-0001.glb", "name": "Ancient Spear"}, {"path": "output_hq_prod/weapons/staffs/crimson-staff-0000.glb", "name": "Crimson Staff"}, {"path": "output_hq_prod/weapons/swords/crimson-sword-0000.glb", "name": "Crimson Sword"}];
+
+const loader=new GLTFLoader();
+const grid=document.getElementById('grid');
+
+for(const m of models){
+  const card=document.createElement('div');card.className='card';
+  const cvs=document.createElement('canvas');cvs.width=800;cvs.height=700;
+  const label=document.createElement('div');label.className='label';label.textContent=m.name;
+  const info=document.createElement('div');info.className='info';info.textContent=m.info;
+  card.append(cvs,label,info);grid.append(card);
+
+  const renderer=new THREE.WebGLRenderer({canvas:cvs,antialias:true});
+  renderer.setPixelRatio(2);renderer.setSize(280,250);
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.3;
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x0a0a14);
+  
+  // Environment-like lighting
+  const amb=new THREE.AmbientLight(0xffffff,0.4);scene.add(amb);
+  const key=new THREE.DirectionalLight(0xffeedd,1.8);key.position.set(3,5,3);key.castShadow=true;scene.add(key);
+  const fill=new THREE.DirectionalLight(0x4488cc,0.6);fill.position.set(-3,2,-2);scene.add(fill);
+  const rim=new THREE.DirectionalLight(0xff6633,0.4);rim.position.set(0,-1,4);scene.add(rim);
+  const bottom=new THREE.DirectionalLight(0x223344,0.2);bottom.position.set(0,-3,0);scene.add(bottom);
+  
+  const cam=new THREE.PerspectiveCamera(35,400/350,0.01,100);
+  ;
+  const ctrl=new OrbitControls(cam,cvs);ctrl.enableDamping=true;ctrl.autoRotate=true;ctrl.autoRotateSpeed=2;ctrl.dampingFactor=0.05;
+
+  loader.load(m.path,(gltf)=>{
+    const obj=gltf.scene;
+    obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}});
+    const box=new THREE.Box3().setFromObject(obj);
+    const size=box.getSize(new THREE.Vector3());
+    const center=box.getCenter(new THREE.Vector3());
+    const maxDim=Math.max(size.x,size.y,size.z);
+    const scale=1.8/maxDim;
+    obj.scale.setScalar(scale);
+    obj.position.sub(center.multiplyScalar(scale));
+    scene.add(obj); const d=Math.max(1.5,maxDim*0.8); cam.position.set(d*1.5,d*1.2,d*1.5); cam.lookAt(0,0,0); ctrl.target.set(0,0,0); ctrl.update();
+    
+    // Ground plane
+    const ground=new THREE.Mesh(new THREE.PlaneGeometry(10,10),new THREE.MeshStandardMaterial({color:0x0a0a14,roughness:0.9}));
+    ground.rotation.x=-Math.PI/2;
+    ground.position.y=-size.y*scale/2;
+    ground.receiveShadow=true;
+    scene.add(ground);
+  },undefined,(err)=>{label.textContent+=' ❌';});
+
+  function anim(){requestAnimationFrame(anim);ctrl.update();renderer.render(scene,cam);}
+  anim();
+}
+</script></body></html>

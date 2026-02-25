@@ -1,0 +1,15 @@
+{
+  "name": "crate-engine-multiplayer",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "multiplayer.mjs",
+  "scripts": {
+    "start": "node multiplayer.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

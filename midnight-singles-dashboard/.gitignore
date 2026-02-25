@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+config.json
+*.env
+.env*
+content/
+.firebase/
+midnight-singles-dashboard/.env.local

@@ -1,0 +1,18 @@
+{
+  "name": "midnight-singles-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3050",
+    "build": "next build",
+    "start": "next start -p 3050"
+  },
+  "dependencies": {
+    "firebase": "^12.9.0",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "recharts": "latest"
+  }
+}

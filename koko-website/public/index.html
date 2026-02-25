@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KOKO Engine — Prompt-Driven Game Engine</title>
+    <meta name="description" content="Build real games with one prompt. No asset stores, no code required. Built-in assets, AI-powered, real-time preview.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --bg2: #12121a;
+            --bg3: #1a1a2e;
+            --accent: #7c3aed;
+            --accent2: #a855f7;
+            --accent-glow: rgba(124, 58, 237, 0.3);
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+            --gold: #f59e0b;
+            --green: #10b981;
+            --red: #ef4444;
+            --blue: #3b82f6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* === HERO === */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+            padding: 2rem;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                radial-gradient(ellipse at 30% 20%, rgba(124, 58, 237, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(168, 85, 247, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(59, 130, 246, 0.05) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        /* Animated grid background */
+        .grid-bg {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: 
+                linear-gradient(rgba(124, 58, 237, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(124, 58, 237, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            animation: gridMove 20s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(60px, 60px); }
+        }
+
+        .hero-content { position: relative; z-index: 1; max-width: 900px; }
+
+        .logo {
+            font-size: 1.2rem;
+            font-weight: 600;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: var(--accent2);
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .logo .bolt { font-size: 1.5rem; }
+
+        h1 {
+            font-size: clamp(3rem, 8vw, 6rem);
+            font-weight: 900;
+            line-height: 1.05;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #fff 0%, #c4b5fd 50%, #7c3aed 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .tagline {
+            font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+            color: var(--text-dim);
+            line-height: 1.6;
+            max-width: 700px;
+            margin: 0 auto 2.5rem;
+        }
+
+        .tagline strong { color: var(--text); font-weight: 600; }
+
+        /* Prompt demo */
+        .prompt-demo {
+            background: var(--bg2);
+            border: 1px solid rgba(124, 58, 237, 0.2);
+            border-radius: 16px;
+            padding: 1.5rem 2rem;
+            max-width: 650px;
+            margin: 0 auto 3rem;
+            text-align: left;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .prompt-demo::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        }
+
+        .prompt-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent2);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .prompt-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem;
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .prompt-text .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.1em;
+            background: var(--accent);
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+            margin-left: 2px;
+        }
+
+        @keyframes blink { 50% { opacity: 0; } }
+
+        .prompt-result {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--green);
+        }
+
+        .cta-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.9rem 2rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: white;
+            box-shadow: 0 4px 20px var(--accent-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px var(--accent-glow);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+            transform: translateY(-2px);
+        }
+
+        /* === SECTIONS === */
+        section {
+            padding: 6rem 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--accent2);
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 800;
+            margin-bottom: 1rem;
+            line-height: 1.2;
+        }
+
+        .section-sub {
+            font-size: 1.1rem;
+            color: var(--text-dim);
+            max-width: 600px;
+            line-height: 1.6;
+            margin-bottom: 3rem;
+        }
+
+        /* === PROBLEM / SOLUTION === */
+        .compare {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 4rem;
+        }
+
+        @media (max-width: 768px) { .compare { grid-template-columns: 1fr; } }
+
+        .compare-card {
+            padding: 2rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .compare-card.old {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(239, 68, 68, 0.02));
+            border-color: rgba(239, 68, 68, 0.15);
+        }
+
+        .compare-card.new {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(16, 185, 129, 0.02));
+            border-color: rgba(16, 185, 129, 0.15);
+        }
+
+        .compare-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .compare-card ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .compare-card li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
+
+        .compare-card li .icon { flex-shrink: 0; font-size: 1.1rem; }
+
+        /* === FEATURES GRID === */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .feature-card {
+            background: var(--bg2);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 2rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: rgba(124, 58, 237, 0.3);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-card p {
+            color: var(--text-dim);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* === STATS === */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            padding: 4rem 0;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            margin: 3rem 0;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--accent2), var(--gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+
+        /* === TECH STACK === */
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .tech-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg2);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+        }
+
+        .tech-item .tech-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .tech-item .tech-desc {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        /* === WAITLIST === */
+        .waitlist-section {
+            text-align: center;
+            padding: 6rem 2rem;
+            position: relative;
+        }
+
+        .waitlist-section::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(ellipse at 50% 50%, rgba(124, 58, 237, 0.1), transparent 70%);
+            pointer-events: none;
+        }
+
+        .waitlist-form {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .waitlist-form input {
+            padding: 0.9rem 1.5rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: var(--bg2);
+            color: var(--text);
+            font-size: 1rem;
+            width: 300px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .waitlist-form input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        /* === FOOTER === */
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        footer a { color: var(--accent2); text-decoration: none; }
+
+        /* === ANIMATIONS === */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Typing animation */
+        .typing-text {
+            overflow: hidden;
+            white-space: nowrap;
+            animation: typing 3s steps(60, end);
+        }
+
+        @keyframes typing {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+    <div class="grid-bg"></div>
+    <div class="hero-content">
+        <div class="logo">
+            <span class="bolt">⚡</span>
+            <span>KOKO ENGINE</span>
+        </div>
+        <h1>One Prompt.<br>Real Game.</h1>
+        <p class="tagline">
+            The first game engine where <strong>every asset is built in</strong> and 
+            <strong>AI builds your game in real-time</strong>. No asset stores. No code required. 
+            Just describe what you want.
+        </p>
+        <div class="prompt-demo">
+            <div class="prompt-label">⚡ koko prompt</div>
+            <div class="prompt-text">
+                Create a dark fantasy RPG with a knight character. Add roll, parry, and backstab combat. 
+                Third-person souls-like camera with lock-on targeting. Medieval village with a tavern and blacksmith.<span class="cursor"></span>
+            </div>
+            <div class="prompt-result">
+                ✓ Spawned player: Knight (male, plate armor, longsword)<br>
+                ✓ Combat system: roll, parry, backstab, light/heavy attack<br>
+                ✓ Camera: souls-like third person with lock-on<br>
+                ✓ World: medieval village (tavern, blacksmith, market, 12 NPCs)<br>
+                ✓ Ready to play — press ▶ or keep prompting
+            </div>
+        </div>
+        <div class="cta-group">
+            <a href="#waitlist" class="btn btn-primary">Join the Waitlist</a>
+            <a href="#features" class="btn btn-secondary">See Features →</a>
+        </div>
+    </div>
+</div>
+
+<!-- PROBLEM vs SOLUTION -->
+<section>
+    <div class="section-label">The Shift</div>
+    <h2>Game engines are stuck in 2010</h2>
+    <p class="section-sub">Every engine makes you do the same tedious work. We built KOKO to kill that friction.</p>
+
+    <div class="compare">
+        <div class="compare-card old">
+            <h3><span>😤</span> Traditional Engines</h3>
+            <ul>
+                <li><span class="icon">✕</span> Months learning complex tools before making anything</li>
+                <li><span class="icon">✕</span> Browse asset stores, buy, import, fix formats, repeat</li>
+                <li><span class="icon">✕</span> Wire animations, physics, cameras manually</li>
+                <li><span class="icon">✕</span> Edit → compile → run → find bug → repeat (slow)</li>
+                <li><span class="icon">✕</span> Need a team of specialists to ship</li>
+            </ul>
+        </div>
+        <div class="compare-card new">
+            <h3><span>⚡</span> KOKO Engine</h3>
+            <ul>
+                <li><span class="icon">✓</span> Describe your game in plain English — it builds</li>
+                <li><span class="icon">✓</span> 3,000+ assets ship with the engine. Always ready</li>
+                <li><span class="icon">✓</span> AI connects systems automatically. You just prompt</li>
+                <li><span class="icon">✓</span> See changes in real-time. Play instantly. No compile</li>
+                <li><span class="icon">✓</span> One person can build and ship a real game</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- STATS -->
+<section>
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-number">3,000+</div>
+            <div class="stat-label">Built-in Assets</div>
+        </div>
+        <div class="stat">
+            <div class="stat-number">1,000+</div>
+            <div class="stat-label">Animations</div>
+        </div>
+        <div class="stat">
+            <div class="stat-number">2,000+</div>
+            <div class="stat-label">Sound Effects</div>
+        </div>
+        <div class="stat">
+            <div class="stat-number">0</div>
+            <div class="stat-label">Lines of Code Required</div>
+        </div>
+    </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+    <div class="section-label">Capabilities</div>
+    <h2>Everything. Built in.</h2>
+    <p class="section-sub">Every feature a real game needs — rendering, physics, audio, AI, multiplayer — all included, all prompt-accessible.</p>
+
+    <div class="features-grid">
+        <div class="feature-card fade-in">
+            <div class="feature-icon">🎮</div>
+            <h3>Prompt-to-Game</h3>
+            <p>Describe your game and watch it build in real-time. Add features, refine mechanics, iterate — all through natural language.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">📦</div>
+            <h3>Built-In Asset Library</h3>
+            <p>Characters, weapons, armor, animations, environments, sounds, VFX, materials — 3,000+ assets ship with the engine. No store needed.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">📁</div>
+            <h3>Import Your Own Assets</h3>
+            <p>Bring your own models, textures, sounds, and scripts. Support for glTF, FBX, OBJ, PNG, WAV, OGG, Lua, and dozens more formats.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">🧠</div>
+            <h3>Model-Agnostic AI</h3>
+            <p>Works with Claude, Gemini, GPT, or local models via Ollama. Routes each task to the best AI. Never locked to one provider.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">👁️</div>
+            <h3>Live Preview</h3>
+            <p>Every prompt change appears instantly in the viewport. Play your game at any moment. No compile, no wait.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">🎨</div>
+            <h3>AAA Rendering</h3>
+            <p>PBR materials, global illumination, volumetric fog, post-processing, dynamic shadows — Metal 4, Vulkan, DirectX 12, WebGPU.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">⚔️</div>
+            <h3>Combat Systems</h3>
+            <p>1,000+ built-in animations: rolls, parries, combos, backstabs, ranged, magic. Prompt "add souls-like combat" and it works.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">🌍</div>
+            <h3>World Generation</h3>
+            <p>Procedural terrain, dungeons, cities, forests, caves. Or hand-craft with built-in environment kits. Open world streaming included.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">🎵</div>
+            <h3>Spatial Audio</h3>
+            <p>3D audio with HRTF, reverb zones, adaptive music, 2,000+ built-in sounds. Footsteps that change on different surfaces, automatically.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">🌐</div>
+            <h3>Multiplayer</h3>
+            <p>Client-server, P2P, lobbies, matchmaking, lag compensation — prompt "add 4-player co-op" and the networking just works.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">🔌</div>
+            <h3>API & Plugins</h3>
+            <p>REST APIs, WebSockets, OAuth2. Plug in payment systems, analytics, cloud saves, AI services, music generation — anything.</p>
+        </div>
+        <div class="feature-card fade-in">
+            <div class="feature-icon">📱</div>
+            <h3>Ship Everywhere</h3>
+            <p>Build for macOS, Windows, Linux, iOS, Android, and Web from a single project. Console support coming.</p>
+        </div>
+    </div>
+</section>
+
+<!-- TECH STACK -->
+<section>
+    <div class="section-label">Under the Hood</div>
+    <h2>Built with Rust. Runs on Metal.</h2>
+    <p class="section-sub">Modern tech stack from the ground up. No 30-year-old C++ legacy. Safe, fast, and cross-platform.</p>
+
+    <div class="tech-grid">
+        <div class="tech-item">
+            <div>
+                <div class="tech-name">🦀 Rust</div>
+                <div class="tech-desc">Memory-safe, zero-cost abstractions</div>
+            </div>
+        </div>
+        <div class="tech-item">
+            <div>
+                <div class="tech-name">⚙️ wgpu / Metal 4</div>
+                <div class="tech-desc">Next-gen GPU rendering</div>
+            </div>
+        </div>
+        <div class="tech-item">
+            <div>
+                <div class="tech-name">🏗️ ECS Architecture</div>
+                <div class="tech-desc">1M+ entities at 60fps</div>
+            </div>
+        </div>
+        <div class="tech-item">
+            <div>
+                <div class="tech-name">💥 Rapier Physics</div>
+                <div class="tech-desc">2D + 3D, destruction, ragdolls</div>
+            </div>
+        </div>
+        <div class="tech-item">
+            <div>
+                <div class="tech-name">📜 Lua Scripting</div>
+                <div class="tech-desc">Hot-reload, sandboxed, optional</div>
+            </div>
+        </div>
+        <div class="tech-item">
+            <div>
+                <div class="tech-name">🤖 AI Orchestrator</div>
+                <div class="tech-desc">Claude, Gemini, GPT, local LLMs</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- WAITLIST -->
+<section class="waitlist-section" id="waitlist">
+    <div class="section-label" style="position:relative;z-index:1">Early Access</div>
+    <h2 style="position:relative;z-index:1">Be First to Build</h2>
+    <p class="section-sub" style="margin:1rem auto 0;position:relative;z-index:1">
+        KOKO Engine is in active development. Join the waitlist to get early access and shape the future of game development.
+    </p>
+    <form class="waitlist-form" id="waitlistForm">
+        <input type="email" placeholder="your@email.com" required id="emailInput">
+        <button type="submit" class="btn btn-primary">Get Early Access</button>
+    </form>
+    <p id="formMessage" style="margin-top:1rem;color:var(--green);display:none;position:relative;z-index:1">
+        🎉 You're on the list! We'll reach out soon.
+    </p>
+</section>
+
+<!-- FOOTER -->
+<footer>
+    <p>⚡ KOKO Engine — Built by <a href="#">KOKO Labs</a></p>
+    <p style="margin-top:0.5rem;font-size:0.8rem;">The future of game development is prompt-driven.</p>
+</footer>
+
+<script>
+    // Scroll animations
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+            }
+        });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+    // Waitlist form
+    document.getElementById('waitlistForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = document.getElementById('emailInput').value;
+        // Store to localStorage for now — connect to Firebase later
+        const waitlist = JSON.parse(localStorage.getItem('koko_waitlist') || '[]');
+        waitlist.push({ email, timestamp: new Date().toISOString() });
+        localStorage.setItem('koko_waitlist', JSON.stringify(waitlist));
+        
+        document.getElementById('formMessage').style.display = 'block';
+        document.getElementById('emailInput').value = '';
+        document.getElementById('waitlistForm').querySelector('button').textContent = 'Added! ✓';
+    });
+</script>
+
+</body>
+</html>

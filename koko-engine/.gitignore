@@ -1,0 +1,14 @@
+node_modules/
+model-factory/output_hq_prod/
+model-factory/meshy-3d/
+model-factory/curated_models/
+model-factory/meshy-input/
+model-factory/kenney_free/
+web/marketplace/models/
+*.log
+.DS_Store
+target/
+KOKO.app/
+*.rlib
+*.rmeta
+*.dylib

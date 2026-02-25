@@ -1,0 +1,23 @@
+name = "crate-engine-api"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+STRIPE_PUBLISHABLE_KEY = "pk_live_placeholder"
+SITE_URL = "https://crateshipgames.com"
+
+[[kv_namespaces]]
+binding = "CRATE_GAMES"
+id = "cfd1bca8ac84439cadc2bb146a034d41"
+
+[[kv_namespaces]]
+binding = "CRATE_USERS"
+id = "74cf27388c9e49e1bb1e05a9e09e7dd6"
+
+[[kv_namespaces]]
+binding = "CRATE_MODELS"
+id = "81bf69fde85e4d6fb08a9e13e04ab3b3"
+
+[[routes]]
+pattern = "api.crateshipgames.com/*"
+zone_name = "crateshipgames.com"

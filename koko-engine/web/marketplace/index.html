@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Asset Marketplace — Crate Engine</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh}
+a{color:#7c5cff;text-decoration:none}
+
+/* Header */
+.header{background:linear-gradient(135deg,#12121a 0%,#1a1a2e 100%);border-bottom:1px solid #2a2a3a;padding:20px 40px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:24px;background:linear-gradient(135deg,#7c5cff,#00d4ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .subtitle{color:#888;font-size:14px;margin-left:12px}
+.header .back{color:#7c5cff;font-size:14px;padding:8px 16px;border:1px solid #7c5cff;border-radius:8px;transition:all .2s}
+.header .back:hover{background:#7c5cff;color:#fff}
+
+/* Stats */
+.stats-bar{background:#12121a;padding:12px 40px;display:flex;gap:30px;border-bottom:1px solid #1a1a2a;font-size:13px;color:#888;flex-wrap:wrap}
+.stats-bar span{color:#7c5cff;font-weight:600}
+
+/* Section Tabs */
+.section-tabs{padding:20px 40px 0;display:flex;gap:0;border-bottom:1px solid #2a2a3a}
+.section-tab{padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;color:#888;transition:all .2s}
+.section-tab:hover{color:#e0e0e0}
+.section-tab.active{color:#7c5cff;border-bottom-color:#7c5cff}
+.section-tab .badge{background:#7c5cff;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px}
+.section-tab.creator-tab .badge{background:#ff6b35}
+.section-tab.free-tab .badge{background:#00c853}
+
+/* Filters & Search */
+.controls{padding:20px 40px;display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.filters{display:flex;gap:8px;flex-wrap:wrap;flex:1}
+.filters button{background:#1a1a2e;border:1px solid #2a2a3a;color:#ccc;padding:8px 18px;border-radius:20px;cursor:pointer;font-size:13px;transition:all .2s}
+.filters button:hover,.filters button.active{background:#7c5cff;color:#fff;border-color:#7c5cff}
+.search-box{background:#1a1a2e;border:1px solid #2a2a3a;color:#e0e0e0;padding:10px 20px;border-radius:10px;font-size:14px;outline:none;width:260px}
+.search-box:focus{border-color:#7c5cff}
+
+/* Grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:24px;padding:24px 40px 40px}
+.card{background:#12121a;border:1px solid #2a2a3a;border-radius:16px;overflow:hidden;transition:all .3s;position:relative}
+.card:hover{border-color:#7c5cff;transform:translateY(-4px);box-shadow:0 8px 30px rgba(124,92,255,.15)}
+.card canvas{width:100%;height:220px;display:block;background:#0a0a0f;cursor:grab}
+.card-badge{position:absolute;top:12px;left:12px;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:700;z-index:5;text-transform:uppercase;letter-spacing:0.5px}
+.badge-premium{background:linear-gradient(135deg,#7c5cff,#5c3cdf);color:#fff}
+.badge-free{background:#00c853;color:#fff}
+.badge-creator{background:#ff6b35;color:#fff}
+.card-info{padding:16px}
+.card-info h3{font-size:14px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-info .meta{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#888}
+.card-info .tag{background:#7c5cff22;color:#7c5cff;padding:3px 10px;border-radius:12px;font-size:11px}
+.card-info .size{color:#666}
+.card-actions{padding:0 16px 16px;display:flex;gap:8px}
+.card-actions button{flex:1;padding:10px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.btn-view{background:#1a1a2e;color:#7c5cff;border:1px solid #7c5cff!important}
+.btn-view:hover{background:#7c5cff;color:#fff}
+.btn-dl{background:linear-gradient(135deg,#7c5cff,#5c3cdf);color:#fff}
+.btn-dl:hover{opacity:.9}
+.btn-use{background:linear-gradient(135deg,#00c853,#00a844);color:#fff}
+.btn-use:hover{opacity:.9}
+.btn-free{background:linear-gradient(135deg,#00c853,#00a844);color:#fff}
+
+/* Creator Section */
+.creator-hero{padding:40px;text-align:center;background:linear-gradient(135deg,#1a1020 0%,#12121a 100%);border-bottom:1px solid #2a2a3a}
+.creator-hero h2{font-size:28px;margin-bottom:12px;background:linear-gradient(135deg,#ff6b35,#ff9800);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.creator-hero p{color:#888;max-width:600px;margin:0 auto 24px;line-height:1.6}
+.creator-hero .cta{display:inline-block;background:linear-gradient(135deg,#ff6b35,#ff9800);color:#fff;padding:14px 32px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;border:none;transition:all .2s}
+.creator-hero .cta:hover{transform:scale(1.05);box-shadow:0 4px 20px rgba(255,107,53,.3)}
+.rev-share{display:flex;gap:40px;justify-content:center;margin:30px 0 0}
+.rev-item{text-align:center}
+.rev-item .pct{font-size:36px;font-weight:800;background:linear-gradient(135deg,#ff6b35,#ff9800);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.rev-item .label{color:#888;font-size:13px;margin-top:4px}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.85);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal{background:#12121a;border:1px solid #2a2a3a;border-radius:20px;width:90vw;height:85vh;max-width:1000px;position:relative;overflow:hidden}
+.modal canvas{width:100%;height:100%;display:block}
+.modal-close{position:absolute;top:16px;right:16px;background:#7c5cff;color:#fff;border:none;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:18px;z-index:10}
+.modal-title{position:absolute;bottom:16px;left:16px;background:rgba(0,0,0,.7);padding:8px 16px;border-radius:8px;font-size:14px;z-index:10}
+
+/* Empty state */
+.empty{text-align:center;padding:80px 40px;color:#555}
+.empty h3{font-size:20px;margin-bottom:8px;color:#888}
+
+@media(max-width:768px){.header,.controls,.grid,.stats-bar,.section-tabs,.creator-hero{padding-left:16px;padding-right:16px}.grid{grid-template-columns:1fr}.search-box{width:100%}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px">
+    <h1>⚡ Crate Engine Marketplace</h1>
+    <span class="subtitle">3D Game Assets</span>
+  </div>
+  <a href="/" class="back">← Back to Engine</a>
+</div>
+<div class="stats-bar">
+  <div><span id="total-count">183</span> Total Models</div>
+  <div><span>63</span> AI-Generated Premium</div>
+  <div><span>120</span> Free Assets</div>
+  <div>Draco Compressed • <span>GLB</span> Format</div>
+</div>
+
+<div class="section-tabs" id="section-tabs">
+  <div class="section-tab active" data-section="premium">🌟 Premium AI<span class="badge">63</span></div>
+  <div class="section-tab free-tab" data-section="free">🎁 Free Assets<span class="badge">120</span></div>
+  <div class="section-tab creator-tab" data-section="creator">🎨 Creator Market<span class="badge">NEW</span></div>
+</div>
+
+<div id="premium-section">
+  <div class="controls">
+    <div class="filters" id="premium-filters"></div>
+    <input type="text" class="search-box" id="premium-search" placeholder="Search premium models...">
+  </div>
+  <div class="grid" id="premium-grid"></div>
+</div>
+
+<div id="free-section" style="display:none">
+  <div class="controls">
+    <div class="filters" id="free-filters"></div>
+    <input type="text" class="search-box" id="free-search" placeholder="Search free models...">
+  </div>
+  <div class="grid" id="free-grid"></div>
+</div>
+
+<div id="creator-section" style="display:none">
+  <div class="creator-hero">
+    <h2>🎨 Creator Marketplace</h2>
+    <p>Upload your 3D models, set your price, and earn <strong>70%</strong> of every sale. Join a growing community of game asset creators powering the next generation of games.</p>
+    <div class="rev-share">
+      <div class="rev-item"><div class="pct">70%</div><div class="label">You Keep</div></div>
+      <div class="rev-item"><div class="pct">30%</div><div class="label">Platform Fee</div></div>
+      <div class="rev-item"><div class="pct">$0</div><div class="label">Listing Fee</div></div>
+    </div>
+    <br>
+    <button class="cta" onclick="alert('Creator signups coming soon! Join our Discord for early access.')">Start Selling →</button>
+  </div>
+  <div class="empty">
+    <h3>🚀 Coming Soon</h3>
+    <p>Be among the first creators to list assets on Crate Engine Marketplace.<br>Upload GLB models, set prices, get paid.</p>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title" id="modal-title"></div>
+    <canvas id="modal-canvas"></canvas>
+  </div>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/libs/draco/');
+const gltfLoader = new GLTFLoader();
+gltfLoader.setDRACOLoader(dracoLoader);
+
+const PREMIUM = [
+  {name:"Ancient Colosseum Arena",file:"models/ancient_colosseum_arena.glb",cat:"Buildings",size:"10.4MB"},
+  {name:"Ancient Temple Complex",file:"models/ancient_temple_complex.glb",cat:"Buildings",size:"9.1MB"},
+  {name:"Apocalypse Wasteland",file:"models/apocalypse_wasteland.glb",cat:"Environments",size:"10.0MB"},
+  {name:"Ancient Temple Ruins",file:"models/asset_b4-19.glb",cat:"Buildings",size:"3.4MB"},
+  {name:"Wilderness Survival Camp",file:"models/asset_b4-21.glb",cat:"Environments",size:"5.9MB"},
+  {name:"Merchant Bazaar Stalls",file:"models/asset_b4-22.glb",cat:"Props",size:"4.7MB"},
+  {name:"Stone Fortress Walls",file:"models/asset_b4-24.glb",cat:"Buildings",size:"6.3MB"},
+  {name:"Enchanted Twilight Forest",file:"models/asset_b4-25.glb",cat:"Nature",size:"6.1MB"},
+  {name:"Harbor Docks & Vessels",file:"models/asset_b4-26.glb",cat:"Environments",size:"4.4MB"},
+  {name:"Warzone Siege Equipment",file:"models/asset_b4-27.glb",cat:"Props",size:"6.5MB"},
+  {name:"Astronaut Space Pack",file:"models/astronaut_space_pack.glb",cat:"Characters",size:"7.5MB"},
+  {name:"Casual People Pack",file:"models/casual_people_pack.glb",cat:"Characters",size:"4.8MB"},
+  {name:"Celestial Cloud Temple",file:"models/celestial_cloud_temple.glb",cat:"Buildings",size:"7.9MB"},
+  {name:"Crystal Cave World",file:"models/crystal_cave_world.glb",cat:"Environments",size:"9.5MB"},
+  {name:"Cyberpunk Characters",file:"models/cyberpunk_character_pack.glb",cat:"Characters",size:"7.5MB"},
+  {name:"Cyberpunk Neon District",file:"models/cyberpunk_neon_district.glb",cat:"Environments",size:"10.4MB"},
+  {name:"Dark Dungeon Interior",file:"models/dark_dungeon_interior.glb",cat:"Environments",size:"10.6MB"},
+  {name:"Cursed Graveyard Scene",file:"models/dark_fantasy_asset_15.glb",cat:"Environments",size:"5.0MB"},
+  {name:"Forgotten Temple Ruins",file:"models/dark_fantasy_asset_22.glb",cat:"Environments",size:"5.8MB"},
+  {name:"Dark Fantasy Cottage",file:"models/dark_fantasy_cottage.glb",cat:"Buildings",size:"11.2MB"},
+  {name:"Dark Fantasy Greatsword",file:"models/dark_fantasy_greatsword.glb",cat:"Weapons",size:"3.5MB"},
+  {name:"Dark Forest Environment",file:"models/dark_forest_environment.glb",cat:"Environments",size:"9.8MB"},
+  {name:"Desert Oasis Village",file:"models/desert_oasis_village.glb",cat:"Environments",size:"9.5MB"},
+  {name:"Dragon Mountain Lair",file:"models/dragon_mountain_lair.glb",cat:"Environments",size:"8.9MB"},
+  {name:"Emergency Services",file:"models/emergency_services_pack.glb",cat:"Characters",size:"5.4MB"},
+  {name:"Enchanted Mushroom Forest",file:"models/enchanted_mushroom_forest.glb",cat:"Nature",size:"9.9MB"},
+  {name:"Fantasy Character Group",file:"models/fantasy_character_group.glb",cat:"Characters",size:"10.1MB"},
+  {name:"Fantasy Landscape",file:"models/fantasy_landscape_scene_1.glb",cat:"Environments",size:"8.0MB"},
+  {name:"Floating Sky Islands",file:"models/floating_sky_islands.glb",cat:"Environments",size:"9.0MB"},
+  {name:"Frozen Ice Kingdom",file:"models/frozen_ice_kingdom.glb",cat:"Environments",size:"8.1MB"},
+  {name:"Medieval Village Props",file:"models/game_asset_pack_1.glb",cat:"Props",size:"6.6MB"},
+  {name:"Sci-Fi Space Station Kit",file:"models/game_asset_pack_10.glb",cat:"Environments",size:"7.5MB"},
+  {name:"Dark Fantasy Dungeon Set",file:"models/game_asset_pack_2.glb",cat:"Environments",size:"8.6MB"},
+  {name:"Countryside Village Pack",file:"models/game_asset_pack_3.glb",cat:"Props",size:"4.9MB"},
+  {name:"Woodland Nature Pack",file:"models/game_asset_pack_5.glb",cat:"Nature",size:"6.4MB"},
+  {name:"Underground Cavern Set",file:"models/game_asset_pack_7.glb",cat:"Environments",size:"8.1MB"},
+  {name:"Castle Interior Furnishings",file:"models/game_asset_pack_8.glb",cat:"Buildings",size:"6.5MB"},
+  {name:"Arcane Highlands",file:"models/game_world_scene_1.glb",cat:"Environments",size:"4.8MB"},
+  {name:"Post-Apocalyptic City",file:"models/game_world_scene_2.glb",cat:"Environments",size:"5.4MB"},
+  {name:"Modern Luxury Villa",file:"models/game_world_scene_3.glb",cat:"Buildings",size:"2.7MB"},
+  {name:"Saharan Desert Village",file:"models/game_world_scene_4.glb",cat:"Environments",size:"6.5MB"},
+  {name:"Old-World Medieval Town",file:"models/game_world_scene_5.glb",cat:"Environments",size:"4.8MB"},
+  {name:"Neon Cyberpunk Streets",file:"models/game_world_scene_6.glb",cat:"Environments",size:"5.5MB"},
+  {name:"Downtown City Block",file:"models/game_world_scene_7.glb",cat:"Environments",size:"3.9MB"},
+  {name:"Royal Fantasy Kingdom",file:"models/game_world_scene_8.glb",cat:"Environments",size:"5.3MB"},
+  {name:"Haunted Ghost Manor",file:"models/haunted_ghost_manor.glb",cat:"Buildings",size:"7.8MB"},
+  {name:"Low Poly Adventure Island",file:"models/low_poly_adventure_island.glb",cat:"Environments",size:"3.8MB"},
+  {name:"Magical Crystal Tree",file:"models/magical_crystal_tree.glb",cat:"Nature",size:"9.7MB"},
+  {name:"Medieval Market Square",file:"models/medieval_market_square.glb",cat:"Buildings",size:"9.1MB"},
+  {name:"Medieval Warriors",file:"models/medieval_warrior_group.glb",cat:"Characters",size:"9.2MB"},
+  {name:"Mystical Fairy Garden",file:"models/mystical_fairy_garden.glb",cat:"Nature",size:"10.2MB"},
+  {name:"NPC Character Pack",file:"models/npc_character_pack.glb",cat:"Characters",size:"6.3MB"},
+  {name:"Pirate Ship Harbor",file:"models/pirate_ship_harbor.glb",cat:"Environments",size:"9.5MB"},
+  {name:"Ruined Castle Keep",file:"models/ruined_castle_keep.glb",cat:"Buildings",size:"11.4MB"},
+  {name:"Runic Battle Axe",file:"models/runic_battle_axe.glb",cat:"Weapons",size:"4.2MB"},
+  {name:"Space Station Interior",file:"models/space_station_interior.glb",cat:"Environments",size:"9.8MB"},
+  {name:"Steampunk Airship Dock",file:"models/steampunk_airship_dock.glb",cat:"Environments",size:"9.7MB"},
+  {name:"Survival Gear Pack",file:"models/survival_gear_pack.glb",cat:"Items",size:"3.9MB"},
+  {name:"Tribal Village Scene",file:"models/tribal_village_scene.glb",cat:"Environments",size:"8.6MB"},
+  {name:"Underwater Coral Palace",file:"models/underwater_coral_palace.glb",cat:"Environments",size:"9.7MB"},
+  {name:"Volcanic Fire Lands",file:"models/volcanic_fire_lands.glb",cat:"Environments",size:"8.6MB"},
+  {name:"War-Torn Battlefield",file:"models/war_torn_battlefield.glb",cat:"Environments",size:"8.9MB"},
+  {name:"Zombie Undead Pack",file:"models/zombie_undead_pack.glb",cat:"Characters",size:"5.3MB"}
+];
+
+const FREE = [
+  {name:"Classic Sword",file:"models/free/weapons_swords_1.glb",cat:"Weapons",sub:"Swords",size:"50KB"},
+  {name:"Enchanted Sword",file:"models/free/weapons_swords_2.glb",cat:"Weapons",sub:"Swords",size:"58KB"},
+  {name:"Battle-Worn Sword",file:"models/free/weapons_swords_3.glb",cat:"Weapons",sub:"Swords",size:"68KB"},
+  {name:"Classic Axe",file:"models/free/weapons_axes_1.glb",cat:"Weapons",sub:"Axes",size:"35KB"},
+  {name:"Enchanted Axe",file:"models/free/weapons_axes_2.glb",cat:"Weapons",sub:"Axes",size:"31KB"},
+  {name:"Battle-Worn Axe",file:"models/free/weapons_axes_3.glb",cat:"Weapons",sub:"Axes",size:"39KB"},
+  {name:"Classic Shield",file:"models/free/weapons_shields_1.glb",cat:"Weapons",sub:"Shields",size:"19KB"},
+  {name:"Enchanted Shield",file:"models/free/weapons_shields_2.glb",cat:"Weapons",sub:"Shields",size:"20KB"},
+  {name:"Battle-Worn Shield",file:"models/free/weapons_shields_3.glb",cat:"Weapons",sub:"Shields",size:"25KB"},
+  {name:"Classic Bow",file:"models/free/weapons_bows_1.glb",cat:"Weapons",sub:"Bows",size:"9KB"},
+  {name:"Enchanted Bow",file:"models/free/weapons_bows_2.glb",cat:"Weapons",sub:"Bows",size:"9KB"},
+  {name:"Battle-Worn Bow",file:"models/free/weapons_bows_3.glb",cat:"Weapons",sub:"Bows",size:"9KB"},
+  {name:"Classic Dagger",file:"models/free/weapons_daggers_1.glb",cat:"Weapons",sub:"Daggers",size:"16KB"},
+  {name:"Enchanted Dagger",file:"models/free/weapons_daggers_2.glb",cat:"Weapons",sub:"Daggers",size:"17KB"},
+  {name:"Battle-Worn Dagger",file:"models/free/weapons_daggers_3.glb",cat:"Weapons",sub:"Daggers",size:"16KB"},
+  {name:"Classic Hammer",file:"models/free/weapons_hammers_1.glb",cat:"Weapons",sub:"Hammers",size:"28KB"},
+  {name:"Enchanted Hammer",file:"models/free/weapons_hammers_2.glb",cat:"Weapons",sub:"Hammers",size:"32KB"},
+  {name:"Battle-Worn Hammer",file:"models/free/weapons_hammers_3.glb",cat:"Weapons",sub:"Hammers",size:"35KB"},
+  {name:"Classic Spear",file:"models/free/weapons_spears_1.glb",cat:"Weapons",sub:"Spears",size:"9KB"},
+  {name:"Enchanted Spear",file:"models/free/weapons_spears_2.glb",cat:"Weapons",sub:"Spears",size:"9KB"},
+  {name:"Battle-Worn Spear",file:"models/free/weapons_spears_3.glb",cat:"Weapons",sub:"Spears",size:"9KB"},
+  {name:"Classic Staff",file:"models/free/weapons_staffs_1.glb",cat:"Weapons",sub:"Staffs",size:"4KB"},
+  {name:"Enchanted Staff",file:"models/free/weapons_staffs_2.glb",cat:"Weapons",sub:"Staffs",size:"9KB"},
+  {name:"Battle-Worn Staff",file:"models/free/weapons_staffs_3.glb",cat:"Weapons",sub:"Staffs",size:"9KB"},
+  {name:"Classic Tree",file:"models/free/nature_trees_1.glb",cat:"Nature",sub:"Trees",size:"39KB"},
+  {name:"Enchanted Tree",file:"models/free/nature_trees_2.glb",cat:"Nature",sub:"Trees",size:"30KB"},
+  {name:"Battle-Worn Tree",file:"models/free/nature_trees_3.glb",cat:"Nature",sub:"Trees",size:"51KB"},
+  {name:"Classic Rock",file:"models/free/nature_rocks_1.glb",cat:"Nature",sub:"Rocks",size:"7KB"},
+  {name:"Enchanted Rock",file:"models/free/nature_rocks_2.glb",cat:"Nature",sub:"Rocks",size:"8KB"},
+  {name:"Battle-Worn Rock",file:"models/free/nature_rocks_3.glb",cat:"Nature",sub:"Rocks",size:"5KB"},
+  {name:"Classic Bush",file:"models/free/nature_bushes_1.glb",cat:"Nature",sub:"Bushes",size:"9KB"},
+  {name:"Enchanted Bush",file:"models/free/nature_bushes_2.glb",cat:"Nature",sub:"Bushes",size:"7KB"},
+  {name:"Battle-Worn Bush",file:"models/free/nature_bushes_3.glb",cat:"Nature",sub:"Bushes",size:"6KB"},
+  {name:"Classic Flower",file:"models/free/nature_flowers_1.glb",cat:"Nature",sub:"Flowers",size:"23KB"},
+  {name:"Enchanted Flower",file:"models/free/nature_flowers_2.glb",cat:"Nature",sub:"Flowers",size:"23KB"},
+  {name:"Battle-Worn Flower",file:"models/free/nature_flowers_3.glb",cat:"Nature",sub:"Flowers",size:"21KB"},
+  {name:"Classic Mushroom",file:"models/free/nature_mushrooms_1.glb",cat:"Nature",sub:"Mushrooms",size:"17KB"},
+  {name:"Enchanted Mushroom",file:"models/free/nature_mushrooms_2.glb",cat:"Nature",sub:"Mushrooms",size:"8KB"},
+  {name:"Battle-Worn Mushroom",file:"models/free/nature_mushrooms_3.glb",cat:"Nature",sub:"Mushrooms",size:"8KB"},
+  {name:"Classic Mountain",file:"models/free/terrain_mountains_1.glb",cat:"Terrain",sub:"Mountains",size:"41KB"},
+  {name:"Enchanted Mountain",file:"models/free/terrain_mountains_2.glb",cat:"Terrain",sub:"Mountains",size:"41KB"},
+  {name:"Battle-Worn Mountain",file:"models/free/terrain_mountains_3.glb",cat:"Terrain",sub:"Mountains",size:"40KB"},
+  {name:"Classic Hills",file:"models/free/terrain_hills_1.glb",cat:"Terrain",sub:"Hills",size:"24KB"},
+  {name:"Enchanted Hills",file:"models/free/terrain_hills_2.glb",cat:"Terrain",sub:"Hills",size:"30KB"},
+  {name:"Battle-Worn Hills",file:"models/free/terrain_hills_3.glb",cat:"Terrain",sub:"Hills",size:"27KB"},
+  {name:"Classic House",file:"models/free/buildings_houses_1.glb",cat:"Buildings",sub:"Houses",size:"26KB"},
+  {name:"Enchanted House",file:"models/free/buildings_houses_2.glb",cat:"Buildings",sub:"Houses",size:"23KB"},
+  {name:"Battle-Worn House",file:"models/free/buildings_houses_3.glb",cat:"Buildings",sub:"Houses",size:"22KB"},
+  {name:"Classic Tower",file:"models/free/buildings_towers_1.glb",cat:"Buildings",sub:"Towers",size:"33KB"},
+  {name:"Enchanted Tower",file:"models/free/buildings_towers_2.glb",cat:"Buildings",sub:"Towers",size:"21KB"},
+  {name:"Battle-Worn Tower",file:"models/free/buildings_towers_3.glb",cat:"Buildings",sub:"Towers",size:"25KB"},
+  {name:"Classic Bridge",file:"models/free/buildings_bridges_1.glb",cat:"Buildings",sub:"Bridges",size:"56KB"},
+  {name:"Enchanted Bridge",file:"models/free/buildings_bridges_2.glb",cat:"Buildings",sub:"Bridges",size:"46KB"},
+  {name:"Battle-Worn Bridge",file:"models/free/buildings_bridges_3.glb",cat:"Buildings",sub:"Bridges",size:"52KB"},
+  {name:"Classic Wall",file:"models/free/buildings_walls_1.glb",cat:"Buildings",sub:"Walls",size:"12KB"},
+  {name:"Enchanted Wall",file:"models/free/buildings_walls_2.glb",cat:"Buildings",sub:"Walls",size:"11KB"},
+  {name:"Battle-Worn Wall",file:"models/free/buildings_walls_3.glb",cat:"Buildings",sub:"Walls",size:"12KB"},
+  {name:"Classic Chair",file:"models/free/furniture_chairs_1.glb",cat:"Furniture",sub:"Chairs",size:"29KB"},
+  {name:"Enchanted Chair",file:"models/free/furniture_chairs_2.glb",cat:"Furniture",sub:"Chairs",size:"29KB"},
+  {name:"Battle-Worn Chair",file:"models/free/furniture_chairs_3.glb",cat:"Furniture",sub:"Chairs",size:"29KB"},
+  {name:"Classic Table",file:"models/free/furniture_tables_1.glb",cat:"Furniture",sub:"Tables",size:"24KB"},
+  {name:"Enchanted Table",file:"models/free/furniture_tables_2.glb",cat:"Furniture",sub:"Tables",size:"12KB"},
+  {name:"Battle-Worn Table",file:"models/free/furniture_tables_3.glb",cat:"Furniture",sub:"Tables",size:"12KB"},
+  {name:"Classic Barrel",file:"models/free/furniture_barrels_1.glb",cat:"Furniture",sub:"Barrels",size:"11KB"},
+  {name:"Enchanted Barrel",file:"models/free/furniture_barrels_2.glb",cat:"Furniture",sub:"Barrels",size:"11KB"},
+  {name:"Battle-Worn Barrel",file:"models/free/furniture_barrels_3.glb",cat:"Furniture",sub:"Barrels",size:"16KB"},
+  {name:"Classic Bed",file:"models/free/furniture_beds_1.glb",cat:"Furniture",sub:"Beds",size:"33KB"},
+  {name:"Enchanted Bed",file:"models/free/furniture_beds_2.glb",cat:"Furniture",sub:"Beds",size:"33KB"},
+  {name:"Battle-Worn Bed",file:"models/free/furniture_beds_3.glb",cat:"Furniture",sub:"Beds",size:"33KB"},
+  {name:"Classic Bookshelf",file:"models/free/furniture_bookshelves_1.glb",cat:"Furniture",sub:"Bookshelves",size:"62KB"},
+  {name:"Enchanted Bookshelf",file:"models/free/furniture_bookshelves_2.glb",cat:"Furniture",sub:"Bookshelves",size:"85KB"},
+  {name:"Battle-Worn Bookshelf",file:"models/free/furniture_bookshelves_3.glb",cat:"Furniture",sub:"Bookshelves",size:"62KB"},
+  {name:"Classic Chest",file:"models/free/items_chests_1.glb",cat:"Items",sub:"Chests",size:"29KB"},
+  {name:"Enchanted Chest",file:"models/free/items_chests_2.glb",cat:"Items",sub:"Chests",size:"29KB"},
+  {name:"Battle-Worn Chest",file:"models/free/items_chests_3.glb",cat:"Items",sub:"Chests",size:"29KB"},
+  {name:"Classic Potion",file:"models/free/items_potions_1.glb",cat:"Items",sub:"Potions",size:"20KB"},
+  {name:"Enchanted Potion",file:"models/free/items_potions_2.glb",cat:"Items",sub:"Potions",size:"24KB"},
+  {name:"Battle-Worn Potion",file:"models/free/items_potions_3.glb",cat:"Items",sub:"Potions",size:"24KB"},
+  {name:"Classic Gem",file:"models/free/items_gems_1.glb",cat:"Items",sub:"Gems",size:"7KB"},
+  {name:"Enchanted Gem",file:"models/free/items_gems_2.glb",cat:"Items",sub:"Gems",size:"9KB"},
+  {name:"Battle-Worn Gem",file:"models/free/items_gems_3.glb",cat:"Items",sub:"Gems",size:"3KB"},
+  {name:"Classic Torch",file:"models/free/items_torches_1.glb",cat:"Items",sub:"Torches",size:"8KB"},
+  {name:"Enchanted Torch",file:"models/free/items_torches_2.glb",cat:"Items",sub:"Torches",size:"8KB"},
+  {name:"Battle-Worn Torch",file:"models/free/items_torches_3.glb",cat:"Items",sub:"Torches",size:"8KB"},
+  {name:"Classic Helmet",file:"models/free/armor_helmets_1.glb",cat:"Armor",sub:"Helmets",size:"15KB"},
+  {name:"Enchanted Helmet",file:"models/free/armor_helmets_2.glb",cat:"Armor",sub:"Helmets",size:"23KB"},
+  {name:"Battle-Worn Helmet",file:"models/free/armor_helmets_3.glb",cat:"Armor",sub:"Helmets",size:"15KB"},
+  {name:"Classic Crystal",file:"models/free/dungeon_crystals_1.glb",cat:"Dungeon",sub:"Crystals",size:"9KB"},
+  {name:"Enchanted Crystal",file:"models/free/dungeon_crystals_2.glb",cat:"Dungeon",sub:"Crystals",size:"11KB"},
+  {name:"Battle-Worn Crystal",file:"models/free/dungeon_crystals_3.glb",cat:"Dungeon",sub:"Crystals",size:"11KB"},
+  {name:"Classic Pillar",file:"models/free/dungeon_pillars_1.glb",cat:"Dungeon",sub:"Pillars",size:"30KB"},
+  {name:"Enchanted Pillar",file:"models/free/dungeon_pillars_2.glb",cat:"Dungeon",sub:"Pillars",size:"28KB"},
+  {name:"Battle-Worn Pillar",file:"models/free/dungeon_pillars_3.glb",cat:"Dungeon",sub:"Pillars",size:"32KB"},
+  {name:"Classic Campfire",file:"models/free/props_campfires_1.glb",cat:"Props",sub:"Campfires",size:"36KB"},
+  {name:"Enchanted Campfire",file:"models/free/props_campfires_2.glb",cat:"Props",sub:"Campfires",size:"37KB"},
+  {name:"Battle-Worn Campfire",file:"models/free/props_campfires_3.glb",cat:"Props",sub:"Campfires",size:"38KB"},
+  {name:"Classic Fence",file:"models/free/props_fences_1.glb",cat:"Props",sub:"Fences",size:"33KB"},
+  {name:"Enchanted Fence",file:"models/free/props_fences_2.glb",cat:"Props",sub:"Fences",size:"19KB"},
+  {name:"Battle-Worn Fence",file:"models/free/props_fences_3.glb",cat:"Props",sub:"Fences",size:"35KB"},
+  {name:"Classic Gravestone",file:"models/free/props_gravestones_1.glb",cat:"Props",sub:"Gravestones",size:"10KB"},
+  {name:"Enchanted Gravestone",file:"models/free/props_gravestones_2.glb",cat:"Props",sub:"Gravestones",size:"4KB"},
+  {name:"Battle-Worn Gravestone",file:"models/free/props_gravestones_3.glb",cat:"Props",sub:"Gravestones",size:"6KB"},
+  {name:"Classic Well",file:"models/free/props_wells_1.glb",cat:"Props",sub:"Wells",size:"22KB"},
+  {name:"Enchanted Well",file:"models/free/props_wells_2.glb",cat:"Props",sub:"Wells",size:"22KB"},
+  {name:"Battle-Worn Well",file:"models/free/props_wells_3.glb",cat:"Props",sub:"Wells",size:"22KB"},
+  {name:"Classic Anvil",file:"models/free/props_anvils_1.glb",cat:"Props",sub:"Anvils",size:"16KB"},
+  {name:"Enchanted Anvil",file:"models/free/props_anvils_2.glb",cat:"Props",sub:"Anvils",size:"16KB"},
+  {name:"Battle-Worn Anvil",file:"models/free/props_anvils_3.glb",cat:"Props",sub:"Anvils",size:"16KB"},
+  {name:"Classic Cauldron",file:"models/free/props_cauldrons_1.glb",cat:"Props",sub:"Cauldrons",size:"18KB"},
+  {name:"Enchanted Cauldron",file:"models/free/props_cauldrons_2.glb",cat:"Props",sub:"Cauldrons",size:"19KB"},
+  {name:"Battle-Worn Cauldron",file:"models/free/props_cauldrons_3.glb",cat:"Props",sub:"Cauldrons",size:"19KB"},
+  {name:"Classic Ladder",file:"models/free/props_ladders_1.glb",cat:"Props",sub:"Ladders",size:"20KB"},
+  {name:"Enchanted Ladder",file:"models/free/props_ladders_2.glb",cat:"Props",sub:"Ladders",size:"16KB"},
+  {name:"Battle-Worn Ladder",file:"models/free/props_ladders_3.glb",cat:"Props",sub:"Ladders",size:"19KB"},
+  {name:"Classic Sign",file:"models/free/props_signs_1.glb",cat:"Props",sub:"Signs",size:"8KB"},
+  {name:"Enchanted Sign",file:"models/free/props_signs_2.glb",cat:"Props",sub:"Signs",size:"8KB"},
+  {name:"Battle-Worn Sign",file:"models/free/props_signs_3.glb",cat:"Props",sub:"Signs",size:"8KB"},
+  {name:"Classic Giant Mushroom",file:"models/free/props_mushrooms_giant_1.glb",cat:"Props",sub:"Giant Mushrooms",size:"17KB"},
+  {name:"Enchanted Giant Mushroom",file:"models/free/props_mushrooms_giant_2.glb",cat:"Props",sub:"Giant Mushrooms",size:"12KB"},
+  {name:"Battle-Worn Giant Mushroom",file:"models/free/props_mushrooms_giant_3.glb",cat:"Props",sub:"Giant Mushrooms",size:"8KB"},
+];
+
+// Section switching
+let currentSection = 'premium';
+document.querySelectorAll('.section-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.section-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentSection = tab.dataset.section;
+    ['premium','free','creator'].forEach(s => {
+      document.getElementById(s+'-section').style.display = s === currentSection ? '' : 'none';
+    });
+  });
+});
+
+// Viewer system
+const viewers = new Map();
+const MAX_VIEWERS = 6; // Keep only 6 active WebGL contexts at a time
+const viewerQueue = []; // Track order for LRU disposal
+
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    const canvas = e.target;
+    const file = canvas.dataset.file;
+    if (!file) return;
+    if (e.isIntersecting) {
+      if (!viewers.has(canvas)) {
+        // If we're at the limit, dispose oldest viewer
+        while (viewerQueue.length >= MAX_VIEWERS) {
+          const oldCanvas = viewerQueue.shift();
+          const v = viewers.get(oldCanvas);
+          if (v) {
+            cancelAnimationFrame(v.animId);
+            v.renderer.dispose();
+            viewers.delete(oldCanvas);
+            // Replace canvas with a fresh one (can't reuse after WebGL dispose)
+            const newCanvas = document.createElement('canvas');
+            newCanvas.width = oldCanvas.width;
+            newCanvas.height = oldCanvas.height;
+            newCanvas.dataset.file = oldCanvas.dataset.file;
+            newCanvas.style.cssText = oldCanvas.style.cssText;
+            newCanvas.className = oldCanvas.className;
+            // Draw dark placeholder
+            const ctx2 = newCanvas.getContext('2d');
+            ctx2.fillStyle = '#0a0a0f';
+            ctx2.fillRect(0, 0, newCanvas.width, newCanvas.height);
+            ctx2.fillStyle = '#333';
+            ctx2.font = '13px sans-serif';
+            ctx2.textAlign = 'center';
+            ctx2.fillText('Scroll to load 3D preview', newCanvas.width/2, newCanvas.height/2);
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            observer.observe(newCanvas);
+          }
+        }
+        initViewer(canvas, file);
+        viewerQueue.push(canvas);
+      }
+    }
+  });
+}, {threshold: 0.1, rootMargin: '100px 0px'});
+
+function initViewer(canvas, file) {
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 220;
+  const renderer = new THREE.WebGLRenderer({canvas, antialias: true, alpha: true});
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0a0f);
+  const camera = new THREE.PerspectiveCamera(45, w/h, 0.01, 2000);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const d1 = new THREE.DirectionalLight(0xffffff, 1.2); d1.position.set(5,10,7); scene.add(d1);
+  const d2 = new THREE.DirectionalLight(0x7c5cff, 0.4); d2.position.set(-5,-3,-5); scene.add(d2);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.5; controls.enableZoom = false;
+  gltfLoader.load(file, gltf => {
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    model.position.sub(center);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    camera.position.set(0, maxDim*0.5, maxDim*1.8);
+    controls.target.set(0,0,0);
+    scene.add(model);
+  });
+  let animId = 0;
+  const anim = () => { animId = requestAnimationFrame(anim); controls.update(); renderer.render(scene, camera); };
+  viewers.set(canvas, {renderer, animId});
+  anim();
+}
+
+function buildSection(models, gridId, filterId, searchId, badgeClass, badgeLabel, btnClass) {
+  const grid = document.getElementById(gridId);
+  const filterEl = document.getElementById(filterId);
+  const searchEl = document.getElementById(searchId);
+  
+  const cats = ['All', ...new Set(models.map(m => m.cat))];
+  cats.forEach(c => {
+    const b = document.createElement('button');
+    b.textContent = c;
+    if (c === 'All') b.classList.add('active');
+    b.onclick = () => {
+      filterEl.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      render(c === 'All' ? '' : c, searchEl.value.toLowerCase());
+    };
+    filterEl.appendChild(b);
+  });
+  
+  searchEl.addEventListener('input', () => {
+    const active = filterEl.querySelector('.active')?.textContent;
+    render(active === 'All' ? '' : active, searchEl.value.toLowerCase());
+  });
+  
+  function render(cat = '', search = '') {
+    grid.innerHTML = '';
+    // Clean up old viewers for this grid
+    let filtered = models;
+    if (cat) filtered = filtered.filter(m => m.cat === cat);
+    if (search) filtered = filtered.filter(m => m.name.toLowerCase().includes(search));
+    
+    filtered.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="card-badge ${badgeClass}">${badgeLabel}</div>
+        <canvas data-file="${m.file}" width="600" height="440"></canvas>
+        <div class="card-info">
+          <h3>${m.name}</h3>
+          <div class="meta"><span class="tag">${m.cat}</span><span class="size">${m.size}</span></div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-view" onclick="window._openModal('${m.file}','${m.name.replace(/'/g,"\\'")}')">🔍 Expand</button>
+          <button class="${btnClass}" onclick="window.open('${m.file}')">⬇ Download</button>
+          <button class="btn-use" onclick="window._useInEngine('${m.file}','${m.name.replace(/'/g,"\\'")}')">🚀 Use</button>
+        </div>`;
+      grid.appendChild(card);
+      observer.observe(card.querySelector('canvas'));
+    });
+  }
+  
+  render();
+}
+
+buildSection(PREMIUM, 'premium-grid', 'premium-filters', 'premium-search', 'badge-premium', '🌟 PREMIUM', 'btn-dl');
+buildSection(FREE, 'free-grid', 'free-filters', 'free-search', 'badge-free', '🎁 FREE', 'btn-free');
+
+// Modal
+let modalViewer = null;
+window._openModal = function(file, name) {
+  document.getElementById('modal').classList.add('active');
+  document.getElementById('modal-title').textContent = name;
+  const canvas = document.getElementById('modal-canvas');
+  if (modalViewer) { cancelAnimationFrame(modalViewer.animId); modalViewer.renderer.dispose(); }
+  const w = canvas.clientWidth||800, h = canvas.clientHeight||600;
+  const renderer = new THREE.WebGLRenderer({canvas, antialias: true});
+  renderer.setSize(w, h); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0a0f);
+  const camera = new THREE.PerspectiveCamera(45, w/h, 0.01, 2000);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const d = new THREE.DirectionalLight(0xffffff, 1.5); d.position.set(5,10,7); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0x7c5cff, 0.5); d2.position.set(-5,-3,-5); scene.add(d2);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1;
+  gltfLoader.load(file, gltf => {
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3()); const size = box.getSize(new THREE.Vector3());
+    model.position.sub(center);
+    camera.position.set(0, Math.max(size.x,size.y,size.z)*0.4, Math.max(size.x,size.y,size.z)*1.5);
+    scene.add(model);
+  });
+  let animId = 0;
+  const anim = () => { animId = requestAnimationFrame(anim); controls.update(); renderer.render(scene, camera); };
+  modalViewer = {renderer, animId}; anim();
+};
+window.closeModal = function() {
+  document.getElementById('modal').classList.remove('active');
+  if (modalViewer) { cancelAnimationFrame(modalViewer.animId); modalViewer.renderer.dispose(); modalViewer = null; }
+};
+document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+</script>
+
+<script>
+window._useInEngine = function(file, name) {
+  // Add to queue (supports loading multiple models)
+  const queue = JSON.parse(sessionStorage.getItem('marketplace_queue') || '[]');
+  queue.push({ file: file, name: name });
+  sessionStorage.setItem('marketplace_queue', JSON.stringify(queue));
+  
+  // Redirect to engine
+  window.location.href = '/?load_marketplace=' + encodeURIComponent(file);
+};
+</script>
+</body>
+</html>

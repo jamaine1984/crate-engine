@@ -1,0 +1,15 @@
+node_modules/
+model-factory/output_hq_prod/
+model-factory/meshy-3d/
+model-factory/curated_models/
+model-factory/meshy-input/
+model-factory/kenney_free/
+web/marketplace/models/
+*.log
+.DS_Store
+koko-engine/model-factory/output_hq_prod/
+koko-engine/model-factory/meshy-3d/
+koko-engine/model-factory/curated_models/
+koko-engine/model-factory/meshy-input/
+koko-engine/web/marketplace/models/
+*.glb
