@@ -10705,6 +10705,265 @@ animate();
 
 // Signal engine is ready
 // Expose command runner for auto-demo
+
+// ============================================================================
+// ENGINE BRIDGE — Exposes internals for Action API (Phase 2)
+// ============================================================================
+window._engineBridge = {
+  // Asset system
+  loadAssetCatalog: _loadAssetCatalog,
+  loadGLBModel: loadGLBModel,
+  showGallery: showGallery,
+  showCategoryPicker: showCategoryPicker,
+  searchModels: searchModels,
+  
+  // Scene
+  get scene() { return scene; },
+  get objects() { return objects; },
+  get camera() { return camera; },
+  clearScene() {
+    while (objects.length) {
+      const obj = objects.pop();
+      scene.remove(obj);
+    }
+    sceneHistory.length = 0;
+  },
+  removeObject(obj) {
+    const idx = objects.indexOf(obj);
+    if (idx > -1) objects.splice(idx, 1);
+    scene.remove(obj);
+  },
+  getSelected() { return selectedObject; },
+  
+  // Player
+  enterPlayMode: enterPlayMode,
+  exitPlayMode: exitPlayMode,
+  get characterController() { return characterController; },
+  
+  // World building (calls the existing template system)
+  async buildWorld(templateName) {
+    return await execSingle('generate ' + templateName);
+  },
+  
+  // Character
+  async setCharacter(id) {
+    return await execSingle('play as ' + id);
+  },
+  
+  // Weapons
+  equipWeapon(weaponId, slot) {
+    if (characterController && characterController.equipWeapon) {
+      return characterController.equipWeapon(weaponId, slot);
+    }
+    return null;
+  },
+  
+  // NPCs
+  async spawnNPCs(type, count, hostile, position) {
+    const cmd = hostile ? `spawn ${count} hostile npcs` : `spawn ${count} npcs`;
+    return await execSingle(cmd);
+  },
+  
+  // Water
+  setWaterPreset(preset) {
+    // Find ocean in scene
+    const ocean = objects.find(o => o.userData && o.userData.isGerstnerWater);
+    if (!ocean) {
+      // Create ocean first, then apply preset
+      execSingle('add ocean');
+      window._pendingWaterPreset = preset;
+      return '🌊 Creating ocean with ' + preset + ' preset';
+    }
+    const p = typeof WATER_PRESETS !== 'undefined' ? WATER_PRESETS[preset] : null;
+    if (p && ocean.material && ocean.material.uniforms) {
+      const u = ocean.material.uniforms;
+      if (p.waveA) u.waveA.value.set(...p.waveA);
+      if (p.waveB) u.waveB.value.set(...p.waveB);
+      if (p.waveC) u.waveC.value.set(...p.waveC);
+      if (p.waterColor) u.waterColor.value.setHex(p.waterColor);
+      if (p.deepColor) u.deepColor.value.setHex(p.deepColor);
+      if (p.foamIntensity !== undefined) u.foamIntensity.value = p.foamIntensity;
+      if (p.specularPower !== undefined) u.specularPower.value = p.specularPower;
+      if (p.fresnelPower !== undefined) u.fresnelPower.value = p.fresnelPower;
+      if (p.opacity !== undefined) u.opacity.value = p.opacity;
+      return '🌊 Water preset: ' + preset;
+    }
+    return null;
+  },
+  
+  // Terrain
+  async setTerrain(type, options) {
+    return await execSingle('terrain ' + type);
+  },
+  
+  // Weather
+  async setWeather(type) {
+    return await execSingle(type);
+  },
+  
+  // Time
+  async setTime(time) {
+    return await execSingle('time ' + time);
+  },
+  
+  // Interior
+  async addInterior(type, options) {
+    const floors = options.floors || 1;
+    if (floors > 1) return await execSingle(floors + ' story house');
+    return await execSingle('interior ' + type);
+  },
+  
+  // Help
+  showHelp: showHelp,
+  showGenerator: showGeneratorModal,
+  
+  // Inventory
+  async toggleInventory() {
+    return await execSingle('inventory');
+  },
+  
+  // Save/Load
+  async save(name) {
+    return await execSingle(name ? 'save ' + name : 'save');
+  },
+  async load() {
+    return await execSingle('load');
+  },
+  
+  // Legacy fallback
+  parseAndExecute: parseAndExecute,
+  execSingle: execSingle,
+};
+
+// Import and init the new interpreter
+import('./interpreter.mjs').then(({ interpret }) => {
+  window._interpret = interpret;
+  
+  // Wrap _runCommand to use interpreter first
+  const _origRunCommand = window._runCommand;
+  window._runCommand = async function(cmd) {
+    const intent = interpret(cmd);
+    const bridge = window._engineBridge;
+    
+    // Execute based on intent
+    let result = null;
+    try {
+      switch (intent.action) {
+        case 'enterPlayMode': enterPlayMode(); result = '🎮 Play mode'; break;
+        case 'exitPlayMode': exitPlayMode(); result = '✏️ Edit mode'; break;
+        case 'showHelp': showHelp(); result = '📋 Help toggled'; break;
+        case 'clearScene': bridge.clearScene(); result = '🗑️ Scene cleared'; break;
+        case 'toggleCamera': 
+          if (characterController) characterController.toggleCameraMode();
+          result = '📷 Camera toggled'; 
+          break;
+        case 'openLibrary':
+          if (intent.category) { showGallery(intent.category); }
+          else { showCategoryPicker(); }
+          result = '📂 Library opened';
+          break;
+        case 'showGenerator': showGeneratorModal(); result = '🔮 3D Generator'; break;
+        case 'buildWorld': result = await bridge.buildWorld(intent.template); break;
+        case 'equipWeapon': 
+          result = bridge.equipWeapon(intent.weaponId, 1);
+          if (!result) {
+            // Auto-load character first, then equip
+            await bridge.setCharacter('knight');
+            setTimeout(() => bridge.equipWeapon(intent.weaponId, 1), 500);
+            result = '⚔️ Loading character + equipping ' + intent.weaponId;
+          }
+          break;
+        case 'unequipWeapon':
+          if (characterController) characterController.unequipWeapon();
+          result = '🔄 Weapon unequipped';
+          break;
+        case 'setCharacter': result = await bridge.setCharacter(intent.id); break;
+        case 'setWater': 
+          if (intent.create) await execSingle('add ocean' + (intent.size ? ' ' + intent.size : ''));
+          result = bridge.setWaterPreset(intent.preset);
+          break;
+        case 'setTerrain': result = await bridge.setTerrain(intent.type); break;
+        case 'setWeather': result = await bridge.setWeather(intent.type); break;
+        case 'setTime': result = await bridge.setTime(intent.time); break;
+        case 'addInterior': result = await bridge.addInterior(intent.type, intent.options || {}); break;
+        case 'spawnNPC': result = await bridge.spawnNPCs(intent.type, intent.count, intent.hostile); break;
+        case 'toggleInventory': result = await bridge.toggleInventory(); break;
+        case 'save': result = await bridge.save(intent.name); break;
+        case 'load': result = await bridge.load(); break;
+        case 'addObject':
+          // Fuzzy search the catalog
+          const catalog = await _loadAssetCatalog();
+          if (catalog) {
+            const query = intent.query.toLowerCase();
+            let bestMatch = null;
+            let bestScore = 0;
+            
+            for (const [cat, items] of Object.entries(catalog)) {
+              for (const item of items) {
+                const name = item.name.toLowerCase();
+                const file = item.file.toLowerCase();
+                let score = 0;
+                
+                if (name === query || file.replace('.glb','') === query) score = 100;
+                else if (name.startsWith(query)) score = 80;
+                else if (name.includes(query) || file.includes(query)) score = 60;
+                else {
+                  const qwords = query.split(/\s+/);
+                  const matched = qwords.filter(w => name.includes(w) || file.includes(w)).length;
+                  if (matched > 0) score = 20 + matched * 15;
+                }
+                
+                if (score > bestScore) { bestScore = score; bestMatch = item; }
+              }
+            }
+            
+            if (bestMatch && bestScore >= 20) {
+              loadGLBModel(bestMatch.name, bestMatch.file, 0, 0);
+              result = '✅ Added ' + bestMatch.name + (bestScore < 60 ? ' (best match for "' + intent.query + '")' : '');
+              break;
+            }
+          }
+          // Fall through to legacy if no catalog match
+          result = await parseAndExecute(cmd);
+          break;
+        default:
+          // Unknown action — fall back to legacy parser
+          result = await parseAndExecute(cmd);
+      }
+    } catch(err) {
+      console.error('[Interpreter]', err);
+      result = await parseAndExecute(cmd);
+    }
+    
+    // Show in output log
+    const log = document.getElementById('output-log');
+    if (log && result) {
+      log.style.display = 'block';
+      const cmdEl = document.createElement('div');
+      cmdEl.className = 'entry cmd';
+      cmdEl.textContent = '❯ ' + cmd;
+      log.appendChild(cmdEl);
+      const text = (result || '').toString();
+      text.split('\n').forEach(line => {
+        if (!line) return;
+        const r = document.createElement('div');
+        r.className = 'entry info';
+        r.textContent = line;
+        log.appendChild(r);
+      });
+      log.scrollTop = log.scrollHeight;
+      setTimeout(() => { log.style.display = 'none'; }, 4000);
+    }
+    
+    return result || '';
+  };
+  
+  console.log('[Crate Engine] ✅ New interpreter active — Phase 2 ready');
+}).catch(err => {
+  console.warn('[Crate Engine] Interpreter not loaded, using legacy parser:', err.message);
+});
+
+// Legacy _runCommand (kept as fallback)
 window._runCommand = async function(cmd) {
   const input = document.getElementById('prompt-input');
   const log = document.getElementById('output-log');
