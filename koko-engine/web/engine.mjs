@@ -3523,7 +3523,9 @@ function upgradeMaterials(obj) {
 }
 
 function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
-  const url = customPath || ('models/' + glbFile + '.glb');
+  // Strip .glb if already present (catalog entries include extension)
+  const cleanFile = glbFile.endsWith('.glb') ? glbFile.slice(0, -4) : glbFile;
+  const url = customPath || ('models/' + cleanFile + '.glb');
   const statusEl = document.getElementById('engine-status');
   if (statusEl) statusEl.textContent = 'Loading ' + glbFile + '...';
   // Space models apart when multiple added at once
@@ -6363,7 +6365,7 @@ function _renderThumb(file, container, fallbackIcon) {
   dl.position.set(2, 4, 3);
   s.add(dl);
 
-  gltfLoader.load('models/' + file + '.glb', (gltf) => {
+  gltfLoader.load('models/' + (file.endsWith('.glb') ? file : file + '.glb'), (gltf) => {
     const m = gltf.scene;
     const box = new THREE.Box3().setFromObject(m);
     const sz = box.getSize(new THREE.Vector3());
@@ -6526,7 +6528,7 @@ async function execSingle(cmd) {
         scene.remove(objects[i]); objects.splice(i, 1);
       }
     }
-    const w = Water ? createAAAWater(newSize) : createWater(newSize);
+    const w = createWater(newSize);
     w.position.y = -0.3;
     addObj('Ocean', w, 0, 0);
     return '🌊 Ocean resized to ' + newSize + 'm';
@@ -6918,7 +6920,7 @@ async function execSingle(cmd) {
           { cmd: 'add bridge', pos: [15, 0] },
           { cmd: 'add lantern', scatter: { count: 4, radius: 20 } },
           { cmd: 'add flower', scatter: { count: 10, radius: 25 } },
-          { cmd: 'add add lake', pos: [-15, 0] },
+          { cmd: 'add lake', pos: [-15, 0] },
         ]
       },
       swamp: {
@@ -6929,7 +6931,7 @@ async function execSingle(cmd) {
           { cmd: 'add dead tree', scatter: { count: 12, radius: 50 } },
           { cmd: 'add mushroom', scatter: { count: 8, radius: 40 } },
           { cmd: 'add rock', scatter: { count: 5, radius: 35 } },
-          { cmd: 'add add lake', pos: [0, 0] },
+          { cmd: 'add lake', pos: [0, 0] },
           { cmd: 'add snake', scatter: { count: 3, radius: 30 } },
           { cmd: 'add frog', scatter: { count: 4, radius: 25 } },
           { cmd: 'add log', scatter: { count: 5, radius: 30 } },
@@ -7000,7 +7002,7 @@ async function execSingle(cmd) {
         env: ['fog on', 'time night', 'particles spores'],
         water: 'swamp',
         items: [
-          { cmd: 'add add lake 40', pos: [0, 0] },
+          { cmd: 'add lake 40', pos: [0, 0] },
           { cmd: 'add dead tree', scatter: { count: 15, radius: 55 } },
           { cmd: 'add mushroom', scatter: { count: 10, radius: 45 } },
           { cmd: 'add rock', scatter: { count: 6, radius: 40 } },
@@ -7039,7 +7041,7 @@ async function execSingle(cmd) {
           { cmd: 'add flower', scatter: { count: 15, radius: 45 } },
           { cmd: 'add crystal', scatter: { count: 5, radius: 30 } },
           { cmd: 'add lantern', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add add lake 25', pos: [15, 0] },
+          { cmd: 'add lake 25', pos: [15, 0] },
           { cmd: 'add deer', scatter: { count: 3, radius: 35 } },
           { cmd: 'add npc', scatter: { count: 4, radius: 30 } },
           { cmd: 'add bridge', pos: [15, 15] },
@@ -8771,7 +8773,7 @@ async function execSingle(cmd) {
 
   // === WATER ===
   if ((lower.includes('water') || lower.includes('lake') || lower.includes('pond') || lower.includes('river')) && !/^(remove|delete|color|paint|recolor|tint|resize|scale|rotate|spin)\b/.test(lower)) {
-    addObj('Water', (Water && lower.includes('ocean')) ? createAAAWater(200) : createWater(lower.includes('river')?30:lower.includes('ocean')?200:10), px||0, pz||0);
+    addObj('Water', createWater(lower.includes('river')?30:lower.includes('ocean')?200:10), px||0, pz||0);
     return '✓ Added water';
   }
   if (['dirt','sand','snow ground','gravel','stone ground','mud'].some(t => lower.includes(t))) {
@@ -9589,7 +9591,7 @@ function showCharacterGallery(onSelect) {
             const miniLoader = new GLTFLoader();
             miniLoader.setDRACOLoader(dracoLoader);
             
-            miniLoader.load('models/' + ch.file + '.glb', (gltf) => {
+            miniLoader.load('models/' + (ch.file.endsWith('.glb') ? ch.file : ch.file + '.glb'), (gltf) => {
               spinner.remove();
               const model = gltf.scene;
               const box = new THREE.Box3().setFromObject(model);
