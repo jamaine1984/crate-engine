@@ -14331,7 +14331,7 @@ function selectPlan(plan, credits, price) {
 window._handleGenerateCommand = function(cmd) {
   const lower = cmd.toLowerCase();
   if (lower.match(/^(generate|create|make)\s+(a\s+)?3d\s+(model|asset|object)/i) || 
-      lower.match(/^generate\b/i) || lower === '3d generator' || lower === 'generator') {
+      lower === '3d generator' || lower === 'generator' || lower === 'generate 3d' || lower === 'generate 3d model') {
     showGeneratorModal();
     return '🎨 Opening 3D Generator...';
   }
