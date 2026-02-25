@@ -6485,7 +6485,7 @@ async function execSingle(cmd) {
         }
       }
     }
-    const w = Water ? createAAAWater(oceanSize) : createWater(oceanSize);
+    const w = createWater(oceanSize); // Always use Gerstner water for preset support
     // Ocean sits BELOW ground — terrain/land rises above water naturally
     // Lakes sit slightly above ground for inland water
     w.position.y = isLake ? 0.15 : -0.3;
