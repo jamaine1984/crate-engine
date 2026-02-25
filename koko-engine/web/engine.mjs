@@ -6577,8 +6577,8 @@ async function execSingle(cmd) {
   }
 
   // ═══ MAP / LEVEL GENERATOR (JSON Template System v67) ═══
-  if (lower.match(/^(generate|create|build|make)\s+(a\s+)?(map|level|world|scene|town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
-    const mapMatch = lower.match(/(town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
+  if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
+    const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
     const mapType = mapMatch ? mapMatch[1].toLowerCase() : 'town';
     const mapTheme = lower.replace(/^(generate|create|build|make)\s+(a\s+)?/i, '').trim();
     showToast('🗺️ Generating ' + mapTheme + '...');
@@ -7931,9 +7931,8 @@ async function execSingle(cmd) {
   // === BUILD WORLD (AI Agent world builder) ===
   const buildWorldMatch = lower.match(/^(?:build|create|generate|make|load) (?:a |an |the )?(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|village|city|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|mountain|volcano|haunted|western|ruins|zen|swamp|floating)(?: world| map| scene)?$/);
   if (buildWorldMatch) {
-    const worldType = buildWorldMatch[1];
-    const result = parseAndExecute('generate ' + worldType);
-    return result;
+    // Redirect as 'generate <worldType>' — line 6580 handler now catches multi-word types
+    return parseAndExecute('generate ' + buildWorldMatch[1]);
   }
 
   // === SHOW COMMANDS / HELP PANEL ===
