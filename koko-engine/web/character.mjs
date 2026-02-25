@@ -2660,14 +2660,37 @@ export class NPCController {
           }
         }
       } else if (npc.behavior === 'patrol') {
-        // Move in a circle or path
-        npc.direction += 0.3 * dt;
-        const radius = 10;
-        const tx = npc.waypoint.x + Math.cos(npc.direction) * radius;
-        const tz = npc.waypoint.z + Math.sin(npc.direction) * radius;
-        const dir = new THREE.Vector3(tx - npc.model.position.x, 0, tz - npc.model.position.z).normalize();
-        npc.model.position.addScaledVector(dir, npc.speed * dt);
-        npc.model.rotation.y = Math.atan2(dir.x, dir.z);
+        // Walk between waypoints (not orbit)
+        npc.waitTime -= dt;
+        if (npc.waitTime <= 0) {
+          npc.waitTime = 4 + Math.random() * 4;
+          const home = npc.homePosition || npc.model.position.clone();
+          if (!npc.homePosition) npc.homePosition = npc.model.position.clone();
+          const _px = home.x + (Math.random() - 0.5) * 20;
+          const _pz = home.z + (Math.random() - 0.5) * 20;
+          npc.waypoint.set(_px, _getTerrainY(_px, _pz), _pz);
+        }
+        const dir = new THREE.Vector3().subVectors(npc.waypoint, npc.model.position);
+        dir.y = 0;
+        if (dir.length() > 1) {
+          dir.normalize();
+          npc.model.position.addScaledVector(dir, npc.speed * dt);
+          // Terrain snap
+          const _pty = _getTerrainY(npc.model.position.x, npc.model.position.z);
+          if (_pty > -0.1) { const _pgo = npc.model.userData.groundOffset || 0; npc.model.position.y += ((_pty + _pgo) - npc.model.position.y) * 0.25; }
+          npc.model.rotation.y = Math.atan2(dir.x, dir.z);
+          if (npc.animations.walk && npc.currentAnim !== 'walk') {
+            Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
+            npc.animations.walk.reset().fadeIn(0.3).play();
+            npc.currentAnim = 'walk';
+          }
+        } else {
+          if (npc.animations.idle && npc.currentAnim !== 'idle') {
+            Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
+            npc.animations.idle.reset().fadeIn(0.3).play();
+            npc.currentAnim = 'idle';
+          }
+        }
       } else if (npc.behavior === 'zone_guard') {
         // Idle patrol in small area until player triggers aggro
         if (!npc.isAggro) {
@@ -2677,11 +2700,9 @@ export class NPCController {
             npc.waitTime = 3 + Math.random() * 4;
             const home = npc.homePosition || npc.model.position.clone();
             if (!npc.homePosition) npc.homePosition = npc.model.position.clone();
-            npc.waypoint.set(
-              home.x + (Math.random() - 0.5) * 8,
-              0,
-              home.z + (Math.random() - 0.5) * 8
-            );
+            const _zgx = home.x + (Math.random() - 0.5) * 8;
+            const _zgz = home.z + (Math.random() - 0.5) * 8;
+            npc.waypoint.set(_zgx, _getTerrainY(_zgx, _zgz), _zgz);
           }
           const dir = new THREE.Vector3().subVectors(npc.waypoint, npc.model.position);
           dir.y = 0;
@@ -2689,6 +2710,9 @@ export class NPCController {
             dir.normalize();
             npc.model.position.addScaledVector(dir, npc.speed * 0.5 * dt);
             npc.model.rotation.y = Math.atan2(dir.x, dir.z);
+            // Snap to terrain
+            const _zgy2 = _getTerrainY(npc.model.position.x, npc.model.position.z);
+            if (_zgy2 > -0.1) { const _zgo2 = npc.model.userData.groundOffset || 0; npc.model.position.y += ((_zgy2 + _zgo2) - npc.model.position.y) * 0.25; }
             if (npc.animations.walk && npc.currentAnim !== 'walk') {
               Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
               npc.animations.walk.reset().fadeIn(0.3).play();
@@ -2710,6 +2734,9 @@ export class NPCController {
             if (distToPlayer > 2.5) {
               toPlayer.normalize();
               npc.model.position.addScaledVector(toPlayer, npc.speed * 1.3 * dt);
+              // Snap to terrain while chasing
+              const _chy = _getTerrainY(npc.model.position.x, npc.model.position.z);
+              if (_chy > -0.1) { const _cho = npc.model.userData.groundOffset || 0; npc.model.position.y += ((_chy + _cho) - npc.model.position.y) * 0.25; }
               npc.model.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
               if (npc.animations.run && npc.currentAnim !== 'run') {
                 Object.values(npc.animations).forEach(a => a && a.fadeOut(0.2));
@@ -2749,6 +2776,9 @@ export class NPCController {
         // Vehicle NPC - drive on roads
         npc.model.position.x += Math.sin(npc.direction) * npc.speed * dt;
         npc.model.position.z += Math.cos(npc.direction) * npc.speed * dt;
+        // Snap to terrain
+        const _dy = _getTerrainY(npc.model.position.x, npc.model.position.z);
+        if (_dy > -0.1) { const _dgo = npc.model.userData.groundOffset || 0; npc.model.position.y = _dy + _dgo; }
         npc.model.rotation.y = npc.direction;
         // Bounce off boundaries
         if (Math.abs(npc.model.position.x) > 80 || Math.abs(npc.model.position.z) > 80) {

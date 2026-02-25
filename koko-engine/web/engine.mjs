@@ -346,7 +346,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=38';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=39';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -637,6 +637,8 @@ function enterPlayMode() {
   playMode = true;
   const tb = document.getElementById('build-toolbar'); if (tb) tb.style.display = 'none';
   const nav = document.querySelector('nav'); if (nav) nav.style.display = 'none';
+  const sb = document.getElementById('scene-buttons'); if (sb) sb.style.display = 'none';
+  const insp = document.getElementById('inspector'); if (insp) insp.style.display = 'none';
   // Create or find avatar
   playAvatar = objects.find(o => o.userData.name && o.userData.name.includes('player'));
   if (!playAvatar) {
@@ -662,6 +664,8 @@ function exitPlayMode() {
   playMode = false;
   const tb = document.getElementById('build-toolbar'); if (tb) tb.style.display = 'flex';
   const nav = document.querySelector('nav'); if (nav) nav.style.removeProperty('display');
+  const sb = document.getElementById('scene-buttons'); if (sb) sb.style.display = 'flex';
+  const insp = document.getElementById('inspector'); if (insp) insp.style.removeProperty('display');
   try { controls.enabled = true; } catch(e) {}
   var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return '🎮 Play mode OFF — back to editor';
 }
@@ -9343,13 +9347,13 @@ let dragOffset = new THREE.Vector3();
 function highlightSelected(obj) {
   updateInspector(obj);
   objects.forEach(o => {
-    if (o.traverse) o.traverse(c => { if (c.isMesh && c.userData._origEmissive !== undefined) { c.material.emissive.setHex(c.userData._origEmissive); } });
+    if (o.traverse) o.traverse(c => { if (c.isMesh && c.userData._origEmissive !== undefined && c.material && c.material.emissive) { c.material.emissive.setHex(c.userData._origEmissive); } });
   });
   if (obj) {
     const fn = (c) => {
       if (c.isMesh && c.material) {
         if (c.userData._origEmissive === undefined && c.material.emissive) c.userData._origEmissive = c.material.emissive.getHex();
-        c.material.emissive.setHex(0x332200);
+        if (c.material.emissive) c.material.emissive.setHex(0x332200);
       }
     };
     if (obj.traverse) obj.traverse(fn); else fn(obj);
@@ -10868,8 +10872,16 @@ import('./interpreter.mjs').then(({ interpret }) => {
           result = bridge.equipWeapon(intent.weaponId, 1);
           if (!result) {
             // Auto-load character first, then equip
-            await bridge.setCharacter('knight');
-            setTimeout(() => bridge.equipWeapon(intent.weaponId, 1), 500);
+            result = await bridge.setCharacter('knight');
+            // Wait for model to fully load, then equip
+            const _waitEquip = () => {
+              if (characterController && characterController.model) {
+                bridge.equipWeapon(intent.weaponId, 1);
+              } else {
+                setTimeout(_waitEquip, 200);
+              }
+            };
+            setTimeout(_waitEquip, 800);
             result = '⚔️ Loading character + equipping ' + intent.weaponId;
           }
           break;
@@ -12383,6 +12395,7 @@ function getSceneCommands(scene) {
 // === SHARE + SAVE BUTTONS ===
 (function() {
   var btnContainer = document.createElement('div');
+  btnContainer.id = 'scene-buttons';
   Object.assign(btnContainer.style, {
     position: 'fixed', bottom: '85px', left: '50%', transform: 'translateX(-50%)', display: 'flex',
     gap: '6px', zIndex: '1000', flexDirection: 'row'
