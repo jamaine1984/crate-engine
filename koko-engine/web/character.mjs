@@ -6339,6 +6339,9 @@ export function createGameHUD() {
     </div>
     <div id="hud-score" style="position:absolute;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);padding:6px 20px;border:1px solid #f59e0b;border-radius:8px;color:#f59e0b;font-size:18px;">⭐ 0</div>
     <div id="hud-crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,0.5);font-size:24px;display:none;">+</div>
+    <div id="hud-compass" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);width:300px;height:24px;overflow:hidden;background:rgba(0,0,0,0.4);border-radius:4px;border:1px solid rgba(255,255,255,0.1);">
+      <canvas id="compass-canvas" width="300" height="24" style="width:100%;height:100%;"></canvas>
+    </div>
     <div id="hud-controls" style="position:absolute;bottom:20px;left:20px;color:rgba(255,255,255,0.5);font-size:11px;line-height:1.6;">
       WASD — Move | Shift — Run | Space — Jump<br>
       C — Roll | E — Light Attack | Q — Heavy Attack | F — Interact<br>
@@ -6750,8 +6753,19 @@ export function createMinimap(scene, camera, character, objects) {
         const dx = (npc.model.position.x - cx) * scale + size/2;
         const dz = (npc.model.position.z - cz) * scale + size/2;
         if (dx < 0 || dx > size || dz < 0 || dz > size) continue;
-        ctx.fillStyle = npc.isAggro ? '#ff3333' : '#33aaff';
-        ctx.beginPath(); ctx.arc(dx, dz, 3, 0, Math.PI*2); ctx.fill();
+        // Color by AI state
+        const aiS = npc.ai ? npc.ai.state : 'idle';
+        if (aiS === 'dead') continue; // don't show dead NPCs
+        const npcColors = {idle:'#3b82f6', patrol:'#3b82f6', chase:'#ef4444', attack:'#ff0000', flee:'#f59e0b', search:'#f97316', return:'#6b7280', stunned:'#8b5cf6'};
+        ctx.fillStyle = npcColors[aiS] || (npc.isAggro ? '#ef4444' : '#3b82f6');
+        const npcSize = aiS === 'chase' || aiS === 'attack' ? 4 : 3;
+        ctx.beginPath(); ctx.arc(dx, dz, npcSize, 0, Math.PI*2); ctx.fill();
+        // Alert ring for chasing/attacking
+        if (aiS === 'chase' || aiS === 'attack') {
+          ctx.strokeStyle = '#ff000066';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(dx, dz, 6, 0, Math.PI*2); ctx.stroke();
+        }
       }
     }
     
@@ -6852,6 +6866,45 @@ export function updateGameHUD(character, score) {
     ammoEl.style.display = 'block';
   } else if (ammoEl) {
     ammoEl.style.display = 'none';
+  }
+  
+  // Compass update
+  const compassCanvas = document.getElementById('compass-canvas');
+  if (compassCanvas && character.cameraYaw !== undefined) {
+    const cctx = compassCanvas.getContext('2d');
+    cctx.clearRect(0, 0, 300, 24);
+    
+    const yaw = character.cameraYaw; // radians
+    const dirs = [
+      { angle: 0, label: 'N', color: '#ef4444' },
+      { angle: Math.PI/4, label: 'NE', color: '#666' },
+      { angle: Math.PI/2, label: 'E', color: '#fff' },
+      { angle: 3*Math.PI/4, label: 'SE', color: '#666' },
+      { angle: Math.PI, label: 'S', color: '#fff' },
+      { angle: -3*Math.PI/4, label: 'SW', color: '#666' },
+      { angle: -Math.PI/2, label: 'W', color: '#fff' },
+      { angle: -Math.PI/4, label: 'NW', color: '#666' },
+    ];
+    
+    cctx.font = '11px monospace';
+    cctx.textAlign = 'center';
+    
+    for (const d of dirs) {
+      let offset = d.angle - yaw;
+      while (offset > Math.PI) offset -= Math.PI * 2;
+      while (offset < -Math.PI) offset += Math.PI * 2;
+      const px = 150 + offset * (300 / Math.PI); // map ±PI/2 to 0-300
+      if (px > -20 && px < 320) {
+        cctx.fillStyle = d.color;
+        cctx.fillText(d.label, px, 16);
+        // Tick mark
+        cctx.fillRect(px, 20, 1, 4);
+      }
+    }
+    
+    // Center line
+    cctx.fillStyle = '#fff';
+    cctx.fillRect(149, 0, 2, 24);
   }
   
   // State machine debug (small, top-right under kill feed)
