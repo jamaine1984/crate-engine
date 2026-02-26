@@ -1999,6 +1999,27 @@ class CharacterController {
       this.stamina = Math.min(this.maxStamina, this.stamina + 15 * dt);
     }
     
+    // Low health warning — red vignette pulse
+    const healthPct = this.health / this.maxHealth;
+    let vignette = document.getElementById('low-health-vignette');
+    if (healthPct < 0.3 && !this.isDead) {
+      if (!vignette) {
+        vignette = document.createElement('div');
+        vignette.id = 'low-health-vignette';
+        vignette.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;' +
+          'pointer-events:none;z-index:9400;' +
+          'background:radial-gradient(ellipse at center, transparent 50%, rgba(180,0,0,0.3) 100%);';
+        document.body.appendChild(vignette);
+      }
+      // Pulse effect
+      this._healthPulse = (this._healthPulse || 0) + dt * 3;
+      const pulse = 0.2 + Math.sin(this._healthPulse) * 0.15;
+      vignette.style.background = 'radial-gradient(ellipse at center, transparent 50%, rgba(180,0,0,' + pulse + ') 100%)';
+      vignette.style.display = 'block';
+    } else if (vignette) {
+      vignette.style.display = 'none';
+    }
+    
     // Update camera
     this._updateCamera(dt);
     
@@ -2054,6 +2075,36 @@ class CharacterController {
         if (isVehicle && pos.distanceTo(obj.position) < 5) {
           promptText = '[F] Enter ' + obj.userData.name;
           break;
+        }
+      }
+    }
+    
+    // Highlight nearest interactable object
+    if (this._lastHighlight && this._lastHighlight.material) {
+      this._lastHighlight.material.emissive?.setHex(0x000000);
+      this._lastHighlight = null;
+    }
+    
+    // Find object player is looking at (center screen raycast)
+    if (this.camera && window._sceneObjects) {
+      const raycaster = _cachedRaycaster;
+      const center = new THREE.Vector2(0, 0);
+      raycaster.setFromCamera(center, this.camera);
+      raycaster.far = 8;
+      
+      const interactables = window._sceneObjects.filter(o => 
+        o && o.userData && (o.userData.isDoor || o.userData.isPickup || 
+         (o.userData.name && (o.userData.name.toLowerCase().includes('car') || 
+          o.userData.name.toLowerCase().includes('chest') ||
+          o.userData.name.toLowerCase().includes('door'))))
+      );
+      
+      const hits = raycaster.intersectObjects(interactables, true);
+      if (hits.length > 0) {
+        const hit = hits[0].object;
+        if (hit.material && hit.material.emissive) {
+          hit.material.emissive.setHex(0x222222);
+          this._lastHighlight = hit;
         }
       }
     }
