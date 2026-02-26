@@ -2688,9 +2688,15 @@ function _checkWallCollision(position, direction, distance) {
   
   checkPickups(objects, scene) {
     if (!this.model) return null;
+    const t = performance.now() * 0.001;
     for (let i = objects.length - 1; i >= 0; i--) {
       const obj = objects[i];
       if (!obj.userData.isPickup) continue;
+      // Bobbing animation
+      if (obj.userData.bobBaseY !== undefined) {
+        obj.position.y = obj.userData.bobBaseY + Math.sin(t * 2 + (obj.userData.bobPhase || 0)) * 0.15;
+        obj.rotation.y += 0.02;
+      }
       const dist = this.position.distanceTo(obj.position);
       if (dist < 2) {
         const data = obj.userData.pickupData;
@@ -3959,6 +3965,8 @@ export class NPCController {
       m.userData.name = 'loot_' + loot.type;
       m.userData.isPickup = true;
       m.userData.pickupData = loot;
+      m.userData.bobPhase = Math.random() * Math.PI * 2;
+      m.userData.bobBaseY = pos.y + 0.5;
       // Floating + spinning animation
       m.userData.baseY = 0.5;
       this.scene.add(m);

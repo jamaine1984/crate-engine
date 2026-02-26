@@ -450,14 +450,8 @@ class MultiplayerClient {
   _spawnPeer(data) {
     if (this.peers.has(data.id)) return;
     const charType = data.character || 'knight';
-    // Load character model for peer
     const url = 'models/character_' + charType + '.glb';
-    _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile);
-}
-
-function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone) {
-  const gn = (glbFile || name || '').toLowerCase();
-  gltfLoader.load(url, (gltf) => {
+    gltfLoader.load(url, (gltf) => {
       const model = gltf.scene;
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
@@ -465,7 +459,6 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone) {
       model.position.set(data.position?.x || 0, data.position?.y || 0, data.position?.z || 0);
       model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
       
-      // Name tag
       const nameTag = document.createElement('div');
       nameTag.style.cssText = 'position:fixed;color:' + (data.color || '#fff') + ';font-size:11px;font-family:system-ui;pointer-events:none;z-index:9990;text-shadow:0 1px 3px rgba(0,0,0,0.8);font-weight:600;';
       nameTag.textContent = data.name || 'Player';
@@ -483,7 +476,6 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone) {
       scene.add(model);
       this.peers.set(data.id, { model, nameTag, mixer, name: data.name, targetPos: new THREE.Vector3(), targetRot: 0, currentAnim: 'idle', clips: {} });
     }, undefined, () => {
-      // Fallback: colored cube
       const geo = new THREE.BoxGeometry(0.5, 1.8, 0.5);
       const mat = new THREE.MeshStandardMaterial({ color: data.color || '#ff6b35' });
       const model = new THREE.Mesh(geo, mat);
@@ -491,14 +483,6 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone) {
       scene.add(model);
       this.peers.set(data.id, { model, targetPos: new THREE.Vector3(), targetRot: 0 });
     });
-  }
-
-  _updatePeer(id, position, rotation, animation) {
-    const peer = this.peers.get(id);
-    if (!peer) return;
-    // Smooth interpolation target
-    peer.targetPos.set(position.x, position.y, position.z);
-    peer.targetRot = rotation;
   }
 
   _removePeer(id) {
