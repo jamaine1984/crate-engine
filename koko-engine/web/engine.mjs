@@ -871,6 +871,8 @@ function exitPlayMode() {
   var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return '🎮 Play mode OFF — back to editor';
 }
 
+window.exitPlayMode = exitPlayMode;
+
 function updatePlayMode(dt) {
   if (!playMode) return;
   // Don't move camera independently when character controller is active
@@ -13711,6 +13713,7 @@ window._showUpgradeModal = showUpgradeModal;
   }, 500);
 })();
 function showHelp() {
+window.showHelp = showHelp;
   var old = document.getElementById('help-modal');
   if (old) { old.remove(); return; }
   
