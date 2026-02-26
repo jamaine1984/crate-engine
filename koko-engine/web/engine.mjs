@@ -13040,7 +13040,12 @@ function getSceneCommands(scene) {
   });
   
 
-      // Unity/Unreal export
+      // Creator Marketplace
+      if (lower === 'marketplace' || lower === 'creator marketplace' || lower === 'open marketplace' || lower === 'sell model' || lower === 'upload model') {
+        openCreatorMarketplace();
+        return '🏪 Opening Creator Marketplace...';
+      }
+            // Unity/Unreal export
       if (lower === 'export unity' || lower === 'export for unity' || lower === 'unity export') {
         exportForUnity();
         return '📦 Exporting scene for Unity...';
@@ -13061,6 +13066,10 @@ function getSceneCommands(scene) {
   btnContainer.appendChild(loadBtn);
   btnContainer.appendChild(shareBtn);
   btnContainer.appendChild(exportBtn);
+  
+  var mpBtn = makeBtn('🏪 Marketplace', '#222', '#f59e0b', function() { openCreatorMarketplace(); });
+  mpBtn.title = 'Creator Marketplace — upload, sell, browse 3D models';
+  btnContainer.appendChild(mpBtn);
   
   var unityBtn = makeBtn('🎮 Unity', '#222', '#4ade80', function() {
     if (isProUser()) { exportForUnity(); } else { showUpgradeModal('pro'); }
@@ -13140,6 +13149,131 @@ function showLoadModal(saves) {
 }
 
 // === EXPORT AS STANDALONE HTML ===
+
+// === CREATOR MARKETPLACE ===
+function openCreatorMarketplace() {
+  if (document.getElementById('marketplace-modal')) document.getElementById('marketplace-modal').remove();
+  
+  const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
+  
+  let listingsHTML = '';
+  if (listings.length === 0) {
+    listingsHTML = '<div style="text-align:center;padding:40px;color:#888">No listings yet. Upload a model to get started!</div>';
+  } else {
+    listingsHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;padding:12px">';
+    for (const item of listings) {
+      const date = new Date(item.created).toLocaleDateString();
+      listingsHTML += '<div style="background:#1a1a2e;border:1px solid #333;border-radius:12px;padding:16px;text-align:center;cursor:pointer" onclick="loadMarketplaceItem(\''+item.id+'\',\''+item.name.replace(/'/g,"")+'\')">'+
+        '<div style="font-size:32px;margin-bottom:8px">📦</div>'+
+        '<div style="color:#fff;font-weight:600;font-size:13px">'+item.name+'</div>'+
+        '<div style="color:#888;font-size:11px;margin-top:4px">by '+item.creator+'</div>'+
+        '<div style="color:#4ade80;font-size:11px;margin-top:4px">'+(item.price > 0 ? '$'+item.price : 'Free')+'</div>'+
+        '<div style="color:#555;font-size:10px;margin-top:4px">'+date+'</div>'+
+        '</div>';
+    }
+    listingsHTML += '</div>';
+  }
+  
+  const m = document.createElement('div');
+  m.id = 'marketplace-modal';
+  m.innerHTML = `
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
+      <div style="background:#111;border:1px solid #333;border-radius:16px;width:90%;max-width:800px;max-height:85vh;overflow-y:auto;color:#fff">
+        <div style="padding:24px 24px 0;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h2 style="margin:0;font-size:22px">🏪 Creator Marketplace</h2>
+            <p style="margin:4px 0 0;color:#888;font-size:13px">Upload, sell, and share 3D models</p>
+          </div>
+          <button onclick="this.closest('#marketplace-modal').remove()" style="background:none;border:none;color:#888;font-size:24px;cursor:pointer">✕</button>
+        </div>
+        
+        <div style="padding:16px 24px;display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="marketplaceUploadModel()" style="padding:10px 20px;border:none;border-radius:8px;background:#4ade80;color:#000;font-weight:600;cursor:pointer;font-size:14px">📤 Upload GLB Model</button>
+          <button onclick="marketplaceUploadAndSell()" style="padding:10px 20px;border:none;border-radius:8px;background:#f59e0b;color:#000;font-weight:600;cursor:pointer;font-size:14px">💰 Upload & Sell</button>
+          <button onclick="window.open('https://crateshipgames.com/marketplace','_blank')" style="padding:10px 20px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;font-size:14px">🌐 Browse Online</button>
+        </div>
+        
+        <div style="padding:0 24px 24px">
+          <h3 style="margin:16px 0 8px;font-size:16px;color:#aaa">📋 Your Listings (${listings.length})</h3>
+          ${listingsHTML}
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+function marketplaceUploadModel() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.glb,.gltf';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const name = prompt('Name your model:', file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ')) || 'Uploaded Model';
+    const category = prompt('Category (characters, weapons, buildings, vehicles, furniture, nature, scifi, food):', 'buildings') || 'buildings';
+    
+    const buf = await file.arrayBuffer();
+    const blob = new Blob([buf]);
+    const modelId = 'user_upload_' + Date.now();
+    
+    await _modelDB.save(modelId, name, category.toLowerCase(), blob);
+    _assetCatalog = null;
+    
+    showToast('📚 "' + name + '" saved to your library in "' + category + '"!');
+    // Refresh marketplace modal
+    openCreatorMarketplace();
+  };
+  input.click();
+}
+
+function marketplaceUploadAndSell() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.glb,.gltf';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const name = prompt('Name your model:', file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ')) || 'Uploaded Model';
+    const priceStr = prompt('Price (0 for free):', '0');
+    const price = parseFloat(priceStr) || 0;
+    
+    const buf = await file.arrayBuffer();
+    const blob = new Blob([buf]);
+    const listingId = 'listing_' + Date.now();
+    
+    await _modelDB.save(listingId, name, 'premium', blob);
+    _assetCatalog = null;
+    
+    const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
+    listings.push({
+      id: listingId,
+      name: name,
+      creator: localStorage.getItem('crate-username') || 'Anonymous',
+      price: price,
+      format: 'glb',
+      created: new Date().toISOString(),
+      downloads: 0,
+      fileSize: file.size,
+    });
+    localStorage.setItem('crate-marketplace-listings', JSON.stringify(listings));
+    
+    showToast('💰 "' + name + '" listed on marketplace for ' + (price > 0 ? '$' + price : 'FREE') + '!');
+    openCreatorMarketplace();
+  };
+  input.click();
+}
+
+function loadMarketplaceItem(id, name) {
+  _modelDB.get(id).then(record => {
+    if (!record || !record.blob) { showToast('❌ Model data not found'); return; }
+    const url = URL.createObjectURL(record.blob);
+    loadGLBModel(url, name, null, true);
+    document.getElementById('marketplace-modal')?.remove();
+    showToast('✓ Loading: ' + name);
+  });
+}
+// === END CREATOR MARKETPLACE ===
+
 
 // === EXPORT TO UNITY / UNREAL (GLTF/GLB) ===
 async function exportForUnity() { await _exportGLTF('unity'); }
@@ -13606,16 +13740,18 @@ document.addEventListener('keydown', function(e) {
           
           scene.add(model);
           objects.push(model);
+          if (window._sceneObjects) window._sceneObjects.push(model);
+          sceneHistory.push('add ' + name);
           
-          // Log it
-          const logEl = document.getElementById('engine-log');
-          if (logEl) {
-            const r = document.createElement('div');
-            r.className = 'entry ok';
-            r.textContent = '✓ Imported: ' + name + ' (' + (file.size/1024/1024).toFixed(1) + 'MB)';
-            logEl.appendChild(r);
-            logEl.scrollTop = logEl.scrollHeight;
-          }
+          // Save to IndexedDB for persistence
+          const importId = 'user_import_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+          const importBlob = new Blob([evt.target.result]);
+          _modelDB.save(importId, name, 'my-models', importBlob).then(() => {
+            _assetCatalog = null; // Force catalog refresh
+            console.log('[Import] Saved to library:', name);
+          });
+          
+          logOutput('ok', '✓ Imported & saved to library: ' + name + ' (' + (file.size/1024/1024).toFixed(1) + 'MB)');
           
           URL.revokeObjectURL(url);
         }, undefined, (err) => {

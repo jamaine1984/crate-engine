@@ -414,76 +414,103 @@ const COMMANDS_SHOWCASE = {
     'build dragon lair', 'build medieval siege', 'build cyberpunk',
     'build desert', 'build volcano', 'build haunted', 'build space',
     'build western', 'build ruins', 'build zen', 'build floating',
+    'build jungle', 'build frozen lake', 'build ocean world',
+    'build graveyard', 'build kingdom', 'build dungeon',
+    'build campsite', 'build mountain peak', 'build village',
   ],
   '🏗️ Objects & Assets': [
     'add tree', 'add house', 'add car', 'add dragon',
-    'add 10 trees', 'scatter 20 rocks',
+    'add 10 trees', 'scatter 20 rocks', 'add fence',
+    'add barrel', 'add chest', 'add campfire',
     'browse buildings', 'browse weapons', 'browse animals',
-    'library', 'asset library',
+    'browse vehicles', 'browse furniture', 'browse nature',
+    'library', 'asset library', 'my models',
   ],
   '⚔️ Weapons & Combat': [
     'equip sword', 'equip katana', 'equip axe', 'equip hammer',
     'equip pistol', 'equip rifle', 'equip shotgun', 'equip bow',
     'equip sniper', 'equip smg', 'equip dagger', 'equip spear',
-    'show weapons', 'unequip',
+    'show weapons', 'unequip', 'swap 1', 'swap 2', 'swap 3',
   ],
   '🎮 Play Mode': [
     'play', 'play as knight', 'play as soldier', 'play as witch',
+    'play as adventurer', 'play as king', 'play as punk',
     'fps', 'tps', 'toggle camera',
     'shooter mode', 'driving demo',
   ],
   '👥 NPCs': [
     'spawn 5 npcs', 'spawn enemies', 'spawn 3 hostile npcs',
-    'spawn villagers',
+    'spawn villagers', 'spawn soldiers', 'spawn 10 hostile npcs',
   ],
   '🌊 Water & Weather': [
-    'water tropical', 'water storm', 'water lake', 'water arctic',
+    'water tropical', 'water storm', 'water hurricane', 'water lake',
+    'water ocean', 'water arctic', 'water swamp', 'water river',
     'add ocean', 'add lake',
     'rain', 'snow', 'clear weather', 'storm',
-    'fog on', 'fog off',
+    'fog on', 'fog off', 'fog 0.03',
   ],
-  '⛰️ Terrain': [
+  '⛰️ Terrain & Ground': [
     'terrain flat', 'terrain hills', 'terrain mountains',
     'terrain island', 'terrain canyon', 'terrain volcano',
     'terrain dunes', 'terrain mesa',
+    'ground grass', 'ground sand', 'ground snow', 'ground dirt',
+    'ground stone', 'ground lava', 'ground mud', 'ground concrete',
+    'ground wood', 'ground cobblestone', 'ground gravel',
   ],
   '🌅 Time & Sky': [
     'morning', 'noon', 'sunset', 'night', 'midnight',
     'dawn', 'dusk', 'aaa sky',
+    'day night cycle', 'toggle day night',
   ],
-  '✨ Effects': [
+  '✨ Effects & Particles': [
     'particles fire', 'particles rain', 'particles snow',
     'particles fireflies', 'particles dust', 'particles leaves',
+    'particles embers', 'particles smoke', 'particles sparks',
     'bloom on', 'bloom off', 'ssao on', 'postfx on',
     'wet ground', 'dry ground',
     'vignette 0.5', 'grain 0.3',
   ],
   '🎨 Edit Objects': [
     'color tree red', 'scale car 2', 'rotate house 90',
-    'move tree 10 0 10', 'delete tree', 'undo',
+    'move tree 10 0 10', 'delete tree', 'undo', 'clear scene',
   ],
-  '🏠 Buildings': [
+  '🏠 Buildings & Interiors': [
     'add house', 'add shop', 'add tavern',
-    'interior house', 'interior shop',
+    'interior house', 'interior shop', 'interior tavern',
     '2 story house', '3 story building',
   ],
-  '💾 Save & Share': [
+  '💾 Save & Export': [
     'save', 'save my world', 'load',
-    'screenshot', 'export', 'share',
+    'screenshot', 'export',
+    'export unity', 'export unreal',
+    'share',
   ],
-  '🔮 AI & Scripts': [
+  '🏪 Marketplace & Models': [
+    'marketplace', 'upload model', 'sell model',
+    '3d generator', 'text to 3d', 'image to 3d',
+    'my models',
+  ],
+  '🔮 AI Agent': [
     'ai settings', 'scripts', 'edit script',
-    '3d generator', 'text to 3d',
+    'agent style aggressive', 'agent difficulty hard',
   ],
   '🎮 Quick Play': [
     'arena', 'survival', 'explore', 'demo',
     'fight', 'battle', 'horde mode',
   ],
   '🌐 Multiplayer': [
-    'multiplayer', 'join lobby', 'disconnect',
+    'multiplayer', 'join lobby', 'disconnect', 'chat hello',
   ],
-  '⚙️ Graphics': [
+  '⚙️ Graphics & Performance': [
     'graphics low', 'graphics medium', 'graphics high', 'graphics ultra',
+  ],
+  '⌨️ Controls (Play Mode)': [
+    'WASD — Move', 'Space — Jump', 'Shift — Sprint',
+    'E / Left Click — Attack', 'Q — Heavy Attack',
+    'Right Click — Aim/Block', 'V — Toggle FPS/TPS',
+    'T — Swap Shoulder', 'R — Reload', 'F — Interact',
+    '1/2/3 — Weapon Slots', 'Tab/I — Inventory',
+    'Esc — Exit Play Mode', '` — FPS Counter',
   ],
 };
 
