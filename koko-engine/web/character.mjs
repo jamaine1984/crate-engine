@@ -446,7 +446,7 @@ function createWeaponMesh(weaponId) {
 
 
 // === CHARACTER SYSTEM ===
-export 
+
 // ═══════════════════════════════════════════════════
 // CHARACTER STATE MACHINE (Sketchbook-inspired)
 // ═══════════════════════════════════════════════════
