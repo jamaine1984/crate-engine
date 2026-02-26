@@ -358,6 +358,7 @@ export class CharacterController {
     this.weaponSlots = [null, null, null]; // 3 weapon slots (1,2,3 keys)
     this.activeSlot = 0;
     this.holsteredMeshes = {}; // Weapon meshes on back/hip
+    this._twoHandedGrip = false; // Two-handed IK active
     this.ammo = {}; // { weaponId: currentAmmo }
     this.isReloading = false;
     this.reloadTimer = 0;
@@ -899,6 +900,45 @@ export class CharacterController {
     this.equippedWeaponMesh = mesh;
   }
   
+  // Two-handed IK: position left hand on weapon's secondary grip point
+  _applyTwoHandedIK() {
+    const handL = this.sockets.hand_l;
+    const weaponMesh = this.equippedWeaponMesh;
+    if (!handL || !weaponMesh) return;
+    
+    // Get weapon's world-space grip position (midpoint of weapon for swords, foregrip for guns)
+    const weaponId = this.weaponSlots[this.activeSlot];
+    const data = WEAPON_DATABASE[weaponId];
+    if (!data) return;
+    
+    // Secondary grip offset in weapon-local space
+    // Swords: left hand near pommel/crossguard (below right hand)
+    // Guns: left hand on foregrip (forward of right hand)
+    const isGun = data.type === 'ranged';
+    const gripLocal = new THREE.Vector3();
+    if (isGun) {
+      gripLocal.set(0, 0.04, 0.06); // forward + slightly down
+    } else {
+      gripLocal.set(0, -0.04, 0); // below right hand on hilt
+    }
+    
+    // Transform grip point to world space
+    const gripWorld = gripLocal.clone();
+    weaponMesh.updateWorldMatrix(true, false);
+    gripWorld.applyMatrix4(weaponMesh.matrixWorld);
+    
+    // Convert world position to left hand's parent bone space
+    const handParent = handL.parent;
+    if (handParent) {
+      handParent.updateWorldMatrix(true, false);
+      const parentInverse = new THREE.Matrix4().copy(handParent.matrixWorld).invert();
+      gripWorld.applyMatrix4(parentInverse);
+      
+      // Lerp for smooth transition
+      handL.position.lerp(gripWorld, 0.4);
+    }
+  }
+
   _attachWeaponToHolster(weaponId, slotIndex) {
     const data = WEAPON_DATABASE[weaponId];
     if (!data) return;
@@ -920,6 +960,7 @@ export class CharacterController {
   }
   
   _removeFromHand() {
+    this._twoHandedGrip = false;
     if (this.equippedWeaponMesh) {
       this.equippedWeaponMesh.parent?.remove(this.equippedWeaponMesh);
       this.equippedWeaponMesh = null;
@@ -964,6 +1005,10 @@ export class CharacterController {
     }
     if (!this.model || this.isDead) return;
     if (this.mixer) this.mixer.update(dt);
+    // Two-handed weapon IK: after animation, move left hand to weapon grip
+    if (this._twoHandedGrip && this.weaponDrawn && this.equippedWeaponMesh && this.sockets.hand_l) {
+      this._applyTwoHandedIK();
+    }
     if (this.proceduralAnim) this._updateProceduralAnim(dt);
     if (this.inVehicle) return this._updateInVehicle(dt);
     
