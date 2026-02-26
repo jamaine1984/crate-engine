@@ -88,6 +88,21 @@ function interpret(input) {
     return { action: 'openLibrary' };
   }
   // Browse specific category: "show weapons", "browse buildings", "animals"
+  // Play mode commands
+  if (lower === 'play' || lower === 'start' || lower === 'go') {
+    return { action: 'enterPlayMode' };
+  }
+  if (lower.startsWith('play as ') || lower.startsWith('play ')) {
+    const char = lower.replace(/^play\s*(as\s*)?/, '').trim();
+    if (char) return { action: 'playAs', character: char };
+    return { action: 'enterPlayMode' };
+  }
+
+  // Toolbar buttons send bare category names — open gallery for those
+  const TOOLBAR_CATS = ['characters', 'weapons', 'buildings', 'trees', 'animals', 'vehicles', 'rocks', 'furniture', 'food', 'dungeon', 'scifi', 'animations', 'modern', 'nature'];
+  if (TOOLBAR_CATS.includes(lower)) {
+    return { action: 'openLibrary', category: GALLERY_CATEGORIES[lower] || lower };
+  }
   for (const [keyword, category] of Object.entries(GALLERY_CATEGORIES)) {
     if (lower === `show ${keyword}` || lower === `browse ${keyword}` || lower === `open ${keyword}` || lower === `${keyword} gallery` || lower === `${keyword} library`) {
       return { action: 'openLibrary', category };

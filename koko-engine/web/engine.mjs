@@ -346,7 +346,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=39';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=44';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -633,12 +633,25 @@ function getTerrainY(x, z) {
   return hits.length > 0 ? hits[0].point.y : 0;
 }
 
-function enterPlayMode() {
-  playMode = true;
+
+function _hideEditorUI() {
   const tb = document.getElementById('build-toolbar'); if (tb) tb.style.display = 'none';
   const nav = document.querySelector('nav'); if (nav) nav.style.display = 'none';
   const sb = document.getElementById('scene-buttons'); if (sb) sb.style.display = 'none';
   const insp = document.getElementById('inspector'); if (insp) insp.style.display = 'none';
+  const pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = 'none';
+}
+function _showEditorUI() {
+  const tb = document.getElementById('build-toolbar'); if (tb) tb.style.display = 'flex';
+  const nav = document.querySelector('nav'); if (nav) nav.style.removeProperty('display');
+  const sb = document.getElementById('scene-buttons'); if (sb) sb.style.display = 'flex';
+  const insp = document.getElementById('inspector'); if (insp) insp.style.removeProperty('display');
+  const pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = 'flex';
+}
+
+function enterPlayMode() {
+  playMode = true;
+  _hideEditorUI();
   // Create or find avatar
   playAvatar = objects.find(o => o.userData.name && o.userData.name.includes('player'));
   if (!playAvatar) {
@@ -662,10 +675,7 @@ function enterPlayMode() {
 
 function exitPlayMode() {
   playMode = false;
-  const tb = document.getElementById('build-toolbar'); if (tb) tb.style.display = 'flex';
-  const nav = document.querySelector('nav'); if (nav) nav.style.removeProperty('display');
-  const sb = document.getElementById('scene-buttons'); if (sb) sb.style.display = 'flex';
-  const insp = document.getElementById('inspector'); if (insp) insp.style.removeProperty('display');
+  _showEditorUI();
   try { controls.enabled = true; } catch(e) {}
   var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return '🎮 Play mode OFF — back to editor';
 }
@@ -3588,6 +3598,14 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
       autoScale = 2.5 / Math.max(size.x, size.z, 0.01);
     } else if (gn.includes('boat') || gn.includes('ship') || gn.includes('lifeboat') || gn.includes('galleon')) {
       autoScale = 3.5 / Math.max(size.x, size.z, 0.01);
+    }
+    // Buildings — should be ~5-8 units tall (relative to 1.8m character)
+    if (gn.includes('building') || gn.includes('house') || gn.includes('cottage') || gn.includes('castle') || gn.includes('church') || gn.includes('tower') || gn.includes('blacksmith') || gn.includes('warehouse') || gn.includes('stable') || gn.includes('market') || gn.includes('tavern') || gn.includes('shop') || gn.includes('barn') || gn.includes('fort')) {
+      autoScale = 6 / Math.max(size.y, 0.01); // Scale based on height to ~6 units tall
+    } else if (gn.includes('wall') || gn.includes('gate') || gn.includes('fence') || gn.includes('bridge')) {
+      autoScale = 4 / Math.max(size.y, 0.01);
+    } else if (gn.includes('column') || gn.includes('statue') || gn.includes('monument') || gn.includes('throne')) {
+      autoScale = 3 / Math.max(size.y, 0.01);
     } else if (gn.includes('tank') && !gn.includes('tankard')) {
       autoScale = 6.0 / Math.max(size.x, size.z, 0.01);
     } else if (gn.includes('helicopter') || gn.includes('chopper')) {
@@ -5783,6 +5801,8 @@ var terrainMesh = null;
 
 function createTerrain(type, params) {
   params = params || {};
+  // Remove ground plane when creating terrain (avoid overlap)
+  if (currentGround) { scene.remove(currentGround); currentGround = null; }
   var size = params.size || 200;
   var segments = params.segments || 128;
   var heightScale = params.height || 1.0;
@@ -5908,6 +5928,12 @@ function createTerrain(type, params) {
     for (var i = 0; i < pos.count; i++) {
       pos.setZ(i, 0);
     }
+  } else if (type === 'flat' || type === 'plain' || type === 'plains') {
+    // Completely flat terrain — zero height
+    for (var i = 0; i < pos.count; i++) {
+      pos.setZ(i, 0);
+    }
+    maxH = 0.1;
   } else {
     // flat/plains — very subtle undulation
     for (var i = 0; i < pos.count; i++) {
@@ -7571,6 +7597,7 @@ async function execSingle(cmd) {
       if (playAsMatch) {
         // Also enter play mode
         playMode = true;
+        _hideEditorUI();
         try { controls.enabled = false; } catch(e) {}
         { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.model.position.set(0, _sy, 0); } }
         // Apply player agent profile
@@ -7592,6 +7619,7 @@ async function execSingle(cmd) {
     await characterController.loadCharacter(charName);
     if (playAsMatch) {
       playMode = true;
+      _hideEditorUI();
       try { controls.enabled = false; } catch(e) {}
       { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) characterController.model.position.set(0, _sy, 0); }
       return '⚔️ Playing as ' + charName + '! WASD to move, mouse to look, ESC to exit.';
@@ -7603,12 +7631,13 @@ async function execSingle(cmd) {
   if ((lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo') && characterController) {
     var isDemoMode = lower === 'demo' || window._isAutoDemo;
     playMode = true;
+    _hideEditorUI();
     try { controls.enabled = isDemoMode ? true : false; } catch(e) {}
     if (!characterController.model) {
       // Show character select if user hasn't chosen yet (skip for demo mode)
       if (!isDemoMode && !selectedCharacterType) {
         var chosen = await showCharacterGallery();
-        if (!chosen) { playMode = false; return '↩ Character select cancelled'; }
+        if (!chosen) { playMode = false; _showEditorUI(); return '↩ Character select cancelled'; }
         if (!characterController.characterModels[chosen]) {
           var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
           if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
@@ -8826,6 +8855,10 @@ async function execSingle(cmd) {
   // === SCENE ===
   if (lower === 'clear' || lower === 'reset') {
     objects.forEach(o => scene.remove(o)); objects.length = 0;
+    // Also remove terrain mesh
+    if (terrainMesh) { scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh.material.dispose(); terrainMesh = null; window._terrainMesh = null; }
+    // Remove Gerstner water
+    scene.children.filter(c => c.userData && c.userData.isGerstnerWater).forEach(w => scene.remove(w));
     setWeather(null); scene.fog = null;
     setSky('#4a8ac7','#87ceeb');
     sunLight.color.set(0xfff5e0); sunLight.intensity=3; sunLight.position.set(30,40,20);
@@ -9409,25 +9442,22 @@ canvas.addEventListener('pointerup', () => {
 // === VISUAL CHARACTER GALLERY ===
 // Shows real 3D model previews rendered with Three.js mini-viewers
 const CHARACTER_LIBRARY = [
-  { id: 'knight', file: 'single_knight_pack_knightcharacter', name: 'Knight', desc: 'Medieval warrior with sword & shield', category: 'Hero' },
-  { id: 'cyberpunk', file: 'cyberpunk_pack_character', name: 'Cyberpunk Agent', desc: 'Futuristic fighter with tech gear', category: 'Hero' },
-  { id: 'soldier', file: 'soldier', name: 'Soldier', desc: 'Modern tactical combat specialist', category: 'Hero' },
-  { id: 'platformer', file: 'platformer_game_pack_character', name: 'Platformer Hero', desc: 'Cartoon adventure character', category: 'Hero' },
-  { id: 'avatar', file: 'avatar', name: 'Avatar', desc: 'Clean humanoid with procedural animations', category: 'Hero' },
-  { id: 'walking_man', file: 'walking_man', name: 'Walking Man', desc: 'Animated walking character', category: 'Hero' },
-  { id: 'man', file: 'man', name: 'Man', desc: 'Male character model', category: 'Hero' },
+  { id: 'adventurer', file: 'modular_men_adventurer', name: 'Adventurer', desc: 'Rugged explorer with gear', category: 'Hero' },
+  { id: 'swat', file: 'modular_men_swat', name: 'SWAT', desc: 'Tactical assault specialist', category: 'Hero' },
   { id: 'king', file: 'modular_men_king', name: 'King', desc: 'Royal ruler with crown & cape', category: 'Hero' },
+  { id: 'punk', file: 'modular_men_punk', name: 'Punk', desc: 'Street fighter with attitude', category: 'Hero' },
+  { id: 'knight', file: 'single_knight_pack_knightcharacter', name: 'Knight', desc: 'Medieval armored warrior', category: 'Hero' },
+  { id: 'soldier', file: 'soldier', name: 'Soldier', desc: 'Modern combat specialist', category: 'Hero' },
+  { id: 'casual', file: 'modular_men_casual', name: 'Casual', desc: 'Everyday streetwear look', category: 'Hero' },
+  { id: 'farmer', file: 'modular_men_farmer', name: 'Farmer', desc: 'Hardworking rural character', category: 'Hero' },
+  { id: 'suit', file: 'modular_men_suit', name: 'Suit', desc: 'Sharp business attire', category: 'Hero' },
+  { id: 'worker', file: 'modular_men_worker', name: 'Worker', desc: 'Construction/industrial gear', category: 'Hero' },
+  { id: 'beach', file: 'modular_men_beach', name: 'Beach', desc: 'Tropical vacation vibes', category: 'Hero' },
+  { id: 'spacesuit', file: 'modular_men_spacesuit', name: 'Astronaut', desc: 'Space exploration suit', category: 'Hero' },
   { id: 'witch', file: 'modular_women_witch', name: 'Witch', desc: 'Dark sorceress with magic staff', category: 'Hero' },
-  { id: 'women_soldier', file: 'modular_women_soldier', name: 'Woman Soldier', desc: 'Female tactical fighter', category: 'Hero' },
-  { id: 'robot', file: 'robot', name: 'Robot', desc: 'Mechanical warrior', category: 'Hero' },
-  { id: 'platformer_gun', file: 'platformer_game_pack_character_gun', name: 'Platformer (Armed)', desc: 'Cartoon hero with weapon', category: 'Hero' },
-  { id: 'cyber_enemy', file: 'cyberpunk_pack_enemy_2legs', name: 'Cyber Mech', desc: 'Two-legged combat mech', category: 'Enemy' },
-  { id: 'cyber_enemy_gun', file: 'cyberpunk_pack_enemy_2legs_gun', name: 'Cyber Mech (Armed)', desc: 'Mech with mounted weapons', category: 'Enemy' },
-  { id: 'cyber_flying', file: 'cyberpunk_pack_enemy_flying', name: 'Cyber Drone', desc: 'Flying attack drone', category: 'Enemy' },
-  { id: 'cyber_large', file: 'cyberpunk_pack_enemy_large', name: 'Cyber Boss', desc: 'Massive combat mech', category: 'Enemy' },
-  { id: 'platformer_enemy', file: 'platformer_game_pack_enemy', name: 'Platformer Enemy', desc: 'Cartoon villain', category: 'Enemy' },
-  { id: 'space_enemy', file: 'ultimate_space_pack_enemy_small-transformed', name: 'Space Alien', desc: 'Small alien creature', category: 'Enemy' },
-  { id: 'space_boss', file: 'ultimate_space_pack_enemy_large-transformed', name: 'Space Boss', desc: 'Large alien threat', category: 'Enemy' },
+  { id: 'medieval', file: 'modular_women_medieval', name: 'Medieval Woman', desc: 'Medieval heroine', category: 'Hero' },
+  { id: 'scifi', file: 'modular_women_scifi', name: 'Sci-Fi Woman', desc: 'Futuristic combat gear', category: 'Hero' },
+  { id: 'formal', file: 'modular_women_formal', name: 'Formal Woman', desc: 'Elegant formal attire', category: 'Hero' },
 ];
 
 function showCharacterGallery(onSelect) {
@@ -9818,6 +9848,7 @@ function enterVehicle(veh) {
   // Auto-enable play mode so vehicle controls work
   if (!playMode) {
     playMode = true;
+    _hideEditorUI();
     console.log('[CrateEngine] ▶ Play mode enabled for driving');
   }
   activeVehicle = {
@@ -10853,7 +10884,20 @@ import('./interpreter.mjs').then(({ interpret }) => {
     let result = null;
     try {
       switch (intent.action) {
-        case 'enterPlayMode': enterPlayMode(); result = '🎮 Play mode'; break;
+        case 'playAs':
+          result = await bridge.execSingle('play as ' + intent.character);
+          if (!result) result = '🎮 Playing as ' + intent.character;
+          break;
+        case 'enterPlayMode':
+          // If character is loaded, use the legacy 'play' path which hooks up character controller
+          if (characterController && characterController.model) {
+            result = await bridge.execSingle('play');
+          } else {
+            // Try to load a character first
+            result = await bridge.execSingle('play');
+          }
+          if (!result) result = '🎮 Play mode';
+          break;
         case 'exitPlayMode': exitPlayMode(); result = '✏️ Edit mode'; break;
         case 'showHelp': showHelp(); result = '📋 Help toggled'; break;
         case 'clearScene': bridge.clearScene(); result = '🗑️ Scene cleared'; break;
@@ -10869,20 +10913,21 @@ import('./interpreter.mjs').then(({ interpret }) => {
         case 'showGenerator': showGeneratorModal(); result = '🔮 3D Generator'; break;
         case 'buildWorld': result = await bridge.buildWorld(intent.template); break;
         case 'equipWeapon': 
-          result = bridge.equipWeapon(intent.weaponId, 1);
-          if (!result) {
-            // Auto-load character first, then equip
-            result = await bridge.setCharacter('knight');
+          // Auto-load character if no model yet
+          if (!characterController || !characterController.model) {
+            result = await bridge.setCharacter('adventurer');
             // Wait for model to fully load, then equip
             const _waitEquip = () => {
               if (characterController && characterController.model) {
-                bridge.equipWeapon(intent.weaponId, 1);
+                bridge.equipWeapon(intent.weaponId, -1);
               } else {
                 setTimeout(_waitEquip, 200);
               }
             };
             setTimeout(_waitEquip, 800);
             result = '⚔️ Loading character + equipping ' + intent.weaponId;
+          } else {
+            result = bridge.equipWeapon(intent.weaponId, -1);
           }
           break;
         case 'unequipWeapon':
@@ -10930,7 +10975,10 @@ import('./interpreter.mjs').then(({ interpret }) => {
             }
             
             if (bestMatch && bestScore >= 20) {
-              loadGLBModel(bestMatch.name, bestMatch.file, 0, 0);
+              // Random position so objects don't stack
+              const _rx = (Math.random() - 0.5) * 20;
+              const _rz = (Math.random() - 0.5) * 20;
+              loadGLBModel(bestMatch.name, bestMatch.file, _rx, _rz);
               result = '✅ Added ' + bestMatch.name + (bestScore < 60 ? ' (best match for "' + intent.query + '")' : '');
               break;
             }

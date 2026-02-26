@@ -395,7 +395,7 @@ export class CharacterController {
     
     // Camera
     this.cameraMode = '3rd'; // '3rd' or '1st'
-    this.cameraDistance = 4;
+    this.cameraDistance = 10;
     this.cameraHeight = 2.0;
     this.cameraPitch = 0.2;
     this.cameraYaw = 0;
@@ -437,13 +437,24 @@ export class CharacterController {
     this.mouseX = 0;
     this.mouseY = 0;
     
-    // Available character models
+    // Available character models — REAL models only, no primitives
     this.characterModels = {
-      'avatar': { file: 'avatar', animPrefix: '', procedural: true },
+      'adventurer': { file: 'modular_men_adventurer', animPrefix: '' },
+      'swat': { file: 'modular_men_swat', animPrefix: '' },
+      'king': { file: 'modular_men_king', animPrefix: '' },
+      'punk': { file: 'modular_men_punk', animPrefix: '' },
       'knight': { file: 'single_knight_pack_knightcharacter', animPrefix: 'HumanArmature|' },
-      'cyberpunk': { file: 'cyberpunk_pack_character', animPrefix: 'CharacterArmature|' },
       'soldier': { file: 'soldier', animPrefix: '' },
-      'platformer': { file: 'platformer_game_pack_character', animPrefix: '' , procedural: true },
+      'witch': { file: 'modular_women_witch', animPrefix: '' },
+      'medieval': { file: 'modular_women_medieval', animPrefix: '' },
+      'casual': { file: 'modular_men_casual', animPrefix: '' },
+      'farmer': { file: 'modular_men_farmer', animPrefix: '' },
+      'suit': { file: 'modular_men_suit', animPrefix: '' },
+      'worker': { file: 'modular_men_worker', animPrefix: '' },
+      'scifi': { file: 'modular_women_scifi', animPrefix: '' },
+      'formal': { file: 'modular_women_formal', animPrefix: '' },
+      'beach': { file: 'modular_men_beach', animPrefix: '' },
+      'spacesuit': { file: 'modular_men_spacesuit', animPrefix: '' },
     };
     
     // Procedural animation state
@@ -473,7 +484,7 @@ export class CharacterController {
     });
   }
   
-  async loadCharacter(type = 'knight') {
+  async loadCharacter(type = 'adventurer') {
     const config = this.characterModels[type];
     if (!config) return 'Unknown character: ' + type;
     
@@ -515,12 +526,14 @@ export class CharacterController {
         this.model.traverse(node => {
           if (node.isBone || node.type === 'Bone') {
             const n = node.name.toLowerCase();
-            if ((n.includes('righthand') || n.includes('right_hand') || n.includes('r_hand')) && !n.includes('thumb') && !this.sockets.hand_r) this.sockets.hand_r = node;
-            else if ((n.includes('lefthand') || n.includes('left_hand') || n.includes('l_hand')) && !n.includes('thumb') && !this.sockets.hand_l) this.sockets.hand_l = node;
-            else if ((n.includes('rightforearm') || n.includes('right_forearm') || n.includes('r_forearm')) && !this.sockets.forearm_r) this.sockets.forearm_r = node;
-            else if ((n.includes('spine') && (n.includes('2') || n.includes('1'))) && !this.sockets.back) this.sockets.back = node;
-            else if ((n.includes('rightupleg') || n.includes('righthip') || n.includes('r_thigh')) && !this.sockets.hip_r) this.sockets.hip_r = node;
-            else if ((n.includes('leftupleg') || n.includes('lefthip') || n.includes('l_thigh')) && !this.sockets.hip_l) this.sockets.hip_l = node;
+            // Hand sockets — support Mixamo (RightHand), Wolf3D, and KayKit (PalmR) rigs
+            if ((n.includes('righthand') || n.includes('right_hand') || n.includes('r_hand') || n === 'palmr' || n === 'palm_r') && !n.includes('thumb') && !n.includes('middle') && !n.includes('finger') && !this.sockets.hand_r) this.sockets.hand_r = node;
+            else if ((n.includes('lefthand') || n.includes('left_hand') || n.includes('l_hand') || n === 'palml' || n === 'palm_l') && !n.includes('thumb') && !n.includes('middle') && !n.includes('finger') && !this.sockets.hand_l) this.sockets.hand_l = node;
+            else if ((n.includes('rightforearm') || n.includes('right_forearm') || n.includes('r_forearm') || n === 'lowerarmr' || n === 'lower_arm_r') && !this.sockets.forearm_r) this.sockets.forearm_r = node;
+            else if ((n.includes('leftforearm') || n.includes('left_forearm') || n === 'lowerarml' || n === 'lower_arm_l') && !this.sockets.forearm_l) this.sockets.forearm_l = node;
+            else if ((n.includes('spine') && (n.includes('2') || n.includes('1')) || n === 'torso' || n === 'abdomen') && !this.sockets.back) this.sockets.back = node;
+            else if ((n.includes('rightupleg') || n.includes('righthip') || n.includes('r_thigh') || n === 'upperlegr') && !this.sockets.hip_r) this.sockets.hip_r = node;
+            else if ((n.includes('leftupleg') || n.includes('lefthip') || n.includes('l_thigh') || n === 'upperlegl') && !this.sockets.hip_l) this.sockets.hip_l = node;
           }
         });
         // Fallback: use forearm if no hand bone found
@@ -757,6 +770,15 @@ export class CharacterController {
     
     const bone = this.sockets.hand_r || this.sockets.forearm_r;
     if (bone) {
+      // Auto-scale weapon to match character size
+      // Get character height and scale weapon proportionally
+      if (this.model) {
+        const charBox = new THREE.Box3().setFromObject(this.model);
+        const charHeight = charBox.getSize(new THREE.Vector3()).y;
+        // Weapons designed for ~1.8m character, scale accordingly
+        const weaponScale = Math.min(charHeight / 1.8, 1.5);
+        mesh.scale.setScalar(weaponScale);
+      }
       mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);
@@ -2130,11 +2152,18 @@ export class NPCController {
   
   async spawnNPC(type, x, z, behavior = 'wander') {
     const npcModels = {
-      'villager': 'modular_men_adventurer',
-      'soldier': 'soldier',
-      'knight': 'single_knight_pack_knightcharacter',
-      'cyberpunk': 'cyberpunk_pack_character',
+      'villager': 'modular_men_casual',
+      'soldier': 'modular_men_swat',
+      'knight': 'modular_men_adventurer',
+      'guard': 'modular_men_swat',
+      'king': 'modular_men_king',
+      'punk': 'modular_men_punk',
+      'worker': 'modular_men_worker',
+      'farmer': 'modular_men_farmer',
       'woman': 'modular_women_adventurer',
+      'witch': 'modular_women_witch',
+      'medieval': 'modular_women_medieval',
+      'scifi': 'modular_women_scifi',
     };
     
     const file = npcModels[type] || npcModels['villager'];
@@ -2151,7 +2180,7 @@ export class NPCController {
         const npcBox2 = new THREE.Box3().setFromObject(model);
         const _npcGroundOffset = -npcBox2.min.y; // Distance from origin to feet
         const _npcTerrainY = _getTerrainY(x, z);
-        model.position.set(x, _npcTerrainY + _npcGroundOffset, z);
+        model.position.set(x, _npcTerrainY + _npcGroundOffset + 0.05, z);
         model.castShadow = true;
         model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
         this.scene.add(model);
@@ -2388,6 +2417,15 @@ export class NPCController {
     
     const bone = this.sockets.hand_r || this.sockets.forearm_r;
     if (bone) {
+      // Auto-scale weapon to match character size
+      // Get character height and scale weapon proportionally
+      if (this.model) {
+        const charBox = new THREE.Box3().setFromObject(this.model);
+        const charHeight = charBox.getSize(new THREE.Vector3()).y;
+        // Weapons designed for ~1.8m character, scale accordingly
+        const weaponScale = Math.min(charHeight / 1.8, 1.5);
+        mesh.scale.setScalar(weaponScale);
+      }
       mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);
