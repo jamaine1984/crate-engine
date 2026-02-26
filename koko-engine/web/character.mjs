@@ -1790,7 +1790,7 @@ class CharacterController {
       
       const cameraAngle = this.cameraYaw;
       const moveAngle = Math.atan2(moveX, moveZ);
-      const targetRotation = cameraAngle + moveAngle;
+      const targetRotation = cameraAngle + moveAngle + Math.PI;
       
       // Smooth rotation
       let diff = targetRotation - this.rotation;

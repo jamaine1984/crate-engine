@@ -317,7 +317,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=90';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=92';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -5889,9 +5889,9 @@ function createSword() {
 // === WATER PRESETS (Gerstner Wave System) ===
 const WATER_PRESETS = {
   tropical: {
-    color: new THREE.Color(0x00bcd4), deepColor: new THREE.Color(0x006064),
-    opacity: 0.78, waveA: [1.0, 0.3, 0.12, 8.0], waveB: [0.3, 1.0, 0.08, 5.0], waveC: [0.7, 0.7, 0.05, 12.0],
-    foamIntensity: 0.3, specularPower: 80.0, fresnelPower: 2.0
+    color: new THREE.Color(0x0099bb), deepColor: new THREE.Color(0x005577),
+    opacity: 0.88, waveA: [1.0, 0.3, 0.10, 9.0], waveB: [0.3, 1.0, 0.07, 6.0], waveC: [0.7, 0.7, 0.04, 13.0],
+    foamIntensity: 0.2, specularPower: 90.0, fresnelPower: 2.5
   },
   storm: {
     color: new THREE.Color(0x1a3a4a), deepColor: new THREE.Color(0x0a1a24),
@@ -5909,9 +5909,9 @@ const WATER_PRESETS = {
     foamIntensity: 0.1, specularPower: 100.0, fresnelPower: 3.0
   },
   ocean: {
-    color: new THREE.Color(0x004466), deepColor: new THREE.Color(0x001a33),
-    opacity: 0.88, waveA: [1.0, 0.2, 0.25, 6.0], waveB: [0.5, 1.0, 0.18, 4.5], waveC: [0.8, 0.4, 0.12, 9.0],
-    foamIntensity: 0.45, specularPower: 60.0, fresnelPower: 2.5
+    color: new THREE.Color(0x006699), deepColor: new THREE.Color(0x002244),
+    opacity: 0.92, waveA: [1.0, 0.2, 0.18, 7.0], waveB: [0.5, 1.0, 0.12, 5.5], waveC: [0.8, 0.4, 0.08, 10.0],
+    foamIntensity: 0.3, specularPower: 80.0, fresnelPower: 3.0
   },
   swamp: {
     color: new THREE.Color(0x3a5a1a), deepColor: new THREE.Color(0x1a3008),
