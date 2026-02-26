@@ -2696,13 +2696,20 @@ function _checkWallCollision(position, direction, distance) {
       if (obj.userData.bobBaseY !== undefined) {
         obj.position.y = obj.userData.bobBaseY + Math.sin(t * 2 + (obj.userData.bobPhase || 0)) * 0.15;
         obj.rotation.y += 0.02;
+        if (obj.userData.glowRing) obj.userData.glowRing.material.opacity = 0.2 + Math.sin(t * 3) * 0.2;
       }
       const dist = this.position.distanceTo(obj.position);
       if (dist < 2) {
         const data = obj.userData.pickupData;
         scene.remove(obj);
         objects.splice(i, 1);
-        if (window._sound) window._sound.SFX.pickup(); return this._processPickup(data);
+        if (window._sound) window._sound.SFX.pickup();
+        // Floating pickup text
+        if (typeof window._floatingDamage === 'function' && data) {
+          const label = data.type === 'health_potion' ? '+' + (data.value||25) + ' HP' : data.type === 'gem' ? '+' + (data.value||50) : data.type;
+          window._floatingDamage(obj.position, label, true);
+        }
+        return this._processPickup(data);
       }
     }
     return null;
@@ -3964,6 +3971,14 @@ export class NPCController {
       m.position.set(pos.x, 0.5, pos.z);
       m.userData.name = 'loot_' + loot.type;
       m.userData.isPickup = true;
+      // Glow ring under loot
+      const ringGeo = new THREE.RingGeometry(0.3, 0.5, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.02;
+      m.add(ring);
+      m.userData.glowRing = ring;
       m.userData.pickupData = loot;
       m.userData.bobPhase = Math.random() * Math.PI * 2;
       m.userData.bobBaseY = pos.y + 0.5;
