@@ -7133,532 +7133,536 @@ async function execSingle(cmd) {
     
     // JSON Map Templates — structured layouts with positions
     const MAP_TEMPLATES = {
+      // ===== MEDIEVAL FANTASY =====
       town: {
         terrain: { type: 'hills', height: 0.3 },
-        env: ['time afternoon'],
+        ground: 'grass', env: ['time afternoon'],
+        water: null, weather: null, particles: null,
         items: [
-          { cmd: 'add road' },
-          { cmd: 'add tavern', pos: [25, 10] },
-          { cmd: 'add house', pos: [20, -15] },
-          { cmd: 'add house', pos: [-20, -10] },
-          { cmd: 'add house', pos: [-15, 15] },
-          { cmd: 'add house', pos: [0, 25] },
-          { cmd: 'add house', pos: [30, 25] },
-          { cmd: 'add castle', pos: [0, -45] },
-          { cmd: 'add well', pos: [5, 0] },
-          { cmd: 'add market stall', pos: [-10, 5] },
-          { cmd: 'add market stall', pos: [-10, -5] },
-          { cmd: 'add tree', scatter: { count: 12, radius: 60, avoidCenter: 15 } },
-          { cmd: 'add torch', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add npc', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add barrel', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add blacksmith', pos: [25, 8] },
+          { cmd: 'add tavern', pos: [-22, 12] },
+          { cmd: 'add house', pos: [18, -18] }, { cmd: 'add house', pos: [-18, -12] },
+          { cmd: 'add house', pos: [8, 22] }, { cmd: 'add house', pos: [-8, -25] },
+          { cmd: 'add house', pos: [30, -8] },
+          { cmd: 'add market stall', pos: [-5, 3] }, { cmd: 'add market stall', pos: [5, 3] },
+          { cmd: 'add market stall', pos: [0, -5] },
+          { cmd: 'add well', pos: [0, 0] },
+          { cmd: 'add barrel', pos: [27, 10] }, { cmd: 'add barrel', pos: [26, 12] },
+          { cmd: 'add cart', pos: [-25, -5] },
+          { cmd: 'add fence', scatter: { count: 8, radius: 30, avoidCenter: 12 } },
+          { cmd: 'add tree', scatter: { count: 20, radius: 70, avoidCenter: 20 } },
+          { cmd: 'add bush', scatter: { count: 12, radius: 50, avoidCenter: 15 } },
+          { cmd: 'add torch', scatter: { count: 10, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 6, radius: 60 } },
+          { cmd: 'spawn villager', scatter: { count: 6, radius: 30 } },
+          { cmd: 'spawn guard', scatter: { count: 2, radius: 25 } },
         ]
       },
       village: {
         terrain: { type: 'hills', height: 0.2 },
-        env: ['time morning'],
+        ground: 'grass', env: ['time morning'],
         items: [
-          { cmd: 'add road' },
-          { cmd: 'add house', pos: [15, 0] },
-          { cmd: 'add house', pos: [-15, 0] },
-          { cmd: 'add house', pos: [0, 15] },
-          { cmd: 'add house', pos: [-12, -18] },
+          { cmd: 'add house', pos: [12, -8] }, { cmd: 'add house', pos: [-14, 6] },
+          { cmd: 'add house', pos: [6, 18] }, { cmd: 'add house', pos: [-10, -20] },
           { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add well', pos: [8, -8] },
-          { cmd: 'add tree', scatter: { count: 15, radius: 50, avoidCenter: 10 } },
-          { cmd: 'add npc', scatter: { count: 5, radius: 30 } },
-          { cmd: 'add chicken', scatter: { count: 4, radius: 20 } },
-        ]
-      },
-      city: {
-        terrain: { type: 'flat' },
-        env: ['time afternoon', 'expand world', 'expand world north', 'expand world east'],
-        items: [
-          { cmd: 'add road' },
-          { cmd: 'add castle', pos: [0, -60] },
-          { cmd: 'add tavern', pos: [30, 0] },
-          { cmd: 'add tower', pos: [-50, -50] },
-          { cmd: 'add tower', pos: [50, -50] },
-          { cmd: 'add house', scatter: { count: 12, radius: 50, avoidCenter: 10 } },
-          { cmd: 'add market stall', scatter: { count: 5, radius: 30 } },
-          { cmd: 'add tree', scatter: { count: 8, radius: 60, avoidCenter: 20 } },
-          { cmd: 'add torch', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add npc', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 40 } },
-          { cmd: 'add cart', scatter: { count: 3, radius: 35 } },
-        ]
-      },
-      dungeon: {
-        terrain: { type: 'flat' },
-        env: ['time night', 'fog on'],
-        items: [
-          { cmd: 'add castle', pos: [0, 0] },
-          { cmd: 'add torch', scatter: { count: 10, radius: 25 } },
-          { cmd: 'add skeleton', scatter: { count: 6, radius: 30 } },
-          { cmd: 'add barrel', scatter: { count: 5, radius: 20 } },
-          { cmd: 'add chest', scatter: { count: 3, radius: 15 } },
-          { cmd: 'add spider', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add skull', scatter: { count: 3, radius: 20 } },
-        ]
-      },
-      arena: {
-        terrain: { type: 'flat' },
-        env: ['time sunset'],
-        items: [
-          { cmd: 'add wall', pos: [35, 0] },
-          { cmd: 'add wall', pos: [-35, 0] },
-          { cmd: 'add wall', pos: [0, 35] },
-          { cmd: 'add wall', pos: [0, -35] },
-          { cmd: 'add torch', pos: [30, 30] },
-          { cmd: 'add torch', pos: [-30, 30] },
-          { cmd: 'add torch', pos: [30, -30] },
-          { cmd: 'add torch', pos: [-30, -30] },
-          { cmd: 'add npc', scatter: { count: 5, radius: 20 } },
-        ]
-      },
-      battlefield: {
-        terrain: { type: 'hills', height: 0.5 },
-        env: ['fog on', 'time overcast'],
-        items: [
-          { cmd: 'add tower', pos: [-45, 0] },
-          { cmd: 'add tower', pos: [45, 0] },
-          { cmd: 'add catapult', pos: [-30, 15] },
-          { cmd: 'add catapult', pos: [30, -15] },
-          { cmd: 'add tent', scatter: { count: 6, radius: 40 } },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add npc', scatter: { count: 12, radius: 45 } },
-          { cmd: 'add torch', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add well', pos: [8, -4] },
+          { cmd: 'add log', pos: [-2, 2] }, { cmd: 'add log', pos: [2, -2] },
+          { cmd: 'add chicken', scatter: { count: 6, radius: 18 } },
+          { cmd: 'add tree', scatter: { count: 25, radius: 60, avoidCenter: 10 } },
+          { cmd: 'add bush', scatter: { count: 15, radius: 45 } },
+          { cmd: 'add flower', scatter: { count: 10, radius: 30 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 50 } },
+          { cmd: 'spawn villager', scatter: { count: 4, radius: 25 } },
+          { cmd: 'spawn farmer', scatter: { count: 2, radius: 20 } },
         ]
       },
       kingdom: {
         terrain: { type: 'hills', height: 0.4 },
-        env: ['expand world', 'expand world north', 'expand world south', 'time afternoon'],
-        water: 'river',
+        ground: 'grass', env: ['time afternoon'],
         items: [
-          { cmd: 'add castle', pos: [0, -60] },
-          { cmd: 'add road' },
-          { cmd: 'add river' },
-          { cmd: 'add bridge', pos: [0, 30] },
-          { cmd: 'add tavern', pos: [40, 10] },
-          { cmd: 'add tower', pos: [-50, -50] },
-          { cmd: 'add tower', pos: [50, -50] },
-          { cmd: 'add house', scatter: { count: 8, radius: 45, avoidCenter: 10 } },
-          { cmd: 'add tree', scatter: { count: 18, radius: 80, avoidCenter: 15 } },
-          { cmd: 'add npc', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add torch', scatter: { count: 10, radius: 50 } },
-        ]
-      },
-      island: {
-        terrain: { type: 'island' },
-        env: ['ocean', 'time afternoon'],
-        water: 'tropical',
-        items: [
-          { cmd: 'add palm tree', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 5, radius: 40 } },
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add tent', pos: [5, 5] },
-          { cmd: 'add chest', pos: [-5, 3] },
-          { cmd: 'add boat', pos: [30, 0] },
-          { cmd: 'add npc', scatter: { count: 3, radius: 20 } },
-        ]
-      },
-      forest: {
-        terrain: { type: 'hills', height: 0.2 },
-        env: ['fog on', 'particles spores'],
-        items: [
-          { cmd: 'add tree', scatter: { count: 30, radius: 60 } },
-          { cmd: 'add bush', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add rock', scatter: { count: 5, radius: 45 } },
-          { cmd: 'add mushroom', scatter: { count: 6, radius: 40 } },
-          { cmd: 'add deer', scatter: { count: 3, radius: 40 } },
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add log', scatter: { count: 4, radius: 30 } },
-        ]
-      },
-      camp: {
-        terrain: { type: 'flat' },
-        env: ['time night'],
-        items: [
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add tent', pos: [8, 5] },
-          { cmd: 'add tent', pos: [-8, 5] },
-          { cmd: 'add tent', pos: [0, -10] },
-          { cmd: 'add barrel', scatter: { count: 4, radius: 12 } },
-          { cmd: 'add crate', scatter: { count: 3, radius: 10 } },
-          { cmd: 'add log', scatter: { count: 3, radius: 8 } },
-          { cmd: 'add tree', scatter: { count: 8, radius: 30, avoidCenter: 12 } },
-          { cmd: 'add npc', scatter: { count: 3, radius: 10 } },
-          { cmd: 'add torch', pos: [12, 0] },
-          { cmd: 'add torch', pos: [-12, 0] },
-        ]
-      },
-      graveyard: {
-        terrain: { type: 'flat' },
-        env: ['time night', 'fog on', 'particles spores'],
-        items: [
-          { cmd: 'add tombstone', scatter: { count: 15, radius: 35 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 40 } },
-          { cmd: 'add skeleton', scatter: { count: 5, radius: 30 } },
-          { cmd: 'add torch', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add church', pos: [0, -30] },
-          { cmd: 'add gate', pos: [0, 30] },
-          { cmd: 'add skull', scatter: { count: 3, radius: 20 } },
-        ]
-      },
-      pirate: {
-        terrain: { type: 'island' },
-        env: ['ocean', 'time sunset'],
-        water: 'ocean',
-        items: [
-          { cmd: 'add ship', pos: [40, 0] },
-          { cmd: 'add palm tree', scatter: { count: 6, radius: 30 } },
-          { cmd: 'add chest', scatter: { count: 4, radius: 20 } },
-          { cmd: 'add barrel', scatter: { count: 5, radius: 25 } },
-          { cmd: 'add campfire', pos: [0, 5] },
-          { cmd: 'add tent', pos: [5, -5] },
-          { cmd: 'add cannon', scatter: { count: 2, radius: 15 } },
-          { cmd: 'add npc', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add rock', scatter: { count: 4, radius: 35 } },
-        ]
-      },
-      cyberpunk: {
-        terrain: { type: 'flat' },
-        env: ['time night', 'add neon light', 'add purple light'],
-        items: [
-          { cmd: 'add building', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add car', scatter: { count: 4, radius: 40 } },
-          { cmd: 'add road' },
-          { cmd: 'add neon sign', scatter: { count: 5, radius: 35 } },
-          { cmd: 'add trash', scatter: { count: 6, radius: 30 } },
-          { cmd: 'add npc', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add streetlight', scatter: { count: 6, radius: 45 } },
-        ]
-      },
-      desert: {
-        terrain: { type: 'dunes' },
-        env: ['time afternoon'],
-        items: [
-          { cmd: 'add cactus', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add rock', scatter: { count: 6, radius: 45 } },
-          { cmd: 'add skull', scatter: { count: 3, radius: 35 } },
-          { cmd: 'add tent', pos: [0, 0] },
-          { cmd: 'add campfire', pos: [5, 5] },
-          { cmd: 'add camel', scatter: { count: 2, radius: 30 } },
-          { cmd: 'add npc', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      frozen: {
-        terrain: { type: 'mountains', height: 0.6 },
-        env: ['particles snow', 'fog on', 'time overcast'],
-        water: 'arctic',
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 15, radius: 55 } },
-          { cmd: 'add rock', scatter: { count: 6, radius: 45 } },
-          { cmd: 'add cabin', pos: [0, 0] },
-          { cmd: 'add campfire', pos: [8, 0] },
-          { cmd: 'add wolf', scatter: { count: 3, radius: 40 } },
-          { cmd: 'add snowman', scatter: { count: 2, radius: 20 } },
-        ]
-      },
-      jungle: {
-        terrain: { type: 'hills', height: 0.5 },
-        env: ['fog on', 'particles spores', 'time afternoon'],
-        water: 'tropical',
-        items: [
-          { cmd: 'add tree', scatter: { count: 25, radius: 60 } },
-          { cmd: 'add palm tree', scatter: { count: 10, radius: 55 } },
-          { cmd: 'add bush', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add rock', scatter: { count: 5, radius: 45 } },
-          { cmd: 'add flower', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add mushroom', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add snake', scatter: { count: 2, radius: 30 } },
-          { cmd: 'add temple', pos: [0, -40] },
-          { cmd: 'add torch', scatter: { count: 4, radius: 25 } },
-        ]
-      },
-      space: {
-        terrain: { type: 'crater' },
-        env: ['time night'],
-        items: [
-          { cmd: 'add spaceship', pos: [0, 0] },
-          { cmd: 'add rock', scatter: { count: 10, radius: 40 } },
-          { cmd: 'add crate', scatter: { count: 5, radius: 25 } },
-          { cmd: 'add robot', scatter: { count: 3, radius: 30 } },
-          { cmd: 'add antenna', pos: [20, 0] },
-          { cmd: 'add barrel', scatter: { count: 4, radius: 20 } },
-        ]
-      },
-      mountain: {
-        terrain: { type: 'mountains', height: 1.0 },
-        env: ['fog on', 'time morning'],
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 20, radius: 60 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add cabin', pos: [0, 0] },
-          { cmd: 'add campfire', pos: [5, 5] },
-          { cmd: 'add bridge', pos: [20, 0] },
-          { cmd: 'add deer', scatter: { count: 3, radius: 40 } },
-          { cmd: 'add eagle', scatter: { count: 2, radius: 50 } },
-        ]
-      },
-      volcano: {
-        terrain: { type: 'volcano' },
-        env: ['fog on', 'particles fire', 'time sunset'],
-        items: [
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add dead tree', scatter: { count: 5, radius: 45 } },
-          { cmd: 'add torch', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add skull', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add dragon', pos: [0, 0] },
-        ]
-      },
-      haunted: {
-        terrain: { type: 'hills', height: 0.3 },
-        env: ['time night', 'fog on', 'particles spores'],
-        items: [
-          { cmd: 'add mansion', pos: [0, -20] },
-          { cmd: 'add dead tree', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add tombstone', scatter: { count: 10, radius: 35 } },
-          { cmd: 'add skeleton', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add ghost', scatter: { count: 3, radius: 25 } },
-          { cmd: 'add torch', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add gate', pos: [0, 35] },
-          { cmd: 'add pumpkin', scatter: { count: 5, radius: 25 } },
-        ]
-      },
-      western: {
-        terrain: { type: 'desert' },
-        env: ['time sunset'],
-        items: [
-          { cmd: 'add road' },
-          { cmd: 'add saloon', pos: [15, 0] },
-          { cmd: 'add house', pos: [-15, 0] },
-          { cmd: 'add house', pos: [15, 20] },
-          { cmd: 'add well', pos: [0, 10] },
-          { cmd: 'add horse', scatter: { count: 3, radius: 25 } },
-          { cmd: 'add cactus', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add barrel', scatter: { count: 4, radius: 20 } },
-          { cmd: 'add npc', scatter: { count: 5, radius: 30 } },
-        ]
-      },
-      ruins: {
-        terrain: { type: 'hills', height: 0.3 },
-        env: ['fog on', 'time overcast'],
-        items: [
-          { cmd: 'add column', scatter: { count: 8, radius: 25 } },
-          { cmd: 'add wall', scatter: { count: 4, radius: 20 } },
-          { cmd: 'add rock', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add bush', scatter: { count: 8, radius: 30 } },
-          { cmd: 'add tree', scatter: { count: 5, radius: 40 } },
-          { cmd: 'add chest', scatter: { count: 2, radius: 15 } },
-          { cmd: 'add torch', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add npc', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      zen: {
-        terrain: { type: 'flat' },
-        env: ['time morning'],
-        items: [
-          { cmd: 'add cherry tree', scatter: { count: 6, radius: 30 } },
-          { cmd: 'add rock', pos: [5, 0] },
-          { cmd: 'add rock', pos: [-5, 0] },
-          { cmd: 'add rock', pos: [0, 5] },
-          { cmd: 'add bridge', pos: [15, 0] },
-          { cmd: 'add lantern', scatter: { count: 4, radius: 20 } },
-          { cmd: 'add flower', scatter: { count: 10, radius: 25 } },
-          { cmd: 'add lake', pos: [-15, 0] },
-        ]
-      },
-      swamp: {
-        terrain: { type: 'hills', height: 0.15 },
-        env: ['fog on', 'time overcast', 'particles spores'],
-        water: 'swamp',
-        items: [
-          { cmd: 'add dead tree', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add mushroom', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 5, radius: 35 } },
-          { cmd: 'add lake', pos: [0, 0] },
-          { cmd: 'add snake', scatter: { count: 3, radius: 30 } },
-          { cmd: 'add frog', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add log', scatter: { count: 5, radius: 30 } },
-        ]
-      },
-      floating: {
-        terrain: { type: 'island' },
-        env: ['time sunset'],
-        items: [
-          { cmd: 'add tree', scatter: { count: 8, radius: 25 } },
-          { cmd: 'add rock', scatter: { count: 5, radius: 30 } },
-          { cmd: 'add temple', pos: [0, 0] },
-          { cmd: 'add torch', scatter: { count: 4, radius: 20 } },
-          { cmd: 'add npc', scatter: { count: 3, radius: 15 } },
-          { cmd: 'add flower', scatter: { count: 8, radius: 25 } },
-          { cmd: 'add crystal', scatter: { count: 3, radius: 20 } },
-        ]
-      },
-      hurricane: {
-        terrain: { type: 'island' },
-        env: ['ocean 300', 'time night', 'fog on', 'particles rain'],
-        water: 'storm',
-        items: [
-          { cmd: 'add ship', pos: [50, 0] },
-          { cmd: 'add ship', pos: [-40, 30] },
-          { cmd: 'add rock', scatter: { count: 12, radius: 55 } },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add dead tree', scatter: { count: 5, radius: 35 } },
-          { cmd: 'add torch', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add lighthouse', pos: [0, -30] },
-          { cmd: 'add npc', scatter: { count: 4, radius: 25 } },
-        ]
-      },
-      'tropical paradise': {
-        terrain: { type: 'island' },
-        env: ['ocean 250', 'time afternoon'],
-        water: 'tropical',
-        items: [
-          { cmd: 'add palm tree', scatter: { count: 15, radius: 40 } },
-          { cmd: 'add flower', scatter: { count: 12, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 4, radius: 45 } },
-          { cmd: 'add campfire', pos: [0, 5] },
-          { cmd: 'add tent', pos: [6, 8] },
-          { cmd: 'add boat', pos: [35, 0] },
-          { cmd: 'add chest', pos: [-8, -5] },
-          { cmd: 'add npc', scatter: { count: 5, radius: 30 } },
-          { cmd: 'add fish', scatter: { count: 3, radius: 25 } },
-          { cmd: 'add bird', scatter: { count: 4, radius: 40 } },
-        ]
-      },
-      'arctic storm': {
-        terrain: { type: 'mountains', height: 0.8 },
-        env: ['particles snow', 'fog on', 'time night', 'ocean 200'],
-        water: 'arctic',
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 55 } },
-          { cmd: 'add cabin', pos: [0, 0] },
-          { cmd: 'add campfire', pos: [6, 0] },
-          { cmd: 'add wolf', scatter: { count: 4, radius: 45 } },
-          { cmd: 'add barrel', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add torch', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add npc', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      'dark swamp': {
-        terrain: { type: 'hills', height: 0.15 },
-        env: ['fog on', 'time night', 'particles spores'],
-        water: 'swamp',
-        items: [
-          { cmd: 'add lake 40', pos: [0, 0] },
-          { cmd: 'add dead tree', scatter: { count: 15, radius: 55 } },
-          { cmd: 'add mushroom', scatter: { count: 10, radius: 45 } },
-          { cmd: 'add rock', scatter: { count: 6, radius: 40 } },
-          { cmd: 'add snake', scatter: { count: 4, radius: 35 } },
-          { cmd: 'add skeleton', scatter: { count: 3, radius: 30 } },
-          { cmd: 'add torch', scatter: { count: 3, radius: 25 } },
-          { cmd: 'add log', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add ghost', scatter: { count: 2, radius: 25 } },
-        ]
-      },
-      'war zone': {
-        terrain: { type: 'hills', height: 0.6 },
-        env: ['fog on', 'time overcast', 'particles fire'],
-        water: 'storm',
-        items: [
-          { cmd: 'add tower', pos: [-50, -40] },
-          { cmd: 'add tower', pos: [50, -40] },
-          { cmd: 'add castle', pos: [0, -60] },
-          { cmd: 'add catapult', scatter: { count: 4, radius: 40 } },
-          { cmd: 'add tent', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add barrel', scatter: { count: 10, radius: 40 } },
-          { cmd: 'add npc', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add torch', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 55 } },
-          { cmd: 'add cart', scatter: { count: 3, radius: 35 } },
-        ]
-      },
-      'enchanted forest': {
-        terrain: { type: 'hills', height: 0.3 },
-        env: ['fog on', 'particles spores', 'time sunset'],
-        water: 'lake',
-        items: [
-          { cmd: 'add cherry tree', scatter: { count: 10, radius: 45 } },
-          { cmd: 'add tree', scatter: { count: 15, radius: 55 } },
-          { cmd: 'add mushroom', scatter: { count: 12, radius: 40 } },
-          { cmd: 'add flower', scatter: { count: 15, radius: 45 } },
-          { cmd: 'add crystal', scatter: { count: 5, radius: 30 } },
-          { cmd: 'add lantern', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add lake 25', pos: [15, 0] },
-          { cmd: 'add deer', scatter: { count: 3, radius: 35 } },
-          { cmd: 'add npc', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add bridge', pos: [15, 15] },
-        ]
-      },
-      'pirate cove': {
-        terrain: { type: 'island' },
-        env: ['ocean 250', 'time sunset'],
-        water: 'ocean',
-        items: [
-          { cmd: 'add ship', pos: [50, 10] },
-          { cmd: 'add ship', pos: [55, -20] },
-          { cmd: 'add palm tree', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add chest', scatter: { count: 5, radius: 25 } },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 30 } },
-          { cmd: 'add cannon', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add campfire', pos: [0, 5] },
-          { cmd: 'add tent', scatter: { count: 3, radius: 15 } },
-          { cmd: 'add npc', scatter: { count: 6, radius: 30 } },
-          { cmd: 'add skull', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add rock', scatter: { count: 5, radius: 40 } },
-        ]
-      },
-      'dragon lair': {
-        terrain: { type: 'volcano' },
-        env: ['fog on', 'particles fire', 'time night'],
-        items: [
-          { cmd: 'add dragon', pos: [0, -30] },
-          { cmd: 'add rock', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 45 } },
-          { cmd: 'add skull', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add torch', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add chest', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add skeleton', scatter: { count: 5, radius: 35 } },
-          { cmd: 'add barrel', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add castle', pos: [0, -50] },
+          { cmd: 'add tower', pos: [-40, -40] }, { cmd: 'add tower', pos: [40, -40] },
+          { cmd: 'add tower', pos: [-40, 0] }, { cmd: 'add tower', pos: [40, 0] },
+          { cmd: 'add wall', pos: [-20, -45] }, { cmd: 'add wall', pos: [20, -45] },
+          { cmd: 'add gate', pos: [0, -30] },
+          { cmd: 'add tavern', pos: [25, 10] }, { cmd: 'add blacksmith', pos: [-25, 10] },
+          { cmd: 'add house', scatter: { count: 10, radius: 40, avoidCenter: 15 } },
+          { cmd: 'add market stall', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add tree', scatter: { count: 15, radius: 70, avoidCenter: 25 } },
+          { cmd: 'add torch', scatter: { count: 15, radius: 45 } },
+          { cmd: 'spawn guard', scatter: { count: 6, radius: 40 } },
+          { cmd: 'spawn knight', scatter: { count: 3, radius: 35 } },
+          { cmd: 'spawn villager', scatter: { count: 8, radius: 35 } },
         ]
       },
       'medieval siege': {
-        terrain: { type: 'hills', height: 0.4 },
-        env: ['time overcast', 'fog on'],
-        water: 'river',
+        terrain: { type: 'hills', height: 0.5 },
+        ground: 'dirt', env: ['time sunset', 'fog on'], weather: 'rain', particles: 'ash',
         items: [
-          { cmd: 'add castle', pos: [0, -50] },
-          { cmd: 'add wall', pos: [-25, -30] },
-          { cmd: 'add wall', pos: [25, -30] },
-          { cmd: 'add tower', pos: [-40, -45] },
-          { cmd: 'add tower', pos: [40, -45] },
-          { cmd: 'add catapult', pos: [0, 20] },
-          { cmd: 'add catapult', pos: [25, 15] },
-          { cmd: 'add tent', scatter: { count: 6, radius: 40 } },
-          { cmd: 'add npc', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add cart', scatter: { count: 3, radius: 30 } },
-          { cmd: 'add torch', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add river' },
+          { cmd: 'add castle', pos: [0, -40] },
+          { cmd: 'add tower', pos: [-30, -35] }, { cmd: 'add tower', pos: [30, -35] },
+          { cmd: 'add wall', pos: [-15, -30] }, { cmd: 'add wall', pos: [15, -30] },
+          { cmd: 'add campfire', pos: [20, 20] }, { cmd: 'add campfire', pos: [-20, 20] },
+          { cmd: 'add tent', pos: [25, 25] }, { cmd: 'add tent', pos: [-25, 25] },
+          { cmd: 'add barrel', scatter: { count: 8, radius: 25 } },
+          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add dead tree', scatter: { count: 6, radius: 60 } },
+          { cmd: 'spawn soldier', scatter: { count: 8, radius: 30 } },
+          { cmd: 'spawn knight', scatter: { count: 4, radius: 20 } },
+        ]
+      },
+      dungeon: {
+        terrain: { type: 'flat' },
+        ground: 'stone', env: ['time night', 'fog on'], particles: 'embers',
+        items: [
+          { cmd: 'add castle', pos: [0, 0] },
+          { cmd: 'add torch', scatter: { count: 12, radius: 25 } },
+          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
+          { cmd: 'add chest', scatter: { count: 3, radius: 15 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 30 } },
+          { cmd: 'spawn skeleton', scatter: { count: 5, radius: 25 } },
+          { cmd: 'spawn enemies', scatter: { count: 3, radius: 20 } },
+        ]
+      },
+      
+      // ===== NATURE & WILDERNESS =====
+      forest: {
+        terrain: { type: 'hills', height: 0.4 },
+        ground: 'grass', env: ['time morning'], particles: 'fireflies',
+        items: [
+          { cmd: 'add pine tree', scatter: { count: 40, radius: 80 } },
+          { cmd: 'add tree', scatter: { count: 25, radius: 70 } },
+          { cmd: 'add bush', scatter: { count: 20, radius: 60 } },
+          { cmd: 'add flower', scatter: { count: 15, radius: 50 } },
+          { cmd: 'add mushroom', scatter: { count: 10, radius: 40 } },
+          { cmd: 'add rock', scatter: { count: 12, radius: 65 } },
+          { cmd: 'add boulder', scatter: { count: 4, radius: 55 } },
+          { cmd: 'add log', scatter: { count: 6, radius: 50 } },
+          { cmd: 'add deer', scatter: { count: 3, radius: 50 } },
+          { cmd: 'add fox', scatter: { count: 2, radius: 40 } },
+          { cmd: 'add campfire', pos: [0, 0] },
+        ]
+      },
+      'enchanted forest': {
+        terrain: { type: 'hills', height: 0.5 },
+        ground: 'grass', env: ['time night'], particles: 'fireflies',
+        items: [
+          { cmd: 'add cherry blossom', scatter: { count: 15, radius: 60 } },
+          { cmd: 'add tree', scatter: { count: 30, radius: 80 } },
+          { cmd: 'add mushroom', scatter: { count: 15, radius: 50 } },
+          { cmd: 'add flower', scatter: { count: 20, radius: 50 } },
+          { cmd: 'add crystal', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add rock', scatter: { count: 10, radius: 60 } },
+          { cmd: 'add fountain', pos: [0, 0] },
+          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
+          { cmd: 'spawn witch', scatter: { count: 2, radius: 30 } },
+          { cmd: 'spawn villager', scatter: { count: 3, radius: 25 } },
+        ]
+      },
+      mountain: {
+        terrain: { type: 'mountains', height: 1.2 },
+        ground: 'gravel', env: ['time afternoon'], particles: 'dust',
+        items: [
+          { cmd: 'add pine tree', scatter: { count: 20, radius: 60, avoidCenter: 10 } },
+          { cmd: 'add boulder', scatter: { count: 15, radius: 70 } },
+          { cmd: 'add rock', scatter: { count: 20, radius: 80 } },
+          { cmd: 'add eagle', scatter: { count: 2, radius: 40 } },
+          { cmd: 'add campfire', pos: [0, 0] },
+          { cmd: 'add tent', pos: [5, 5] },
+        ]
+      },
+      island: {
+        terrain: { type: 'island', height: 1.0 },
+        ground: 'sand', env: ['time afternoon'],
+        water: 'tropical', particles: null,
+        items: [
+          { cmd: 'add ocean' },
+          { cmd: 'add palm tree', scatter: { count: 20, radius: 40, avoidCenter: 5 } },
+          { cmd: 'add bush', scatter: { count: 10, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 45 } },
+          { cmd: 'add flower', scatter: { count: 8, radius: 30 } },
+          { cmd: 'add boat', pos: [40, 0] },
+          { cmd: 'add campfire', pos: [0, 5] },
+          { cmd: 'add chest', pos: [15, -10] },
+        ]
+      },
+      'tropical paradise': {
+        terrain: { type: 'island', height: 1.0 },
+        ground: 'sand', env: ['time afternoon'],
+        water: 'tropical',
+        items: [
+          { cmd: 'add ocean' },
+          { cmd: 'add palm tree', scatter: { count: 30, radius: 45 } },
+          { cmd: 'add bush', scatter: { count: 15, radius: 40 } },
+          { cmd: 'add flower', scatter: { count: 12, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add boat', pos: [45, 0] }, { cmd: 'add boat', pos: [-40, 15] },
+          { cmd: 'add campfire', pos: [5, 8] },
+          { cmd: 'add tent', pos: [10, 10] },
+          { cmd: 'add chest', pos: [-8, -5] },
+          { cmd: 'add parrot', scatter: { count: 3, radius: 30 } },
+          { cmd: 'spawn villager', scatter: { count: 3, radius: 25 } },
+        ]
+      },
+      jungle: {
+        terrain: { type: 'hills', height: 0.6 },
+        ground: 'mud', env: ['time morning'], weather: 'rain', particles: 'spores',
+        items: [
+          { cmd: 'add tree', scatter: { count: 45, radius: 80 } },
+          { cmd: 'add palm tree', scatter: { count: 15, radius: 60 } },
+          { cmd: 'add bush', scatter: { count: 25, radius: 65 } },
+          { cmd: 'add flower', scatter: { count: 15, radius: 50 } },
+          { cmd: 'add mushroom', scatter: { count: 12, radius: 45 } },
+          { cmd: 'add vine', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add boulder', scatter: { count: 6, radius: 55 } },
+          { cmd: 'add rock', scatter: { count: 10, radius: 60 } },
+          { cmd: 'add snake', scatter: { count: 3, radius: 30 } },
+          { cmd: 'add parrot', scatter: { count: 4, radius: 40 } },
+          { cmd: 'add campfire', pos: [0, 0] },
+        ]
+      },
+      
+      // ===== HARSH ENVIRONMENTS =====
+      desert: {
+        terrain: { type: 'dunes', height: 0.8 },
+        ground: 'sand', env: ['time noon'], particles: 'dust',
+        items: [
+          { cmd: 'add cactus', scatter: { count: 15, radius: 70 } },
+          { cmd: 'add rock', scatter: { count: 20, radius: 80 } },
+          { cmd: 'add boulder', scatter: { count: 6, radius: 60 } },
+          { cmd: 'add dead tree', scatter: { count: 4, radius: 55 } },
+          { cmd: 'add skull', scatter: { count: 3, radius: 40 } },
+          { cmd: 'add tent', pos: [0, 0] },
+          { cmd: 'add campfire', pos: [5, 0] },
+          { cmd: 'add barrel', pos: [3, 3] },
+          { cmd: 'add camel', scatter: { count: 2, radius: 30 } },
+        ]
+      },
+      'arctic storm': {
+        terrain: { type: 'hills', height: 0.6 },
+        ground: 'snow', env: ['time morning'], weather: 'snow',
+        water: 'arctic', particles: 'snow',
+        items: [
+          { cmd: 'add ocean 300' },
+          { cmd: 'add pine tree', scatter: { count: 15, radius: 60 } },
+          { cmd: 'add rock', scatter: { count: 15, radius: 70 } },
+          { cmd: 'add boulder', scatter: { count: 8, radius: 60 } },
+          { cmd: 'add house', pos: [0, 0] },
+          { cmd: 'add campfire', pos: [8, 0] },
+          { cmd: 'add barrel', scatter: { count: 4, radius: 15 } },
+          { cmd: 'add wolf', scatter: { count: 3, radius: 40 } },
+          { cmd: 'add husky', scatter: { count: 2, radius: 20 } },
+        ]
+      },
+      frozen: {
+        terrain: { type: 'plateau', height: 0.7 },
+        ground: 'ice', env: ['time dawn'], weather: 'snow', particles: 'snow',
+        items: [
+          { cmd: 'add pine tree', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add rock', scatter: { count: 20, radius: 70 } },
+          { cmd: 'add boulder', scatter: { count: 10, radius: 60 } },
+          { cmd: 'add crystal', scatter: { count: 5, radius: 30 } },
+          { cmd: 'add chest', pos: [0, 0] },
+          { cmd: 'add wolf', scatter: { count: 4, radius: 45 } },
+        ]
+      },
+      volcano: {
+        terrain: { type: 'volcano', height: 1.5 },
+        ground: 'lava', env: ['time night'], particles: 'embers',
+        items: [
+          { cmd: 'add rock', scatter: { count: 25, radius: 80 } },
+          { cmd: 'add boulder', scatter: { count: 10, radius: 60 } },
+          { cmd: 'add dead tree', scatter: { count: 6, radius: 50 } },
+          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
+          { cmd: 'spawn enemies', scatter: { count: 5, radius: 40 } },
+        ]
+      },
+      
+      // ===== WATER WORLDS =====
+      hurricane: {
+        terrain: { type: 'island', height: 0.8 },
+        ground: 'mud', env: ['time night'],
+        water: 'hurricane', weather: 'rain', particles: 'rain',
+        items: [
+          { cmd: 'add ocean 400' },
+          { cmd: 'add palm tree', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 12, radius: 40 } },
+          { cmd: 'add boat', pos: [45, 10] },
+          { cmd: 'add barrel', scatter: { count: 6, radius: 25 } },
+          { cmd: 'add house', pos: [0, 0] },
         ]
       },
       'ocean voyage': {
         terrain: { type: 'flat' },
-        env: ['ocean 400', 'time afternoon'],
+        ground: 'sand', env: ['time afternoon'],
         water: 'ocean',
         items: [
-          { cmd: 'add ship', pos: [0, 0] },
-          { cmd: 'add ship', pos: [60, 30] },
-          { cmd: 'add boat', pos: [-30, 20] },
-          { cmd: 'add boat', pos: [25, -25] },
-          { cmd: 'add barrel', scatter: { count: 5, radius: 15 } },
-          { cmd: 'add npc', scatter: { count: 6, radius: 20 } },
+          { cmd: 'add ocean 500' },
+          { cmd: 'add boat', pos: [0, 0] }, { cmd: 'add boat', pos: [30, 20] },
+          { cmd: 'add boat', pos: [-25, -15] },
+          { cmd: 'add barrel', pos: [3, 0] },
+          { cmd: 'add chest', pos: [-2, 0] },
         ]
       },
-    };
+      'dark swamp': {
+        terrain: { type: 'hills', height: 0.15 },
+        ground: 'mud', env: ['time night', 'fog on'],
+        water: 'swamp', particles: 'spores',
+        items: [
+          { cmd: 'add lake 80' },
+          { cmd: 'add dead tree', scatter: { count: 20, radius: 60 } },
+          { cmd: 'add tree', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add bush', scatter: { count: 15, radius: 45 } },
+          { cmd: 'add mushroom', scatter: { count: 12, radius: 40 } },
+          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add log', scatter: { count: 6, radius: 35 } },
+          { cmd: 'add frog', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add snake', scatter: { count: 3, radius: 25 } },
+          { cmd: 'add torch', scatter: { count: 6, radius: 25 } },
+          { cmd: 'spawn witch', scatter: { count: 2, radius: 30 } },
+        ]
+      },
+      'pirate cove': {
+        terrain: { type: 'island', height: 0.8 },
+        ground: 'sand', env: ['time sunset'],
+        water: 'ocean',
+        items: [
+          { cmd: 'add ocean 400' },
+          { cmd: 'add boat', pos: [50, 0] }, { cmd: 'add boat', pos: [-45, 20] },
+          { cmd: 'add palm tree', scatter: { count: 15, radius: 35 } },
+          { cmd: 'add barrel', scatter: { count: 8, radius: 20 } },
+          { cmd: 'add chest', pos: [0, -10] }, { cmd: 'add chest', pos: [8, -8] },
+          { cmd: 'add campfire', pos: [0, 5] },
+          { cmd: 'add tent', pos: [10, 8] },
+          { cmd: 'add torch', scatter: { count: 6, radius: 20 } },
+          { cmd: 'add skull', scatter: { count: 3, radius: 15 } },
+          { cmd: 'spawn villager', scatter: { count: 4, radius: 20 } },
+        ]
+      },
+      
+      // ===== COMBAT ARENAS =====
+      arena: {
+        terrain: { type: 'flat' },
+        ground: 'sand', env: ['time afternoon'],
+        items: [
+          { cmd: 'add column', pos: [15, 15] }, { cmd: 'add column', pos: [-15, 15] },
+          { cmd: 'add column', pos: [15, -15] }, { cmd: 'add column', pos: [-15, -15] },
+          { cmd: 'add column', pos: [25, 0] }, { cmd: 'add column', pos: [-25, 0] },
+          { cmd: 'add column', pos: [0, 25] }, { cmd: 'add column', pos: [0, -25] },
+          { cmd: 'add torch', scatter: { count: 12, radius: 28 } },
+          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
+          { cmd: 'spawn enemies 5' },
+        ]
+      },
+      battlefield: {
+        terrain: { type: 'hills', height: 0.3 },
+        ground: 'dirt', env: ['time sunset', 'fog on'], particles: 'ash',
+        items: [
+          { cmd: 'add tent', pos: [40, 0] }, { cmd: 'add tent', pos: [45, 10] },
+          { cmd: 'add tent', pos: [-40, 0] }, { cmd: 'add tent', pos: [-45, 10] },
+          { cmd: 'add campfire', pos: [42, 5] }, { cmd: 'add campfire', pos: [-42, 5] },
+          { cmd: 'add barrel', scatter: { count: 10, radius: 30 } },
+          { cmd: 'add rock', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add dead tree', scatter: { count: 5, radius: 40 } },
+          { cmd: 'spawn soldier', scatter: { count: 6, radius: 35 } },
+          { cmd: 'spawn knight', scatter: { count: 4, radius: 30 } },
+        ]
+      },
+      'war zone': {
+        terrain: { type: 'hills', height: 0.4 },
+        ground: 'dirt', env: ['time night'], weather: 'rain', particles: 'embers',
+        items: [
+          { cmd: 'add tank', pos: [20, 0] }, { cmd: 'add tank', pos: [-25, 10] },
+          { cmd: 'add tent', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add barrel', scatter: { count: 10, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 15, radius: 50 } },
+          { cmd: 'add boulder', scatter: { count: 5, radius: 40 } },
+          { cmd: 'add dead tree', scatter: { count: 8, radius: 45 } },
+          { cmd: 'add campfire', scatter: { count: 3, radius: 25 } },
+          { cmd: 'spawn soldier', scatter: { count: 8, radius: 35 } },
+        ]
+      },
+      
+      // ===== FANTASY =====
+      'dragon lair': {
+        terrain: { type: 'volcano', height: 1.0 },
+        ground: 'stone', env: ['time night'], particles: 'embers',
+        items: [
+          { cmd: 'add boulder', scatter: { count: 15, radius: 60 } },
+          { cmd: 'add rock', scatter: { count: 20, radius: 70 } },
+          { cmd: 'add dead tree', scatter: { count: 6, radius: 50 } },
+          { cmd: 'add chest', scatter: { count: 5, radius: 20 } },
+          { cmd: 'add torch', scatter: { count: 10, radius: 30 } },
+          { cmd: 'add crystal', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add dragon', pos: [0, 0] },
+          { cmd: 'spawn enemies', scatter: { count: 4, radius: 35 } },
+        ]
+      },
+      graveyard: {
+        terrain: { type: 'hills', height: 0.2 },
+        ground: 'dirt', env: ['time night', 'fog on'], particles: 'dust',
+        items: [
+          { cmd: 'add tombstone', scatter: { count: 20, radius: 40 } },
+          { cmd: 'add dead tree', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add church', pos: [0, -30] },
+          { cmd: 'add torch', scatter: { count: 6, radius: 30 } },
+          { cmd: 'add fence', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 10, radius: 45 } },
+          { cmd: 'spawn skeleton', scatter: { count: 6, radius: 30 } },
+        ]
+      },
+      haunted: {
+        terrain: { type: 'hills', height: 0.3 },
+        ground: 'stone', env: ['time night', 'fog on'], particles: 'fireflies',
+        items: [
+          { cmd: 'add castle', pos: [0, -35] },
+          { cmd: 'add dead tree', scatter: { count: 15, radius: 60 } },
+          { cmd: 'add tombstone', scatter: { count: 10, radius: 40 } },
+          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
+          { cmd: 'add rock', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add gate', pos: [0, -15] },
+          { cmd: 'add fence', scatter: { count: 10, radius: 35 } },
+          { cmd: 'spawn skeleton', scatter: { count: 5, radius: 35 } },
+          { cmd: 'spawn witch', scatter: { count: 2, radius: 25 } },
+        ]
+      },
+      ruins: {
+        terrain: { type: 'canyon', height: 0.6 },
+        ground: 'gravel', env: ['time sunset'], particles: 'dust',
+        items: [
+          { cmd: 'add column', scatter: { count: 12, radius: 30 } },
+          { cmd: 'add arch', scatter: { count: 4, radius: 25 } },
+          { cmd: 'add wall', scatter: { count: 6, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 15, radius: 50 } },
+          { cmd: 'add boulder', scatter: { count: 8, radius: 45 } },
+          { cmd: 'add chest', scatter: { count: 3, radius: 20 } },
+          { cmd: 'add torch', scatter: { count: 6, radius: 25 } },
+          { cmd: 'add bush', scatter: { count: 8, radius: 40 } },
+        ]
+      },
+      
+      // ===== MODERN & SCI-FI =====
+      cyberpunk: {
+        terrain: { type: 'flat' },
+        ground: 'concrete', env: ['time night'], particles: 'embers',
+        items: [
+          { cmd: 'add building', scatter: { count: 10, radius: 60 } },
+          { cmd: 'add tower', scatter: { count: 4, radius: 50 } },
+          { cmd: 'add car', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add motorcycle', scatter: { count: 3, radius: 30 } },
+          { cmd: 'add barrel', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add dumpster', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add light', scatter: { count: 12, radius: 45 } },
+          { cmd: 'spawn scifi', scatter: { count: 5, radius: 35 } },
+        ]
+      },
+      space: {
+        terrain: { type: 'crater', height: 0.8 },
+        ground: 'stone', env: ['time night'], particles: 'dust',
+        items: [
+          { cmd: 'add boulder', scatter: { count: 20, radius: 70 } },
+          { cmd: 'add rock', scatter: { count: 25, radius: 80 } },
+          { cmd: 'add crystal', scatter: { count: 8, radius: 40 } },
+          { cmd: 'add mech', scatter: { count: 2, radius: 30 } },
+          { cmd: 'add console', scatter: { count: 3, radius: 20 } },
+          { cmd: 'add crate', scatter: { count: 6, radius: 25 } },
+          { cmd: 'spawn scifi', scatter: { count: 3, radius: 25 } },
+        ]
+      },
+      
+      // ===== PEACEFUL & ZEN =====
+      zen: {
+        terrain: { type: 'hills', height: 0.15 },
+        ground: 'gravel', env: ['time morning'], particles: 'leaves',
+        items: [
+          { cmd: 'add cherry blossom', scatter: { count: 12, radius: 40 } },
+          { cmd: 'add tree', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add bush', scatter: { count: 10, radius: 35 } },
+          { cmd: 'add flower', scatter: { count: 15, radius: 30 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 25 } },
+          { cmd: 'add fountain', pos: [0, 0] },
+          { cmd: 'add bench', pos: [8, 0] }, { cmd: 'add bench', pos: [-8, 0] },
+          { cmd: 'add bridge', pos: [0, 15] },
+          { cmd: 'add lantern', scatter: { count: 6, radius: 25 } },
+        ]
+      },
+      camp: {
+        terrain: { type: 'hills', height: 0.25 },
+        ground: 'grass', env: ['time sunset'], particles: 'fireflies',
+        items: [
+          { cmd: 'add campfire', pos: [0, 0] },
+          { cmd: 'add tent', pos: [8, 5] }, { cmd: 'add tent', pos: [-8, 5] },
+          { cmd: 'add log', pos: [3, -3] }, { cmd: 'add log', pos: [-3, -3] },
+          { cmd: 'add barrel', pos: [10, -2] },
+          { cmd: 'add tree', scatter: { count: 25, radius: 60, avoidCenter: 10 } },
+          { cmd: 'add bush', scatter: { count: 12, radius: 45 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add horse', scatter: { count: 2, radius: 15 } },
+          { cmd: 'spawn villager', scatter: { count: 3, radius: 15 } },
+        ]
+      },
+      
+      // ===== SPECIAL =====
+      western: {
+        terrain: { type: 'dunes', height: 0.4 },
+        ground: 'sand', env: ['time noon'], particles: 'dust',
+        items: [
+          { cmd: 'add house', pos: [20, 0] }, { cmd: 'add house', pos: [-20, 0] },
+          { cmd: 'add house', pos: [0, 20] }, { cmd: 'add tavern', pos: [0, -20] },
+          { cmd: 'add well', pos: [0, 0] },
+          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
+          { cmd: 'add cactus', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add horse', scatter: { count: 3, radius: 25 } },
+          { cmd: 'add dead tree', scatter: { count: 4, radius: 40 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 45 } },
+          { cmd: 'spawn villager', scatter: { count: 4, radius: 20 } },
+          { cmd: 'spawn guard', scatter: { count: 2, radius: 15 } },
+        ]
+      },
+      city: {
+        terrain: { type: 'flat' },
+        ground: 'concrete', env: ['time afternoon'],
+        items: [
+          { cmd: 'add building', scatter: { count: 14, radius: 60 } },
+          { cmd: 'add house', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add car', scatter: { count: 8, radius: 45 } },
+          { cmd: 'add tree', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add bench', scatter: { count: 6, radius: 35 } },
+          { cmd: 'add light', scatter: { count: 10, radius: 45 } },
+          { cmd: 'spawn villager', scatter: { count: 8, radius: 40 } },
+        ]
+      },
+      floating: {
+        terrain: { type: 'plateau', height: 1.0 },
+        ground: 'grass', env: ['time afternoon'], particles: 'leaves',
+        items: [
+          { cmd: 'add tree', scatter: { count: 15, radius: 40 } },
+          { cmd: 'add flower', scatter: { count: 12, radius: 30 } },
+          { cmd: 'add bush', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add rock', scatter: { count: 10, radius: 45 } },
+          { cmd: 'add crystal', scatter: { count: 5, radius: 25 } },
+          { cmd: 'add fountain', pos: [0, 0] },
+          { cmd: 'add bridge', pos: [20, 0] },
+          { cmd: 'add torch', scatter: { count: 6, radius: 30 } },
+        ]
+      },
+      swamp: {
+        terrain: { type: 'hills', height: 0.1 },
+        ground: 'mud', env: ['time night', 'fog on'],
+        water: 'swamp', particles: 'spores',
+        items: [
+          { cmd: 'add lake 60' },
+          { cmd: 'add dead tree', scatter: { count: 18, radius: 55 } },
+          { cmd: 'add mushroom', scatter: { count: 15, radius: 40 } },
+          { cmd: 'add bush', scatter: { count: 12, radius: 45 } },
+          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
+          { cmd: 'add log', scatter: { count: 8, radius: 35 } },
+          { cmd: 'add frog', scatter: { count: 4, radius: 30 } },
+          { cmd: 'add torch', scatter: { count: 4, radius: 20 } },
+          { cmd: 'spawn witch', scatter: { count: 2, radius: 25 } },
+        ]
+      },
+    }
     
     const template = MAP_TEMPLATES[mapType] || MAP_TEMPLATES['town'];
     
@@ -7673,12 +7677,32 @@ async function execSingle(cmd) {
     
     // Terrain first
     if (template.terrain) {
-      commands.push('terrain ' + (template.terrain.type || 'hills'));
+      const tType = template.terrain.type || 'hills';
+      commands.push('terrain ' + tType);
+      // Set terrain height scale
+      if (template.terrain.height) {
+        // Height is applied via createTerrain params
+      }
+    }
+    
+    // Ground type (color scheme)
+    if (template.ground) {
+      commands.push('ground ' + template.ground);
     }
     
     // Environment commands
     if (template.env) {
       template.env.forEach(e => commands.push(e));
+    }
+    
+    // Weather
+    if (template.weather) {
+      commands.push(template.weather);
+    }
+    
+    // Particles
+    if (template.particles) {
+      commands.push('particles ' + template.particles);
     }
     
     // Items with positioning
@@ -9137,6 +9161,16 @@ async function execSingle(cmd) {
     if (cmd === 'desert terrain' || cmd === 'desert') cmd = 'dunes';
     if (cmd === 'cliff') cmd = 'cliffs';
     createTerrain(cmd);
+
+  // Ground type change
+  if (lower.match(/^ground\s+(grass|dirt|sand|snow|gravel|stone|mud|lava|water|wood|marble|metal|concrete|asphalt|gold|obsidian|crystal|ice|rock)$/)) {
+    const gType = lower.match(/^ground\s+(\w+)/)[1];
+    if (currentGround) { scene.remove(currentGround); currentGround.geometry.dispose(); currentGround.material.dispose(); }
+    currentGround = createGround(gType);
+    currentGroundType = gType;
+    scene.add(currentGround);
+    return addToLog('✓ Ground: ' + gType);
+  }
     return "✓ Generated " + cmd + " terrain!";
   }
   // SCALE: "make castle bigger" / "scale tree 3x"
