@@ -65,7 +65,7 @@ export async function interpretWithLLM(userInput) {
     const response = await fetch(CLAUDE_WORKER, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: userInput }),
+      body: JSON.stringify({ input: userInput, apiKey: localStorage.getItem('crate_openrouter_key') || undefined }),
       signal: controller.signal
     });
     clearTimeout(timeout);

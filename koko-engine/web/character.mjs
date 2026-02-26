@@ -469,6 +469,20 @@ export class CharacterController {
     window.addEventListener('keydown', e => {
       this.keys[e.key.toLowerCase()] = true;
       if (e.key === 'Shift') this.isRunning = true;
+      
+      // Weapon controls: 1 = draw/sheathe, 2/3 = swap slots
+      if (e.key === '1' && this.weaponSlots[0]) {
+        this.activeSlot = 0;
+        this.toggleWeapon();
+      }
+      if (e.key === '2' && this.weaponSlots[1]) {
+        this.activeSlot = 1;
+        this.toggleWeapon();
+      }
+      if (e.key === '3' && this.weaponSlots[2]) {
+        this.activeSlot = 2;
+        this.toggleWeapon();
+      }
     });
     window.addEventListener('keyup', e => {
       this.keys[e.key.toLowerCase()] = false;
@@ -700,7 +714,7 @@ export class CharacterController {
     // Find available slot or use specified
     if (slot < 0) {
       slot = this.weaponSlots.indexOf(null);
-      if (slot < 0) slot = this.activeSlot; // Replace current
+      if (slot < 0) slot = this.activeSlot;
     }
     
     // Remove old weapon from slot
@@ -715,15 +729,46 @@ export class CharacterController {
       this.ammo[weaponId] = data.magSize;
     }
     
-    // If this is the active slot, put in hand
-    if (slot === this.activeSlot) {
-      this._attachWeaponToHand(weaponId);
-    } else {
-      this._attachWeaponToHolster(weaponId, slot);
-    }
+    // ALWAYS holster on back first — player draws with key press
+    this._attachWeaponToBack(weaponId);
+    this.weaponDrawn = false;
     
     this.equippedWeapon = this.weaponSlots[this.activeSlot];
-    return '⚔️ Equipped ' + data.name + ' in slot ' + (slot + 1);
+    return '⚔️ ' + data.name + ' equipped on back — press 1 to draw';
+  }
+  
+  // Draw weapon from back to hands (two-handed grip)
+  drawWeapon() {
+    const weaponId = this.weaponSlots[this.activeSlot];
+    if (!weaponId) return 'No weapon equipped';
+    if (this.weaponDrawn) return 'Weapon already drawn';
+    
+    this._removeFromBack();
+    this._attachWeaponToHand(weaponId);
+    this.weaponDrawn = true;
+    
+    const data = WEAPON_DATABASE[weaponId];
+    return '⚔️ Drew ' + (data?.name || weaponId) + ' — ready to fight!';
+  }
+  
+  // Sheathe weapon back to back
+  sheatheWeapon() {
+    const weaponId = this.weaponSlots[this.activeSlot];
+    if (!weaponId) return 'No weapon equipped';
+    if (!this.weaponDrawn) return 'Weapon already sheathed';
+    
+    this._removeFromHand();
+    this._attachWeaponToBack(weaponId);
+    this.weaponDrawn = false;
+    
+    const data = WEAPON_DATABASE[weaponId];
+    return '🔙 Sheathed ' + (data?.name || weaponId);
+  }
+  
+  // Toggle draw/sheathe
+  toggleWeapon() {
+    if (this.weaponDrawn) return this.sheatheWeapon();
+    return this.drawWeapon();
   }
   
   unequipWeapon(slot = -1) {
@@ -732,8 +777,11 @@ export class CharacterController {
     if (!weaponId) return 'No weapon in slot ' + (slot + 1);
     
     this._removeWeaponMesh(slot);
+    this._removeFromBack();
+    this._removeFromHand();
     this.weaponSlots[slot] = null;
     this.equippedWeapon = this.weaponSlots[this.activeSlot];
+    this.weaponDrawn = false;
     
     return '🗑️ Unequipped ' + (WEAPON_DATABASE[weaponId]?.name || weaponId);
   }
@@ -769,6 +817,44 @@ export class CharacterController {
     this.comboIndex = 0;
   }
   
+  _attachWeaponToBack(weaponId) {
+    const data = WEAPON_DATABASE[weaponId];
+    if (!data) return;
+    
+    this._removeFromBack();
+    
+    const mesh = createWeaponMesh(weaponId);
+    if (!mesh) return;
+    
+    // Attach to back (torso/spine bone)
+    const bone = this.sockets.back || this.sockets.hips;
+    if (bone) {
+      bone.updateWorldMatrix(true, false);
+      const _bws = new THREE.Vector3();
+      bone.getWorldScale(_bws);
+      const _localScale = 0.10 / (0.8 * Math.max(_bws.x, 0.001));
+      mesh.scale.setScalar(_localScale);
+      // Position on back — sticking out behind shoulder, visible from TPS
+      mesh.position.set(0.02, 0.08, -0.06); // x=right, y=up, z=behind
+      mesh.rotation.set(-0.3, 0, Math.PI * 0.8); // handle down, blade up
+      bone.add(mesh);
+    } else if (this.model) {
+      mesh.scale.setScalar(0.3);
+      mesh.position.set(-0.1, 0.8, -0.15);
+      mesh.rotation.set(0.3, 0, 0.2);
+      this.model.add(mesh);
+    }
+    
+    this.backWeaponMesh = mesh;
+  }
+  
+  _removeFromBack() {
+    if (this.backWeaponMesh) {
+      if (this.backWeaponMesh.parent) this.backWeaponMesh.parent.remove(this.backWeaponMesh);
+      this.backWeaponMesh = null;
+    }
+  }
+  
   _attachWeaponToHand(weaponId) {
     const data = WEAPON_DATABASE[weaponId];
     if (!data) return;
@@ -797,9 +883,16 @@ export class CharacterController {
       mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);
+      
+      // Two-handed grip: move left hand toward weapon (IK hint via bone position)
+      // This gives the visual impression of two-handed holding
+      if (this.sockets.hand_l) {
+        this._twoHandedGrip = true;
+      }
     } else {
       // Fallback: attach to model
-      mesh.position.set(0.25, 0.6, 0);
+      mesh.position.set(0.15, 0.5, 0.05);
+      mesh.rotation.set(0, 0, -0.3);
       this.model.add(mesh);
     }
     
@@ -2351,7 +2444,7 @@ export class NPCController {
     // Find available slot or use specified
     if (slot < 0) {
       slot = this.weaponSlots.indexOf(null);
-      if (slot < 0) slot = this.activeSlot; // Replace current
+      if (slot < 0) slot = this.activeSlot;
     }
     
     // Remove old weapon from slot
@@ -2366,15 +2459,46 @@ export class NPCController {
       this.ammo[weaponId] = data.magSize;
     }
     
-    // If this is the active slot, put in hand
-    if (slot === this.activeSlot) {
-      this._attachWeaponToHand(weaponId);
-    } else {
-      this._attachWeaponToHolster(weaponId, slot);
-    }
+    // ALWAYS holster on back first — player draws with key press
+    this._attachWeaponToBack(weaponId);
+    this.weaponDrawn = false;
     
     this.equippedWeapon = this.weaponSlots[this.activeSlot];
-    return '⚔️ Equipped ' + data.name + ' in slot ' + (slot + 1);
+    return '⚔️ ' + data.name + ' equipped on back — press 1 to draw';
+  }
+  
+  // Draw weapon from back to hands (two-handed grip)
+  drawWeapon() {
+    const weaponId = this.weaponSlots[this.activeSlot];
+    if (!weaponId) return 'No weapon equipped';
+    if (this.weaponDrawn) return 'Weapon already drawn';
+    
+    this._removeFromBack();
+    this._attachWeaponToHand(weaponId);
+    this.weaponDrawn = true;
+    
+    const data = WEAPON_DATABASE[weaponId];
+    return '⚔️ Drew ' + (data?.name || weaponId) + ' — ready to fight!';
+  }
+  
+  // Sheathe weapon back to back
+  sheatheWeapon() {
+    const weaponId = this.weaponSlots[this.activeSlot];
+    if (!weaponId) return 'No weapon equipped';
+    if (!this.weaponDrawn) return 'Weapon already sheathed';
+    
+    this._removeFromHand();
+    this._attachWeaponToBack(weaponId);
+    this.weaponDrawn = false;
+    
+    const data = WEAPON_DATABASE[weaponId];
+    return '🔙 Sheathed ' + (data?.name || weaponId);
+  }
+  
+  // Toggle draw/sheathe
+  toggleWeapon() {
+    if (this.weaponDrawn) return this.sheatheWeapon();
+    return this.drawWeapon();
   }
   
   unequipWeapon(slot = -1) {
@@ -2383,8 +2507,11 @@ export class NPCController {
     if (!weaponId) return 'No weapon in slot ' + (slot + 1);
     
     this._removeWeaponMesh(slot);
+    this._removeFromBack();
+    this._removeFromHand();
     this.weaponSlots[slot] = null;
     this.equippedWeapon = this.weaponSlots[this.activeSlot];
+    this.weaponDrawn = false;
     
     return '🗑️ Unequipped ' + (WEAPON_DATABASE[weaponId]?.name || weaponId);
   }

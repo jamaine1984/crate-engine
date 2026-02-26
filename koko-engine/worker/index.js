@@ -45,7 +45,7 @@ export default {
     }
 
     try {
-      const { input } = await request.json();
+      const { input, apiKey: userKey } = await request.json();
       if (!input || typeof input !== 'string') {
         return new Response(JSON.stringify({ commands: [], message: 'No input provided' }), {
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
@@ -53,7 +53,8 @@ export default {
       }
 
       // Call Claude via OpenRouter
-      const apiKey = env.OPENROUTER_API_KEY;
+      // Use user's key if provided, otherwise use default
+      const apiKey = userKey || env.OPENROUTER_API_KEY;
       if (!apiKey) {
         return new Response(JSON.stringify({ commands: [input], message: 'Running command...' }), {
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
@@ -67,7 +68,7 @@ export default {
           'Authorization': 'Bearer ' + apiKey,
         },
         body: JSON.stringify({
-          model: 'anthropic/claude-sonnet-4',
+          model: 'google/gemini-2.0-flash-exp:free',
           max_tokens: 300,
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },

@@ -997,6 +997,32 @@ export class CrateAgent {
       return;
     }
 
+    // 2.5 API Key management
+    if (lower.match(/^(api.?key|set.?key|openrouter|settings)/)) {
+      const currentKey = localStorage.getItem('crate_openrouter_key');
+      if (currentKey) {
+        this.addBotMessage('🔑 OpenRouter API key is set (ending in ...' + currentKey.slice(-6) + '). Type <strong>"clear key"</strong> to remove it.');
+      } else {
+        this.addBotMessage('🔑 No API key set. The free AI model is used by default.<br><br>To use premium models (Claude, GPT-4), paste your OpenRouter key:<br><code>key sk-or-v1-your-key-here</code><br><br>Get a free key at <a href="https://openrouter.ai" target="_blank" style="color:#f7c948">openrouter.ai</a>');
+      }
+      return;
+    }
+    if (lower.startsWith('key ')) {
+      const key = text.slice(4).trim();
+      if (key.startsWith('sk-or-')) {
+        localStorage.setItem('crate_openrouter_key', key);
+        this.addBotMessage('✅ OpenRouter API key saved! Premium AI models now active.');
+      } else {
+        this.addBotMessage('❌ Invalid key. OpenRouter keys start with <code>sk-or-</code>');
+      }
+      return;
+    }
+    if (lower === 'clear key' || lower === 'remove key') {
+      localStorage.removeItem('crate_openrouter_key');
+      this.addBotMessage('🗑️ API key removed. Using free AI model.');
+      return;
+    }
+
     // 3. Help
     if (lower.match(/^(help|h|\?|how|what can|tutorial|guide)/)) {
       this.addBotMessage(`
