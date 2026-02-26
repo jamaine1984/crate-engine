@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=64';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=65';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -3747,7 +3747,7 @@ window._respawnPlayer = function() {
     characterController.stamina = characterController.maxStamina;
     const sy = typeof getTerrainY === 'function' ? getTerrainY(0, 0) + 1 : 2;
     characterController.position.set(0, sy, 0);
-    if (characterController.model) characterController.model.position.set(0, sy, 0);
+    if (characterController.model) characterController.position.set(0, sy, 0);
   }
 };
 
@@ -7601,7 +7601,7 @@ async function execSingle(cmd) {
         playMode = true;
         _hideEditorUI();
         try { controls.enabled = false; } catch(e) {}
-        { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.model.position.set(0, _sy, 0); } }
+        { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.position.set(0, _sy, 0); } }
         // Apply player agent profile
     const _agentProfile = PlayerAgent.load();
     PlayerAgent.apply(_agentProfile, characterController);
@@ -7623,7 +7623,7 @@ async function execSingle(cmd) {
       playMode = true;
       _hideEditorUI();
       try { controls.enabled = false; } catch(e) {}
-      { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) characterController.model.position.set(0, _sy, 0); }
+      { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) characterController.position.set(0, _sy, 0); }
       return '⚔️ Playing as ' + charName + '! WASD to move, mouse to look, ESC to exit.';
     }
     return '✅ Character set to ' + charName + '. Available: ' + validChars.join(', ');
@@ -7650,7 +7650,7 @@ async function execSingle(cmd) {
       }
     }
     // Spawn at origin ON TOP of terrain
-    { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.model.position.set(0, _sy, 0); } }
+    { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.position.set(0, _sy, 0); } }
     characterController.health = characterController.maxHealth;
     characterController.stamina = characterController.maxStamina;
     
@@ -7664,7 +7664,7 @@ async function execSingle(cmd) {
       // Demo: start outside the town, walk in
       characterController.position.set(-20, 0, -20);
       if (characterController.model) {
-        characterController.model.position.set(-20, 0, -20);
+        characterController.position.set(-20, 0, -20);
       }
       characterController.cameraMode = '3rd';
       characterController.cameraDistance = 10;
@@ -9000,7 +9000,7 @@ async function execSingle(cmd) {
       const tx = parseFloat(tpMatch[1]), tz = parseFloat(tpMatch[2]);
       if (characterController && characterController.position) {
         characterController.position.set(tx, 0, tz);
-        if (characterController.model) characterController.model.position.set(tx, 0, tz);
+        if (characterController.model) characterController.position.set(tx, 0, tz);
       }
       camera.position.set(tx, 15, tz + 20);
       camera.lookAt(tx, 0, tz);
@@ -9879,7 +9879,7 @@ function exitVehicle() {
     const exitPos = activeVehicle.obj.position.clone();
     exitPos.x += 3;
     characterController.position.copy(exitPos);
-    characterController.model.position.copy(exitPos);
+    characterController.position.copy(exitPos);
   }
   activeVehicle = null;
   exitPlayMode();
@@ -10381,7 +10381,7 @@ function animate() {
       // Push player up to water surface (buoyancy)
       if (characterController) {
         characterController.position.y = THREE.MathUtils.lerp(characterController.position.y, _waterLevel, 0.1);
-        if (characterController.model) characterController.model.position.y = characterController.position.y;
+        if (characterController.model) characterController.position.y = characterController.position.y;
       } else {
         camera.position.y = THREE.MathUtils.lerp(camera.position.y, _waterLevel + 1.5, 0.1);
       }
@@ -10403,7 +10403,7 @@ function animate() {
   updateUserScripts(dt);
   
   // Weather follows camera for full-scene coverage
-  const _wcam = playMode && characterController && characterController.model ? characterController.model.position : camera.position;
+  const _wcam = playMode && characterController && characterController.model ? characterController.position : camera.position;
   if (rainParticles) {
     rainParticles.position.x = _wcam.x;
     rainParticles.position.z = _wcam.z;

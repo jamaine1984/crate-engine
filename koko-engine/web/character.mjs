@@ -716,8 +716,12 @@ class CharacterController {
     const config = this.characterModels[type];
     if (!config) return 'Unknown character: ' + type;
     
-    // Remove old model
-    if (this.model) {
+    // Remove old model + container
+    if (this.modelContainer) {
+      this.scene.remove(this.modelContainer);
+      const idx = this.objects.indexOf(this.modelContainer);
+      if (idx >= 0) this.objects.splice(idx, 1);
+    } else if (this.model) {
       this.scene.remove(this.model);
       const idx = this.objects.indexOf(this.model);
       if (idx >= 0) this.objects.splice(idx, 1);
@@ -735,19 +739,33 @@ class CharacterController {
         const autoScale = targetHeight / Math.max(maxDim, 0.001);
         this.model.scale.setScalar(autoScale);
         
-        // Fix position to ground — calculate groundOffset from bounding box
+        // MODEL CONTAINER PATTERN (Sketchbook-inspired)
+        // Container sits at feet level, model offset inside so feet = y=0 of container
         const box2 = new THREE.Box3().setFromObject(this.model);
-        this.groundOffset = -box2.min.y; // Distance from model origin to feet
+        this.groundOffset = -box2.min.y;
+        this.model.position.set(0, this.groundOffset, 0); // offset inside container
+        
+        // Create container group
+        if (this.modelContainer) {
+          this.scene.remove(this.modelContainer);
+          const ci = this.objects.indexOf(this.modelContainer);
+          if (ci >= 0) this.objects.splice(ci, 1);
+        }
+        this.modelContainer = new THREE.Group();
+        this.modelContainer.add(this.model);
+        this.modelContainer.userData.groundOffset = this.groundOffset;
+        this.modelContainer.userData.isPlayer = true;
+        this.modelContainer.userData.name = 'player_' + type;
+        
+        // Position at terrain level
         this.position.y = _getTerrainY(this.position.x, this.position.z);
-        this.model.position.copy(this.position);
-        this.model.position.y = this.position.y + this.groundOffset;
-        this.model.userData.groundOffset = this.groundOffset;
+        this.modelContainer.position.copy(this.position);
         
         this.model.castShadow = true;
         this.model.traverse(child => {
           if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
         });
-        this.scene.add(this.model);
+        this.scene.add(this.modelContainer);
         
         // Detect bone sockets for weapon attachment
         this.sockets = {};
@@ -788,9 +806,7 @@ class CharacterController {
             this._attachWeaponToHolster(this.weaponSlots[i], i);
           }
         }
-        this.objects.push(this.model);
-        this.model.userData.name = 'player_' + type;
-        this.model.userData.isPlayer = true;
+        this.objects.push(this.modelContainer);
         
         // Find bones for procedural animation (Wolf3D/Mixamo rig)
         this.proceduralAnim = config.procedural || false;
@@ -862,7 +878,7 @@ class CharacterController {
         
         // Find clear spawn point away from objects
         this._findClearSpawn();
-        this.model.position.set(this.position.x, this.position.y + (this.groundOffset || 0), this.position.z);
+        (this.modelContainer || this.model).position.set(this.position.x, this.position.y + (this.modelContainer ? 0 : (this.groundOffset || 0)), this.position.z);
         resolve('✓ Character loaded: ' + type + ' (' + Object.keys(this.animations).join(', ') + ')');
       });
     });
@@ -1731,14 +1747,15 @@ class CharacterController {
     if (!this._lastSafePos) this._lastSafePos = new THREE.Vector3();
     if (!blocked) this._lastSafePos.copy(this.position);
     
-    // Update model position/rotation
-    this.model.position.set(this.position.x, this.position.y + (this.groundOffset || 0), this.position.z);
-    // Keep feet on ground (account for model origin offset)
-    const modelBox = new THREE.Box3().setFromObject(this.model);
-    if (this.isGrounded) {
-      // Only recalc ground offset occasionally to save perf
+    // Update container position (feet level) — model inside is already offset
+    const container = this.modelContainer || this.model;
+    if (this.modelContainer) {
+      this.modelContainer.position.copy(this.position);
+      this.modelContainer.rotation.y = this.rotation;
+    } else {
+      (this.modelContainer || this.model).position.set(this.position.x, this.position.y + (this.modelContainer ? 0 : (this.groundOffset || 0)), this.position.z);
+      this.model.rotation.y = this.rotation;
     }
-    this.model.rotation.y = this.rotation;
     
     // Animation state
     if (!this.isRolling && !this.isAttacking && this.isGrounded) {
