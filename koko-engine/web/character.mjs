@@ -749,6 +749,97 @@ class CharacterController {
     this._setupInput();
   }
   
+
+  async _loadSharedAnimations(charType) {
+    // Load knight model just for its animations, apply to current character
+    const knightFile = 'models/single_knight_pack_knightcharacter.glb';
+    const loader = window._gltfLoader;
+    if (!loader || !this.model) return;
+    
+    return new Promise((resolve) => {
+      loader.load(knightFile, (gltf) => {
+        if (!gltf.animations || gltf.animations.length === 0) {
+          console.warn('[Char] Knight has no animations to share');
+          resolve();
+          return;
+        }
+        
+        console.log('[Char] Loaded', gltf.animations.length, 'shared animations');
+        
+        // Create mixer for current model
+        if (!this.mixer) {
+          this.mixer = new THREE.AnimationMixer(this.model);
+        }
+        
+        // Retarget: knight bone names use same KayKit convention
+        // but tracks are prefixed with "HumanArmature|"
+        // We need to remap track names if bone names differ
+        
+        this.animations = {};
+        const prefix = 'HumanArmature|';
+        
+        gltf.animations.forEach(clip => {
+          let name = clip.name.replace(prefix, '').toLowerCase();
+          
+          // Map to standard names
+          const nameMap = {
+            'idle': 'idle', 'idle_neutral': 'idle',
+            'walking': 'walk', 'walk': 'walk',
+            'run': 'run',
+            'jump': 'jump',
+            'roll': 'roll', 'roll_sword': 'roll',
+            'death': 'death',
+            'idle_swordleft': 'idle_sword', 'idle_swordright': 'idle_gun',
+            'run_swordattack': 'run_attack', 'run_swordright': 'run_attack',
+            'swordattackjump': 'jump_attack',
+          };
+          const stdName = nameMap[name] || name;
+          
+          // Retarget track names: remove "HumanArmature|" prefix from track targets
+          // Knight tracks: "HumanArmature|Hips.position" → need "Hips.position" for other chars
+          const retargetedTracks = clip.tracks.map(track => {
+            let newName = track.name;
+            // Remove HumanArmature prefix: "HumanArmature.bones[Hips].position" or similar
+            // Three.js format: "boneName.property" 
+            // If track targets "HumanArmature|BoneName", strip the prefix
+            if (newName.includes(prefix)) {
+              newName = newName.replace(prefix, '');
+            }
+            return new THREE.KeyframeTrack(
+              newName,
+              track.times,
+              track.values,
+              track.interpolation
+            );
+          });
+          
+          const retargetedClip = new THREE.AnimationClip(stdName, clip.duration, retargetedTracks);
+          
+          try {
+            const action = this.mixer.clipAction(retargetedClip);
+            this.animations[stdName] = action;
+          } catch(e) {
+            // Bone name mismatch — skip this animation
+            console.warn('[Char] Could not apply animation', stdName, ':', e.message);
+          }
+        });
+        
+        console.log('[Char] Shared animations loaded:', Object.keys(this.animations).join(', '));
+        
+        // Start idle
+        if (this.animations.idle) {
+          this.animations.idle.play();
+          this.currentAnim = 'idle';
+        }
+        
+        resolve();
+      }, undefined, (err) => {
+        console.warn('[Char] Failed to load shared animations:', err);
+        resolve();
+      });
+    });
+  }
+
   _setupInput() {
     window.addEventListener('keydown', e => {
       this.keys[e.key.toLowerCase()] = true;
@@ -912,7 +1003,13 @@ class CharacterController {
           });
         }
         
-        // Setup animations
+        // Setup animations — load from model or shared animation source
+        const hasAnims = gltf.animations.length > 0;
+        if (!hasAnims && type !== 'knight') {
+          // No embedded animations — load shared animations from knight model
+          console.log('[Char] No animations in', type, '— loading shared anims from knight');
+          this._loadSharedAnimations(type);
+        }
         if (gltf.animations.length > 0) {
           this.mixer = new THREE.AnimationMixer(this.model);
           this.animations = {};
@@ -2758,7 +2855,13 @@ export class NPCController {
         npc.healthBar = this._createHealthBar();
         model.add(npc.healthBar);
         
-        // Setup animations
+        // Setup animations — load from model or shared animation source
+        const hasAnims = gltf.animations.length > 0;
+        if (!hasAnims && type !== 'knight') {
+          // No embedded animations — load shared animations from knight model
+          console.log('[Char] No animations in', type, '— loading shared anims from knight');
+          this._loadSharedAnimations(type);
+        }
         if (gltf.animations.length > 0) {
           npc.mixer = new THREE.AnimationMixer(model);
           gltf.animations.forEach(clip => {
