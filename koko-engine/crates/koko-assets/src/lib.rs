@@ -109,3 +109,4 @@ impl AssetManager {
     pub fn list(&self, asset_type: AssetType) -> Vec<&AssetMeta> { self.registry.values().filter(|m| m.asset_type == asset_type).collect() }
     pub fn count(&self) -> usize { self.registry.len() }
 }
+pub mod metadata;

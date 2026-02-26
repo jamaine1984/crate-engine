@@ -1,4 +1,8 @@
-//! KOKO Physics — Rapier integration (native), stub on WASM
+//!
+
+pub mod layers;
+pub mod character;
+// KOKO Physics — Rapier integration (native), stub on WASM
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use rapier3d::prelude::RigidBodyHandle;

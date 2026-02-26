@@ -13,7 +13,7 @@
 ### Crate Engine — Browser 3D Game Engine
 - **Location:** `koko-engine/` in workspace
 - **Web source:** `web/engine.mjs` (~13,000+ lines), `web/character.mjs` (~5,000+ lines)
-- **Current version:** engine.mjs v77, character.mjs v34, index.html v77
+- **Current version:** engine.mjs v117, character.mjs v60, index.html v117
 - **Deploy:** `npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true`
 - **Site:** crateshipgames.com (Cloudflare Pages)
 - **Cloudflare:** Koikes2021@gmail.com, ID: 6573d98c25150fd7b4602e56a0926767
@@ -26,7 +26,7 @@
 - `getTerrainY(x, z)` in engine.mjs, `_getTerrainY(x, z)` in character.mjs (uses window._terrainMesh)
 - Build toolbar: IIFE at ~line 11025, dynamically created
 - `parseAndExecute` ~line 4835, `execSingle` ~line 5157
-- character.mjs import: `./character.mjs?v=34` — **MUST BUMP VERSION when changing character.mjs**
+- character.mjs import: `./character.mjs?v=60` — **MUST BUMP VERSION when changing character.mjs**
 - Terrain: PlaneGeometry rotated -PI/2, vertex colors for biomes
 
 #### Weapon System (v77)
@@ -37,7 +37,9 @@
 - Number keys 1/2/3 for weapon swap
 - `createWeaponMesh(weaponId)` procedural mesh factory
 - NL commands: `equip sword`, `show weapons`, `swap 2`
-- **BUG**: SyntaxError `equipMatch already declared` — needs fix
+- **v117**: Real GLB weapon models replace all procedural primitives
+- Weapon GLB map: sword→sword_iron.glb, axe→axe_iron.glb, dagger→dagger_00.glb, hammer→hammer_00.glb, spear→spear_00.glb, bow→bow_wood.glb, guns→blasterb-h.glb
+- 123 weapon GLBs in asset library
 
 #### Terrain System
 - Island type uses 'tropical' color scheme (no snow)
@@ -66,7 +68,7 @@
 2. Mixamo animations
 3. Vehicle physics
 4. Gerstner wave water
-5. Combat system (DONE - 12 weapon types, socket system)
+5. Combat system (DONE - 12 weapon types, socket system, real GLB weapons)
 6. Climbing/parkour + STAIRS/INTERIORS (requested)
 7. Building interiors
 8. Inventory/crafting (DONE - 32-slot grid)

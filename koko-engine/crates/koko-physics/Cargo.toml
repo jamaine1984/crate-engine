@@ -11,3 +11,7 @@ glam = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rapier3d = "0.32"
 rapier2d = "0.32"
+bitflags = "2"
+
+[dependencies.serde]
+workspace = true

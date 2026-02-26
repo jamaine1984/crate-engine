@@ -2183,10 +2183,12 @@ dependencies = [
 name = "koko-physics"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.11.0",
  "glam 0.30.10",
  "koko-core",
  "rapier2d",
  "rapier3d",
+ "serde",
  "tracing",
 ]
 
