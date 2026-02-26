@@ -10625,7 +10625,7 @@ function animate() {
 
 
   if (window._godmode) window._godmode.updateBehaviors(dt, t);
-  if (window._sound) { window._sound.updateMusic(dt); window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
+  if (window._sound && window._sound.updateMusic) { window._sound.updateMusic(dt); } if (window._sound && window._sound.updateAmbient) { window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
   if (window._updateAmbientOneShots) window._updateAmbientOneShots(dt);
   updateDayNightCycle(dt);
   if (!playMode) controls.update();
