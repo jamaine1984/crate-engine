@@ -40,7 +40,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: Math.PI * 0.7, y: 0, z: Math.PI * 0.2 }
   },
   dagger: {
-    id: 'dagger', name: 'Steel Dagger', type: 'melee', subtype: 'one_handed',
+    id: 'dagger', glb: 'models/dagger_00.glb', name: 'Steel Dagger', type: 'melee', subtype: 'one_handed',
     damage: 15, attackSpeed: 2.0, range: 1.5, staminaCost: 8, knockback: 1,
     comboChain: ['stab', 'stab', 'slash', 'stab'], critMultiplier: 2.5, critChance: 0.2,
     blockReduction: 0.2, weight: 1,
@@ -60,7 +60,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: Math.PI * 0.6, y: 0, z: 0 }
   },
   spear: {
-    id: 'spear', name: 'Iron Spear', type: 'melee', subtype: 'two_handed',
+    id: 'spear', glb: 'models/spear_00.glb', name: 'Iron Spear', type: 'melee', subtype: 'two_handed',
     damage: 30, attackSpeed: 1.0, range: 3.5, staminaCost: 18, knockback: 4,
     comboChain: ['thrust', 'sweep', 'thrust'], critMultiplier: 1.7, critChance: 0.12,
     blockReduction: 0.3, weight: 4,
@@ -70,7 +70,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: Math.PI * 0.8, y: 0, z: 0 }
   },
   katana: {
-    id: 'katana', name: 'Katana', type: 'melee', subtype: 'one_handed',
+    id: 'katana', glb: 'models/sword_long.glb', name: 'Katana', type: 'melee', subtype: 'one_handed',
     damage: 28, attackSpeed: 1.4, range: 2.8, staminaCost: 12, knockback: 2,
     comboChain: ['slash_r', 'slash_l', 'thrust', 'iai_slash'], critMultiplier: 2.0, critChance: 0.15,
     blockReduction: 0.6, weight: 2.5,
@@ -81,7 +81,7 @@ const WEAPON_DATABASE = {
   },
   // === RANGED ===
   pistol: {
-    id: 'pistol', name: '9mm Pistol', type: 'ranged', subtype: 'pistol',
+    id: 'pistol', glb: 'models/blasterb.glb', name: '9mm Pistol', type: 'ranged', subtype: 'pistol',
     damage: 18, fireRate: 300, range: 50, spread: 3, maxSpread: 12,
     spreadGrowth: 1.5, spreadRecovery: 8,
     recoilV: 2.5, recoilH: 0.5, recoilRecovery: 6,
@@ -95,7 +95,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: 0, y: 0, z: Math.PI * 0.4 }
   },
   rifle: {
-    id: 'rifle', name: 'Assault Rifle', type: 'ranged', subtype: 'rifle',
+    id: 'rifle', glb: 'models/blasterf.glb', name: 'Assault Rifle', type: 'ranged', subtype: 'rifle',
     damage: 14, fireRate: 600, range: 100, spread: 2, maxSpread: 10,
     spreadGrowth: 0.8, spreadRecovery: 5,
     recoilV: 1.8, recoilH: 0.4, recoilRecovery: 5,
@@ -109,7 +109,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: Math.PI * 0.85, y: 0, z: 0 }
   },
   shotgun: {
-    id: 'shotgun', name: 'Pump Shotgun', type: 'ranged', subtype: 'shotgun',
+    id: 'shotgun', glb: 'models/blasterg.glb', name: 'Pump Shotgun', type: 'ranged', subtype: 'shotgun',
     damage: 8, pellets: 8, fireRate: 60, range: 25, spread: 8, maxSpread: 15,
     spreadGrowth: 3, spreadRecovery: 4,
     recoilV: 5, recoilH: 1, recoilRecovery: 3,
@@ -123,7 +123,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: Math.PI * 0.85, y: 0, z: 0 }
   },
   smg: {
-    id: 'smg', name: 'SMG', type: 'ranged', subtype: 'smg',
+    id: 'smg', glb: 'models/blasterc.glb', name: 'SMG', type: 'ranged', subtype: 'smg',
     damage: 10, fireRate: 900, range: 40, spread: 4, maxSpread: 16,
     spreadGrowth: 1.2, spreadRecovery: 7,
     recoilV: 1.2, recoilH: 0.8, recoilRecovery: 7,
@@ -137,7 +137,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: Math.PI * 0.8, y: 0, z: 0 }
   },
   sniper: {
-    id: 'sniper', name: 'Sniper Rifle', type: 'ranged', subtype: 'sniper',
+    id: 'sniper', glb: 'models/blasterh.glb', name: 'Sniper Rifle', type: 'ranged', subtype: 'sniper',
     damage: 75, fireRate: 40, range: 200, spread: 0.5, maxSpread: 4,
     spreadGrowth: 3, spreadRecovery: 2,
     recoilV: 8, recoilH: 0.5, recoilRecovery: 2,
@@ -151,7 +151,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: Math.PI * 0.85, y: 0, z: 0 }
   },
   bow: {
-    id: 'bow', name: 'Longbow', type: 'ranged', subtype: 'bow',
+    id: 'bow', glb: 'models/bow_wood.glb', name: 'Longbow', type: 'ranged', subtype: 'bow',
     damage: 40, fireRate: 60, range: 80, spread: 1, maxSpread: 6,
     spreadGrowth: 0, spreadRecovery: 10,
     recoilV: 0, recoilH: 0, recoilRecovery: 0,
@@ -170,10 +170,43 @@ const WEAPON_DATABASE = {
 function createWeaponMesh(weaponId) {
   const data = WEAPON_DATABASE[weaponId];
   if (!data) return null;
-  const m = data.mesh;
+  
+  // Return a placeholder group immediately — GLB loads async into it
   const group = new THREE.Group();
   group.userData.weaponId = weaponId;
   group.userData.weaponData = data;
+  
+  // Try loading real GLB model
+  if (data.glb) {
+    const loader = new THREE.GLTFLoader || (window.GLTFLoader ? new window.GLTFLoader() : null);
+    // Use dynamic import for GLTFLoader
+    import('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/loaders/GLTFLoader.js').then(module => {
+      const gltfLoader = new module.GLTFLoader();
+      gltfLoader.load(data.glb, (gltf) => {
+        const model = gltf.scene;
+        // Auto-scale: measure model, normalize to ~1 unit height
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        if (maxDim > 0) model.scale.multiplyScalar(0.8 / maxDim); // normalize to 0.8 units
+        // Center the model
+        box.setFromObject(model);
+        box.getCenter(model.position).multiplyScalar(-1);
+        // Remove procedural children and add GLB
+        while (group.children.length > 0) group.remove(group.children[0]);
+        group.add(model);
+        group.userData.isGLB = true;
+      }, undefined, (err) => {
+        console.warn('[Weapon] GLB load failed for', data.glb, '- using procedural fallback');
+      });
+    }).catch(() => {
+      console.warn('[Weapon] GLTFLoader import failed — using procedural fallback');
+    });
+  }
+  
+  // Build procedural mesh immediately as fallback (shown until GLB loads)
+  const m = data.mesh;
   
   if (m.type === 'sword' || m.type === 'katana') {
     const bladeGeo = new THREE.BoxGeometry(m.bladeW || 0.05, m.bladeLen || 0.6, 0.015);
