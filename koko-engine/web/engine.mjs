@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=80';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=81';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -11428,6 +11428,95 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
               }
             }
             if (!found) result = '⚠ No object matching "' + intent.target + '"';
+          }
+          break;
+        case 'quickArena':
+          {
+            // Build combat arena: flat terrain, some cover, enemies
+            bridge.clearScene();
+            await bridge.setTerrain('flat');
+            await bridge.setTime('sunset');
+            // Add arena objects
+            const arenaCat = await _loadAssetCatalog();
+            if (arenaCat) {
+              // Scatter rocks for cover
+              for (let i = 0; i < 8; i++) {
+                const rx = (Math.random() - 0.5) * 30;
+                const rz = (Math.random() - 0.5) * 30;
+                loadGLBModel('Rock', arenaCat.rocks?.[Math.floor(Math.random() * (arenaCat.rocks?.length || 1))]?.file || 'kaykit_adventurers_bit_rock1.glb', rx, rz);
+              }
+            }
+            // Spawn enemies
+            if (npcController) {
+              for (let i = 0; i < 6; i++) {
+                await npcController.spawnNPC('soldier', (Math.random()-0.5)*20, (Math.random()-0.5)*20, 'aggro');
+              }
+            }
+            // Equip and play
+            if (characterController) {
+              await characterController.loadCharacter('knight');
+              characterController.equipWeapon('sword', 0);
+            }
+            enterPlayMode();
+            result = '⚔️ Combat Arena! 6 enemies. Fight!';
+          }
+          break;
+        case 'quickSurvival':
+          {
+            bridge.clearScene();
+            await bridge.setTerrain('flat');
+            await bridge.setTime('night');
+            if (characterController) {
+              await characterController.loadCharacter('knight');
+              characterController.equipWeapon('sword', 0);
+              characterController.equipWeapon('pistol', 1);
+            }
+            // Spawn waves
+            if (npcController) {
+              for (let i = 0; i < 10; i++) {
+                const angle = (i / 10) * Math.PI * 2;
+                const dist = 15 + Math.random() * 10;
+                await npcController.spawnNPC('soldier', Math.cos(angle)*dist, Math.sin(angle)*dist, 'aggro');
+              }
+            }
+            enterPlayMode();
+            result = '💀 Survival Mode! 10 enemies surrounding you. Good luck!';
+          }
+          break;
+        case 'quickExplore':
+          {
+            await bridge.buildWorld('tropical paradise');
+            if (characterController) {
+              await characterController.loadCharacter('knight');
+            }
+            if (npcController) {
+              for (let i = 0; i < 5; i++) {
+                await npcController.spawnNPC('villager', (Math.random()-0.5)*30, (Math.random()-0.5)*30, 'wander');
+              }
+            }
+            enterPlayMode();
+            result = '🌴 Explore! Tropical paradise with friendly NPCs.';
+          }
+          break;
+        case 'quickDemo':
+          {
+            bridge.clearScene();
+            await bridge.buildWorld('medieval siege');
+            if (characterController) {
+              await characterController.loadCharacter('knight');
+              characterController.equipWeapon('sword', 0);
+              characterController.equipWeapon('bow', 1);
+            }
+            if (npcController) {
+              for (let i = 0; i < 3; i++) {
+                await npcController.spawnNPC('villager', (Math.random()-0.5)*15, (Math.random()-0.5)*15, 'wander');
+              }
+              for (let i = 0; i < 4; i++) {
+                await npcController.spawnNPC('soldier', 15+(Math.random()-0.5)*10, (Math.random()-0.5)*15, 'aggro');
+              }
+            }
+            enterPlayMode();
+            result = '🏰 Demo: Medieval Siege! Defend the village!';
           }
           break;
         case 'setSensitivity':

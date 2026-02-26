@@ -381,7 +381,21 @@ function interpret(input) {
   if (lower === 'sensitivity low') return { action: 'setSensitivity', value: 0.001 };
   if (lower === 'sensitivity high') return { action: 'setSensitivity', value: 0.006 };
 
-  // --- FALLBACK: treat entire input as asset search ---
+  // --- QUICK PLAY COMMANDS ---
+  if (lower === 'arena' || lower === 'combat arena' || lower === 'fight' || lower === 'battle') {
+    return { action: 'quickArena' };
+  }
+  if (lower === 'survival' || lower === 'survive' || lower === 'wave mode' || lower === 'horde mode') {
+    return { action: 'quickSurvival' };
+  }
+  if (lower === 'explore' || lower === 'exploration' || lower === 'free roam') {
+    return { action: 'quickExplore' };
+  }
+  if (lower === 'demo' || lower === 'show demo' || lower === 'showcase') {
+    return { action: 'quickDemo' };
+  }
+
+    // --- FALLBACK: treat entire input as asset search ---
   // If someone just types "tree" or "red car", try to find it
   return { action: 'addObject', query: raw };
 }
@@ -459,6 +473,10 @@ const COMMANDS_SHOWCASE = {
   '🔮 AI & Scripts': [
     'ai settings', 'scripts', 'edit script',
     '3d generator', 'text to 3d',
+  ],
+  '🎮 Quick Play': [
+    'arena', 'survival', 'explore', 'demo',
+    'fight', 'battle', 'horde mode',
   ],
   '🌐 Multiplayer': [
     'multiplayer', 'join lobby', 'disconnect',
