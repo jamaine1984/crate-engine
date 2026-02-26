@@ -334,6 +334,47 @@ function interpret(input) {
   if (lower === 'share' || lower === 'share scene') return { action: 'share' };
 
 
+    // --- COLOR ---
+  const colorMatch = lower.match(/^(?:color|paint|set color)\s+(.+?)\s+(red|blue|green|yellow|white|black|orange|purple|pink|cyan|gold|silver|brown|gray|grey|#[0-9a-f]{3,6})/);
+  if (colorMatch) return { action: 'colorObject', target: colorMatch[1], color: colorMatch[2] };
+
+  // --- SCALE ---
+  const scaleMatch = lower.match(/^(?:scale|resize|size)\s+(.+?)\s+(\d+\.?\d*)/);
+  if (scaleMatch) return { action: 'scaleObject', target: scaleMatch[1], scale: parseFloat(scaleMatch[2]) };
+
+  // --- MOVE ---
+  const moveMatch = lower.match(/^(?:move|translate|position)\s+(.+?)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s*(-?\d+\.?\d*)?/);
+  if (moveMatch) return { action: 'moveObject', target: moveMatch[1], x: parseFloat(moveMatch[2]), y: parseFloat(moveMatch[3]), z: moveMatch[4] ? parseFloat(moveMatch[4]) : undefined };
+
+  // --- ROTATE ---
+  const rotateMatch = lower.match(/^(?:rotate|spin|turn)\s+(.+?)\s+(-?\d+\.?\d*)/);
+  if (rotateMatch) return { action: 'rotateObject', target: rotateMatch[1], degrees: parseFloat(rotateMatch[2]) };
+
+  // --- DRIVE ---
+  const driveMatch = lower.match(/^(?:drive|enter|ride)\s+(.+)/);
+  if (driveMatch) return { action: 'driveVehicle', target: driveMatch[1] };
+  if (lower === 'exit vehicle' || lower === 'get out' || lower === 'stop driving') return { action: 'exitVehicle' };
+
+  // --- POST-PROCESSING ---
+  if (lower === 'postfx on' || lower === 'post processing on') return { action: 'setPostFX', enabled: true };
+  if (lower === 'postfx off' || lower === 'post processing off') return { action: 'setPostFX', enabled: false };
+  const vignetteMatch = lower.match(/^vignette\s+(\d+\.?\d*)/);
+  if (vignetteMatch) return { action: 'setVignette', value: parseFloat(vignetteMatch[1]) };
+  const grainMatch = lower.match(/^grain\s+(\d+\.?\d*)/);
+  if (grainMatch) return { action: 'setGrain', value: parseFloat(grainMatch[1]) };
+
+  // --- AI SETTINGS ---
+  if (lower === 'ai settings' || lower === 'ai config' || lower === 'ai model') return { action: 'aiSettings' };
+
+  // --- SCRIPT ---
+  if (lower === 'scripts' || lower === 'script manager') return { action: 'scriptManager' };
+  if (lower === 'edit script' || lower === 'script editor') return { action: 'scriptEditor' };
+
+  // --- STOP ANIMATION ---
+  const stopAnimMatch = lower.match(/^stop\s+(.+)/);
+  if (stopAnimMatch) return { action: 'stopAnimation', target: stopAnimMatch[1] };
+
+
     // --- FALLBACK: treat entire input as asset search ---
   // If someone just types "tree" or "red car", try to find it
   return { action: 'addObject', query: raw };

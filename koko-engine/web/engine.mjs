@@ -11001,6 +11001,236 @@ import('./interpreter.mjs').then(({ interpret }) => {
           // Fall through to legacy if no catalog match
           result = await parseAndExecute(cmd);
           break;
+        // --- Phase 3: New command handlers ---
+        case 'multiplayer':
+          result = await execSingle('multiplayer');
+          break;
+        case 'disconnect':
+          if (window._mp) window._mp.disconnect();
+          result = '🌐 Disconnected';
+          break;
+        case 'joinRoom':
+          if (window._mp) window._mp.connect(undefined, intent.room);
+          result = '🌐 Joining room: ' + intent.room;
+          break;
+        case 'chat':
+          if (window._mp) window._mp.chat(intent.message);
+          result = '💬 ' + intent.message;
+          break;
+        case 'setGraphics':
+          result = setGraphicsQuality(intent.level);
+          break;
+        case 'setBloom':
+          if (bloomPass) {
+            bloomPass.enabled = intent.enabled;
+            if (intent.strength !== undefined) setBloomSettings(intent.strength);
+          }
+          result = '✨ Bloom ' + (intent.enabled ? 'ON' : 'OFF') + (intent.strength ? ' (' + intent.strength + ')' : '');
+          break;
+        case 'setSSAO':
+          if (ssaoPass) ssaoPass.enabled = intent.enabled;
+          result = '🔲 SSAO ' + (intent.enabled ? 'ON' : 'OFF');
+          break;
+        case 'shooterMode':
+          result = await execSingle('shooter mode');
+          break;
+        case 'drivingDemo':
+          result = await execSingle('driving demo');
+          break;
+        case 'aaaSky':
+          result = await execSingle('aaa sky');
+          break;
+        case 'setWetness':
+          setSceneWetness(intent.value);
+          result = '💧 Wetness: ' + intent.value;
+          break;
+        case 'resizeOcean':
+          for (let i = 0; i < objects.length; i++) {
+            if (objects[i] && objects[i].userData && objects[i].userData.name === 'ocean') {
+              objects[i].geometry.dispose();
+              objects[i].geometry = new THREE.PlaneGeometry(intent.size, intent.size, 128, 128);
+              objects[i].geometry.rotateX(-Math.PI / 2);
+            }
+          }
+          result = '🌊 Ocean resized to ' + intent.size;
+          break;
+        case 'playAnimation':
+          if (characterController && characterController.playAnimation) {
+            characterController.playAnimation(intent.name, true);
+            result = '🎬 Playing: ' + intent.name;
+          } else {
+            result = '⚠ No character loaded';
+          }
+          break;
+        case 'scatter':
+          {
+            const cat = await _loadAssetCatalog();
+            if (cat) {
+              const q = intent.query.toLowerCase();
+              let best = null, bestS = 0;
+              for (const [c, items] of Object.entries(cat)) {
+                for (const item of items) {
+                  const n = item.name.toLowerCase();
+                  let s = 0;
+                  if (n === q) s = 100;
+                  else if (n.includes(q)) s = 60;
+                  else { const ws = q.split(/\s+/); const m = ws.filter(w => n.includes(w)).length; if (m > 0) s = 20 + m * 15; }
+                  if (s > bestS) { bestS = s; best = item; }
+                }
+              }
+              if (best) {
+                for (let i = 0; i < intent.count; i++) {
+                  const rx = (Math.random() - 0.5) * 80;
+                  const rz = (Math.random() - 0.5) * 80;
+                  loadGLBModel(best.name, best.file, rx, rz);
+                }
+                result = '🌿 Scattered ' + intent.count + 'x ' + best.name;
+              } else {
+                result = '⚠ No model found for "' + intent.query + '"';
+              }
+            }
+          }
+          break;
+        case 'undo':
+          if (sceneHistory && sceneHistory.length > 0) {
+            const last = sceneHistory.pop();
+            if (last) { scene.remove(last); const idx = objects.indexOf(last); if (idx >= 0) objects.splice(idx, 1); }
+            result = '↩ Removed last object';
+          } else {
+            result = '⚠ Nothing to undo';
+          }
+          break;
+        case 'delete':
+          {
+            const q = intent.query.toLowerCase();
+            let found = false;
+            for (let i = objects.length - 1; i >= 0; i--) {
+              const o = objects[i];
+              if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
+                scene.remove(o);
+                objects.splice(i, 1);
+                found = true;
+                result = '🗑️ Removed ' + o.userData.name;
+                break;
+              }
+            }
+            if (!found) result = '⚠ No object matching "' + intent.query + '"';
+          }
+          break;
+        case 'screenshot':
+          {
+            renderer.render(scene, camera);
+            const dataUrl = renderer.domElement.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataUrl; a.download = 'crate-screenshot.png'; a.click();
+            result = '📸 Screenshot saved';
+          }
+          break;
+        case 'export':
+          result = await execSingle('export');
+          break;
+        case 'share':
+          result = await execSingle('share');
+          break;
+        case 'colorObject':
+          {
+            const q = intent.target.toLowerCase();
+            const colorMap = {red:0xff0000,blue:0x0044ff,green:0x00ff44,yellow:0xffff00,white:0xffffff,black:0x111111,orange:0xff8800,purple:0x8800ff,pink:0xff44aa,cyan:0x00ffff,gold:0xffd700,silver:0xc0c0c0,brown:0x8b4513,gray:0x888888,grey:0x888888};
+            let c = colorMap[intent.color] || parseInt(intent.color.replace('#',''), 16);
+            let found = false;
+            for (const o of objects) {
+              if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
+                o.traverse(ch => { if (ch.isMesh && ch.material) { ch.material = ch.material.clone(); ch.material.color.setHex(c); } });
+                result = '🎨 Colored ' + o.userData.name + ' ' + intent.color;
+                found = true; break;
+              }
+            }
+            if (!found) result = '⚠ No object matching "' + intent.target + '"';
+          }
+          break;
+        case 'scaleObject':
+          {
+            const q = intent.target.toLowerCase();
+            let found = false;
+            for (const o of objects) {
+              if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
+                o.scale.setScalar(intent.scale);
+                result = '📐 Scaled ' + o.userData.name + ' to ' + intent.scale;
+                found = true; break;
+              }
+            }
+            if (!found) result = '⚠ No object matching "' + intent.target + '"';
+          }
+          break;
+        case 'moveObject':
+          {
+            const q = intent.target.toLowerCase();
+            let found = false;
+            for (const o of objects) {
+              if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
+                o.position.set(intent.x, intent.y || o.position.y, intent.z !== undefined ? intent.z : o.position.z);
+                result = '↔️ Moved ' + o.userData.name;
+                found = true; break;
+              }
+            }
+            if (!found) result = '⚠ No object matching "' + intent.target + '"';
+          }
+          break;
+        case 'rotateObject':
+          {
+            const q = intent.target.toLowerCase();
+            let found = false;
+            for (const o of objects) {
+              if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
+                o.rotation.y += (intent.degrees * Math.PI / 180);
+                result = '🔄 Rotated ' + o.userData.name + ' ' + intent.degrees + '°';
+                found = true; break;
+              }
+            }
+            if (!found) result = '⚠ No object matching "' + intent.target + '"';
+          }
+          break;
+        case 'driveVehicle':
+          result = await execSingle('drive ' + intent.target);
+          break;
+        case 'exitVehicle':
+          result = await execSingle('exit vehicle');
+          break;
+        case 'setPostFX':
+          togglePostProcessing(intent.enabled);
+          result = '✨ Post-processing ' + (intent.enabled ? 'ON' : 'OFF');
+          break;
+        case 'setVignette':
+          if (window._colorPass) window._colorPass.uniforms.vignetteStrength.value = intent.value;
+          result = '🔲 Vignette: ' + intent.value;
+          break;
+        case 'setGrain':
+          if (window._colorPass) window._colorPass.uniforms.filmGrain.value = intent.value;
+          result = '📺 Film grain: ' + intent.value;
+          break;
+        case 'aiSettings':
+          result = await execSingle('ai settings');
+          break;
+        case 'scriptManager':
+          result = await execSingle('scripts');
+          break;
+        case 'scriptEditor':
+          result = await execSingle('edit script');
+          break;
+        case 'stopAnimation':
+          {
+            const q = intent.target.toLowerCase();
+            let found = false;
+            for (const o of objects) {
+              if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
+                if (o.userData.mixer) { o.userData.mixer.stopAllAction(); }
+                result = '⏹ Stopped animation on ' + o.userData.name;
+                found = true; break;
+              }
+            }
+            if (!found) result = '⚠ No object matching "' + intent.target + '"';
+          }
+          break;
         default:
           // Unknown action — fall back to legacy parser
           result = await parseAndExecute(cmd);
