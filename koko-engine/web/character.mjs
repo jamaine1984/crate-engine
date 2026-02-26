@@ -20,7 +20,7 @@ function _getTerrainY(x, z) {
 const WEAPON_DATABASE = {
   // === MELEE ===
   sword: {
-    id: 'sword', name: 'Iron Sword', type: 'melee', subtype: 'one_handed',
+    id: 'sword', glb: 'models/sword_iron.glb', name: 'Iron Sword', type: 'melee', subtype: 'one_handed',
     damage: 25, attackSpeed: 1.2, range: 2.5, staminaCost: 15, knockback: 3,
     comboChain: ['slash_r', 'slash_l', 'thrust'], critMultiplier: 1.5, critChance: 0.1,
     blockReduction: 0.5, weight: 3,
@@ -30,7 +30,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: Math.PI * 0.7, y: 0, z: 0 }
   },
   axe: {
-    id: 'axe', name: 'Battle Axe', type: 'melee', subtype: 'one_handed',
+    id: 'axe', glb: 'models/axe_iron.glb', name: 'Battle Axe', type: 'melee', subtype: 'one_handed',
     damage: 35, attackSpeed: 0.9, range: 2.2, staminaCost: 20, knockback: 5,
     comboChain: ['chop_r', 'chop_l'], critMultiplier: 2.0, critChance: 0.08,
     blockReduction: 0.3, weight: 5,
@@ -50,7 +50,7 @@ const WEAPON_DATABASE = {
     holsterRotation: { x: 0, y: 0, z: Math.PI * 0.5 }
   },
   hammer: {
-    id: 'hammer', name: 'War Hammer', type: 'melee', subtype: 'two_handed',
+    id: 'hammer', glb: 'models/hammer_00.glb', name: 'War Hammer', type: 'melee', subtype: 'two_handed',
     damage: 50, attackSpeed: 0.6, range: 2.8, staminaCost: 30, knockback: 8,
     comboChain: ['overhead', 'sweep'], critMultiplier: 1.8, critChance: 0.05,
     blockReduction: 0.4, weight: 8,
@@ -177,12 +177,8 @@ function createWeaponMesh(weaponId) {
   group.userData.weaponData = data;
   
   // Try loading real GLB model
-  if (data.glb) {
-    const loader = new THREE.GLTFLoader || (window.GLTFLoader ? new window.GLTFLoader() : null);
-    // Use dynamic import for GLTFLoader
-    import('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/loaders/GLTFLoader.js').then(module => {
-      const gltfLoader = new module.GLTFLoader();
-      gltfLoader.load(data.glb, (gltf) => {
+  if (data.glb && window._gltfLoader) {
+    window._gltfLoader.load(data.glb, (gltf) => {
         const model = gltf.scene;
         // Auto-scale: measure model, normalize to ~1 unit height
         const box = new THREE.Box3().setFromObject(model);
@@ -200,9 +196,6 @@ function createWeaponMesh(weaponId) {
       }, undefined, (err) => {
         console.warn('[Weapon] GLB load failed for', data.glb, '- using procedural fallback');
       });
-    }).catch(() => {
-      console.warn('[Weapon] GLTFLoader import failed — using procedural fallback');
-    });
   }
   
   // Build procedural mesh immediately as fallback (shown until GLB loads)
