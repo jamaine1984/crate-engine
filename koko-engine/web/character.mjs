@@ -1627,6 +1627,7 @@ class CharacterController {
     // Apply gravity — ground check uses terrain height, not y=0
     if (!this.isGrounded) {
       this.jumpVelocity += this.gravity * dt;
+      if (!this._wasFalling && this.jumpVelocity < -2) { this._wasFalling = true; this._fallStartY = this.position.y; }
       this.position.y += this.jumpVelocity * dt;
       // Get ground height at current position (terrain or y=0)
       const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
@@ -1634,6 +1635,13 @@ class CharacterController {
         this.position.y = groundY;
         this.isGrounded = true;
         this.jumpVelocity = 0;
+        // Landing impact — screen shake based on fall distance
+        if (this._wasFalling && this._fallStartY !== undefined) {
+          const fallDist = this._fallStartY - this.position.y;
+          if (fallDist > 2 && window._screenShake) window._screenShake.trigger(Math.min(fallDist * 0.5, 4), 0.2);
+          if (fallDist > 1) this._createSprintDust();
+        }
+        this._wasFalling = false;
       }
     } else {
       // Snap to ground (terrain + interior floors + solid objects)
@@ -1704,6 +1712,11 @@ class CharacterController {
         this.position.z += slide.z * moveDist * 0.7;
       }
       if (window._sound && this.speed > 0.5) window._sound.updateFootsteps(dt, true, this.isRunning);
+      // Sprint dust particles
+      if (this.isRunning && this.isGrounded) {
+        this._dustTimer = (this._dustTimer || 0) + dt;
+        if (this._dustTimer > 0.3) { this._dustTimer = 0; this._createSprintDust(); }
+      }
     } else if (!this.isRolling) {
       this.speed = THREE.MathUtils.lerp(this.speed, 0, dt * 10);
       // Return to idle when stopped
@@ -2879,6 +2892,47 @@ function _checkWallCollision(position, direction, distance) {
     panel.appendChild(container);
     panel.onclick = (e) => { if (e.target === panel) panel.remove(); };
     document.body.appendChild(panel);
+  }
+
+
+  _createSprintDust() {
+    if (!this.scene || !this.model) return;
+    const pos = this.position.clone();
+    pos.y += 0.1;
+    
+    const geo = new THREE.BufferGeometry();
+    const count = 5;
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      positions[i*3] = pos.x + (Math.random()-0.5)*0.3;
+      positions[i*3+1] = pos.y + Math.random()*0.2;
+      positions[i*3+2] = pos.z + (Math.random()-0.5)*0.3;
+      sizes[i] = 0.1 + Math.random()*0.15;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    
+    const mat = new THREE.PointsMaterial({ color: 0x998866, size: 0.15, transparent: true, opacity: 0.4, sizeAttenuation: true, depthWrite: false });
+    const dust = new THREE.Points(geo, mat);
+    this.scene.add(dust);
+    
+    // Fade out and rise
+    let life = 0;
+    const animate = () => {
+      life += 0.016;
+      mat.opacity = 0.4 * (1 - life / 0.5);
+      const posArr = geo.attributes.position.array;
+      for (let i = 0; i < count; i++) {
+        posArr[i*3+1] += 0.02;
+        posArr[i*3] += (Math.random()-0.5)*0.01;
+        posArr[i*3+2] += (Math.random()-0.5)*0.01;
+      }
+      geo.attributes.position.needsUpdate = true;
+      if (life < 0.5) requestAnimationFrame(animate);
+      else { this.scene.remove(dust); geo.dispose(); mat.dispose(); }
+    };
+    requestAnimationFrame(animate);
   }
 
   respawn() {
