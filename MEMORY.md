@@ -13,7 +13,7 @@
 ### Crate Engine — Browser 3D Game Engine
 - **Location:** `koko-engine/` in workspace
 - **Web source:** `web/engine.mjs` (~13,000+ lines), `web/character.mjs` (~5,000+ lines)
-- **Current version:** engine.mjs v130, character.mjs v72, index.html v=130
+- **Current version:** engine.mjs v132, character.mjs v74, index.html v=132
 - **Deploy:** `npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true`
 - **Site:** crateshipgames.com (Cloudflare Pages)
 - **Cloudflare:** Koikes2021@gmail.com, ID: 6573d98c25150fd7b4602e56a0926767

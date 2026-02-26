@@ -2059,7 +2059,15 @@ class CharacterController {
     // NPCs
     if (!promptText && window.npcController) {
       for (const npc of window.npcController.npcs) {
-        if (npc.isDead) continue;
+        if (npc.isDead) {
+        // Death tilt for NPCs without death animation
+        if (npc._deathTilt && npc.model.rotation.x > -Math.PI/2) {
+          npc.model.rotation.x -= dt * 3;
+          if (npc.model.rotation.x < -Math.PI/2) npc.model.rotation.x = -Math.PI/2;
+        }
+        if (npc.mixer) npc.mixer.update(dt);
+        continue;
+      }
         const d = pos.distanceTo(npc.model.position);
         if (d < 5) {
           promptText = '[E] Talk to ' + (npc.type || 'NPC');
@@ -3785,7 +3793,9 @@ export class NPCController {
           break;
           
         case 'stunned':
-          _playAnim('idle'); // Could be a stun anim later
+          // Stagger: wobble rotation during stun
+          if (npc.model) npc.model.rotation.y += Math.sin(elapsed * 8) * 0.02;
+          _playAnim('idle');
           break;
           
         case 'dead':
@@ -3841,6 +3851,11 @@ export class NPCController {
     if (npc.isDead) return;
     npc.health = Math.max(0, npc.health - amount);
     
+    // Floating damage number
+    if (typeof window._floatingDamage === 'function') {
+      window._floatingDamage(npc.model.position, amount, amount >= 20);
+    }
+    
     // Show & update health bar
     if (npc.healthBar) {
       npc.healthBar.visible = true;
@@ -3873,6 +3888,13 @@ export class NPCController {
       npc.model.position.add(kb);
     }
     
+    // Stun on heavy attacks (30% chance on normal, 100% on heavy)
+    if (npc.ai && amount >= 20) {
+      npc.ai.stun();
+    } else if (npc.ai && Math.random() < 0.15) {
+      npc.ai.stun();
+    }
+    
     // Aggro on attacker
     npc.isAggro = true;
     npc.aggroTarget = attackerPos;
@@ -3884,12 +3906,30 @@ export class NPCController {
       if (npc.mixer) npc.mixer.stopAllAction();
       if (npc.healthBar) npc.healthBar.visible = false;
       this._dropLoot(npc);
-      // Instant remove — no floating corpse
-      npc.model.visible = false;
+      // Play death animation, then fade out
+      if (npc.animations.death) {
+        const deathAction = npc.animations.death;
+        deathAction.reset();
+        deathAction.setLoop(THREE.LoopOnce, 1);
+        deathAction.clampWhenFinished = true;
+        deathAction.play();
+      } else {
+        // Fallback: tip over
+        npc._deathTilt = true;
+      }
+      // Fade out after 2s, remove after 3s
+      setTimeout(() => {
+        npc.model.traverse(c => {
+          if (c.isMesh && c.material) {
+            c.material.transparent = true;
+            c.material.opacity = 0.5;
+          }
+        });
+      }, 2000);
       setTimeout(() => {
         this.scene.remove(npc.model);
         this.npcs = this.npcs.filter(n => n !== npc);
-      }, 100);
+      }, 3000);
       return true; // killed
     }
     return false;
