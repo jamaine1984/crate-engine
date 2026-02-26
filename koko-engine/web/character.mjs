@@ -18,12 +18,17 @@ function _getTerrainY(x, z) {
 }
 
 // Extended ground check: terrain + interior floors + solid objects
+// Cached raycasters for performance (avoid GC churn)
+const _cachedRaycaster = new THREE.Raycaster();
+const _cachedOrigin = new THREE.Vector3();
+const _downDir = new THREE.Vector3(0, -1, 0);
+
 function _getGroundY(x, z, currentY) {
-  const rc = new THREE.Raycaster(
-    new THREE.Vector3(x, (currentY || 0) + 2, z), // cast from slightly above player
-    new THREE.Vector3(0, -1, 0),
-    0, 10 // max distance 10 units down
-  );
+  const rc = _cachedRaycaster;
+  _cachedOrigin.set(x, (currentY || 0) + 2, z);
+  rc.set(_cachedOrigin, _downDir);
+  rc.near = 0;
+  rc.far = 10;
   
   let bestY = -Infinity;
   
@@ -1617,10 +1622,12 @@ class CharacterController {
       
       this.speed = THREE.MathUtils.lerp(this.speed, targetSpeed, dt * 8);
       
-      // Wall collision check before moving
+      // Wall collision check (every 2 frames for performance)
       const moveDir = new THREE.Vector3(Math.sin(this.rotation), 0, Math.cos(this.rotation));
       const moveDist = this.speed * dt;
-      const wallCheck = _checkWallCollision(this.position, moveDir, moveDist);
+      this._wallFrame = ((this._wallFrame || 0) + 1) % 2;
+      const wallCheck = this._wallFrame === 0 ? _checkWallCollision(this.position, moveDir, moveDist) : (this._lastWallCheck || {hit: false});
+      if (this._wallFrame === 0) this._lastWallCheck = wallCheck;
       if (!wallCheck.hit) {
         this.position.x += moveDir.x * moveDist;
         this.position.z += moveDir.z * moveDist;
@@ -2297,12 +2304,17 @@ function _getTerrainY(x, z) {
 }
 
 // Extended ground check: terrain + interior floors + solid objects
+// Cached raycasters for performance (avoid GC churn)
+const _cachedRaycaster = new THREE.Raycaster();
+const _cachedOrigin = new THREE.Vector3();
+const _downDir = new THREE.Vector3(0, -1, 0);
+
 function _getGroundY(x, z, currentY) {
-  const rc = new THREE.Raycaster(
-    new THREE.Vector3(x, (currentY || 0) + 2, z), // cast from slightly above player
-    new THREE.Vector3(0, -1, 0),
-    0, 10 // max distance 10 units down
-  );
+  const rc = _cachedRaycaster;
+  _cachedOrigin.set(x, (currentY || 0) + 2, z);
+  rc.set(_cachedOrigin, _downDir);
+  rc.near = 0;
+  rc.far = 10;
   
   let bestY = -Infinity;
   
@@ -3437,8 +3449,10 @@ export class NPCController {
         dir.normalize();
         npc.model.position.addScaledVector(dir, speed * dt);
         npc.model.rotation.y = Math.atan2(dir.x, dir.z);
-        // Terrain snap
-        const ty = _getTerrainY(npc.model.position.x, npc.model.position.z);
+        // Terrain snap (throttled — every 3rd frame per NPC)
+        npc._groundFrame = ((npc._groundFrame || 0) + 1) % 3;
+        const ty = npc._groundFrame === 0 ? _getTerrainY(npc.model.position.x, npc.model.position.z) : (npc._lastGroundY || 0);
+        if (npc._groundFrame === 0) npc._lastGroundY = ty;
         if (ty > -0.1) {
           const go = npc.model.userData.groundOffset || 0;
           const targetY = ty + go;
