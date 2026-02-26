@@ -9,9 +9,79 @@ const loader = new GLTFLoader();
 function _getTerrainY(x, z) {
   const tm = window._terrainMesh;
   if (!tm) return 0;
-  const rc = new THREE.Raycaster(new THREE.Vector3(x, 500, z), new THREE.Vector3(0, -1, 0));
+  const rc = new THREE.Raycaster(
+    new THREE.Vector3(x, 500, z),
+    new THREE.Vector3(0, -1, 0)
+  );
   const hits = rc.intersectObject(tm);
   return hits.length > 0 ? hits[0].point.y : 0;
+}
+
+// Extended ground check: terrain + interior floors + solid objects
+function _getGroundY(x, z, currentY) {
+  const rc = new THREE.Raycaster(
+    new THREE.Vector3(x, (currentY || 0) + 2, z), // cast from slightly above player
+    new THREE.Vector3(0, -1, 0),
+    0, 10 // max distance 10 units down
+  );
+  
+  let bestY = -Infinity;
+  
+  // Check terrain
+  const tm = window._terrainMesh;
+  if (tm) {
+    const hits = rc.intersectObject(tm);
+    if (hits.length > 0) bestY = Math.max(bestY, hits[0].point.y);
+  }
+  
+  // Check solid objects (interior floors, stairs, platforms)
+  const solids = (window._sceneObjects || []).filter(o => 
+    o && o.userData && (o.userData.isSolid || o.userData.isFloor || o.userData.isInterior)
+  );
+  
+  for (const solid of solids) {
+    const hits = rc.intersectObject(solid, true); // recursive for groups
+    for (const hit of hits) {
+      // Only count surfaces we can stand on (normal pointing roughly up)
+      if (hit.face && hit.face.normal) {
+        const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+        if (worldNormal.y > 0.5) { // slope < ~60 degrees
+          bestY = Math.max(bestY, hit.point.y);
+        }
+      } else {
+        bestY = Math.max(bestY, hit.point.y);
+      }
+    }
+  }
+  
+  return bestY > -Infinity ? bestY : 0;
+}
+
+// Wall collision check: returns true if movement would hit a wall
+function _checkWallCollision(position, direction, distance) {
+  const rc = new THREE.Raycaster(
+    new THREE.Vector3(position.x, position.y + 0.5, position.z), // chest height
+    direction.clone().normalize(),
+    0, distance + 0.3 // check slightly ahead
+  );
+  
+  const solids = (window._sceneObjects || []).filter(o => 
+    o && o.userData && (o.userData.isSolid || o.userData.isInterior)
+  );
+  
+  for (const solid of solids) {
+    const hits = rc.intersectObject(solid, true);
+    for (const hit of hits) {
+      // Wall = surface with mostly horizontal normal
+      if (hit.face && hit.face.normal) {
+        const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+        if (Math.abs(worldNormal.y) < 0.5) { // mostly vertical surface = wall
+          return { hit: true, point: hit.point, normal: worldNormal, distance: hit.distance };
+        }
+      }
+    }
+  }
+  return { hit: false };
 }
 
 
@@ -1391,43 +1461,28 @@ class CharacterController {
       this.jumpVelocity += this.gravity * dt;
       this.position.y += this.jumpVelocity * dt;
       // Get ground height at current position (terrain or y=0)
-      let groundY = 0;
-      const tm = window._terrainMesh || (typeof terrainMesh !== 'undefined' ? terrainMesh : null);
-      if (tm) {
-        const _rc = new THREE.Raycaster(
-          new THREE.Vector3(this.position.x, this.position.y + 100, this.position.z),
-          new THREE.Vector3(0, -1, 0)
-        );
-        const _hits = _rc.intersectObject(tm);
-        if (_hits.length > 0) groundY = _hits[0].point.y;
-      }
+      const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
       if (this.position.y <= groundY) {
         this.position.y = groundY;
         this.isGrounded = true;
         this.jumpVelocity = 0;
       }
     } else {
-      // Even when grounded, snap to terrain (walking uphill/downhill)
-      const tm = window._terrainMesh || (typeof terrainMesh !== 'undefined' ? terrainMesh : null);
-      if (tm) {
-        const _rc = new THREE.Raycaster(
-          new THREE.Vector3(this.position.x, this.position.y + 100, this.position.z),
-          new THREE.Vector3(0, -1, 0)
-        );
-        const _hits = _rc.intersectObject(tm);
-        if (_hits.length > 0) {
-          const groundY = _hits[0].point.y;
-          // Snap to ground if close, fall if too far above
-          if (Math.abs(this.position.y - groundY) < 0.5) {
-            // Smooth ground following on hills
-            const _dy = groundY - this.position.y;
-            this.position.y += _dy * (_dy > 0 ? 0.25 : 0.35); // Faster downhill
-          } else if (this.position.y > groundY + 0.5) {
-            // Walking off edge — start falling
-            this.isGrounded = false;
-            this.jumpVelocity = 0;
-          }
+      // Snap to ground (terrain + interior floors + solid objects)
+      const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
+      if (Math.abs(this.position.y - groundY) < 1.5) {
+        // Smooth ground following
+        const _dy = groundY - this.position.y;
+        if (Math.abs(_dy) < 0.5) {
+          this.position.y += _dy * (_dy > 0 ? 0.25 : 0.35);
+        } else if (_dy > 0) {
+          // Step up (stairs) — only if step is < 0.4m
+          if (_dy < 0.4) this.position.y += _dy * 0.5;
+          else { this.isGrounded = false; this.jumpVelocity = 0; }
         }
+      } else if (this.position.y > groundY + 1.5) {
+        this.isGrounded = false;
+        this.jumpVelocity = 0;
       }
     }
     
@@ -1465,8 +1520,19 @@ class CharacterController {
       
       this.speed = THREE.MathUtils.lerp(this.speed, targetSpeed, dt * 8);
       
-      this.position.x += Math.sin(this.rotation) * this.speed * dt;
-      this.position.z += Math.cos(this.rotation) * this.speed * dt;
+      // Wall collision check before moving
+      const moveDir = new THREE.Vector3(Math.sin(this.rotation), 0, Math.cos(this.rotation));
+      const moveDist = this.speed * dt;
+      const wallCheck = _checkWallCollision(this.position, moveDir, moveDist);
+      if (!wallCheck.hit) {
+        this.position.x += moveDir.x * moveDist;
+        this.position.z += moveDir.z * moveDist;
+      } else {
+        // Slide along wall
+        const slide = moveDir.clone().sub(wallCheck.normal.clone().multiplyScalar(moveDir.dot(wallCheck.normal)));
+        this.position.x += slide.x * moveDist * 0.7;
+        this.position.z += slide.z * moveDist * 0.7;
+      }
       if (window._sound && this.speed > 0.5) window._sound.updateFootsteps(dt, true, this.isRunning);
     } else if (!this.isRolling) {
       this.speed = THREE.MathUtils.lerp(this.speed, 0, dt * 10);
@@ -2129,9 +2195,79 @@ class CharacterController {
 function _getTerrainY(x, z) {
   const tm = window._terrainMesh;
   if (!tm) return 0;
-  const rc = new THREE.Raycaster(new THREE.Vector3(x, 500, z), new THREE.Vector3(0, -1, 0));
+  const rc = new THREE.Raycaster(
+    new THREE.Vector3(x, 500, z),
+    new THREE.Vector3(0, -1, 0)
+  );
   const hits = rc.intersectObject(tm);
   return hits.length > 0 ? hits[0].point.y : 0;
+}
+
+// Extended ground check: terrain + interior floors + solid objects
+function _getGroundY(x, z, currentY) {
+  const rc = new THREE.Raycaster(
+    new THREE.Vector3(x, (currentY || 0) + 2, z), // cast from slightly above player
+    new THREE.Vector3(0, -1, 0),
+    0, 10 // max distance 10 units down
+  );
+  
+  let bestY = -Infinity;
+  
+  // Check terrain
+  const tm = window._terrainMesh;
+  if (tm) {
+    const hits = rc.intersectObject(tm);
+    if (hits.length > 0) bestY = Math.max(bestY, hits[0].point.y);
+  }
+  
+  // Check solid objects (interior floors, stairs, platforms)
+  const solids = (window._sceneObjects || []).filter(o => 
+    o && o.userData && (o.userData.isSolid || o.userData.isFloor || o.userData.isInterior)
+  );
+  
+  for (const solid of solids) {
+    const hits = rc.intersectObject(solid, true); // recursive for groups
+    for (const hit of hits) {
+      // Only count surfaces we can stand on (normal pointing roughly up)
+      if (hit.face && hit.face.normal) {
+        const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+        if (worldNormal.y > 0.5) { // slope < ~60 degrees
+          bestY = Math.max(bestY, hit.point.y);
+        }
+      } else {
+        bestY = Math.max(bestY, hit.point.y);
+      }
+    }
+  }
+  
+  return bestY > -Infinity ? bestY : 0;
+}
+
+// Wall collision check: returns true if movement would hit a wall
+function _checkWallCollision(position, direction, distance) {
+  const rc = new THREE.Raycaster(
+    new THREE.Vector3(position.x, position.y + 0.5, position.z), // chest height
+    direction.clone().normalize(),
+    0, distance + 0.3 // check slightly ahead
+  );
+  
+  const solids = (window._sceneObjects || []).filter(o => 
+    o && o.userData && (o.userData.isSolid || o.userData.isInterior)
+  );
+  
+  for (const solid of solids) {
+    const hits = rc.intersectObject(solid, true);
+    for (const hit of hits) {
+      // Wall = surface with mostly horizontal normal
+      if (hit.face && hit.face.normal) {
+        const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+        if (Math.abs(worldNormal.y) < 0.5) { // mostly vertical surface = wall
+          return { hit: true, point: hit.point, normal: worldNormal, distance: hit.distance };
+        }
+      }
+    }
+  }
+  return { hit: false };
 }
 
     for (const [model, ox, oz, scale] of furniture) {

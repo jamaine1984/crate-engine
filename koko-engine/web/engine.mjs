@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=65';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=66';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -4558,6 +4558,7 @@ function expandGround(newSize) {
 
 // === OBJECTS LIST ===
 const objects = [];
+window._sceneObjects = objects; // expose for collision system
 let weatherSystem = null;
 let rainParticles = null;
 let snowParticles = null;
@@ -4841,6 +4842,8 @@ function createSolidWall(width, height, depth, mat) {
   const w = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
   w.position.y = height / 2;
   w.castShadow = true; w.receiveShadow = true;
+  w.userData.isSolid = true;
+  w.userData.isWall = true;
   return w;
 }
 
