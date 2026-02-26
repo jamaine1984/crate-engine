@@ -1,4 +1,5 @@
 import { parseIntent, executeIntent } from './godmode.mjs';
+import { interpretWithLLM, hasApiKey, setApiKey } from './llm-interpreter.mjs';
 // Crate Engine AI Agent v3 — Full game engine assistant
 // Knows ALL engine commands: build, play, combat, craft, quests, NPCs, weather, etc.
 
@@ -923,21 +924,25 @@ export class CrateAgent {
       return;
     }
 
-    // 1.5. SMART DECOMPOSITION — break complex requests into engine commands
-    const smartResult = this._decomposeRequest(lower);
-    if (smartResult && smartResult.length > 0) {
-      this.addBotMessage('Running: <code style="background:#1a1a2e;padding:3px 8px;border-radius:6px;color:#f7c948;font-size:0.78rem">' + smartResult.map(c => this.esc(c)).join(' → ') + '</code>');
-      for (const cmd of smartResult) {
-        this.executeCmd(cmd);
-        // Play/character commands need more time to load models
-        const delay = cmd.match(/^play|^character|^equip/) ? 4000 : 1000;
-        await new Promise(r => setTimeout(r, delay));
+    // 1.5. SMART LLM INTERPRETER — understands ANY natural language
+    // First try the smart local parser, which handles most common patterns
+    const smartCmds = await interpretWithLLM(text);
+    if (smartCmds && smartCmds.length > 0) {
+      // Check if it's just passing through the raw input (catch-all)
+      const isPassthrough = smartCmds.length === 1 && smartCmds[0] === text;
+      if (!isPassthrough) {
+        this.addBotMessage('🧠 Running: <code style="background:#1a1a2e;padding:3px 8px;border-radius:6px;color:#f7c948;font-size:0.78rem">' + smartCmds.map(c => this.esc(c)).join(' → ') + '</code>');
+        for (const cmd of smartCmds) {
+          this.executeCmd(cmd);
+          const delay = cmd.match(/^play|^character|^equip/) ? 4000 : 1000;
+          await new Promise(r => setTimeout(r, delay));
+        }
+        this.commandCount++;
+        this.updateCmdCount();
+        await new Promise(r => setTimeout(r, 1500));
+        this.addBotMessage('✅ Done! ' + smartCmds.length + ' commands executed.');
+        return;
       }
-      this.commandCount++;
-      this.updateCmdCount();
-      await new Promise(r => setTimeout(r, 2000));
-      this.addBotMessage('✅ Done! ' + smartResult.length + ' commands executed.');
-      return;
     }
 
     // 2. Route build/play/combat/craft/quest commands directly to engine

@@ -693,3 +693,252 @@ This way, the character's position Y = terrain height, and the model container h
 6. No input abstraction (raw event listeners everywhere)
 7. Camera using manual offsets instead of spherical coordinates
 8. NPCs with random behavior instead of state machines + steering
+
+---
+
+## 15. SPRING SIMULATION (Secret Sauce of Good Game Feel)
+
+### The Formula (From Sketchbook)
+```javascript
+function spring(source, dest, velocity, mass, damping) {
+  let acceleration = (dest - source) / mass;
+  velocity += acceleration;
+  velocity *= damping;
+  let position = source + velocity;
+  return { position, velocity };
+}
+```
+
+### Usage Everywhere
+- **Camera follow**: target=characterPos, mass=10, damping=0.8
+- **Character velocity**: target=inputVelocity, mass=50, damping=0.8
+- **Character rotation**: target=cameraDirection, mass=10, damping=0.5
+- **Vehicle entry lerp**: target=seatPosition, mass=60, damping=0.5
+
+### What damping means:
+- 0.8 = slow, smooth following (camera)
+- 0.5 = medium (character rotation)
+- 0.3 = fast, snappy (combat)
+- 0.95 = very slow, drifty (vehicle)
+
+### For Vector3:
+```javascript
+function springV(source, dest, velocity, mass, damping) {
+  const acceleration = new THREE.Vector3().subVectors(dest, source).divideScalar(mass);
+  velocity.add(acceleration);
+  velocity.multiplyScalar(damping);
+  source.add(velocity);
+}
+```
+
+---
+
+## 16. COMPLETE STATE LIST FOR A PROPER CHARACTER (Sketchbook)
+
+Base States:
+- Idle
+- Walk (velocity target 0.8)
+- Sprint (velocity target 1.4, different damping)
+- StartWalkForward, StartWalkLeft, StartWalkRight, StartWalkBackLeft, StartWalkBackRight
+- EndWalk
+
+Jump States:
+- JumpIdle (from standing)
+- JumpRunning (from moving)
+- Falling
+
+Landing States:
+- DropIdle (soft landing, no movement)
+- DropRunning (soft landing, keep running)
+- DropRolling (hard landing, roll animation)
+
+Vehicle States:
+- OpenVehicleDoor
+- EnteringVehicle (lerp to seat, play animation)
+- Driving
+- Sitting (passenger)
+- ExitingVehicle
+- ExitingAirplane
+- SwitchingSeats
+
+Each state: constructor (play animation) → update (physics) → onInputChange (transitions)
+
+---
+
+## 17. WHAT MAKES A GAME "FEEL" LIKE A REAL GAME
+
+After studying all these engines, here's what separates amateur from professional:
+
+### 1. Response Curves
+- Input isn't 0 or 1 — it accelerates/decelerates via springs
+- Camera doesn't snap — it follows with damping
+- Character doesn't teleport — velocity ramps up
+
+### 2. State Management
+- Each state has clear entry/exit/update
+- Animations only change on state transition
+- No "if-else spaghetti" in update loop
+
+### 3. Separation of Systems
+- Input → Character State → Animation
+- Physics → Position → Camera
+- Never: Input → directly changes position
+
+### 4. Polish Details
+- Camera collision (pull forward when hitting walls)
+- Ground impact detection (hard landing → roll/stumble)
+- Directional walk starts (5 different start animations!)
+- Door physics when entering vehicles
+- Weapon bobbing when walking
+
+### 5. Consistent Scale
+- Character ≈ 1.8 units tall
+- Weapons ≈ 0.6-1.2 units
+- Buildings ≈ 3-10 units tall
+- Trees ≈ 5-15 units
+- Everything proportional
+
+---
+
+## 18. STAIRS AND SLOPES WITHOUT PHYSICS LIBRARY
+
+### Rapier's Approach (what we need to replicate with raycasts)
+
+**Autostep for stairs:**
+```
+Parameters:
+- maxStepHeight: 0.5 (max height character can step over)
+- minStepWidth: 0.3 (min horizontal space on top of step)
+```
+
+Algorithm:
+1. Cast horizontal ray at foot level → hits obstacle
+2. Cast horizontal ray at maxStepHeight → clear (step is shorter than max)
+3. Cast vertical ray down from above the step → find top surface
+4. Check if horizontal distance to top ≥ minStepWidth
+5. If all pass → teleport character up to step height
+6. If not → blocked
+
+**Our implementation (raycast-based, no physics lib):**
+```javascript
+function tryAutostep(position, moveDir, stepHeight = 0.5) {
+  const origin = position.clone();
+  
+  // 1. Forward ray at foot level — is there an obstacle?
+  const footRay = new THREE.Raycaster(
+    new THREE.Vector3(origin.x, origin.y + 0.1, origin.z),
+    moveDir, 0, 0.5
+  );
+  const footHits = footRay.intersectObjects(collisionMeshes);
+  if (footHits.length === 0) return null; // No obstacle
+  
+  // 2. Forward ray at step height — is it clear above?
+  const stepRay = new THREE.Raycaster(
+    new THREE.Vector3(origin.x, origin.y + stepHeight, origin.z),
+    moveDir, 0, 0.5
+  );
+  const stepHits = stepRay.intersectObjects(collisionMeshes);
+  if (stepHits.length > 0) return null; // Obstacle too tall
+  
+  // 3. Vertical ray down from above — find step top
+  const aboveStep = new THREE.Vector3(
+    origin.x + moveDir.x * 0.3,
+    origin.y + stepHeight + 0.1,
+    origin.z + moveDir.z * 0.3
+  );
+  const downRay = new THREE.Raycaster(aboveStep, new THREE.Vector3(0,-1,0), 0, stepHeight + 0.2);
+  const downHits = downRay.intersectObjects(collisionMeshes);
+  if (downHits.length === 0) return null; // No surface
+  
+  // Step onto it
+  return downHits[0].point.y;
+}
+```
+
+**Slopes:**
+```javascript
+function checkSlope(position, moveDir) {
+  // Cast ray slightly ahead and down
+  const ahead = position.clone().add(moveDir.clone().multiplyScalar(0.5));
+  ahead.y += 1;
+  const ray = new THREE.Raycaster(ahead, new THREE.Vector3(0,-1,0), 0, 3);
+  const hits = ray.intersectObjects(collisionMeshes);
+  if (hits.length === 0) return { angle: 0, y: position.y };
+  
+  const slopeAngle = hits[0].face.normal.angleTo(new THREE.Vector3(0,1,0));
+  return { 
+    angle: slopeAngle,
+    y: hits[0].point.y,
+    tooSteep: slopeAngle > Math.PI * 0.25 // 45 degrees
+  };
+}
+```
+
+---
+
+## 19. ASSET QUALITY — WHAT MAKES A MODEL "GAME READY"
+
+### What makes a model look basic:
+1. No textures (just solid colors)
+2. Too few polygons (flat shading, visible edges)
+3. No baked ambient occlusion
+4. No PBR materials (metalness/roughness)
+5. Uniform geometry (no detail variation)
+
+### What makes a model look game-ready:
+1. PBR materials (baseColor + metalness + roughness + normal map)
+2. Baked ambient occlusion for depth
+3. Appropriate poly count (500-5000 for props, 5000-20000 for characters)
+4. UV-mapped textures (even simple color atlases)
+5. Vertex color variation (subtle shade differences)
+6. LOD (Level of Detail) variants for distance
+7. Proper pivot point (bottom center for ground objects)
+
+### Our Model Library Assessment:
+- **KayKit packs** (characters, buildings, weapons, furniture): ✅ Game-ready, proper materials
+- **Blender-generated procedural models**: ❌ Basic, solid colors, too simple
+- **Solution**: Either:
+  a) Replace Blender models with real asset packs (Quaternius, Kenney, Poly Pizza)
+  b) Add PBR materials/textures to existing models
+  c) Use AI upscaling (TripoSR output → manual material polish)
+
+### Free Game-Ready Asset Sources:
+1. **Quaternius** — 1000+ low-poly characters, vehicles, weapons, environments
+2. **Kenney** — 500+ stylized 3D assets, CC0 license
+3. **Kay Lousberg/KayKit** — What we already use, excellent quality
+4. **Poly Pizza** — Thousands of user-contributed CC0 models
+5. **Sketchfab** — Filter by CC0, downloadable GLB/GLTF
+
+---
+
+## 20. FINAL SUMMARY — WHAT WE NEED TO BUILD
+
+### The Engine Should Have:
+
+**Core Systems (must work perfectly):**
+1. Character Controller with State Machine
+2. Camera System with Spring Follow + Collision
+3. Animation System with Crossfade + Blend
+4. Input System with Key Bindings
+5. Physics (raycast-based: gravity, stairs, slopes)
+
+**Game Systems (make it a game):**
+6. Weapon System (equip, fire, reload, bone attachment)
+7. NPC AI (state machine + steering behaviors)
+8. Combat (hitbox/hurtbox, damage, death)
+9. Inventory (grid-based, equipment slots)
+10. Quest/Dialog System
+
+**World Systems (make it a world):**
+11. Terrain (noise-based, multiple biomes)
+12. Water (Gerstner waves — DONE)
+13. Weather (rain, snow, fog — DONE)
+14. Day/Night Cycle
+15. Buildings/Interiors
+
+**Editor Systems (make it buildable):**
+16. Scene Editor (add/remove/transform)
+17. Save/Load (JSON serialization)
+18. Asset Library (2000+ models)
+19. AI Agent (NL command interpretation)
+20. Commands Panel (help/reference)

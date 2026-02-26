@@ -484,7 +484,7 @@ export class CharacterController {
     });
   }
   
-  async loadCharacter(type = 'adventurer') {
+  async loadCharacter(type = 'knight') {
     const config = this.characterModels[type];
     if (!config) return 'Unknown character: ' + type;
     
@@ -526,14 +526,18 @@ export class CharacterController {
         this.model.traverse(node => {
           if (node.isBone || node.type === 'Bone') {
             const n = node.name.toLowerCase();
-            // Hand sockets — support Mixamo (RightHand), Wolf3D, and KayKit (PalmR) rigs
-            if ((n.includes('righthand') || n.includes('right_hand') || n.includes('r_hand') || n === 'palmr' || n === 'palm_r') && !n.includes('thumb') && !n.includes('middle') && !n.includes('finger') && !this.sockets.hand_r) this.sockets.hand_r = node;
-            else if ((n.includes('lefthand') || n.includes('left_hand') || n.includes('l_hand') || n === 'palml' || n === 'palm_l') && !n.includes('thumb') && !n.includes('middle') && !n.includes('finger') && !this.sockets.hand_l) this.sockets.hand_l = node;
-            else if ((n.includes('rightforearm') || n.includes('right_forearm') || n.includes('r_forearm') || n === 'lowerarmr' || n === 'lower_arm_r') && !this.sockets.forearm_r) this.sockets.forearm_r = node;
-            else if ((n.includes('leftforearm') || n.includes('left_forearm') || n === 'lowerarml' || n === 'lower_arm_l') && !this.sockets.forearm_l) this.sockets.forearm_l = node;
-            else if ((n.includes('spine') && (n.includes('2') || n.includes('1')) || n === 'torso' || n === 'abdomen') && !this.sockets.back) this.sockets.back = node;
-            else if ((n.includes('rightupleg') || n.includes('righthip') || n.includes('r_thigh') || n === 'upperlegr') && !this.sockets.hip_r) this.sockets.hip_r = node;
-            else if ((n.includes('leftupleg') || n.includes('lefthip') || n.includes('l_thigh') || n === 'upperlegl') && !this.sockets.hip_l) this.sockets.hip_l = node;
+            // Hand sockets — support all naming conventions:
+            // Mixamo: mixamorig:RightHand → righthand
+            // KayKit Characters: Hand.R → hand.r  
+            // KayKit Knight: MiddleHand.R → middlehand.r
+            const isHand = !n.includes('thumb') && !n.includes('index') && !n.includes('pinky') && !n.includes('ring');
+            if (isHand && (n.includes('righthand') || n === 'hand.r' || n === 'middlehand.r' || n.includes('right_hand') || n.includes('r_hand') || n === 'palmr') && !this.sockets.hand_r) this.sockets.hand_r = node;
+            else if (isHand && (n.includes('lefthand') || n === 'hand.l' || n === 'middlehand.l' || n.includes('left_hand') || n.includes('l_hand') || n === 'palml') && !this.sockets.hand_l) this.sockets.hand_l = node;
+            else if ((n.includes('rightforearm') || n === 'lowerarm.r' || n.includes('right_forearm') || n.includes('r_forearm')) && !this.sockets.forearm_r) this.sockets.forearm_r = node;
+            else if ((n.includes('leftforearm') || n === 'lowerarm.l' || n.includes('left_forearm')) && !this.sockets.forearm_l) this.sockets.forearm_l = node;
+            else if ((n === 'torso' || n === 'chest' || n === 'abdomen' || (n.includes('spine') && (n.includes('2') || n.includes('1')))) && !this.sockets.back) this.sockets.back = node;
+            else if ((n.includes('rightupleg') || n.includes('righthip') || n === 'upperleg.r') && !this.sockets.hip_r) this.sockets.hip_r = node;
+            else if ((n.includes('leftupleg') || n.includes('lefthip') || n === 'upperleg.l') && !this.sockets.hip_l) this.sockets.hip_l = node;
           }
         });
         // Fallback: use forearm if no hand bone found
