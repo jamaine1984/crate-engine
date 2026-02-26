@@ -2267,8 +2267,22 @@ class CharacterController {
       );
       this.camera.lookAt(lookAt);
       
-      // FOV transition for aiming
-      const targetFOV = THREE.MathUtils.lerp(this.normalFOV, this.aimFOV, this.aimLerp);
+      // Camera roll during dodge
+      if (this.isRolling) {
+        this.camera.rotation.z = THREE.MathUtils.lerp(this.camera.rotation.z, 0.15 * this.shoulderSide, dt * 8);
+      } else {
+        this.camera.rotation.z = THREE.MathUtils.lerp(this.camera.rotation.z, 0, dt * 6);
+      }
+      
+      // FOV transition — sprint widens, aim narrows
+      let targetFOV = this.normalFOV;
+      if (this.aimLerp > 0.1) {
+        targetFOV = THREE.MathUtils.lerp(this.normalFOV, this.aimFOV, this.aimLerp);
+      } else if (this.isSprinting || this.keys['control']) {
+        targetFOV = this.normalFOV + 12; // Sprint FOV boost
+      } else if (this.speed > this.runSpeed * 0.8) {
+        targetFOV = this.normalFOV + 5; // Slight FOV when running
+      }
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, Math.min(1, 6 * dt));
       this.camera.updateProjectionMatrix();
       
