@@ -4399,6 +4399,13 @@ if (window._loadProgress) window._loadProgress(20, "Creating scene...");
     reload() { playTone(300, 0.05, 'square', 0.04); setTimeout(() => playTone(400, 0.05, 'square', 0.04), 200); setTimeout(() => playTone(500, 0.03, 'triangle', 0.03), 400); },
     explosion() { playNoise(0.4, 0.15); playTone(30, 0.5, 'sawtooth', 0.12); playTone(60, 0.3, 'square', 0.08); },
     shield() { playTone(150, 0.15, 'triangle', 0.08); playNoise(0.08, 0.04); },
+    
+    // Stubs for sound.mjs compat
+    init() {},
+    toggleMute() { return true; },
+    setMusicMood(mood) {},
+    biomeToMood(biome) { return 'peaceful'; },
+    biomeToAmbient(biome) { return 'forest'; },
   };
   
   // Periodic ambient one-shots
@@ -8831,7 +8838,7 @@ async function execSingle(cmd) {
       if (type.includes(key)) { biome = val; break; }
     }
     if (!biome) biome = { ground: 'grass', sky: [0.3,0.4,0.5], fog: null };
-    window._currentBiome = type; if (window._sound) { window._sound.setMusicMood(window._sound.biomeToMood(type)); }
+    window._currentBiome = type; if (window._sound) { if (window._sound && window._sound.setMusicMood) window._sound.setMusicMood(window._sound.biomeToMood ? window._sound.biomeToMood(type) : 'peaceful'); }
     
     // Apply biome
     scene.remove(currentGround); currentGroundType = biome.ground; currentGround = createGround(biome.ground); scene.add(currentGround);
@@ -12980,8 +12987,8 @@ function showScriptManager() {
 
 // === DEBUG/TEST EXPORTS ===
 // Init sound on first user interaction
-document.addEventListener('click', function() { if (window._sound) window._sound.init(); }, { once: true });
-document.addEventListener('keydown', function() { if (window._sound) window._sound.init(); }, { once: true });
+document.addEventListener('click', function() { if (window._sound && window._sound.init) window._sound.init(); }, { once: true });
+document.addEventListener('keydown', function() { if (window._sound && window._sound.init) window._sound.init(); }, { once: true });
 window._engine = {
   get camera() { return camera; },
   get scene() { return scene; },
