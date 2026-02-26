@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=72';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=73';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -3713,6 +3713,32 @@ window._floatingDamage = function(pos, dmg, isCrit) {
   requestAnimationFrame(() => { el.style.top = (y - 60) + 'px'; el.style.opacity = '0'; });
   setTimeout(() => el.remove(), 900);
 };
+// === KILL FEED ===
+window._killFeed = function(message) {
+  let feed = document.getElementById('kill-feed');
+  if (!feed) {
+    feed = document.createElement('div');
+    feed.id = 'kill-feed';
+    feed.style.cssText = 'position:fixed;top:80px;right:16px;z-index:9000;pointer-events:none;' +
+      'font-family:monospace;font-size:13px;max-width:280px;';
+    document.body.appendChild(feed);
+  }
+  
+  const entry = document.createElement('div');
+  entry.textContent = message;
+  entry.style.cssText = 'color:#fff;background:rgba(0,0,0,0.6);padding:4px 10px;margin-bottom:4px;' +
+    'border-radius:4px;border-left:3px solid #ff4444;opacity:1;transition:opacity 0.5s;' +
+    'backdrop-filter:blur(4px);';
+  feed.appendChild(entry);
+  
+  // Limit to 5 entries
+  while (feed.children.length > 5) feed.removeChild(feed.firstChild);
+  
+  // Fade out after 3s
+  setTimeout(() => { entry.style.opacity = '0'; }, 3000);
+  setTimeout(() => { if (entry.parentNode) entry.remove(); }, 3500);
+};
+
 
 window._playerDeath = function() {
   // Remove any existing death screens first
@@ -10708,6 +10734,10 @@ function animate() {
       if (kills > 0) {
         gameScore += kills * 100;
         if (levelSystem) levelSystem.addXP(kills * 30);
+        // Kill feed
+        if (window._killFeed) {
+          for (let k = 0; k < kills; k++) window._killFeed('☠️ Enemy eliminated +100');
+        }
         // Kill message
         let msg = document.getElementById('pickup-msg');
         if (!msg) {

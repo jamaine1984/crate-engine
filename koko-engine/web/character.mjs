@@ -632,6 +632,38 @@ class CharacterStateMachine {
   }
 }
 
+
+// === HIT MARKER SYSTEM ===
+function _showHitMarker(isKill) {
+  let marker = document.getElementById('hit-marker');
+  if (!marker) {
+    marker = document.createElement('div');
+    marker.id = 'hit-marker';
+    marker.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+      'pointer-events:none;z-index:9500;font-size:24px;font-weight:bold;' +
+      'text-shadow:0 0 6px rgba(0,0,0,0.8);transition:opacity 0.3s,transform 0.3s;opacity:0;';
+    document.body.appendChild(marker);
+  }
+  
+  if (isKill) {
+    marker.textContent = '✕';
+    marker.style.color = '#ffd700';
+    marker.style.fontSize = '32px';
+  } else {
+    marker.textContent = '×';
+    marker.style.color = '#ff4444';
+    marker.style.fontSize = '28px';
+  }
+  
+  marker.style.opacity = '1';
+  marker.style.transform = 'translate(-50%,-50%) scale(1.3)';
+  
+  setTimeout(() => {
+    marker.style.opacity = '0';
+    marker.style.transform = 'translate(-50%,-50%) scale(0.8)';
+  }, isKill ? 400 : 200);
+}
+
 class CharacterController {
   constructor(scene, camera, objects) {
     this.scene = scene;
@@ -1937,6 +1969,82 @@ class CharacterController {
     
     // Update camera
     this._updateCamera(dt);
+    
+    // === INTERACTION PROMPT ===
+    // Show prompt when near interactable objects
+    this._updateInteractionPrompt();
+  }
+  
+  _updateInteractionPrompt() {
+    let promptEl = document.getElementById('interact-prompt');
+    
+    // Check for nearby interactables
+    let promptText = null;
+    const pos = this.position;
+    
+    // Doors
+    if (window._sceneObjects) {
+      for (const obj of window._sceneObjects) {
+        if (!obj) continue;
+        let hasDoor = false;
+        obj.traverse(child => {
+          if (child.userData && child.userData.isDoor) {
+            const wp = new THREE.Vector3();
+            child.getWorldPosition(wp);
+            if (pos.distanceTo(wp) < 3) {
+              promptText = child.userData.isOpen ? '[E] Close Door' : '[E] Open Door';
+              hasDoor = true;
+            }
+          }
+        });
+        if (hasDoor) break;
+      }
+    }
+    
+    // NPCs
+    if (!promptText && window.npcController) {
+      for (const npc of window.npcController.npcs) {
+        if (npc.isDead) continue;
+        const d = pos.distanceTo(npc.model.position);
+        if (d < 5) {
+          promptText = '[E] Talk to ' + (npc.type || 'NPC');
+          break;
+        }
+      }
+    }
+    
+    // Vehicles
+    if (!promptText && window._sceneObjects) {
+      for (const obj of window._sceneObjects) {
+        if (!obj || !obj.userData || !obj.userData.name) continue;
+        const n = obj.userData.name.toLowerCase();
+        const isVehicle = n.includes('car') || n.includes('truck') || n.includes('boat') || n.includes('horse');
+        if (isVehicle && pos.distanceTo(obj.position) < 5) {
+          promptText = '[F] Enter ' + obj.userData.name;
+          break;
+        }
+      }
+    }
+    
+    // Show/hide prompt
+    if (promptText) {
+      if (!promptEl) {
+        promptEl = document.createElement('div');
+        promptEl.id = 'interact-prompt';
+        promptEl.style.cssText = 'position:fixed;bottom:25%;left:50%;transform:translateX(-50%);' +
+          'background:rgba(0,0,0,0.75);color:#fff;padding:8px 20px;border-radius:8px;' +
+          'font-family:monospace;font-size:14px;z-index:9000;pointer-events:none;' +
+          'border:1px solid rgba(255,255,255,0.15);backdrop-filter:blur(4px);' +
+          'transition:opacity 0.2s;';
+        document.body.appendChild(promptEl);
+      }
+      promptEl.textContent = promptText;
+      promptEl.style.opacity = '1';
+      promptEl.style.display = 'block';
+    } else if (promptEl) {
+      promptEl.style.opacity = '0';
+      setTimeout(() => { if (promptEl && promptEl.style.opacity === '0') promptEl.style.display = 'none'; }, 200);
+    }
   }
   
   _updateProceduralAnim(dt) {
@@ -2456,13 +2564,16 @@ function _checkWallCollision(position, direction, distance) {
         hitCount++;
         if (killed) {
           this._lastKillTime = Date.now(); if (window._sound) window._sound.SFX.enemyDeath();
+          _showHitMarker(true); // gold kill marker
         }
       }
     }
     
-    // Hit feedback — brief slow-mo effect (hitstop)
+    // Hit feedback — brief slow-mo effect (hitstop) + hit marker
     if (hitCount > 0) {
       this._hitstop = 0.05; if (window._sound) window._sound.SFX.swordHit();
+      // Hit marker — crosshair flash
+      _showHitMarker(false);
     }
   }
   
