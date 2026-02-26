@@ -770,15 +770,11 @@ export class CharacterController {
     
     const bone = this.sockets.hand_r || this.sockets.forearm_r;
     if (bone) {
-      // Auto-scale weapon to match character size
-      // Get character height and scale weapon proportionally
-      if (this.model) {
-        const charBox = new THREE.Box3().setFromObject(this.model);
-        const charHeight = charBox.getSize(new THREE.Vector3()).y;
-        // Weapons designed for ~1.8m character, scale accordingly
-        const weaponScale = Math.min(charHeight / 1.8, 1.5);
-        mesh.scale.setScalar(weaponScale);
-      }
+      // Scale weapon proportional to character — use model scale (not bounding box which includes bones)
+      const charScale = this.model ? this.model.scale.x : 1;
+      // Weapons are designed for scale=1.0 characters at ~1.8m
+      // Most KayKit characters auto-scale to ~0.02-1.3, so weapon needs to match
+      mesh.scale.setScalar(charScale * 0.5); // 50% of character scale for realistic proportion
       mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);
@@ -2417,15 +2413,11 @@ export class NPCController {
     
     const bone = this.sockets.hand_r || this.sockets.forearm_r;
     if (bone) {
-      // Auto-scale weapon to match character size
-      // Get character height and scale weapon proportionally
-      if (this.model) {
-        const charBox = new THREE.Box3().setFromObject(this.model);
-        const charHeight = charBox.getSize(new THREE.Vector3()).y;
-        // Weapons designed for ~1.8m character, scale accordingly
-        const weaponScale = Math.min(charHeight / 1.8, 1.5);
-        mesh.scale.setScalar(weaponScale);
-      }
+      // Scale weapon proportional to character — use model scale (not bounding box which includes bones)
+      const charScale = this.model ? this.model.scale.x : 1;
+      // Weapons are designed for scale=1.0 characters at ~1.8m
+      // Most KayKit characters auto-scale to ~0.02-1.3, so weapon needs to match
+      mesh.scale.setScalar(charScale * 0.5); // 50% of character scale for realistic proportion
       mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);

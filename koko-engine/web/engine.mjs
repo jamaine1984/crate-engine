@@ -346,7 +346,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=44';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=45';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -10976,8 +10976,8 @@ import('./interpreter.mjs').then(({ interpret }) => {
             
             if (bestMatch && bestScore >= 20) {
               // Random position so objects don't stack
-              const _rx = (Math.random() - 0.5) * 20;
-              const _rz = (Math.random() - 0.5) * 20;
+              const _rx = (Math.random() - 0.5) * 60;
+              const _rz = (Math.random() - 0.5) * 60;
               loadGLBModel(bestMatch.name, bestMatch.file, _rx, _rz);
               result = '✅ Added ' + bestMatch.name + (bestScore < 60 ? ' (best match for "' + intent.query + '")' : '');
               break;

@@ -809,6 +809,67 @@ export class CrateAgent {
     this.updateCmdCount();
   }
 
+  _decomposeRequest(lower) {
+    const cmds = [];
+    
+    // "add/give me/I want a player" → play as character
+    if (lower.match(/(?:add|give|create|spawn|i want|make)\s+(?:a\s+)?player/)) {
+      cmds.push('play as adventurer');
+    }
+    
+    // "with a weapon/sword/gun/rifle that shoots/fires" → equip weapon
+    const weaponMatch = lower.match(/(?:with|and|holding|carrying|equip)\s+(?:a\s+)?(\w+)(?:\s+that\s+(?:shoots|fires|attacks))?/);
+    if (weaponMatch) {
+      const w = weaponMatch[1];
+      if (w.match(/gun|rifle|shoot|pistol|blaster|weapon/)) cmds.push('equip rifle');
+      else if (w.match(/sword|blade|katana/)) cmds.push('equip sword');
+      else if (w.match(/axe|hatchet/)) cmds.push('equip axe');
+      else if (w.match(/hammer|mace/)) cmds.push('equip hammer');
+      else if (w.match(/spear|lance/)) cmds.push('equip spear');
+      else if (w.match(/bow/)) cmds.push('equip bow');
+      else if (w.match(/shield/)) cmds.push('equip shield');
+      else cmds.push('equip ' + w);
+    }
+    
+    // "that shoots" without weapon specified → equip rifle
+    if (lower.match(/(?:that|can|who)\s+(?:shoots|fires|attacks)/) && !weaponMatch) {
+      cmds.push('equip rifle');
+    }
+    
+    // "with enemies/monsters/NPCs" → spawn enemies
+    if (lower.match(/(?:with|and|add|spawn)\s+(?:some\s+)?(?:enemies|monsters|zombies|hostiles|bad guys)/)) {
+      cmds.push('spawn 5 enemies');
+    }
+    
+    // "with NPCs/people/villagers" → spawn NPCs
+    if (lower.match(/(?:with|and|add|spawn)\s+(?:some\s+)?(?:npcs?|people|villagers|characters|townsfolk)/)) {
+      cmds.push('spawn 5 npcs');
+    }
+    
+    // "in a/on a/with a [world type]" → build world
+    const worldMatch = lower.match(/(?:in|on)\s+(?:a\s+)?(\w+\s*\w*?)\s*(?:world|map|level|scene|$)/);
+    if (worldMatch) {
+      const world = worldMatch[1].trim();
+      if (world.match(/medieval|village|town|city|forest|desert|island|pirate|space|haunted|dungeon|zombie|war|ice|frozen/)) {
+        cmds.push('build a ' + world);
+      }
+    }
+    
+    // "make it rain/snow" → weather
+    if (lower.match(/(?:make it|with)\s+(?:rain|snow|fog)/)) {
+      const weather = lower.match(/(rain|snow|fog)/)[1];
+      cmds.push('make it ' + weather);
+    }
+    
+    // "at night/day/dawn/sunset" → time
+    const timeMatch = lower.match(/(?:at|during|in)\s+(?:the\s+)?(night|day|dawn|sunset|sunrise|dusk|noon|midnight)/);
+    if (timeMatch) {
+      cmds.push('time ' + timeMatch[1]);
+    }
+    
+    return cmds.length > 0 ? cmds : null;
+  }
+
   async handleMessage(text) {
     this.addUserMessage(text);
     const lower = text.toLowerCase().trim();
@@ -859,6 +920,23 @@ export class CrateAgent {
       setTimeout(() => { if (window._autoFrame) window._autoFrame(); }, 2000);
       await new Promise(r => setTimeout(r, matchedRecipe.commands.length * 60 + 300));
       this.addBotMessage(`${matchedRecipe.emoji} <strong>${capName}</strong> is live! ${matchedRecipe.commands.length} objects placed.`);
+      return;
+    }
+
+    // 1.5. SMART DECOMPOSITION — break complex requests into engine commands
+    const smartResult = this._decomposeRequest(lower);
+    if (smartResult && smartResult.length > 0) {
+      this.addBotMessage('Running: <code style="background:#1a1a2e;padding:3px 8px;border-radius:6px;color:#f7c948;font-size:0.78rem">' + smartResult.map(c => this.esc(c)).join(' → ') + '</code>');
+      for (const cmd of smartResult) {
+        this.executeCmd(cmd);
+        // Play/character commands need more time to load models
+        const delay = cmd.match(/^play|^character|^equip/) ? 4000 : 1000;
+        await new Promise(r => setTimeout(r, delay));
+      }
+      this.commandCount++;
+      this.updateCmdCount();
+      await new Promise(r => setTimeout(r, 2000));
+      this.addBotMessage('✅ Done! ' + smartResult.length + ' commands executed.');
       return;
     }
 
