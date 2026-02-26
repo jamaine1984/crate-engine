@@ -754,6 +754,7 @@ window.showAISettingsModal = showAISettingsModal;
 
 // === PLAY MODE (WASD First-Person) ===
 let playMode = false;
+    if (window._mobileControls) window._mobileControls.hide();
 
 // === CHARACTER SELECT (restored from localStorage) ===
 let selectedCharacterType = null;
@@ -840,6 +841,7 @@ function _showEditorUI() {
 
 function enterPlayMode() {
   playMode = true;
+    if (window._mobileControls) window._mobileControls.show();
   _hideEditorUI();
   // Create or find avatar
   playAvatar = objects.find(o => o.userData.name && o.userData.name.includes('player'));
@@ -4319,14 +4321,98 @@ if (window._loadProgress) window._loadProgress(20, "Creating scene...");
       doorOpen() { playTone(200, 0.15, 'triangle', 0.06); },
       gunshot() { playNoise(0.08, 0.15); playTone(100, 0.1, 'sawtooth', 0.1); },
     },
-    updateFootsteps(dt, moving, running) {
+    updateFootsteps(dt, moving, running, surface) {
       const interval = running ? 0.35 : 0.5;
       const now = performance.now() / 1000;
       if (moving && now - lastFootstep > interval) {
         lastFootstep = now;
-        const freq = 60 + Math.random() * 40;
-        playNoise(0.05, 0.03);
-        playTone(freq, 0.05, 'sine', 0.02);
+        // Surface-dependent footstep sounds
+        const s = (surface || 'grass').toLowerCase();
+        if (s.includes('stone') || s.includes('concrete') || s.includes('cobble')) {
+          playTone(180 + Math.random() * 60, 0.04, 'square', 0.03);
+          playNoise(0.03, 0.04);
+        } else if (s.includes('sand') || s.includes('dirt') || s.includes('mud')) {
+          playNoise(0.06, 0.04);
+          playTone(40 + Math.random() * 20, 0.04, 'sine', 0.02);
+        } else if (s.includes('snow')) {
+          playNoise(0.08, 0.025);
+          playTone(2000 + Math.random() * 500, 0.02, 'sine', 0.01);
+        } else if (s.includes('wood')) {
+          playTone(120 + Math.random() * 40, 0.05, 'triangle', 0.04);
+          playNoise(0.02, 0.02);
+        } else if (s.includes('water') || s.includes('wet')) {
+          playNoise(0.04, 0.035);
+          playTone(200 + Math.random() * 100, 0.03, 'sine', 0.015);
+        } else {
+          // Default grass
+          const freq = 60 + Math.random() * 40;
+          playNoise(0.05, 0.03);
+          playTone(freq, 0.05, 'sine', 0.02);
+        }
+      }
+    },
+    
+    // Ambient one-shots (birds, wind gusts, etc.)
+    ambientOneShot(type) {
+      if (type === 'bird') {
+        const freq = 800 + Math.random() * 1200;
+        playTone(freq, 0.1, 'sine', 0.03);
+        setTimeout(() => playTone(freq * 1.2, 0.08, 'sine', 0.025), 120);
+        setTimeout(() => playTone(freq * 0.9, 0.12, 'sine', 0.02), 260);
+      } else if (type === 'wind') {
+        playNoise(0.8, 0.02);
+      } else if (type === 'cricket') {
+        for (let i = 0; i < 3; i++) {
+          setTimeout(() => playTone(4000 + Math.random() * 1000, 0.03, 'sine', 0.015), i * 80);
+        }
+      } else if (type === 'thunder') {
+        playNoise(1.5, 0.12);
+        playTone(40, 0.8, 'sawtooth', 0.08);
+      } else if (type === 'splash') {
+        playNoise(0.15, 0.08);
+        playTone(300, 0.1, 'sine', 0.04);
+      }
+    },
+    
+    // UI sounds
+    uiClick() { playTone(800, 0.05, 'sine', 0.04); },
+    uiHover() { playTone(600, 0.03, 'sine', 0.02); },
+    uiError() { playTone(200, 0.15, 'square', 0.06); },
+    uiSuccess() { playTone(500, 0.08, 'sine', 0.04); playTone(700, 0.08, 'sine', 0.03); },
+    
+    levelUp() {
+      playTone(400, 0.2, 'sine', 0.08);
+      setTimeout(() => playTone(500, 0.15, 'sine', 0.07), 100);
+      setTimeout(() => playTone(600, 0.15, 'sine', 0.06), 200);
+      setTimeout(() => playTone(800, 0.25, 'sine', 0.08), 300);
+    },
+    
+    questComplete() {
+      playTone(523, 0.15, 'sine', 0.06);
+      setTimeout(() => playTone(659, 0.15, 'sine', 0.06), 150);
+      setTimeout(() => playTone(784, 0.2, 'sine', 0.07), 300);
+    },
+    
+    // Weapon-specific SFX
+    bowDraw() { playNoise(0.2, 0.04); playTone(100, 0.15, 'triangle', 0.03); },
+    bowRelease() { playTone(400, 0.08, 'sawtooth', 0.05); playNoise(0.05, 0.03); },
+    reload() { playTone(300, 0.05, 'square', 0.04); setTimeout(() => playTone(400, 0.05, 'square', 0.04), 200); setTimeout(() => playTone(500, 0.03, 'triangle', 0.03), 400); },
+    explosion() { playNoise(0.4, 0.15); playTone(30, 0.5, 'sawtooth', 0.12); playTone(60, 0.3, 'square', 0.08); },
+    shield() { playTone(150, 0.15, 'triangle', 0.08); playNoise(0.08, 0.04); },
+  };
+  
+  // Periodic ambient one-shots
+  let _ambientTimer = 0;
+  window._updateAmbientOneShots = function(dt) {
+    _ambientTimer += dt;
+    if (_ambientTimer > 8 + Math.random() * 15) {
+      _ambientTimer = 0;
+      const types = ['bird', 'wind', 'cricket'];
+      const biome = window._currentBiome || 'peaceful';
+      if (biome === 'storm' || biome === 'hurricane') {
+        window._sound.ambientOneShot('thunder');
+      } else {
+        window._sound.ambientOneShot(types[Math.floor(Math.random() * types.length)]);
       }
     }
   };
@@ -10540,6 +10626,7 @@ function animate() {
 
   if (window._godmode) window._godmode.updateBehaviors(dt, t);
   if (window._sound) { window._sound.updateMusic(dt); window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
+  if (window._updateAmbientOneShots) window._updateAmbientOneShots(dt);
   updateDayNightCycle(dt);
   if (!playMode) controls.update();
   if (window._updateShadowCascades) window._updateShadowCascades();
@@ -13040,6 +13127,29 @@ function getSceneCommands(scene) {
   });
   
 
+      // Terrain painting
+      if (lower === 'paint' || lower === 'terrain paint' || lower === 'paint terrain' || lower === 'brush') {
+        return window._terrainPaint ? window._terrainPaint.toggle() : '❌ Terrain paint not available';
+      }
+      if (lower.startsWith('paint ')) {
+        const preset = lower.replace('paint ', '');
+        return window._terrainPaint ? window._terrainPaint.setColor(preset) : '❌ Not available';
+      }
+      if (lower.startsWith('brush size ') || lower.startsWith('brush radius ')) {
+        const r = parseInt(lower.split(' ').pop());
+        return window._terrainPaint ? window._terrainPaint.setRadius(r) : '❌ Not available';
+      }
+      
+      // Load animation
+      if (lower.startsWith('load anim ') || lower.startsWith('load animation ')) {
+        const url = lower.replace(/^load anim(ation)?\s+/, '');
+        if (characterController) {
+          characterController.loadAnimation(url).then(r => logOutput('ok', r)).catch(e => logOutput('error', e));
+          return '⏳ Loading animation...';
+        }
+        return '❌ No character loaded';
+      }
+      
       // Creator Marketplace
       if (lower === 'marketplace' || lower === 'creator marketplace' || lower === 'open marketplace' || lower === 'sell model' || lower === 'upload model') {
         openCreatorMarketplace();
@@ -13686,7 +13796,324 @@ document.addEventListener('keydown', function(e) {
   dropOverlay.innerHTML = '<div style="background:rgba(0,0,0,0.9);padding:30px 50px;border-radius:16px;border:2px solid #7c5cff;text-align:center;"><div style="font-size:48px;margin-bottom:12px;">📦</div><div style="color:#7c5cff;font-size:20px;font-weight:700;">Drop GLB Model Here</div><div style="color:#888;font-size:14px;margin-top:8px;">.glb, .gltf supported</div></div>';
   document.body.appendChild(dropOverlay);
   
-  let dragCounter = 0;
+  
+// === MOBILE TOUCH CONTROLS ===
+(function() {
+  // Only show on touch devices
+  if (!('ontouchstart' in window) && !navigator.maxTouchPoints) return;
+  
+  const container = document.createElement('div');
+  container.id = 'mobile-controls';
+  container.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;pointer-events:none;display:none;';
+  
+  // Virtual joystick (left side)
+  const joystickArea = document.createElement('div');
+  joystickArea.style.cssText = 'position:absolute;bottom:30px;left:30px;width:140px;height:140px;pointer-events:auto;';
+  
+  const joystickBg = document.createElement('div');
+  joystickBg.style.cssText = 'width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,0.1);border:2px solid rgba(255,255,255,0.2);position:relative;';
+  
+  const joystickKnob = document.createElement('div');
+  joystickKnob.style.cssText = 'width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,0.35);position:absolute;top:45px;left:45px;transition:none;';
+  joystickBg.appendChild(joystickKnob);
+  joystickArea.appendChild(joystickBg);
+  container.appendChild(joystickArea);
+  
+  // Action buttons (right side)
+  const btnStyle = 'width:56px;height:56px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);font-size:22px;color:rgba(255,255,255,0.8);background:rgba(255,255,255,0.1);pointer-events:auto;-webkit-tap-highlight-color:transparent;';
+  
+  const btnArea = document.createElement('div');
+  btnArea.style.cssText = 'position:absolute;bottom:30px;right:20px;pointer-events:none;';
+  
+  // Jump button
+  const jumpBtn = document.createElement('button');
+  jumpBtn.style.cssText = btnStyle + 'position:absolute;bottom:70px;right:0px;';
+  jumpBtn.textContent = '⬆';
+  jumpBtn.setAttribute('data-action', 'jump');
+  btnArea.appendChild(jumpBtn);
+  
+  // Attack button
+  const atkBtn = document.createElement('button');
+  atkBtn.style.cssText = btnStyle + 'position:absolute;bottom:0px;right:70px;';
+  atkBtn.textContent = '⚔️';
+  atkBtn.setAttribute('data-action', 'attack');
+  btnArea.appendChild(atkBtn);
+  
+  // Interact button
+  const intBtn = document.createElement('button');
+  intBtn.style.cssText = btnStyle + 'position:absolute;bottom:0px;right:0px;';
+  intBtn.textContent = 'F';
+  intBtn.setAttribute('data-action', 'interact');
+  btnArea.appendChild(intBtn);
+  
+  // Sprint button
+  const sprintBtn = document.createElement('button');
+  sprintBtn.style.cssText = btnStyle + 'position:absolute;bottom:70px;right:70px;font-size:16px;';
+  sprintBtn.textContent = '🏃';
+  sprintBtn.setAttribute('data-action', 'sprint');
+  btnArea.appendChild(sprintBtn);
+  
+  container.appendChild(btnArea);
+  
+  // Camera look (right half of screen, not on buttons)
+  let _lookTouchId = null;
+  let _lookStartX = 0;
+  let _lookStartY = 0;
+  
+  // Joystick state
+  let _joyTouchId = null;
+  let _joyCenter = { x: 0, y: 0 };
+  let _joySprinting = false;
+  
+  // Wire joystick
+  joystickArea.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    _joyTouchId = t.identifier;
+    const rect = joystickBg.getBoundingClientRect();
+    _joyCenter = { x: rect.left + 70, y: rect.top + 70 };
+  }, { passive: false });
+  
+  document.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === _joyTouchId) {
+        const dx = t.clientX - _joyCenter.x;
+        const dy = t.clientY - _joyCenter.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxDist = 45;
+        const clampDist = Math.min(dist, maxDist);
+        const angle = Math.atan2(dy, dx);
+        
+        joystickKnob.style.left = (45 + Math.cos(angle) * clampDist) + 'px';
+        joystickKnob.style.top = (45 + Math.sin(angle) * clampDist) + 'px';
+        
+        // Map to WASD keys
+        const norm = clampDist / maxDist;
+        const cc = window.characterController;
+        if (cc) {
+          cc.keys['w'] = dy < -15;
+          cc.keys['s'] = dy > 15;
+          cc.keys['a'] = dx < -15;
+          cc.keys['d'] = dx > 15;
+        }
+      }
+      
+      // Camera look
+      if (t.identifier === _lookTouchId) {
+        const cc = window.characterController;
+        if (cc && typeof cc.cameraYaw !== 'undefined') {
+          cc.cameraYaw -= (t.clientX - _lookStartX) * 0.004;
+          cc.cameraPitch = Math.max(-1.2, Math.min(1.2, cc.cameraPitch + (t.clientY - _lookStartY) * 0.003));
+          _lookStartX = t.clientX;
+          _lookStartY = t.clientY;
+        }
+      }
+    }
+  }, { passive: false });
+  
+  document.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === _joyTouchId) {
+        _joyTouchId = null;
+        joystickKnob.style.left = '45px';
+        joystickKnob.style.top = '45px';
+        const cc = window.characterController;
+        if (cc) { cc.keys['w'] = false; cc.keys['s'] = false; cc.keys['a'] = false; cc.keys['d'] = false; }
+      }
+      if (t.identifier === _lookTouchId) {
+        _lookTouchId = null;
+      }
+    }
+  });
+  
+  // Camera look touch (right half of screen)
+  document.addEventListener('touchstart', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.clientX > window.innerWidth * 0.4 && !e.target.closest('button') && !e.target.closest('#mobile-controls button')) {
+        if (_lookTouchId === null) {
+          _lookTouchId = t.identifier;
+          _lookStartX = t.clientX;
+          _lookStartY = t.clientY;
+        }
+      }
+    }
+  }, { passive: true });
+  
+  // Action buttons
+  btnArea.addEventListener('touchstart', (e) => {
+    const action = e.target.getAttribute('data-action');
+    const cc = window.characterController;
+    if (!cc) return;
+    e.preventDefault();
+    if (action === 'jump') cc.keys[' '] = true;
+    if (action === 'attack') cc.keys['e'] = true;
+    if (action === 'interact') cc.keys['f'] = true;
+    if (action === 'sprint') { _joySprinting = !_joySprinting; cc.keys['shift'] = _joySprinting; sprintBtn.style.background = _joySprinting ? 'rgba(74,222,128,0.4)' : 'rgba(255,255,255,0.1)'; }
+  }, { passive: false });
+  
+  btnArea.addEventListener('touchend', (e) => {
+    const action = e.target.getAttribute('data-action');
+    const cc = window.characterController;
+    if (!cc) return;
+    if (action === 'jump') cc.keys[' '] = false;
+    if (action === 'attack') cc.keys['e'] = false;
+    if (action === 'interact') cc.keys['f'] = false;
+    // Sprint is toggle, not hold
+  });
+  
+  document.body.appendChild(container);
+  
+  // Show/hide with play mode
+  window._mobileControls = {
+    show() { container.style.display = 'block'; },
+    hide() { container.style.display = 'none'; },
+  };
+})();
+// === END MOBILE TOUCH CONTROLS ===
+
+
+// === TERRAIN PAINTING SYSTEM ===
+(function() {
+  let _paintActive = false;
+  let _paintColor = new THREE.Color(0x2d5a27); // default green
+  let _paintRadius = 5;
+  let _paintStrength = 0.7;
+  let _paintUI = null;
+  
+  const PAINT_PRESETS = {
+    grass:      { color: 0x2d5a27, label: '🌿 Grass' },
+    dirt:       { color: 0x8B6914, label: '🟤 Dirt' },
+    sand:       { color: 0xC2B280, label: '🏖️ Sand' },
+    snow:       { color: 0xE8E8F0, label: '❄️ Snow' },
+    rock:       { color: 0x666666, label: '🪨 Rock' },
+    mud:        { color: 0x5C4033, label: '💩 Mud' },
+    lava:       { color: 0xFF4400, label: '🌋 Lava' },
+    water:      { color: 0x2266AA, label: '💧 Water' },
+    darkgrass:  { color: 0x1a3a15, label: '🌲 Dark Grass' },
+    path:       { color: 0x9B8B6E, label: '🛤️ Path' },
+  };
+  
+  window._terrainPaint = {
+    toggle() {
+      _paintActive = !_paintActive;
+      if (_paintActive) this._showUI(); else this._hideUI();
+      return _paintActive ? '🎨 Terrain painting ON — click terrain to paint' : '🎨 Terrain painting OFF';
+    },
+    
+    setColor(preset) {
+      const p = PAINT_PRESETS[preset];
+      if (p) { _paintColor.set(p.color); return '🎨 Paint: ' + p.label; }
+      // Try hex
+      try { _paintColor.set(preset); return '🎨 Paint color set'; } catch(e) {}
+      return '❌ Unknown paint preset. Try: ' + Object.keys(PAINT_PRESETS).join(', ');
+    },
+    
+    setRadius(r) { _paintRadius = Math.max(1, Math.min(30, r)); return '🎨 Brush radius: ' + _paintRadius; },
+    
+    paint(x, z) {
+      const terrain = window._terrainMesh;
+      if (!terrain) return;
+      const geo = terrain.geometry;
+      const colors = geo.attributes.color;
+      const positions = geo.attributes.position;
+      if (!colors || !positions) return;
+      
+      const worldMatrix = terrain.matrixWorld;
+      const invMatrix = new THREE.Matrix4().copy(worldMatrix).invert();
+      const localPoint = new THREE.Vector3(x, 0, z).applyMatrix4(invMatrix);
+      
+      let changed = false;
+      for (let i = 0; i < positions.count; i++) {
+        const vx = positions.getX(i);
+        const vy = positions.getY(i);
+        const vz = positions.getZ(i);
+        // Terrain is rotated -PI/2, so Y in geometry = Z in world, Z in geometry = -Y in world (height)
+        const dx = vx - localPoint.x;
+        const dz = vy - localPoint.z; // Note: geometry Y maps to world Z after rotation
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        
+        if (dist < _paintRadius) {
+          const falloff = 1 - (dist / _paintRadius);
+          const strength = falloff * falloff * _paintStrength;
+          const r = THREE.MathUtils.lerp(colors.getX(i), _paintColor.r, strength);
+          const g = THREE.MathUtils.lerp(colors.getY(i), _paintColor.g, strength);
+          const b = THREE.MathUtils.lerp(colors.getZ(i), _paintColor.b, strength);
+          colors.setXYZ(i, r, g, b);
+          changed = true;
+        }
+      }
+      
+      if (changed) {
+        colors.needsUpdate = true;
+      }
+    },
+    
+    _showUI() {
+      if (_paintUI) return;
+      _paintUI = document.createElement('div');
+      _paintUI.id = 'terrain-paint-ui';
+      _paintUI.style.cssText = 'position:fixed;top:50%;left:16px;transform:translateY(-50%);background:rgba(0,0,0,0.9);border:1px solid #8b5cf6;border-radius:12px;padding:12px;z-index:10000;font-family:-apple-system,sans-serif;width:140px;';
+      
+      let html = '<div style="color:#8b5cf6;font-weight:700;font-size:12px;margin-bottom:8px">🎨 PAINT BRUSH</div>';
+      for (const [key, preset] of Object.entries(PAINT_PRESETS)) {
+        const hex = '#' + new THREE.Color(preset.color).getHexString();
+        html += '<button onclick="window._terrainPaint.setColor(\''+key+'\');document.querySelectorAll(\'.paint-swatch\').forEach(s=>s.style.outline=\'none\');this.style.outline=\'2px solid #fff\'" class="paint-swatch" style="display:inline-block;width:28px;height:28px;margin:2px;border:none;border-radius:6px;background:'+hex+';cursor:pointer" title="'+preset.label+'"></button>';
+      }
+      html += '<div style="margin-top:8px"><label style="color:#aaa;font-size:10px">Radius</label><input type="range" min="1" max="20" value="'+_paintRadius+'" oninput="window._terrainPaint.setRadius(+this.value)" style="width:100%"></div>';
+      html += '<button onclick="window._terrainPaint.toggle()" style="width:100%;margin-top:8px;padding:6px;background:#ef4444;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:11px">✕ Close</button>';
+      _paintUI.innerHTML = html;
+      document.body.appendChild(_paintUI);
+    },
+    
+    _hideUI() {
+      if (_paintUI) { _paintUI.remove(); _paintUI = null; }
+    },
+    
+    isActive() { return _paintActive; }
+  };
+  
+  // Paint on click when active
+  document.addEventListener('mousedown', (e) => {
+    if (!_paintActive || e.button !== 0) return;
+    if (e.target.closest('#terrain-paint-ui')) return;
+    const terrain = window._terrainMesh;
+    if (!terrain) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(mouse, camera);
+    const hits = ray.intersectObject(terrain);
+    if (hits.length > 0) {
+      window._terrainPaint.paint(hits[0].point.x, hits[0].point.z);
+    }
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!_paintActive || !(e.buttons & 1)) return;
+    if (e.target.closest('#terrain-paint-ui')) return;
+    const terrain = window._terrainMesh;
+    if (!terrain) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(mouse, camera);
+    const hits = ray.intersectObject(terrain);
+    if (hits.length > 0) {
+      window._terrainPaint.paint(hits[0].point.x, hits[0].point.z);
+    }
+  });
+})();
+// === END TERRAIN PAINTING ===
+
+let dragCounter = 0;
   document.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; dropOverlay.style.display = 'flex'; });
   document.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter--; if (dragCounter <= 0) { dropOverlay.style.display = 'none'; dragCounter = 0; } });
   document.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });

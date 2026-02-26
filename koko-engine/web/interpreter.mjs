@@ -504,6 +504,14 @@ const COMMANDS_SHOWCASE = {
   '⚙️ Graphics & Performance': [
     'graphics low', 'graphics medium', 'graphics high', 'graphics ultra',
   ],
+  '🎨 Terrain Painting': [
+    'paint', 'paint grass', 'paint dirt', 'paint sand',
+    'paint snow', 'paint rock', 'paint lava', 'paint path',
+    'brush size 10', 'brush size 3',
+  ],
+  '💃 Animations': [
+    'load animation', 'dance', 'wave', 'sit', 'crouch',
+  ],
   '⌨️ Controls (Play Mode)': [
     'WASD — Move', 'Space — Jump', 'Shift — Sprint',
     'E / Left Click — Attack', 'Q — Heavy Attack',

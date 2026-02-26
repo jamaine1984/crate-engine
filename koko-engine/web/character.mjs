@@ -3126,48 +3126,115 @@ function _checkWallCollision(position, direction, distance) {
   }
 
   _showDialogue(npc, lines) {
-    // Remove existing dialogue
-    const old = document.getElementById('npc-dialogue');
-    if (old) old.remove();
-    
-    const div = document.createElement('div');
-    div.id = 'npc-dialogue';
-    div.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);max-width:500px;width:90%;background:rgba(0,0,0,0.9);backdrop-filter:blur(10px);border:1px solid #ff6b35;border-radius:12px;padding:16px;z-index:10000;font-family:monospace;color:#e0e0e0;';
-    
-    const nameEl = document.createElement('div');
-    nameEl.style.cssText = 'color:#ff6b35;font-weight:bold;margin-bottom:8px;font-size:0.9rem;';
-    nameEl.textContent = (npc.type || 'NPC').charAt(0).toUpperCase() + (npc.type || 'npc').slice(1);
-    div.appendChild(nameEl);
-    
-    const textEl = document.createElement('div');
-    textEl.style.cssText = 'font-size:0.8rem;line-height:1.5;min-height:40px;';
-    div.appendChild(textEl);
-    
-    const hint = document.createElement('div');
-    hint.style.cssText = 'color:#666;font-size:0.65rem;margin-top:8px;text-align:right;';
-    hint.textContent = 'Press E to close';
-    div.appendChild(hint);
-    
-    document.body.appendChild(div);
-    
-    // Typewriter effect
-    const fullText = lines.join('\n\n');
-    let charIdx = 0;
-    const typeInterval = setInterval(() => {
-      if (charIdx < fullText.length) {
-        textEl.textContent += fullText[charIdx];
-        charIdx++;
-      } else {
-        clearInterval(typeInterval);
+    // Use DialogueSystem for rich NPC dialogue with choices
+    if (this.dialogueSystem) {
+      const npcType = (npc.type || 'villager').toLowerCase();
+      const questLines = NPCController.DIALOGUE_BANK[npcType]?.quests || [];
+      const tradeLines = NPCController.DIALOGUE_BANK[npcType]?.trade || [];
+      const hasQuest = questLines.length > 0;
+      const hasTrade = tradeLines.length > 0;
+      
+      // Build dialogue with choices
+      const dialogueLines = [...lines.map(l => l)];
+      
+      // Add choice node at the end
+      const choices = [];
+      if (hasQuest) choices.push({ label: '📜 Do you have any work for me?', action: () => {
+        const questLine = questLines[Math.floor(Math.random() * questLines.length)];
+        // Auto-generate a quest from dialogue
+        if (window.questSystem) {
+          const questTypes = ['kill', 'collect', 'explore'];
+          const qType = questTypes[Math.floor(Math.random() * questTypes.length)];
+          window.questSystem.addQuest({
+            id: 'npc_quest_' + Date.now(),
+            title: questLine.substring(0, 40) + '...',
+            description: questLine,
+            type: qType,
+            target: qType,
+            targetCount: 3 + Math.floor(Math.random() * 5),
+            reward: (50 + Math.floor(Math.random() * 200)) + ' gold'
+          });
+        }
+        this.dialogueSystem.start({ speaker: npc.type || 'NPC', lines: [questLine, 'Good luck out there! Come back when it\'s done.'] });
+      }});
+      if (hasTrade) choices.push({ label: '🛒 Show me what you have', action: () => {
+        const tradeLine = tradeLines[Math.floor(Math.random() * tradeLines.length)];
+        this.dialogueSystem.start({ speaker: npc.type || 'NPC', lines: [tradeLine] });
+      }});
+      choices.push({ label: '👋 Farewell', action: () => {} });
+      
+      if (choices.length > 1) {
+        dialogueLines.push({ text: 'Is there something you need from me?', choices: choices });
       }
-    }, 30);
-    
-    // Auto-remove after 8 seconds
-    setTimeout(() => { if (div.parentNode) div.remove(); clearInterval(typeInterval); }, 8000);
+      
+      this.dialogueSystem.start({ speaker: (npc.type || 'NPC').charAt(0).toUpperCase() + (npc.type || 'npc').slice(1), lines: dialogueLines });
+    } else {
+      // Fallback: simple div
+      const old2 = document.getElementById('npc-dialogue');
+      if (old2) old2.remove();
+      const div = document.createElement('div');
+      div.id = 'npc-dialogue';
+      div.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);max-width:500px;width:90%;background:rgba(0,0,0,0.9);border:1px solid #ff6b35;border-radius:12px;padding:16px;z-index:10000;font-family:monospace;color:#e0e0e0;';
+      div.textContent = lines.join(' ');
+      document.body.appendChild(div);
+      setTimeout(() => div.remove(), 6000);
+    }
   }
 
 }
 
+
+// === MIXAMO ANIMATION LOADER ===
+// Load animation from any GLB/FBX URL and apply to current character
+CharacterController.prototype.loadAnimation = async function(url, animName) {
+  if (!this.model) return '❌ No character loaded';
+  
+  try {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
+    const loader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    loader.setDRACOLoader(draco);
+    
+    return new Promise((resolve, reject) => {
+      loader.load(url, (gltf) => {
+        if (!gltf.animations || gltf.animations.length === 0) {
+          resolve('❌ No animations found in file');
+          return;
+        }
+        
+        for (const clip of gltf.animations) {
+          const name = animName || clip.name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+          // Retarget: try to match bone names
+          this.mixer.clipAction(clip, this.model).reset();
+          this.animations[name] = clip;
+          console.log('[Animation] Loaded: ' + name + ' (' + clip.duration.toFixed(1) + 's)');
+        }
+        
+        resolve('✓ Loaded ' + gltf.animations.length + ' animation(s): ' + gltf.animations.map(c => c.name).join(', '));
+      }, undefined, (err) => {
+        reject('❌ Failed to load animation: ' + err.message);
+      });
+    });
+  } catch(e) {
+    return '❌ Animation load error: ' + e.message;
+  }
+};
+
+// Common Mixamo animation URLs (free, hosted)
+CharacterController.MIXAMO_ANIMS = {
+  dance: 'Dancing',
+  wave: 'Waving',
+  clap: 'Clapping',
+  sit: 'Sitting',
+  crouch: 'Crouching',
+  crawl: 'Crawling',
+  climb: 'Climbing',
+  swim: 'Swimming',
+  punch: 'Punching',
+  kick: 'Kicking',
+};
 
 export { WEAPON_DATABASE, createWeaponMesh, CharacterState, CharacterStateMachine, NPCState, NPCAIStateMachine };
 
@@ -7275,38 +7342,56 @@ export class QuestSystem {
   }
 }
 
-// === DIALOGUE SYSTEM ===
+// === DIALOGUE SYSTEM (Enhanced with choices + quest integration) ===
 export class DialogueSystem {
   constructor() {
     this.active = false;
     this.currentDialogue = null;
     this.currentIndex = 0;
     this.el = null;
+    this._typeTimer = null;
+    this._typeComplete = false;
   }
   
   _ensureUI() {
     if (this.el) return;
     this.el = document.createElement('div');
     this.el.id = 'dialogue-box';
-    this.el.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);width:500px;max-width:90vw;background:rgba(0,0,0,0.9);border:2px solid #8b5cf6;border-radius:12px;padding:16px 20px;font-family:monospace;z-index:10001;display:none;';
+    this.el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);width:560px;max-width:92vw;background:linear-gradient(180deg,rgba(15,10,30,0.95),rgba(5,5,15,0.98));border:2px solid #8b5cf6;border-radius:16px;padding:0;z-index:10001;display:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 0 40px rgba(139,92,246,0.3);pointer-events:auto;';
     this.el.innerHTML = `
-      <div id="dlg-speaker" style="color:#8b5cf6;font-size:14px;font-weight:bold;margin-bottom:6px;"></div>
-      <div id="dlg-text" style="color:#e0e0e0;font-size:13px;line-height:1.5;min-height:40px;"></div>
-      <div style="color:#666;font-size:10px;margin-top:8px;text-align:right;">Press SPACE or click to continue</div>
+      <div style="padding:16px 20px 0;">
+        <div id="dlg-portrait" style="display:inline-block;width:40px;height:40px;border-radius:50%;background:#8b5cf6;text-align:center;line-height:40px;font-size:20px;vertical-align:middle;margin-right:10px;">👤</div>
+        <span id="dlg-speaker" style="color:#8b5cf6;font-size:15px;font-weight:700;vertical-align:middle;"></span>
+      </div>
+      <div id="dlg-text" style="color:#e0e0e0;font-size:14px;line-height:1.6;padding:12px 20px;min-height:50px;"></div>
+      <div id="dlg-choices" style="padding:0 20px 16px;display:none;"></div>
+      <div id="dlg-continue" style="color:#555;font-size:11px;padding:0 20px 12px;text-align:right;">▶ Click or SPACE to continue</div>
     `;
-    this.el.style.pointerEvents = 'auto';
-    this.el.style.cursor = 'pointer';
-    this.el.addEventListener('click', () => this.advance());
+    this.el.addEventListener('click', (e) => {
+      if (e.target.closest('.dlg-choice')) return; // Don't advance on choice click
+      this.advance();
+    });
     document.body.appendChild(this.el);
   }
   
   start(dialogue) {
-    // dialogue: { speaker, lines: ['line1', 'line2', ...], onEnd }
+    // dialogue: { speaker, portrait?, lines: [string | {text, choices: [{label, action?, questId?}]}], onEnd? }
     this._ensureUI();
     this.currentDialogue = dialogue;
     this.currentIndex = 0;
     this.active = true;
     this.el.style.display = 'block';
+    
+    // Set portrait
+    const portrait = document.getElementById('dlg-portrait');
+    if (portrait) {
+      const type = (dialogue.speaker || '').toLowerCase();
+      const icons = { merchant:'🏪', guard:'⚔️', wizard:'🔮', blacksmith:'🔨', innkeeper:'🍺', king:'👑', witch:'🧙‍♀️', villager:'🧑‍🌾', soldier:'🛡️', enemy:'💀' };
+      let icon = '👤';
+      for (const [k, v] of Object.entries(icons)) { if (type.includes(k)) { icon = v; break; } }
+      portrait.textContent = dialogue.portrait || icon;
+    }
+    
     this._showLine();
   }
   
@@ -7314,25 +7399,107 @@ export class DialogueSystem {
     if (!this.currentDialogue) return;
     const speaker = document.getElementById('dlg-speaker');
     const text = document.getElementById('dlg-text');
+    const choicesEl = document.getElementById('dlg-choices');
+    const continueEl = document.getElementById('dlg-continue');
     if (speaker) speaker.textContent = this.currentDialogue.speaker || 'NPC';
+    
+    const lineData = this.currentDialogue.lines[this.currentIndex];
+    const lineText = typeof lineData === 'string' ? lineData : lineData.text;
+    const choices = typeof lineData === 'object' ? lineData.choices : null;
+    
+    // Hide choices initially
+    if (choicesEl) { choicesEl.style.display = 'none'; choicesEl.innerHTML = ''; }
+    if (continueEl) continueEl.style.display = 'block';
+    
+    // Typewriter
     if (text) {
-      // Typewriter effect
-      const line = this.currentDialogue.lines[this.currentIndex];
       text.textContent = '';
+      this._typeComplete = false;
       let i = 0;
-      const type = () => {
-        if (i < line.length) {
-          text.textContent += line[i];
+      clearInterval(this._typeTimer);
+      this._typeTimer = setInterval(() => {
+        if (i < lineText.length) {
+          text.textContent += lineText[i];
           i++;
-          setTimeout(type, 20);
+        } else {
+          clearInterval(this._typeTimer);
+          this._typeComplete = true;
+          // Show choices if any
+          if (choices && choicesEl) {
+            choicesEl.style.display = 'block';
+            if (continueEl) continueEl.style.display = 'none';
+            choices.forEach((c, idx) => {
+              const btn = document.createElement('button');
+              btn.className = 'dlg-choice';
+              btn.style.cssText = 'display:block;width:100%;padding:10px 14px;margin-top:6px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.4);border-radius:8px;color:#d4bfff;font-size:13px;cursor:pointer;text-align:left;font-family:inherit;transition:all 0.2s;';
+              btn.textContent = (idx + 1) + '. ' + c.label;
+              btn.onmouseenter = () => { btn.style.background = 'rgba(139,92,246,0.35)'; btn.style.borderColor = '#8b5cf6'; };
+              btn.onmouseleave = () => { btn.style.background = 'rgba(139,92,246,0.15)'; btn.style.borderColor = 'rgba(139,92,246,0.4)'; };
+              btn.onclick = () => {
+                if (c.action) c.action();
+                if (c.nextLine !== undefined) {
+                  this.currentIndex = c.nextLine - 1; // advance() will +1
+                  this.advance();
+                } else {
+                  this.advance();
+                }
+              };
+              choicesEl.appendChild(btn);
+            });
+          }
         }
-      };
-      type();
+      }, 25);
     }
   }
   
   advance() {
     if (!this.active || !this.currentDialogue) return;
+    // If typing, complete instantly
+    if (!this._typeComplete) {
+      clearInterval(this._typeTimer);
+      const lineData = this.currentDialogue.lines[this.currentIndex];
+      const lineText = typeof lineData === 'string' ? lineData : lineData.text;
+      const text = document.getElementById('dlg-text');
+      if (text) text.textContent = lineText;
+      this._typeComplete = true;
+      
+      // Show choices if present
+      const choices = typeof lineData === 'object' ? lineData.choices : null;
+      if (choices) {
+        const choicesEl = document.getElementById('dlg-choices');
+        const continueEl = document.getElementById('dlg-continue');
+        if (choicesEl) {
+          choicesEl.style.display = 'block';
+          if (continueEl) continueEl.style.display = 'none';
+          choicesEl.innerHTML = '';
+          choices.forEach((c, idx) => {
+            const btn = document.createElement('button');
+            btn.className = 'dlg-choice';
+            btn.style.cssText = 'display:block;width:100%;padding:10px 14px;margin-top:6px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.4);border-radius:8px;color:#d4bfff;font-size:13px;cursor:pointer;text-align:left;font-family:inherit;transition:all 0.2s;';
+            btn.textContent = (idx + 1) + '. ' + c.label;
+            btn.onmouseenter = () => { btn.style.background = 'rgba(139,92,246,0.35)'; };
+            btn.onmouseleave = () => { btn.style.background = 'rgba(139,92,246,0.15)'; };
+            btn.onclick = () => {
+              if (c.action) c.action();
+              if (c.nextLine !== undefined) {
+                this.currentIndex = c.nextLine - 1;
+                this.advance();
+              } else {
+                this.advance();
+              }
+            };
+            choicesEl.appendChild(btn);
+          });
+        }
+      }
+      return;
+    }
+    
+    // Check for choices — don't auto-advance past choices
+    const lineData = this.currentDialogue.lines[this.currentIndex];
+    const choices = typeof lineData === 'object' ? lineData.choices : null;
+    if (choices) return; // Must click a choice
+    
     this.currentIndex++;
     if (this.currentIndex >= this.currentDialogue.lines.length) {
       this.end();
@@ -7343,6 +7510,7 @@ export class DialogueSystem {
   
   end() {
     this.active = false;
+    clearInterval(this._typeTimer);
     if (this.el) this.el.style.display = 'none';
     if (this.currentDialogue && this.currentDialogue.onEnd) {
       this.currentDialogue.onEnd();
