@@ -1894,6 +1894,7 @@ class CharacterController {
     // === NPC PROXIMITY DIALOGUE ===
     // Show interact prompt when near NPCs (check every 10 frames to save CPU)
     this._npcCheckFrame = (this._npcCheckFrame || 0) + 1;
+    if (this._npcCheckFrame % 5 === 0) this._updateThreatIndicator(dt);
     if (!this.inBuilding && !this._talkCooldown && this._npcCheckFrame % 10 === 0) {
       const nearbyNPC = this.objects.find(o => {
         if (!o.userData.isNPC && !o.userData.name) return false;
@@ -2894,6 +2895,62 @@ function _checkWallCollision(position, direction, distance) {
     document.body.appendChild(panel);
   }
 
+
+
+  _updateThreatIndicator(dt) {
+    if (!this.camera || !window._npcController) return;
+    const npcs = window._npcController.npcs;
+    if (!npcs || !npcs.length) return;
+    
+    // Find nearest hostile NPC
+    let nearestHostile = null;
+    let nearestDist = Infinity;
+    for (const npc of npcs) {
+      if (npc.isDead || !npc.isAggro) continue;
+      const d = this.position.distanceTo(npc.model.position);
+      if (d < nearestDist && d < 50) { nearestDist = d; nearestHostile = npc; }
+    }
+    
+    if (!nearestHostile) {
+      if (this._threatArrow) this._threatArrow.style.display = 'none';
+      return;
+    }
+    
+    // Create arrow if needed
+    if (!this._threatArrow) {
+      this._threatArrow = document.createElement('div');
+      this._threatArrow.style.cssText = 'position:fixed;width:24px;height:24px;z-index:9997;pointer-events:none;font-size:20px;text-align:center;filter:drop-shadow(0 0 4px rgba(255,50,50,0.6));';
+      this._threatArrow.textContent = '⚠';
+      document.body.appendChild(this._threatArrow);
+    }
+    
+    // Project NPC position to screen
+    const npcScreen = nearestHostile.model.position.clone();
+    npcScreen.y += 1;
+    npcScreen.project(this.camera);
+    
+    const hw = window.innerWidth / 2;
+    const hh = window.innerHeight / 2;
+    const sx = npcScreen.x * hw + hw;
+    const sy = -npcScreen.y * hh + hh;
+    
+    // If on screen and close, hide indicator
+    if (npcScreen.z < 1 && sx > 50 && sx < window.innerWidth - 50 && sy > 50 && sy < window.innerHeight - 50) {
+      this._threatArrow.style.display = 'none';
+      return;
+    }
+    
+    // Position at edge of screen pointing toward enemy
+    const angle = Math.atan2(sy - hh, sx - hw);
+    const edgeX = hw + Math.cos(angle) * (hw - 40);
+    const edgeY = hh + Math.sin(angle) * (hh - 40);
+    
+    this._threatArrow.style.display = 'block';
+    this._threatArrow.style.left = edgeX + 'px';
+    this._threatArrow.style.top = edgeY + 'px';
+    this._threatArrow.style.transform = 'translate(-50%,-50%) rotate(' + (angle + Math.PI/2) + 'rad)';
+    this._threatArrow.style.opacity = Math.max(0.3, 1 - nearestDist / 50);
+  }
 
   _createSprintDust() {
     if (!this.scene || !this.model) return;
