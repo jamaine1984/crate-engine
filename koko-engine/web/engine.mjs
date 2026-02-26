@@ -317,7 +317,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=82';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=90';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -4320,6 +4320,8 @@ if (window._loadProgress) window._loadProgress(20, "Creating scene...");
       pickup() { playTone(600, 0.1, 'sine', 0.08); playTone(800, 0.1, 'sine', 0.06); },
       doorOpen() { playTone(200, 0.15, 'triangle', 0.06); },
       gunshot() { playNoise(0.08, 0.15); playTone(100, 0.1, 'sawtooth', 0.1); },
+      reload() { playTone(300, 0.15, 'triangle', 0.06); setTimeout(() => playTone(400, 0.1, 'sine', 0.05), 200); },
+      heal() { playTone(500, 0.2, 'sine', 0.08); playTone(700, 0.15, 'sine', 0.06); },
     },
     updateFootsteps(dt, moving, running, surface) {
       const interval = running ? 0.35 : 0.5;
@@ -5925,6 +5927,11 @@ const WATER_PRESETS = {
     color: new THREE.Color(0x6abed8), deepColor: new THREE.Color(0x2a5a7a),
     opacity: 0.85, waveA: [1.0, 0.3, 0.08, 10.0], waveB: [0.3, 1.0, 0.05, 7.0], waveC: [0.6, 0.6, 0.03, 14.0],
     foamIntensity: 0.25, specularPower: 120.0, fresnelPower: 3.5
+  },
+  calm: {
+    color: new THREE.Color(0x0077aa), deepColor: new THREE.Color(0x003355),
+    opacity: 0.85, waveA: [1.0, 0.2, 0.02, 16.0], waveB: [0.2, 1.0, 0.015, 12.0], waveC: [0.5, 0.5, 0.01, 20.0],
+    foamIntensity: 0.05, specularPower: 100.0, fresnelPower: 3.0
   }
 };
 
@@ -8740,7 +8747,7 @@ async function execSingle(cmd) {
   }
 
   // === WATER PRESET ===
-  const waterPresetMatch = lower.match(/^(?:set |change |use )?water (?:preset |style |type )?(tropical|storm|lake|ocean|swamp|river|arctic)/);
+  const waterPresetMatch = lower.match(/^(?:set |change |use )?water (?:preset |style |type )?(tropical|storm|lake|ocean|swamp|river|arctic|calm|hurricane)/);
   if (waterPresetMatch) {
     const preset = waterPresetMatch[1];
     // Auto-create ocean if none exists
@@ -8945,10 +8952,23 @@ async function execSingle(cmd) {
     return '⚠ No vehicle nearby';
   }
   
-  // === PLAY MODE ===
-
-  // === PLAY MODE ===
+  // === PLAY MODE (fallback — main handler at line ~8276) ===
   if (lower === 'play' || lower === 'play mode' || lower === 'fps' || lower === 'first person' || lower === 'walk') {
+    // If characterController exists, redirect to the full play handler above
+    if (characterController) {
+      // This shouldn't normally be reached, but just in case:
+      if (!characterController.model) {
+        await characterController.loadCharacter('knight');
+      }
+      playMode = true;
+      _hideEditorUI();
+      try { controls.enabled = false; } catch(e) {}
+      const _sy = getTerrainY(0, 0) + 1;
+      characterController.position.set(0, _sy, 0);
+      characterController.health = characterController.maxHealth;
+      characterController.stamina = characterController.maxStamina;
+      return '🎮 Play mode ON — WASD move, Shift run, Space jump, ESC exit';
+    }
     return enterPlayMode();
   }
   if (lower === 'edit' || lower === 'edit mode' || lower === 'stop playing' || lower === 'exit play') {
@@ -10982,13 +11002,13 @@ function animate() {
       if (window._colorPass) window._colorPass.uniforms.time.value = performance.now() * 0.001;
       composer.render();
     } else {
-    if (window._updateDoors) window._updateDoors(1/60);
+      if (window._updateDoors) window._updateDoors(1/60);
       renderer.render(scene, camera);
-  // Render FPS weapon viewmodel on top
+    }
+  // Render FPS weapon viewmodel on top (ALWAYS after main render)
   if (characterController && characterController.renderFPWeapon) {
     characterController.renderFPWeapon(renderer);
   }
-    }
 }
 animate();
 
@@ -13134,43 +13154,7 @@ function getSceneCommands(scene) {
   });
   
 
-      // Terrain painting
-      if (lower === 'paint' || lower === 'terrain paint' || lower === 'paint terrain' || lower === 'brush') {
-        return window._terrainPaint ? window._terrainPaint.toggle() : '❌ Terrain paint not available';
-      }
-      if (lower.startsWith('paint ')) {
-        const preset = lower.replace('paint ', '');
-        return window._terrainPaint ? window._terrainPaint.setColor(preset) : '❌ Not available';
-      }
-      if (lower.startsWith('brush size ') || lower.startsWith('brush radius ')) {
-        const r = parseInt(lower.split(' ').pop());
-        return window._terrainPaint ? window._terrainPaint.setRadius(r) : '❌ Not available';
-      }
-      
-      // Load animation
-      if (lower.startsWith('load anim ') || lower.startsWith('load animation ')) {
-        const url = lower.replace(/^load anim(ation)?\s+/, '');
-        if (characterController) {
-          characterController.loadAnimation(url).then(r => logOutput('ok', r)).catch(e => logOutput('error', e));
-          return '⏳ Loading animation...';
-        }
-        return '❌ No character loaded';
-      }
-      
-      // Creator Marketplace
-      if (lower === 'marketplace' || lower === 'creator marketplace' || lower === 'open marketplace' || lower === 'sell model' || lower === 'upload model') {
-        openCreatorMarketplace();
-        return '🏪 Opening Creator Marketplace...';
-      }
-            // Unity/Unreal export
-      if (lower === 'export unity' || lower === 'export for unity' || lower === 'unity export') {
-        exportForUnity();
-        return '📦 Exporting scene for Unity...';
-      }
-      if (lower === 'export unreal' || lower === 'export for unreal' || lower === 'unreal export') {
-        exportForUnreal();
-        return '📦 Exporting scene for Unreal Engine...';
-      }
+      // (Terrain paint, animation loader, marketplace, export commands handled in execSingle)
   // Export as HTML
   var exportBtn = makeBtn('📦 Export', '#222', '#c084fc', function() {
     if (isProUser()) { exportAsHTML(); } else { showUpgradeModal('pro'); }
@@ -15469,7 +15453,7 @@ const GENERATOR_API = 'https://jamaine1984--crate-engine-3d-generate.modal.run';
 // Credit system
 window._userCredits = JSON.parse(localStorage.getItem('crate-credits') || '{"plan":"free","credits":5,"used":0}');
 function saveCredits() { localStorage.setItem('crate-credits', JSON.stringify(window._userCredits)); }
-function getCreditsRemaining() { return Math.max(0, window._userCredits.credits - window._userCredits.used); }
+function getCreditsRemaining() { if (!window._userCredits) window._userCredits = {plan:'free',credits:5,used:0}; return Math.max(0, window._userCredits.credits - window._userCredits.used); }
 function useCredits(amount) { window._userCredits.used += amount; saveCredits(); }
 
 function showGeneratorModal() {
@@ -15594,6 +15578,7 @@ window._gen3dImage = null;
 window._gen3dQuality = 'standard';
 window._gen3dResultBlob = null;
 
+window.selectGen3dQuality = selectGen3dQuality;
 function selectGen3dQuality(btn) {
   document.querySelectorAll('.gen3d-quality').forEach(b => {
     b.style.border = '1px solid #333'; b.style.background = '#0d0d1a'; b.style.color = '#aaa';
@@ -15622,6 +15607,7 @@ function handleGen3dDrop(event) {
   if (file) handleGen3dFile(file);
 }
 
+window.startGeneration = startGeneration;
 async function startGeneration() {
   const isTextMode = document.getElementById('gen3d-txt-section').style.display !== 'none';
   const textPrompt = isTextMode ? (document.getElementById('gen3d-text-prompt')?.value || '').trim() : '';

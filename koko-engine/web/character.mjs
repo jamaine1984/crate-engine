@@ -221,7 +221,7 @@ const WEAPON_DATABASE = {
     mesh: { type: 'sniper', bodyColor: 0x2a3a2a, stockColor: 0x443322, scopeColor: 0x111111 },
     muzzleFlash: { size: 0.35, duration: 0.05, color: 0xffaa00 },
     tracer: { color: 0xffffff, width: 0.015, duration: 0.1 },
-    holdOffset: { x: 0, y: -0.05, z: -0.2 }, holdRotation: { x: -Math.PI/2, y: 0, z: 0 },
+    holdOffset: { x: 0, y: 0, z: 0 }, holdRotation: { x: Math.PI, y: 0, z: Math.PI/2 },
     holsterBone: 'back', holsterOffset: { x: -0.12, y: 0.3, z: -0.08 },
     holsterRotation: { x: Math.PI * 0.85, y: 0, z: 0 }
   },
@@ -255,15 +255,18 @@ function createWeaponMesh(weaponId) {
   if (data.glb && window._gltfLoader) {
     window._gltfLoader.load(data.glb, (gltf) => {
         const model = gltf.scene;
-        // Auto-scale: measure model, normalize to ~1 unit height
+        // Auto-scale: measure model, normalize so weapon fits procedural size (~0.8 units)
         const box = new THREE.Box3().setFromObject(model);
         const size = new THREE.Vector3();
         box.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim > 0) model.scale.multiplyScalar(0.8 / maxDim); // normalize to 0.8 units
-        // Center the model
-        box.setFromObject(model);
-        box.getCenter(model.position).multiplyScalar(-1);
+        // Normalize to same scale as procedural mesh (~0.8 units) so bone scale compensation works
+        if (maxDim > 0) model.scale.multiplyScalar(0.8 / maxDim);
+        // Center the model at origin
+        const box2 = new THREE.Box3().setFromObject(model);
+        const center = new THREE.Vector3();
+        box2.getCenter(center);
+        model.position.sub(center);
         // Remove procedural children and add GLB
         while (group.children.length > 0) group.remove(group.children[0]);
         group.add(model);
@@ -1026,6 +1029,10 @@ class CharacterController {
             if (isHand && (n === 'palmr' || n === 'hand.r' || n === 'middlehand.r' || n === 'middlehandr' || n.includes('righthand') || n.includes('right_hand') || n.includes('r_hand')) && !this.sockets.hand_r) this.sockets.hand_r = node;
             // Left hand
             else if (isHand && (n === 'palml' || n === 'hand.l' || n === 'middlehand.l' || n === 'middlehandl' || n.includes('lefthand') || n.includes('left_hand') || n.includes('l_hand')) && !this.sockets.hand_l) this.sockets.hand_l = node;
+            // Right upper arm: UpperArm.R, UpperArmR, mixamorig:RightArm
+            else if ((n === 'upperarm.r' || n === 'upperarmr' || n.includes('rightarm') && !n.includes('forearm')) && !this.sockets.upperarm_r) this.sockets.upperarm_r = node;
+            // Left upper arm
+            else if ((n === 'upperarm.l' || n === 'upperarml' || n.includes('leftarm') && !n.includes('forearm')) && !this.sockets.upperarm_l) this.sockets.upperarm_l = node;
             // Right forearm: LowerArm.R, LowerArmR, mixamorig:RightForeArm
             else if ((n === 'lowerarm.r' || n === 'lowerarmr' || n.includes('rightforearm') || n.includes('right_forearm') || n.includes('r_forearm')) && !this.sockets.forearm_r) this.sockets.forearm_r = node;
             // Left forearm
@@ -1364,11 +1371,13 @@ class CharacterController {
       // localScale = desiredWorldSize / (geometrySize * boneWorldScale)
       // Scale based on weapon type — guns shorter than melee
       const isRanged = data.type === 'ranged';
-      const _desiredWorld = isRanged ? 0.5 : 0.9; // guns ~0.5, melee ~0.9 world units
+      const _desiredWorld = isRanged ? 0.9 : 1.1; // guns ~0.9, melee ~1.1 world units
       const _weaponGeoSize = 0.8;
       const _localScale = _desiredWorld / (_weaponGeoSize * Math.max(_bws.x, 0.001));
       mesh.scale.setScalar(_localScale);
-      mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
+      // Hold offset must be in bone-local units (divide world-space offset by bone world scale)
+      const _bsi = 1 / Math.max(_bws.x, 0.001);
+      mesh.position.set(data.holdOffset.x * _bsi, data.holdOffset.y * _bsi, data.holdOffset.z * _bsi);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);
       
@@ -1393,9 +1402,30 @@ class CharacterController {
     const weaponMesh = this.equippedWeaponMesh;
     if (!handL || !weaponMesh) return;
     
-    // Get weapon's world-space grip position (midpoint of weapon for swords, foregrip for guns)
+    // For ranged weapons: raise right upper arm so gun points forward at chest height
     const weaponId = this.weaponSlots[this.activeSlot];
-    const data = WEAPON_DATABASE[weaponId];
+    const _ikData = WEAPON_DATABASE[weaponId];
+    if (_ikData && _ikData.type === 'ranged' && this.sockets.upperarm_r) {
+      const ua = this.sockets.upperarm_r;
+      // Rotate upper arm forward and up to bring hand to chest-aim position
+      // Save original rotation on first call
+      if (!ua.userData._origRot) {
+        ua.userData._origRot = ua.rotation.clone();
+      }
+      // Blend toward aim pose — rotate X to raise arm forward
+      ua.rotation.x = THREE.MathUtils.lerp(ua.rotation.x, ua.userData._origRot.x - 1.2, 0.3);
+      // Also raise left arm
+      if (this.sockets.upperarm_l) {
+        const ual = this.sockets.upperarm_l;
+        if (!ual.userData._origRot) ual.userData._origRot = ual.rotation.clone();
+        ual.rotation.x = THREE.MathUtils.lerp(ual.rotation.x, ual.userData._origRot.x - 1.0, 0.3);
+      }
+    }
+    
+    // Get weapon's world-space grip position
+    // weaponId already obtained above in arm-raise block
+    if (!_ikData) return;
+    const data = _ikData;
     if (!data) return;
     
     // Secondary grip offset in weapon-local space
@@ -1404,9 +1434,9 @@ class CharacterController {
     const isGun = data.type === 'ranged';
     const gripLocal = new THREE.Vector3();
     if (isGun) {
-      gripLocal.set(0, 0.04, 0.06); // forward + slightly down
+      gripLocal.set(0, 0.15, 0); // foregrip: forward along barrel
     } else {
-      gripLocal.set(0, -0.04, 0); // below right hand on hilt
+      gripLocal.set(0, -0.06, 0); // below right hand on hilt/guard
     }
     
     // Transform grip point to world space
@@ -1426,6 +1456,37 @@ class CharacterController {
     }
   }
 
+  _fireBulletTracer(weaponData) {
+    // Fire a visual bullet tracer from character toward camera look direction
+    const start = this.position.clone();
+    start.y += 1.2; // chest height
+    
+    // Direction: character facing direction (rotation Y)
+    const dir = new THREE.Vector3(Math.sin(this.rotation), 0, Math.cos(this.rotation));
+    // Add slight vertical from camera pitch
+    if (this.cameraPitch) dir.y = Math.sin(this.cameraPitch);
+    dir.normalize();
+    
+    const end = start.clone().add(dir.clone().multiplyScalar(80));
+    
+    // Tracer visual
+    const tData = weaponData.tracer;
+    if (tData) {
+      const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
+      const mat = new THREE.LineBasicMaterial({ color: tData.color || 0xffdd00, linewidth: 2, transparent: true, opacity: 0.8 });
+      const line = new THREE.Line(geo, mat);
+      this.scene.add(line);
+      // Fade out
+      setTimeout(() => { this.scene.remove(line); geo.dispose(); mat.dispose(); }, (tData.duration || 0.08) * 1000);
+    }
+    
+    // Muzzle flash
+    const flash = new THREE.PointLight(0xffaa00, 3, 5);
+    flash.position.copy(start).add(dir.clone().multiplyScalar(0.5));
+    this.scene.add(flash);
+    setTimeout(() => { this.scene.remove(flash); }, 60);
+  }
+  
   _attachWeaponToHolster(weaponId, slotIndex) {
     const data = WEAPON_DATABASE[weaponId];
     if (!data) return;
@@ -1504,8 +1565,8 @@ class CharacterController {
     
     // Movement input
     let moveX = 0, moveZ = 0;
-    if (this.keys['w']) moveZ = -1;
-    if (this.keys['s']) moveZ = 1;
+    if (this.keys['w']) moveZ = 1;
+    if (this.keys['s']) moveZ = -1;
     if (this.keys['a']) moveX = -1;
     if (this.keys['d']) moveX = 1;
     
@@ -1558,42 +1619,69 @@ class CharacterController {
     }
     
     // === COMBO ATTACK SYSTEM ===
-    // Light attack: E or left click — fast, can chain 3 hits
-    // Heavy attack: Q or right click — slow, big damage, knocks back
-    if ((this.keys['e'] || this.keys['mouse0']) && !this.isAttacking && this.stamina > 5) {
-      this.isAttacking = true; if (window._sound) window._sound.SFX.swordSwing();
-      this._fpRecoil = 1.0; // FPS viewmodel recoil
-      this._comboCount = (this._comboCount || 0) + 1;
-      if (this._comboCount > 3) this._comboCount = 1;
+    // Light attack: E or left click — melee combo OR ranged shooting
+    if ((this.keys['e'] || this.keys['mouse0']) && !this.isAttacking && this.stamina > 3) {
+      const _atkWeapon = this.equippedWeapon ? WEAPON_DATABASE[this.equippedWeapon] : null;
+      const _isRangedAttack = _atkWeapon && _atkWeapon.type === 'ranged' && this.weaponDrawn;
       
-      // Combo scaling: each hit in chain is faster + slightly more damage
-      const comboDamageMulti = [1.0, 1.15, 1.4][this._comboCount - 1];
-      const comboSpeedMulti = [1.0, 0.85, 0.7][this._comboCount - 1];
-      const hitTime = Math.floor(150 * comboSpeedMulti);
-      const recoveryTime = Math.floor(350 * comboSpeedMulti);
-      
-      this.stamina = Math.max(0, this.stamina - (8 + this._comboCount * 2));
-      this._comboDamageMulti = comboDamageMulti;
-      
-      // State machine drives combo states
-      const comboStates = [CharacterState.ATTACK_1, CharacterState.ATTACK_2, CharacterState.ATTACK_3];
-      this.stateMachine.transition(comboStates[this._comboCount - 1], recoveryTime / 1000);
-      
-      // Lunge forward slightly on attack
-      this._attackLunge = 3.0 * comboSpeedMulti;
-      
-      // Damage at peak of swing
-      setTimeout(() => {
-        this._attackHitFrame = true;
-      }, hitTime);
-      
-      // Recovery — can chain next attack during window
-      setTimeout(() => {
-        this.isAttacking = false;
-        this._attackLunge = 0;
-        // Combo window — reset combo if no follow-up within 600ms
-        this._comboTimer = setTimeout(() => { this._comboCount = 0; }, 600);
-      }, recoveryTime);
+      if (_isRangedAttack) {
+        // === RANGED SHOOTING ===
+        const wid = this.equippedWeapon;
+        if ((this.ammo[wid] || 0) <= 0) {
+          // Reload
+          if (!this._reloading) {
+            this._reloading = true;
+            if (window._sound) window._sound.SFX.reload();
+            setTimeout(() => { this.ammo[wid] = _atkWeapon.magSize; this._reloading = false; }, (_atkWeapon.reloadTime || 2) * 1000);
+          }
+        } else {
+          this.isAttacking = true;
+          this.ammo[wid]--;
+          this._fpRecoil = 1.5;
+          this.stamina = Math.max(0, this.stamina - 3);
+          if (window._sound) window._sound.SFX.gunshot();
+          
+          // Play shoot animation if available, else use attack
+          if (this.animations['shoot']) this.playAnimation('shoot', true);
+          else if (this.animations['idle_gun_shoot']) this.playAnimation('idle_gun_shoot', true);
+          else this.stateMachine.transition(CharacterState.ATTACK_1, 0.15);
+          
+          // Fire bullet tracer from muzzle toward camera center
+          this._fireBulletTracer(_atkWeapon);
+          
+          // Damage check via raycast
+          setTimeout(() => { this._attackHitFrame = true; }, 50);
+          
+          // Auto-fire rate
+          const fireDelay = 1000 / (_atkWeapon.fireRate || 5);
+          setTimeout(() => { this.isAttacking = false; }, fireDelay);
+        }
+      } else {
+        // === MELEE COMBO ATTACK ===
+        this.isAttacking = true; if (window._sound) window._sound.SFX.swordSwing();
+        this._fpRecoil = 1.0;
+        this._comboCount = (this._comboCount || 0) + 1;
+        if (this._comboCount > 3) this._comboCount = 1;
+        
+        const comboDamageMulti = [1.0, 1.15, 1.4][this._comboCount - 1];
+        const comboSpeedMulti = [1.0, 0.85, 0.7][this._comboCount - 1];
+        const hitTime = Math.floor(150 * comboSpeedMulti);
+        const recoveryTime = Math.floor(350 * comboSpeedMulti);
+        
+        this.stamina = Math.max(0, this.stamina - (8 + this._comboCount * 2));
+        this._comboDamageMulti = comboDamageMulti;
+        
+        const comboStates = [CharacterState.ATTACK_1, CharacterState.ATTACK_2, CharacterState.ATTACK_3];
+        this.stateMachine.transition(comboStates[this._comboCount - 1], recoveryTime / 1000);
+        this._attackLunge = 3.0 * comboSpeedMulti;
+        
+        setTimeout(() => { this._attackHitFrame = true; }, hitTime);
+        setTimeout(() => {
+          this.isAttacking = false;
+          this._attackLunge = 0;
+          this._comboTimer = setTimeout(() => { this._comboCount = 0; }, 600);
+        }, recoveryTime);
+      }
     }
     
     // Heavy attack: Q key — slower but massive damage + AOE knockback
@@ -2515,25 +2603,25 @@ class CharacterController {
     const data = WEAPON_DATABASE[weaponId];
     if (!data) return;
     
-    // Clone weapon mesh into FP scene
-    createWeaponMesh(weaponId).then(mesh => {
-      if (!mesh) return;
-      const clone = mesh.clone();
-      // Scale for FP view (bigger, closer)
-      clone.scale.setScalar(0.4);
-      
-      if (data.type === 'ranged') {
-        // Gun: two-handed, centered more
-        clone.rotation.set(0, Math.PI * 0.5, 0);
-        clone.position.set(0, -0.02, -0.08);
-      } else {
-        // Melee: angled like holding
-        clone.rotation.set(-0.3, 0, 0.2);
-        clone.position.set(0.05, 0, 0);
-      }
-      
-      this._fpWeaponGroup.add(clone);
-    });
+    // Create weapon mesh (returns Group immediately, GLB loads async into it)
+    const fpMesh = createWeaponMesh(weaponId);
+    if (!fpMesh) return;
+    // Scale for FP view (bigger, closer to camera)
+    fpMesh.scale.setScalar(0.4);
+    
+    if (data.type === 'ranged') {
+      // Gun: lower-right like COD/Halo, barrel pointing forward
+      fpMesh.scale.setScalar(1.5);
+      fpMesh.rotation.set(0, Math.PI * 0.5, 0);
+      fpMesh.position.set(0.25, -0.25, -0.5);
+    } else {
+      // Melee: lower-right, angled like holding a sword
+      fpMesh.scale.setScalar(1.2);
+      fpMesh.rotation.set(-0.4, 0.1, 0.15);
+      fpMesh.position.set(0.3, -0.3, -0.4);
+    }
+    
+    this._fpWeaponGroup.add(fpMesh);
   }
   
   renderFPWeapon(renderer) {
@@ -3932,11 +4020,14 @@ export class NPCController {
       // Character ~0.58 world units tall, want sword ~0.25 world units
       // Weapon geometry is ~0.8 units total height
       // localScale = desiredWorldSize / (geometrySize * boneWorldScale)
-      const _desiredWorld = 5.0; // Tuned: produces ~0.20 local scale for knight (bone world scale ~32)
+      const _isRanged = data.type === 'ranged';
+      const _desiredWorld = _isRanged ? 0.9 : 1.1; // Same as player weapon scale
       const _weaponGeoSize = 0.8; // approximate weapon geometry height
       const _localScale = _desiredWorld / (_weaponGeoSize * Math.max(_bws.x, 0.001));
       mesh.scale.setScalar(_localScale);
-      mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
+      // Hold offset must be in bone-local units (divide world-space offset by bone world scale)
+      const _bsi = 1 / Math.max(_bws.x, 0.001);
+      mesh.position.set(data.holdOffset.x * _bsi, data.holdOffset.y * _bsi, data.holdOffset.z * _bsi);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);
     } else {
