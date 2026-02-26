@@ -2597,7 +2597,194 @@ function _checkWallCollision(position, direction, distance) {
 }
 
 
-export { WEAPON_DATABASE, createWeaponMesh, CharacterState, CharacterStateMachine };
+export { WEAPON_DATABASE, createWeaponMesh, CharacterState, CharacterStateMachine, NPCState, NPCAIStateMachine };
+
+
+// ═══════════════════════════════════════════════════
+// NPC AI STATE MACHINE
+// ═══════════════════════════════════════════════════
+
+const NPCState = {
+  IDLE: 'idle',
+  PATROL: 'patrol',
+  CHASE: 'chase',
+  ATTACK: 'attack',
+  FLEE: 'flee',
+  DEAD: 'dead',
+  STUNNED: 'stunned',
+  RETURN: 'return',     // returning to patrol after losing player
+  SEARCH: 'search',     // searching last known position
+};
+
+class NPCAIStateMachine {
+  constructor(npc) {
+    this.npc = npc;
+    this.state = NPCState.IDLE;
+    this.stateTime = 0;
+    this.alertLevel = 0;          // 0-100, builds when player is nearby
+    this.lastKnownPlayerPos = null;
+    this.searchTimer = 0;
+    this.fleeHealth = 0.2;       // flee at 20% HP
+    this.aggroRange = 15;         // detection range
+    this.attackRange = 2.5;       // melee range
+    this.leashRange = 40;         // max chase distance from home
+    this.searchDuration = 5;      // seconds to search before giving up
+  }
+  
+  update(dt, playerPos, distToPlayer) {
+    this.stateTime += dt;
+    const npc = this.npc;
+    const healthPct = (npc.health || 100) / (npc.maxHealth || 100);
+    
+    switch (this.state) {
+      case NPCState.IDLE:
+        // Transition: player enters aggro range → CHASE
+        if (npc.isAggro && distToPlayer < this.aggroRange) {
+          this.alertLevel += dt * 30;
+          if (this.alertLevel > 50) {
+            this._transition(NPCState.CHASE);
+            this.lastKnownPlayerPos = playerPos.clone();
+          }
+        } else {
+          this.alertLevel = Math.max(0, this.alertLevel - dt * 10);
+          // Transition to PATROL after idle time
+          if (this.stateTime > 2 + Math.random() * 3) {
+            this._transition(NPCState.PATROL);
+          }
+        }
+        break;
+        
+      case NPCState.PATROL:
+        // Transition: player enters aggro range → CHASE
+        if (npc.isAggro && distToPlayer < this.aggroRange) {
+          this.alertLevel += dt * 40;
+          if (this.alertLevel > 30) {
+            this._transition(NPCState.CHASE);
+            this.lastKnownPlayerPos = playerPos.clone();
+          }
+        }
+        // Transition: arrived at waypoint → IDLE
+        if (npc.waypoint) {
+          const d = npc.model.position.distanceTo(npc.waypoint);
+          if (d < 1.5) this._transition(NPCState.IDLE);
+        }
+        break;
+        
+      case NPCState.CHASE:
+        this.lastKnownPlayerPos = playerPos.clone();
+        
+        // Transition: low health → FLEE
+        if (healthPct < this.fleeHealth) {
+          this._transition(NPCState.FLEE);
+          break;
+        }
+        // Transition: in attack range → ATTACK
+        if (distToPlayer < (npc.isRanged ? 20 : this.attackRange)) {
+          this._transition(NPCState.ATTACK);
+          break;
+        }
+        // Transition: too far from home → RETURN
+        if (npc.homePosition) {
+          const homeD = npc.model.position.distanceTo(npc.homePosition);
+          if (homeD > this.leashRange) {
+            this._transition(NPCState.RETURN);
+            break;
+          }
+        }
+        // Transition: lost sight (player too far) → SEARCH
+        if (distToPlayer > this.aggroRange * 2) {
+          this._transition(NPCState.SEARCH);
+        }
+        break;
+        
+      case NPCState.ATTACK:
+        // Transition: player out of range → CHASE
+        const atkRange = npc.isRanged ? 22 : this.attackRange + 1;
+        if (distToPlayer > atkRange) {
+          this._transition(NPCState.CHASE);
+        }
+        // Transition: low health → FLEE
+        if (healthPct < this.fleeHealth) {
+          this._transition(NPCState.FLEE);
+        }
+        break;
+        
+      case NPCState.FLEE:
+        // Flee for 3-5 seconds then try to return
+        if (this.stateTime > 3 + Math.random() * 2) {
+          if (healthPct > this.fleeHealth + 0.1) {
+            this._transition(NPCState.RETURN);
+          }
+        }
+        // If player is very far, go back to patrol
+        if (distToPlayer > this.leashRange) {
+          this._transition(NPCState.RETURN);
+        }
+        break;
+        
+      case NPCState.SEARCH:
+        this.searchTimer += dt;
+        // Look around last known position
+        if (distToPlayer < this.aggroRange) {
+          // Found player again!
+          this._transition(NPCState.CHASE);
+          break;
+        }
+        if (this.searchTimer > this.searchDuration) {
+          this._transition(NPCState.RETURN);
+        }
+        break;
+        
+      case NPCState.RETURN:
+        if (npc.homePosition) {
+          const d = npc.model.position.distanceTo(npc.homePosition);
+          if (d < 3) {
+            this.alertLevel = 0;
+            this._transition(NPCState.IDLE);
+          }
+        } else {
+          this._transition(NPCState.IDLE);
+        }
+        // Re-aggro if player comes close during return
+        if (npc.isAggro && distToPlayer < this.aggroRange * 0.7) {
+          this._transition(NPCState.CHASE);
+        }
+        break;
+        
+      case NPCState.DEAD:
+        break; // permanent
+        
+      case NPCState.STUNNED:
+        if (this.stateTime > 1.5) {
+          this._transition(NPCState.CHASE); // recover and re-engage
+        }
+        break;
+    }
+  }
+  
+  _transition(newState) {
+    if (this.state === NPCState.DEAD) return; // can't leave dead
+    this.state = newState;
+    this.stateTime = 0;
+    if (newState === NPCState.SEARCH) this.searchTimer = 0;
+  }
+  
+  die() {
+    this._transition(NPCState.DEAD);
+  }
+  
+  stun() {
+    if (this.state !== NPCState.DEAD) {
+      this._transition(NPCState.STUNNED);
+    }
+  }
+  
+  get isChasing() { return this.state === NPCState.CHASE; }
+  get isAttacking() { return this.state === NPCState.ATTACK; }
+  get isFleeing() { return this.state === NPCState.FLEE; }
+  get isSearching() { return this.state === NPCState.SEARCH; }
+}
+
 
 export class NPCController {
 
@@ -2961,6 +3148,7 @@ export class NPCController {
         
         npc.homePosition = npc.model.position.clone();
         npc.waitTime = 0; // Start moving immediately
+        npc.ai = new NPCAIStateMachine(npc);
         this.npcs.push(npc);
         if (behavior === 'aggro') {
           npc.isAggro = true;
@@ -3182,6 +3370,13 @@ export class NPCController {
     this._separateNPCs();
     for (const npc of this.npcs) {
       if (npc.mixer) npc.mixer.update(dt);
+      
+      // AI State Machine update
+      if (npc.ai && !npc.isDead) {
+        const playerPos = this.characterController ? this.characterController.position : new THREE.Vector3();
+        const dist = npc.model.position.distanceTo(playerPos);
+        npc.ai.update(dt, playerPos, dist);
+      }
       
       // Procedural animation for NPCs without embedded animations
       if (npc.proceduralAnim && npc.bones) {
