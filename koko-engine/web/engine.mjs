@@ -10941,6 +10941,18 @@ import('./interpreter.mjs').then(({ interpret }) => {
           break;
         case 'setTerrain': result = await bridge.setTerrain(intent.type); break;
         case 'setWeather': result = await bridge.setWeather(intent.type); break;
+        case 'setFog':
+          if (intent.enabled) {
+            scene.fog = new THREE.FogExp2(0x888899, 0.02);
+            result = '🌫️ Fog on';
+          } else {
+            scene.fog = null;
+            result = '🌫️ Fog off';
+          }
+          break;
+        case 'setParticles':
+          result = await bridge.execSingle('particles ' + intent.type);
+          break;
         case 'setTime': result = await bridge.setTime(intent.time); break;
         case 'addInterior': result = await bridge.addInterior(intent.type, intent.options || {}); break;
         case 'spawnNPC': result = await bridge.spawnNPCs(intent.type, intent.count, intent.hostile); break;

@@ -29,7 +29,7 @@ const CHARACTER_IDS = [
 
 const TERRAIN_TYPES = ['flat', 'hills', 'mountains', 'canyon', 'island', 'dunes', 'volcano', 'mesa', 'archipelago'];
 
-const WEATHER_TYPES = ['rain', 'snow', 'fog', 'clear', 'storm', 'overcast'];
+const WEATHER_TYPES = ['rain', 'snow', 'clear', 'storm', 'overcast'];
 
 const TIME_TYPES = ['morning', 'noon', 'afternoon', 'sunset', 'evening', 'night', 'midnight', 'dawn', 'dusk', 'overcast'];
 
@@ -167,6 +167,24 @@ function interpret(input) {
     if (lower === `terrain ${terrain}` || lower === `set terrain ${terrain}` || lower === `${terrain} terrain`) {
       return { action: 'setTerrain', type: terrain };
     }
+  }
+
+  // --- FOG ---
+  if (lower === 'fog on' || lower === 'fog' || lower === 'add fog' || lower === 'enable fog') {
+    return { action: 'setFog', enabled: true };
+  }
+  if (lower === 'fog off' || lower === 'no fog' || lower === 'remove fog' || lower === 'disable fog' || lower === 'clear fog') {
+    return { action: 'setFog', enabled: false };
+  }
+
+  // --- PARTICLES ---
+  const particleMatch = lower.match(/^(?:particles?|ambient)\s+(rain|snow|fire|dust|fireflies|embers|ash|spores|bubbles|leaves|petals|off|none|clear)/);
+  if (particleMatch) {
+    const ptype = particleMatch[1];
+    if (ptype === 'off' || ptype === 'none' || ptype === 'clear') {
+      return { action: 'setParticles', type: 'off' };
+    }
+    return { action: 'setParticles', type: ptype };
   }
 
   // --- WEATHER ---
