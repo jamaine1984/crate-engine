@@ -1224,6 +1224,9 @@ class CharacterController {
     }
     if (!this.model || this.isDead) return;
     if (this.mixer) this.mixer.update(dt);
+    
+    // Update state machine
+    this.stateMachine.update(dt);
     // Two-handed weapon IK: after animation, move left hand to weapon grip
     if (this._twoHandedGrip && this.weaponDrawn && this.equippedWeaponMesh && this.sockets.hand_l) {
       this._applyTwoHandedIK();
@@ -1256,8 +1259,7 @@ class CharacterController {
       this.stamina -= 15;
       this.isInvincible = true;
       this.rollSpeed = 18; if (window._sound) window._sound.SFX.dodge();
-      this.playAnimation('roll', true);
-      this.playAnimation('roll', true);
+      this.stateMachine.transition(CharacterState.ROLL, 0.5);
       setTimeout(() => { this.isInvincible = false;
     this._comboCount = 0;
     this._comboDamageMulti = 1.0;
@@ -1304,10 +1306,9 @@ class CharacterController {
       this.stamina = Math.max(0, this.stamina - (8 + this._comboCount * 2));
       this._comboDamageMulti = comboDamageMulti;
       
-      // Pick animation based on combo count
-      const anims = ['attack', 'punch_right', 'kick_left'];
-      const anim = this.animations[anims[this._comboCount - 1]] ? anims[this._comboCount - 1] : 'attack';
-      this.playAnimation(anim, true);
+      // State machine drives combo states
+      const comboStates = [CharacterState.ATTACK_1, CharacterState.ATTACK_2, CharacterState.ATTACK_3];
+      this.stateMachine.transition(comboStates[this._comboCount - 1], recoveryTime / 1000);
       
       // Lunge forward slightly on attack
       this._attackLunge = 3.0 * comboSpeedMulti;
@@ -1334,8 +1335,7 @@ class CharacterController {
       this._comboDamageMulti = 2.5; // Heavy hit
       this._isHeavyAttack = true;
       
-      const anim = this.animations['jump_attack'] ? 'jump_attack' : (this.animations['sword_slash'] ? 'sword_slash' : 'attack');
-      this.playAnimation(anim, true);
+      this.stateMachine.transition(CharacterState.HEAVY_ATTACK, 0.7);
       
       // Slam lunge
       this._attackLunge = 5.0;
@@ -1367,7 +1367,7 @@ class CharacterController {
     if ((this.keys[' '] || this.keys['space']) && this.isGrounded) {
       this.jumpVelocity = this.jumpForce; if (window._sound) window._sound.SFX.jump();
       this.isGrounded = false;
-      this.playAnimation('jump', true);
+      this.stateMachine.transition(CharacterState.JUMP);
     }
     
     // Apply gravity — ground check uses terrain height, not y=0
@@ -1423,7 +1423,20 @@ class CharacterController {
       this._attackLunge *= 0.9; // Decelerate lunge
     }
     
+    // Track isMoving for state machine
+    this.isMoving = hasInput && !this.isRolling && !this.isAttacking;
+    
     if (hasInput && !this.isRolling && !this.isAttacking) {
+      // Drive locomotion state
+      const sm = this.stateMachine;
+      if (this.isSprinting || this.keys['control']) {
+        sm.transition(CharacterState.RUN);
+      } else if (this.isRunning || this.keys['shift']) {
+        sm.transition(CharacterState.RUN);
+      } else {
+        sm.transition(CharacterState.WALK);
+      }
+      
       const cameraAngle = this.cameraYaw;
       const moveAngle = Math.atan2(moveX, moveZ);
       const targetRotation = cameraAngle + moveAngle;
@@ -1441,6 +1454,10 @@ class CharacterController {
       if (window._sound && this.speed > 0.5) window._sound.updateFootsteps(dt, true, this.isRunning);
     } else if (!this.isRolling) {
       this.speed = THREE.MathUtils.lerp(this.speed, 0, dt * 10);
+      // Return to idle when stopped
+      if (!this.isAttacking && !this.isRolling && this.isGrounded) {
+        this.stateMachine.transition(CharacterState.IDLE);
+      }
     }
     
     // Rolling movement
@@ -2235,6 +2252,7 @@ function _getTerrainY(x, z) {
     const defense = this.equippedShield ? this.equippedShield.defense : 0;
     const actual = Math.max(1, amount - defense);
     this.health = Math.max(0, this.health - actual); if (window._sound) window._sound.SFX.playerHit();
+    this.stateMachine.transition(CharacterState.HIT, 0.4);
     
     // Red screen flash
     let flash = document.getElementById('damage-flash');
@@ -2248,6 +2266,7 @@ function _getTerrainY(x, z) {
     setTimeout(() => { flash.style.opacity = '0'; }, 150);
     
     if (this.health <= 0) {
+      this.stateMachine.transition(CharacterState.DEATH);
       if (window._sound) window._sound.SFX.playerDeath(); return 'dead';
     }
     return 'hit';
