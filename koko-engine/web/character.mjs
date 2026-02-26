@@ -2334,16 +2334,31 @@ class CharacterController {
       );
       
       // Camera collision: raycast from character to desired camera position
-      if (window._terrainMesh) {
+      {
         const charHead = new THREE.Vector3(this.position.x, this.position.y + 1.6, this.position.z);
         const toCamera = new THREE.Vector3().subVectors(desiredPos, charHead);
         const dist = toCamera.length();
         toCamera.normalize();
         const ray = new THREE.Raycaster(charHead, toCamera, 0.3, dist);
-        const hits = ray.intersectObject(window._terrainMesh);
-        if (hits.length > 0) {
-          // Camera would clip terrain — move it closer
-          const safeDist = hits[0].distance - 0.3;
+        
+        // Check terrain
+        let closestHit = dist;
+        if (window._terrainMesh) {
+          const hits = ray.intersectObject(window._terrainMesh);
+          if (hits.length > 0) closestHit = Math.min(closestHit, hits[0].distance);
+        }
+        // Check solid scene objects (buildings, walls, interiors)
+        if (window._sceneObjects) {
+          const solids = window._sceneObjects.filter(o => o && o.userData && (o.userData.isSolid || o.userData.isInterior || o.userData.isGLB));
+          for (const obj of solids) {
+            try {
+              const hits = ray.intersectObject(obj, true);
+              if (hits.length > 0) closestHit = Math.min(closestHit, hits[0].distance);
+            } catch(e) {}
+          }
+        }
+        if (closestHit < dist) {
+          const safeDist = closestHit - 0.3;
           desiredPos.copy(charHead).addScaledVector(toCamera, Math.max(0.5, safeDist));
         }
       }
@@ -2774,7 +2789,98 @@ function _checkWallCollision(position, direction, distance) {
       inv.appendChild(slot);
     });
   }
-  
+
+  toggleInventoryPanel() {
+    let panel = document.getElementById('inventory-panel');
+    if (panel) { panel.remove(); return; }
+    
+    panel = document.createElement('div');
+    panel.id = 'inventory-panel';
+    panel.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10003;display:flex;align-items:center;justify-content:center;font-family:system-ui;backdrop-filter:blur(4px);';
+    
+    const container = document.createElement('div');
+    container.style.cssText = 'background:rgba(15,15,20,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:30px;width:600px;max-height:80vh;overflow-y:auto;';
+    
+    // Header
+    container.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><div style="font-size:20px;font-weight:700;color:#fff;">🎒 Inventory</div><div style="color:rgba(255,255,255,0.3);font-size:11px;">TAB to close</div></div>';
+    
+    // Stats section
+    const stats = document.createElement('div');
+    stats.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:12px;color:rgba(255,255,255,0.6);';
+    stats.innerHTML = `
+      <div>❤️ Health: <span style="color:#e05050">${Math.round(this.health)}/${this.maxHealth}</span></div>
+      <div>⚡ Stamina: <span style="color:#50c070">${Math.round(this.stamina)}/${this.maxStamina}</span></div>
+      <div>⚔️ Weapon: <span style="color:#f59e0b">${this.equippedWeapon || 'None'}</span></div>
+      <div>🛡️ Shield: <span style="color:#3b82f6">${this.equippedShield ? this.equippedShield.name : 'None'}</span></div>
+    `;
+    container.appendChild(stats);
+    
+    // Weapon slots
+    const slotsLabel = document.createElement('div');
+    slotsLabel.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;';
+    slotsLabel.textContent = 'Weapon Slots';
+    container.appendChild(slotsLabel);
+    
+    const slotsRow = document.createElement('div');
+    slotsRow.style.cssText = 'display:flex;gap:8px;margin-bottom:20px;';
+    for (let i = 0; i < 3; i++) {
+      const wid = this.weaponSlots ? this.weaponSlots[i] : null;
+      const wpn = wid ? WEAPON_DATABASE[wid] : null;
+      const isActive = this.activeSlot === i && this.weaponDrawn;
+      const slot = document.createElement('div');
+      slot.style.cssText = 'width:80px;height:80px;background:rgba(255,255,255,' + (isActive ? '0.08' : '0.03') + ');border:1px solid ' + (isActive ? 'rgba(255,200,60,0.5)' : 'rgba(255,255,255,0.06)') + ';border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,0.5);';
+      slot.innerHTML = '<div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:4px;">' + (i+1) + '</div>' + 
+        (wpn ? '<div style="font-size:24px;">' + (wpn.type === 'ranged' ? '🔫' : '⚔️') + '</div><div style="margin-top:2px;">' + wpn.name + '</div>' : '<div style="font-size:18px;color:rgba(255,255,255,0.1);">—</div>');
+      slotsRow.appendChild(slot);
+    }
+    container.appendChild(slotsRow);
+    
+    // Items grid
+    const itemsLabel = document.createElement('div');
+    itemsLabel.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;';
+    itemsLabel.textContent = 'Items (' + this.inventory.length + ')';
+    container.appendChild(itemsLabel);
+    
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(8,1fr);gap:4px;';
+    const iconMap = { health_potion: '❤️', gem: '💎', weapon: '⚔️', shield: '🛡️', material: '🧱', crystal: '💠', iron: '⚙️', gold: '🪙', wood: '🪵' };
+    for (let i = 0; i < 32; i++) {
+      const item = this.inventory[i];
+      const cell = document.createElement('div');
+      cell.style.cssText = 'aspect-ratio:1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;' + (item ? 'cursor:pointer;' : '');
+      if (item) {
+        cell.textContent = iconMap[item.type] || iconMap[item.material] || '📦';
+        cell.title = item.type + (item.value ? ' (+' + item.value + ')' : '') + (item.amount ? ' x' + item.amount : '');
+        cell.onmouseenter = () => { cell.style.borderColor = 'rgba(255,200,60,0.4)'; };
+        cell.onmouseleave = () => { cell.style.borderColor = 'rgba(255,255,255,0.04)'; };
+      }
+      grid.appendChild(cell);
+    }
+    container.appendChild(grid);
+    
+    // Materials
+    if (this.craftingSystem && this.craftingSystem.materials) {
+      const matLabel = document.createElement('div');
+      matLabel.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.4);margin:16px 0 8px;letter-spacing:1px;text-transform:uppercase;';
+      matLabel.textContent = 'Materials';
+      container.appendChild(matLabel);
+      const matGrid = document.createElement('div');
+      matGrid.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;';
+      const matIcons = { wood: '🪵', stone: '🪨', iron: '⚙️', crystal: '💠', gold: '🪙', leather: '🧶', herb: '🌿' };
+      Object.entries(this.craftingSystem.materials).forEach(([mat, count]) => {
+        const el = document.createElement('div');
+        el.style.cssText = 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:6px 12px;font-size:12px;color:rgba(255,255,255,0.6);';
+        el.textContent = (matIcons[mat] || '📦') + ' ' + mat + ': ' + count;
+        matGrid.appendChild(el);
+      });
+      container.appendChild(matGrid);
+    }
+    
+    panel.appendChild(container);
+    panel.onclick = (e) => { if (e.target === panel) panel.remove(); };
+    document.body.appendChild(panel);
+  }
+
   respawn() {
     this.health = this.maxHealth;
     this.isInvincible = true;

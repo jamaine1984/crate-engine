@@ -925,7 +925,15 @@ setTimeout(() => {
 window.addEventListener('keydown', e => {
   if (e.key === ' ' && dialogueSystem && dialogueSystem.active) { dialogueSystem.advance(); e.preventDefault(); return; }
   if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
+  if ((e.key === 'Tab' || e.key === 'i') && playMode && characterController && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    characterController.toggleInventoryPanel();
+    return;
+  }
   if (e.key === 'Escape' && playMode) {
+    // Close inventory if open
+    const invPanel = document.getElementById('inventory-panel');
+    if (invPanel) { invPanel.remove(); return; }
     // Show pause menu instead of immediately exiting
     const existingPause = document.getElementById('pause-menu');
     if (existingPause) {
