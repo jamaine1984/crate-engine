@@ -664,6 +664,34 @@ function _showHitMarker(isKill) {
   }, isKill ? 400 : 200);
 }
 
+
+// === SCREEN SHAKE SYSTEM ===
+const _screenShake = {
+  intensity: 0,
+  decay: 5,        // how fast shake fades
+  maxOffset: 0,
+  
+  trigger(intensity, duration) {
+    this.intensity = Math.max(this.intensity, intensity);
+    this.maxOffset = intensity * 0.15;
+    // Auto-decay over duration
+    this.decay = intensity / Math.max(duration, 0.1);
+  },
+  
+  update(dt, camera) {
+    if (this.intensity <= 0.01) { this.intensity = 0; return; }
+    
+    const offset = this.intensity * 0.08;
+    camera.position.x += (Math.random() - 0.5) * offset;
+    camera.position.y += (Math.random() - 0.5) * offset * 0.7;
+    camera.rotation.z += (Math.random() - 0.5) * offset * 0.02;
+    
+    this.intensity -= this.decay * dt;
+    if (this.intensity < 0) this.intensity = 0;
+  }
+};
+window._screenShake = _screenShake;
+
 class CharacterController {
   constructor(scene, camera, objects) {
     this.scene = scene;
@@ -2586,8 +2614,10 @@ function _checkWallCollision(position, direction, distance) {
     // Hit feedback — brief slow-mo effect (hitstop) + hit marker
     if (hitCount > 0) {
       this._hitstop = 0.05; if (window._sound) window._sound.SFX.swordHit();
-      // Hit marker — crosshair flash
+      // Hit marker + screen shake
       _showHitMarker(false);
+      if (this._isHeavyAttack && window._screenShake) window._screenShake.trigger(3, 0.2);
+      else if (window._screenShake) window._screenShake.trigger(1, 0.1);
     }
   }
   
@@ -2636,6 +2666,7 @@ function _checkWallCollision(position, direction, distance) {
     const actual = Math.max(1, amount - defense);
     this.health = Math.max(0, this.health - actual); if (window._sound) window._sound.SFX.playerHit();
     this.stateMachine.transition(CharacterState.HIT, 0.4);
+    if (window._screenShake) window._screenShake.trigger(2, 0.15);
     
     // Red screen flash
     let flash = document.getElementById('damage-flash');
