@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=70';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=71';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -10896,9 +10896,17 @@ window._engineBridge = {
   
   // Interior
   async addInterior(type, options) {
-    const floors = options.floors || 1;
-    if (floors > 1) return await execSingle(floors + ' story house');
-    return await execSingle('interior ' + type);
+    const floors = (options && options.floors) || 1;
+    let obj;
+    if (type === 'shop') obj = createInteriorShop();
+    else if (type === 'tavern') obj = createInteriorTavern();
+    else obj = createInteriorHouse({ floors });
+    
+    // Position in front of camera
+    const px = camera.position.x + Math.sin(camera.rotation.y) * 10;
+    const pz = camera.position.z + Math.cos(camera.rotation.y) * 10;
+    addObj(obj.userData.name || 'Interior', obj, px, pz);
+    return '🏠 Interior ' + type + ' created!' + (floors > 1 ? ' (' + floors + ' floors with stairs)' : ' Walk inside through the front door.');
   },
   
   // Help
