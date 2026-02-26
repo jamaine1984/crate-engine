@@ -3634,6 +3634,7 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     // Recompute after scale
     const box2 = new THREE.Box3().setFromObject(model);
     const bottom = box2.min.y;
+    const ln = (name || '').toLowerCase();
     model.position.set(x || 0, -bottom, z || 0);
     // Auto-position on terrain — ensure object bottom sits flush on surface
     if (terrainMesh) {
@@ -3666,7 +3667,6 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     model.userData.name = name;
     model.userData.isGLB = true;
     // Auto-float boats — always at water surface level
-    const ln = (name || '').toLowerCase();
     if (ln.includes('boat') || ln.includes('ship') || ln.includes('canoe') || ln.includes('kayak')) {
       // Boats float at y=0 (just above ocean at -0.3)
       // If island terrain exists, position boat at the shoreline
@@ -7613,6 +7613,7 @@ async function execSingle(cmd) {
     if (result) {
       const glb = GLB_MODELS[result.file] || result.file;
       loadGLBModel(result.file, glb, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '⚔️ Added ' + result.name + ' to the scene!';
     }
     return '↩ Weapons gallery closed';
@@ -7623,6 +7624,7 @@ async function execSingle(cmd) {
     const result = await showGallery('buildings');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '🏠 Added ' + result.name + ' to the scene!';
     }
     return '↩ Buildings gallery closed';
@@ -7633,6 +7635,7 @@ async function execSingle(cmd) {
     const result = await showGallery('vehicles');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '🚗 Added ' + result.name + ' to the scene!';
     }
     return '↩ Vehicles gallery closed';
@@ -7643,6 +7646,7 @@ async function execSingle(cmd) {
     const result = await showGallery('animals');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '🐾 Added ' + result.name + ' to the scene!';
     }
     return '↩ Animals gallery closed';
@@ -7653,6 +7657,7 @@ async function execSingle(cmd) {
     const result = await showGallery('trees');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '🌳 Added ' + result.name + ' to the scene!';
     }
     return '↩ Trees gallery closed';
@@ -7663,6 +7668,7 @@ async function execSingle(cmd) {
     const result = await showGallery('rocks');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '🪨 Added ' + result.name + ' to the scene!';
     }
     return '↩ Rocks gallery closed';
@@ -7673,6 +7679,7 @@ async function execSingle(cmd) {
     const result = await showGallery('furniture');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '🪑 Added ' + result.name + ' to the scene!';
     }
     return '↩ Furniture gallery closed';
@@ -7683,6 +7690,7 @@ async function execSingle(cmd) {
     const result = await showGallery('food');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '🍖 Added ' + result.name + ' to the scene!';
     }
     return '↩ Items gallery closed';
@@ -7693,6 +7701,7 @@ async function execSingle(cmd) {
     const result = await showGallery('dungeon');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '💀 Added ' + result.name + ' to the scene!';
     }
     return '↩ Dungeon gallery closed';
@@ -7703,6 +7712,7 @@ async function execSingle(cmd) {
     const result = await showGallery('scifi');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '🚀 Added ' + result.name + ' to the scene!';
     }
     return '↩ Sci-Fi gallery closed';
@@ -7713,6 +7723,7 @@ async function execSingle(cmd) {
     const result = await showGallery('nature');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '⛺ Added ' + result.name + ' to the scene!';
     }
     return '↩ Nature gallery closed';
@@ -7723,6 +7734,7 @@ async function execSingle(cmd) {
     const result = await showCategoryPicker();
     if (result && result.file) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
       return '✅ Added ' + result.name + ' to the scene!';
     }
     if (result && typeof result === 'string') {
@@ -11617,8 +11629,25 @@ input.focus();
 function deserializeScene(data) {
   // Clear current scene
   parseAndExecute('clear');
-  // Replay commands
-  const cmds = data.split('|').filter(Boolean);
+  
+  let cmds;
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed.version === 2) {
+      cmds = parsed.commands || [];
+      // Restore weather/time after commands
+      setTimeout(() => {
+        if (parsed.weather) setWeather(parsed.weather);
+        if (parsed.time) parseAndExecute('time ' + parsed.time);
+      }, cmds.length * 200 + 500);
+    } else {
+      cmds = data.split('|').filter(Boolean);
+    }
+  } catch(e) {
+    // Legacy format: pipe-separated commands
+    cmds = data.split('|').filter(Boolean);
+  }
+  
   let i = 0;
   function next() {
     if (i >= cmds.length) return;
@@ -11630,7 +11659,28 @@ function deserializeScene(data) {
 }
 
 function serializeScene() {
-  return sceneHistory.filter(c => c !== 'clear' && c !== 'reset').join('|');
+  // Save both command history AND current object state
+  const objectState = objects.map(obj => {
+    if (!obj || !obj.userData) return null;
+    const entry = {
+      name: obj.userData.name || '',
+      pos: [+obj.position.x.toFixed(2), +obj.position.y.toFixed(2), +obj.position.z.toFixed(2)],
+      scale: +obj.scale.x.toFixed(4),
+      rot: +obj.rotation.y.toFixed(3),
+    };
+    if (obj.userData.isGLB) entry.glb = true;
+    if (obj.userData.isWater) entry.water = true;
+    if (obj.userData.waterPreset) entry.waterPreset = obj.userData.waterPreset;
+    if (obj.userData.isGerstnerWater) entry.gerstner = true;
+    return entry;
+  }).filter(Boolean);
+  
+  return JSON.stringify({
+    version: 2,
+    commands: sceneHistory.filter(c => c !== 'clear' && c !== 'reset'),
+    weather: weatherSystem || null,
+    time: currentTime || null,
+  });
 }
 
 // Compress scene data for shorter URLs
@@ -14982,29 +15032,24 @@ async function startGeneration() {
 
 function gen3dAddToScene() {
   if (!window._gen3dResultUrl) return;
-  // Use the engine's module-scoped gltfLoader
-  {
-    const name = 'generated_' + Date.now();
-    const url = window._gen3dResultUrl;
-    gltfLoader.load(url, (gltf) => {
-      const model = gltf.scene;
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z);
-      if (maxDim > 0.001) model.scale.setScalar(2.0 / maxDim);
-      
-      // Position near player
-      const px = (characterController ? characterController.position.x : 0) + (Math.random() - 0.5) * 10;
-      const pz = (characterController ? characterController.position.z : 0) + (Math.random() - 0.5) * 10;
-      model.position.set(px, 0, pz);
-      model.castShadow = true;
-      model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-      model.userData.name = name;
-      scene.add(model);
-      objects.push(model);
-      showToast('✓ 3D model added to scene!');
-    });
-  }
+  const name = 'generated_' + Date.now();
+  const url = window._gen3dResultUrl;
+  gltfLoader.load(url, (gltf) => {
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim > 0.001) model.scale.setScalar(2.0 / maxDim);
+    model.castShadow = true;
+    model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    model.userData.name = name;
+    model.userData.isGLB = true;
+    // Position near player, grounded on terrain
+    const px = (characterController ? characterController.position.x : 0) + (Math.random() - 0.5) * 6;
+    const pz = (characterController ? characterController.position.z : 0) + (Math.random() - 0.5) * 6;
+    addObj(name, model, px, pz);
+    showToast('✓ 3D model added to scene!');
+  });
   document.getElementById('gen3d-modal').remove();
 }
 

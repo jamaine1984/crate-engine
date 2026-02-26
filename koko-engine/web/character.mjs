@@ -6999,7 +6999,7 @@ export function createMinimap(scene, camera, character, objects) {
   const size = 150;
   const el = document.createElement('div');
   el.id = 'minimap';
-  el.style.cssText = 'position:fixed;bottom:20px;left:20px;width:' + size + 'px;height:' + size + 'px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);overflow:hidden;z-index:9998;pointer-events:none;background:rgba(0,0,0,0.5);';
+  el.style.cssText = 'position:fixed;top:60px;right:20px;width:' + size + 'px;height:' + size + 'px;border-radius:50%;border:2px solid rgba(255,255,255,0.12);overflow:hidden;z-index:9998;pointer-events:none;background:rgba(0,0,0,0.6);box-shadow:0 0 20px rgba(0,0,0,0.5);';
   
   const canvas = document.createElement('canvas');
   canvas.width = size;

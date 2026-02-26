@@ -20,7 +20,7 @@ image = (
 
 volume = modal.Volume.from_name("crate-3d-models", create_if_missing=True)
 
-@app.cls(gpu="L4", image=image, volumes={"/models": volume}, timeout=300, scaledown_window=60)
+@app.cls(gpu="L4", image=image, volumes={"/models": volume}, timeout=300, scaledown_window=300)
 class TripoSRGenerator:
     @modal.enter()
     def load_model(self):
