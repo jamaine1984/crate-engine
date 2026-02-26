@@ -50,6 +50,30 @@
 </style>
 </head>
 <body>
+<!-- LOADING SCREEN -->
+<div id="loading-screen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#0a0a0a;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;transition:opacity 0.5s;">
+  <div style="font-size:2.5rem;font-weight:900;background:linear-gradient(135deg,#ff6b35,#f7c948);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:20px;">CRATE ENGINE</div>
+  <div style="width:200px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden;margin-bottom:12px;">
+    <div id="loading-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#ff6b35,#f7c948);border-radius:2px;transition:width 0.3s;"></div>
+  </div>
+  <div id="loading-text" style="color:#555;font-size:0.75rem;">Initializing...</div>
+</div>
+<script>
+  // Loading progress
+  window._loadProgress = function(pct, text) {
+    const bar = document.getElementById('loading-bar');
+    const txt = document.getElementById('loading-text');
+    if (bar) bar.style.width = pct + '%';
+    if (txt) txt.textContent = text || 'Loading...';
+  };
+  window._hideLoading = function() {
+    const el = document.getElementById('loading-screen');
+    if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }
+  };
+  // Auto-hide after 5s max (in case engine loads fast)
+  setTimeout(() => { if (document.getElementById('loading-screen')) window._hideLoading(); }, 5000);
+</script>
+
 <nav>
   <div class="logo">📦 Crate Engine</div>
   <div class="links">
@@ -89,7 +113,7 @@ window.onerror=(msg,src,line)=>{console.error('[ENGINE ERROR]',msg,'at',src,':',
 setTimeout(()=>{const l=document.querySelector('.engine-loader');if(l&&l.offsetHeight>0)l.style.display='none';},15000);
 </script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
-<script type="module" src="engine.mjs?v=135"></script>
+<script type="module" src="engine.mjs?v=136"></script>
 <script type="module">import auth from './auth.mjs';auth.renderAccountBadge(document.getElementById('account-nav'));</script>
 <button id="ai-settings-btn" onclick="showAISettingsModal()" title="AI Settings" style="position:fixed;top:72px;left:16px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">⚙️</button>
 <button id="mp-lobby-btn" onclick="showMultiplayerLobby()" title="Multiplayer" style="position:fixed;top:72px;left:62px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">🌐</button>

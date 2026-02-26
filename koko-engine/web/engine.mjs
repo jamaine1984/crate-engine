@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=77';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=78';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -4009,6 +4009,83 @@ renderer.toneMappingExposure = 1.2;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
+if (window._loadProgress) window._loadProgress(20, "Creating scene...");
+// === PROCEDURAL SOUND SYSTEM (Web Audio API) ===
+// No audio files needed — generates sounds mathematically
+(function() {
+  let ctx = null;
+  function getCtx() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch(e) { return null; }
+    }
+    return ctx;
+  }
+  
+  // Resume on first user interaction
+  document.addEventListener('click', () => { if (ctx && ctx.state === 'suspended') ctx.resume(); }, { once: true });
+  document.addEventListener('keydown', () => { if (ctx && ctx.state === 'suspended') ctx.resume(); }, { once: true });
+  
+  function playTone(freq, duration, type, volume, decay) {
+    const c = getCtx(); if (!c) return;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(volume || 0.15, c.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + (duration || 0.2));
+    osc.connect(gain);
+    gain.connect(c.destination);
+    osc.start(c.currentTime);
+    osc.stop(c.currentTime + (duration || 0.2));
+  }
+  
+  function playNoise(duration, volume) {
+    const c = getCtx(); if (!c) return;
+    const bufferSize = c.sampleRate * duration;
+    const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+    const source = c.createBufferSource();
+    source.buffer = buffer;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(volume || 0.1, c.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + duration);
+    source.connect(gain);
+    gain.connect(c.destination);
+    source.start(c.currentTime);
+  }
+  
+  let lastFootstep = 0;
+  
+  window._sound = {
+    SFX: {
+      swordSwing() { playTone(200, 0.15, 'sawtooth', 0.08); playNoise(0.1, 0.05); },
+      swordHit() { playNoise(0.08, 0.12); playTone(150, 0.1, 'square', 0.1); },
+      heavyAttack() { playTone(80, 0.3, 'sawtooth', 0.12); playNoise(0.15, 0.08); },
+      dodge() { playNoise(0.12, 0.06); playTone(400, 0.1, 'sine', 0.05); },
+      jump() { playTone(300, 0.15, 'sine', 0.06); playTone(500, 0.1, 'sine', 0.04); },
+      playerHit() { playTone(100, 0.2, 'square', 0.1); playNoise(0.1, 0.08); },
+      playerDeath() { playTone(80, 0.5, 'sawtooth', 0.15); playTone(60, 0.8, 'sine', 0.1); },
+      enemyDeath() { playNoise(0.2, 0.1); playTone(120, 0.3, 'square', 0.08); },
+      pickup() { playTone(600, 0.1, 'sine', 0.08); playTone(800, 0.1, 'sine', 0.06); },
+      doorOpen() { playTone(200, 0.15, 'triangle', 0.06); },
+      gunshot() { playNoise(0.08, 0.15); playTone(100, 0.1, 'sawtooth', 0.1); },
+    },
+    updateFootsteps(dt, moving, running) {
+      const interval = running ? 0.35 : 0.5;
+      const now = performance.now() / 1000;
+      if (moving && now - lastFootstep > interval) {
+        lastFootstep = now;
+        const freq = 60 + Math.random() * 40;
+        playNoise(0.05, 0.03);
+        playTone(freq, 0.05, 'sine', 0.02);
+      }
+    }
+  };
+})();
+
+
 const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 0.1, 2000);
 camera.position.set(15, 10, 20);
 
@@ -4374,6 +4451,7 @@ function setGraphicsQuality(level) {
   }
 }
 
+if (window._loadProgress) window._loadProgress(50, "Loading assets...");
 // Initialize everything
 setTimeout(async () => {
   try {
@@ -4585,6 +4663,8 @@ function expandGround(newSize) {
 // === OBJECTS LIST ===
 const objects = [];
 window._sceneObjects = objects; // expose for collision system
+if (window._loadProgress) window._loadProgress(90, "Almost ready...");
+setTimeout(() => { if (window._hideLoading) window._hideLoading(); }, 500);
 
 // Door animation system — smoothly open/close doors
 function updateDoors(dt) {
@@ -4628,6 +4708,7 @@ window._toggleNearestDoor = function(playerPos) {
   
   if (nearest) {
     nearest.userData.isOpen = !nearest.userData.isOpen;
+    if (window._sound) window._sound.SFX.doorOpen();
     // Remove solid flag when open so player can walk through
     nearest.userData.isSolid = !nearest.userData.isOpen;
     return nearest.userData.isOpen ? '🚪 Door opened' : '🚪 Door closed';

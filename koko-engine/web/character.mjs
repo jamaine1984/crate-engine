@@ -567,6 +567,10 @@ class CharacterStateMachine {
         if (this.stateTime > 0.15) {
           this.transition(c.isMoving ? CharacterState.RUN : CharacterState.IDLE);
         }
+        // Landing camera dip
+        if (this.stateTime < 0.05 && window._screenShake) {
+          window._screenShake.trigger(1.5, 0.15);
+        }
         break;
       case CharacterState.FALL:
         if (c.isGrounded) this.transition(CharacterState.LAND, 0.15);
