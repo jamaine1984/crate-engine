@@ -747,6 +747,19 @@ class CharacterController {
     
     // Camera
     this.cameraMode = '3rd'; // '3rd' or '1st'
+    // FPS weapon viewmodel
+    this._fpScene = new THREE.Scene(); // Separate scene rendered on top
+    this._fpScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const fpLight = new THREE.DirectionalLight(0xfff5e0, 1.2);
+    fpLight.position.set(1, 2, 1);
+    this._fpScene.add(fpLight);
+    this._fpCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 10);
+    this._fpWeaponGroup = new THREE.Group(); // Holds weapon mesh
+    this._fpScene.add(this._fpWeaponGroup);
+    this._fpBobTime = 0;
+    this._fpSwayX = 0;
+    this._fpSwayY = 0;
+    this._fpRecoil = 0; // Kick back on shoot
     this.cameraDistance = 10;
     this.cameraHeight = 2.0;
     this.cameraPitch = 0.2;
@@ -1202,6 +1215,7 @@ class CharacterController {
     this.weaponDrawn = false;
     
     this.equippedWeapon = this.weaponSlots[this.activeSlot];
+    if (this.cameraMode === '1st') this._setupFPWeapon();
     return '⚔️ ' + data.name + ' equipped on back — press 1 to draw';
   }
   
@@ -1548,6 +1562,7 @@ class CharacterController {
     // Heavy attack: Q or right click — slow, big damage, knocks back
     if ((this.keys['e'] || this.keys['mouse0']) && !this.isAttacking && this.stamina > 5) {
       this.isAttacking = true; if (window._sound) window._sound.SFX.swordSwing();
+      this._fpRecoil = 1.0; // FPS viewmodel recoil
       this._comboCount = (this._comboCount || 0) + 1;
       if (this._comboCount > 3) this._comboCount = 1;
       
@@ -1584,6 +1599,7 @@ class CharacterController {
     // Heavy attack: Q key — slower but massive damage + AOE knockback
     if (this.keys['q'] && !this.isAttacking && this.stamina > 25) {
       this.isAttacking = true; if (window._sound) window._sound.SFX.heavyAttack();
+      this._fpRecoil = 1.5; // FPS heavy recoil
       this._comboCount = 0; // Reset combo
       this.stamina = Math.max(0, this.stamina - 25);
       this._comboDamageMulti = 2.5; // Heavy hit
@@ -2431,6 +2447,106 @@ class CharacterController {
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, Math.min(1, 6 * dt));
       this.camera.updateProjectionMatrix();
     }
+    
+    // FPS weapon viewmodel update
+    if (this.cameraMode === '1st') {
+      this._updateFPWeapon(dt);
+    }
+  }
+  
+  _updateFPWeapon(dt) {
+    const group = this._fpWeaponGroup;
+    if (!group || group.children.length === 0) return;
+    
+    // Bob when moving
+    const moving = this.isMoving;
+    const sprinting = this.isSprinting;
+    const bobSpeed = sprinting ? 14 : moving ? 8 : 1.5;
+    const bobAmtX = sprinting ? 0.04 : moving ? 0.025 : 0.005;
+    const bobAmtY = sprinting ? 0.03 : moving ? 0.02 : 0.003;
+    this._fpBobTime += dt * bobSpeed;
+    
+    // Base position: right side, slightly down
+    const baseX = 0.25;
+    const baseY = -0.22;
+    const baseZ = -0.45;
+    
+    // Aim offset
+    const aimX = THREE.MathUtils.lerp(baseX, 0.0, this.aimLerp); // Center when aiming
+    const aimY = THREE.MathUtils.lerp(baseY, -0.15, this.aimLerp);
+    const aimZ = THREE.MathUtils.lerp(baseZ, -0.35, this.aimLerp);
+    
+    // Bob
+    const bobX = Math.sin(this._fpBobTime) * bobAmtX * (1 - this.aimLerp * 0.8);
+    const bobY = Math.abs(Math.cos(this._fpBobTime)) * bobAmtY * (1 - this.aimLerp * 0.8);
+    
+    // Sway from mouse movement (uses camera delta)
+    this._fpSwayX = THREE.MathUtils.lerp(this._fpSwayX, 0, dt * 5);
+    this._fpSwayY = THREE.MathUtils.lerp(this._fpSwayY, 0, dt * 5);
+    const swayX = this._fpSwayX * 0.02 * (1 - this.aimLerp * 0.7);
+    const swayY = this._fpSwayY * 0.01 * (1 - this.aimLerp * 0.7);
+    
+    // Recoil recovery
+    this._fpRecoil = THREE.MathUtils.lerp(this._fpRecoil, 0, dt * 10);
+    
+    group.position.set(
+      aimX + bobX + swayX,
+      aimY + bobY + swayY,
+      aimZ + this._fpRecoil * 0.08
+    );
+    
+    // Slight tilt on movement
+    group.rotation.set(
+      this._fpRecoil * -0.15,
+      bobX * -1.5,
+      bobX * 0.8
+    );
+  }
+  
+  _setupFPWeapon() {
+    // Clear old
+    while (this._fpWeaponGroup.children.length > 0) {
+      this._fpWeaponGroup.remove(this._fpWeaponGroup.children[0]);
+    }
+    
+    const weaponId = this.weaponSlots && this.weaponSlots[this.activeSlot];
+    if (!weaponId) return;
+    
+    const data = WEAPON_DATABASE[weaponId];
+    if (!data) return;
+    
+    // Clone weapon mesh into FP scene
+    createWeaponMesh(weaponId).then(mesh => {
+      if (!mesh) return;
+      const clone = mesh.clone();
+      // Scale for FP view (bigger, closer)
+      clone.scale.setScalar(0.4);
+      
+      if (data.type === 'ranged') {
+        // Gun: two-handed, centered more
+        clone.rotation.set(0, Math.PI * 0.5, 0);
+        clone.position.set(0, -0.02, -0.08);
+      } else {
+        // Melee: angled like holding
+        clone.rotation.set(-0.3, 0, 0.2);
+        clone.position.set(0.05, 0, 0);
+      }
+      
+      this._fpWeaponGroup.add(clone);
+    });
+  }
+  
+  renderFPWeapon(renderer) {
+    // Call this AFTER main scene render, with autoClear=false
+    if (this.cameraMode !== '1st') return;
+    if (this._fpWeaponGroup.children.length === 0) return;
+    
+    renderer.autoClear = false;
+    renderer.clearDepth();
+    this._fpCamera.aspect = this.camera.aspect;
+    this._fpCamera.updateProjectionMatrix();
+    renderer.render(this._fpScene, this._fpCamera);
+    renderer.autoClear = true;
   }
   
   _updateInVehicle(dt) {
@@ -2658,6 +2774,7 @@ function _checkWallCollision(position, direction, distance) {
   toggleCameraMode() {
     this.cameraMode = this.cameraMode === '3rd' ? '1st' : '3rd';
     if (this.model) this.model.visible = this.cameraMode === '3rd';
+    if (this.cameraMode === '1st') this._setupFPWeapon();
     // Reset aim when switching
     this.isAiming = false;
     this.aimLerp = 0;

@@ -10890,6 +10890,10 @@ function animate() {
     } else {
     if (window._updateDoors) window._updateDoors(1/60);
       renderer.render(scene, camera);
+  // Render FPS weapon viewmodel on top
+  if (characterController && characterController.renderFPWeapon) {
+    characterController.renderFPWeapon(renderer);
+  }
     }
 }
 animate();
@@ -12518,6 +12522,10 @@ window.addEventListener('keydown', e => {
   if (e.key === 'v' && playMode && characterController) {
     characterController.toggleCameraMode();
   }
+  if ((e.key === 'Tab' || e.key === 'i' || e.key === 'I') && playMode && characterController) {
+    e.preventDefault();
+    if (characterController.toggleInventoryPanel) characterController.toggleInventoryPanel();
+  }
   if (e.key === 'f' && playMode) {
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -13031,6 +13039,16 @@ function getSceneCommands(scene) {
     shareScene();
   });
   
+
+      // Unity/Unreal export
+      if (lower === 'export unity' || lower === 'export for unity' || lower === 'unity export') {
+        exportForUnity();
+        return '📦 Exporting scene for Unity...';
+      }
+      if (lower === 'export unreal' || lower === 'export for unreal' || lower === 'unreal export') {
+        exportForUnreal();
+        return '📦 Exporting scene for Unreal Engine...';
+      }
   // Export as HTML
   var exportBtn = makeBtn('📦 Export', '#222', '#c084fc', function() {
     if (isProUser()) { exportAsHTML(); } else { showUpgradeModal('pro'); }
@@ -13043,6 +13061,18 @@ function getSceneCommands(scene) {
   btnContainer.appendChild(loadBtn);
   btnContainer.appendChild(shareBtn);
   btnContainer.appendChild(exportBtn);
+  
+  var unityBtn = makeBtn('🎮 Unity', '#222', '#4ade80', function() {
+    if (isProUser()) { exportForUnity(); } else { showUpgradeModal('pro'); }
+  });
+  unityBtn.title = 'Export scene as GLB for Unity';
+  btnContainer.appendChild(unityBtn);
+  
+  var unrealBtn = makeBtn('🎮 Unreal', '#222', '#3b82f6', function() {
+    if (isProUser()) { exportForUnreal(); } else { showUpgradeModal('pro'); }
+  });
+  unrealBtn.title = 'Export scene as GLB for Unreal Engine';
+  btnContainer.appendChild(unrealBtn);
   document.body.appendChild(btnContainer);
 })();
 
@@ -13110,6 +13140,103 @@ function showLoadModal(saves) {
 }
 
 // === EXPORT AS STANDALONE HTML ===
+
+// === EXPORT TO UNITY / UNREAL (GLTF/GLB) ===
+async function exportForUnity() { await _exportGLTF('unity'); }
+async function exportForUnreal() { await _exportGLTF('unreal'); }
+
+async function _exportGLTF(target) {
+  logOutput('info', '📦 Preparing ' + target.charAt(0).toUpperCase() + target.slice(1) + ' export...');
+  
+  try {
+    const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+    const exporter = new GLTFExporter();
+    
+    // Create export scene with all visible objects
+    const exportScene = new THREE.Scene();
+    
+    // Clone terrain
+    if (window._terrainMesh) {
+      exportScene.add(window._terrainMesh.clone());
+    }
+    
+    // Clone all scene objects
+    const objs = window._sceneObjects || [];
+    for (const obj of objs) {
+      if (obj && obj.visible) {
+        try { exportScene.add(obj.clone()); } catch(e) {}
+      }
+    }
+    
+    // Add lights info as empty nodes (Unity/Unreal will need manual light setup)
+    const lightMarker = new THREE.Object3D();
+    lightMarker.name = 'Sun_DirectionalLight';
+    lightMarker.position.set(30, 40, 20);
+    exportScene.add(lightMarker);
+    
+    const options = {
+      binary: true, // GLB format
+      maxTextureSize: 2048,
+      includeCustomExtensions: true
+    };
+    
+    exporter.parse(exportScene, function(result) {
+      const blob = new Blob([result], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      if (target === 'unity') {
+        a.download = 'crate-scene-unity.glb';
+      } else {
+        a.download = 'crate-scene-unreal.glb';
+      }
+      
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      // Also export a README
+      const readme = target === 'unity' 
+        ? '# Crate Engine → Unity Import Guide\n\n' +
+          '1. Drag `crate-scene-unity.glb` into your Unity Assets folder\n' +
+          '2. Unity auto-imports GLB/GLTF files (2020.3+)\n' +
+          '3. Drag the imported prefab into your scene\n' +
+          '4. Add lights (Sun_DirectionalLight node marks sun position)\n' +
+          '5. Materials may need Standard→URP/HDRP conversion\n' +
+          '6. Scale: 1 unit = 1 meter (matches Unity default)\n\n' +
+          '## Tips\n' +
+          '- Enable "Read/Write" on mesh import settings for runtime modification\n' +
+          '- Set "Animation Type" to Humanoid for characters\n' +
+          '- Textures import alongside the GLB automatically\n'
+        : '# Crate Engine → Unreal Import Guide\n\n' +
+          '1. File → Import into Level (or drag to Content Browser)\n' +
+          '2. Select `crate-scene-unreal.glb`\n' +
+          '3. Choose "Scene" import for full hierarchy\n' +
+          '4. Unreal imports GLTF/GLB natively (UE5)\n' +
+          '5. Add directional light at Sun_DirectionalLight position\n' +
+          '6. Scale: 1 unit = 1 meter = 100 Unreal units (auto-scaled)\n\n' +
+          '## Tips\n' +
+          '- Use Datasmith for better material conversion\n' +
+          '- Check "Combine Meshes" for performance\n' +
+          '- Nanite works with imported static meshes\n';
+      
+      const readmeBlob = new Blob([readme], { type: 'text/markdown' });
+      const readmeUrl = URL.createObjectURL(readmeBlob);
+      const readmeA = document.createElement('a');
+      readmeA.href = readmeUrl;
+      readmeA.download = target === 'unity' ? 'UNITY-IMPORT-GUIDE.md' : 'UNREAL-IMPORT-GUIDE.md';
+      setTimeout(() => { readmeA.click(); URL.revokeObjectURL(readmeUrl); }, 500);
+      
+      logOutput('ok', '📦 Exported for ' + target.charAt(0).toUpperCase() + target.slice(1) + '! GLB + import guide downloaded.');
+    }, function(error) {
+      logOutput('error', '❌ Export failed: ' + error.message);
+    }, options);
+    
+  } catch(e) {
+    logOutput('error', '❌ Export failed: ' + e.message);
+  }
+}
+
 function exportAsHTML() {
   var data = serializeScene();
   if (!data) { logOutput('warn', '⚠ Nothing to export — build something first!'); return; }
