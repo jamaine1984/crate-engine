@@ -9666,7 +9666,32 @@ function showCharacterGallery(onSelect) {
           // Force main renderer to reclaim context
           setTimeout(() => {
             renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-    renderer.render(scene, camera);
+  
+  // === PERFORMANCE: Distance-based LOD + visibility culling ===
+  if (camera && objects.length > 50) {
+    const camPos = camera.position;
+    for (let i = 0; i < objects.length; i++) {
+      const obj = objects[i];
+      if (!obj || !obj.position || obj.userData.isWater || obj.userData.isGerstnerWater) continue;
+      const dx = obj.position.x - camPos.x;
+      const dz = obj.position.z - camPos.z;
+      const distSq = dx * dx + dz * dz;
+      // Hide objects beyond 200 units
+      if (distSq > 40000) {
+        if (obj.visible) obj.visible = false;
+      } else if (!obj.visible) {
+        obj.visible = true;
+      }
+      // Reduce shadow casting for distant objects
+      if (obj.userData.isGLB) {
+        const castShadow = distSq < 10000; // 100 units
+        if (obj.castShadow !== castShadow) {
+          obj.traverse(c => { if (c.isMesh) c.castShadow = castShadow; });
+        }
+      }
+    }
+  }
+  renderer.render(scene, camera);
           }, 100);
           resolve(ch.id);
         };
