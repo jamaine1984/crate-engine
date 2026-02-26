@@ -290,6 +290,7 @@ function interpret(input) {
 
   // --- SKY / SUN ---
   if (lower === 'aaa sky' || lower === 'realistic sky') return { action: 'aaaSky' };
+  if (lower === 'day night cycle' || lower === 'day/night cycle' || lower === 'toggle day night' || lower === 'dn cycle') return { action: 'toggleDayNight' };
   if (lower === 'sunrise' || lower === 'dawn') return { action: 'setTime', time: 'dawn' };
   if (lower === 'sunset' || lower === 'dusk') return { action: 'setTime', time: 'sunset' };
   if (lower === 'noon' || lower === 'midday') return { action: 'setTime', time: 'noon' };

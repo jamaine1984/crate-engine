@@ -10418,6 +10418,42 @@ function autoParticlesForScene(sceneName) {
 setTimeout(() => createAmbientParticles('dust', 200), 1500);
 
 
+// === DAY/NIGHT CYCLE ===
+let _dayNightCycle = false;
+let _dayTime = 12; // 0-24 hours, start at noon
+window._toggleDayNight = function() { _dayNightCycle = !_dayNightCycle; return _dayNightCycle; };
+window._setDayTime = function(h) { _dayTime = h % 24; };
+
+function updateDayNightCycle(dt) {
+  if (!_dayNightCycle || !skyMesh) return;
+  _dayTime = (_dayTime + dt * 0.02) % 24; // Full cycle every ~20 min
+  
+  // Map time to sun position
+  const hourAngle = (_dayTime - 6) / 12 * Math.PI; // 6am = horizon, 12 = zenith, 18 = horizon
+  const elevation = Math.sin(hourAngle) * 60; // -60 to 60 degrees
+  const azimuth = 180 + (_dayTime / 24) * 360; // rotate around
+  
+  if (elevation > -5) {
+    setSkyTime(Math.max(elevation, 0.5), azimuth % 360);
+  }
+  
+  // Adjust ambient light for time of day
+  const brightness = Math.max(0.1, Math.sin(hourAngle) * 0.8 + 0.2);
+  scene.traverse(c => {
+    if (c.isAmbientLight) c.intensity = brightness * 0.6;
+    if (c.isDirectionalLight && c === sunLight) c.intensity = brightness * 1.2;
+  });
+  
+  // Night: dim, blue-ish
+  if (_dayTime > 19 || _dayTime < 5) {
+    const nightFactor = _dayTime > 19 ? (_dayTime - 19) / 5 : (5 - _dayTime) / 5;
+    scene.fog = new THREE.FogExp2(0x0a0a1a, 0.01 * nightFactor + 0.002);
+  } else if (scene.fog && scene.fog.density < 0.005) {
+    scene.fog = null;
+  }
+}
+
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -10462,6 +10498,7 @@ function animate() {
 
   if (window._godmode) window._godmode.updateBehaviors(dt, t);
   if (window._sound) { window._sound.updateMusic(dt); window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
+  updateDayNightCycle(dt);
   if (!playMode) controls.update();
   if (window._updateShadowCascades) window._updateShadowCascades();
   updateAmbientParticles(clock.getDelta() || 0.016, camera.position);
@@ -11040,6 +11077,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'setParticles':
           result = await bridge.execSingle('particles ' + intent.type);
           break;
+        case 'toggleDayNight': window._toggleDayNight(); result = '🌗 Day/night cycle ' + (_dayNightCycle ? 'ON' : 'OFF'); break;
         case 'setTime': result = await bridge.setTime(intent.time); break;
         case 'addInterior': result = await bridge.addInterior(intent.type, intent.options || {}); break;
         case 'spawnNPC': result = await bridge.spawnNPCs(intent.type, intent.count, intent.hostile); break;
