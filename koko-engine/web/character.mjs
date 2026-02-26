@@ -371,7 +371,193 @@ function createWeaponMesh(weaponId) {
 
 
 // === CHARACTER SYSTEM ===
-export class CharacterController {
+export 
+// ═══════════════════════════════════════════════════
+// CHARACTER STATE MACHINE (Sketchbook-inspired)
+// ═══════════════════════════════════════════════════
+
+const CharacterState = {
+  IDLE: 'idle',
+  WALK: 'walk', 
+  RUN: 'run',
+  JUMP: 'jump',
+  FALL: 'fall',
+  LAND: 'land',
+  ROLL: 'roll',
+  ATTACK_1: 'attack_1',
+  ATTACK_2: 'attack_2',
+  ATTACK_3: 'attack_3',
+  HEAVY_ATTACK: 'heavy_attack',
+  BLOCK: 'block',
+  HIT: 'hit',
+  DEATH: 'death',
+  SWIM: 'swim',
+  CLIMB: 'climb',
+  AIM: 'aim',
+  SHOOT: 'shoot',
+};
+
+class CharacterStateMachine {
+  constructor(controller) {
+    this.controller = controller;
+    this.currentState = CharacterState.IDLE;
+    this.previousState = null;
+    this.stateTime = 0;        // time in current state
+    this.locked = false;        // state locked (can't transition during attack anims etc)
+    this.lockTimer = 0;
+    this.queuedState = null;    // buffered input during lock
+  }
+  
+  get state() { return this.currentState; }
+  
+  canTransition(newState) {
+    if (this.locked && !this._isOverride(newState)) return false;
+    if (newState === this.currentState) return false;
+    
+    // Death blocks everything
+    if (this.currentState === CharacterState.DEATH) return false;
+    
+    // Hit/death can interrupt anything
+    if (newState === CharacterState.DEATH || newState === CharacterState.HIT) return true;
+    
+    // Roll can interrupt idle/walk/run
+    if (newState === CharacterState.ROLL) {
+      return [CharacterState.IDLE, CharacterState.WALK, CharacterState.RUN].includes(this.currentState);
+    }
+    
+    // Attack combo: attack_2 only from attack_1, attack_3 only from attack_2
+    if (newState === CharacterState.ATTACK_2) return this.currentState === CharacterState.ATTACK_1 && this.stateTime > 0.2;
+    if (newState === CharacterState.ATTACK_3) return this.currentState === CharacterState.ATTACK_2 && this.stateTime > 0.2;
+    
+    // Can't attack while jumping/falling (unless we add air attacks later)
+    if (newState === CharacterState.ATTACK_1 && [CharacterState.JUMP, CharacterState.FALL].includes(this.currentState)) return false;
+    
+    return true;
+  }
+  
+  _isOverride(state) {
+    return state === CharacterState.DEATH || state === CharacterState.HIT;
+  }
+  
+  transition(newState, lockDuration = 0) {
+    if (!this.canTransition(newState)) {
+      // Buffer it if locked
+      if (this.locked) this.queuedState = newState;
+      return false;
+    }
+    
+    this.previousState = this.currentState;
+    this.currentState = newState;
+    this.stateTime = 0;
+    this.queuedState = null;
+    
+    if (lockDuration > 0) {
+      this.locked = true;
+      this.lockTimer = lockDuration;
+    } else {
+      this.locked = false;
+    }
+    
+    // Trigger animation
+    this._onEnterState(newState);
+    return true;
+  }
+  
+  update(dt) {
+    this.stateTime += dt;
+    
+    // Unlock timer
+    if (this.locked) {
+      this.lockTimer -= dt;
+      if (this.lockTimer <= 0) {
+        this.locked = false;
+        // Process buffered input
+        if (this.queuedState) {
+          const q = this.queuedState;
+          this.queuedState = null;
+          this.transition(q);
+        }
+      }
+    }
+    
+    // Auto-transitions
+    this._autoTransitions(dt);
+  }
+  
+  _autoTransitions(dt) {
+    const c = this.controller;
+    
+    switch (this.currentState) {
+      case CharacterState.LAND:
+        if (this.stateTime > 0.15) {
+          this.transition(c.isMoving ? CharacterState.RUN : CharacterState.IDLE);
+        }
+        break;
+      case CharacterState.FALL:
+        if (c.isGrounded) this.transition(CharacterState.LAND, 0.15);
+        break;
+      case CharacterState.JUMP:
+        if (this.stateTime > 0.1 && c.velocity && c.velocity.y < 0) {
+          this.transition(CharacterState.FALL);
+        }
+        break;
+      case CharacterState.HIT:
+        if (this.stateTime > 0.4) {
+          this.transition(c.isMoving ? CharacterState.RUN : CharacterState.IDLE);
+        }
+        break;
+      case CharacterState.IDLE:
+      case CharacterState.WALK:
+      case CharacterState.RUN:
+        if (!c.isGrounded && c.velocity && c.velocity.y < -1) {
+          this.transition(CharacterState.FALL);
+        }
+        break;
+    }
+  }
+  
+  _onEnterState(state) {
+    const c = this.controller;
+    const animMap = {
+      [CharacterState.IDLE]: 'idle',
+      [CharacterState.WALK]: 'walking',
+      [CharacterState.RUN]: 'run',
+      [CharacterState.JUMP]: 'jump',
+      [CharacterState.FALL]: 'jump',  // reuse jump anim for fall
+      [CharacterState.LAND]: 'idle',  // brief landing squat
+      [CharacterState.ROLL]: 'roll',
+      [CharacterState.ATTACK_1]: 'attack',
+      [CharacterState.ATTACK_2]: 'attack',
+      [CharacterState.ATTACK_3]: 'swordAttackJump',
+      [CharacterState.HEAVY_ATTACK]: 'swordAttackJump',
+      [CharacterState.BLOCK]: 'idle_swordLeft',
+      [CharacterState.HIT]: 'idle',
+      [CharacterState.DEATH]: 'death',
+      [CharacterState.SWIM]: 'walking', // placeholder
+      [CharacterState.AIM]: 'idle_swordRight',
+      [CharacterState.SHOOT]: 'idle_swordRight',
+    };
+    
+    const animName = animMap[state];
+    if (animName && c.playAnimation) {
+      const once = [CharacterState.JUMP, CharacterState.ROLL, CharacterState.ATTACK_1, 
+                     CharacterState.ATTACK_2, CharacterState.ATTACK_3, CharacterState.HEAVY_ATTACK,
+                     CharacterState.DEATH, CharacterState.HIT, CharacterState.LAND].includes(state);
+      c.playAnimation(animName, once);
+    }
+  }
+  
+  reset() {
+    this.currentState = CharacterState.IDLE;
+    this.previousState = null;
+    this.stateTime = 0;
+    this.locked = false;
+    this.lockTimer = 0;
+    this.queuedState = null;
+  }
+}
+
+class CharacterController {
   constructor(scene, camera, objects) {
     this.scene = scene;
     this.camera = camera;
@@ -451,6 +637,7 @@ export class CharacterController {
     this._attackLunge = 0;
     this._hitstop = 0;
     this.health = 200;
+    this.stateMachine = new CharacterStateMachine(this);
     this.maxHealth = 200;
     this.stamina = 100;
     this.maxStamina = 100;
@@ -2087,6 +2274,8 @@ function _getTerrainY(x, z) {
   
   respawn() {
     this.health = this.maxHealth;
+    this.isInvincible = true;
+    setTimeout(() => { this.isInvincible = false; }, 3000); // 3s spawn protection
     this.stamina = this.maxStamina;
     this.position.set(0, 0, 0);
     if (this.model) this.model.position.set(0, 0, 0);
@@ -2143,7 +2332,7 @@ function _getTerrainY(x, z) {
 }
 
 
-export { WEAPON_DATABASE, createWeaponMesh };
+export { WEAPON_DATABASE, createWeaponMesh, CharacterState, CharacterStateMachine };
 
 export class NPCController {
 
@@ -2504,7 +2693,7 @@ export class NPCController {
         this.npcs.push(npc);
         if (behavior === 'aggro') {
           npc.isAggro = true;
-          npc.attackDamage = 3 + Math.floor(Math.random() * 4);
+          npc.attackDamage = 2 + Math.floor(Math.random() * 3);
         }
         resolve('✓ NPC spawned: ' + type + ' at (' + x + ', ' + z + ')');
       });
@@ -2883,11 +3072,11 @@ export class NPCController {
               npc.currentAnim = 'attack';
             }
             
-            // DEAL DAMAGE to player
+            // DEAL DAMAGE to player — use takeDamage() for defense/invincibility
             const player = this.characterController;
-            if (player && typeof player.health === 'number') {
+            if (player && typeof player.takeDamage === 'function') {
               const dmg = npc.attackDamage || 5;
-              player.health = Math.max(0, player.health - dmg);
+              const result = player.takeDamage(dmg);
               
               // Visual feedback — screen flash red
               if (typeof window._damageFlash === 'function') window._damageFlash();
