@@ -3236,7 +3236,7 @@ CharacterController.MIXAMO_ANIMS = {
   kick: 'Kicking',
 };
 
-export { WEAPON_DATABASE, createWeaponMesh, CharacterState, CharacterStateMachine, NPCState, NPCAIStateMachine };
+export { WEAPON_DATABASE, createWeaponMesh, CharacterState, CharacterStateMachine, CharacterController, NPCState, NPCAIStateMachine };
 
 
 // ═══════════════════════════════════════════════════
