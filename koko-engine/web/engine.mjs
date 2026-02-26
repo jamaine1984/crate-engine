@@ -324,6 +324,235 @@ const clock = new THREE.Clock();
 
 
 // ═══ MULTIPLAYER LOBBY UI ═══
+
+// === MULTIPLAYER CLIENT ===
+class MultiplayerClient {
+  constructor() {
+    this.ws = null;
+    this.playerId = null;
+    this.room = null;
+    this.peers = new Map(); // id → { model, name, animation, mixer }
+    this.connected = false;
+    this._sendInterval = null;
+  }
+
+  connect(server, room, name) {
+    if (this.ws) this.disconnect();
+    server = server || localStorage.getItem('mp_server') || 'wss://crate-engine-mp.fly.dev';
+    room = room || 'default';
+    name = name || localStorage.getItem('mp_name') || 'Player_' + Math.floor(Math.random() * 9999);
+    
+    try {
+      this.ws = new WebSocket(server);
+    } catch(e) {
+      showToast('❌ Failed to connect: ' + e.message);
+      return;
+    }
+    
+    this.ws.onopen = () => {
+      this.connected = true;
+      this.ws.send(JSON.stringify({ type: 'join', room, name, character: characterController?.characterType || 'knight' }));
+      showToast('🌐 Connecting to ' + room + '...');
+      
+      // Send position updates at 15Hz
+      this._sendInterval = setInterval(() => {
+        if (!characterController || !this.connected) return;
+        const pos = characterController.position;
+        this.ws.send(JSON.stringify({
+          type: 'move',
+          position: { x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2) },
+          rotation: +(characterController.model?.rotation.y || 0).toFixed(3),
+          animation: characterController.stateMachine?.state || 'idle',
+        }));
+      }, 66);
+    };
+    
+    this.ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        this._handleMessage(msg);
+      } catch(err) {}
+    };
+    
+    this.ws.onclose = () => {
+      this.connected = false;
+      if (this._sendInterval) clearInterval(this._sendInterval);
+      this._removePeers();
+      showToast('🌐 Disconnected from multiplayer');
+    };
+    
+    this.ws.onerror = () => {
+      showToast('❌ Multiplayer connection error');
+    };
+  }
+
+  disconnect() {
+    if (this.ws) { this.ws.close(); this.ws = null; }
+    if (this._sendInterval) { clearInterval(this._sendInterval); this._sendInterval = null; }
+    this.connected = false;
+    this._removePeers();
+  }
+
+  chat(message) {
+    if (this.ws && this.connected) {
+      this.ws.send(JSON.stringify({ type: 'chat', message }));
+    }
+  }
+
+  _handleMessage(msg) {
+    switch (msg.type) {
+      case 'joined':
+        this.playerId = msg.playerId;
+        this.room = msg.room;
+        showToast('🌐 Joined room: ' + (msg.roomName || msg.room) + ' (Player #' + msg.playerId + ')');
+        // Spawn existing players
+        if (msg.players) msg.players.forEach(p => this._spawnPeer(p));
+        break;
+        
+      case 'player_joined':
+        this._spawnPeer(msg.player);
+        showToast('👤 ' + msg.player.name + ' joined');
+        break;
+        
+      case 'player_left':
+        this._removePeer(msg.id);
+        showToast('👤 ' + (msg.name || 'Player') + ' left');
+        break;
+        
+      case 'player_moved':
+        this._updatePeer(msg.id, msg.position, msg.rotation, msg.animation);
+        break;
+        
+      case 'chat':
+        this._showChat(msg.name, msg.message);
+        break;
+        
+      case 'scene_command':
+        // Another player ran a command — execute it locally
+        if (typeof parseAndExecute === 'function') parseAndExecute(msg.command);
+        break;
+        
+      case 'player_attack':
+        // Show attack animation on peer
+        const peer = this.peers.get(msg.id);
+        if (peer && peer.mixer) {
+          // trigger attack anim
+        }
+        break;
+        
+      case 'pong':
+        const ping = Date.now() - (msg.time || 0);
+        if (window._hudUpdate) window._hudUpdate.interact('Ping: ' + ping + 'ms');
+        break;
+    }
+  }
+
+  _spawnPeer(data) {
+    if (this.peers.has(data.id)) return;
+    const charType = data.character || 'knight';
+    // Load character model for peer
+    const url = 'models/character_' + charType + '.glb';
+    gltfLoader.load(url, (gltf) => {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      model.scale.setScalar(1.8 / Math.max(size.y, 0.01));
+      model.position.set(data.position?.x || 0, data.position?.y || 0, data.position?.z || 0);
+      model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+      
+      // Name tag
+      const nameTag = document.createElement('div');
+      nameTag.style.cssText = 'position:fixed;color:' + (data.color || '#fff') + ';font-size:11px;font-family:system-ui;pointer-events:none;z-index:9990;text-shadow:0 1px 3px rgba(0,0,0,0.8);font-weight:600;';
+      nameTag.textContent = data.name || 'Player';
+      document.body.appendChild(nameTag);
+      
+      let mixer = null;
+      if (gltf.animations?.length) {
+        mixer = new THREE.AnimationMixer(model);
+        const clips = {};
+        gltf.animations.forEach(clip => { clips[clip.name.replace('HumanArmature|', '').toLowerCase()] = mixer.clipAction(clip); });
+        if (clips.idle) clips.idle.play();
+        animationMixers.push(mixer);
+      }
+      
+      scene.add(model);
+      this.peers.set(data.id, { model, nameTag, mixer, name: data.name, targetPos: new THREE.Vector3(), targetRot: 0, currentAnim: 'idle', clips: {} });
+    }, undefined, () => {
+      // Fallback: colored cube
+      const geo = new THREE.BoxGeometry(0.5, 1.8, 0.5);
+      const mat = new THREE.MeshStandardMaterial({ color: data.color || '#ff6b35' });
+      const model = new THREE.Mesh(geo, mat);
+      model.position.set(data.position?.x || 0, 0.9, data.position?.z || 0);
+      scene.add(model);
+      this.peers.set(data.id, { model, targetPos: new THREE.Vector3(), targetRot: 0 });
+    });
+  }
+
+  _updatePeer(id, position, rotation, animation) {
+    const peer = this.peers.get(id);
+    if (!peer) return;
+    // Smooth interpolation target
+    peer.targetPos.set(position.x, position.y, position.z);
+    peer.targetRot = rotation;
+  }
+
+  _removePeer(id) {
+    const peer = this.peers.get(id);
+    if (!peer) return;
+    if (peer.model) scene.remove(peer.model);
+    if (peer.nameTag) peer.nameTag.remove();
+    this.peers.delete(id);
+  }
+
+  _removePeers() {
+    for (const [id] of this.peers) this._removePeer(id);
+  }
+
+  _showChat(name, message) {
+    let chatEl = document.getElementById('mp-chat-log');
+    if (!chatEl) {
+      chatEl = document.createElement('div');
+      chatEl.id = 'mp-chat-log';
+      chatEl.style.cssText = 'position:fixed;bottom:60px;left:20px;max-width:350px;max-height:200px;overflow-y:auto;z-index:9999;pointer-events:none;font-family:system-ui;';
+      document.body.appendChild(chatEl);
+    }
+    const line = document.createElement('div');
+    line.style.cssText = 'color:rgba(255,255,255,0.8);font-size:12px;padding:2px 8px;background:rgba(0,0,0,0.5);border-radius:4px;margin-bottom:2px;animation:hud-fade-out 1s ease-in 10s forwards;';
+    line.innerHTML = '<span style="color:#f59e0b;font-weight:600;">' + name + ':</span> ' + message;
+    chatEl.appendChild(line);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    // Clean old messages
+    while (chatEl.children.length > 20) chatEl.removeChild(chatEl.firstChild);
+  }
+
+  // Call each frame to interpolate peer positions
+  update(dt) {
+    for (const [id, peer] of this.peers) {
+      if (!peer.model) continue;
+      // Lerp position
+      peer.model.position.lerp(peer.targetPos, 0.15);
+      // Lerp rotation
+      const diff = peer.targetRot - peer.model.rotation.y;
+      peer.model.rotation.y += diff * 0.15;
+      
+      // Update name tag (world to screen)
+      if (peer.nameTag && camera) {
+        const worldPos = peer.model.position.clone();
+        worldPos.y += 2.2;
+        worldPos.project(camera);
+        if (worldPos.z < 1) {
+          peer.nameTag.style.left = ((worldPos.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+          peer.nameTag.style.top = ((-worldPos.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+          peer.nameTag.style.display = 'block';
+        } else {
+          peer.nameTag.style.display = 'none';
+        }
+      }
+    }
+  }
+}
+window._mp = new MultiplayerClient();
+
 function showMultiplayerLobby() {
   let existing = document.getElementById('mp-lobby-modal');
   if (existing) { existing.remove(); return; }
@@ -10176,6 +10405,8 @@ function animate() {
   if (sunMesh) { sunMesh.position.copy(sunLight.position); }
   // Update animations
   animationMixers.forEach(mixer => mixer.update(dt));
+  // Update multiplayer peer interpolation
+  if (window._mp && window._mp.connected) window._mp.update(dt);
   // Play mode + triggers
   if (playMode && characterController && characterController.model) {
     // === DEMO AUTO-PLAY ===
