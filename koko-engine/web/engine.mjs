@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=79';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=80';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -11429,6 +11429,9 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             }
             if (!found) result = '⚠ No object matching "' + intent.target + '"';
           }
+          break;
+        case 'setSensitivity':
+          if (characterController) { characterController.mouseSensitivity = intent.value * 0.001; result = '🎯 Sensitivity: ' + intent.value; }
           break;
         default:
           // Unknown action — fall back to legacy parser

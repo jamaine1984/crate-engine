@@ -763,6 +763,7 @@ class CharacterController {
     this.normalFOV = 60;
     // Camera collision
     this.actualCameraDistance = 4; // After collision check
+    this.mouseSensitivity = 0.003; // Adjustable
     
     // Inventory
     this.inventory = [];
@@ -936,8 +937,9 @@ class CharacterController {
     // Mouse look
     document.addEventListener('mousemove', e => {
       if (document.pointerLockElement) {
-        this.cameraYaw -= e.movementX * 0.003;
-        this.cameraPitch = Math.max(-0.5, Math.min(1.2, this.cameraPitch + e.movementY * 0.003));
+        const sens = this.mouseSensitivity || 0.003;
+        this.cameraYaw -= e.movementX * sens;
+        this.cameraPitch = Math.max(-0.5, Math.min(1.2, this.cameraPitch + e.movementY * (this.mouseSensitivity || 0.003)));
       }
     });
   }
@@ -6438,7 +6440,15 @@ export function createGameHUD() {
       </div>
     </div>
     <div id="hud-score" style="position:absolute;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);padding:6px 20px;border:1px solid #f59e0b;border-radius:8px;color:#f59e0b;font-size:18px;">⭐ 0</div>
-    <div id="hud-crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,0.5);font-size:24px;display:none;">+</div>
+    <div id="hud-crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:none;pointer-events:none;">
+      <svg width="32" height="32" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="2" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>
+        <line x1="16" y1="4" x2="16" y2="12" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="16" y1="20" x2="16" y2="28" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="4" y1="16" x2="12" y2="16" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="20" y1="16" x2="28" y2="16" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
     <div id="hud-compass" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);width:300px;height:24px;overflow:hidden;background:rgba(0,0,0,0.4);border-radius:4px;border:1px solid rgba(255,255,255,0.1);">
       <canvas id="compass-canvas" width="300" height="24" style="width:100%;height:100%;"></canvas>
     </div>

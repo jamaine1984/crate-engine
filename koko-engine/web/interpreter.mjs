@@ -375,7 +375,13 @@ function interpret(input) {
   if (stopAnimMatch) return { action: 'stopAnimation', target: stopAnimMatch[1] };
 
 
-    // --- FALLBACK: treat entire input as asset search ---
+    // --- SENSITIVITY ---
+  const sensMatch = lower.match(/^(?:sensitivity|mouse sensitivity|sens)\s+(\d+\.?\d*)/);
+  if (sensMatch) return { action: 'setSensitivity', value: parseFloat(sensMatch[1]) };
+  if (lower === 'sensitivity low') return { action: 'setSensitivity', value: 0.001 };
+  if (lower === 'sensitivity high') return { action: 'setSensitivity', value: 0.006 };
+
+  // --- FALLBACK: treat entire input as asset search ---
   // If someone just types "tree" or "red car", try to find it
   return { action: 'addObject', query: raw };
 }
