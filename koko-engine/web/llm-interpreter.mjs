@@ -44,70 +44,48 @@ User: "make it snow and add a frozen lake"
 User: "give me a sword"
 ["equip sword"]`;
 
-let _apiKey = null;
+const CLAUDE_WORKER = 'https://crate-engine-ai.koikes2021.workers.dev';
 
-// Try to get API key from various sources
-function getApiKey() {
-  if (_apiKey) return _apiKey;
-  // Check localStorage
-  _apiKey = localStorage.getItem('crate_anthropic_key');
-  if (_apiKey) return _apiKey;
-  // Check window
-  if (window._ANTHROPIC_API_KEY) { _apiKey = window._ANTHROPIC_API_KEY; return _apiKey; }
-  return null;
-}
+export function setApiKey(key) {} // No longer needed — worker handles keys
+export function hasApiKey() { return true; } // Always available via worker
 
-export function setApiKey(key) {
-  _apiKey = key;
-  localStorage.setItem('crate_anthropic_key', key);
-}
-
-export function hasApiKey() {
-  return !!getApiKey();
-}
-
-// Use a free proxy or direct API call
+// Call Claude via our Cloudflare Worker proxy
 export async function interpretWithLLM(userInput) {
-  const apiKey = getApiKey();
-  
-  // If no API key, use local smart parser as fallback
-  if (!apiKey) {
-    return localSmartParse(userInput);
+  // Quick check — if it's a simple known command, skip the API call
+  const lower = userInput.toLowerCase().trim();
+  const directCmds = /^(play|clear|save|load|heal|stats|help|weapons|buildings|characters|trees|animals|vehicles|rocks|furniture|food|dungeon|scifi|animations|library|scripts)$/;
+  if (directCmds.test(lower)) {
+    return [userInput]; // Pass through directly
   }
   
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000); // 12s timeout
+    
+    const response = await fetch(CLAUDE_WORKER, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 256,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userInput }]
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: userInput }),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
     
     if (!response.ok) {
-      console.warn('LLM API error, falling back to local parser');
+      console.warn('Claude worker error, falling back to local parser');
       return localSmartParse(userInput);
     }
     
     const data = await response.json();
-    const text = data.content?.[0]?.text || '[]';
     
-    // Extract JSON array from response
-    const match = text.match(/\[[\s\S]*\]/);
-    if (match) {
-      return JSON.parse(match[0]);
+    // Store the message for the agent to display
+    if (data.message) window._lastAIMessage = data.message;
+    
+    if (data.commands && data.commands.length > 0) {
+      return data.commands;
     }
     return localSmartParse(userInput);
   } catch (err) {
-    console.warn('LLM interpret error:', err);
+    console.warn('Claude worker error:', err.message);
     return localSmartParse(userInput);
   }
 }

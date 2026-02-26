@@ -940,7 +940,9 @@ export class CrateAgent {
         this.commandCount++;
         this.updateCmdCount();
         await new Promise(r => setTimeout(r, 1500));
-        this.addBotMessage('✅ Done! ' + smartCmds.length + ' commands executed.');
+        const aiMsg = window._lastAIMessage || ('Done! ' + smartCmds.length + ' commands executed.');
+        window._lastAIMessage = null;
+        this.addBotMessage('✅ ' + this.esc(aiMsg));
         return;
       }
     }

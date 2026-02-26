@@ -530,14 +530,21 @@ export class CharacterController {
             // Mixamo: mixamorig:RightHand → righthand
             // KayKit Characters: Hand.R → hand.r  
             // KayKit Knight: MiddleHand.R → middlehand.r
-            const isHand = !n.includes('thumb') && !n.includes('index') && !n.includes('pinky') && !n.includes('ring');
-            if (isHand && (n.includes('righthand') || n === 'hand.r' || n === 'middlehand.r' || n.includes('right_hand') || n.includes('r_hand') || n === 'palmr') && !this.sockets.hand_r) this.sockets.hand_r = node;
-            else if (isHand && (n.includes('lefthand') || n === 'hand.l' || n === 'middlehand.l' || n.includes('left_hand') || n.includes('l_hand') || n === 'palml') && !this.sockets.hand_l) this.sockets.hand_l = node;
-            else if ((n.includes('rightforearm') || n === 'lowerarm.r' || n.includes('right_forearm') || n.includes('r_forearm')) && !this.sockets.forearm_r) this.sockets.forearm_r = node;
-            else if ((n.includes('leftforearm') || n === 'lowerarm.l' || n.includes('left_forearm')) && !this.sockets.forearm_l) this.sockets.forearm_l = node;
+            const isHand = !n.includes('thumb') && !n.includes('index') && !n.includes('pinky') && !n.includes('ring') && !n.includes('finger');
+            // Right hand: Hand.R, MiddleHand.R, PalmR, MiddleHandR, mixamorig:RightHand
+            if (isHand && (n === 'palmr' || n === 'hand.r' || n === 'middlehand.r' || n === 'middlehandr' || n.includes('righthand') || n.includes('right_hand') || n.includes('r_hand')) && !this.sockets.hand_r) this.sockets.hand_r = node;
+            // Left hand
+            else if (isHand && (n === 'palml' || n === 'hand.l' || n === 'middlehand.l' || n === 'middlehandl' || n.includes('lefthand') || n.includes('left_hand') || n.includes('l_hand')) && !this.sockets.hand_l) this.sockets.hand_l = node;
+            // Right forearm: LowerArm.R, LowerArmR, mixamorig:RightForeArm
+            else if ((n === 'lowerarm.r' || n === 'lowerarmr' || n.includes('rightforearm') || n.includes('right_forearm') || n.includes('r_forearm')) && !this.sockets.forearm_r) this.sockets.forearm_r = node;
+            // Left forearm
+            else if ((n === 'lowerarm.l' || n === 'lowerarml' || n.includes('leftforearm') || n.includes('left_forearm')) && !this.sockets.forearm_l) this.sockets.forearm_l = node;
+            // Back/spine
             else if ((n === 'torso' || n === 'chest' || n === 'abdomen' || (n.includes('spine') && (n.includes('2') || n.includes('1')))) && !this.sockets.back) this.sockets.back = node;
-            else if ((n.includes('rightupleg') || n.includes('righthip') || n === 'upperleg.r') && !this.sockets.hip_r) this.sockets.hip_r = node;
-            else if ((n.includes('leftupleg') || n.includes('lefthip') || n === 'upperleg.l') && !this.sockets.hip_l) this.sockets.hip_l = node;
+            // Right hip
+            else if ((n === 'upperleg.r' || n === 'upperlegr' || n.includes('rightupleg') || n.includes('righthip')) && !this.sockets.hip_r) this.sockets.hip_r = node;
+            // Left hip
+            else if ((n === 'upperleg.l' || n === 'upperlegl' || n.includes('leftupleg') || n.includes('lefthip')) && !this.sockets.hip_l) this.sockets.hip_l = node;
           }
         });
         // Fallback: use forearm if no hand bone found
@@ -774,11 +781,19 @@ export class CharacterController {
     
     const bone = this.sockets.hand_r || this.sockets.forearm_r;
     if (bone) {
-      // Scale weapon proportional to character — use model scale (not bounding box which includes bones)
-      const charScale = this.model ? this.model.scale.x : 1;
-      // Weapons are designed for scale=1.0 characters at ~1.8m
-      // Most KayKit characters auto-scale to ~0.02-1.3, so weapon needs to match
-      mesh.scale.setScalar(charScale * 0.5); // 50% of character scale for realistic proportion
+      // Scale weapon correctly — compensate for bone's world scale
+      // Bones have massive internal scale (e.g. 32x). Calculate local scale so
+      // weapon appears ~40% of character height in world space.
+      bone.updateWorldMatrix(true, false);
+      const _bws = new THREE.Vector3();
+      bone.getWorldScale(_bws);
+      // Character ~0.58 world units tall, want sword ~0.25 world units
+      // Weapon geometry is ~0.8 units total height
+      // localScale = desiredWorldSize / (geometrySize * boneWorldScale)
+      const _desiredWorld = 5.0; // Tuned: produces ~0.20 local scale for knight (bone world scale ~32)
+      const _weaponGeoSize = 0.8; // approximate weapon geometry height
+      const _localScale = _desiredWorld / (_weaponGeoSize * Math.max(_bws.x, 0.001));
+      mesh.scale.setScalar(_localScale);
       mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);
@@ -2417,11 +2432,19 @@ export class NPCController {
     
     const bone = this.sockets.hand_r || this.sockets.forearm_r;
     if (bone) {
-      // Scale weapon proportional to character — use model scale (not bounding box which includes bones)
-      const charScale = this.model ? this.model.scale.x : 1;
-      // Weapons are designed for scale=1.0 characters at ~1.8m
-      // Most KayKit characters auto-scale to ~0.02-1.3, so weapon needs to match
-      mesh.scale.setScalar(charScale * 0.5); // 50% of character scale for realistic proportion
+      // Scale weapon correctly — compensate for bone's world scale
+      // Bones have massive internal scale (e.g. 32x). Calculate local scale so
+      // weapon appears ~40% of character height in world space.
+      bone.updateWorldMatrix(true, false);
+      const _bws = new THREE.Vector3();
+      bone.getWorldScale(_bws);
+      // Character ~0.58 world units tall, want sword ~0.25 world units
+      // Weapon geometry is ~0.8 units total height
+      // localScale = desiredWorldSize / (geometrySize * boneWorldScale)
+      const _desiredWorld = 5.0; // Tuned: produces ~0.20 local scale for knight (bone world scale ~32)
+      const _weaponGeoSize = 0.8; // approximate weapon geometry height
+      const _localScale = _desiredWorld / (_weaponGeoSize * Math.max(_bws.x, 0.001));
+      mesh.scale.setScalar(_localScale);
       mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
       mesh.rotation.set(data.holdRotation.x, data.holdRotation.y, data.holdRotation.z);
       bone.add(mesh);
