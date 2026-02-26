@@ -250,7 +250,91 @@ function interpret(input) {
     return { action: 'addObject', query };
   }
 
-  // --- FALLBACK: treat entire input as asset search ---
+  // --- MULTIPLAYER ---
+  if (lower === 'multiplayer' || lower === 'mp' || lower === 'lobby' || lower === 'join game' || lower === 'online' || lower === 'co-op') {
+    return { action: 'multiplayer' };
+  }
+  if (lower === 'disconnect' || lower === 'leave room' || lower === 'leave mp') {
+    return { action: 'disconnect' };
+  }
+  const joinMatch = lower.match(/^join\s+(.+)/);
+  if (joinMatch) {
+    return { action: 'joinRoom', room: joinMatch[1] };
+  }
+  const chatMatch = lower.match(/^chat\s+(.+)/);
+  if (chatMatch) {
+    return { action: 'chat', message: chatMatch[1] };
+  }
+
+  // --- GRAPHICS ---
+  const gfxMatch = lower.match(/^(?:graphics|quality|set quality|visual quality)\s*(low|medium|high|ultra)?$/);
+  if (gfxMatch) {
+    return { action: 'setGraphics', level: gfxMatch[1] || 'high' };
+  }
+  if (lower === 'bloom on') return { action: 'setBloom', enabled: true };
+  if (lower === 'bloom off') return { action: 'setBloom', enabled: false };
+  const bloomMatch = lower.match(/^bloom\s+(\d+\.?\d*)/);
+  if (bloomMatch) return { action: 'setBloom', enabled: true, strength: parseFloat(bloomMatch[1]) };
+  if (lower === 'ssao on') return { action: 'setSSAO', enabled: true };
+  if (lower === 'ssao off') return { action: 'setSSAO', enabled: false };
+
+  // --- SHOOTER MODE ---
+  if (lower === 'shooter mode' || lower === 'fps mode' || lower === 'enable shooter') {
+    return { action: 'shooterMode' };
+  }
+
+  // --- DRIVING DEMO ---
+  if (lower === 'driving demo' || lower === 'drive demo' || lower === 'car demo') {
+    return { action: 'drivingDemo' };
+  }
+
+  // --- SKY / SUN ---
+  if (lower === 'aaa sky' || lower === 'realistic sky') return { action: 'aaaSky' };
+  if (lower === 'sunrise' || lower === 'dawn') return { action: 'setTime', time: 'dawn' };
+  if (lower === 'sunset' || lower === 'dusk') return { action: 'setTime', time: 'sunset' };
+  if (lower === 'noon' || lower === 'midday') return { action: 'setTime', time: 'noon' };
+
+  // --- WETNESS ---
+  if (lower === 'wet' || lower === 'wet ground' || lower === 'puddles') return { action: 'setWetness', value: 0.6 };
+  if (lower === 'dry' || lower === 'dry ground') return { action: 'setWetness', value: 0 };
+  const wetMatch = lower.match(/^wet(?:ness)?\s+(\d+\.?\d*)/);
+  if (wetMatch) return { action: 'setWetness', value: parseFloat(wetMatch[1]) };
+
+  // --- OCEAN RESIZE ---
+  const resizeMatch = lower.match(/^(?:resize ocean|ocean)\s+(\d+)/);
+  if (resizeMatch) return { action: 'resizeOcean', size: parseInt(resizeMatch[1]) };
+  if (lower === 'ocean bigger') return { action: 'resizeOcean', size: 1000 };
+  if (lower === 'ocean smaller') return { action: 'resizeOcean', size: 200 };
+
+  // --- ANIMATION ---
+  const animMatch = lower.match(/^(?:play anim|animate|animation|anim)\s+(.+)/);
+  if (animMatch) return { action: 'playAnimation', name: animMatch[1].trim() };
+
+  // --- SCATTER ---
+  const scatterMatch = lower.match(/^(?:scatter|add)\s+(\d+)\s+(.+)/);
+  if (scatterMatch) {
+    const count = parseInt(scatterMatch[1]);
+    return { action: 'scatter', count, query: scatterMatch[2].trim() };
+  }
+
+  // --- DELETE / REMOVE ---
+  if (lower === 'undo' || lower === 'remove last' || lower === 'delete last') {
+    return { action: 'undo' };
+  }
+  const deleteMatch = lower.match(/^(?:delete|remove)\s+(.+)/);
+  if (deleteMatch) return { action: 'delete', query: deleteMatch[1].trim() };
+
+  // --- SCREENSHOT ---
+  if (lower === 'screenshot' || lower === 'capture' || lower === 'photo') return { action: 'screenshot' };
+
+  // --- EXPORT ---
+  if (lower === 'export' || lower === 'export scene') return { action: 'export' };
+
+  // --- SHARE ---
+  if (lower === 'share' || lower === 'share scene') return { action: 'share' };
+
+
+    // --- FALLBACK: treat entire input as asset search ---
   // If someone just types "tree" or "red car", try to find it
   return { action: 'addObject', query: raw };
 }
