@@ -6795,8 +6795,75 @@ export function updateGameHUD(character, score) {
   const scoreEl = document.getElementById('hud-score');
   const crosshair = document.getElementById('hud-crosshair');
   
-  if (healthBar) healthBar.style.width = (character.health / character.maxHealth * 100) + '%';
+  if (healthBar) {
+    const healthPct = character.health / character.maxHealth * 100;
+    healthBar.style.width = healthPct + '%';
+    // Color shift: green > yellow > red
+    if (healthPct > 60) healthBar.style.background = 'linear-gradient(90deg,#22cc22,#44ff44)';
+    else if (healthPct > 30) healthBar.style.background = 'linear-gradient(90deg,#ccaa00,#ffdd00)';
+    else healthBar.style.background = 'linear-gradient(90deg,#cc2222,#ff4444)';
+  }
   if (staminaBar) staminaBar.style.width = (character.stamina / character.maxStamina * 100) + '%';
   if (scoreEl) scoreEl.textContent = '⭐ ' + score;
-  if (crosshair) crosshair.style.display = 'block'; // Show crosshair in both FPS and TPS
+  if (crosshair) crosshair.style.display = 'block';
+  
+  // Weapon slots (bottom center)
+  let weaponSlots = document.getElementById('hud-weapon-slots');
+  if (!weaponSlots) {
+    weaponSlots = document.createElement('div');
+    weaponSlots.id = 'hud-weapon-slots';
+    weaponSlots.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);' +
+      'display:flex;gap:6px;z-index:9998;pointer-events:none;font-family:monospace;';
+    document.body.appendChild(weaponSlots);
+  }
+  
+  let slotsHTML = '';
+  for (let i = 0; i < 3; i++) {
+    const weaponId = character.weaponSlots ? character.weaponSlots[i] : null;
+    const isActive = character.activeSlot === i;
+    const weapon = weaponId ? WEAPON_DATABASE[weaponId] : null;
+    const name = weapon ? weapon.name : '—';
+    const icon = weapon ? (weapon.type === 'ranged' ? '🔫' : '⚔️') : '';
+    
+    slotsHTML += '<div style="width:70px;padding:4px 6px;text-align:center;' +
+      'background:' + (isActive ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.5)') + ';' +
+      'border:1px solid ' + (isActive ? '#f59e0b' : '#333') + ';border-radius:6px;' +
+      'color:' + (isActive ? '#fff' : '#666') + ';font-size:10px;">' +
+      '<div style="font-size:8px;color:#888;">' + (i + 1) + '</div>' +
+      icon + ' ' + (weaponId ? name.split(' ')[0] : '—') +
+      '</div>';
+  }
+  weaponSlots.innerHTML = slotsHTML;
+  
+  // Ammo counter (for ranged weapons)
+  let ammoEl = document.getElementById('hud-ammo');
+  if (character.equippedWeapon && WEAPON_DATABASE[character.equippedWeapon]?.type === 'ranged') {
+    if (!ammoEl) {
+      ammoEl = document.createElement('div');
+      ammoEl.id = 'hud-ammo';
+      ammoEl.style.cssText = 'position:fixed;bottom:20px;right:20px;color:#fff;' +
+        'font-family:monospace;font-size:24px;z-index:9998;pointer-events:none;' +
+        'text-shadow:0 0 4px rgba(0,0,0,0.8);';
+      document.body.appendChild(ammoEl);
+    }
+    const wpn = WEAPON_DATABASE[character.equippedWeapon];
+    const current = character.ammo[character.equippedWeapon] ?? wpn.magSize;
+    ammoEl.innerHTML = '<span style="font-size:14px;color:#888;">AMMO</span><br>' + current + ' / ' + wpn.magSize;
+    ammoEl.style.display = 'block';
+  } else if (ammoEl) {
+    ammoEl.style.display = 'none';
+  }
+  
+  // State machine debug (small, top-right under kill feed)
+  if (character.stateMachine) {
+    let stateEl = document.getElementById('hud-state');
+    if (!stateEl) {
+      stateEl = document.createElement('div');
+      stateEl.id = 'hud-state';
+      stateEl.style.cssText = 'position:fixed;top:20px;right:16px;color:#666;' +
+        'font-family:monospace;font-size:10px;z-index:9000;pointer-events:none;';
+      document.body.appendChild(stateEl);
+    }
+    stateEl.textContent = character.stateMachine.state.toUpperCase();
+  }
 }
