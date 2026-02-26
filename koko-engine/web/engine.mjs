@@ -10328,6 +10328,20 @@ function animate() {
       console.log('[AutoQuality] FPS dropped to ' + avgFps.toFixed(0) + ', reducing quality');
     }
   }
+  // FPS counter display (toggle with ` key)
+  if (!window._fpsEl) {
+    window._fpsEl = document.createElement('div');
+    window._fpsEl.id = 'fps-counter';
+    window._fpsEl.style.cssText = 'position:fixed;top:4px;left:4px;color:rgba(255,255,255,0.4);font-size:10px;font-family:monospace;z-index:99999;pointer-events:none;display:none;';
+    document.body.appendChild(window._fpsEl);
+    document.addEventListener('keydown', e => { if (e.key === '`') window._fpsEl.style.display = window._fpsEl.style.display === 'none' ? 'block' : 'none'; });
+  }
+  if (window._fpsEl.style.display !== 'none') {
+    const fps = 1 / Math.max(dt, 0.001);
+    const col = fps > 55 ? '#4ade80' : fps > 30 ? '#f59e0b' : '#ef4444';
+    window._fpsEl.innerHTML = '<span style="color:' + col + '">' + fps.toFixed(0) + ' FPS</span> | ' + objects.length + ' obj | ' + (npcController ? npcController.npcs.length : 0) + ' npc | ' + renderer.info.render.triangles + ' tri';
+  }
+
 
   if (window._godmode) window._godmode.updateBehaviors(dt, t);
   if (window._sound) { window._sound.updateMusic(dt); window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
