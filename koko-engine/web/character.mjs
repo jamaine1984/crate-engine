@@ -2725,16 +2725,8 @@ function _checkWallCollision(position, direction, distance) {
     this.stateMachine.transition(CharacterState.HIT, 0.4);
     if (window._screenShake) window._screenShake.trigger(2, 0.15);
     
-    // Red screen flash
-    let flash = document.getElementById('damage-flash');
-    if (!flash) {
-      flash = document.createElement('div');
-      flash.id = 'damage-flash';
-      flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.3);pointer-events:none;z-index:9999;opacity:0;transition:opacity 0.15s;';
-      document.body.appendChild(flash);
-    }
-    flash.style.opacity = '1';
-    setTimeout(() => { flash.style.opacity = '0'; }, 150);
+    // Damage vignette flash
+    if (window._hudUpdate) window._hudUpdate.damageFlash();
     
     if (this.health <= 0) {
       this.stateMachine.transition(CharacterState.DEATH);
@@ -6424,46 +6416,217 @@ export class TownBuilder {
 export function createGameHUD() {
   const hud = document.createElement('div');
   hud.id = 'game-hud-full';
-  hud.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;display:none;font-family:monospace;';
+  hud.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;display:none;font-family:"Segoe UI",system-ui,sans-serif;';
   
+  // Inject HUD styles
+  if (!document.getElementById('hud-styles')) {
+    const style = document.createElement('style');
+    style.id = 'hud-styles';
+    style.textContent = `
+      @keyframes hud-damage-flash { 0%{opacity:0.8} 100%{opacity:0} }
+      @keyframes hud-pulse { 0%,100%{opacity:0.6} 50%{opacity:1} }
+      @keyframes hud-slide-in { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+      @keyframes hud-fade-out { to{opacity:0} }
+      .hud-bar-container {
+        position:relative;width:240px;height:10px;
+        background:rgba(10,10,15,0.85);border-radius:2px;
+        overflow:hidden;box-shadow:0 0 8px rgba(0,0,0,0.5);
+      }
+      .hud-bar-fill {
+        height:100%;border-radius:2px;transition:width 0.25s ease-out;
+        position:relative;
+      }
+      .hud-bar-fill::after {
+        content:'';position:absolute;top:0;left:0;right:0;height:40%;
+        background:linear-gradient(180deg,rgba(255,255,255,0.15),transparent);
+        border-radius:2px 2px 0 0;
+      }
+      .hud-label {
+        font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;
+        margin-bottom:3px;display:flex;align-items:center;gap:6px;
+      }
+      .hud-label-value {
+        font-size:10px;font-weight:400;opacity:0.7;margin-left:auto;font-variant-numeric:tabular-nums;
+      }
+      .weapon-slot {
+        width:56px;height:56px;background:rgba(10,10,15,0.75);
+        border:1px solid rgba(255,255,255,0.08);border-radius:4px;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        position:relative;transition:all 0.2s;
+      }
+      .weapon-slot.active {
+        border-color:rgba(255,200,60,0.6);
+        box-shadow:0 0 12px rgba(255,200,60,0.15),inset 0 0 12px rgba(255,200,60,0.05);
+        background:rgba(20,18,10,0.85);
+      }
+      .weapon-slot-key {
+        position:absolute;top:2px;left:4px;font-size:9px;color:rgba(255,255,255,0.3);
+        font-weight:700;
+      }
+      .weapon-slot-icon { font-size:22px;margin-top:2px; }
+      .weapon-slot-name {
+        font-size:7px;color:rgba(255,255,255,0.4);margin-top:1px;
+        text-transform:uppercase;letter-spacing:0.5px;max-width:50px;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      }
+      .hud-ammo {
+        font-size:28px;font-weight:200;color:rgba(255,255,255,0.85);
+        font-variant-numeric:tabular-nums;letter-spacing:-1px;
+      }
+      .hud-ammo-label {
+        font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:2px;
+        text-transform:uppercase;
+      }
+      #hud-controls-hint {
+        animation: hud-slide-in 0.5s ease-out, hud-fade-out 1s ease-in 6s forwards;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   hud.innerHTML = `
-    <div id="hud-health" style="position:absolute;top:20px;left:20px;">
-      <div style="color:#ff4444;font-size:12px;margin-bottom:4px;">❤️ HEALTH</div>
-      <div style="width:200px;height:12px;background:rgba(0,0,0,0.6);border:1px solid #ff4444;border-radius:6px;overflow:hidden;">
-        <div id="hud-health-bar" style="width:100%;height:100%;background:linear-gradient(90deg,#ff2222,#ff6644);transition:width 0.3s;"></div>
+    <!-- DAMAGE VIGNETTE -->
+    <div id="hud-damage-vignette" style="position:absolute;inset:0;pointer-events:none;opacity:0;
+      box-shadow:inset 0 0 100px 40px rgba(180,20,20,0.5);"></div>
+
+    <!-- HEALTH + STAMINA + XP (bottom-left) -->
+    <div style="position:absolute;bottom:28px;left:24px;display:flex;flex-direction:column;gap:6px;">
+      <div>
+        <div class="hud-label" style="color:#c43c3c;">
+          <span style="font-size:8px;">■</span> HP
+          <span class="hud-label-value" id="hud-hp-text">200 / 200</span>
+        </div>
+        <div class="hud-bar-container" style="height:12px;">
+          <div id="hud-health-bar" class="hud-bar-fill" style="width:100%;background:linear-gradient(90deg,#8b1a1a,#c43c3c,#e05050);"></div>
+          <div id="hud-health-damage" style="position:absolute;top:0;right:0;height:100%;background:rgba(255,80,80,0.4);width:0;transition:width 0.5s 0.2s;border-radius:2px;"></div>
+        </div>
+      </div>
+      <div>
+        <div class="hud-label" style="color:#3c9c5c;">
+          <span style="font-size:8px;">■</span> STAMINA
+          <span class="hud-label-value" id="hud-stam-text">100 / 100</span>
+        </div>
+        <div class="hud-bar-container" style="height:7px;">
+          <div id="hud-stamina-bar" class="hud-bar-fill" style="width:100%;background:linear-gradient(90deg,#1a5c2a,#3c9c5c,#50c070);"></div>
+        </div>
+      </div>
+      <div>
+        <div class="hud-label" style="color:#7c5cbf;">
+          <span style="font-size:8px;">■</span> LVL <span id="hud-xp-level">1</span>
+          <span class="hud-label-value" id="hud-xp-text">0 / 100</span>
+        </div>
+        <div class="hud-bar-container" style="height:5px;">
+          <div id="hud-xp-bar" class="hud-bar-fill" style="width:0%;background:linear-gradient(90deg,#5b3a9c,#7c5cbf,#9c7cdf);"></div>
+        </div>
       </div>
     </div>
-    <div id="hud-stamina" style="position:absolute;top:50px;left:20px;">
-      <div style="color:#44ff44;font-size:12px;margin-bottom:4px;">⚡ STAMINA</div>
-      <div style="width:200px;height:8px;background:rgba(0,0,0,0.6);border:1px solid #44ff44;border-radius:4px;overflow:hidden;">
-        <div id="hud-stamina-bar" style="width:100%;height:100%;background:linear-gradient(90deg,#22ff22,#66ff44);transition:width 0.3s;"></div>
-      </div>
-    </div>
-    <div id="hud-score" style="position:absolute;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);padding:6px 20px;border:1px solid #f59e0b;border-radius:8px;color:#f59e0b;font-size:18px;">⭐ 0</div>
+
+    <!-- CROSSHAIR (center) -->
     <div id="hud-crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:none;pointer-events:none;">
-      <svg width="32" height="32" viewBox="0 0 32 32">
-        <circle cx="16" cy="16" r="2" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>
-        <line x1="16" y1="4" x2="16" y2="12" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="16" y1="20" x2="16" y2="28" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="4" y1="16" x2="12" y2="16" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="20" y1="16" x2="28" y2="16" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
+      <svg width="24" height="24" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="1.5" fill="rgba(255,255,255,0.5)"/>
+        <line x1="12" y1="3" x2="12" y2="9" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="12" y1="15" x2="12" y2="21" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="3" y1="12" x2="9" y2="12" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="15" y1="12" x2="21" y2="12" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </div>
-    <div id="hud-compass" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);width:300px;height:24px;overflow:hidden;background:rgba(0,0,0,0.4);border-radius:4px;border:1px solid rgba(255,255,255,0.1);">
-      <canvas id="compass-canvas" width="300" height="24" style="width:100%;height:100%;"></canvas>
+
+    <!-- COMPASS (top-center) -->
+    <div id="hud-compass" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);width:280px;height:22px;
+      background:rgba(10,10,15,0.6);border-radius:3px;border:1px solid rgba(255,255,255,0.06);overflow:hidden;">
+      <canvas id="compass-canvas" width="280" height="22" style="width:100%;height:100%;"></canvas>
+      <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:rgba(255,200,60,0.5);"></div>
     </div>
-    <div id="hud-controls" style="position:absolute;bottom:20px;left:20px;color:rgba(255,255,255,0.5);font-size:11px;line-height:1.6;">
-      WASD — Move | Shift — Run | Space — Jump<br>
-      C — Roll | E — Light Attack | Q — Heavy Attack | F — Interact<br>
-      V — Toggle 1st/3rd person | ESC — Exit play mode
+
+    <!-- SCORE (top-center below compass) -->
+    <div id="hud-score" style="position:absolute;top:38px;left:50%;transform:translateX(-50%);
+      color:rgba(255,200,60,0.7);font-size:13px;font-weight:600;letter-spacing:1px;">⭐ 0</div>
+
+    <!-- WEAPON SLOTS + AMMO (bottom-right) -->
+    <div style="position:absolute;bottom:28px;right:24px;display:flex;align-items:flex-end;gap:12px;">
+      <div id="hud-ammo-display" style="text-align:right;margin-right:4px;display:none;">
+        <div class="hud-ammo" id="hud-ammo-count">30</div>
+        <div class="hud-ammo-label">AMMO</div>
+      </div>
+      <div id="hud-weapon-slots" style="display:flex;gap:4px;">
+        <div class="weapon-slot" id="hud-slot-1"><span class="weapon-slot-key">1</span><span class="weapon-slot-icon">—</span><span class="weapon-slot-name">Empty</span></div>
+        <div class="weapon-slot" id="hud-slot-2"><span class="weapon-slot-key">2</span><span class="weapon-slot-icon">—</span><span class="weapon-slot-name">Empty</span></div>
+        <div class="weapon-slot" id="hud-slot-3"><span class="weapon-slot-key">3</span><span class="weapon-slot-icon">—</span><span class="weapon-slot-name">Empty</span></div>
+      </div>
     </div>
-    <div id="hud-inventory" style="position:absolute;bottom:20px;right:20px;display:flex;gap:4px;">
+
+    <!-- CONTROLS HINT (bottom-center, fades out) -->
+    <div id="hud-controls-hint" style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+      color:rgba(255,255,255,0.35);font-size:10px;text-align:center;line-height:1.7;letter-spacing:0.5px;">
+      WASD Move &nbsp;·&nbsp; SHIFT Sprint &nbsp;·&nbsp; SPACE Jump &nbsp;·&nbsp; C Roll<br>
+      E Attack &nbsp;·&nbsp; Q Heavy &nbsp;·&nbsp; F Interact &nbsp;·&nbsp; V Camera &nbsp;·&nbsp; ESC Exit
     </div>
+
+    <!-- INTERACTION PROMPT (center-bottom) -->
+    <div id="hud-interact-prompt" style="position:absolute;bottom:100px;left:50%;transform:translateX(-50%);
+      display:none;background:rgba(10,10,15,0.8);border:1px solid rgba(255,255,255,0.1);
+      border-radius:4px;padding:6px 16px;color:rgba(255,255,255,0.7);font-size:12px;
+      letter-spacing:0.5px;"></div>
   `;
   
   document.body.appendChild(hud);
+  
+  // Set up HUD update functions
+  window._hudUpdate = {
+    health(current, max) {
+      const pct = Math.max(0, current / max * 100);
+      const bar = document.getElementById('hud-health-bar');
+      const txt = document.getElementById('hud-hp-text');
+      if (bar) bar.style.width = pct + '%';
+      if (txt) txt.textContent = Math.round(current) + ' / ' + max;
+      // Low health pulse
+      if (bar) bar.style.animation = pct < 25 ? 'hud-pulse 1s infinite' : 'none';
+    },
+    stamina(current, max) {
+      const pct = Math.max(0, current / max * 100);
+      const bar = document.getElementById('hud-stamina-bar');
+      const txt = document.getElementById('hud-stam-text');
+      if (bar) bar.style.width = pct + '%';
+      if (txt) txt.textContent = Math.round(current) + ' / ' + max;
+    },
+    xp(current, next, level) {
+      const pct = Math.max(0, current / next * 100);
+      const bar = document.getElementById('hud-xp-bar');
+      const txt = document.getElementById('hud-xp-text');
+      const lvl = document.getElementById('hud-xp-level');
+      if (bar) bar.style.width = pct + '%';
+      if (txt) txt.textContent = current + ' / ' + next;
+      if (lvl) lvl.textContent = level;
+    },
+    weapon(slot, icon, name, active) {
+      const el = document.getElementById('hud-slot-' + slot);
+      if (!el) return;
+      el.querySelector('.weapon-slot-icon').textContent = icon || '—';
+      el.querySelector('.weapon-slot-name').textContent = name || 'Empty';
+      el.classList.toggle('active', !!active);
+    },
+    ammo(count, show) {
+      const el = document.getElementById('hud-ammo-display');
+      const ct = document.getElementById('hud-ammo-count');
+      if (el) el.style.display = show ? 'block' : 'none';
+      if (ct) ct.textContent = count;
+    },
+    damageFlash() {
+      const v = document.getElementById('hud-damage-vignette');
+      if (v) { v.style.animation = 'none'; v.offsetHeight; v.style.animation = 'hud-damage-flash 0.6s ease-out'; }
+    },
+    interact(text) {
+      const el = document.getElementById('hud-interact-prompt');
+      if (!el) return;
+      if (text) { el.textContent = text; el.style.display = 'block'; }
+      else { el.style.display = 'none'; }
+    }
+  };
+  
   return hud;
 }
+
 
 // === XP & LEVEL SYSTEM ===
 export class LevelSystem {
@@ -6484,18 +6647,7 @@ export class LevelSystem {
   }
   
   _createUI() {
-    let el = document.getElementById('xp-bar-container');
-    if (el) return;
-    el = document.createElement('div');
-    el.id = 'xp-bar-container';
-    el.style.cssText = 'position:fixed;top:75px;left:20px;width:200px;font-family:monospace;z-index:9998;pointer-events:none;';
-    el.innerHTML = `
-      <div style="color:#8b5cf6;font-size:10px;margin-bottom:2px;">LVL <span id="xp-level">1</span> — <span id="xp-current">0</span>/<span id="xp-next">100</span> XP</div>
-      <div style="width:200px;height:6px;background:rgba(0,0,0,0.6);border:1px solid #8b5cf6;border-radius:3px;overflow:hidden;">
-        <div id="xp-bar-fill" style="width:0%;height:100%;background:linear-gradient(90deg,#8b5cf6,#a78bfa);transition:width 0.3s;"></div>
-      </div>
-    `;
-    document.body.appendChild(el);
+    // XP bar is now integrated into main game HUD
   }
   
   addXP(amount) {
@@ -6557,14 +6709,9 @@ export class LevelSystem {
   }
   
   _updateUI() {
-    const lvl = document.getElementById('xp-level');
-    const cur = document.getElementById('xp-current');
-    const next = document.getElementById('xp-next');
-    const fill = document.getElementById('xp-bar-fill');
-    if (lvl) lvl.textContent = this.level;
-    if (cur) cur.textContent = this.xp;
-    if (next) next.textContent = this.xpToNext;
-    if (fill) fill.style.width = (this.xp / this.xpToNext * 100) + '%';
+    if (window._hudUpdate) {
+      window._hudUpdate.xp(this.xp, this.xpToNext, this.level);
+    }
   }
   
   _showLevelUp() { if (window._sound) window._sound.SFX.levelUp();
@@ -6912,119 +7059,88 @@ export function createMinimap(scene, camera, character, objects) {
 
 export function updateGameHUD(character, score) {
   const hud = document.getElementById('game-hud-full');
-  if (!hud) return;
+  if (!hud || !window._hudUpdate) return;
   
+  const hu = window._hudUpdate;
+  
+  // Health (with color shift)
+  hu.health(character.health, character.maxHealth);
   const healthBar = document.getElementById('hud-health-bar');
-  const staminaBar = document.getElementById('hud-stamina-bar');
-  const scoreEl = document.getElementById('hud-score');
-  const crosshair = document.getElementById('hud-crosshair');
-  
   if (healthBar) {
-    const healthPct = character.health / character.maxHealth * 100;
-    healthBar.style.width = healthPct + '%';
-    // Color shift: green > yellow > red
-    if (healthPct > 60) healthBar.style.background = 'linear-gradient(90deg,#22cc22,#44ff44)';
-    else if (healthPct > 30) healthBar.style.background = 'linear-gradient(90deg,#ccaa00,#ffdd00)';
-    else healthBar.style.background = 'linear-gradient(90deg,#cc2222,#ff4444)';
+    const pct = character.health / character.maxHealth * 100;
+    if (pct > 60) healthBar.style.background = 'linear-gradient(90deg,#8b1a1a,#c43c3c,#e05050)';
+    else if (pct > 30) healthBar.style.background = 'linear-gradient(90deg,#8b6b1a,#c4963c,#e0b050)';
+    else healthBar.style.background = 'linear-gradient(90deg,#8b1a1a,#c43c3c,#ff4444)';
   }
-  if (staminaBar) staminaBar.style.width = (character.stamina / character.maxStamina * 100) + '%';
-  if (scoreEl) scoreEl.textContent = '⭐ ' + score;
+  
+  // Stamina
+  hu.stamina(character.stamina, character.maxStamina);
+  
+  // Score
+  const scoreEl = document.getElementById('hud-score');
+  if (scoreEl) scoreEl.textContent = '\u2b50 ' + score;
+  
+  // Crosshair
+  const crosshair = document.getElementById('hud-crosshair');
   if (crosshair) crosshair.style.display = 'block';
   
-  // Weapon slots (bottom center)
-  let weaponSlots = document.getElementById('hud-weapon-slots');
-  if (!weaponSlots) {
-    weaponSlots = document.createElement('div');
-    weaponSlots.id = 'hud-weapon-slots';
-    weaponSlots.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);' +
-      'display:flex;gap:6px;z-index:9998;pointer-events:none;font-family:monospace;';
-    document.body.appendChild(weaponSlots);
-  }
-  
-  let slotsHTML = '';
+  // Weapon slots
   for (let i = 0; i < 3; i++) {
     const weaponId = character.weaponSlots ? character.weaponSlots[i] : null;
-    const isActive = character.activeSlot === i;
+    const isActive = character.activeSlot === i && character.weaponDrawn;
     const weapon = weaponId ? WEAPON_DATABASE[weaponId] : null;
-    const name = weapon ? weapon.name : '—';
-    const icon = weapon ? (weapon.type === 'ranged' ? '🔫' : '⚔️') : '';
-    
-    slotsHTML += '<div style="width:70px;padding:4px 6px;text-align:center;' +
-      'background:' + (isActive ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.5)') + ';' +
-      'border:1px solid ' + (isActive ? '#f59e0b' : '#333') + ';border-radius:6px;' +
-      'color:' + (isActive ? '#fff' : '#666') + ';font-size:10px;">' +
-      '<div style="font-size:8px;color:#888;">' + (i + 1) + '</div>' +
-      icon + ' ' + (weaponId ? name.split(' ')[0] : '—') +
-      '</div>';
+    const icon = weapon ? (weapon.type === 'ranged' ? '\ud83d\udd2b' : '\u2694\ufe0f') : '\u2014';
+    const name = weapon ? weapon.name.split(' ')[0] : 'Empty';
+    hu.weapon(i + 1, icon, name, isActive);
   }
-  weaponSlots.innerHTML = slotsHTML;
   
-  // Ammo counter (for ranged weapons)
-  let ammoEl = document.getElementById('hud-ammo');
+  // Ammo
   if (character.equippedWeapon && WEAPON_DATABASE[character.equippedWeapon]?.type === 'ranged') {
-    if (!ammoEl) {
-      ammoEl = document.createElement('div');
-      ammoEl.id = 'hud-ammo';
-      ammoEl.style.cssText = 'position:fixed;bottom:20px;right:20px;color:#fff;' +
-        'font-family:monospace;font-size:24px;z-index:9998;pointer-events:none;' +
-        'text-shadow:0 0 4px rgba(0,0,0,0.8);';
-      document.body.appendChild(ammoEl);
-    }
     const wpn = WEAPON_DATABASE[character.equippedWeapon];
-    const current = character.ammo[character.equippedWeapon] ?? wpn.magSize;
-    ammoEl.innerHTML = '<span style="font-size:14px;color:#888;">AMMO</span><br>' + current + ' / ' + wpn.magSize;
-    ammoEl.style.display = 'block';
-  } else if (ammoEl) {
-    ammoEl.style.display = 'none';
+    const current = character.ammo?.[character.equippedWeapon] ?? wpn.magSize;
+    hu.ammo(current + ' / ' + wpn.magSize, true);
+  } else {
+    hu.ammo('', false);
   }
   
-  // Compass update
+  // Compass
   const compassCanvas = document.getElementById('compass-canvas');
   if (compassCanvas && character.cameraYaw !== undefined) {
     const cctx = compassCanvas.getContext('2d');
-    cctx.clearRect(0, 0, 300, 24);
-    
-    const yaw = character.cameraYaw; // radians
+    cctx.clearRect(0, 0, 280, 22);
+    const yaw = character.cameraYaw;
     const dirs = [
-      { angle: 0, label: 'N', color: '#ef4444' },
-      { angle: Math.PI/4, label: 'NE', color: '#666' },
-      { angle: Math.PI/2, label: 'E', color: '#fff' },
-      { angle: 3*Math.PI/4, label: 'SE', color: '#666' },
-      { angle: Math.PI, label: 'S', color: '#fff' },
-      { angle: -3*Math.PI/4, label: 'SW', color: '#666' },
-      { angle: -Math.PI/2, label: 'W', color: '#fff' },
-      { angle: -Math.PI/4, label: 'NW', color: '#666' },
+      { angle: 0, label: 'N', color: '#e05050', bold: true },
+      { angle: Math.PI/4, label: 'NE', color: '#555' },
+      { angle: Math.PI/2, label: 'E', color: '#aaa' },
+      { angle: 3*Math.PI/4, label: 'SE', color: '#555' },
+      { angle: Math.PI, label: 'S', color: '#aaa' },
+      { angle: -3*Math.PI/4, label: 'SW', color: '#555' },
+      { angle: -Math.PI/2, label: 'W', color: '#aaa' },
+      { angle: -Math.PI/4, label: 'NW', color: '#555' },
     ];
-    
-    cctx.font = '11px monospace';
-    cctx.textAlign = 'center';
-    
     for (const d of dirs) {
       let offset = d.angle - yaw;
       while (offset > Math.PI) offset -= Math.PI * 2;
       while (offset < -Math.PI) offset += Math.PI * 2;
-      const px = 150 + offset * (300 / Math.PI); // map ±PI/2 to 0-300
-      if (px > -20 && px < 320) {
+      const px = 140 + offset * (280 / Math.PI);
+      if (px > -20 && px < 300) {
+        cctx.font = (d.bold ? '600 ' : '') + '10px system-ui,sans-serif';
         cctx.fillStyle = d.color;
-        cctx.fillText(d.label, px, 16);
-        // Tick mark
-        cctx.fillRect(px, 20, 1, 4);
+        cctx.textAlign = 'center';
+        cctx.fillText(d.label, px, 14);
+        cctx.fillRect(px - 0.5, 18, 1, 3);
       }
     }
-    
-    // Center line
-    cctx.fillStyle = '#fff';
-    cctx.fillRect(149, 0, 2, 24);
   }
   
-  // State machine debug (small, top-right under kill feed)
+  // State debug (small, top-right)
   if (character.stateMachine) {
     let stateEl = document.getElementById('hud-state');
     if (!stateEl) {
       stateEl = document.createElement('div');
       stateEl.id = 'hud-state';
-      stateEl.style.cssText = 'position:fixed;top:20px;right:16px;color:#666;' +
-        'font-family:monospace;font-size:10px;z-index:9000;pointer-events:none;';
+      stateEl.style.cssText = 'position:fixed;top:20px;right:16px;color:rgba(255,255,255,0.25);font-family:system-ui;font-size:9px;z-index:9000;pointer-events:none;letter-spacing:1px;';
       document.body.appendChild(stateEl);
     }
     stateEl.textContent = character.stateMachine.state.toUpperCase();
