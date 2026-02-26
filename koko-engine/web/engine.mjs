@@ -3834,6 +3834,7 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
     let autoScale = 2 / Math.max(maxDim, 0.01);
+    const gn = (glbFile || name || "").toLowerCase();
     // Animals should be smaller than humans
     if (gn.includes('animals_pack_') || gn.includes('horse') || gn.includes('cow') || gn.includes('bull') || gn.includes('donkey') || gn.includes('alpaca') || gn.includes('deer') || gn.includes('stag')) {
       autoScale = 1.0 / Math.max(maxDim, 0.01); // ~1 unit tall
