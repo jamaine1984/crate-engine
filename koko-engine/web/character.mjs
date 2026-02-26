@@ -832,7 +832,7 @@ export class CharacterController {
       bone.updateWorldMatrix(true, false);
       const _bws = new THREE.Vector3();
       bone.getWorldScale(_bws);
-      const _localScale = 0.10 / (0.8 * Math.max(_bws.x, 0.001));
+      const _localScale = 0.15 / (0.8 * Math.max(_bws.x, 0.001));
       mesh.scale.setScalar(_localScale);
       // Position on back — sticking out behind shoulder, visible from TPS
       mesh.position.set(0.02, 0.08, -0.06); // x=right, y=up, z=behind
