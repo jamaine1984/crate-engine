@@ -1715,14 +1715,10 @@ class CharacterController {
           this._showDialogue(nearestNPC, lines);
         }
       }
-      // Door interaction — find nearest door
-      const doorObj = this.objects.find(o => {
-        if (!o.userData.name || !o.userData.name.toLowerCase().includes('door')) return false;
-        return this.position.distanceTo(o.position) < 3;
-      });
-      if (doorObj) {
-        doorObj.rotation.y += Math.PI / 2; // Toggle open/close
-        doorObj.userData.isOpen = !doorObj.userData.isOpen;
+      // Door interaction — use engine door system
+      if (window._toggleNearestDoor) {
+        const doorResult = window._toggleNearestDoor(this.position);
+        if (doorResult) console.log(doorResult);
       }
       // Vehicle interaction — find nearest vehicle
       if (!this._inVehicle) {

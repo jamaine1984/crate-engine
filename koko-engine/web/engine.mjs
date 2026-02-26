@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=67';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=68';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -4559,6 +4559,55 @@ function expandGround(newSize) {
 // === OBJECTS LIST ===
 const objects = [];
 window._sceneObjects = objects; // expose for collision system
+
+// Door animation system — smoothly open/close doors
+function updateDoors(dt) {
+  for (const obj of objects) {
+    if (!obj) continue;
+    // Check group and children for doors
+    const doors = [];
+    obj.traverse(child => {
+      if (child.userData && child.userData.isDoor) doors.push(child);
+    });
+    for (const door of doors) {
+      const targetAngle = door.userData.isOpen ? -Math.PI / 2 : 0; // 90° open
+      const diff = targetAngle - door.rotation.y;
+      if (Math.abs(diff) > 0.01) {
+        door.rotation.y += diff * Math.min(1, dt * 5); // smooth 
+      }
+    }
+  }
+}
+window._updateDoors = updateDoors;
+
+// Toggle nearest door — called from character interact
+window._toggleNearestDoor = function(playerPos) {
+  let nearest = null;
+  let nearestDist = 3; // interact range
+  
+  for (const obj of objects) {
+    if (!obj) continue;
+    obj.traverse(child => {
+      if (child.userData && child.userData.isDoor) {
+        const worldPos = new THREE.Vector3();
+        child.getWorldPosition(worldPos);
+        const dist = playerPos.distanceTo(worldPos);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearest = child;
+        }
+      }
+    });
+  }
+  
+  if (nearest) {
+    nearest.userData.isOpen = !nearest.userData.isOpen;
+    // Remove solid flag when open so player can walk through
+    nearest.userData.isSolid = !nearest.userData.isOpen;
+    return nearest.userData.isOpen ? '🚪 Door opened' : '🚪 Door closed';
+  }
+  return null;
+};
 let weatherSystem = null;
 let rainParticles = null;
 let snowParticles = null;
@@ -4835,6 +4884,28 @@ function createWallWithDoor(width, height, depth, doorW, doorH, mat) {
     top.position.set(0, doorH + topH/2, 0);
     top.castShadow = true; top.receiveShadow = true; g.add(top);
   }
+  // Add actual door mesh (can be opened with E key)
+  const doorMat = makeMat(0x5a3a1a, {rough: 0.85}); // dark wood
+  const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(doorW - 0.05, doorH - 0.05, 0.05), doorMat);
+  // Door pivots from left edge — offset position so rotation looks right
+  const doorPivot = new THREE.Group();
+  doorPivot.position.set(-doorW/2 + 0.025, 0, 0); // hinge at left side
+  doorMesh.position.set(doorW/2 - 0.025, doorH/2, 0);
+  doorMesh.castShadow = true;
+  doorPivot.add(doorMesh);
+  doorPivot.userData.isDoor = true;
+  doorPivot.userData.isOpen = false;
+  doorPivot.userData.isSolid = true;
+  doorPivot.userData.name = 'door';
+  g.add(doorPivot);
+  g.userData.door = doorPivot; // reference for interaction
+  
+  // Door handle
+  const handleMat = makeMat(0xc0a060, {metal: 0.8, rough: 0.3});
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.06), handleMat);
+  handle.position.set(doorW/2 - 0.15, doorH * 0.45, 0.04);
+  doorPivot.add(handle);
+  
   return g;
 }
 
@@ -10738,6 +10809,7 @@ function animate() {
       if (window._colorPass) window._colorPass.uniforms.time.value = performance.now() * 0.001;
       composer.render();
     } else {
+    if (window._updateDoors) window._updateDoors(1/60);
       renderer.render(scene, camera);
     }
 }
