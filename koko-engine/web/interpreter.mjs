@@ -380,4 +380,87 @@ function interpret(input) {
   return { action: 'addObject', query: raw };
 }
 
-export { interpret, WORLD_TYPES, WATER_TYPES, WEAPON_TYPES, CHARACTER_IDS, GALLERY_CATEGORIES };
+
+
+// ============================================================================
+// COMMAND SHOWCASE — All available commands organized by category
+// Used by the help/commands panel
+// ============================================================================
+const COMMANDS_SHOWCASE = {
+  '🌍 World Building': [
+    'build tropical paradise', 'build arctic storm', 'build dark swamp',
+    'build war zone', 'build enchanted forest', 'build pirate cove',
+    'build dragon lair', 'build medieval siege', 'build cyberpunk',
+    'build desert', 'build volcano', 'build haunted', 'build space',
+    'build western', 'build ruins', 'build zen', 'build floating',
+  ],
+  '🏗️ Objects & Assets': [
+    'add tree', 'add house', 'add car', 'add dragon',
+    'add 10 trees', 'scatter 20 rocks',
+    'browse buildings', 'browse weapons', 'browse animals',
+    'library', 'asset library',
+  ],
+  '⚔️ Weapons & Combat': [
+    'equip sword', 'equip katana', 'equip axe', 'equip hammer',
+    'equip pistol', 'equip rifle', 'equip shotgun', 'equip bow',
+    'equip sniper', 'equip smg', 'equip dagger', 'equip spear',
+    'show weapons', 'unequip',
+  ],
+  '🎮 Play Mode': [
+    'play', 'play as knight', 'play as soldier', 'play as witch',
+    'fps', 'tps', 'toggle camera',
+    'shooter mode', 'driving demo',
+  ],
+  '👥 NPCs': [
+    'spawn 5 npcs', 'spawn enemies', 'spawn 3 hostile npcs',
+    'spawn villagers',
+  ],
+  '🌊 Water & Weather': [
+    'water tropical', 'water storm', 'water lake', 'water arctic',
+    'add ocean', 'add lake',
+    'rain', 'snow', 'clear weather', 'storm',
+    'fog on', 'fog off',
+  ],
+  '⛰️ Terrain': [
+    'terrain flat', 'terrain hills', 'terrain mountains',
+    'terrain island', 'terrain canyon', 'terrain volcano',
+    'terrain dunes', 'terrain mesa',
+  ],
+  '🌅 Time & Sky': [
+    'morning', 'noon', 'sunset', 'night', 'midnight',
+    'dawn', 'dusk', 'aaa sky',
+  ],
+  '✨ Effects': [
+    'particles fire', 'particles rain', 'particles snow',
+    'particles fireflies', 'particles dust', 'particles leaves',
+    'bloom on', 'bloom off', 'ssao on', 'postfx on',
+    'wet ground', 'dry ground',
+    'vignette 0.5', 'grain 0.3',
+  ],
+  '🎨 Edit Objects': [
+    'color tree red', 'scale car 2', 'rotate house 90',
+    'move tree 10 0 10', 'delete tree', 'undo',
+  ],
+  '🏠 Buildings': [
+    'add house', 'add shop', 'add tavern',
+    'interior house', 'interior shop',
+    '2 story house', '3 story building',
+  ],
+  '💾 Save & Share': [
+    'save', 'save my world', 'load',
+    'screenshot', 'export', 'share',
+  ],
+  '🔮 AI & Scripts': [
+    'ai settings', 'scripts', 'edit script',
+    '3d generator', 'text to 3d',
+  ],
+  '🌐 Multiplayer': [
+    'multiplayer', 'join lobby', 'disconnect',
+  ],
+  '⚙️ Graphics': [
+    'graphics low', 'graphics medium', 'graphics high', 'graphics ultra',
+  ],
+};
+
+
+export { interpret, COMMANDS_SHOWCASE, WORLD_TYPES, WATER_TYPES, WEAPON_TYPES, CHARACTER_IDS, GALLERY_CATEGORIES };

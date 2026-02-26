@@ -10874,8 +10874,9 @@ window._engineBridge = {
 };
 
 // Import and init the new interpreter
-import('./interpreter.mjs').then(({ interpret }) => {
+import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
   window._interpret = interpret;
+  window._COMMANDS_SHOWCASE = COMMANDS_SHOWCASE;
   
   // Wrap _runCommand to use interpreter first
   const _origRunCommand = window._runCommand;
@@ -13003,69 +13004,61 @@ function showHelp() {
   modal.id = 'help-modal';
   Object.assign(modal.style, {
     position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.85)', zIndex: '10000', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)',
+    background: 'rgba(0,0,0,0.9)', zIndex: '10000', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)',
     overflow: 'auto'
   });
   
   var card = document.createElement('div');
   Object.assign(card.style, {
     background: '#0d0d0d', border: '1px solid #252525', borderRadius: '16px',
-    padding: '24px', maxWidth: '700px', width: '95%', maxHeight: '85vh', overflow: 'auto',
+    padding: '24px', maxWidth: '900px', width: '95%', maxHeight: '85vh', overflow: 'auto',
     fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0'
   });
   
-  card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-    '<h2 style="color:#ff6b35;margin:0">⌨️ Command Reference</h2>' +
-    '<button onclick="this.closest(\'#help-modal\').remove()" style="background:none;border:none;color:#555;font-size:1.5rem;cursor:pointer">✕</button></div>' +
-    
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-    
-    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
-    '<h4 style="color:#4ade80;margin:0 0 8px">🧱 Objects</h4>' +
-    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
-    'add cube · add sphere · add cylinder<br>add tree · add pine · add bush<br>add rock · add flower · add grass<br>' +
-    'add house · add castle · add village<br>add road · add wall · add fence<br>' +
-    'add avatar · add knight · add sword<br>add water · add 10 cubes</div></div>' +
-    
-    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
-    '<h4 style="color:#60a5fa;margin:0 0 8px">🌍 World</h4>' +
-    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
-    'time sunset · time night · time dawn<br>make it rain · make it snow<br>fog · clear weather<br>' +
-    'terrain mountains · terrain hills<br>terrain valley · terrain volcano<br>terrain island · terrain dunes<br>' +
-    'snow ground · sand ground · lava ground</div></div>' +
-    
-    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
-    '<h4 style="color:#f59e0b;margin:0 0 8px">🔥 Effects</h4>' +
-    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
-    'add fire · add smoke · add magic<br>add explosion · add sparkles<br>add campfire · add torch<br>' +
-    'add blue magic · add green sparkles<br>add point light · add blue light<br>add spotlight</div></div>' +
-    
-    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
-    '<h4 style="color:#c084fc;margin:0 0 8px">🎮 Play Mode</h4>' +
-    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
-    'play · edit · spawn enemies<br>equip sword · equip shield<br>heal · stats · quests<br>' +
-    'craft · materials · talk<br>WASD: move · Space: jump<br>Click: attack · E: interact<br>1/3: camera toggle</div></div>' +
-    
-    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
-    '<h4 style="color:#ef4444;margin:0 0 8px">✏️ Edit</h4>' +
-    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
-    'move castle 5 right<br>make tree red · scale rock 2x<br>rotate house 90<br>' +
-    'delete · undo · clear · reset<br>bigger · smaller · giant<br>click objects to select</div></div>' +
-    
-    '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">' +
-    '<h4 style="color:#4ade80;margin:0 0 8px">🎬 Advanced</h4>' +
-    '<div style="color:#888;font-size:0.75rem;line-height:1.8">' +
-    'build a castle with trees and rain<br>when player touches rock, score +10<br>' +
-    'populate · add traffic<br>animation speed 2<br>screenshot · share · save<br>' +
-    'Ctrl+S: screenshot · Ctrl+B: browse models</div></div>' +
-    
-    '</div>' +
-    
-    '<div style="margin-top:16px;padding:12px;background:#111;border-radius:8px;border:1px solid #252525;text-align:center">' +
-    '<span style="color:#ff6b35;font-weight:700">Pro tip:</span> <span style="color:#888;font-size:0.8rem">Combine commands with "and" — <code style="color:#4ade80">add castle and make it rain and time night</code></span>' +
-    '</div>';
+  // Header
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+    '<h2 style="color:#ff6b35;margin:0">⌨️ All Commands</h2>' +
+    '<button onclick="this.closest(\'#help-modal\').remove()" style="background:none;border:none;color:#555;font-size:1.5rem;cursor:pointer">✕</button></div>';
   
+  // Build grid from COMMANDS_SHOWCASE
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+  
+  const colors = ['#4ade80','#60a5fa','#f59e0b','#c084fc','#ef4444','#22d3ee','#fb923c','#a78bfa','#f472b6','#34d399','#fbbf24','#818cf8','#fb7185','#2dd4bf'];
+  let ci = 0;
+  
+  for (const [category, commands] of Object.entries(window._COMMANDS_SHOWCASE || {})) {
+    const color = colors[ci % colors.length];
+    ci++;
+    html += '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">';
+    html += '<h4 style="color:' + color + ';margin:0 0 8px">' + category + '</h4>';
+    html += '<div style="color:#888;font-size:0.72rem;line-height:2">';
+    commands.forEach(function(cmd) {
+      html += '<span onclick="document.getElementById(\'help-modal\').remove();if(window._runCommand)window._runCommand(\'' + cmd.replace(/'/g, "\\'") + '\')" style="display:inline-block;background:#1a1a1a;padding:2px 8px;border-radius:4px;margin:2px;cursor:pointer;transition:background 0.2s;border:1px solid #252525" onmouseover="this.style.background=\'#252525\'" onmouseout="this.style.background=\'#1a1a1a\'">' + cmd + '</span>';
+    });
+    html += '</div></div>';
+  }
+  
+  html += '</div>';
+  
+  // Pro tip
+  html += '<div style="margin-top:16px;padding:12px;background:#111;border-radius:8px;border:1px solid #252525;text-align:center">' +
+    '<span style="color:#ff6b35;font-weight:700">💡 Click any command to run it!</span> ' +
+    '<span style="color:#888;font-size:0.8rem">Or combine with "and" — <code style="color:#4ade80">build tropical paradise and equip sword and play</code></span></div>';
+  
+  // Play mode controls
+  html += '<div style="margin-top:8px;padding:12px;background:#111;border-radius:8px;border:1px solid #252525">' +
+    '<h4 style="color:#ff6b35;margin:0 0 8px">🎮 Play Mode Controls</h4>' +
+    '<div style="color:#888;font-size:0.72rem;display:grid;grid-template-columns:1fr 1fr;gap:4px">' +
+    '<span>WASD — Move</span><span>Space — Jump</span>' +
+    '<span>Shift — Run</span><span>Ctrl — Sprint</span>' +
+    '<span>C — Dodge Roll</span><span>E / Click — Attack</span>' +
+    '<span>Q — Heavy Attack</span><span>V — Toggle FPS/TPS</span>' +
+    '<span>T — Swap Shoulder</span><span>F — Interact</span>' +
+    '<span>1/2/3 — Weapon Slots</span><span>ESC — Exit Play</span>' +
+    '</div></div>';
+  
+  card.innerHTML = html;
   modal.appendChild(card);
   document.body.appendChild(modal);
   modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
