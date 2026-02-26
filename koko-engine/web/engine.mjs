@@ -317,7 +317,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=92';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=100';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -873,6 +873,8 @@ function exitPlayMode() {
 
 function updatePlayMode(dt) {
   if (!playMode) return;
+  // Don't move camera independently when character controller is active
+  if (characterController && characterController.model) return;
   const speed = playSpeed * dt;
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -5999,40 +6001,82 @@ function createGerstnerWaterMaterial(preset) {
       uniform float specularPower;
       uniform float fresnelPower;
       uniform float opacity;
+      uniform float time;
       uniform vec3 cameraPos;
       varying vec3 vWorldPos;
       varying vec3 vNormal;
       varying float vHeight;
       varying vec2 vUv;
       
+      // Simple hash for procedural noise
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+      
       void main() {
         vec3 normal = normalize(vNormal);
         vec3 viewDir = normalize(cameraPos - vWorldPos);
+        float NdotV = max(dot(normal, viewDir), 0.0);
         
-        // Fresnel — edges more reflective
-        float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), fresnelPower);
+        // Fresnel — Schlick approximation, edges more reflective
+        float fresnel = pow(1.0 - NdotV, fresnelPower);
+        fresnel = mix(0.04, 1.0, fresnel); // F0 = 0.04 for water
         
-        // Depth-based color (higher waves = lighter)
-        float depthFactor = smoothstep(-0.3, 0.3, vHeight);
+        // Depth-based color mixing
+        float depthFactor = smoothstep(-0.4, 0.4, vHeight);
         vec3 baseColor = mix(deepColor, waterColor, depthFactor);
         
-        // Foam on wave peaks
-        float foam = smoothstep(0.15, 0.35, vHeight) * foamIntensity;
-        baseColor = mix(baseColor, vec3(0.9, 0.95, 1.0), foam);
+        // Subsurface scattering — light passing through wave peaks
+        float sss = pow(max(dot(viewDir, -sunDirection), 0.0), 4.0) * max(vHeight, 0.0) * 0.8;
+        vec3 sssColor = vec3(0.1, 0.7, 0.6) * sss;
         
-        // Specular highlight (sun reflection)
+        // Procedural foam on wave peaks + noise pattern
+        float foamNoise = noise(vWorldPos.xz * 2.0 + time * 0.3) * 0.5 + 
+                          noise(vWorldPos.xz * 5.0 - time * 0.5) * 0.3;
+        float foam = smoothstep(0.08, 0.3, vHeight) * foamIntensity * (0.5 + foamNoise);
+        foam += smoothstep(0.25, 0.4, vHeight) * foamIntensity * 0.5; // Extra foam on peaks
+        vec3 foamColor = vec3(0.85, 0.9, 0.95);
+        
+        // Specular highlight (sun reflection) — dual lobe
         vec3 halfDir = normalize(sunDirection + viewDir);
-        float spec = pow(max(dot(normal, halfDir), 0.0), specularPower);
-        vec3 specular = sunColor * spec * 0.6;
+        float spec1 = pow(max(dot(normal, halfDir), 0.0), specularPower);
+        float spec2 = pow(max(dot(normal, halfDir), 0.0), specularPower * 0.25) * 0.15; // Broad lobe
+        vec3 specular = sunColor * (spec1 * 0.8 + spec2);
         
-        // Subtle diffuse lighting
+        // Sky reflection (fake environment)
+        vec3 reflectDir = reflect(-viewDir, normal);
+        float skyGrad = max(reflectDir.y, 0.0);
+        vec3 skyReflection = mix(vec3(0.2, 0.4, 0.65), vec3(0.3, 0.55, 0.9), skyGrad);
+        // Sun hotspot in reflection
+        float sunRefl = pow(max(dot(reflectDir, sunDirection), 0.0), 256.0) * 2.0;
+        skyReflection += sunColor * sunRefl;
+        
+        // Diffuse lighting
         float diffuse = max(dot(normal, sunDirection), 0.0) * 0.3 + 0.7;
         
-        // Combine
-        vec3 finalColor = baseColor * diffuse + specular;
-        finalColor = mix(finalColor, vec3(0.7, 0.85, 1.0), fresnel * 0.3);
+        // Combine: base water + subsurface
+        vec3 waterBody = baseColor * diffuse + sssColor;
+        waterBody = mix(waterBody, foamColor, clamp(foam, 0.0, 1.0));
         
-        gl_FragColor = vec4(finalColor, opacity + foam * 0.15);
+        // Blend between water body and sky reflection via fresnel
+        vec3 finalColor = mix(waterBody, skyReflection, fresnel * 0.35) + specular;
+        
+        // Slight blue tint at distance
+        float dist = length(cameraPos - vWorldPos);
+        float fogFactor = 1.0 - exp(-dist * 0.003);
+        finalColor = mix(finalColor, vec3(0.15, 0.35, 0.6), fogFactor * 0.25);
+        
+        gl_FragColor = vec4(finalColor, opacity + foam * 0.2);
       }
     `,
     transparent: true,
@@ -11190,9 +11234,24 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
           result = '📷 Camera toggled'; 
           break;
         case 'openLibrary':
-          if (intent.category) { showGallery(intent.category); }
-          else { showCategoryPicker(); }
-          result = '📂 Library opened';
+          if (intent.category === 'characters') {
+            // Use character gallery with play-as logic — route to execSingle
+            result = await bridge.execSingle('characters');
+          } else if (intent.category) {
+            // Use asset gallery — route to execSingle which handles loading
+            result = await bridge.execSingle(intent.category);
+          } else {
+            // Category picker — route to execSingle for full handling
+            const pickResult = await showCategoryPicker();
+            if (pickResult) {
+              const glb = pickResult.file;
+              loadGLBModel(glb, glb, 0, 0, null, pickResult.path);
+              sceneHistory.push('add ' + glb);
+              result = '✅ Added ' + pickResult.name;
+            } else {
+              result = '📂 Library closed';
+            }
+          }
           break;
         case 'showGenerator': showGeneratorModal(); result = '🔮 3D Generator'; break;
         case 'buildWorld': result = await bridge.buildWorld(intent.template); break;

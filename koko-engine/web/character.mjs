@@ -1457,34 +1457,61 @@ class CharacterController {
   }
 
   _fireBulletTracer(weaponData) {
-    // Fire a visual bullet tracer from character toward camera look direction
+    // Fire a short animated bullet tracer (not a full-length laser)
     const start = this.position.clone();
     start.y += 1.2; // chest height
     
-    // Direction: character facing direction (rotation Y)
-    const dir = new THREE.Vector3(Math.sin(this.rotation), 0, Math.cos(this.rotation));
-    // Add slight vertical from camera pitch
-    if (this.cameraPitch) dir.y = Math.sin(this.cameraPitch);
+    // Direction: use camera unproject for accuracy
+    const dir = new THREE.Vector3(0, 0, -1);
+    dir.applyQuaternion(this.camera.quaternion);
     dir.normalize();
     
-    const end = start.clone().add(dir.clone().multiplyScalar(80));
+    // Muzzle position slightly in front
+    const muzzle = start.clone().add(dir.clone().multiplyScalar(1.0));
     
-    // Tracer visual
+    // Short tracer (3-4 units long) that travels forward
     const tData = weaponData.tracer;
+    const tracerLen = 3;
+    const tracerSpeed = 120; // units/sec
+    const maxDist = 80;
+    
     if (tData) {
-      const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-      const mat = new THREE.LineBasicMaterial({ color: tData.color || 0xffdd00, linewidth: 2, transparent: true, opacity: 0.8 });
-      const line = new THREE.Line(geo, mat);
-      this.scene.add(line);
-      // Fade out
-      setTimeout(() => { this.scene.remove(line); geo.dispose(); mat.dispose(); }, (tData.duration || 0.08) * 1000);
+      // Cylinder tracer (thicker than a line)
+      const geo = new THREE.CylinderGeometry(0.02, 0.02, tracerLen, 4);
+      geo.rotateX(Math.PI / 2);
+      const mat = new THREE.MeshBasicMaterial({ color: tData.color || 0xffdd00, transparent: true, opacity: 0.9 });
+      const bullet = new THREE.Mesh(geo, mat);
+      bullet.position.copy(muzzle);
+      bullet.lookAt(muzzle.clone().add(dir));
+      this.scene.add(bullet);
+      
+      // Animate bullet travel
+      let dist = 0;
+      const animBullet = () => {
+        dist += tracerSpeed * 0.016; // ~60fps
+        if (dist > maxDist) {
+          this.scene.remove(bullet); geo.dispose(); mat.dispose();
+          return;
+        }
+        bullet.position.copy(muzzle.clone().add(dir.clone().multiplyScalar(dist)));
+        requestAnimationFrame(animBullet);
+      };
+      requestAnimationFrame(animBullet);
     }
     
-    // Muzzle flash
-    const flash = new THREE.PointLight(0xffaa00, 3, 5);
-    flash.position.copy(start).add(dir.clone().multiplyScalar(0.5));
+    // Muzzle flash — brief bright light
+    const flash = new THREE.PointLight(0xffaa00, 5, 8);
+    flash.position.copy(muzzle);
     this.scene.add(flash);
-    setTimeout(() => { this.scene.remove(flash); }, 60);
+    setTimeout(() => { this.scene.remove(flash); }, 50);
+    
+    // Small muzzle flash sprite
+    const flashGeo = new THREE.SphereGeometry(0.15, 6, 6);
+    const flashMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.8 });
+    const flashMesh = new THREE.Mesh(flashGeo, flashMat);
+    flashMesh.position.copy(muzzle);
+    this.scene.add(flashMesh);
+    setTimeout(() => { this.scene.remove(flashMesh); flashGeo.dispose(); flashMat.dispose(); }, 40);
   }
   
   _attachWeaponToHolster(weaponId, slotIndex) {
@@ -2513,8 +2540,8 @@ class CharacterController {
       this.camera.updateProjectionMatrix();
       
       // Character rotation: face where camera looks when moving or aiming
-      if (this.model && (this.isAiming || this.isMoving)) {
-        const targetRot = this.cameraYaw + Math.PI;
+      if (this.model && (this.isAiming || this.isMoving) && !this.modelContainer) {
+        const targetRot = this.rotation;
         const currentRot = this.model.rotation.y;
         let diff = targetRot - currentRot;
         while (diff > Math.PI) diff -= Math.PI * 2;
@@ -2526,7 +2553,7 @@ class CharacterController {
       // === FIRST PERSON ===
       this.camera.position.set(this.position.x, this.position.y + 1.7, this.position.z);
       this.camera.rotation.order = 'YXZ';
-      this.camera.rotation.y = this.cameraYaw + Math.PI;
+      this.camera.rotation.y = this.cameraYaw;
       this.camera.rotation.x = -this.cameraPitch;
       
       // FOV for sprint
