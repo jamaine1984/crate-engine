@@ -737,13 +737,42 @@ setTimeout(() => {
 window.addEventListener('keydown', e => {
   if (e.key === ' ' && dialogueSystem && dialogueSystem.active) { dialogueSystem.advance(); e.preventDefault(); return; }
   if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
-  if (e.key === 'Escape' && playMode) { exitPlayMode(); document.exitPointerLock(); }
+  if (e.key === 'Escape' && playMode) {
+    // Show pause menu instead of immediately exiting
+    const existingPause = document.getElementById('pause-menu');
+    if (existingPause) {
+      existingPause.remove();
+      document.body.requestPointerLock();
+      return;
+    }
+    document.exitPointerLock();
+    
+    const pause = document.createElement('div');
+    pause.id = 'pause-menu';
+    pause.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10001;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;backdrop-filter:blur(8px);';
+    
+    const btnStyle = 'display:block;width:200px;padding:12px;margin:6px;background:#1a1a1a;color:#e0e0e0;border:1px solid #333;border-radius:8px;font-size:14px;cursor:pointer;font-family:monospace;text-align:center;transition:all 0.2s;';
+    const btnHover = 'onmouseover="this.style.background=\'#252525\';this.style.borderColor=\'#ff6b35\'" onmouseout="this.style.background=\'#1a1a1a\';this.style.borderColor=\'#333\'"';
+    
+    pause.innerHTML = '<div style="font-size:32px;color:#ff6b35;margin-bottom:24px;font-weight:bold;">⏸ PAUSED</div>' +
+      '<button ' + btnHover + ' onclick="document.getElementById(\'pause-menu\').remove();document.body.requestPointerLock();" style="' + btnStyle + '">▶ RESUME</button>' +
+      '<button ' + btnHover + ' onclick="document.getElementById(\'pause-menu\').remove();showHelp();" style="' + btnStyle + '">📋 COMMANDS</button>' +
+      '<button ' + btnHover + ' onclick="document.getElementById(\'pause-menu\').remove();if(window._runCommand)window._runCommand(\'save\');" style="' + btnStyle + '">💾 SAVE GAME</button>' +
+      '<button ' + btnHover + ' onclick="document.getElementById(\'pause-menu\').remove();if(window._runCommand)window._runCommand(\'screenshot\');" style="' + btnStyle + '">📸 SCREENSHOT</button>' +
+      '<button ' + btnHover + ' onclick="document.getElementById(\'pause-menu\').remove();exitPlayMode();document.exitPointerLock();" style="' + btnStyle + 'border-color:#ff4444;color:#ff6666;">🚪 EXIT TO EDITOR</button>' +
+      '<div style="color:#555;font-size:11px;margin-top:16px;">Press ESC to resume</div>';
+    
+    document.body.appendChild(pause);
+  }
 });
 
 // Pointer lock change — exit play mode if pointer lock lost
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement && playMode) {
-    exitPlayMode();
+    // Don't exit if pause menu is open
+    if (document.getElementById('pause-menu')) return;
+    // Don't exit immediately — player might be opening pause
+    // exitPlayMode();
   }
 });
 
