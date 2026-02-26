@@ -452,7 +452,12 @@ class MultiplayerClient {
     const charType = data.character || 'knight';
     // Load character model for peer
     const url = 'models/character_' + charType + '.glb';
-    gltfLoader.load(url, (gltf) => {
+    _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile);
+}
+
+function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone) {
+  const gn = (glbFile || name || '').toLowerCase();
+  gltfLoader.load(url, (gltf) => {
       const model = gltf.scene;
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
@@ -3766,6 +3771,28 @@ function upgradeMaterials(obj) {
 }
 
 function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
+  // Check if this is a user-saved model (from IndexedDB or catalog _b64)
+  const catalogItem = _assetCatalog && Object.values(_assetCatalog).flat().find(a => a.file === glbFile || a.file === name);
+  if (catalogItem && catalogItem._b64) {
+    // Load from base64 data (user-generated or marketplace saved model)
+    const blob = _modelDB.blobFromB64(catalogItem._b64);
+    const blobUrl = URL.createObjectURL(blob);
+    _loadGLBFromUrl(name, blobUrl, x, z, scaleOverride, glbFile, () => URL.revokeObjectURL(blobUrl));
+    return;
+  }
+  // Also check IndexedDB async
+  if (glbFile.startsWith('user_') || glbFile.startsWith('listing_') || glbFile.startsWith('mp_')) {
+    _modelDB.get(glbFile).then(entry => {
+      if (entry && entry.data_b64) {
+        const blob = _modelDB.blobFromB64(entry.data_b64);
+        const blobUrl = URL.createObjectURL(blob);
+        _loadGLBFromUrl(name, blobUrl, x, z, scaleOverride, glbFile, () => URL.revokeObjectURL(blobUrl));
+      } else {
+        showToast('⚠ Model not found in library');
+      }
+    });
+    return;
+  }
   // Strip .glb if already present (catalog entries include extension)
   const cleanFile = glbFile.endsWith('.glb') ? glbFile.slice(0, -4) : glbFile;
   const url = customPath || ('models/' + cleanFile + '.glb');
@@ -3810,7 +3837,6 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     const maxDim = Math.max(size.x, size.y, size.z);
     let autoScale = 2 / Math.max(maxDim, 0.01);
     // Animals should be smaller than humans
-    const gn = glbFile.toLowerCase();
     if (gn.includes('animals_pack_') || gn.includes('horse') || gn.includes('cow') || gn.includes('bull') || gn.includes('donkey') || gn.includes('alpaca') || gn.includes('deer') || gn.includes('stag')) {
       autoScale = 1.0 / Math.max(maxDim, 0.01); // ~1 unit tall
     } else if (gn.includes('wolf') || gn.includes('fox') || gn.includes('husky') || gn.includes('shiba')) {
@@ -3908,14 +3934,15 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     scene.add(model);
     objects.push(model);
     if (statusEl) statusEl.textContent = '3D Ready';
+    if (onDone) onDone();
   }, 
   (progress) => {
     // Loading progress
   },
   (error) => {
     console.warn('Failed to load ' + url + ':', error);
-    // Fall back to procedural
     if (statusEl) statusEl.textContent = '3D Ready';
+    if (onDone) onDone();
   });
 }
 
@@ -6624,6 +6651,56 @@ async function parseAndExecute(rawCmd) {
 
 const undoStack = [];
 
+
+// === IndexedDB Model Storage ===
+const _modelDB = {
+  _db: null,
+  async open() {
+    if (this._db) return this._db;
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('crate-models', 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore('models', { keyPath: 'id' }); };
+      req.onsuccess = () => { this._db = req.result; resolve(this._db); };
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async save(id, name, category, blob) {
+    const db = await this.open();
+    const reader = new FileReader();
+    return new Promise((resolve) => {
+      reader.onload = () => {
+        const tx = db.transaction('models', 'readwrite');
+        tx.objectStore('models').put({ id, name, category, data_b64: reader.result.split(',')[1], created: Date.now() });
+        tx.oncomplete = () => resolve(true);
+      };
+      reader.readAsDataURL(blob);
+    });
+  },
+  async get(id) {
+    const db = await this.open();
+    return new Promise((resolve) => {
+      const tx = db.transaction('models', 'readonly');
+      const req = tx.objectStore('models').get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  },
+  async getAll() {
+    const db = await this.open();
+    return new Promise((resolve) => {
+      const tx = db.transaction('models', 'readonly');
+      const req = tx.objectStore('models').getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+  },
+  blobFromB64(b64) {
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    return new Blob([bytes], { type: 'model/gltf-binary' });
+  }
+};
+window._modelDB = _modelDB;
+
 // === INLINE ASSET GALLERY ===
 let _assetCatalog = null;
 async function _loadAssetCatalog() {
@@ -6632,18 +6709,20 @@ async function _loadAssetCatalog() {
     const r = await fetch('asset-catalog.json');
     _assetCatalog = await r.json();
   } catch(e) { _assetCatalog = {}; }
-  // Merge marketplace models added via "Add to Engine" button
+  
+  // Merge IndexedDB models (marketplace + user-generated — persisted as blobs)
   try {
-    const userKey = (window._crateAuth && window._crateAuth.isLoggedIn) ? 'engine_marketplace_models_' + window._crateAuth.user.id : 'engine_marketplace_models'; const saved = JSON.parse(localStorage.getItem(userKey) || '[]');
-    saved.forEach(m => {
+    const dbModels = await _modelDB.getAll();
+    dbModels.forEach(m => {
       const cat = (m.category || 'premium').toLowerCase();
       if (!_assetCatalog[cat]) _assetCatalog[cat] = [];
-      if (!_assetCatalog[cat].find(a => a.file === m.file)) {
-        _assetCatalog[cat].push({ name: m.name, file: m.file, path: 'marketplace/models/' + m.file, source: 'marketplace' });
+      if (!_assetCatalog[cat].find(a => a.file === m.id)) {
+        _assetCatalog[cat].push({ name: (m.name || m.id) + ' ✨', file: m.id, source: 'user-saved', _b64: m.data_b64 });
       }
     });
-  } catch(e) {}
-  // Merge user-generated models from localStorage
+  } catch(e) { console.warn('[Catalog] IndexedDB merge failed:', e); }
+  
+  // Merge legacy localStorage user models
   try {
     const userModels = JSON.parse(localStorage.getItem('crate-user-models') || '[]');
     userModels.forEach(m => {
@@ -6654,6 +6733,20 @@ async function _loadAssetCatalog() {
       }
     });
   } catch(e) {}
+  
+  // Merge legacy marketplace localStorage entries
+  try {
+    const userKey = (window._crateAuth && window._crateAuth.isLoggedIn) ? 'engine_marketplace_models_' + window._crateAuth.user.id : 'engine_marketplace_models';
+    const saved = JSON.parse(localStorage.getItem(userKey) || '[]');
+    saved.forEach(m => {
+      const cat = (m.category || 'premium').toLowerCase();
+      if (!_assetCatalog[cat]) _assetCatalog[cat] = [];
+      if (!_assetCatalog[cat].find(a => a.file === m.file)) {
+        _assetCatalog[cat].push({ name: m.name, file: m.file, source: 'marketplace' });
+      }
+    });
+  } catch(e) {}
+  
   return _assetCatalog;
 }
 
@@ -14450,17 +14543,22 @@ window._toggleInventory = toggleInventory;
             else if (/food|apple|bread|potion|drink|meat|fish|cake/.test(nameLower)) autoCategory = 'food';
             else if (/robot|mech|sci.?fi|space|laser|plasma|cyber|neon|hologram/.test(nameLower)) autoCategory = 'scifi';
             
-            // Save to localStorage for gallery persistence
+            // Save model blob to IndexedDB for permanent library access
             try {
+              const modelId = 'mp_' + item.file.replace(/[^a-zA-Z0-9]/g, '_');
+              _modelDB.save(modelId, safeName, autoCategory, blob).then(() => {
+                console.log('[Marketplace] Saved to IndexedDB:', modelId);
+                // Invalidate catalog cache so it shows in gallery
+                _assetCatalog = null;
+              });
+              // Also save to localStorage index for quick lookup
               const userKey = (window._crateAuth && window._crateAuth.isLoggedIn) ? 'engine_marketplace_models_' + window._crateAuth.user.id : 'engine_marketplace_models';
               const saved = JSON.parse(localStorage.getItem(userKey) || '[]');
-              if (!saved.find(s => s.file === item.file)) {
-                saved.push({ name: safeName, file: item.file, category: autoCategory });
+              if (!saved.find(s => s.file === modelId)) {
+                saved.push({ name: safeName, file: modelId, category: autoCategory });
                 localStorage.setItem(userKey, JSON.stringify(saved));
-                // Invalidate catalog cache so it reloads with new item
-                _assetCatalog = null;
               }
-            } catch(e) { console.warn('[Marketplace] Could not save to catalog:', e); }
+            } catch(e) { console.warn('[Marketplace] Could not save:', e); }
             
             scene.add(model);
             objects.push(model);
@@ -14852,56 +14950,53 @@ function gen3dDownload() {
 
 function gen3dSellOnMarketplace() {
   if (!window._gen3dResultBlob) return;
-  // Save model to localStorage marketplace listings
+  const listingId = 'listing_' + Date.now();
+  const listingName = prompt('Name your model:', 'AI Generated Model') || 'AI Generated Model';
+  
+  // Save blob to IndexedDB
+  _modelDB.save(listingId, listingName, 'premium', window._gen3dResultBlob).then(() => {
+    _assetCatalog = null;
+  });
+  
+  // Save listing metadata to localStorage
   const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
-  const reader = new FileReader();
-  reader.onload = () => {
-    listings.push({
-      id: 'listing_' + Date.now(),
-      name: 'AI Generated Model',
-      creator: localStorage.getItem('crate-username') || 'Anonymous',
-      price: 0, // Free by default, user can edit
-      format: 'glb',
-      data_b64: reader.result.split(',')[1],
-      created: new Date().toISOString(),
-      downloads: 0,
-    });
-    localStorage.setItem('crate-marketplace-listings', JSON.stringify(listings));
-    showToast('💰 Listed on marketplace! Edit price in Marketplace tab.');
-  };
-  reader.readAsDataURL(window._gen3dResultBlob);
+  listings.push({
+    id: listingId,
+    name: listingName,
+    creator: localStorage.getItem('crate-username') || 'Anonymous',
+    price: 0,
+    format: 'glb',
+    created: new Date().toISOString(),
+    downloads: 0,
+  });
+  localStorage.setItem('crate-marketplace-listings', JSON.stringify(listings));
+  showToast('💰 Listed on marketplace! Model saved to your library too.');
   document.getElementById('gen3d-modal').remove();
 }
 
 function gen3dSaveToLibrary() {
   if (!window._gen3dResultBlob) return;
-  // Save generated model to user's local library (IndexedDB for persistence)
   const modelName = prompt('Name this model:', 'AI Model ' + new Date().toLocaleDateString()) || 'AI Model';
   const category = prompt('Category (characters, weapons, buildings, vehicles, furniture, nature, scifi, food):', 'food') || 'food';
   
+  const modelId = 'user_' + Date.now();
+  
+  // Save to IndexedDB (persistent, survives cache clear)
+  _modelDB.save(modelId, modelName, category.toLowerCase(), window._gen3dResultBlob).then(() => {
+    // Invalidate catalog cache so it shows in gallery immediately
+    _assetCatalog = null;
+    showToast('📚 Saved to library! Find it in "' + category + '" category.');
+  });
+  
+  // Also save to localStorage as backup
   const reader = new FileReader();
   reader.onload = () => {
     const saved = JSON.parse(localStorage.getItem('crate-user-models') || '[]');
-    const entry = {
-      id: 'user_' + Date.now(),
-      name: modelName,
-      category: category.toLowerCase(),
-      data_b64: reader.result.split(',')[1],
-      created: new Date().toISOString(),
-    };
-    saved.push(entry);
+    saved.push({ id: modelId, name: modelName, category: category.toLowerCase(), data_b64: reader.result.split(',')[1], created: new Date().toISOString() });
     localStorage.setItem('crate-user-models', JSON.stringify(saved));
-    
-    // Also add to in-memory asset catalog so it shows up in library immediately
-    if (_assetCatalog) {
-      const cat = category.toLowerCase();
-      if (!_assetCatalog[cat]) _assetCatalog[cat] = [];
-      _assetCatalog[cat].push({ name: modelName, file: entry.id + '.glb', source: 'user-generated', _b64: entry.data_b64 });
-    }
-    
-    showToast('📚 Saved to library! Find it in "' + category + '" category.');
   };
   reader.readAsDataURL(window._gen3dResultBlob);
+  
   document.getElementById('gen3d-modal').remove();
 }
 
