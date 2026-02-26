@@ -6747,6 +6747,19 @@ async function _loadAssetCatalog() {
     });
   } catch(e) {}
   
+  // Create "My Models" virtual category — all user-saved/generated/marketplace models
+  const myModels = [];
+  for (const cat of Object.keys(_assetCatalog)) {
+    for (const item of _assetCatalog[cat]) {
+      if (item.source === 'user-saved' || item.source === 'user-generated' || item.source === 'marketplace') {
+        myModels.push({ ...item, _fromCategory: cat });
+      }
+    }
+  }
+  if (myModels.length > 0) {
+    _assetCatalog['my-models'] = myModels;
+  }
+  
   return _assetCatalog;
 }
 
@@ -6765,6 +6778,8 @@ const _CAT_META = {
   modern: { icon: '🏙️', color: '#64748b', label: 'Modern' },
   nature: { icon: '⛺', color: '#84cc16', label: 'Nature & Survival' },
   animations: { icon: '🎬', color: '#ec4899', label: 'Animations' },
+  premium: { icon: '💎', color: '#a855f7', label: 'Premium / Marketplace' },
+  'my-models': { icon: '⭐', color: '#f59e0b', label: 'My Models' },
 };
 
 function showGallery(category, options = {}) {
