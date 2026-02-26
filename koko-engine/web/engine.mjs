@@ -3714,6 +3714,8 @@ window._floatingDamage = function(pos, dmg, isCrit) {
 };
 
 window._playerDeath = function() {
+  // Remove any existing death screens first
+  document.querySelectorAll('#death-screen').forEach(function(d) { d.remove(); });
   const overlay = document.createElement('div');
   overlay.id = 'death-screen';
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;z-index:10000;transition:background 1s;';
@@ -3737,9 +3739,9 @@ window._playerDeath = function() {
 };
 
 window._respawnPlayer = function() {
-  const ds = document.getElementById('death-screen');
-  if (ds) ds.remove();
+  document.querySelectorAll('#death-screen').forEach(function(d) { d.remove(); });
   if (characterController) {
+    characterController.isDead = false;
     characterController.health = characterController.maxHealth;
     characterController.stamina = characterController.maxStamina;
     const sy = typeof getTerrainY === 'function' ? getTerrainY(0, 0) + 1 : 2;
@@ -3749,8 +3751,7 @@ window._respawnPlayer = function() {
 };
 
 window._exitToEditor = function() {
-  const ds = document.getElementById('death-screen');
-  if (ds) ds.remove();
+  document.querySelectorAll('#death-screen').forEach(function(d) { d.remove(); });
   if (typeof exitPlayMode === 'function') exitPlayMode();
 };
 
@@ -7221,8 +7222,8 @@ async function execSingle(cmd) {
   if (lower === 'dry' || lower === 'dry ground') { setSceneWetness(0); return addToLog('✓ Ground dried'); }
   
   // Particle commands
-  if (lower.match(/^particles?\s+(dust|fireflies|embers|snow|ash|spores|bubbles|leaves|petals|off|none)/)) {
-    const pType = lower.match(/(dust|fireflies|embers|snow|ash|spores|bubbles|leaves|petals|off|none)/)[1];
+  if (lower.match(/^particles?\s+(dust|fireflies|embers|fire|rain|snow|ash|spores|bubbles|leaves|petals|off|none|clear)/)) {
+    let pType = lower.match(/(dust|fireflies|embers|fire|rain|snow|ash|spores|bubbles|leaves|petals|off|none|clear)/)[1]; if (pType === 'fire') pType = 'embers'; if (pType === 'rain') { setWeather('rain'); return '✓ Rain'; } if (pType === 'clear') pType = 'off';
     if (pType === 'off' || pType === 'none') { if (ambientParticles) { scene.remove(ambientParticles); ambientParticles = null; } return addToLog('✓ Particles off'); }
     createAmbientParticles(pType);
     return addToLog('✓ Ambient particles: ' + pType);
@@ -10633,7 +10634,7 @@ function animate() {
           const result = characterController.takeDamage(npc.attackDamage);
           if (result === 'dodged') continue;
           if (result === 'dead' && !window._demoMode) {
-            let deathScreen = document.getElementById('death-screen');
+            document.querySelectorAll("#death-screen").forEach(function(d){d.remove();}); let deathScreen = document.getElementById("death-screen");
             if (!deathScreen) {
               deathScreen = document.createElement('div');
               deathScreen.id = 'death-screen';
@@ -10833,6 +10834,7 @@ window._engineBridge = {
   
   // Weather
   async setWeather(type) {
+    if (type === 'clear') { setWeather(null); scene.fog = null; return '✓ Weather cleared'; }
     return await execSingle(type);
   },
   

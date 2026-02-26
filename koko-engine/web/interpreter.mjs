@@ -169,6 +169,11 @@ function interpret(input) {
     }
   }
 
+  // --- CLEAR WEATHER ---
+  if (lower === 'clear weather' || lower === 'stop rain' || lower === 'stop snow' || lower === 'no rain' || lower === 'no snow' || lower === 'weather clear' || lower === 'weather off') {
+    return { action: 'setWeather', type: 'clear' };
+  }
+
   // --- FOG ---
   if (lower === 'fog on' || lower === 'fog' || lower === 'add fog' || lower === 'enable fog') {
     return { action: 'setFog', enabled: true };

@@ -881,8 +881,9 @@ export class CharacterController {
       // Character ~0.58 world units tall, want sword ~0.25 world units
       // Weapon geometry is ~0.8 units total height
       // localScale = desiredWorldSize / (geometrySize * boneWorldScale)
-      // Want weapon ~1.0 world units in hand (character is ~1.8 tall, sword ~55%)
-      const _desiredWorld = 1.0;
+      // Scale based on weapon type — guns shorter than melee
+      const isRanged = data.type === 'ranged';
+      const _desiredWorld = isRanged ? 0.5 : 0.9; // guns ~0.5, melee ~0.9 world units
       const _weaponGeoSize = 0.8;
       const _localScale = _desiredWorld / (_weaponGeoSize * Math.max(_bws.x, 0.001));
       mesh.scale.setScalar(_localScale);
