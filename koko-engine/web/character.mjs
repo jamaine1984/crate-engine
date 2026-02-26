@@ -3423,283 +3423,155 @@ export class NPCController {
         }
       }
       
-      if (npc.behavior === 'wander') {
-        npc.waitTime -= dt;
-        if (npc.waitTime <= 0) {
-          // Pick new waypoint
-          npc.waitTime = 3 + Math.random() * 5;
-          const _wx = npc.model.position.x + (Math.random() - 0.5) * 20;
-          const _wz = npc.model.position.z + (Math.random() - 0.5) * 20;
-          const _wy = _getTerrainY(_wx, _wz);
-          // Don't wander into water
-          if (_wy < -0.1) {
-            // Stay near current position
-            npc.waypoint.copy(npc.homePosition);
-          } else {
-            npc.waypoint.set(_wx, _wy, _wz);
-          }
-        }
-        
-        // Move toward waypoint
-        const dir = new THREE.Vector3().subVectors(npc.waypoint, npc.model.position);
+      // === AI STATE-DRIVEN BEHAVIOR ===
+      const aiState = npc.ai ? npc.ai.state : (npc.behavior === 'aggro' ? 'chase' : 'patrol');
+      const playerPos = this.characterController ? this.characterController.position : new THREE.Vector3();
+      const distToPlayer = npc.model.position.distanceTo(playerPos);
+      
+      // Helper: move NPC toward a target position
+      const _moveToward = (target, speed) => {
+        const dir = new THREE.Vector3().subVectors(target, npc.model.position);
         dir.y = 0;
         const dist = dir.length();
-        if (dist > 1) {
-          dir.normalize();
-          // Snap NPC Y to terrain surface (using stored groundOffset — no bounding box recalc)
-          const _npcTY = _getTerrainY(npc.model.position.x, npc.model.position.z);
-          if (_npcTY > -0.1) { // Only snap if on land
-            const _go = npc.model.userData.groundOffset || 0;
-            const targetY = _npcTY + _go;
-            // Smooth lerp for natural hill walking (not instant snap)
-            const dy = targetY - npc.model.position.y;
-            if (Math.abs(dy) < 2) {
-              npc.model.position.y += dy * (dy > 0 ? 0.2 : 0.3); // Faster downhill
-            } else {
-              npc.model.position.y = targetY; // Teleport if too far
-            }
-          }
-          
-          // Vehicle/object collision check — NPCs avoid solid objects
-          const nextPos = npc.model.position.clone().addScaledVector(dir, npc.speed * dt);
-          let blocked = false;
-          for (const obj of this.objects) {
-            if (!obj.userData.name || obj === npc.model) continue;
-            const n = (obj.userData.name || '').toLowerCase();
-            if (n.includes('ground') || n.includes('road') || n.includes('interior')) continue;
-            if (obj.userData.isWater) { const wd = nextPos.distanceTo(obj.position); const wb = obj.userData._bbox || (obj.userData._bbox = new THREE.Box3().setFromObject(obj)); const ws = wb.getSize(new THREE.Vector3()); const wr = Math.max(ws.x, ws.z) * 0.5; if (wd < wr) { blocked = true; { const _bx = npc.model.position.x + (Math.random()-0.5)*15; const _bz = npc.model.position.z + (Math.random()-0.5)*15; npc.waypoint.set(_bx, _getTerrainY(_bx, _bz), _bz); } npc.waitTime = 0.5; break; } continue; }
-            const d = nextPos.distanceTo(obj.position);
-            // Get approx radius from bounding box
-            const box = obj.userData._bbox || (obj.userData._bbox = new THREE.Box3().setFromObject(obj));
-            const size = box.getSize(new THREE.Vector3());
-            const radius = Math.max(size.x, size.z) * 0.5 + 0.5;
-            if (d < radius) {
-              blocked = true;
-              // Pick new waypoint to go around
-              npc.waypoint.set(
-                npc.model.position.x + (Math.random() - 0.5) * 15,
-                0,
-                npc.model.position.z + (Math.random() - 0.5) * 15
-              );
-              npc.waitTime = 0.5;
-              break;
-            }
-          }
-          if (!blocked) npc.model.position.addScaledVector(dir, npc.speed * dt);
-          npc.model.rotation.y = Math.atan2(dir.x, dir.z);
-          
-          // Switch to walk anim
-          if (npc.animations.walk && npc.currentAnim !== 'walk') {
-            if (npc.animations.idle) npc.animations.idle.fadeOut(0.3);
-            npc.animations.walk.reset().fadeIn(0.3).play();
-            npc.currentAnim = 'walk';
-          }
-        } else {
-          // At waypoint, idle
-          if (npc.animations.idle && npc.currentAnim !== 'idle') {
-            if (npc.animations.walk) npc.animations.walk.fadeOut(0.3);
-            npc.animations.idle.reset().fadeIn(0.3).play();
-            npc.currentAnim = 'idle';
-          }
+        if (dist < 1) return false; // arrived
+        dir.normalize();
+        npc.model.position.addScaledVector(dir, speed * dt);
+        npc.model.rotation.y = Math.atan2(dir.x, dir.z);
+        // Terrain snap
+        const ty = _getTerrainY(npc.model.position.x, npc.model.position.z);
+        if (ty > -0.1) {
+          const go = npc.model.userData.groundOffset || 0;
+          const targetY = ty + go;
+          const dy = targetY - npc.model.position.y;
+          npc.model.position.y += dy * (Math.abs(dy) < 2 ? (dy > 0 ? 0.2 : 0.3) : 1);
         }
-      } else if (npc.behavior === 'aggro' && npc.aggroTarget) {
-        // Chase and attack player
-        const toPlayer = new THREE.Vector3().subVectors(npc.aggroTarget, npc.model.position);
-        toPlayer.y = 0;
-        const distToPlayer = toPlayer.length();
-        npc.attackCooldown = Math.max(0, npc.attackCooldown - dt);
-        
-        if (distToPlayer > npc.attackRange) {
-          // Chase
-          toPlayer.normalize();
-          npc.model.position.addScaledVector(toPlayer, (npc.speed * 1.5) * dt);
-          npc.model.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
-          if (npc.animations.run && npc.currentAnim !== 'run') {
-            Object.values(npc.animations).forEach(a => a && a.fadeOut(0.2));
-            npc.animations.run.reset().fadeIn(0.2).play();
-            npc.currentAnim = 'run';
-          } else if (!npc.animations.run && npc.animations.walk && npc.currentAnim !== 'walk') {
-            Object.values(npc.animations).forEach(a => a && a.fadeOut(0.2));
-            npc.animations.walk.reset().fadeIn(0.2).play();
-            npc.currentAnim = 'walk';
+        return true; // still moving
+      };
+      
+      // Helper: play NPC animation if not already playing
+      const _playAnim = (name) => {
+        if (npc.currentAnim === name) return;
+        Object.values(npc.animations).forEach(a => a && a.fadeOut(0.25));
+        if (npc.animations[name]) { npc.animations[name].reset().fadeIn(0.25).play(); }
+        npc.currentAnim = name;
+      };
+      
+      // Helper: pick random waypoint near home
+      const _pickWaypoint = (range) => {
+        const home = npc.homePosition || npc.model.position.clone();
+        const wx = home.x + (Math.random() - 0.5) * range;
+        const wz = home.z + (Math.random() - 0.5) * range;
+        const wy = _getTerrainY(wx, wz);
+        if (wy < -0.1) npc.waypoint.copy(home); // don't wander into water
+        else npc.waypoint.set(wx, wy, wz);
+      };
+      
+      switch (aiState) {
+        case 'idle':
+          _playAnim('idle');
+          npc.waitTime = (npc.waitTime || 0) - dt;
+          if (npc.waitTime <= 0) {
+            npc.waitTime = 3 + Math.random() * 5;
+            _pickWaypoint(20);
           }
-        } else {
-          // In attack range - attack player
-          npc.model.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
-          npc._attackTimer = (npc._attackTimer || 0) - dt;
+          break;
           
-          if (npc._attackTimer <= 0) {
-            npc._attackTimer = npc.isRanged ? 1.5 + Math.random() : 1.2 + Math.random() * 0.8;
+        case 'patrol':
+          npc.waitTime = (npc.waitTime || 0) - dt;
+          if (npc.waitTime <= 0) {
+            npc.waitTime = 4 + Math.random() * 4;
+            _pickWaypoint(20);
+          }
+          if (npc.waypoint && _moveToward(npc.waypoint, npc.speed)) {
+            _playAnim('walk');
+          } else {
+            _playAnim('idle');
+          }
+          break;
+          
+        case 'chase':
+          if (_moveToward(playerPos, npc.speed * 1.5)) {
+            _playAnim(npc.animations.run ? 'run' : 'walk');
+          }
+          break;
+          
+        case 'attack':
+          // Face player
+          const toP = new THREE.Vector3().subVectors(playerPos, npc.model.position);
+          npc.model.rotation.y = Math.atan2(toP.x, toP.z);
+          npc.attackCooldown = Math.max(0, (npc.attackCooldown || 0) - dt);
+          
+          if (npc.attackCooldown <= 0) {
+            npc.attackCooldown = npc.isRanged ? 1.5 + Math.random() : 1.2 + Math.random() * 0.8;
+            _playAnim('attack');
             
-            // Play attack animation
-            if (npc.animations.attack) {
-              Object.values(npc.animations).forEach(a => a && a.fadeOut(0.15));
-              npc.animations.attack.reset().fadeIn(0.15).play();
-              npc.currentAnim = 'attack';
-            }
-            
-            // DEAL DAMAGE to player — use takeDamage() for defense/invincibility
+            // Deal damage to player
             const player = this.characterController;
             if (player && typeof player.takeDamage === 'function') {
               const dmg = npc.attackDamage || 5;
               const result = player.takeDamage(dmg);
-              
-              // Visual feedback — screen flash red
               if (typeof window._damageFlash === 'function') window._damageFlash();
-              
-              // Floating damage number on player
               if (typeof window._floatingDamage === 'function') {
                 window._floatingDamage(player.position || player.model?.position, dmg, false);
               }
-              
-              // Ranged — create bullet tracer
+              // Ranged tracer
               if (npc.isRanged && player.model) {
                 const from = npc.model.position.clone(); from.y += 1;
-                const to = player.model.position.clone(); to.y += 1;
+                const to = (player.modelContainer || player.model).position.clone(); to.y += 1;
                 this._createBulletTracer(from, to);
-                // Muzzle flash
                 this._muzzleFlash(npc.model.position, npc.model.rotation.y);
               }
-              
-              // Check death
-              if (player.health <= 0) {
-                if (typeof window._playerDeath === 'function') window._playerDeath();
-              }
+              if (player.health <= 0 && typeof window._playerDeath === 'function') window._playerDeath();
             }
           } else {
             // Idle between attacks
-            if (npc.animations.idle && npc.currentAnim !== 'idle' && npc.currentAnim !== 'attack') {
-              Object.values(npc.animations).forEach(a => a && a.fadeOut(0.2));
-              npc.animations.idle.reset().fadeIn(0.2).play();
-              npc.currentAnim = 'idle';
-            }
+            if (npc.currentAnim !== 'attack') _playAnim('idle');
           }
-        }
-      } else if (npc.behavior === 'patrol') {
-        // Walk between waypoints (not orbit)
-        npc.waitTime -= dt;
-        if (npc.waitTime <= 0) {
-          npc.waitTime = 4 + Math.random() * 4;
-          const home = npc.homePosition || npc.model.position.clone();
-          if (!npc.homePosition) npc.homePosition = npc.model.position.clone();
-          const _px = home.x + (Math.random() - 0.5) * 20;
-          const _pz = home.z + (Math.random() - 0.5) * 20;
-          npc.waypoint.set(_px, _getTerrainY(_px, _pz), _pz);
-        }
-        const dir = new THREE.Vector3().subVectors(npc.waypoint, npc.model.position);
-        dir.y = 0;
-        if (dir.length() > 1) {
-          dir.normalize();
-          npc.model.position.addScaledVector(dir, npc.speed * dt);
-          // Terrain snap
-          const _pty = _getTerrainY(npc.model.position.x, npc.model.position.z);
-          if (_pty > -0.1) { const _pgo = npc.model.userData.groundOffset || 0; npc.model.position.y += ((_pty + _pgo) - npc.model.position.y) * 0.25; }
-          npc.model.rotation.y = Math.atan2(dir.x, dir.z);
-          if (npc.animations.walk && npc.currentAnim !== 'walk') {
-            Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
-            npc.animations.walk.reset().fadeIn(0.3).play();
-            npc.currentAnim = 'walk';
-          }
-        } else {
-          if (npc.animations.idle && npc.currentAnim !== 'idle') {
-            Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
-            npc.animations.idle.reset().fadeIn(0.3).play();
-            npc.currentAnim = 'idle';
-          }
-        }
-      } else if (npc.behavior === 'zone_guard') {
-        // Idle patrol in small area until player triggers aggro
-        if (!npc.isAggro) {
-          // Idle patrol — small wander
-          npc.waitTime -= dt;
-          if (npc.waitTime <= 0) {
-            npc.waitTime = 3 + Math.random() * 4;
-            const home = npc.homePosition || npc.model.position.clone();
-            if (!npc.homePosition) npc.homePosition = npc.model.position.clone();
-            const _zgx = home.x + (Math.random() - 0.5) * 8;
-            const _zgz = home.z + (Math.random() - 0.5) * 8;
-            npc.waypoint.set(_zgx, _getTerrainY(_zgx, _zgz), _zgz);
-          }
-          const dir = new THREE.Vector3().subVectors(npc.waypoint, npc.model.position);
-          dir.y = 0;
-          if (dir.length() > 1) {
-            dir.normalize();
-            npc.model.position.addScaledVector(dir, npc.speed * 0.5 * dt);
-            npc.model.rotation.y = Math.atan2(dir.x, dir.z);
-            // Snap to terrain
-            const _zgy2 = _getTerrainY(npc.model.position.x, npc.model.position.z);
-            if (_zgy2 > -0.1) { const _zgo2 = npc.model.userData.groundOffset || 0; npc.model.position.y += ((_zgy2 + _zgo2) - npc.model.position.y) * 0.25; }
-            if (npc.animations.walk && npc.currentAnim !== 'walk') {
-              Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
-              npc.animations.walk.reset().fadeIn(0.3).play();
-              npc.currentAnim = 'walk';
-            }
-          } else if (npc.animations.idle && npc.currentAnim !== 'idle') {
-            Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
-            npc.animations.idle.reset().fadeIn(0.3).play();
-            npc.currentAnim = 'idle';
-          }
-        } else {
-          // Aggro — chase player
-          if (npc.aggroTarget) {
-            const toPlayer = new THREE.Vector3().subVectors(npc.aggroTarget, npc.model.position);
-            toPlayer.y = 0;
-            const distToPlayer = toPlayer.length();
-            npc.attackCooldown = Math.max(0, npc.attackCooldown - dt);
-            
-            if (distToPlayer > 2.5) {
-              toPlayer.normalize();
-              npc.model.position.addScaledVector(toPlayer, npc.speed * 1.3 * dt);
-              // Snap to terrain while chasing
-              const _chy = _getTerrainY(npc.model.position.x, npc.model.position.z);
-              if (_chy > -0.1) { const _cho = npc.model.userData.groundOffset || 0; npc.model.position.y += ((_chy + _cho) - npc.model.position.y) * 0.25; }
-              npc.model.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
-              if (npc.animations.run && npc.currentAnim !== 'run') {
-                Object.values(npc.animations).forEach(a => a && a.fadeOut(0.2));
-                npc.animations.run.reset().fadeIn(0.2).play();
-                npc.currentAnim = 'run';
-              } else if (!npc.animations.run && npc.animations.walk && npc.currentAnim !== 'walk') {
-                Object.values(npc.animations).forEach(a => a && a.fadeOut(0.2));
-                npc.animations.walk.reset().fadeIn(0.2).play();
-                npc.currentAnim = 'walk';
-              }
-            } else {
-              // In attack range — play attack anim
-              npc.model.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
-              if (npc.animations.attack && npc.currentAnim !== 'attack') {
-                Object.values(npc.animations).forEach(a => a && a.fadeOut(0.15));
-                npc.animations.attack.reset().fadeIn(0.15).play();
-                npc.currentAnim = 'attack';
-              } else if (!npc.animations.attack && npc.animations.idle && npc.currentAnim !== 'idle') {
-                Object.values(npc.animations).forEach(a => a && a.fadeOut(0.2));
-                npc.animations.idle.reset().fadeIn(0.2).play();
-                npc.currentAnim = 'idle';
-              }
-            }
-          }
+          break;
           
-          // Leash — return home if player goes too far
-          if (npc.homePosition) {
-            const distFromHome = npc.model.position.distanceTo(npc.homePosition);
-            if (distFromHome > 35) {
-              npc.isAggro = false;
-              npc.aggroTarget = null;
-              npc.waypoint.copy(npc.homePosition);
-            }
+        case 'flee':
+          // Run away from player
+          const fleeDir = new THREE.Vector3().subVectors(npc.model.position, playerPos);
+          fleeDir.y = 0;
+          if (fleeDir.lengthSq() > 0.01) {
+            fleeDir.normalize();
+            const fleeTarget = npc.model.position.clone().addScaledVector(fleeDir, 10);
+            _moveToward(fleeTarget, npc.speed * 2);
+            _playAnim(npc.animations.run ? 'run' : 'walk');
           }
-        }
-      } else if (npc.behavior === 'drive') {
-        // Vehicle NPC - drive on roads
-        npc.model.position.x += Math.sin(npc.direction) * npc.speed * dt;
-        npc.model.position.z += Math.cos(npc.direction) * npc.speed * dt;
-        // Snap to terrain
-        const _dy = _getTerrainY(npc.model.position.x, npc.model.position.z);
-        if (_dy > -0.1) { const _dgo = npc.model.userData.groundOffset || 0; npc.model.position.y = _dy + _dgo; }
-        npc.model.rotation.y = npc.direction;
-        // Bounce off boundaries
-        if (Math.abs(npc.model.position.x) > 80 || Math.abs(npc.model.position.z) > 80) {
-          npc.direction += Math.PI;
-        }
+          break;
+          
+        case 'search':
+          // Go to last known position, look around
+          if (npc.ai && npc.ai.lastKnownPlayerPos) {
+            if (_moveToward(npc.ai.lastKnownPlayerPos, npc.speed)) {
+              _playAnim('walk');
+            } else {
+              _playAnim('idle');
+              // Look around (slow rotation)
+              npc.model.rotation.y += dt * 1.5;
+            }
+          } else {
+            _playAnim('idle');
+          }
+          break;
+          
+        case 'return':
+          // Walk back home
+          if (npc.homePosition && _moveToward(npc.homePosition, npc.speed)) {
+            _playAnim('walk');
+          } else {
+            _playAnim('idle');
+          }
+          break;
+          
+        case 'stunned':
+          _playAnim('idle'); // Could be a stun anim later
+          break;
+          
+        case 'dead':
+          _playAnim('death');
+          break;
       }
     }
   }

@@ -347,7 +347,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=69';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=70';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -10695,32 +10695,7 @@ function animate() {
         }
       }
       
-      // NPC attacks — stagger so only 1-2 swing at a time
-      let attackersThisFrame = 0;
-      for (const npc of npcController.npcs) {
-        if (npc.isDead || !npc.isAggro) continue;
-        if (!characterController.model) continue;
-        
-        const dist = npc.model.position.distanceTo(playerPos);
-        if (dist < npc.attackRange && npc.attackCooldown <= 0 && attackersThisFrame < maxSimultaneousAttackers) {
-          attackersThisFrame++;
-          // Stagger cooldowns so they don't sync
-          npc.attackCooldown = 2.0 + Math.random() * 1.5;
-          const result = characterController.takeDamage(npc.attackDamage);
-          if (result === 'dodged') continue;
-          if (result === 'dead' && !window._demoMode) {
-            document.querySelectorAll("#death-screen").forEach(function(d){d.remove();}); let deathScreen = document.getElementById("death-screen");
-            if (!deathScreen) {
-              deathScreen = document.createElement('div');
-              deathScreen.id = 'death-screen';
-              deathScreen.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
-              const kills = npcController.npcs.filter(n => n.isDead).length;
-              deathScreen.innerHTML = '<div style="color:#ff2222;font-size:48px;margin-bottom:20px;">☠️ YOU DIED</div><div style="color:#888;font-size:16px;margin-bottom:10px;">Score: ⭐ ' + gameScore + '</div><div style="color:#888;font-size:14px;margin-bottom:30px;">Enemies Killed: 💀 ' + kills + '</div><button onclick="this.parentElement.remove();window._engine.respawn();" style="padding:12px 30px;background:#f59e0b;color:#000;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-family:monospace;">RESPAWN</button>';
-              document.body.appendChild(deathScreen);
-            }
-          }
-        }
-      }
+      // NPC attacks now handled by NPCAIStateMachine in character.mjs
       npcController.update(dt);
       npcController.updateHealthBarFacing(camera);
     }
