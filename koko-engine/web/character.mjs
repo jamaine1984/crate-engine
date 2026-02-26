@@ -827,22 +827,26 @@ export class CharacterController {
     const mesh = createWeaponMesh(weaponId);
     if (!mesh) return;
     
-    // Attach to back (torso/spine bone)
-    const bone = this.sockets.back || this.sockets.hips;
-    if (bone) {
-      bone.updateWorldMatrix(true, false);
-      const _bws = new THREE.Vector3();
-      bone.getWorldScale(_bws);
-      const _localScale = 0.15 / (0.8 * Math.max(_bws.x, 0.001));
-      mesh.scale.setScalar(_localScale);
-      // Position on back — sticking out behind shoulder, visible from TPS
-      mesh.position.set(0.02, 0.08, -0.06); // x=right, y=up, z=behind
-      mesh.rotation.set(-0.3, 0, Math.PI * 0.8); // handle down, blade up
-      bone.add(mesh);
-    } else if (this.model) {
-      mesh.scale.setScalar(0.3);
-      mesh.position.set(-0.1, 0.8, -0.15);
-      mesh.rotation.set(0.3, 0, 0.2);
+    // Attach to model root — simpler and more predictable than bone attachment
+    // Model is scaled (e.g. 0.3222 for knight), so divide world offsets by model scale
+    if (this.model) {
+      const modelScale = this.model.scale.x || 1;
+      // Sword geo is ~0.72 units tall. We want ~0.8 world units.
+      // worldSize = meshScale * geoSize * modelScale
+      // meshScale = 0.8 / (0.72 * modelScale)
+      // Sword should be ~60% of character height for visual impact
+      const charHeight = 1.8; // approximate world height
+      const targetSwordH = charHeight * 0.55; // ~1.0 world units
+      const meshScale = targetSwordH / (0.72 * modelScale);
+      mesh.scale.setScalar(meshScale);
+      // Position: behind character, upper back, shifted right so it sticks out over right shoulder
+      const px = 0.25 / modelScale;  // far right — sticks out past shoulder
+      const py = 1.1 / modelScale;   // upper back — handle above shoulder
+      const pz = -0.12 / modelScale; // just behind torso (not too far)
+      mesh.position.set(px, py, pz);
+      // Rotation: vertical sword on back, blade pointing up, slight lean
+      // The blade should visibly poke up above the right shoulder from behind
+      mesh.rotation.set(0, 0, Math.PI); // flip upside down so blade points up
       this.model.add(mesh);
     }
     
@@ -877,8 +881,9 @@ export class CharacterController {
       // Character ~0.58 world units tall, want sword ~0.25 world units
       // Weapon geometry is ~0.8 units total height
       // localScale = desiredWorldSize / (geometrySize * boneWorldScale)
-      const _desiredWorld = 5.0; // Tuned: produces ~0.20 local scale for knight (bone world scale ~32)
-      const _weaponGeoSize = 0.8; // approximate weapon geometry height
+      // Want weapon ~1.0 world units in hand (character is ~1.8 tall, sword ~55%)
+      const _desiredWorld = 1.0;
+      const _weaponGeoSize = 0.8;
       const _localScale = _desiredWorld / (_weaponGeoSize * Math.max(_bws.x, 0.001));
       mesh.scale.setScalar(_localScale);
       mesh.position.set(data.holdOffset.x, data.holdOffset.y, data.holdOffset.z);
