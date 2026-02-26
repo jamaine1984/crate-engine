@@ -3,16 +3,12 @@ const sceneHistory = [];
 
 
 // === AAA Water & Sky (v61) ===
-let Water, Sky, waterMesh, skyMesh, sun;
+let Sky, skyMesh, sun;
 async function loadWaterSky() {
   try {
-    const [WaterMod, SkyMod] = await Promise.all([
-      import('three/addons/objects/Water.js'),
-      import('three/addons/objects/Sky.js')
-    ]);
-    Water = WaterMod.Water;
+    const SkyMod = await import('three/addons/objects/Sky.js');
     Sky = SkyMod.Sky;
-    console.log('[CRATE] Water + Sky modules loaded');
+    console.log('[CRATE] Sky module loaded');
   } catch(e) { console.warn('[CRATE] Water/Sky load failed:', e); }
 }
 loadWaterSky();
@@ -80,33 +76,7 @@ function setSkyTime(elevation, azimuth) {
   skyMesh.material.uniforms['sunPosition'].value.copy(sun);
 }
 
-function createAAAWater(size) {
-  if (!Water) return createWater(size); // fallback
-  const s = size || 200;
-  const waterGeometry = new THREE.PlaneGeometry(s, s, 128, 128);
-  const w = new Water(waterGeometry, {
-    textureWidth: 512,
-    textureHeight: 512,
-    waterNormals: new THREE.TextureLoader().load(
-      'https://threejs.org/examples/textures/waternormals.jpg',
-      function(texture) {
-        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-      }
-    ),
-    sunDirection: sun ? sun.clone().normalize() : new THREE.Vector3(0.7, 0.8, 0.3),
-    sunColor: 0xffffff,
-    waterColor: 0x001e0f,
-    distortionScale: 3.7,
-    fog: scene.fog !== undefined
-  });
-  w.rotation.x = -Math.PI / 2;
-  w.position.y = -0.3; // Below ground — terrain rises above
-  w.userData.isWater = true;
-  w.userData.isAAAWater = true;
-  w.userData.isSolid = true;
-  w.userData.name = 'ocean';
-  return w;
-}
+// createAAAWater removed — all water uses Gerstner shader now
 
 // === Vehicle Physics v2 (v61) ===
 let vehiclePhysics = null;
@@ -5585,6 +5555,11 @@ const WATER_PRESETS = {
     opacity: 0.92, waveA: [1.0, 0.5, 0.45, 4.0], waveB: [0.7, 1.0, 0.35, 3.0], waveC: [0.5, 0.3, 0.25, 2.5],
     foamIntensity: 0.7, specularPower: 30.0, fresnelPower: 1.5
   },
+  hurricane: {
+    color: new THREE.Color(0x0d2a3a), deepColor: new THREE.Color(0x051218),
+    opacity: 0.95, waveA: [1.0, 0.8, 0.65, 3.0], waveB: [0.8, 1.0, 0.55, 2.5], waveC: [0.6, 0.4, 0.45, 2.0],
+    foamIntensity: 0.9, specularPower: 15.0, fresnelPower: 1.2
+  },
   lake: {
     color: new THREE.Color(0x2e6e7e), deepColor: new THREE.Color(0x1a4050),
     opacity: 0.82, waveA: [1.0, 0.0, 0.04, 14.0], waveB: [0.0, 1.0, 0.03, 10.0], waveC: [0.5, 0.5, 0.02, 18.0],
@@ -10209,14 +10184,7 @@ function updateVehiclePrompt() {
 
 // === ANIMATED WATER SYSTEM ===
 function updateWaterAnimation(time) {
-  // AAA Water animation (Three.js Water module)
-  for (let i = 0; i < objects.length; i++) {
-    const obj = objects[i];
-    if (obj && obj.userData && obj.userData.isAAAWater && obj.material && obj.material.uniforms) {
-      obj.material.uniforms['time'].value += 1.0 / 60.0;
-      continue;
-    }
-  }
+  // All water uses Gerstner shader now
   // Gerstner wave water (shader-based — just update uniforms)
   if (!objects) return;
   for (const obj of objects) {
