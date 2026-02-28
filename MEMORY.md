@@ -12,8 +12,7 @@
 
 ### Crate Engine — Browser 3D Game Engine
 - **Location:** `crate-engine/` in workspace
-- **Web source:** `web/engine.mjs` (~13,000+ lines), `web/character.mjs` (~5,000+ lines)
-- **Current version:** engine.mjs v132, character.mjs v74, index.html v=132
+- **Web source:** `web/engine.mjs` (~17K+ lines), `web/character.mjs` (~8500+ lines), `web/collision.mjs`
 - **Deploy:** `npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true`
 - **Site:** crateshipgames.com (Cloudflare Pages)
 - **Cloudflare:** Koikes2021@gmail.com, ID: 6573d98c25150fd7b4602e56a0926767
@@ -21,64 +20,54 @@
 - **Three.js:** 0.170.0 via CDN importmap
 
 #### Architecture
-- `sceneHistory` and `window._userScripts` declared at TOP of engine.mjs (lines 1-2) — CRITICAL
-- `window._terrainMesh` exposed for cross-module terrain access
-- `getTerrainY(x, z)` in engine.mjs, `_getTerrainY(x, z)` in character.mjs (uses window._terrainMesh)
-- Build toolbar: IIFE at ~line 11025, dynamically created
-- `parseAndExecute` ~line 4835, `execSingle` ~line 5157
-- character.mjs import: `./character.mjs?v=60` — **MUST BUMP VERSION when changing character.mjs**
-- Terrain: PlaneGeometry rotated -PI/2, vertex colors for biomes
+- `sceneHistory` and `window._userScripts` declared at TOP of engine.mjs
+- `window._terrainMesh`, `window._cam`, `window._gltfLoader` = global gltfLoader
+- `gltfLoader` (line 311) — main GLB loader with Draco support
+- `parseAndExecute` ~line 7847, `execSingle` ~line 5157+
+- `createModernHouse(opts)` — HD furnished houses (added 2026-02-28)
+- `createInteriorHouse(opts)` — old box-primitive houses (line 6283)
+- px/pz declared at ~line 10328 in execSingle — commands using them MUST be after this line
+- character.mjs import: **MUST BUMP VERSION when changing character.mjs**
 
-#### Weapon System (v77)
-- `WEAPON_DATABASE`: 12 weapons with full stats (damage, fire rate, spread, recoil, mag size, etc)
-- Bone socket system: auto-detects hand_r, hand_l, forearm_r, back, hip_r, hip_l
-- `equipWeapon(id, slot)`, `unequipWeapon()`, `swapToSlot(slot)` on CharacterController
-- Holster system: inactive weapons on back/hip
-- Number keys 1/2/3 for weapon swap
-- `createWeaponMesh(weaponId)` procedural mesh factory
-- NL commands: `equip sword`, `show weapons`, `swap 2`
-- **v117**: Real GLB weapon models replace all procedural primitives
-- Weapon GLB map: sword→sword_iron.glb, axe→axe_iron.glb, dagger→dagger_00.glb, hammer→hammer_00.glb, spear→spear_00.glb, bow→bow_wood.glb, guns→blasterb-h.glb
-- 123 weapon GLBs in asset library
+#### HD Asset Library (2026-02-28)
+- **139 HD models** with proper PBR textures (ph_*.glb + hd_*.glb)
+- Source: Poly Haven (CC0), Three.js examples, KhronosGroup samples
+- Poly Haven pipeline: API fetch → download GLTF + textures → gltf-pipeline convert to GLB
+- Key furniture: Sofa, ArmChair, CoffeeTable, GothicBed, electric_stove, bar_chair, TV, Shelf
+- Key outdoor: fire_hydrant, street_lamp, cannon, treasure_chest, wine_barrel, kite_shield
+- Key structures: modular_fort_01, modular_urban_apartments_facade, modular_chainlink_fence
+- Cars: hd_ferrari (working), need more drivable vehicles
+- Trees: oversized (500MB+) — need smaller alternatives
+- Still have ~2000 old KayKit low-poly models (not yet removed)
 
-#### Terrain System
-- Island type uses 'tropical' color scheme (no snow)
-- Ocean at y=-0.3 (below terrain)
-- Gravity in character.mjs raycasts to terrainMesh (not hardcoded y=0)
-- NPC spawn uses _getTerrainY for elevation
-- Objects pushed to center when underwater (exclude boats)
+#### Modern House System
+- `add modern house` / `add modern house 2 floors`
+- White concrete exterior, dark flat roof, glass windows, dark trim
+- Ground floor: sofa, armchair, coffee table, TV, stove, dining set, shelf
+- Second floor: bed, dresser, lamp, rocking chair, cabinet
+- All furniture = HD GLB models loaded via gltfLoader
+- Town templates updated to use `add modern house`
 
-#### 3D Model Generation (Self-hosted)
-- Modal.com + L4 GPU + TripoSR
-- POST: `https://jamaine1984--crate-engine-3d-generate.modal.run`
-- ~$0.005/model
+#### Key Systems Built
+- Octree collision, camera collision, animation retargeting
+- Gamepad + mobile touch controls
+- LOD system, weapon system (12 types), combat
+- Interior buildings (enter/exit), stairs/ramps
+- Auto-town generation, vehicle enter/exit
+- Multiplayer: wss://crate-engine-mp.fly.dev
 
-#### Multiplayer
-- `wss://crate-engine-mp.fly.dev` (Fly.io)
-
-#### Key Lessons (Pain Points)
-- **ALWAYS bump character.mjs?v=XX** in engine.mjs import when editing character.mjs
-- Python replace scripts fail silently if search string doesn't match exactly
-- Browser console errors are the smoking gun for debugging
-- Gravity was hardcoded to y=0 — caused everything to fall through terrain
-- Cloudflare CDN caches aggressively — version busting required
-
-#### 8 Critical Gaps vs Unity/Unreal
-1. Map structure/JSON layouts (DONE - 20+ templates)
-2. Mixamo animations
-3. Vehicle physics
-4. Gerstner wave water
-5. Combat system (DONE - 12 weapon types, socket system, real GLB weapons)
-6. Climbing/parkour + STAIRS/INTERIORS (requested)
-7. Building interiors
-8. Inventory/crafting (DONE - 32-slot grid)
-
-#### Research Docs
-- `RESEARCH-COMBAT.md` — full combat system analysis (Unreal/Unity/AAA patterns)
-- Next: grounding research (NPC feet, object placement on terrain/water/hills)
+#### Key Lessons
+- **ALWAYS bump character.mjs?v=XX** when editing character.mjs
+- **CDN caches aggressively** — use version busting or direct deploy URLs
+- **Poly Haven GLTF ≠ GLB** — must download full package + convert with gltf-pipeline
+- **px TDZ** — commands in execSingle must be placed AFTER `let px, pz` declaration
+- **Browser console errors are the smoking gun** for debugging
+- Kohari wants to SEE models as we go — always screenshot/verify
 
 ## Tools & Config
 - ElevenLabs: koikes2021@gmail.com, Flash v2.5
 - Rust 1.93 via rustup, CMake via brew
 - Modal CLI v1.3.4, authenticated to `jamaine1984`
+- Modal TripoSR: cold start issues, GPU timeout ~2-3 min
 - Stripe: Crateship Studios (test mode)
+- gltf-pipeline: v4.3.0 (via npx)
