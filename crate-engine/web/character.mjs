@@ -1632,6 +1632,30 @@ class CharacterController {
     if (this.keys['a']) moveX = -1;
     if (this.keys['d']) moveX = 1;
     
+    // Gamepad support
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const gp of gamepads) {
+      if (!gp) continue;
+      // Left stick — movement (axes 0,1)
+      const lx = Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0;
+      const ly = Math.abs(gp.axes[1]) > 0.15 ? gp.axes[1] : 0;
+      if (lx) moveX = lx;
+      if (ly) moveZ = -ly;
+      // Right stick — camera (axes 2,3)
+      const rx = Math.abs(gp.axes[2]) > 0.15 ? gp.axes[2] : 0;
+      const ry = Math.abs(gp.axes[3]) > 0.15 ? gp.axes[3] : 0;
+      if (rx) this.cameraYaw -= rx * 0.04;
+      if (ry) this.cameraPitch = Math.max(-0.5, Math.min(1.2, this.cameraPitch + ry * 0.03));
+      // Buttons: A=jump, B=roll, X=attack, Y=interact, LB=block, RT=sprint
+      if (gp.buttons[0]?.pressed) this.keys[' '] = true;  // A = jump
+      if (gp.buttons[1]?.pressed) this.keys['c'] = true;  // B = roll
+      if (gp.buttons[2]?.pressed) this.keys['e'] = true;  // X = attack
+      if (gp.buttons[3]?.pressed) this.keys['f'] = true;  // Y = interact
+      if (gp.buttons[4]?.pressed) this.isBlocking = true;  // LB = block
+      if (gp.buttons[7]?.pressed) { this.isRunning = true; this.keys['shift'] = true; } // RT = sprint
+      break; // use first connected gamepad
+    }
+    
     const hasInput = moveX !== 0 || moveZ !== 0;
     
     // Determine speed
@@ -8050,3 +8074,128 @@ export function updateGameHUD(character, score) {
     stateEl.textContent = character.stateMachine.state.toUpperCase();
   }
 }
+
+// === GAMEPAD SUPPORT ===
+// Polls connected gamepads each frame, maps to character keys
+class GamepadManager {
+  constructor(characterController) {
+    this.cc = characterController;
+    this.deadzone = 0.15;
+    this.connected = false;
+    
+    window.addEventListener('gamepadconnected', (e) => {
+      this.connected = true;
+      console.log('[Gamepad] Connected:', e.gamepad.id);
+      this._showToast('🎮 Gamepad connected: ' + e.gamepad.id.split('(')[0].trim());
+    });
+    window.addEventListener('gamepaddisconnected', () => {
+      this.connected = false;
+      console.log('[Gamepad] Disconnected');
+    });
+  }
+  
+  _showToast(msg) {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;top:15%;left:50%;transform:translateX(-50%);color:#4ade80;font-family:monospace;font-size:18px;z-index:10001;pointer-events:none;background:rgba(0,0,0,0.7);padding:8px 16px;border-radius:8px;transition:opacity 1s;';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; }, 2000);
+    setTimeout(() => el.remove(), 3000);
+  }
+  
+  update() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gp = gamepads[0] || gamepads[1] || gamepads[2] || gamepads[3];
+    if (!gp) return;
+    
+    const cc = this.cc;
+    const dz = this.deadzone;
+    
+    // Left stick → movement (WASD)
+    const lx = Math.abs(gp.axes[0]) > dz ? gp.axes[0] : 0;
+    const ly = Math.abs(gp.axes[1]) > dz ? gp.axes[1] : 0;
+    cc.keys['a'] = lx < -dz;
+    cc.keys['d'] = lx > dz;
+    cc.keys['w'] = ly < -dz;
+    cc.keys['s'] = ly > dz;
+    
+    // Right stick → camera
+    const rx = Math.abs(gp.axes[2]) > dz ? gp.axes[2] : 0;
+    const ry = Math.abs(gp.axes[3]) > dz ? gp.axes[3] : 0;
+    if (rx || ry) {
+      cc.cameraYaw -= rx * 0.05;
+      cc.cameraPitch = Math.max(-0.5, Math.min(1.2, cc.cameraPitch + ry * 0.03));
+    }
+    
+    // Buttons — standard mapping:
+    // 0=A(south) 1=B(east) 2=X(west) 3=Y(north)
+    // 4=LB 5=RB 6=LT 7=RT
+    // 8=Back 9=Start 10=L3 11=R3
+    // 12=DUp 13=DDown 14=DLeft 15=DRight
+    
+    // A = Jump
+    if (gp.buttons[0] && gp.buttons[0].pressed) cc.keys[' '] = true;
+    else cc.keys[' '] = cc.keys[' '] || false; // don't override keyboard
+    
+    // B = Roll/Dodge
+    if (gp.buttons[1] && gp.buttons[1].pressed) cc.keys['c'] = true;
+    else if (!cc._kbKeys?.c) cc.keys['c'] = false;
+    
+    // X = Attack
+    if (gp.buttons[2] && gp.buttons[2].pressed) cc.keys['e'] = true;
+    else if (!cc._kbKeys?.e) cc.keys['e'] = false;
+    
+    // Y = Interact
+    if (gp.buttons[3] && gp.buttons[3].pressed) cc.keys['f'] = true;
+    else if (!cc._kbKeys?.f) cc.keys['f'] = false;
+    
+    // LB = Block
+    if (gp.buttons[4] && gp.buttons[4].pressed) cc.keys['q'] = true;
+    else if (!cc._kbKeys?.q) cc.keys['q'] = false;
+    
+    // RB = Heavy attack  
+    if (gp.buttons[5] && gp.buttons[5].pressed) cc.keys['mouse0'] = true;
+    else if (!cc._kbKeys?.mouse0) cc.keys['mouse0'] = false;
+    
+    // LT = Sprint
+    const ltPressed = gp.buttons[6] && (gp.buttons[6].pressed || gp.buttons[6].value > 0.5);
+    cc.isRunning = ltPressed || cc._kbRunning || false;
+    cc.keys['shift'] = ltPressed;
+    
+    // RT = Aim
+    const rtPressed = gp.buttons[7] && (gp.buttons[7].pressed || gp.buttons[7].value > 0.5);
+    if (rtPressed && !cc.isAiming) cc.startAim && cc.startAim();
+    if (!rtPressed && cc.isAiming && !cc._kbAim) cc.stopAim && cc.stopAim();
+    
+    // Start = Pause (ESC)
+    if (gp.buttons[9] && gp.buttons[9].pressed && !this._startPressed) {
+      this._startPressed = true;
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    } else if (gp.buttons[9] && !gp.buttons[9].pressed) {
+      this._startPressed = false;
+    }
+    
+    // L3 (click left stick) = Sprint toggle
+    if (gp.buttons[10] && gp.buttons[10].pressed && !this._l3Pressed) {
+      this._l3Pressed = true;
+      cc.isSprinting = !cc.isSprinting;
+    } else if (gp.buttons[10] && !gp.buttons[10].pressed) {
+      this._l3Pressed = false;
+    }
+    
+    // D-pad: weapon swap
+    if (gp.buttons[14] && gp.buttons[14].pressed) { cc.activeSlot = 0; cc.toggleWeapon && cc.toggleWeapon(); }
+    if (gp.buttons[15] && gp.buttons[15].pressed) { cc.activeSlot = 1; cc.toggleWeapon && cc.toggleWeapon(); }
+    if (gp.buttons[12] && gp.buttons[12].pressed) { cc.activeSlot = 2; cc.toggleWeapon && cc.toggleWeapon(); }
+    
+    // Tab/Inventory = Back button
+    if (gp.buttons[8] && gp.buttons[8].pressed && !this._backPressed) {
+      this._backPressed = true;
+      cc.toggleInventoryPanel && cc.toggleInventoryPanel();
+    } else if (gp.buttons[8] && !gp.buttons[8].pressed) {
+      this._backPressed = false;
+    }
+  }
+}
+
+export { GamepadManager };

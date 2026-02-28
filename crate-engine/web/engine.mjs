@@ -317,7 +317,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=112'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager } from './character.mjs?v=113'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -4525,6 +4525,7 @@ let gameHUD = null;
 
 function initGameSystems() {
   characterController = new CharacterController(scene, camera, objects);
+  window._gamepad = new GamepadManager(characterController);
   window.characterController = characterController;
   characterController._autoSpawned = false; // Don't auto-spawn until "play" 
   npcController = new NPCController(scene, camera, objects, characterController);
@@ -7382,6 +7383,10 @@ async function execSingle(cmd) {
           { cmd: 'add torch', pos: [-15, -18] }, { cmd: 'add torch', pos: [15, -18] },
           { cmd: 'add torch', pos: [-30, 0] }, { cmd: 'add torch', pos: [30, 0] },
           { cmd: 'add torch', pos: [0, 18] }, { cmd: 'add torch', pos: [0, -18] },
+          // === ROADS — connecting paths ===
+          { cmd: 'add road at 0 18', pos: [0, 18] },   // center to north
+          { cmd: 'add road at 0 -18', pos: [0, -18] },  // center to south  
+          { cmd: 'add road', pos: [0, 0] },              // center crossroad
           // === PERIMETER — nature ring far from buildings ===
           { cmd: 'add tree', scatter: { count: 35, radius: 80, avoidCenter: 50 } },
           { cmd: 'add bush', scatter: { count: 18, radius: 70, avoidCenter: 45 } },
@@ -11058,6 +11063,7 @@ function animate() {
       characterController.isGrounded = true;
       characterController.jumpVelocity = 0;
     }
+    if (window._gamepad) window._gamepad.update();
     characterController.update(dt);
     if (npcController) {
       // Zone-based aggro — NPCs only engage when player enters their zone
