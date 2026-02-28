@@ -8199,3 +8199,145 @@ class GamepadManager {
 }
 
 export { GamepadManager };
+
+// === MOBILE TOUCH CONTROLS ===
+class MobileControls {
+  constructor(characterController) {
+    this.cc = characterController;
+    this.active = false;
+    this._stickTouch = null;
+    this._lookTouch = null;
+    
+    // Only activate on touch devices
+    if (!('ontouchstart' in window)) return;
+    this.active = true;
+    this._createUI();
+  }
+  
+  _createUI() {
+    // Left joystick area (movement)
+    this.stickArea = document.createElement('div');
+    this.stickArea.style.cssText = 'position:fixed;left:0;bottom:0;width:40vw;height:50vh;z-index:9990;touch-action:none;';
+    
+    this.stickBase = document.createElement('div');
+    this.stickBase.style.cssText = 'position:absolute;left:15vw;bottom:15vh;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.3);transform:translate(-50%,-50%);display:none;';
+    
+    this.stickKnob = document.createElement('div');
+    this.stickKnob.style.cssText = 'position:absolute;left:50%;top:50%;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.5);transform:translate(-50%,-50%);';
+    
+    this.stickBase.appendChild(this.stickKnob);
+    this.stickArea.appendChild(this.stickBase);
+    document.body.appendChild(this.stickArea);
+    
+    // Right side = camera look (touch drag)
+    this.lookArea = document.createElement('div');
+    this.lookArea.style.cssText = 'position:fixed;right:0;bottom:0;width:60vw;height:50vh;z-index:9990;touch-action:none;';
+    document.body.appendChild(this.lookArea);
+    
+    // Action buttons (right side)
+    const btnCSS = 'position:fixed;z-index:9991;width:56px;height:56px;border-radius:50%;font-size:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.2);border:2px solid rgba(255,255,255,0.4);color:white;touch-action:none;user-select:none;';
+    
+    this._addBtn('⚔️', 'right:20px;bottom:120px;', () => { this.cc.keys['e'] = true; setTimeout(() => { this.cc.keys['e'] = false; }, 100); }, btnCSS);
+    this._addBtn('🛡️', 'right:80px;bottom:80px;', () => { this.cc.keys['q'] = true; setTimeout(() => { this.cc.keys['q'] = false; }, 100); }, btnCSS);
+    this._addBtn('⬆️', 'right:20px;bottom:190px;', () => { this.cc.keys[' '] = true; setTimeout(() => { this.cc.keys[' '] = false; }, 150); }, btnCSS);
+    this._addBtn('🔄', 'right:80px;bottom:160px;', () => { this.cc.keys['c'] = true; setTimeout(() => { this.cc.keys['c'] = false; }, 100); }, btnCSS);
+    this._addBtn('🤝', 'right:140px;bottom:120px;', () => { this.cc.keys['f'] = true; setTimeout(() => { this.cc.keys['f'] = false; }, 100); }, btnCSS);
+    
+    // Joystick touch handling
+    this.stickArea.addEventListener('touchstart', (e) => this._onStickStart(e), { passive: false });
+    this.stickArea.addEventListener('touchmove', (e) => this._onStickMove(e), { passive: false });
+    this.stickArea.addEventListener('touchend', (e) => this._onStickEnd(e), { passive: false });
+    
+    // Camera look handling
+    this.lookArea.addEventListener('touchstart', (e) => this._onLookStart(e), { passive: false });
+    this.lookArea.addEventListener('touchmove', (e) => this._onLookMove(e), { passive: false });
+    this.lookArea.addEventListener('touchend', (e) => this._onLookEnd(e), { passive: false });
+  }
+  
+  _addBtn(label, posCSS, onTap, baseCSS) {
+    const btn = document.createElement('div');
+    btn.style.cssText = baseCSS + posCSS;
+    btn.textContent = label;
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); onTap(); });
+    document.body.appendChild(btn);
+  }
+  
+  _onStickStart(e) {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    this._stickTouch = t.identifier;
+    this._stickOrigin = { x: t.clientX, y: t.clientY };
+    this.stickBase.style.display = 'block';
+    this.stickBase.style.left = t.clientX + 'px';
+    this.stickBase.style.bottom = (window.innerHeight - t.clientY) + 'px';
+  }
+  
+  _onStickMove(e) {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier !== this._stickTouch) continue;
+      const dx = t.clientX - this._stickOrigin.x;
+      const dy = t.clientY - this._stickOrigin.y;
+      const dist = Math.min(Math.sqrt(dx * dx + dy * dy), 50);
+      const angle = Math.atan2(dy, dx);
+      const nx = Math.cos(angle) * dist;
+      const ny = Math.sin(angle) * dist;
+      
+      this.stickKnob.style.left = (50 + nx) + 'px';
+      this.stickKnob.style.top = (50 + ny) + 'px';
+      
+      // Map to keys
+      const threshold = 15;
+      this.cc.keys['w'] = dy < -threshold;
+      this.cc.keys['s'] = dy > threshold;
+      this.cc.keys['a'] = dx < -threshold;
+      this.cc.keys['d'] = dx > threshold;
+      // Sprint if pushed far
+      this.cc.isRunning = dist > 40;
+    }
+  }
+  
+  _onStickEnd(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== this._stickTouch) continue;
+      this._stickTouch = null;
+      this.stickBase.style.display = 'none';
+      this.stickKnob.style.left = '50%';
+      this.stickKnob.style.top = '50%';
+      this.cc.keys['w'] = false;
+      this.cc.keys['s'] = false;
+      this.cc.keys['a'] = false;
+      this.cc.keys['d'] = false;
+      this.cc.isRunning = false;
+    }
+  }
+  
+  _onLookStart(e) {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    this._lookTouch = t.identifier;
+    this._lookLast = { x: t.clientX, y: t.clientY };
+  }
+  
+  _onLookMove(e) {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier !== this._lookTouch) continue;
+      const dx = t.clientX - this._lookLast.x;
+      const dy = t.clientY - this._lookLast.y;
+      this._lookLast = { x: t.clientX, y: t.clientY };
+      
+      this.cc.cameraYaw -= dx * 0.005;
+      this.cc.cameraPitch = Math.max(-0.5, Math.min(1.2, this.cc.cameraPitch + dy * 0.005));
+    }
+  }
+  
+  _onLookEnd(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== this._lookTouch) continue;
+      this._lookTouch = null;
+    }
+  }
+}
+
+export { MobileControls };

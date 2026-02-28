@@ -317,7 +317,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager } from './character.mjs?v=113'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=113'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -4526,6 +4526,7 @@ let gameHUD = null;
 function initGameSystems() {
   characterController = new CharacterController(scene, camera, objects);
   window._gamepad = new GamepadManager(characterController);
+  window._mobileControls = new MobileControls(characterController);
   window.characterController = characterController;
   characterController._autoSpawned = false; // Don't auto-spawn until "play" 
   npcController = new NPCController(scene, camera, objects, characterController);
