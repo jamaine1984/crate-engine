@@ -13223,87 +13223,29 @@ function getSceneCommands(scene) {
 
 // === SHARE + SAVE BUTTONS ===
 (function() {
-  var btnContainer = document.createElement('div');
-  btnContainer.id = 'scene-buttons';
-  Object.assign(btnContainer.style, {
-    position: 'fixed', bottom: '85px', left: '50%', transform: 'translateX(-50%)', display: 'flex',
-    gap: '6px', zIndex: '1000', flexDirection: 'row'
-  });
-  
-  function makeBtn(text, bg, color, onClick) {
-    var btn = document.createElement('button');
-    btn.textContent = text;
-    Object.assign(btn.style, {
-      padding: '10px 16px', background: bg, color: color, border: 'none',
-      borderRadius: '8px', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
-      fontSize: '0.8rem', fontWeight: '700', transition: 'all 0.2s',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-    });
-    btn.addEventListener('mouseenter', function() { btn.style.transform = 'scale(1.05)'; });
-    btn.addEventListener('mouseleave', function() { btn.style.transform = 'scale(1)'; });
-    btn.addEventListener('click', onClick);
-    return btn;
-  }
-  
-  // Save to localStorage
-  var saveBtn = makeBtn('💾 Save', '#222', '#4ade80', function() {
-    var data = serializeScene();
-    if (!data) { logOutput('warn', '⚠ Nothing to save'); return; }
-    var saves = JSON.parse(localStorage.getItem('crate_saves') || '[]');
-    var name = 'Scene ' + (saves.length + 1) + ' (' + new Date().toLocaleDateString() + ')';
-    saves.push({ name: name, data: data, date: Date.now() });
-    localStorage.setItem('crate_saves', JSON.stringify(saves));
-    saveBtn.textContent = '✅ Saved!';
-    logOutput('ok', '💾 Scene saved as "' + name + '"');
-    setTimeout(function() { saveBtn.textContent = '💾 Save'; }, 2000);
-  });
-  
-  // Load from localStorage
-  var loadBtn = makeBtn('📂 Load', '#222', '#60a5fa', function() {
-    var saves = JSON.parse(localStorage.getItem('crate_saves') || '[]');
-    if (!saves.length) { logOutput('warn', '⚠ No saved scenes'); return; }
-    showLoadModal(saves);
-  });
-  
-  // Share
-  var publishBtn = makeBtn('🚀 Publish', '#4ade80', '#000', function() {
-    publishScene();
-  });
-  var shareBtn = makeBtn('🔗 Share', '#ff6b35', '#000', function() {
-    shareScene();
-  });
-  
-
-      // (Terrain paint, animation loader, marketplace, export commands handled in execSingle)
-  // Export as HTML
-  var exportBtn = makeBtn('📦 Export', '#222', '#c084fc', function() {
-    if (isProUser()) { exportAsHTML(); } else { showUpgradeModal('pro'); }
-  });
-
-
-
-  
-  btnContainer.appendChild(saveBtn);
-  btnContainer.appendChild(loadBtn);
-  btnContainer.appendChild(shareBtn);
-  btnContainer.appendChild(exportBtn);
-  
-  var mpBtn = makeBtn('🏪 Marketplace', '#222', '#f59e0b', function() { openCreatorMarketplace(); });
-  mpBtn.title = 'Creator Marketplace — upload, sell, browse 3D models';
-  btnContainer.appendChild(mpBtn);
-  
-  var unityBtn = makeBtn('🎮 Unity', '#222', '#4ade80', function() {
-    if (isProUser()) { exportForUnity(); } else { showUpgradeModal('pro'); }
-  });
-  unityBtn.title = 'Export scene as GLB for Unity';
-  btnContainer.appendChild(unityBtn);
-  
-  var unrealBtn = makeBtn('🎮 Unreal', '#222', '#3b82f6', function() {
-    if (isProUser()) { exportForUnreal(); } else { showUpgradeModal('pro'); }
-  });
-  unrealBtn.title = 'Export scene as GLB for Unreal Engine';
-  btnContainer.appendChild(unrealBtn);
-  document.body.appendChild(btnContainer);
+  // Scene actions - injected into build toolbar as icon buttons
+  window._sceneActions = {
+    save: function() {
+      var data = serializeScene();
+      if (!data) { logOutput('warn', 'Nothing to save'); return; }
+      var saves = JSON.parse(localStorage.getItem('crate_saves') || '[]');
+      var name = 'Scene ' + (saves.length + 1) + ' (' + new Date().toLocaleDateString() + ')';
+      saves.push({ name: name, data: data, date: Date.now() });
+      localStorage.setItem('crate_saves', JSON.stringify(saves));
+      logOutput('ok', 'Scene saved as "' + name + '"');
+      if (window.showToast) showToast('Saved!');
+    },
+    load: function() {
+      var saves = JSON.parse(localStorage.getItem('crate_saves') || '[]');
+      if (!saves.length) { logOutput('warn', 'No saved scenes'); return; }
+      showLoadModal(saves);
+    },
+    share: function() { shareScene(); },
+    export_html: function() { if (isProUser()) { exportAsHTML(); } else { showUpgradeModal('pro'); } },
+    marketplace: function() { openCreatorMarketplace(); },
+    unity: function() { if (isProUser()) { exportForUnity(); } else { showUpgradeModal('pro'); } },
+    unreal: function() { if (isProUser()) { exportForUnreal(); } else { showUpgradeModal('pro'); } },
+  };
 })();
 
 function showLoadModal(saves) {
@@ -15508,6 +15450,15 @@ window._toggleInventory = toggleInventory;
   const cats = [
     { cmd: 'play', icon: '▶️', tip: 'Play', color: '#22c55e', isPlay: true },
     { cmd: 'edit', icon: '⏹️', tip: 'Stop', color: '#ef4444', isStop: true },
+    { cmd: '_sep1', icon: '|', tip: '', isSep: true },
+    { action: 'save', icon: '💾', tip: 'Save', color: '#4ade80' },
+    { action: 'load', icon: '📂', tip: 'Load', color: '#60a5fa' },
+    { action: 'share', icon: '🔗', tip: 'Share', color: '#ff6b35' },
+    { action: 'export_html', icon: '📦', tip: 'Export', color: '#c084fc' },
+    { action: 'marketplace', icon: '🏪', tip: 'Marketplace', color: '#f59e0b' },
+    { action: 'unity', icon: '🎮', tip: 'Unity', color: '#4ade80' },
+    { action: 'unreal', icon: '🕹️', tip: 'Unreal', color: '#3b82f6' },
+    { cmd: '_sep2', icon: '|', tip: '', isSep: true },
     { cmd: 'characters', icon: '🧑', tip: 'Characters', color: '#ffd700' },
     { cmd: 'weapons', icon: '⚔️', tip: 'Weapons', color: '#ef4444' },
     { cmd: 'buildings', icon: '🏠', tip: 'Buildings', color: '#8b5cf6' },
@@ -15525,6 +15476,13 @@ window._toggleInventory = toggleInventory;
   ];
   
   cats.forEach(c => {
+    // Separator
+    if (c.isSep) {
+      const sep = document.createElement('div');
+      sep.style.cssText = 'width:1px;height:24px;background:rgba(255,255,255,0.15);flex-shrink:0;align-self:center;margin:0 2px;';
+      toolbar.appendChild(sep);
+      return;
+    }
     const btn = document.createElement('button');
     btn.title = c.tip;
     btn.textContent = c.icon;
@@ -15532,7 +15490,11 @@ window._toggleInventory = toggleInventory;
     btn.onmouseenter = () => { btn.style.background = 'rgba(255,255,255,0.1)'; btn.style.transform = 'scale(1.15)'; };
     btn.onmouseleave = () => { btn.style.background = 'transparent'; btn.style.transform = 'scale(1)'; };
     btn.onclick = () => {
-      if (window._runCommand) window._runCommand(c.cmd);
+      if (c.action && window._sceneActions && window._sceneActions[c.action]) {
+        window._sceneActions[c.action]();
+      } else if (c.cmd && window._runCommand) {
+        window._runCommand(c.cmd);
+      }
       // Toggle play/stop button visibility
       if (c.isPlay || c.isStop) {
         toolbar.querySelectorAll('[data-play-btn]').forEach(b => {
