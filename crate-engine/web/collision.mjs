@@ -167,6 +167,40 @@ export class PlayerCollider {
     this.onSlope = false;
 
     const result = this.world.octree.capsuleIntersect(this.capsule);
+    
+    // Fallback: terrain raycast when octree misses (thin geometry like ground planes)
+    if (!result && this.velocity.y <= 0) {
+      const footY = this.capsule.start.y - this.radius;
+      // Raycast down from capsule center to find ground
+      const terrainMesh = window._terrainMesh;
+      const groundMeshes = terrainMesh ? [terrainMesh] : [];
+      // Also check default ground
+      const sceneGround = window._currentGround;
+      if (sceneGround) groundMeshes.push(sceneGround);
+      
+      if (groundMeshes.length > 0) {
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(this.capsule.start.x, this.capsule.start.y + 5, this.capsule.start.z),
+          new THREE.Vector3(0, -1, 0), 0, 20
+        );
+        for (const gm of groundMeshes) {
+          const hits = ray.intersectObject(gm);
+          if (hits.length > 0) {
+            const groundY = hits[0].point.y;
+            if (footY <= groundY + 0.05) {
+              const dy = groundY - footY;
+              this.capsule.start.y += dy;
+              this.capsule.end.y += dy;
+              this.velocity.y = 0;
+              this.onFloor = true;
+              this.groundNormal.set(0, 1, 0);
+              this.lastGroundY = groundY;
+              return;
+            }
+          }
+        }
+      }
+    }
 
     if (result) {
       const angle = Math.acos(result.normal.y) * (180 / Math.PI);

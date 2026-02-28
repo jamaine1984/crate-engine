@@ -317,8 +317,8 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=105'
-import { collisionWorld } from './collision.mjs?v=3';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=106'
+import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -4992,6 +4992,7 @@ window._addToCollision = function(obj) {
 };
 
 let currentGroundType = 'grass';
+window._currentGround = currentGround;
 
 // === GROUND EXPANSION SYSTEM ===
 function expandGround(newSize) {
@@ -9065,6 +9066,7 @@ async function execSingle(cmd) {
       try { controls.enabled = false; } catch(e) {}
       const _sy = getTerrainY(0, 0) + 1;
       characterController.position.set(0, _sy, 0);
+      if (characterController.collider) characterController.collider.teleport(0, _sy, 0);
       characterController.health = characterController.maxHealth;
       characterController.stamina = characterController.maxStamina;
       return '🎮 Play mode ON — WASD move, Shift run, Space jump, ESC exit';

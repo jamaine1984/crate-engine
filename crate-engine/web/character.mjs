@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { collisionWorld } from './collision.mjs?v=3';
+import { collisionWorld } from './collision.mjs?v=5';
 
 const loader = new GLTFLoader();
 // Get terrain height at world position
@@ -1795,10 +1795,9 @@ class CharacterController {
     
     // === PHYSICS: Octree capsule (preferred) or legacy raycast fallback ===
     if (this.collider && this.collider.world.built) {
-      // Octree capsule physics — gravity + collision handled by collider
-      // Sync collider position from character
-      this.collider.setPosition(this.position.x, this.position.y, this.position.z);
-      // Update will be called after movement below (in _postPhysics)
+      // Octree handles gravity + collision — sync only XZ from character movement
+      // Y is owned by the collider (gravity + floor detection)
+      // (post-physics section below handles the full update)
     } else {
       // Legacy raycast ground check
       if (!this.isGrounded) {
@@ -1913,10 +1912,11 @@ class CharacterController {
 
     // === OCTREE POST-PHYSICS: resolve collisions after all movement ===
     if (this.collider && this.collider.world.built && !this.isClimbing) {
-      // Sync capsule to current position, then let octree resolve
-      this.collider.setPosition(this.position.x, this.position.y, this.position.z);
+      // Sync XZ from character movement, keep collider's Y (gravity-managed)
+      const curPos = this.collider.position;
+      this.collider.setPosition(this.position.x, curPos.y, this.position.z);
       this.collider.update(dt, null); // gravity + collision resolution
-      // Read back resolved position
+      // Read back fully resolved position
       const resolvedPos = this.collider.position;
       this.position.x = resolvedPos.x;
       this.position.y = resolvedPos.y;
