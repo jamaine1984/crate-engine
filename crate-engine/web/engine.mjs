@@ -6556,15 +6556,14 @@ function createInteriorHouse(opts) {
 
 function createSkyscraper(opts) {
   const o = opts || {};
-  const floors = o.floors || (10 + Math.floor(Math.random() * 20));
-  const w = o.width || (10 + Math.random() * 8);
-  const d = o.depth || (10 + Math.random() * 8);
+  const floors = o.floors || (8 + Math.floor(Math.random() * 12)); // 8-20 floors (was 10-30)
+  const w = o.width || (10 + Math.random() * 6);
+  const d = o.depth || (10 + Math.random() * 6);
   const floorH = 3.5;
   const totalH = floors * floorH;
   const g = new THREE.Group();
   g.userData.name = 'Skyscraper (' + floors + 'F)';
-  g.userData.isBuilding = true;
-  g.userData.isSolid = true;
+  g.userData.isBuilding = true; g.userData.isSolid = true;
   const style = Math.floor(Math.random() * 4);
   const frameColors = [0x334455, 0x444444, 0x553333, 0x222222];
   const glassColors = [0x88bbdd, 0xaacccc, 0xddccaa, 0x99aabb];
@@ -6572,66 +6571,70 @@ function createSkyscraper(opts) {
   const glassMat = new THREE.MeshPhysicalMaterial({color: glassColors[style], roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.35, side: THREE.DoubleSide});
   const floorMat2 = makeMat(0x666666, {rough: 0.6});
   const ledgeMat = makeMat(0x888888, {rough: 0.4, metal: 0.5});
-  const colW = 0.4;
-  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx,sz]) => {
-    const col = new THREE.Mesh(new THREE.BoxGeometry(colW, totalH, colW), frameMat);
-    col.position.set(sx*w/2, totalH/2, sz*d/2); col.castShadow=true; col.userData.isSolid=true; g.add(col);
+  
+  // Main body — single box with frame material
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, totalH, d), frameMat);
+  body.position.y = totalH/2; body.castShadow = true; body.userData.isSolid = true; g.add(body);
+  
+  // Glass panels — just 4 large panels (one per side) instead of per-floor
+  const glassH = totalH - 1;
+  [1,-1].forEach(side => {
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(w-0.6, glassH), glassMat);
+    front.position.set(0, totalH/2 + 0.2, side*(d/2+0.02));
+    if(side<0) front.rotation.y = Math.PI; g.add(front);
   });
-  for (let fl = 0; fl < floors; fl++) {
+  [1,-1].forEach(side => {
+    const sideW = new THREE.Mesh(new THREE.PlaneGeometry(d-0.6, glassH), glassMat);
+    sideW.position.set(side*(w/2+0.02), totalH/2 + 0.2, 0);
+    sideW.rotation.y = side*Math.PI/2; g.add(sideW);
+  });
+  
+  // Horizontal ledges every 5 floors (not every floor)
+  for (let fl = 5; fl < floors; fl += 5) {
     const y = fl * floorH;
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.15, d+0.4), floorMat2);
-    slab.position.y = y + 0.075; slab.receiveShadow=true; slab.userData.isSolid=true; g.add(slab);
-    [d/2, -d/2].forEach(z => {
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.2, 0.15), frameMat);
-      beam.position.set(0, y+floorH-0.1, z); g.add(beam);
-      const sill = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.2, 0.15), frameMat);
-      sill.position.set(0, y+0.8, z); g.add(sill);
-    });
-    [w/2, -w/2].forEach(x => {
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, d+0.4), frameMat);
-      beam.position.set(x, y+floorH-0.1, 0); g.add(beam);
-      const sill = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, d+0.4), frameMat);
-      sill.position.set(x, y+0.8, 0); g.add(sill);
-    });
-    const glassH = floorH - 1.2;
-    [1,-1].forEach(side => {
-      const front = new THREE.Mesh(new THREE.PlaneGeometry(w-colW, glassH), glassMat);
-      front.position.set(0, y+0.9+glassH/2, side*d/2);
-      if(side<0) front.rotation.y = Math.PI; g.add(front);
-    });
-    [1,-1].forEach(side => {
-      const sideW = new THREE.Mesh(new THREE.PlaneGeometry(d-colW, glassH), glassMat);
-      sideW.position.set(side*w/2, y+0.9+glassH/2, 0); sideW.rotation.y = side*Math.PI/2; g.add(sideW);
-    });
-    const mullionCount = Math.floor(w / 2.5);
-    for (let m = 1; m < mullionCount; m++) {
-      const mx = -w/2 + colW/2 + m*(w-colW)/mullionCount;
-      [d/2,-d/2].forEach(z => {
-        const mull = new THREE.Mesh(new THREE.BoxGeometry(0.06, glassH, 0.06), frameMat);
-        mull.position.set(mx, y+0.9+glassH/2, z); g.add(mull);
-      });
-    }
-    if (fl % 2 === 0) {
-      const light = new THREE.PointLight(0xfff5e0, 0.3, w*1.5);
-      light.position.set(0, y+floorH-0.3, 0); g.add(light);
-    }
-    if (fl > 0 && fl % 5 === 0) {
-      const ledge = new THREE.Mesh(new THREE.BoxGeometry(w+0.6, 0.12, d+0.6), ledgeMat);
-      ledge.position.y = y; g.add(ledge);
-    }
+    const ledge = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.12, d+0.4), ledgeMat);
+    ledge.position.y = y; g.add(ledge);
   }
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.3, d+0.4), ledgeMat);
-  roof.position.y = totalH+0.15; g.add(roof);
+  
+  // A few vertical mullion lines (not per-floor)
+  const mullionCount = Math.floor(w / 3);
+  for (let m = 1; m < mullionCount; m++) {
+    const mx = -w/2 + 0.3 + m*(w-0.6)/mullionCount;
+    [d/2+0.03, -(d/2+0.03)].forEach(z => {
+      const mull = new THREE.Mesh(new THREE.BoxGeometry(0.04, totalH-1, 0.04), frameMat);
+      mull.position.set(mx, totalH/2, z); g.add(mull);
+    });
+  }
+  // Horizontal floor lines on glass
+  for (let fl = 1; fl < floors; fl++) {
+    const y = fl * floorH;
+    [d/2+0.03, -(d/2+0.03)].forEach(z => {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(w-0.4, 0.06, 0.04), frameMat);
+      line.position.set(0, y, z); g.add(line);
+    });
+  }
+  
+  // Roof
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(w+0.3, 0.25, d+0.3), ledgeMat);
+  roof.position.y = totalH+0.12; g.add(roof);
+  // AC + antenna
   const ac = new THREE.Mesh(new THREE.BoxGeometry(2,1,1.5), makeMat(0x888888,{rough:0.6}));
   ac.position.set(w*0.2, totalH+0.8, 0); g.add(ac);
   const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,4), makeMat(0xaaaaaa,{rough:0.3,metal:0.8}));
   antenna.position.set(-w*0.2, totalH+2.3, -d*0.2); g.add(antenna);
+  // Entrance
   const entrGlass = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), glassMat);
-  entrGlass.position.set(0, 1.5, d/2+0.02); g.add(entrGlass);
+  entrGlass.position.set(0, 1.5, d/2+0.03); g.add(entrGlass);
   const awning = new THREE.Mesh(new THREE.BoxGeometry(4, 0.08, 1.5), ledgeMat);
   awning.position.set(0, 3.2, d/2+0.8); g.add(awning);
+  // Interior light (just 2-3, not per floor)
+  [totalH*0.25, totalH*0.6].forEach(y => {
+    const light = new THREE.PointLight(0xfff5e0, 0.2, w*2);
+    light.position.set(0, y, 0); g.add(light);
+  });
   return g;
 }
+
 
 function createCommercialBuilding(opts) {
   const o = opts || {};
@@ -9376,8 +9379,7 @@ async function execSingle(cmd) {
           { cmd: 'add skyscraper', pos: [18, -25] },
           { cmd: 'add skyscraper', pos: [-18, -40] },
           { cmd: 'add skyscraper', pos: [18, -40] },
-          { cmd: 'add skyscraper', pos: [-30, -30] },
-          { cmd: 'add skyscraper', pos: [30, -30] },
+          
           { cmd: 'add salon', pos: [-14, 5] },
           { cmd: 'add barber', pos: [-14, 15] },
           { cmd: 'add grocery', pos: [14, 5] },
@@ -9402,15 +9404,15 @@ async function execSingle(cmd) {
           { cmd: 'add traffic light', pos: [4, 30] },
           { cmd: 'add stop sign', pos: [-8, 5] },
           { cmd: 'add stop sign', pos: [8, 25] },
-          { cmd: 'add ph_street_lamp_01', scatter: { count: 20, radius: 55 } },
-          { cmd: 'add ph_fire_hydrant', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add ph_street_lamp_01', scatter: { count: 10, radius: 55 } },
+          { cmd: 'add ph_fire_hydrant', scatter: { count: 4, radius: 50 } },
           { cmd: 'add hd_ferrari', pos: [2, 0] },
           { cmd: 'add hd_ferrari', pos: [-2, -20] },
           { cmd: 'add hd_pbr_cesium_milk_truck', pos: [3, 40] },
-          { cmd: 'add ph_potted_plant_01', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add ph_shrub_02', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add tree', scatter: { count: 15, radius: 70, avoidCenter: 10 } },
-          { cmd: 'spawn villager', scatter: { count: 10, radius: 40 } },
+          { cmd: 'add ph_potted_plant_01', scatter: { count: 6, radius: 50 } },
+          { cmd: 'add ph_shrub_02', scatter: { count: 5, radius: 60 } },
+          { cmd: 'add tree', scatter: { count: 8, radius: 70, avoidCenter: 10 } },
+          { cmd: 'spawn villager', scatter: { count: 5, radius: 40 } },
           { cmd: 'spawn woman', scatter: { count: 5, radius: 35 } },
           { cmd: 'spawn worker', scatter: { count: 4, radius: 30 } },
           { cmd: 'spawn punk', scatter: { count: 3, radius: 40 } },
