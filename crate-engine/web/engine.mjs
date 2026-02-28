@@ -7792,6 +7792,70 @@ function createInteriorHouse(opts) {
 // === MODERN FURNISHED HOUSE (HD GLB Models) ===
 // === PROCEDURAL BUILDING SYSTEM ===
 
+
+// ═══ KENNEY MODEL HELPERS — Load real GLB models into city generation ═══
+const KENNEY_CITY_BUILDINGS = [
+  'kenney_city/building-a', 'kenney_city/building-b', 'kenney_city/building-c',
+  'kenney_city/building-d', 'kenney_city/building-e', 'kenney_city/building-f',
+  'kenney_city/building-g', 'kenney_city/building-h', 'kenney_city/building-i',
+  'kenney_city/building-j', 'kenney_city/building-k', 'kenney_city/building-l',
+];
+const KENNEY_VEHICLES = [
+  'kenney_cars/sedan', 'kenney_cars/sedan-sports', 'kenney_cars/suv', 
+  'kenney_cars/suv-luxury', 'kenney_cars/taxi', 'kenney_cars/van',
+  'kenney_cars/hatchback-sports', 'kenney_cars/truck', 'kenney_cars/police',
+];
+const KENNEY_ROAD_PIECES = [
+  'kenney_roads/road-straight', 'kenney_roads/road-curve', 
+  'kenney_roads/road-intersection', 'kenney_roads/road-end',
+];
+const KENNEY_FANTASY_PROPS = [
+  'kenney_fantasy/fence', 'kenney_fantasy/cart', 'kenney_fantasy/fountain-center',
+  'kenney_fantasy/banner-red', 'kenney_fantasy/barrel', 'kenney_fantasy/well',
+  'kenney_fantasy/chimney', 'kenney_fantasy/lantern',
+];
+const KENNEY_GRAVEYARD_PROPS = [
+  'kenney_graveyard/grave-cross', 'kenney_graveyard/grave-round',
+  'kenney_graveyard/coffin', 'kenney_graveyard/candle',
+  'kenney_graveyard/character-skeleton', 'kenney_graveyard/character-ghost',
+  'kenney_graveyard/altar-stone', 'kenney_graveyard/bench-damaged',
+];
+
+function loadKenneyModel(modelPath, x, y, z, scale) {
+  const s = scale || 3;
+  gltfLoader.load('models/' + modelPath + '.glb', (gltf) => {
+    const model = gltf.scene;
+    model.scale.setScalar(s);
+    model.position.set(x, y, z);
+    model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    model.userData.name = modelPath.split('/').pop();
+    scene.add(model);
+    window._sceneObjects = window._sceneObjects || [];
+    window._sceneObjects.push(model);
+  });
+}
+
+function randomKenneyBuilding(x, z) {
+  const model = KENNEY_CITY_BUILDINGS[Math.floor(Math.random() * KENNEY_CITY_BUILDINGS.length)];
+  loadKenneyModel(model, x, 0, z, 4 + Math.random() * 2);
+}
+
+function randomKenneyVehicle(x, z, rotation) {
+  const model = KENNEY_VEHICLES[Math.floor(Math.random() * KENNEY_VEHICLES.length)];
+  gltfLoader.load('models/' + model + '.glb', (gltf) => {
+    const m = gltf.scene;
+    m.scale.setScalar(2.5);
+    m.position.set(x, 0.1, z);
+    if (rotation) m.rotation.y = rotation;
+    m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    m.userData.name = 'parked_car';
+    scene.add(m);
+    window._sceneObjects = window._sceneObjects || [];
+    window._sceneObjects.push(m);
+  });
+}
+
+
 function createSkyscraper(opts) {
   const o = opts || {};
   const floors = o.floors || (8 + Math.floor(Math.random() * 12)); // 8-20 floors (was 10-30)
@@ -11143,10 +11207,17 @@ async function execSingle(cmd) {
           { cmd: 'add ph_fire_hydrant', pos: [-7, 50] },
           { cmd: 'add ph_fire_hydrant', pos: [7, 90] },
           
-          // === VEHICLES ===
+          // === VEHICLES (Kenney + HD) ===
           { cmd: 'add hd_ferrari', pos: [2, -15] },
-          { cmd: 'add hd_ferrari', pos: [-2, 25] },
-          { cmd: 'add hd_pbr_cesium_milk_truck', pos: [3, 70] },
+          { cmd: 'add sedan', pos: [-3, 10] },
+          { cmd: 'add taxi', pos: [3, 35] },
+          { cmd: 'add suv', pos: [-3, 55] },
+          { cmd: 'add police', pos: [3, 75] },
+          { cmd: 'add van', pos: [-3, 95] },
+          { cmd: 'add ambulance', pos: [3, 115] },
+          { cmd: 'add hd_pbr_cesium_milk_truck', pos: [3, 135] },
+          { cmd: 'add sedan-sports', pos: [-3, -45] },
+          { cmd: 'add truck', pos: [35, -35] },
           
           // === GREENERY (street trees, planters) ===
           { cmd: 'add ph_potted_plant_01', pos: [-14, -8] },
