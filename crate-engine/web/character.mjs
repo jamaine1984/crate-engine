@@ -2748,25 +2748,77 @@ class CharacterController {
   }
   
   _updateInVehicle(dt) {
-    // When in vehicle, move the vehicle instead
     const v = this.inVehicle;
-    let moveZ = 0, turn = 0;
-    if (this.keys['w']) moveZ = 1;
-    if (this.keys['s']) moveZ = -1;
-    if (this.keys['a']) turn = 1;
-    if (this.keys['d']) turn = -1;
+    if (!v) return;
     
-    const vehicleSpeed = 15;
-    v.userData.rotation = (v.userData.rotation || 0) + turn * 2 * dt;
-    v.rotation.y = v.userData.rotation;
-    v.position.x += Math.sin(v.userData.rotation) * moveZ * vehicleSpeed * dt;
-    v.position.z += Math.cos(v.userData.rotation) * moveZ * vehicleSpeed * dt;
+    // Initialize vehicle state
+    if (!v.userData._vSpeed) v.userData._vSpeed = 0;
+    if (!v.userData._vRot) v.userData._vRot = v.rotation.y || 0;
+    
+    let throttle = 0, steer = 0, brake = false;
+    if (this.keys['w']) throttle = 1;
+    if (this.keys['s']) throttle = -0.5; // reverse is slower
+    if (this.keys['a']) steer = 1;
+    if (this.keys['d']) steer = -1;
+    if (this.keys[' ']) brake = true;
+    
+    const n = (v.userData.name || '').toLowerCase();
+    const isBoat = n.includes('boat') || n.includes('ship') || n.includes('canoe');
+    const isTank = n.includes('tank');
+    const maxSpeed = isBoat ? 12 : isTank ? 10 : 25;
+    const accel = isBoat ? 6 : isTank ? 8 : 18;
+    const decel = brake ? 30 : 8;
+    const turnRate = isBoat ? 1.5 : isTank ? 2.5 : 3.0;
+    
+    // Acceleration / deceleration
+    if (throttle !== 0) {
+      v.userData._vSpeed += throttle * accel * dt;
+      v.userData._vSpeed = Math.max(-maxSpeed * 0.4, Math.min(maxSpeed, v.userData._vSpeed));
+    } else {
+      // Natural deceleration
+      if (Math.abs(v.userData._vSpeed) < 0.5) v.userData._vSpeed = 0;
+      else v.userData._vSpeed -= Math.sign(v.userData._vSpeed) * decel * dt;
+    }
+    if (brake) {
+      v.userData._vSpeed *= (1 - 5 * dt);
+    }
+    
+    // Steering (only when moving)
+    const speedFactor = Math.min(1, Math.abs(v.userData._vSpeed) / 5);
+    v.userData._vRot += steer * turnRate * speedFactor * dt;
+    v.rotation.y = v.userData._vRot;
+    
+    // Move
+    v.position.x += Math.sin(v.userData._vRot) * v.userData._vSpeed * dt;
+    v.position.z += Math.cos(v.userData._vRot) * v.userData._vSpeed * dt;
+    
+    // Ground follow
+    if (window._terrainMesh && !isBoat) {
+      const ty = _getTerrainY(v.position.x, v.position.z);
+      v.position.y += (ty - v.position.y) * Math.min(1, 8 * dt);
+    }
+    
+    // Tilt on acceleration (visual only)
+    v.rotation.x = THREE.MathUtils.lerp(v.rotation.x || 0, -throttle * 0.05 * speedFactor, 4 * dt);
+    v.rotation.z = THREE.MathUtils.lerp(v.rotation.z || 0, steer * 0.08 * speedFactor, 4 * dt);
     
     // Camera follows vehicle
     this.position.copy(v.position);
+    this.position.y += 1;
+    this.rotation = v.userData._vRot;
     this._updateCamera(dt);
     
-    // Exit vehicle
+    // Speed HUD
+    const kmh = Math.abs(Math.round(v.userData._vSpeed * 3.6));
+    if (!this._speedEl) {
+      this._speedEl = document.createElement('div');
+      this._speedEl.style.cssText = 'position:fixed;bottom:120px;right:20px;color:#4ade80;font-family:monospace;font-size:1.5rem;font-weight:bold;z-index:9999;text-shadow:0 0 10px rgba(74,222,128,0.5);';
+      document.body.appendChild(this._speedEl);
+    }
+    this._speedEl.textContent = kmh + ' km/h';
+    this._speedEl.style.display = 'block';
+    
+    // Exit vehicle (F key)
     if (this.keys['f']) {
       this.exitVehicle();
     }
@@ -2957,16 +3009,19 @@ function _checkWallCollision(position, direction, distance) {
   
     exitVehicle() {
     if (!this.inVehicle) return;
+    const vy = this.inVehicle.position.y || 0;
     this.position.set(
       this.inVehicle.position.x + 3,
-      0,
+      vy + 0.5,
       this.inVehicle.position.z
     );
+    if (this.collider) this.collider.teleport(this.position.x, this.position.y, this.position.z);
     this.inVehicle = null;
     if (this.model) {
       this.model.visible = true;
-      this.model.position.copy(this.position);
     }
+    // Hide speed HUD
+    if (this._speedEl) this._speedEl.style.display = 'none';
   }
   
   toggleCameraMode() {
