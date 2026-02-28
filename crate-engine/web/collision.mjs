@@ -35,17 +35,35 @@ export class CollisionWorld {
   }
 
   /**
-   * Add additional geometry to octree (e.g., newly placed buildings)
-   * @param {THREE.Object3D} object
+   * Mark collision as dirty — will rebuild next frame.
+   * Call this when objects are added/removed from scene.
    */
-  addObject(object) {
-    if (!this.built) {
-      console.warn('[Collision] Octree not built yet, call build() first');
-      return;
+  markDirty() {
+    this._dirty = true;
+  }
+
+  /**
+   * Rebuild octree from a group containing all collidable objects.
+   * Call once per frame if dirty, or after batch placement.
+   * @param {THREE.Group} collisionGroup - Group with all collidable meshes
+   */
+  rebuildFromGroup(collisionGroup) {
+    if (!collisionGroup) return;
+    collisionGroup.updateMatrixWorld(true);
+    this.octree.clear();
+    this.octree.fromGraphNode(collisionGroup);
+    this.built = true;
+    this._dirty = false;
+    console.log('[Collision] Octree rebuilt (' + collisionGroup.children.length + ' objects)');
+  }
+
+  /**
+   * Check if dirty and rebuild if needed (call in game loop)
+   */
+  updateIfDirty() {
+    if (this._dirty && this._collisionGroup) {
+      this.rebuildFromGroup(this._collisionGroup);
     }
-    // Rebuild with the new object included
-    // (Three.js Octree doesn't support incremental add, so we track objects)
-    this.octree.fromGraphNode(object);
   }
 
   /**
@@ -82,12 +100,14 @@ export class PlayerCollider {
     // Config
     this.maxSlopeAngle = 50; // degrees — steeper = slide
     this.stepHeight = 0.4;   // auto-step up to this height
+    this.feetOffset = 0.05;  // small upward offset to prevent feet clipping
   }
 
   /** Get the world position of the capsule (foot level) */
   get position() {
     _v1.copy(this.capsule.start);
     _v1.y -= this.radius;
+    _v1.y += this.feetOffset; // lift to prevent feet clipping into ground
     return _v1;
   }
 

@@ -318,7 +318,7 @@ import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, se
 import './savesystem.mjs';
 import './mobile.mjs';
 import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=103'
-import { collisionWorld } from './collision.mjs?v=1';
+import { collisionWorld } from './collision.mjs?v=3';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -3933,6 +3933,17 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     }
     scene.add(model);
     objects.push(model);
+    // Add to collision octree (buildings, stairs, platforms are solid)
+    const _ln = (name || '').toLowerCase();
+    if (_ln.includes('house') || _ln.includes('building') || _ln.includes('tower') || 
+        _ln.includes('stair') || _ln.includes('wall') || _ln.includes('bridge') ||
+        _ln.includes('platform') || _ln.includes('floor') || _ln.includes('dungeon') ||
+        _ln.includes('castle') || _ln.includes('church') || _ln.includes('cottage') ||
+        _ln.includes('stable') || _ln.includes('warehouse') || _ln.includes('inn') ||
+        _ln.includes('gate') || _ln.includes('mill') || _ln.includes('ramp')) {
+      model.userData.isSolid = true;
+      if (window._addToCollision) window._addToCollision(model);
+    }
     if (statusEl) statusEl.textContent = '3D Ready';
     if (onDone) onDone();
   }, 
@@ -4959,6 +4970,26 @@ scene.add(currentGround);
 // Build initial octree from ground plane
 currentGround.updateMatrixWorld(true);
 collisionWorld.build(currentGround, scene);
+
+// Collision group — contains all collidable geometry (terrain, buildings, floors)
+const collisionGroup = new THREE.Group();
+collisionGroup.add(currentGround.clone()); // Clone so original stays in scene
+scene.add(collisionGroup);
+collisionGroup.visible = false; // invisible collision layer
+collisionWorld._collisionGroup = collisionGroup;
+
+// Helper: add object to collision and mark dirty
+window._addToCollision = function(obj) {
+  if (!obj) return;
+  const clone = obj.clone();
+  clone.updateMatrixWorld(true);
+  // Apply world transform to clone
+  clone.position.copy(obj.position);
+  clone.rotation.copy(obj.rotation);
+  clone.scale.copy(obj.scale);
+  collisionGroup.add(clone);
+  collisionWorld.markDirty();
+};
 
 let currentGroundType = 'grass';
 
@@ -6597,9 +6628,21 @@ function createTerrain(type, params) {
   terrainMesh.userData.isTerrain = true;
   scene.add(terrainMesh);
   
-  // Build collision octree from terrain
+  // Rebuild collision octree from terrain
   terrainMesh.updateMatrixWorld(true);
-  collisionWorld.build(terrainMesh, scene);
+  // Replace ground in collision group with terrain
+  if (collisionWorld._collisionGroup) {
+    const cg = collisionWorld._collisionGroup;
+    while (cg.children.length) cg.remove(cg.children[0]);
+    const terrainClone = terrainMesh.clone();
+    terrainClone.position.copy(terrainMesh.position);
+    terrainClone.rotation.copy(terrainMesh.rotation);
+    terrainClone.scale.copy(terrainMesh.scale);
+    cg.add(terrainClone);
+    collisionWorld.rebuildFromGroup(cg);
+  } else {
+    collisionWorld.build(terrainMesh, scene);
+  }
   logOutput('✓ Collision octree built from terrain', 'ok');
   
   // Hide the flat ground + grid
@@ -10670,6 +10713,9 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
   const t = clock.getElapsedTime();
+  
+  // Rebuild collision octree if dirty (after object placement)
+  collisionWorld.updateIfDirty();
   
   // === AUTO-QUALITY SCALING ===
   if (!window._fpsHistory) window._fpsHistory = [];
