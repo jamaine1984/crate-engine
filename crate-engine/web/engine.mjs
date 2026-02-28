@@ -8400,6 +8400,13 @@ async function execSingle(cmd) {
   // === PLAY WITH CHARACTER ===
   if ((lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo') && characterController) {
     var isDemoMode = lower === 'demo' || window._isAutoDemo;
+    // Auto-generate a starter world if scene is empty BEFORE entering play mode
+    if (!objects || objects.filter(o => o && o.userData && o.userData.name).length === 0) {
+      showToast('🏗️ Building world...');
+      try { await parseAndExecute('generate town'); } catch(e) { console.warn('Auto-world gen failed:', e); }
+      // Wait a moment for models to start loading
+      await new Promise(r => setTimeout(r, 2000));
+    }
     playMode = true;
     _hideEditorUI();
     try { controls.enabled = isDemoMode ? true : false; } catch(e) {}
@@ -8416,10 +8423,6 @@ async function execSingle(cmd) {
       } else {
         await characterController.loadCharacter(selectedCharacterType || 'knight');
       }
-    }
-    // Auto-generate a starter world if scene is empty (no user-placed objects)
-    if (!objects || objects.filter(o => o && o.userData && o.userData.name && !o.userData.name.startsWith('player_')).length === 0) {
-      try { await parseAndExecute('generate town'); } catch(e) { console.warn('Auto-world gen failed:', e); }
     }
     // Spawn at origin ON TOP of terrain
     { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.position.set(0, _sy, 0); } }
