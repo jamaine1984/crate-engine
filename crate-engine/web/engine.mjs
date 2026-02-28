@@ -7313,6 +7313,21 @@ async function execSingle(cmd) {
   }
   
   // === Driving Demo (v61) ===
+  if (lower === 'playground' || lower === 'test world' || lower === 'demo world') {
+    // Quick test world with everything
+    const cmds = [
+      'generate town',
+    ];
+    cmds.forEach((cmd, i) => setTimeout(() => execSingle(cmd), i * 200));
+    setTimeout(() => {
+      execSingle('add car');
+      execSingle('add interior house 2');
+      execSingle('play');
+      showToast('🎮 Playground loaded! Explore, drive, enter buildings.');
+    }, 3000);
+    return '🎮 Loading playground — town with car, house, and play mode...';
+  }
+  
   if (lower === 'driving demo' || lower === 'drive demo' || lower === 'car demo') {
     // Create road circuit
     execSingle('add road');
