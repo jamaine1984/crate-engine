@@ -1184,6 +1184,48 @@ function showNotification(msg) {
 
 
 // Model name -> GLB file mapping (53 real 3D models)
+
+// ═══════════════════════════════════════════════════════════════
+// SMART MODEL SEARCH — AI searches library by tags/keywords
+// ═══════════════════════════════════════════════════════════════
+let _modelCatalog = null;
+async function loadModelCatalog() {
+  if (_modelCatalog) return _modelCatalog;
+  try {
+    const resp = await fetch('models/catalog.json');
+    _modelCatalog = await resp.json();
+    console.log('[Catalog] Loaded', Object.keys(_modelCatalog).length, 'models');
+  } catch(e) {
+    _modelCatalog = {};
+  }
+  return _modelCatalog;
+}
+
+function searchModels(query, limit = 10) {
+  if (!_modelCatalog) return [];
+  const terms = query.toLowerCase().split(/\s+/);
+  const results = [];
+  
+  for (const [name, info] of Object.entries(_modelCatalog)) {
+    let score = 0;
+    const nameLower = name.toLowerCase();
+    const allTags = info.tags.join(' ').toLowerCase();
+    
+    for (const term of terms) {
+      if (nameLower.includes(term)) score += 3; // Name match = high score
+      if (allTags.includes(term)) score += 1;   // Tag match
+      if (nameLower === term) score += 5;        // Exact match = highest
+    }
+    
+    if (score > 0) results.push({ name, path: info.path, score, tags: info.tags });
+  }
+  
+  return results.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+// Load catalog on startup
+loadModelCatalog();
+
 const GLB_MODELS = {
   
   // ═══ QUATERNIUS CREATURES (CC0, animated) ═══
@@ -11205,6 +11247,24 @@ async function execSingle(cmd) {
   if (presetResult) return presetResult;
   
   if (lower === "3d generator" || lower === "generator" || lower === "generate 3d") { showGeneratorModal(); return "🎨 Opening 3D Generator..."; }
+  
+  // Smart model search — "search car", "find zombie", "browse weapons"
+  const searchMatch = lower.match(/^(?:search|find|browse|look for|show)\s+(.+)/);
+  if (searchMatch) {
+    const query = searchMatch[1];
+    const results = searchModels(query, 15);
+    if (results.length === 0) {
+      return '🔍 No models found for "' + query + '"';
+    }
+    let msg = '🔍 Found ' + results.length + ' models for "' + query + '":\n';
+    for (const r of results) {
+      msg += '  • ' + r.name + ' [' + r.tags.slice(0,3).join(', ') + ']\n';
+    }
+    msg += '\nUse: add <model-name> to place one';
+    appendToOutput(msg);
+    return msg;
+  }
+
   if (lower === "game modes" || lower === "games" || lower === "game mode" || lower === "modes") { showGameModesModal(); return "🎮 Opening Game Modes..."; }
   if (lower === "game modes" || lower === "games" || lower === "game mode" || lower === "modes") { showGameModesModal(); return "🎮 Opening Game Modes..."; }
   if (lower === "meshy" || lower === "meshy key" || lower === "meshy settings" || lower === "meshy api") { showMeshyKeyModal(); return "🔑 Opening Meshy AI settings..."; }
@@ -17856,41 +17916,9 @@ let dragCounter = 0;
 // === END TUTORIAL ===
 
 
-// === AI AGENT MODEL SUGGESTION SYSTEM ===
-// Loads 1,328 model catalog, suggests relevant models based on user input
-let _modelCatalog = null;
+// Model catalog system moved to top of file (see loadModelCatalog)
 
-fetch('model-catalog.json').then(r => r.json()).then(data => {
-  _modelCatalog = data;
-  console.log('[AI Agent] Loaded', data.length, 'models into suggestion catalog');
-}).catch(() => console.warn('[AI Agent] Could not load model catalog'));
 
-// Search catalog by keywords
-function searchModels(query, limit = 12) {
-  if (!_modelCatalog) return [];
-  const words = query.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
-  
-  return _modelCatalog
-    .map(m => {
-      let score = 0;
-      for (const word of words) {
-        // Check tags
-        for (const tag of m.tags) {
-          if (tag === word) score += 10;
-          else if (tag.includes(word)) score += 5;
-          else if (word.includes(tag) && tag.length >= 3) score += 3;
-        }
-        // Check file name
-        if (m.file.toLowerCase().includes(word)) score += 8;
-      }
-      return { ...m, score };
-    })
-    .filter(m => m.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-}
-
-// Show suggestion panel
 function showSuggestionPanel(query, results) {
   let panel = document.getElementById('ai-suggest-panel');
   if (!panel) {
