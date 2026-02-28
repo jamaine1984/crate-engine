@@ -7353,31 +7353,44 @@ async function execSingle(cmd) {
     const MAP_TEMPLATES = {
       // ===== MEDIEVAL FANTASY =====
       town: {
-        terrain: { type: 'hills', height: 0.3 },
+        terrain: { type: 'flat', height: 0 },
         ground: 'grass', env: ['time afternoon'],
         water: null, weather: null, particles: null,
         items: [
-          { cmd: 'add blacksmith', pos: [25, 8] },
-          { cmd: 'add tavern', pos: [-22, 12] },
-          { cmd: 'add house', pos: [18, -18] }, { cmd: 'add house', pos: [-18, -12] },
-          { cmd: 'add house', pos: [8, 22] }, { cmd: 'add house', pos: [-8, -25] },
-          { cmd: 'add house', pos: [30, -8] },
-          { cmd: 'add market stall', pos: [-5, 3] }, { cmd: 'add market stall', pos: [5, 3] },
-          { cmd: 'add market stall', pos: [0, -5] },
+          // === TOWN SQUARE (center) ===
           { cmd: 'add well', pos: [0, 0] },
-          { cmd: 'add barrel', pos: [27, 10] }, { cmd: 'add barrel', pos: [26, 12] },
-          { cmd: 'add cart', pos: [-25, -5] },
-          { cmd: 'add fence', scatter: { count: 8, radius: 30, avoidCenter: 12 } },
-          { cmd: 'add tree', scatter: { count: 20, radius: 70, avoidCenter: 20 } },
-          { cmd: 'add bush', scatter: { count: 12, radius: 50, avoidCenter: 15 } },
-          { cmd: 'add torch', scatter: { count: 10, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 6, radius: 60 } },
-          { cmd: 'spawn villager', scatter: { count: 6, radius: 30 } },
-          { cmd: 'spawn guard', scatter: { count: 2, radius: 25 } },
+          { cmd: 'add market stall', pos: [-6, 4] }, { cmd: 'add market stall', pos: [6, 4] },
+          { cmd: 'add market stall', pos: [-6, -4] }, { cmd: 'add market stall', pos: [6, -4] },
+          { cmd: 'add barrel', pos: [-8, 6] }, { cmd: 'add barrel', pos: [8, 6] },
+          { cmd: 'add cart', pos: [10, 0] },
+          // === NORTH ROW — main buildings along "street" ===
+          { cmd: 'add tavern', pos: [-18, 20] },
+          { cmd: 'add blacksmith', pos: [0, 22] },
+          { cmd: 'add house', pos: [18, 20] },
+          // === SOUTH ROW ===
+          { cmd: 'add house', pos: [-18, -20] },
+          { cmd: 'add house', pos: [0, -22] },
+          { cmd: 'add house', pos: [18, -20] },
+          // === EAST/WEST wings ===
+          { cmd: 'add house', pos: [-28, 0] },
+          { cmd: 'add house', pos: [28, 0] },
+          { cmd: 'add house', pos: [-28, 14] },
+          { cmd: 'add house', pos: [28, -14] },
+          // === TORCHES along paths ===
+          { cmd: 'add torch', pos: [-10, 12] }, { cmd: 'add torch', pos: [10, 12] },
+          { cmd: 'add torch', pos: [-10, -12] }, { cmd: 'add torch', pos: [10, -12] },
+          { cmd: 'add torch', pos: [-20, 0] }, { cmd: 'add torch', pos: [20, 0] },
+          // === PERIMETER — trees & nature ring ===
+          { cmd: 'add tree', scatter: { count: 30, radius: 60, avoidCenter: 32 } },
+          { cmd: 'add bush', scatter: { count: 15, radius: 50, avoidCenter: 28 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 55, avoidCenter: 35 } },
+          // === NPCs ===
+          { cmd: 'spawn villager', scatter: { count: 6, radius: 20 } },
+          { cmd: 'spawn guard', pos: [-12, 14] }, { cmd: 'spawn guard', pos: [12, 14] },
         ]
       },
       village: {
-        terrain: { type: 'hills', height: 0.2 },
+        terrain: { type: 'flat', height: 0 },
         ground: 'grass', env: ['time morning'],
         items: [
           { cmd: 'add house', pos: [12, -8] }, { cmd: 'add house', pos: [-14, 6] },
@@ -7717,7 +7730,7 @@ async function execSingle(cmd) {
         ]
       },
       graveyard: {
-        terrain: { type: 'hills', height: 0.2 },
+        terrain: { type: 'flat', height: 0 },
         ground: 'dirt', env: ['time night', 'fog on'], particles: 'dust',
         items: [
           { cmd: 'add tombstone', scatter: { count: 20, radius: 40 } },
