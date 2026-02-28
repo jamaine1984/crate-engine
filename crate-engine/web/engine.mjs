@@ -15504,6 +15504,8 @@ window._toggleInventory = toggleInventory;
   toolbar.style.cssText = 'position:fixed;bottom:42px;left:50%;transform:translateX(-50%);z-index:9997;display:flex;flex-direction:row;gap:4px;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);padding:6px 10px;border-radius:12px;border:1px solid #252525;max-width:80vw;overflow-x:auto;';
   
   const cats = [
+    { cmd: 'play', icon: '▶️', tip: 'Play', color: '#22c55e', isPlay: true },
+    { cmd: 'edit', icon: '⏹️', tip: 'Stop', color: '#ef4444', isStop: true },
     { cmd: 'characters', icon: '🧑', tip: 'Characters', color: '#ffd700' },
     { cmd: 'weapons', icon: '⚔️', tip: 'Weapons', color: '#ef4444' },
     { cmd: 'buildings', icon: '🏠', tip: 'Buildings', color: '#8b5cf6' },
@@ -15527,7 +15529,20 @@ window._toggleInventory = toggleInventory;
     btn.style.cssText = 'width:34px;height:34px;border:none;background:transparent;font-size:16px;cursor:pointer;border-radius:8px;transition:all 0.15s;display:flex;align-items:center;justify-content:center;flex-shrink:0;';
     btn.onmouseenter = () => { btn.style.background = 'rgba(255,255,255,0.1)'; btn.style.transform = 'scale(1.15)'; };
     btn.onmouseleave = () => { btn.style.background = 'transparent'; btn.style.transform = 'scale(1)'; };
-    btn.onclick = () => { if (window._runCommand) window._runCommand(c.cmd); };
+    btn.onclick = () => {
+      if (window._runCommand) window._runCommand(c.cmd);
+      // Toggle play/stop button visibility
+      if (c.isPlay || c.isStop) {
+        toolbar.querySelectorAll('[data-play-btn]').forEach(b => {
+          b.style.display = c.isPlay ? 'none' : 'flex';
+        });
+        toolbar.querySelectorAll('[data-stop-btn]').forEach(b => {
+          b.style.display = c.isPlay ? 'flex' : 'none';
+        });
+      }
+    };
+    if (c.isPlay) { btn.setAttribute('data-play-btn', '1'); btn.style.background = 'rgba(34,197,94,0.2)'; btn.style.border = '1px solid #22c55e'; }
+    if (c.isStop) { btn.setAttribute('data-stop-btn', '1'); btn.style.display = 'none'; btn.style.background = 'rgba(239,68,68,0.2)'; btn.style.border = '1px solid #ef4444'; }
     toolbar.appendChild(btn);
   });
   
