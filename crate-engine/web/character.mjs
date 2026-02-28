@@ -603,7 +603,7 @@ class CharacterStateMachine {
     const c = this.controller;
     const animMap = {
       [CharacterState.IDLE]: 'idle',
-      [CharacterState.WALK]: 'walking',
+      [CharacterState.WALK]: 'walk',
       [CharacterState.RUN]: 'run',
       [CharacterState.JUMP]: 'jump',
       [CharacterState.FALL]: 'jump',  // reuse jump anim for fall
@@ -613,8 +613,8 @@ class CharacterStateMachine {
       [CharacterState.ATTACK_2]: 'attack',
       [CharacterState.ATTACK_3]: 'swordAttackJump',
       [CharacterState.HEAVY_ATTACK]: 'swordAttackJump',
-      [CharacterState.BLOCK]: 'idle_swordLeft',
-      [CharacterState.HIT]: 'idle',
+      [CharacterState.BLOCK]: 'block',
+      [CharacterState.HIT]: 'hit',
       [CharacterState.DEATH]: 'death',
       [CharacterState.SWIM]: 'walking', // placeholder
       [CharacterState.AIM]: 'idle_swordRight',
@@ -875,13 +875,16 @@ class CharacterController {
           const nameMap = {
             'idle': 'idle', 'idle_neutral': 'idle',
             'walking': 'walk', 'walk': 'walk',
-            'run': 'run',
-            'jump': 'jump',
-            'roll': 'roll', 'roll_sword': 'roll',
-            'death': 'death',
-            'idle_swordleft': 'idle_sword', 'idle_swordright': 'idle_gun',
-            'run_swordattack': 'run_attack', 'run_swordright': 'run_attack',
-            'swordattackjump': 'jump_attack',
+            'run': 'run', 'running': 'run',
+            'jump': 'jump', 'jump_full_short': 'jump',
+            'roll': 'roll', 'roll_sword': 'roll', 'dodge': 'roll',
+            'death': 'death', 'die': 'death',
+            'idle_swordleft': 'idle_swordLeft', 'idle_swordright': 'idle_swordRight',
+            'run_swordattack': 'attack', 'run_swordright': 'run_attack',
+            'swordattack': 'attack', 'sword_attack': 'attack',
+            'swordattackjump': 'swordAttackJump',
+            'hit': 'hit', 'gethit': 'hit', 'get_hit': 'hit',
+            'block': 'block', 'shield_block': 'block',
           };
           const stdName = nameMap[name] || name;
           
