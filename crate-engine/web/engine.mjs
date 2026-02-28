@@ -11250,8 +11250,8 @@ async function execSingle(cmd) {
   
   // Smart model search — "search car", "find zombie", "browse weapons"
   const searchMatch = lower.match(/^(?:search|find|browse|look for|show)\s+(.+)/);
-  if (searchMatch) {
-    const query = searchMatch[1];
+  if (modelSearchMatch) {
+    const query = modelSearchMatch[1];
     const results = searchModels(query, 15);
     if (results.length === 0) {
       return '🔍 No models found for "' + query + '"';
@@ -11262,6 +11262,35 @@ async function execSingle(cmd) {
     }
     msg += '\nUse: add <model-name> to place one';
     appendToOutput(msg);
+    return msg;
+  }
+
+  
+  if (lower === "models" || lower === "model count" || lower === "how many models" || lower === "library") {
+    const count = Object.keys(GLB_MODELS).length;
+    return "📚 Crate Engine Model Library: " + count + "+ models\n\nCategories:\n  🚗 Vehicles: sedan, SUV, taxi, ambulance, ferrari, truck\n  🏢 Buildings: houses, offices, shops, skyscrapers\n  🛋️ Furniture: tables, chairs, sofas, beds, shelves\n  ⚔️ Weapons: swords, axes, bows, blasters, shields\n  🌿 Nature: trees, rocks, plants, flowers\n  🛤️ Roads: straight, curved, intersections\n  🧟 Characters: NPCs, zombies, skeletons, dragons\n  🏴‍☠️ Themed: pirate, medieval, dungeon, sci-fi, horror\n\nUse: search [keyword] to find specific models\nUse: add [name] to place in scene";
+  }
+
+  
+  // ═══ MODEL SEARCH — "search car", "find weapon", "browse furniture" ═══
+  const modelSearchMatch = lower.match(/^(?:search|find|browse|list|show)\s+(?:models?\s+)?(?:for\s+)?(.+)/);
+  if (modelSearchMatch) {
+    const query = modelSearchMatch[1].toLowerCase().trim();
+    const results = [];
+    const glbKeys = Object.keys(GLB_MODELS);
+    for (const key of glbKeys) {
+      if (key.includes(query) || GLB_MODELS[key].includes(query)) {
+        results.push(key);
+      }
+    }
+    if (results.length === 0) {
+      return "🔍 No models found for '" + query + "'. Try: car, building, weapon, furniture, tree, road";
+    }
+    const shown = results.slice(0, 30);
+    const msg = "🔍 Found " + results.length + " models for '" + query + "':\n" + 
+      shown.map(r => "  • " + r).join("\n") +
+      (results.length > 30 ? "\n  ... and " + (results.length - 30) + " more" : "") +
+      "\n\nUse: add [name] to place one in your scene";
     return msg;
   }
 
