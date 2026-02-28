@@ -918,6 +918,8 @@ setTimeout(() => {
     });
         canvasEl.addEventListener('click', () => { if (playMode) canvasEl.requestPointerLock(); });
     document.addEventListener('pointermove', (e) => {
+      // Skip when character controller handles camera
+      if (characterController && characterController.model) return;
       if (playMode && document.pointerLockElement === canvasEl) {
         playYaw -= e.movementX * 0.002;
         const pitch = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x - e.movementY * 0.002));
@@ -8415,6 +8417,10 @@ async function execSingle(cmd) {
         await characterController.loadCharacter(selectedCharacterType || 'knight');
       }
     }
+    // Auto-generate a starter world if scene is empty (no user-placed objects)
+    if (!objects || objects.filter(o => o && o.userData && o.userData.name).length === 0) {
+      try { await parseAndExecute('generate town'); } catch(e) { console.warn('Auto-world gen failed:', e); }
+    }
     // Spawn at origin ON TOP of terrain
     { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.position.set(0, _sy, 0); } }
     characterController.health = characterController.maxHealth;
@@ -8441,7 +8447,18 @@ async function execSingle(cmd) {
       window._demoPhase = 0;
     } else {
       const canvas = document.querySelector('canvas');
-      if (canvas) canvas.requestPointerLock();
+      // Show click-to-play overlay (browsers require user gesture for pointer lock)
+      if (canvas && !document.pointerLockElement) {
+        const overlay = document.createElement('div');
+        overlay.id = 'click-to-play';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);cursor:pointer;';
+        overlay.innerHTML = '<div style="text-align:center;color:white;font-family:monospace;"><div style="font-size:48px;margin-bottom:16px;">🎮</div><div style="font-size:24px;">Click to Play</div><div style="font-size:14px;opacity:0.7;margin-top:8px;">WASD move · Shift run · Mouse look</div></div>';
+        overlay.addEventListener('click', () => {
+          overlay.remove();
+          canvas.requestPointerLock();
+        });
+        document.body.appendChild(overlay);
+      }
     }
     // Init crafting
     if (!craftingSystem) craftingSystem = new CraftingSystem(characterController);
