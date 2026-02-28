@@ -11922,7 +11922,7 @@ function serializeScene() {
     version: 2,
     commands: sceneHistory.filter(c => c !== 'clear' && c !== 'reset'),
     weather: weatherSystem || null,
-    time: currentTime || null,
+    time: null, // TODO: track time of day
   });
 }
 
