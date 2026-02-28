@@ -317,7 +317,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=109'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=110'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -8418,7 +8418,7 @@ async function execSingle(cmd) {
       }
     }
     // Auto-generate a starter world if scene is empty (no user-placed objects)
-    if (!objects || objects.filter(o => o && o.userData && o.userData.name).length === 0) {
+    if (!objects || objects.filter(o => o && o.userData && o.userData.name && !o.userData.name.startsWith('player_')).length === 0) {
       try { await parseAndExecute('generate town'); } catch(e) { console.warn('Auto-world gen failed:', e); }
     }
     // Spawn at origin ON TOP of terrain
