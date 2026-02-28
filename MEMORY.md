@@ -11,7 +11,7 @@
 ## Active Projects
 
 ### Crate Engine — Browser 3D Game Engine
-- **Location:** `koko-engine/` in workspace
+- **Location:** `crate-engine/` in workspace
 - **Web source:** `web/engine.mjs` (~13,000+ lines), `web/character.mjs` (~5,000+ lines)
 - **Current version:** engine.mjs v132, character.mjs v74, index.html v=132
 - **Deploy:** `npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true`
