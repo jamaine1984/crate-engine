@@ -9502,6 +9502,58 @@ async function execSingle(cmd) {
     return '💾 Saves: ' + saves.map((s,i) => s.name).join(', ');
   }
 
+  
+  // === ADD STAIRS ===
+  if (lower.match(/^add\s+(stairs|staircase|ramp)(?:\s+at\s+(-?[\d.]+)\s+(-?[\d.]+))?$/)) {
+    const sm = lower.match(/^add\s+(stairs|staircase|ramp)(?:\s+at\s+(-?[\d.]+)\s+(-?[\d.]+))?$/);
+    const isRamp = sm[1] === 'ramp';
+    const sx = sm[2] ? parseFloat(sm[2]) : 0;
+    const sz = sm[3] ? parseFloat(sm[3]) : 0;
+    
+    const group = new THREE.Group();
+    const stepMat = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.8 });
+    
+    if (isRamp) {
+      // Simple ramp
+      const rampGeo = new THREE.BoxGeometry(2, 0.15, 6);
+      const ramp = new THREE.Mesh(rampGeo, stepMat);
+      ramp.rotation.x = -Math.PI / 8; // ~22 degree slope
+      ramp.position.set(0, 1.5, 0);
+      ramp.castShadow = true; ramp.receiveShadow = true;
+      group.add(ramp);
+    } else {
+      // Staircase — 15 steps, each 0.2m high, 0.3m deep, 1.5m wide
+      const numSteps = 15;
+      const stepH = 0.2, stepD = 0.3, stepW = 1.5;
+      for (let i = 0; i < numSteps; i++) {
+        const stepGeo = new THREE.BoxGeometry(stepW, stepH, stepD);
+        const step = new THREE.Mesh(stepGeo, stepMat);
+        step.position.set(0, i * stepH + stepH / 2, i * stepD);
+        step.castShadow = true; step.receiveShadow = true;
+        group.add(step);
+      }
+      // Side rails
+      const railMat = new THREE.MeshStandardMaterial({ color: 0x654321, roughness: 0.7 });
+      for (const side of [-1, 1]) {
+        const railGeo = new THREE.BoxGeometry(0.05, 1, numSteps * stepD);
+        const rail = new THREE.Mesh(railGeo, railMat);
+        rail.position.set(side * (stepW / 2 + 0.05), numSteps * stepH / 2 + 0.5, numSteps * stepD / 2);
+        rail.castShadow = true;
+        group.add(rail);
+      }
+    }
+    
+    const ty = getTerrainY(sx, sz);
+    group.position.set(sx, ty, sz);
+    group.userData.name = isRamp ? 'ramp' : 'stairs';
+    group.userData.isSolid = true;
+    group.userData.isGLB = false;
+    scene.add(group);
+    objects.push(group);
+    if (window._addToCollision) window._addToCollision(group);
+    return '🪜 Added ' + (isRamp ? 'ramp' : 'stairs') + ' at ' + sx + ', ' + sz;
+  }
+
   // === GENERIC ADD <THING> HANDLER ===
   // Catch-all for "add <name> [at X Z]" using GLB_MODELS lookup
   {
@@ -10792,6 +10844,36 @@ function updateDayNightCycle(dt) {
 }
 
 
+
+// === DISTANCE-BASED LOD ===
+// Every 30 frames, adjust detail on distant objects
+let _lodFrame = 0;
+function updateLOD(cameraPos) {
+  _lodFrame++;
+  if (_lodFrame % 30 !== 0) return;
+  
+  const objects = window._sceneObjects || [];
+  for (const obj of objects) {
+    if (!obj || !obj.position) continue;
+    const dist = cameraPos.distanceTo(obj.position);
+    
+    // Far objects: disable shadows to save GPU
+    if (dist > 80) {
+      obj.traverse(c => { if (c.isMesh) { c.castShadow = false; } });
+    } else if (dist < 60) {
+      obj.traverse(c => { if (c.isMesh) { c.castShadow = true; } });
+    }
+    
+    // Very far objects: hide completely
+    if (dist > 200) {
+      if (obj.visible) obj.visible = false;
+    } else if (!obj.visible) {
+      obj.visible = true;
+    }
+  }
+}
+window._updateLOD = updateLOD;
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -11065,6 +11147,7 @@ function animate() {
       characterController.jumpVelocity = 0;
     }
     if (window._gamepad) window._gamepad.update();
+    if (window._updateLOD) window._updateLOD(camera.position);
     characterController.update(dt);
     if (npcController) {
       // Zone-based aggro — NPCs only engage when player enters their zone
