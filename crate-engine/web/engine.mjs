@@ -6552,6 +6552,448 @@ function createInteriorHouse(opts) {
 
 
 // === MODERN FURNISHED HOUSE (HD GLB Models) ===
+// === PROCEDURAL BUILDING SYSTEM ===
+
+function createSkyscraper(opts) {
+  const o = opts || {};
+  const floors = o.floors || (10 + Math.floor(Math.random() * 20));
+  const w = o.width || (10 + Math.random() * 8);
+  const d = o.depth || (10 + Math.random() * 8);
+  const floorH = 3.5;
+  const totalH = floors * floorH;
+  const g = new THREE.Group();
+  g.userData.name = 'Skyscraper (' + floors + 'F)';
+  g.userData.isBuilding = true;
+  g.userData.isSolid = true;
+  const style = Math.floor(Math.random() * 4);
+  const frameColors = [0x334455, 0x444444, 0x553333, 0x222222];
+  const glassColors = [0x88bbdd, 0xaacccc, 0xddccaa, 0x99aabb];
+  const frameMat = makeMat(frameColors[style], {rough: 0.3, metal: 0.7});
+  const glassMat = new THREE.MeshPhysicalMaterial({color: glassColors[style], roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.35, side: THREE.DoubleSide});
+  const floorMat2 = makeMat(0x666666, {rough: 0.6});
+  const ledgeMat = makeMat(0x888888, {rough: 0.4, metal: 0.5});
+  const colW = 0.4;
+  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx,sz]) => {
+    const col = new THREE.Mesh(new THREE.BoxGeometry(colW, totalH, colW), frameMat);
+    col.position.set(sx*w/2, totalH/2, sz*d/2); col.castShadow=true; col.userData.isSolid=true; g.add(col);
+  });
+  for (let fl = 0; fl < floors; fl++) {
+    const y = fl * floorH;
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.15, d+0.4), floorMat2);
+    slab.position.y = y + 0.075; slab.receiveShadow=true; slab.userData.isSolid=true; g.add(slab);
+    [d/2, -d/2].forEach(z => {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.2, 0.15), frameMat);
+      beam.position.set(0, y+floorH-0.1, z); g.add(beam);
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.2, 0.15), frameMat);
+      sill.position.set(0, y+0.8, z); g.add(sill);
+    });
+    [w/2, -w/2].forEach(x => {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, d+0.4), frameMat);
+      beam.position.set(x, y+floorH-0.1, 0); g.add(beam);
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, d+0.4), frameMat);
+      sill.position.set(x, y+0.8, 0); g.add(sill);
+    });
+    const glassH = floorH - 1.2;
+    [1,-1].forEach(side => {
+      const front = new THREE.Mesh(new THREE.PlaneGeometry(w-colW, glassH), glassMat);
+      front.position.set(0, y+0.9+glassH/2, side*d/2);
+      if(side<0) front.rotation.y = Math.PI; g.add(front);
+    });
+    [1,-1].forEach(side => {
+      const sideW = new THREE.Mesh(new THREE.PlaneGeometry(d-colW, glassH), glassMat);
+      sideW.position.set(side*w/2, y+0.9+glassH/2, 0); sideW.rotation.y = side*Math.PI/2; g.add(sideW);
+    });
+    const mullionCount = Math.floor(w / 2.5);
+    for (let m = 1; m < mullionCount; m++) {
+      const mx = -w/2 + colW/2 + m*(w-colW)/mullionCount;
+      [d/2,-d/2].forEach(z => {
+        const mull = new THREE.Mesh(new THREE.BoxGeometry(0.06, glassH, 0.06), frameMat);
+        mull.position.set(mx, y+0.9+glassH/2, z); g.add(mull);
+      });
+    }
+    if (fl % 2 === 0) {
+      const light = new THREE.PointLight(0xfff5e0, 0.3, w*1.5);
+      light.position.set(0, y+floorH-0.3, 0); g.add(light);
+    }
+    if (fl > 0 && fl % 5 === 0) {
+      const ledge = new THREE.Mesh(new THREE.BoxGeometry(w+0.6, 0.12, d+0.6), ledgeMat);
+      ledge.position.y = y; g.add(ledge);
+    }
+  }
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.3, d+0.4), ledgeMat);
+  roof.position.y = totalH+0.15; g.add(roof);
+  const ac = new THREE.Mesh(new THREE.BoxGeometry(2,1,1.5), makeMat(0x888888,{rough:0.6}));
+  ac.position.set(w*0.2, totalH+0.8, 0); g.add(ac);
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,4), makeMat(0xaaaaaa,{rough:0.3,metal:0.8}));
+  antenna.position.set(-w*0.2, totalH+2.3, -d*0.2); g.add(antenna);
+  const entrGlass = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), glassMat);
+  entrGlass.position.set(0, 1.5, d/2+0.02); g.add(entrGlass);
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(4, 0.08, 1.5), ledgeMat);
+  awning.position.set(0, 3.2, d/2+0.8); g.add(awning);
+  return g;
+}
+
+function createCommercialBuilding(opts) {
+  const o = opts || {};
+  const type = o.type || ['salon','barber','grocery','clothing','restaurant','pharmacy','bank','cafe','gym','laundry'][Math.floor(Math.random()*10)];
+  const w = o.width || 12; const d = o.depth || 10; const h = o.height || 4.5;
+  const g = new THREE.Group();
+  g.userData.name = type.charAt(0).toUpperCase() + type.slice(1);
+  g.userData.isBuilding = true; g.userData.isInterior = true; g.userData.isSolid = true;
+  const storeColors = {salon:0xdd88aa, barber:0x4466aa, grocery:0x44aa44, clothing:0xaa4488, restaurant:0xcc6633, pharmacy:0x44aaaa, bank:0x555566, cafe:0x886644, gym:0x444444, laundry:0x6688aa};
+  const mainColor = storeColors[type] || 0x888888;
+  const wallMat = makeMat(0xe8e0d5, {rough: 0.7});
+  const glassMat = new THREE.MeshPhysicalMaterial({color:0x88ccee, roughness:0.05, metalness:0.2, transparent:true, opacity:0.25, side: THREE.DoubleSide});
+  const signMat = makeMat(mainColor, {rough: 0.3});
+  const trimMat = makeMat(0x333333, {rough: 0.4});
+  const floorMat2 = makeMat(0x8B6B4A, {rough: 0.75});
+  const intWallMat = makeMat(0xf0ece3, {rough: 0.85});
+  const wallT = 0.18;
+  // Floor
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.15, d+0.4), makeMat(0x888888,{rough:0.7}));
+  slab.position.y=0.075; slab.receiveShadow=true; slab.userData.isSolid=true; g.add(slab);
+  const ifl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), floorMat2);
+  ifl.position.y=0.165; ifl.receiveShadow=true; g.add(ifl);
+  // Walls - front has large store window
+  const dw = 1.2, dh = 2.2;
+  // Front left wall
+  const fL = new THREE.Mesh(new THREE.BoxGeometry(w*0.25, h, wallT), wallMat);
+  fL.position.set(-w*0.375, h/2, d/2+wallT/2); fL.castShadow=true; fL.userData.isSolid=true; g.add(fL);
+  // Front right (door area)
+  const fR = new THREE.Mesh(new THREE.BoxGeometry(w*0.15, h, wallT), wallMat);
+  fR.position.set(w*0.425, h/2, d/2+wallT/2); fR.castShadow=true; fR.userData.isSolid=true; g.add(fR);
+  // Above store window
+  const fT = new THREE.Mesh(new THREE.BoxGeometry(w*0.6, h*0.3, wallT), wallMat);
+  fT.position.set(0, h*0.85, d/2+wallT/2); fT.userData.isSolid=true; g.add(fT);
+  // Below store window
+  const fB = new THREE.Mesh(new THREE.BoxGeometry(w*0.6, 0.5, wallT), wallMat);
+  fB.position.set(0, 0.25, d/2+wallT/2); g.add(fB);
+  // Large glass storefront
+  const storeGlass = new THREE.Mesh(new THREE.PlaneGeometry(w*0.55, h*0.55), glassMat);
+  storeGlass.position.set(-w*0.05, h*0.45, d/2+wallT+0.01); g.add(storeGlass);
+  // Door
+  const door = new THREE.Mesh(new THREE.BoxGeometry(dw, dh, 0.06), makeMat(0x5a3a1a,{rough:0.7}));
+  door.position.set(w*0.32, dh/2, d/2+wallT/2); g.add(door);
+  // Sign band
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(w+0.2, 0.8, 0.15), signMat);
+  sign.position.set(0, h-0.2, d/2+0.15); g.add(sign);
+  // Awning
+  const awn = new THREE.Mesh(new THREE.BoxGeometry(w*0.7, 0.05, 1.8), makeMat(mainColor,{rough:0.6}));
+  awn.position.set(0, h*0.65, d/2+1); awn.rotation.x=-0.12; g.add(awn);
+  // Back + side walls
+  const bw = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), wallMat);
+  bw.position.set(0, h/2, -(d/2+wallT/2)); bw.castShadow=true; bw.userData.isSolid=true; g.add(bw);
+  [-1,1].forEach(side => {
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(wallT, h, d), wallMat);
+    sw.position.set(side*(w/2+wallT/2), h/2, 0); sw.castShadow=true; sw.userData.isSolid=true; g.add(sw);
+  });
+  // Interior walls
+  [[0,h/2,-(d/2-0.01),w,h,0],[0,h/2,d/2-0.01,w,h,Math.PI],
+   [-(w/2-0.01),h/2,0,d,h,Math.PI/2],[w/2-0.01,h/2,0,d,h,-Math.PI/2]].forEach(([x,y,z,sx,sy,ry])=>{
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(sx,sy), intWallMat);
+    p.position.set(x,y,z); p.rotation.y=ry; p.receiveShadow=true; g.add(p);
+  });
+  // Ceiling + roof
+  const ceil = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2, 0.12, d+wallT*2), makeMat(0x888888,{rough:0.6}));
+  ceil.position.y=h; ceil.receiveShadow=true; ceil.userData.isSolid=true; g.add(ceil);
+  const parapet = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.4, d+0.4), makeMat(0x999999,{rough:0.6}));
+  parapet.position.y=h+0.2; g.add(parapet);
+  // Interior light
+  const cL = new THREE.PointLight(0xfff0dd, 1.0, w*2);
+  cL.position.set(0, h-0.2, 0); g.add(cL);
+  // Furniture based on type
+  const furniture = [];
+  if (type==='salon'||type==='barber') {
+    furniture.push({m:'ph_ArmChair_01',p:[-w*0.2,0.18,0],s:1.5},{m:'ph_ArmChair_01',p:[w*0.1,0.18,0],s:1.5});
+    furniture.push({m:'ph_Shelf_01',p:[-w*0.35,0.18,-d*0.35],s:1.3});
+  } else if (type==='grocery') {
+    furniture.push({m:'ph_Shelf_01',p:[-w*0.25,0.18,-d*0.2],s:1.5},{m:'ph_Shelf_01',p:[w*0.1,0.18,-d*0.2],s:1.5});
+    furniture.push({m:'ph_WoodenTable_01',p:[0,0.18,d*0.2],s:1.8});
+  } else if (type==='restaurant'||type==='cafe') {
+    furniture.push({m:'ph_WoodenTable_01',p:[-w*0.2,0.18,0],s:1.8},{m:'ph_WoodenTable_01',p:[w*0.15,0.18,0],s:1.8});
+    furniture.push({m:'ph_WoodenChair_01',p:[-w*0.3,0.18,0.5],r:Math.PI/2,s:1.3},{m:'ph_WoodenChair_01',p:[-w*0.1,0.18,0.5],r:-Math.PI/2,s:1.3});
+    furniture.push({m:'ph_WoodenChair_01',p:[w*0.05,0.18,0.5],r:Math.PI/2,s:1.3},{m:'ph_WoodenChair_01',p:[w*0.25,0.18,0.5],r:-Math.PI/2,s:1.3});
+  } else if (type==='bank') {
+    furniture.push({m:'ph_WoodenTable_01',p:[0,0.18,-d*0.2],s:2.0});
+    furniture.push({m:'ph_ArmChair_01',p:[0,0.18,-d*0.05],r:Math.PI,s:1.5});
+  } else {
+    furniture.push({m:'ph_Shelf_01',p:[-w*0.3,0.18,-d*0.3],s:1.3});
+    furniture.push({m:'ph_WoodenTable_01',p:[0,0.18,d*0.1],s:1.8});
+  }
+  furniture.forEach(f => {
+    gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
+      const obj=gltf.scene; obj.position.set(f.p[0],f.p[1],f.p[2]);
+      if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
+      obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
+    },null,()=>{});
+  });
+  return g;
+}
+
+function createPitchedRoofHouse(opts) {
+  const o = opts || {};
+  const w = o.width || 12; const d = o.depth || 10; const wallH = 3.2;
+  const floors = o.floors || 2; const totalH = wallH * floors;
+  const roofPitch = o.pitch || 0.4; const roofH = (w/2) * roofPitch;
+  const wallT = 0.18;
+  const style = o.style || ['siding','brick','stucco'][Math.floor(Math.random()*3)];
+  const g = new THREE.Group();
+  g.userData.name = (o.name||'House')+' ('+style+')';
+  g.userData.isBuilding=true; g.userData.isInterior=true; g.userData.isSolid=true;
+  g.userData.interiorBounds = {width:w, depth:d, height:totalH, floors};
+  const extColors = {brick:0x8B4513, siding:0xd4c9a8, stucco:0xe0d8c8};
+  const extMat = makeMat(extColors[style]||0xd4c9a8, {rough: style==='brick'?0.85:0.7});
+  const intWallMat = makeMat(0xf0ece3, {rough:0.85});
+  const floorMat2 = makeMat(0x8B6B4A, {rough:0.75});
+  const roofColors = [0x553333,0x444455,0x335533,0x554433];
+  const roofMat = makeMat(roofColors[Math.floor(Math.random()*roofColors.length)], {rough:0.7});
+  const glassMat = new THREE.MeshPhysicalMaterial({color:0x88ccee, roughness:0.05, metalness:0.1, transparent:true, opacity:0.25, side:THREE.DoubleSide});
+  const trimMat = makeMat(0xf0ece3, {rough:0.6});
+  const doorMat = makeMat(0x5a3a1a, {rough:0.7});
+  const stairMat = makeMat(0x5a3a1a, {rough:0.8});
+  for (let fl = 0; fl < floors; fl++) {
+    const by = fl * wallH;
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2+0.2, 0.15, d+wallT*2+0.2), fl===0?makeMat(0x888888,{rough:0.7}):floorMat2);
+    slab.position.set(0,by+0.075,0); slab.receiveShadow=true; slab.userData.isSolid=true; g.add(slab);
+    const ifl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), floorMat2);
+    ifl.position.set(0,by+0.165,0); ifl.receiveShadow=true; g.add(ifl);
+    if (fl === 0) {
+      const dw=1.2, dh=2.2, halfSide=(w-dw)/2;
+      const fL = new THREE.Mesh(new THREE.BoxGeometry(halfSide, wallH, wallT), extMat);
+      fL.position.set(-(dw/2+halfSide/2), by+wallH/2, d/2+wallT/2); fL.castShadow=true; fL.userData.isSolid=true; g.add(fL);
+      const fR = new THREE.Mesh(new THREE.BoxGeometry(halfSide, wallH, wallT), extMat);
+      fR.position.set(dw/2+halfSide/2, by+wallH/2, d/2+wallT/2); fR.castShadow=true; fR.userData.isSolid=true; g.add(fR);
+      const fT = new THREE.Mesh(new THREE.BoxGeometry(dw, wallH-dh, wallT), extMat);
+      fT.position.set(0, by+dh+(wallH-dh)/2, d/2+wallT/2); fT.userData.isSolid=true; g.add(fT);
+      const door = new THREE.Mesh(new THREE.BoxGeometry(dw, dh, 0.06), doorMat);
+      door.position.set(0,by+dh/2,d/2+wallT/2); g.add(door);
+      [[-(dw/2),dh/2,0.06,dh,0.04],[dw/2,dh/2,0.06,dh,0.04],[0,dh,dw+0.12,0.06,0.04]].forEach(([x,y,sx,sy,sz])=>{
+        const fr = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), trimMat); fr.position.set(x,by+y,d/2+wallT/2); g.add(fr);
+      });
+      [-w*0.32, w*0.32].forEach(x => {
+        const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.2), glassMat);
+        gl.position.set(x, by+wallH*0.55, d/2+wallT+0.01); g.add(gl);
+        const wf = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.3, 0.03), trimMat);
+        wf.position.set(x, by+wallH*0.55, d/2+wallT/2); g.add(wf);
+      });
+    } else {
+      const fw = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, wallT), extMat);
+      fw.position.set(0,by+wallH/2,d/2+wallT/2); fw.castShadow=true; fw.userData.isSolid=true; g.add(fw);
+      [-w*0.3,0,w*0.3].forEach(x => {
+        const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), glassMat);
+        gl.position.set(x,by+wallH*0.55,d/2+wallT+0.01); g.add(gl);
+        const wf = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.3, 0.03), trimMat);
+        wf.position.set(x,by+wallH*0.55,d/2+wallT/2); g.add(wf);
+      });
+    }
+    const bw = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, wallT), extMat);
+    bw.position.set(0,by+wallH/2,-(d/2+wallT/2)); bw.castShadow=true; bw.userData.isSolid=true; g.add(bw);
+    [-w*0.25,w*0.25].forEach(x => {
+      const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.2), glassMat);
+      gl.position.set(x,by+wallH*0.55,-(d/2+wallT+0.01)); gl.rotation.y=Math.PI; g.add(gl);
+      const wf = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.3, 0.03), trimMat);
+      wf.position.set(x,by+wallH*0.55,-(d/2+wallT/2)); g.add(wf);
+    });
+    [-1,1].forEach(side => {
+      const sw = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, d), extMat);
+      sw.position.set(side*(w/2+wallT/2),by+wallH/2,0); sw.castShadow=true; sw.userData.isSolid=true; g.add(sw);
+      [-d*0.25,d*0.25].forEach(z => {
+        const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.0), glassMat);
+        gl.position.set(side*(w/2+wallT+0.01),by+wallH*0.55,z); gl.rotation.y=side*Math.PI/2; g.add(gl);
+      });
+    });
+    [[0,wallH/2,-(d/2-0.01),w,wallH,0],[0,wallH/2,d/2-0.01,w,wallH,Math.PI],
+     [-(w/2-0.01),wallH/2,0,d,wallH,Math.PI/2],[w/2-0.01,wallH/2,0,d,wallH,-Math.PI/2]].forEach(([x,y,z,sx,sy,ry])=>{
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(sx,sy), intWallMat);
+      p.position.set(x,by+y,z); p.rotation.y=ry; p.receiveShadow=true; g.add(p);
+    });
+    const ceil = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2, 0.12, d+wallT*2), fl===floors-1?makeMat(0x8B6B4A,{rough:0.8}):makeMat(0xf5f2ee,{rough:0.9}));
+    ceil.position.set(0,by+wallH,0); ceil.receiveShadow=true; ceil.userData.isSolid=true; g.add(ceil);
+    const cL = new THREE.PointLight(0xfff0dd, 1.2, w*2);
+    cL.position.set(0,by+wallH-0.2,0); g.add(cL);
+    const furniture = [];
+    if (fl===0) {
+      furniture.push({m:'ph_Sofa_01',p:[-w*0.2,0.18,d*0.15],r:Math.PI,s:1.8});
+      furniture.push({m:'ph_ArmChair_01',p:[w*0.25,0.18,d*0.2],r:-Math.PI/4,s:1.5});
+      furniture.push({m:'ph_CoffeeTable_01',p:[0,0.18,d*0.1],s:1.5});
+      furniture.push({m:'ph_Television_01',p:[0,0.9,-d*0.35],s:2.0});
+      furniture.push({m:'ph_electric_stove',p:[w*0.3,0.18,-d*0.35],s:1.0});
+      furniture.push({m:'ph_WoodenTable_01',p:[-w*0.3,0.18,-d*0.2],s:2.0});
+      furniture.push({m:'ph_WoodenChair_01',p:[-w*0.4,0.18,-d*0.1],r:Math.PI/2,s:1.3});
+      furniture.push({m:'ph_WoodenChair_01',p:[-w*0.2,0.18,-d*0.1],r:-Math.PI/2,s:1.3});
+    }
+    if (fl===1) {
+      furniture.push({m:'ph_GothicBed_01',p:[-w*0.2,0.18,0],s:1.8});
+      furniture.push({m:'ph_drawer_cabinet',p:[w*0.3,0.18,-d*0.35],s:1.3});
+      furniture.push({m:'ph_desk_lamp_arm_01',p:[w*0.3,0.9,-d*0.35],s:0.8});
+      furniture.push({m:'ph_Rockingchair_01',p:[w*0.25,0.18,d*0.2],r:-Math.PI/3,s:1.3});
+    }
+    furniture.forEach(f => {
+      gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
+        const obj=gltf.scene; obj.position.set(f.p[0],f.p[1]+by,f.p[2]);
+        if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
+        obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
+      },null,()=>{});
+    });
+  }
+  if (floors > 1) {
+    const sw2=1.0, steps=12, stepH=wallH/steps, stepD=(d*0.5)/steps;
+    for (let s=0; s<steps; s++) {
+      const st = new THREE.Mesh(new THREE.BoxGeometry(sw2, stepH, stepD+0.02), stairMat);
+      st.position.set(w/2-sw2/2-0.3, s*stepH+stepH/2, d/2-0.8-s*stepD);
+      st.receiveShadow=true; st.userData.isStair=true; st.userData.isSolid=true; g.add(st);
+    }
+  }
+  const roofShape = new THREE.Shape();
+  roofShape.moveTo(-w/2-0.5, 0); roofShape.lineTo(0, roofH); roofShape.lineTo(w/2+0.5, 0); roofShape.closePath();
+  const roofGeo = new THREE.ExtrudeGeometry(roofShape, {depth:d+1, bevelEnabled:false});
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.set(0, totalH, -d/2-0.5); roof.castShadow=true; g.add(roof);
+  if (Math.random()>0.3) {
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.6, roofH+1.5, 0.6), makeMat(0x884444,{rough:0.8}));
+    chimney.position.set(w*0.25, totalH+roofH*0.5+0.5, -d*0.2); chimney.castShadow=true; g.add(chimney);
+  }
+  const porch = new THREE.Mesh(new THREE.BoxGeometry(4, 0.15, 2), makeMat(0x888888,{rough:0.7}));
+  porch.position.set(0,0.075,d/2+1.2); porch.receiveShadow=true; g.add(porch);
+  const porchRoof = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.08, 2.5), roofMat);
+  porchRoof.position.set(0,2.6,d/2+1.3); g.add(porchRoof);
+  [-1.8,1.8].forEach(x => {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.5), trimMat);
+    col.position.set(x,1.3,d/2+2.2); g.add(col);
+  });
+  return g;
+}
+
+function createMansion(opts) {
+  return createPitchedRoofHouse({width:18, depth:14, floors:2, pitch:0.45, name:'Mansion', style:(opts||{}).style||'brick', ...(opts||{})});
+}
+
+function createDuplex(opts) {
+  const g = new THREE.Group(); g.userData.name='Duplex'; g.userData.isBuilding=true;
+  const left = createPitchedRoofHouse({width:8, depth:8, floors:2, style:'siding'});
+  left.position.x=-4.5; g.add(left);
+  const right = createPitchedRoofHouse({width:8, depth:8, floors:2, style:'siding'});
+  right.position.x=4.5; g.add(right);
+  return g;
+}
+
+function createRanchHouse(opts) {
+  return createPitchedRoofHouse({width:16, depth:10, floors:1, pitch:0.25, name:'Ranch House', style:'siding', ...(opts||{})});
+}
+
+function createSwimmingPool(opts) {
+  const o = opts || {}; const w = o.width || 8; const d = o.depth || 4;
+  const g = new THREE.Group(); g.userData.name = 'Swimming Pool';
+  const tileMat = makeMat(0x4488aa, {rough:0.15});
+  const deckMat = makeMat(0xccbbaa, {rough:0.6});
+  const waterMat = new THREE.MeshPhysicalMaterial({color:0x2288cc, roughness:0.0, transparent:true, opacity:0.6});
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(w+2, 0.15, d+2), deckMat);
+  deck.position.y=0.075; deck.receiveShadow=true; g.add(deck);
+  const bottom = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), tileMat);
+  bottom.position.y=-1.5; g.add(bottom);
+  [[0,-0.75,d/2,w,1.5,0.1],[0,-0.75,-d/2,w,1.5,0.1],[w/2,-0.75,0,0.1,1.5,d],[-w/2,-0.75,0,0.1,1.5,d]].forEach(([x,y,z,sx,sy,sz])=>{
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), tileMat); wall.position.set(x,y,z); g.add(wall);
+  });
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(w-0.1, d-0.1), waterMat);
+  water.rotation.x=-Math.PI/2; water.position.y=-0.1; g.add(water);
+  const edgeMat = makeMat(0xdddddd,{rough:0.3});
+  [[0,0.1,d/2+0.05,w+0.2,0.15,0.15],[0,0.1,-(d/2+0.05),w+0.2,0.15,0.15],[w/2+0.05,0.1,0,0.15,0.15,d+0.2],[-(w/2+0.05),0.1,0,0.15,0.15,d+0.2]].forEach(([x,y,z,sx,sy,sz])=>{
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), edgeMat); edge.position.set(x,y,z); g.add(edge);
+  });
+  return g;
+}
+
+function createStopSign() {
+  const g = new THREE.Group(); g.userData.name='Stop Sign';
+  const poleMat = makeMat(0x888888, {rough:0.3,metal:0.7});
+  const signMat = makeMat(0xcc0000, {rough:0.5});
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,2.5), poleMat);
+  pole.position.y=1.25; g.add(pole);
+  const shape = new THREE.Shape();
+  const r = 0.35;
+  for (let i=0; i<8; i++) {
+    const a = (i/8)*Math.PI*2 - Math.PI/8;
+    if(i===0) shape.moveTo(Math.cos(a)*r, Math.sin(a)*r);
+    else shape.lineTo(Math.cos(a)*r, Math.sin(a)*r);
+  }
+  shape.closePath();
+  const signGeo = new THREE.ExtrudeGeometry(shape, {depth:0.02, bevelEnabled:false});
+  const sign = new THREE.Mesh(signGeo, signMat);
+  sign.position.set(0,2.5,0); g.add(sign);
+  return g;
+}
+
+function createTrafficLight() {
+  const g = new THREE.Group(); g.userData.name='Traffic Light';
+  const poleMat = makeMat(0x555555, {rough:0.3,metal:0.6});
+  const bodyMat = makeMat(0x333333, {rough:0.5});
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,4), poleMat);
+  pole.position.y=2; g.add(pole);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.9, 0.2), bodyMat);
+  body.position.set(0,4.2,0); g.add(body);
+  [[0xcc0000,0.25],[0xcccc00,0],[0x00cc00,-0.25]].forEach(([color,yOff])=>{
+    const light = new THREE.Mesh(new THREE.CircleGeometry(0.08,16), makeMat(color,{rough:0.2,emissive:color,emissiveIntensity:0.3}));
+    light.position.set(0,4.2+yOff,0.11); g.add(light);
+  });
+  return g;
+}
+
+function createRoadSegment(opts) {
+  const o = opts || {}; const length = o.length || 40;
+  const lanes = o.lanes || 2; const laneW = 3.5; const totalW = lanes * laneW;
+  const dir = o.direction || 'ns';
+  const g = new THREE.Group(); g.userData.name='Road';
+  const asphaltMat = makeMat(0x333333, {rough:0.85});
+  const lineMat = makeMat(0xdddddd, {rough:0.5});
+  const yellowMat = makeMat(0xddcc44, {rough:0.5});
+  const sidewalkMat = makeMat(0xaaa898, {rough:0.7});
+  const road = new THREE.Mesh(new THREE.BoxGeometry(totalW, 0.08, length), asphaltMat);
+  road.position.y=0.04; road.receiveShadow=true; g.add(road);
+  [-0.08,0.08].forEach(off => {
+    const cl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.01, length), yellowMat);
+    cl.position.set(off,0.09,0); g.add(cl);
+  });
+  for (let z=-length/2+1; z<length/2; z+=4) {
+    [laneW/2,-laneW/2].forEach(x => {
+      const dash = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.01, 2), lineMat);
+      dash.position.set(x,0.09,z); g.add(dash);
+    });
+  }
+  [-1,1].forEach(side => {
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.01, length), lineMat);
+    edge.position.set(side*(totalW/2-0.3),0.09,0); g.add(edge);
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.12, length), sidewalkMat);
+    sw.position.set(side*(totalW/2+1.5),0.06,0); sw.receiveShadow=true; g.add(sw);
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, length), makeMat(0x999999,{rough:0.6}));
+    curb.position.set(side*(totalW/2+0.08),0.075,0); g.add(curb);
+  });
+  [-length/2+2, length/2-2].forEach(z => {
+    for (let i=0; i<6; i++) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.01, 0.15), lineMat);
+      stripe.position.set(-totalW/2+1+i*(totalW-2)/5,0.09,z); g.add(stripe);
+    }
+  });
+  if (dir==='ew') g.rotation.y = Math.PI/2;
+  return g;
+}
+
+function createIntersection() {
+  const laneW = 3.5; const totalW = 2*laneW; const size = totalW+5;
+  const g = new THREE.Group(); g.userData.name='Intersection';
+  const asphaltMat = makeMat(0x333333, {rough:0.85});
+  const lineMat = makeMat(0xdddddd, {rough:0.5});
+  const sidewalkMat = makeMat(0xaaa898, {rough:0.7});
+  const road = new THREE.Mesh(new THREE.BoxGeometry(size, 0.08, size), asphaltMat);
+  road.position.y=0.04; road.receiveShadow=true; g.add(road);
+  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx,sz])=>{
+    const corner = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.12, 2.5), sidewalkMat);
+    corner.position.set(sx*(size/2+0.5),0.06,sz*(size/2+0.5)); g.add(corner);
+  });
+  return g;
+}
+
+
+
 function createModernHouse(opts) {
   const o = opts || {};
   const w = o.width || 8;
@@ -8920,6 +9362,60 @@ async function execSingle(cmd) {
           { cmd: 'spawn witch', scatter: { count: 2, radius: 25 } },
         ]
       },
+
+      city: {
+        terrain: { type: 'flat', height: 0 },
+        ground: 'grass', env: ['time afternoon'],
+        items: [
+          { cmd: 'add road', pos: [0, -30] },
+          { cmd: 'add road', pos: [0, 10] },
+          { cmd: 'add road', pos: [0, 50] },
+          { cmd: 'add intersection', pos: [0, -10] },
+          { cmd: 'add intersection', pos: [0, 30] },
+          { cmd: 'add skyscraper', pos: [-18, -25] },
+          { cmd: 'add skyscraper', pos: [18, -25] },
+          { cmd: 'add skyscraper', pos: [-18, -40] },
+          { cmd: 'add skyscraper', pos: [18, -40] },
+          { cmd: 'add skyscraper', pos: [-30, -30] },
+          { cmd: 'add skyscraper', pos: [30, -30] },
+          { cmd: 'add salon', pos: [-14, 5] },
+          { cmd: 'add barber', pos: [-14, 15] },
+          { cmd: 'add grocery', pos: [14, 5] },
+          { cmd: 'add clothing', pos: [14, 15] },
+          { cmd: 'add restaurant', pos: [-14, 25] },
+          { cmd: 'add pharmacy', pos: [14, 25] },
+          { cmd: 'add cafe', pos: [-14, 35] },
+          { cmd: 'add bank', pos: [14, 35] },
+          { cmd: 'add pitched house', pos: [-35, 15] },
+          { cmd: 'add pitched house', pos: [-35, 30] },
+          { cmd: 'add mansion', pos: [-35, 45] },
+          { cmd: 'add ranch', pos: [35, 15] },
+          { cmd: 'add duplex', pos: [35, 30] },
+          { cmd: 'add modern house', pos: [35, 45] },
+          { cmd: 'add modern house 2 floors', pos: [-35, 55] },
+          { cmd: 'add pitched house', pos: [35, 55] },
+          { cmd: 'add pool', pos: [-40, 50] },
+          { cmd: 'add pool', pos: [40, 50] },
+          { cmd: 'add traffic light', pos: [-4, -10] },
+          { cmd: 'add traffic light', pos: [4, -10] },
+          { cmd: 'add traffic light', pos: [-4, 30] },
+          { cmd: 'add traffic light', pos: [4, 30] },
+          { cmd: 'add stop sign', pos: [-8, 5] },
+          { cmd: 'add stop sign', pos: [8, 25] },
+          { cmd: 'add ph_street_lamp_01', scatter: { count: 20, radius: 55 } },
+          { cmd: 'add ph_fire_hydrant', scatter: { count: 8, radius: 50 } },
+          { cmd: 'add hd_ferrari', pos: [2, 0] },
+          { cmd: 'add hd_ferrari', pos: [-2, -20] },
+          { cmd: 'add hd_pbr_cesium_milk_truck', pos: [3, 40] },
+          { cmd: 'add ph_potted_plant_01', scatter: { count: 12, radius: 50 } },
+          { cmd: 'add ph_shrub_02', scatter: { count: 10, radius: 60 } },
+          { cmd: 'add tree', scatter: { count: 15, radius: 70, avoidCenter: 10 } },
+          { cmd: 'spawn villager', scatter: { count: 10, radius: 40 } },
+          { cmd: 'spawn woman', scatter: { count: 5, radius: 35 } },
+          { cmd: 'spawn worker', scatter: { count: 4, radius: 30 } },
+          { cmd: 'spawn punk', scatter: { count: 3, radius: 40 } },
+        ]
+      },
     }
     
     const template = MAP_TEMPLATES[mapType] || MAP_TEMPLATES['town'];
@@ -10344,6 +10840,76 @@ async function execSingle(cmd) {
     addObj('Modern House', obj, px || 0, pz || 0);
     return '🏠 Modern furnished house created! Walk inside — HD furniture included.' + (floorCount > 1 ? ' (' + floorCount + ' floors)' : '');
   }
+  // Skyscraper
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(skyscraper|highrise|high.?rise|tower|tall building)/)) {
+    const obj = createSkyscraper();
+    addObj('Skyscraper', obj, px || 0, pz || 0);
+    return '🏙️ Skyscraper created!';
+  }
+  // Commercial building
+  const storeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(salon|barber|grocery|clothing|restaurant|pharmacy|bank|cafe|gym|laundry|store|shop|commercial)/);
+  if (storeMatch) {
+    const type = (storeMatch[1]==='store'||storeMatch[1]==='shop'||storeMatch[1]==='commercial') ? undefined : storeMatch[1];
+    const obj = createCommercialBuilding({ type });
+    addObj(obj.userData.name, obj, px || 0, pz || 0);
+    return '🏪 ' + obj.userData.name + ' created!';
+  }
+  // Pitched roof house
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(pitched|pitched.?roof|suburban|traditional) house/)) {
+    const obj = createPitchedRoofHouse();
+    addObj('House', obj, px || 0, pz || 0);
+    return '🏡 House with pitched roof created!';
+  }
+  // Mansion
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(mansion)/)) {
+    const obj = createMansion();
+    addObj('Mansion', obj, px || 0, pz || 0);
+    return '🏰 Mansion created!';
+  }
+  // Duplex
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(duplex)/)) {
+    const obj = createDuplex();
+    addObj('Duplex', obj, px || 0, pz || 0);
+    return '🏘️ Duplex created!';
+  }
+  // Ranch house
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(ranch|ranch house)/)) {
+    const obj = createRanchHouse();
+    addObj('Ranch House', obj, px || 0, pz || 0);
+    return '🏡 Ranch house created!';
+  }
+  // Swimming pool
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(swimming ?pool|pool)/)) {
+    const obj = createSwimmingPool();
+    addObj('Swimming Pool', obj, px || 0, pz || 0);
+    return '🏊 Swimming pool created!';
+  }
+  // Stop sign
+  if (lower.match(/^(?:add |create )?(?:an? )?(stop ?sign)/)) {
+    const obj = createStopSign();
+    addObj('Stop Sign', obj, px || 0, pz || 0);
+    return '🛑 Stop sign placed!';
+  }
+  // Traffic light
+  if (lower.match(/^(?:add |create )?(?:an? )?(traffic ?light|stoplight|signal)/)) {
+    const obj = createTrafficLight();
+    addObj('Traffic Light', obj, px || 0, pz || 0);
+    return '🚦 Traffic light placed!';
+  }
+  // Road
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(road|street)/)) {
+    const ew = lower.includes(' ew');
+    const obj = createRoadSegment({direction: ew ? 'ew' : 'ns'});
+    addObj('Road', obj, px || 0, pz || 0);
+    return '🛣️ Road segment created!';
+  }
+  // Intersection
+  if (lower.match(/^(?:add |create )?(?:an? )?(intersection|crossroad)/)) {
+    const obj = createIntersection();
+    addObj('Intersection', obj, px || 0, pz || 0);
+    return '🚦 Intersection created!';
+  }
+
 
 // Parse count
   let count = 1;
