@@ -27,7 +27,7 @@
 - `createModernHouse(opts)` — HD furnished houses (added 2026-02-28)
 - `createInteriorHouse(opts)` — old box-primitive houses (line 6283)
 - px/pz declared at ~line 10328 in execSingle — commands using them MUST be after this line
-- character.mjs import: **MUST BUMP VERSION when changing character.mjs**
+- character.mjs import: **v=123** — MUST BUMP VERSION when changing character.mjs
 
 #### HD Asset Library (2026-02-28)
 - **139 HD models** with proper PBR textures (ph_*.glb + hd_*.glb)
@@ -63,6 +63,14 @@
 - **px TDZ** — commands in execSingle must be placed AFTER `let px, pz` declaration
 - **Browser console errors are the smoking gun** for debugging
 - Kohari wants to SEE models as we go — always screenshot/verify
+#### NPC Animation Retargeting (2026-02-28)
+- Mixamo track names: `mixamorigBoneName.property` (NO colon)
+- KayKit knight bones: `UpperArmL` suffix pattern (NO dot)
+- `_mixamoRotFix` flag + `model.rotation.x = -PI/2` to stand upright
+- Facing: `rotation.set(-PI/2, 0, -faceAngle, 'XYZ')` to preserve X rotation
+- Arms still T-pose: need rest-pose quaternion delta or use Soldier model as NPC
+- **Don't over-engineer working code** — revert fast when things break
+
 
 ## Tools & Config
 - ElevenLabs: koikes2021@gmail.com, Flash v2.5

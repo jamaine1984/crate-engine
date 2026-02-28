@@ -1131,65 +1131,36 @@ class CharacterController {
         // Setup animations — load from model or shared animation source
         const hasAnims = gltf.animations.length > 0;
         if (!hasAnims) {
-          // No embedded animations — load from Soldier model (Mixamo idle/walk/run)
-          console.log('[NPC] Loading Mixamo animations for', type);
+          // No embedded animations — replace with Soldier model (has Mixamo walk/idle/run)
+          console.log('[NPC] Replacing with Soldier model for', type);
           const soldierFile = 'models/anim_idle.glb';
           const _loader = window._gltfLoader || loader;
           _loader.load(soldierFile, (soldierGltf) => {
             if (!soldierGltf.animations || soldierGltf.animations.length === 0) return;
+            
+            // Replace KayKit mesh with Soldier mesh (same skeleton = perfect animation)
+            const soldierScene = soldierGltf.scene;
+            // Remove old children from model group
+            while (model.children.length > 0) model.remove(model.children[0]);
+            // Add Soldier children
+            while (soldierScene.children.length > 0) {
+              const child = soldierScene.children[0];
+              soldierScene.remove(child);
+              model.add(child);
+            }
+            
+            // Animations work directly — no retargeting needed
             npc.mixer = new THREE.AnimationMixer(model);
-            // Mixamo → KayKit bone name mapping
-            const boneMap = {
-              'mixamorigHips': 'Hips',
-              'mixamorigSpine': 'Abdomen',
-              'mixamorigSpine1': 'Torso',
-              'mixamorigSpine2': 'Chest',
-              'mixamorigNeck': 'Neck',
-              'mixamorigHead': 'Head',
-              'mixamorigLeftShoulder': 'ShoulderL',
-              'mixamorigLeftArm': 'UpperArmL',
-              'mixamorigLeftForeArm': 'LowerArmL',
-              'mixamorigLeftHand': 'HandL',
-              'mixamorigRightShoulder': 'ShoulderR',
-              'mixamorigRightArm': 'UpperArmR',
-              'mixamorigRightForeArm': 'LowerArmR',
-              'mixamorigRightHand': 'HandR',
-              'mixamorigLeftUpLeg': 'UpperLegL',
-              'mixamorigLeftLeg': 'LowerLegL',
-              'mixamorigLeftFoot': 'FootL',
-              'mixamorigLeftToeBase': 'FootL',
-              'mixamorigRightUpLeg': 'UpperLegR',
-              'mixamorigRightLeg': 'LowerLegR',
-              'mixamorigRightFoot': 'FootR',
-              'mixamorigRightToeBase': 'FootR',
-            };
             soldierGltf.animations.forEach(clip => {
               const name = clip.name.toLowerCase();
-              if (name === 'tpose') return; // Skip T-pose
-              const retargetedTracks = [];
-              for (const track of clip.tracks) {
-                const dotIdx = track.name.lastIndexOf('.');
-                const boneName = dotIdx >= 0 ? track.name.substring(0, dotIdx) : track.name;
-                const prop = dotIdx >= 0 ? track.name.substring(dotIdx) : '';
-                // Skip position tracks except Hips (different proportions)
-                if (prop === '.position') continue; // Skip position tracks - different proportions
-                if (prop === '.quaternion' && boneName.includes('Hips')) continue; // Skip Hips rotation - different bind pose
-                if (prop === '.scale') continue;
-                const mappedBone = boneMap[boneName];
-                if (!mappedBone) continue; // Skip unmapped bones
-                const newTrack = track.clone();
-                newTrack.name = mappedBone + prop;
-                retargetedTracks.push(newTrack);
-              }
-              if (retargetedTracks.length > 0) {
-                const retargetedClip = new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
-                const action = npc.mixer.clipAction(retargetedClip);
-                if (name === 'idle') { npc.animations.idle = action; }
-                else if (name === 'walk' || name === 'walking') { npc.animations.walk = action; }
-                else if (name === 'run' || name === 'running') { npc.animations.run = action; }
-              }
+              if (name === 'tpose') return;
+              const action = npc.mixer.clipAction(clip);
+              if (name === 'idle') npc.animations.idle = action;
+              else if (name === 'walk' || name === 'walking') npc.animations.walk = action;
+              else if (name === 'run' || name === 'running') npc.animations.run = action;
             });
-            // Start with walk for wandering NPCs, idle otherwise
+            
+            // Play animation
             if (npc.behavior === 'wander' && npc.animations.walk) {
               npc.animations.walk.play();
               npc.currentAnim = 'walk';
@@ -1197,13 +1168,9 @@ class CharacterController {
               npc.animations.idle.play();
               npc.currentAnim = 'idle';
             }
-            // Disable procedural animation since we now have real animations
             npc.proceduralAnim = false;
-            
-            npc._mixamoRotFix = true;
-            model.rotation.x = -Math.PI / 2;
-console.log('[NPC] Mixamo anims loaded:', Object.keys(npc.animations).join(', '));
-          }, null, (e) => console.warn('[NPC] Failed to load Soldier anims:', e));
+            console.log('[NPC] Soldier model loaded, anims:', Object.keys(npc.animations).join(', '));
+          }, null, (e) => console.warn('[NPC] Failed to load Soldier model:', e));
         }
         if (gltf.animations.length > 0) {
           this.mixer = new THREE.AnimationMixer(this.model);
@@ -4109,65 +4076,36 @@ export class NPCController {
         // Setup animations — load from model or shared animation source
         const hasAnims = gltf.animations.length > 0;
         if (!hasAnims) {
-          // No embedded animations — load from Soldier model (Mixamo idle/walk/run)
-          console.log('[NPC] Loading Mixamo animations for', type);
+          // No embedded animations — replace with Soldier model (has Mixamo walk/idle/run)
+          console.log('[NPC] Replacing with Soldier model for', type);
           const soldierFile = 'models/anim_idle.glb';
           const _loader = window._gltfLoader || loader;
           _loader.load(soldierFile, (soldierGltf) => {
             if (!soldierGltf.animations || soldierGltf.animations.length === 0) return;
+            
+            // Replace KayKit mesh with Soldier mesh (same skeleton = perfect animation)
+            const soldierScene = soldierGltf.scene;
+            // Remove old children from model group
+            while (model.children.length > 0) model.remove(model.children[0]);
+            // Add Soldier children
+            while (soldierScene.children.length > 0) {
+              const child = soldierScene.children[0];
+              soldierScene.remove(child);
+              model.add(child);
+            }
+            
+            // Animations work directly — no retargeting needed
             npc.mixer = new THREE.AnimationMixer(model);
-            // Mixamo → KayKit bone name mapping
-            const boneMap = {
-              'mixamorigHips': 'Hips',
-              'mixamorigSpine': 'Abdomen',
-              'mixamorigSpine1': 'Torso',
-              'mixamorigSpine2': 'Chest',
-              'mixamorigNeck': 'Neck',
-              'mixamorigHead': 'Head',
-              'mixamorigLeftShoulder': 'ShoulderL',
-              'mixamorigLeftArm': 'UpperArmL',
-              'mixamorigLeftForeArm': 'LowerArmL',
-              'mixamorigLeftHand': 'HandL',
-              'mixamorigRightShoulder': 'ShoulderR',
-              'mixamorigRightArm': 'UpperArmR',
-              'mixamorigRightForeArm': 'LowerArmR',
-              'mixamorigRightHand': 'HandR',
-              'mixamorigLeftUpLeg': 'UpperLegL',
-              'mixamorigLeftLeg': 'LowerLegL',
-              'mixamorigLeftFoot': 'FootL',
-              'mixamorigLeftToeBase': 'FootL',
-              'mixamorigRightUpLeg': 'UpperLegR',
-              'mixamorigRightLeg': 'LowerLegR',
-              'mixamorigRightFoot': 'FootR',
-              'mixamorigRightToeBase': 'FootR',
-            };
             soldierGltf.animations.forEach(clip => {
               const name = clip.name.toLowerCase();
-              if (name === 'tpose') return; // Skip T-pose
-              const retargetedTracks = [];
-              for (const track of clip.tracks) {
-                const dotIdx = track.name.lastIndexOf('.');
-                const boneName = dotIdx >= 0 ? track.name.substring(0, dotIdx) : track.name;
-                const prop = dotIdx >= 0 ? track.name.substring(dotIdx) : '';
-                // Skip position tracks except Hips (different proportions)
-                if (prop === '.position') continue; // Skip position tracks - different proportions
-                if (prop === '.quaternion' && boneName.includes('Hips')) continue; // Skip Hips rotation - different bind pose
-                if (prop === '.scale') continue;
-                const mappedBone = boneMap[boneName];
-                if (!mappedBone) continue; // Skip unmapped bones
-                const newTrack = track.clone();
-                newTrack.name = mappedBone + prop;
-                retargetedTracks.push(newTrack);
-              }
-              if (retargetedTracks.length > 0) {
-                const retargetedClip = new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
-                const action = npc.mixer.clipAction(retargetedClip);
-                if (name === 'idle') { npc.animations.idle = action; }
-                else if (name === 'walk' || name === 'walking') { npc.animations.walk = action; }
-                else if (name === 'run' || name === 'running') { npc.animations.run = action; }
-              }
+              if (name === 'tpose') return;
+              const action = npc.mixer.clipAction(clip);
+              if (name === 'idle') npc.animations.idle = action;
+              else if (name === 'walk' || name === 'walking') npc.animations.walk = action;
+              else if (name === 'run' || name === 'running') npc.animations.run = action;
             });
-            // Start with walk for wandering NPCs, idle otherwise
+            
+            // Play animation
             if (npc.behavior === 'wander' && npc.animations.walk) {
               npc.animations.walk.play();
               npc.currentAnim = 'walk';
@@ -4175,13 +4113,9 @@ export class NPCController {
               npc.animations.idle.play();
               npc.currentAnim = 'idle';
             }
-            // Disable procedural animation since we now have real animations
             npc.proceduralAnim = false;
-            
-            npc._mixamoRotFix = true;
-            model.rotation.x = -Math.PI / 2;
-console.log('[NPC] Mixamo anims loaded:', Object.keys(npc.animations).join(', '));
-          }, null, (e) => console.warn('[NPC] Failed to load Soldier anims:', e));
+            console.log('[NPC] Soldier model loaded, anims:', Object.keys(npc.animations).join(', '));
+          }, null, (e) => console.warn('[NPC] Failed to load Soldier model:', e));
         }
         if (gltf.animations.length > 0) {
           npc.mixer = new THREE.AnimationMixer(model);
