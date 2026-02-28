@@ -317,7 +317,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=113'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=114'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -6997,6 +6997,206 @@ function createIntersection() {
 
 
 
+
+function createGlassOfficeBuilding(opts) {
+  const o = opts || {};
+  const floors = o.floors || (6 + Math.floor(Math.random() * 8));
+  const w = o.width || 14;
+  const d = o.depth || 12;
+  const floorH = 3.5;
+  const totalH = floors * floorH;
+  const wallT = 0.15;
+  const g = new THREE.Group();
+  g.userData.name = 'Office Building (' + floors + 'F)';
+  g.userData.isBuilding = true; g.userData.isInterior = true; g.userData.isSolid = true;
+  
+  const frameMat = makeMat(0x334455, {rough: 0.3, metal: 0.7});
+  const glassMat = new THREE.MeshPhysicalMaterial({color: 0x88bbdd, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.25, side: THREE.DoubleSide});
+  const floorMat2 = makeMat(0x888888, {rough: 0.6});
+  const carpetMat = makeMat(0x556677, {rough: 0.85});
+  const ceilMat2 = makeMat(0xeeeeee, {rough: 0.9});
+  
+  for (let fl = 0; fl < floors; fl++) {
+    const y = fl * floorH;
+    // Floor slab
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(w+0.3, 0.15, d+0.3), floorMat2);
+    slab.position.y = y+0.075; slab.receiveShadow=true; slab.userData.isSolid=true; g.add(slab);
+    // Carpet
+    const carpet = new THREE.Mesh(new THREE.BoxGeometry(w-0.5, 0.02, d-0.5), carpetMat);
+    carpet.position.y = y+0.16; g.add(carpet);
+    // Glass walls (transparent — see through!)
+    [1,-1].forEach(side => {
+      const gw = new THREE.Mesh(new THREE.PlaneGeometry(w-0.3, floorH-0.3), glassMat);
+      gw.position.set(0, y+floorH/2+0.1, side*(d/2)); if(side<0) gw.rotation.y=Math.PI; g.add(gw);
+    });
+    [1,-1].forEach(side => {
+      const gw = new THREE.Mesh(new THREE.PlaneGeometry(d-0.3, floorH-0.3), glassMat);
+      gw.position.set(side*(w/2), y+floorH/2+0.1, 0); gw.rotation.y=side*Math.PI/2; g.add(gw);
+    });
+    // Frame beams (horizontal at each floor)
+    [d/2,-d/2].forEach(z => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w+0.3, 0.08, 0.08), frameMat);
+      b.position.set(0, y+floorH, z); g.add(b);
+    });
+    [w/2,-w/2].forEach(x => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, d+0.3), frameMat);
+      b.position.set(x, y+floorH, 0); g.add(b);
+    });
+    // Corner columns
+    [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx,sz]) => {
+      const col = new THREE.Mesh(new THREE.BoxGeometry(0.2, floorH, 0.2), frameMat);
+      col.position.set(sx*w/2, y+floorH/2, sz*d/2); g.add(col);
+    });
+    // Ceiling
+    const ceil = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), ceilMat2);
+    ceil.position.y = y+floorH-0.04; g.add(ceil);
+    // Interior light
+    const light = new THREE.PointLight(0xfff5e0, 0.6, w*1.5);
+    light.position.set(0, y+floorH-0.2, 0); g.add(light);
+    // Office furniture on each floor
+    const furniture = [
+      {m:'ph_WoodenTable_01', p:[-w*0.25, 0.16, 0], s:1.8},
+      {m:'ph_WoodenTable_01', p:[w*0.25, 0.16, 0], s:1.8},
+      {m:'ph_ArmChair_01', p:[-w*0.25, 0.16, d*0.2], r:Math.PI, s:1.2},
+      {m:'ph_ArmChair_01', p:[w*0.25, 0.16, d*0.2], r:Math.PI, s:1.2},
+      {m:'ph_ArmChair_01', p:[-w*0.25, 0.16, -d*0.2], s:1.2},
+      {m:'ph_ArmChair_01', p:[w*0.25, 0.16, -d*0.2], s:1.2},
+    ];
+    if (fl === 0) {
+      furniture.push({m:'ph_Sofa_01', p:[0, 0.16, d*0.3], r:Math.PI, s:1.5});
+    }
+    furniture.forEach(f => {
+      gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
+        const obj=gltf.scene; obj.position.set(f.p[0],f.p[1]+y,f.p[2]);
+        if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
+        obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
+      },null,()=>{});
+    });
+  }
+  // Entrance
+  const entrGlass = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), glassMat);
+  entrGlass.position.set(0, 1.5, d/2+0.02); g.add(entrGlass);
+  // Stairs (internal)
+  if (floors > 1) {
+    const stairMat = makeMat(0x666666, {rough: 0.6});
+    for (let fl = 0; fl < floors-1; fl++) {
+      const baseY = fl * floorH;
+      const steps = 10;
+      for (let s = 0; s < steps; s++) {
+        const st = new THREE.Mesh(new THREE.BoxGeometry(1, floorH/steps, d*0.4/steps), stairMat);
+        st.position.set(w*0.4, baseY + s*(floorH/steps) + (floorH/steps)/2, d*0.35 - s*(d*0.4/steps));
+        st.userData.isStair=true; st.userData.isSolid=true; g.add(st);
+      }
+    }
+  }
+  return g;
+}
+
+function createStadium(opts) {
+  const o = opts || {};
+  const w = o.width || 40; const d = o.depth || 30; const h = 12;
+  const g = new THREE.Group();
+  g.userData.name = 'Stadium'; g.userData.isBuilding = true;
+  const concreteMat = makeMat(0xaaa898, {rough: 0.7});
+  const seatMat = makeMat(0x2255aa, {rough: 0.5});
+  const fieldMat = makeMat(0x228833, {rough: 0.8});
+  const trackMat = makeMat(0xcc6644, {rough: 0.6});
+  // Outer walls (oval-ish using 4 curved sections)
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(w+2, h, d+2), concreteMat);
+  wall.position.y = h/2; wall.castShadow=true; g.add(wall);
+  // Cut out interior (field)
+  const interior = new THREE.Mesh(new THREE.BoxGeometry(w-4, h+1, d-4), new THREE.MeshBasicMaterial({color:0x000000}));
+  interior.position.y = h/2+2; interior.material.visible = false; // Placeholder
+  // Field (green grass)
+  const field = new THREE.Mesh(new THREE.BoxGeometry(w-10, 0.1, d-10), fieldMat);
+  field.position.y = 0.05; g.add(field);
+  // Track around field
+  const track = new THREE.Mesh(new THREE.BoxGeometry(w-6, 0.08, d-6), trackMat);
+  track.position.y = 0.04; g.add(track);
+  // Seating tiers (4 sides, angled)
+  [[-1,0,d/2-2,w-8,h-2,2,0],
+   [-1,0,-(d/2-2),w-8,h-2,2,0],
+   [-(w/2-2),0,0,2,h-2,d-8,0],
+   [w/2-2,0,0,2,h-2,d-8,0]].forEach(([x,_,z,sw,sh,sd,ry]) => {
+    const tier = new THREE.Mesh(new THREE.BoxGeometry(sw, sh, sd), seatMat);
+    tier.position.set(x === -1 ? 0 : x, sh/2+1, z);
+    tier.receiveShadow=true; g.add(tier);
+  });
+  // Lights (4 tall floodlights)
+  [[-w/2,d/2],[w/2,d/2],[-w/2,-d/2],[w/2,-d/2]].forEach(([x,z]) => {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,h+8), makeMat(0x888888,{rough:0.3,metal:0.6}));
+    pole.position.set(x, (h+8)/2, z); g.add(pole);
+    const light = new THREE.PointLight(0xffffee, 0.5, 60);
+    light.position.set(x, h+8, z); g.add(light);
+  });
+  return g;
+}
+
+function createFence(opts) {
+  const o = opts || {};
+  const length = o.length || 10; const h = o.height || 1.2;
+  const g = new THREE.Group(); g.userData.name = 'Fence';
+  const woodMat = makeMat(0x8B6B4A, {rough: 0.8});
+  // Horizontal rails
+  [h*0.3, h*0.8].forEach(y => {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(length, 0.06, 0.04), woodMat);
+    rail.position.y = y; g.add(rail);
+  });
+  // Vertical pickets
+  const spacing = 0.15;
+  const count = Math.floor(length / spacing);
+  for (let i = 0; i <= count; i++) {
+    const x = -length/2 + i * spacing;
+    const picket = new THREE.Mesh(new THREE.BoxGeometry(0.06, h, 0.03), woodMat);
+    picket.position.set(x, h/2, 0); g.add(picket);
+  }
+  // Posts every 2m
+  for (let x = -length/2; x <= length/2; x += 2) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, h+0.15, 0.08), woodMat);
+    post.position.set(x, (h+0.15)/2, 0); g.add(post);
+  }
+  return g;
+}
+
+function createPark(opts) {
+  const o = opts || {};
+  const size = o.size || 30;
+  const g = new THREE.Group(); g.userData.name = 'Park';
+  // Grass
+  const grass = new THREE.Mesh(new THREE.BoxGeometry(size, 0.08, size), makeMat(0x338833, {rough: 0.85}));
+  grass.position.y = 0.04; grass.receiveShadow=true; g.add(grass);
+  // Walking path (curved)
+  for (let i = -5; i <= 5; i++) {
+    const path = new THREE.Mesh(new THREE.BoxGeometry(2, 0.02, size*0.08), makeMat(0xbbaa88, {rough: 0.7}));
+    path.position.set(i*2, 0.09, i*1.5); g.add(path);
+  }
+  // Pond
+  const pondMat = new THREE.MeshPhysicalMaterial({color:0x2266aa, roughness:0.0, transparent:true, opacity:0.6});
+  const pond = new THREE.Mesh(new THREE.CircleGeometry(4, 24), pondMat);
+  pond.rotation.x = -Math.PI/2; pond.position.set(size*0.2, 0.05, size*0.15); g.add(pond);
+  // Pond edge
+  const edgeMat = makeMat(0x888877, {rough:0.7});
+  const edge = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.2, 24), edgeMat);
+  edge.rotation.x = -Math.PI/2; edge.position.set(size*0.2, 0.06, size*0.15); g.add(edge);
+  // Trees around park
+  for (let i = 0; i < 8; i++) {
+    const angle = (i/8) * Math.PI * 2;
+    const r = size * 0.35;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 3), makeMat(0x5a3a1a, {rough:0.8}));
+    trunk.position.set(Math.cos(angle)*r, 1.5, Math.sin(angle)*r); g.add(trunk);
+    const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 6), makeMat(0x227722, {rough:0.7}));
+    canopy.position.set(Math.cos(angle)*r, 3.8, Math.sin(angle)*r); canopy.castShadow=true; g.add(canopy);
+  }
+  // Benches
+  [[-3,0,0],[3,0,Math.PI],[0,-5,Math.PI/2],[0,5,-Math.PI/2]].forEach(([x,z,ry]) => {
+    gltfLoader.load('models/ph_park_bench.glb',(gltf)=>{
+      const obj=gltf.scene; obj.position.set(x,0.08,z); obj.rotation.y=ry||0; obj.scale.setScalar(1.5);
+      obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
+    },null,()=>{});
+  });
+  return g;
+}
+
 function createModernHouse(opts) {
   const o = opts || {};
   const w = o.width || 8;
@@ -9357,94 +9557,147 @@ async function execSingle(cmd) {
         terrain: { type: 'flat', height: 0 },
         ground: 'grass', env: ['time afternoon'],
         items: [
-          // === MAIN AVENUE (north-south, continuous) ===
-          { cmd: 'add road', pos: [0, -40] },
-          { cmd: 'add road', pos: [0, 0] },
-          { cmd: 'add road', pos: [0, 40] },
-          { cmd: 'add road', pos: [0, 80] },
-          // === CROSS STREETS (east-west) ===
-          { cmd: 'add road at 0 0 ew', pos: [-30, -20] },
-          { cmd: 'add road at 0 0 ew', pos: [30, -20] },
-          { cmd: 'add road at 0 0 ew', pos: [-30, 20] },
-          { cmd: 'add road at 0 0 ew', pos: [30, 20] },
-          { cmd: 'add road at 0 0 ew', pos: [-30, 60] },
-          { cmd: 'add road at 0 0 ew', pos: [30, 60] },
+          // =============================================
+          // SIMCITY-STYLE GRID — wide roads, spaced blocks
+          // Road width = 12m (7m road + 2.5m sidewalk each side)
+          // Block size = ~60m between roads
+          // Buildings set back 20m from road center
+          // =============================================
+          
+          // === MAIN AVENUE (north-south, center) ===
+          { cmd: 'add road', pos: [0, -60] },
+          { cmd: 'add road', pos: [0, -20] },
+          { cmd: 'add road', pos: [0, 20] },
+          { cmd: 'add road', pos: [0, 60] },
+          { cmd: 'add road', pos: [0, 100] },
+          { cmd: 'add road', pos: [0, 140] },
+          
+          // === CROSS STREETS (east-west) every 60 units ===
+          { cmd: 'add road at 0 0 ew', pos: [-30, -40] },
+          { cmd: 'add road at 0 0 ew', pos: [30, -40] },
+          { cmd: 'add road at 0 0 ew', pos: [-30, 40] },
+          { cmd: 'add road at 0 0 ew', pos: [30, 40] },
+          { cmd: 'add road at 0 0 ew', pos: [-30, 120] },
+          { cmd: 'add road at 0 0 ew', pos: [30, 120] },
+          
           // === INTERSECTIONS ===
-          { cmd: 'add intersection', pos: [0, -20] },
-          { cmd: 'add intersection', pos: [0, 20] },
-          { cmd: 'add intersection', pos: [0, 60] },
-          // === DOWNTOWN (south) — skyscrapers set back from road ===
-          { cmd: 'add skyscraper', pos: [-16, -45] },
-          { cmd: 'add skyscraper', pos: [-16, -30] },
-          { cmd: 'add skyscraper', pos: [16, -45] },
-          { cmd: 'add skyscraper', pos: [16, -30] },
-          // === COMMERCIAL (middle) — stores lining the road ===
-          { cmd: 'add grocery', pos: [-14, 5] },
-          { cmd: 'add salon', pos: [-14, 17] },
-          { cmd: 'add restaurant', pos: [-14, 29] },
-          { cmd: 'add pharmacy', pos: [-14, 41] },
-          { cmd: 'add barber', pos: [14, 5] },
-          { cmd: 'add clothing', pos: [14, 17] },
-          { cmd: 'add cafe', pos: [14, 29] },
-          { cmd: 'add bank', pos: [14, 41] },
-          // === RESIDENTIAL (north) — houses along road ===
-          { cmd: 'add pitched house', pos: [-16, 50] },
-          { cmd: 'add modern house 2 floors', pos: [-16, 66] },
-          { cmd: 'add mansion', pos: [-16, 84] },
-          { cmd: 'add modern house', pos: [16, 50] },
-          { cmd: 'add duplex', pos: [16, 66] },
-          { cmd: 'add ranch', pos: [16, 84] },
-          // === CROSS STREET BUILDINGS ===
-          { cmd: 'add pitched house', pos: [-42, -14] },
-          { cmd: 'add modern house', pos: [-42, -26] },
-          { cmd: 'add pitched house', pos: [42, -14] },
-          { cmd: 'add modern house', pos: [42, -26] },
-          // === POOLS ===
-          { cmd: 'add pool', pos: [-28, 87] },
-          { cmd: 'add pool', pos: [28, 87] },
-          // === TRAFFIC CONTROLS at intersections ===
-          { cmd: 'add traffic light', pos: [-5, -20] },
-          { cmd: 'add traffic light', pos: [5, -20] },
-          { cmd: 'add traffic light', pos: [-5, 20] },
-          { cmd: 'add traffic light', pos: [5, 20] },
-          { cmd: 'add traffic light', pos: [-5, 60] },
-          { cmd: 'add traffic light', pos: [5, 60] },
-          { cmd: 'add stop sign', pos: [-5, 5] },
-          { cmd: 'add stop sign', pos: [5, 35] },
-          // === STREET LAMPS along sidewalks (evenly spaced) ===
-          { cmd: 'add ph_street_lamp_01', pos: [-6, -45] },
-          { cmd: 'add ph_street_lamp_01', pos: [6, -45] },
-          { cmd: 'add ph_street_lamp_01', pos: [-6, -30] },
-          { cmd: 'add ph_street_lamp_01', pos: [6, -30] },
-          { cmd: 'add ph_street_lamp_01', pos: [-6, -10] },
-          { cmd: 'add ph_street_lamp_01', pos: [6, -10] },
-          { cmd: 'add ph_street_lamp_01', pos: [-6, 10] },
-          { cmd: 'add ph_street_lamp_01', pos: [6, 10] },
-          { cmd: 'add ph_street_lamp_01', pos: [-6, 30] },
-          { cmd: 'add ph_street_lamp_01', pos: [6, 30] },
-          { cmd: 'add ph_street_lamp_01', pos: [-6, 50] },
-          { cmd: 'add ph_street_lamp_01', pos: [6, 50] },
-          { cmd: 'add ph_street_lamp_01', pos: [-6, 70] },
-          { cmd: 'add ph_street_lamp_01', pos: [6, 70] },
-          // === FIRE HYDRANTS ===
-          { cmd: 'add ph_fire_hydrant', pos: [-6, -38] },
-          { cmd: 'add ph_fire_hydrant', pos: [6, 8] },
-          { cmd: 'add ph_fire_hydrant', pos: [-6, 45] },
-          { cmd: 'add ph_fire_hydrant', pos: [6, 72] },
+          { cmd: 'add intersection', pos: [0, -40] },
+          { cmd: 'add intersection', pos: [0, 40] },
+          { cmd: 'add intersection', pos: [0, 120] },
+          
+          // ======================
+          // BLOCK 1: DOWNTOWN (south, z = -60 to -40)
+          // ======================
+          { cmd: 'add skyscraper', pos: [-25, -60] },
+          { cmd: 'add skyscraper', pos: [25, -60] },
+          { cmd: 'add skyscraper', pos: [-25, -50] },
+          { cmd: 'add skyscraper', pos: [25, -50] },
+          
+          // ======================
+          // BLOCK 2: COMMERCIAL (z = -40 to 40)
+          // ======================
+          // West side of avenue
+          { cmd: 'add grocery', pos: [-20, -25] },
+          { cmd: 'add salon', pos: [-20, -10] },
+          { cmd: 'add restaurant', pos: [-20, 5] },
+          { cmd: 'add pharmacy', pos: [-20, 20] },
+          // East side of avenue
+          { cmd: 'add barber', pos: [20, -25] },
+          { cmd: 'add clothing', pos: [20, -10] },
+          { cmd: 'add cafe', pos: [20, 5] },
+          { cmd: 'add bank', pos: [20, 20] },
+          
+          // ======================
+          // BLOCK 3: RESIDENTIAL (z = 40 to 120)
+          // ======================
+          // West side — houses with yards
+          { cmd: 'add pitched house', pos: [-22, 55] },
+          { cmd: 'add modern house 2 floors', pos: [-22, 75] },
+          { cmd: 'add mansion', pos: [-22, 95] },
+          { cmd: 'add ranch', pos: [-22, 115] },
+          // East side
+          { cmd: 'add modern house', pos: [22, 55] },
+          { cmd: 'add duplex', pos: [22, 75] },
+          { cmd: 'add pitched house', pos: [22, 95] },
+          { cmd: 'add modern house 2 floors', pos: [22, 115] },
+          
+          // === Along cross streets ===
+          { cmd: 'add pitched house', pos: [-50, -35] },
+          { cmd: 'add modern house', pos: [50, -35] },
+          { cmd: 'add pitched house', pos: [-50, 45] },
+          { cmd: 'add modern house', pos: [50, 45] },
+          
+          // ======================
+          // PARK (center block, z = 130-150)
+          // ======================
+          { cmd: 'add tree', pos: [-10, 135] },
+          { cmd: 'add tree', pos: [10, 135] },
+          { cmd: 'add tree', pos: [0, 145] },
+          { cmd: 'add tree', pos: [-15, 145] },
+          { cmd: 'add tree', pos: [15, 145] },
+          { cmd: 'add tree', pos: [-5, 155] },
+          { cmd: 'add tree', pos: [5, 155] },
+          { cmd: 'add ph_park_bench', pos: [-5, 138] },
+          { cmd: 'add ph_park_bench', pos: [5, 142] },
+          { cmd: 'add well', pos: [0, 140] },
+          
+          // === POOLS in some backyards ===
+          { cmd: 'add pool', pos: [-35, 58] },
+          { cmd: 'add pool', pos: [35, 98] },
+          
+          // ======================
+          // TRAFFIC + STREET FURNITURE
+          // ======================
+          { cmd: 'add traffic light', pos: [-5, -40] },
+          { cmd: 'add traffic light', pos: [5, -40] },
+          { cmd: 'add traffic light', pos: [-5, 40] },
+          { cmd: 'add traffic light', pos: [5, 40] },
+          { cmd: 'add traffic light', pos: [-5, 120] },
+          { cmd: 'add traffic light', pos: [5, 120] },
+          { cmd: 'add stop sign', pos: [-5, -20] },
+          { cmd: 'add stop sign', pos: [5, 10] },
+          { cmd: 'add stop sign', pos: [-5, 65] },
+          { cmd: 'add stop sign', pos: [5, 100] },
+          
+          // Street lamps (evenly spaced along avenue)
+          { cmd: 'add ph_street_lamp_01', pos: [-7, -55] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, -55] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, -35] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, -35] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, -15] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, -15] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, 5] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, 5] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, 25] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, 25] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, 55] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, 55] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, 85] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, 85] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, 115] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, 115] },
+          
+          // Fire hydrants
+          { cmd: 'add ph_fire_hydrant', pos: [-7, -50] },
+          { cmd: 'add ph_fire_hydrant', pos: [7, 0] },
+          { cmd: 'add ph_fire_hydrant', pos: [-7, 50] },
+          { cmd: 'add ph_fire_hydrant', pos: [7, 90] },
+          
           // === VEHICLES ===
-          { cmd: 'add hd_ferrari', pos: [2, -8] },
-          { cmd: 'add hd_ferrari', pos: [-2, 32] },
-          { cmd: 'add hd_pbr_cesium_milk_truck', pos: [3, 55] },
-          // === GREENERY ===
-          { cmd: 'add ph_potted_plant_01', pos: [-10, 6] },
-          { cmd: 'add ph_potted_plant_01', pos: [10, 18] },
-          { cmd: 'add ph_shrub_02', pos: [-20, 52] },
-          { cmd: 'add ph_shrub_02', pos: [20, 68] },
-          { cmd: 'add tree', scatter: { count: 5, radius: 80, avoidCenter: 8 } },
+          { cmd: 'add hd_ferrari', pos: [2, -15] },
+          { cmd: 'add hd_ferrari', pos: [-2, 25] },
+          { cmd: 'add hd_pbr_cesium_milk_truck', pos: [3, 70] },
+          
+          // === GREENERY (street trees, planters) ===
+          { cmd: 'add ph_potted_plant_01', pos: [-14, -8] },
+          { cmd: 'add ph_potted_plant_01', pos: [14, 8] },
+          { cmd: 'add ph_shrub_02', pos: [-30, 60] },
+          { cmd: 'add ph_shrub_02', pos: [30, 80] },
+          
           // === PEDESTRIANS ===
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 50 } },
-          { cmd: 'spawn woman', scatter: { count: 3, radius: 45 } },
-          { cmd: 'spawn worker', scatter: { count: 2, radius: 40 } },
+          { cmd: 'spawn villager', scatter: { count: 4, radius: 60 } },
+          { cmd: 'spawn woman', scatter: { count: 3, radius: 55 } },
+          { cmd: 'spawn worker', scatter: { count: 2, radius: 50 } },
         ]
       },
     }
@@ -10940,6 +11193,31 @@ async function execSingle(cmd) {
     addObj('Intersection', obj, px || 0, pz || 0);
     return '🚦 Intersection created!';
   }
+  // Glass office building
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(glass|office) ?(building|tower)?/)) {
+    const obj = createGlassOfficeBuilding();
+    addObj('Office Building', obj, px || 0, pz || 0);
+    return '🏢 Glass office building created!';
+  }
+  // Stadium
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(stadium|arena|field)/)) {
+    const obj = createStadium();
+    addObj('Stadium', obj, px || 0, pz || 0);
+    return '🏟️ Stadium created!';
+  }
+  // Fence
+  if (lower.match(/^(?:add |create )?(?:an? )?(fence|picket fence)/)) {
+    const obj = createFence();
+    addObj('Fence', obj, px || 0, pz || 0);
+    return '🏗️ Fence placed!';
+  }
+  // Park
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(park)/)) {
+    const obj = createPark();
+    addObj('Park', obj, px || 0, pz || 0);
+    return '🌳 Park created!';
+  }
+
 
 
 // Parse count

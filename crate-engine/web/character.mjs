@@ -4065,17 +4065,18 @@ export class NPCController {
           model.traverse(node => {
             if (node.isBone || node.type === 'Bone') {
               const n = node.name.toLowerCase();
+              const nm = node.name; // original case for .L/.R matching
               if (n.includes('hips') && !npc.bones.hips) npc.bones.hips = node;
               else if (n.includes('spine') && !n.includes('1') && !n.includes('2') && !npc.bones.spine) npc.bones.spine = node;
-              else if (n.includes('leftupperleg') || n.includes('leftupleg')) npc.bones.leftLeg = node;
-              else if (n.includes('rightupperleg') || n.includes('rightupleg')) npc.bones.rightLeg = node;
-              else if (n.includes('leftlowerleg') || n.includes('leftleg')) npc.bones.leftKnee = node;
-              else if (n.includes('rightlowerleg') || n.includes('rightleg')) npc.bones.rightKnee = node;
-              else if (n.includes('leftarm') && !n.includes('fore') && !npc.bones.leftArm) npc.bones.leftArm = node;
-              else if (n.includes('rightarm') && !n.includes('fore') && !npc.bones.rightArm) npc.bones.rightArm = node;
-              else if (n.includes('leftforearm')) npc.bones.leftForearm = node;
-              else if (n.includes('rightforearm')) npc.bones.rightForearm = node;
-              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !npc.bones.head) npc.bones.head = node;
+              else if ((n.includes('leftupperleg') || n.includes('leftupleg') || nm === 'UpperLeg.L' || (n.includes('upperleg') && n.includes('.l'))) && !npc.bones.leftLeg) npc.bones.leftLeg = node;
+              else if ((n.includes('rightupperleg') || n.includes('rightupleg') || nm === 'UpperLeg.R' || (n.includes('upperleg') && n.includes('.r'))) && !npc.bones.rightLeg) npc.bones.rightLeg = node;
+              else if ((n.includes('leftlowerleg') || n.includes('leftleg') || nm === 'LowerLeg.L' || (n.includes('lowerleg') && n.includes('.l'))) && !npc.bones.leftKnee) npc.bones.leftKnee = node;
+              else if ((n.includes('rightlowerleg') || n.includes('rightleg') || nm === 'LowerLeg.R' || (n.includes('lowerleg') && n.includes('.r'))) && !npc.bones.rightKnee) npc.bones.rightKnee = node;
+              else if ((n.includes('leftarm') || nm === 'UpperArm.L' || (n.includes('upperarm') && n.includes('.l'))) && !n.includes('fore') && !n.includes('lower') && !npc.bones.leftArm) npc.bones.leftArm = node;
+              else if ((n.includes('rightarm') || nm === 'UpperArm.R' || (n.includes('upperarm') && n.includes('.r'))) && !n.includes('fore') && !n.includes('lower') && !npc.bones.rightArm) npc.bones.rightArm = node;
+              else if ((n.includes('leftforearm') || nm === 'LowerArm.L' || (n.includes('lowerarm') && n.includes('.l'))) && !npc.bones.leftForearm) npc.bones.leftForearm = node;
+              else if ((n.includes('rightforearm') || nm === 'LowerArm.R' || (n.includes('lowerarm') && n.includes('.r'))) && !npc.bones.rightForearm) npc.bones.rightForearm = node;
+              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !n.includes('_end') && !npc.bones.head) npc.bones.head = node;
               else if (n.includes('neck') && !npc.bones.neck) npc.bones.neck = node;
             }
           });
