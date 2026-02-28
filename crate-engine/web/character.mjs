@@ -4512,7 +4512,7 @@ export class NPCController {
           
         case 'stunned':
           // Stagger: wobble rotation during stun
-          if (npc.model) npc.model.rotation.y += Math.sin(elapsed * 8) * 0.02;
+          if (npc.model) npc.model.rotation.y += Math.sin(Date.now() * 0.008) * 0.02;
           _playAnim('idle');
           break;
           
