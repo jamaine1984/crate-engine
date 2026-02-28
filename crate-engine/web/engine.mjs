@@ -7357,36 +7357,38 @@ async function execSingle(cmd) {
         ground: 'grass', env: ['time afternoon'],
         water: null, weather: null, particles: null,
         items: [
-          // === TOWN SQUARE (center) ===
+          // === TOWN SQUARE — open plaza with well ===
           { cmd: 'add well', pos: [0, 0] },
-          { cmd: 'add market stall', pos: [-6, 4] }, { cmd: 'add market stall', pos: [6, 4] },
-          { cmd: 'add market stall', pos: [-6, -4] }, { cmd: 'add market stall', pos: [6, -4] },
-          { cmd: 'add barrel', pos: [-8, 6] }, { cmd: 'add barrel', pos: [8, 6] },
-          { cmd: 'add cart', pos: [10, 0] },
-          // === NORTH ROW — main buildings along "street" ===
-          { cmd: 'add tavern', pos: [-18, 20] },
-          { cmd: 'add blacksmith', pos: [0, 22] },
-          { cmd: 'add house', pos: [18, 20] },
-          // === SOUTH ROW ===
-          { cmd: 'add house', pos: [-18, -20] },
-          { cmd: 'add house', pos: [0, -22] },
-          { cmd: 'add house', pos: [18, -20] },
-          // === EAST/WEST wings ===
-          { cmd: 'add house', pos: [-28, 0] },
-          { cmd: 'add house', pos: [28, 0] },
-          { cmd: 'add house', pos: [-28, 14] },
-          { cmd: 'add house', pos: [28, -14] },
-          // === TORCHES along paths ===
-          { cmd: 'add torch', pos: [-10, 12] }, { cmd: 'add torch', pos: [10, 12] },
-          { cmd: 'add torch', pos: [-10, -12] }, { cmd: 'add torch', pos: [10, -12] },
-          { cmd: 'add torch', pos: [-20, 0] }, { cmd: 'add torch', pos: [20, 0] },
-          // === PERIMETER — trees & nature ring ===
-          { cmd: 'add tree', scatter: { count: 30, radius: 60, avoidCenter: 32 } },
-          { cmd: 'add bush', scatter: { count: 15, radius: 50, avoidCenter: 28 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 55, avoidCenter: 35 } },
-          // === NPCs ===
-          { cmd: 'spawn villager', scatter: { count: 6, radius: 20 } },
-          { cmd: 'spawn guard', pos: [-12, 14] }, { cmd: 'spawn guard', pos: [12, 14] },
+          { cmd: 'add market stall', pos: [-8, 6] }, { cmd: 'add market stall', pos: [8, 6] },
+          { cmd: 'add market stall', pos: [0, -8] },
+          { cmd: 'add barrel', pos: [-10, 8] }, { cmd: 'add barrel', pos: [10, 8] },
+          { cmd: 'add cart', pos: [12, -3] },
+          // === NORTH STREET — wide spacing (15+ units between buildings) ===
+          { cmd: 'add tavern', pos: [-30, 35] },
+          { cmd: 'add blacksmith', pos: [0, 38] },
+          { cmd: 'add house', pos: [30, 35] },
+          // === SOUTH STREET ===
+          { cmd: 'add house', pos: [-30, -35] },
+          { cmd: 'add house', pos: [0, -38] },
+          { cmd: 'add house', pos: [30, -35] },
+          // === EAST STREET ===
+          { cmd: 'add house', pos: [45, 0] },
+          { cmd: 'add house', pos: [45, 25] },
+          // === WEST STREET ===
+          { cmd: 'add house', pos: [-45, 0] },
+          { cmd: 'add house', pos: [-45, -25] },
+          // === TORCHES — line the wide paths ===
+          { cmd: 'add torch', pos: [-15, 18] }, { cmd: 'add torch', pos: [15, 18] },
+          { cmd: 'add torch', pos: [-15, -18] }, { cmd: 'add torch', pos: [15, -18] },
+          { cmd: 'add torch', pos: [-30, 0] }, { cmd: 'add torch', pos: [30, 0] },
+          { cmd: 'add torch', pos: [0, 18] }, { cmd: 'add torch', pos: [0, -18] },
+          // === PERIMETER — nature ring far from buildings ===
+          { cmd: 'add tree', scatter: { count: 35, radius: 80, avoidCenter: 50 } },
+          { cmd: 'add bush', scatter: { count: 18, radius: 70, avoidCenter: 45 } },
+          { cmd: 'add rock', scatter: { count: 8, radius: 75, avoidCenter: 50 } },
+          // === NPCs — spread around the plaza ===
+          { cmd: 'spawn villager', scatter: { count: 6, radius: 25 } },
+          { cmd: 'spawn guard', pos: [-18, 20] }, { cmd: 'spawn guard', pos: [18, 20] },
         ]
       },
       village: {
