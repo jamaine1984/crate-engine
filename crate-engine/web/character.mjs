@@ -2880,11 +2880,37 @@ class CharacterController {
   
   _enterBuilding(building) {
     this.inBuilding = building;
-    this.playAnimation('interact', true);
     
-    // Hide exterior, show interior
+    // Get building bounds for floor size
+    const bbox = new THREE.Box3().setFromObject(building);
+    const bsize = bbox.getSize(new THREE.Vector3());
+    const floorW = Math.max(bsize.x, 8);
+    const floorD = Math.max(bsize.z, 8);
+    const floorY = bbox.min.y + 0.05;
+    
+    // Create interior floor
+    const floorGeo = new THREE.PlaneGeometry(floorW, floorD);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.9 }); // wood floor
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(building.position.x, floorY, building.position.z);
+    floor.receiveShadow = true;
+    floor.userData.name = 'interior_floor';
+    floor.userData.isInterior = true;
+    floor.userData.isFloor = true;
+    floor.userData.isSolid = true;
+    this.scene.add(floor);
+    this.objects.push(floor);
+    
+    // Add interior point light
+    const light = new THREE.PointLight(0xffe4b5, 1.5, 15);
+    light.position.set(building.position.x, floorY + 2.5, building.position.z);
+    light.userData.isInterior = true;
+    this.scene.add(light);
+    this._interiorLight = light;
+    
     // Teleport player inside
-    this.position.set(building.position.x, 0, building.position.z);
+    this.position.set(building.position.x, floorY + 0.5, building.position.z + 2);
     
     // Generate furniture inside
     this._generateInterior(building.position.x, building.position.z);
@@ -2912,10 +2938,19 @@ class CharacterController {
       }
     });
     
-    // Move player outside
-    this.position.set(this.inBuilding.position.x + 4, 0, this.inBuilding.position.z);
+    // Move player outside (terrain height)
+    const exitX = this.inBuilding.position.x + 5;
+    const exitZ = this.inBuilding.position.z;
+    const exitY = _getTerrainY(exitX, exitZ) + 0.5;
+    this.position.set(exitX, exitY, exitZ);
     
-    // Remove interior furniture
+    // Remove interior light
+    if (this._interiorLight) {
+      this.scene.remove(this._interiorLight);
+      this._interiorLight = null;
+    }
+    
+    // Remove interior furniture + floor
     const interiorObjs = this.objects.filter(o => o.userData.isInterior);
     interiorObjs.forEach(o => {
       this.scene.remove(o);
@@ -2941,10 +2976,10 @@ class CharacterController {
       ['house_interior_pack_kitchen_sink', 3, 0, 2.5],
       // Bedroom
       ['house_interior_pack_bed_king', -3, 2, 3],
-      ['house_interior_pack_lamp_1', -2, 1, 2],
+      ['house_interior_pack_light_floor1', -2, 1, 2],
       // Decor
       ['house_interior_pack_carpet_round', 0, 0, 4],
-      ['house_interior_pack_plant_1', 2.5, 2.5, 2],
+      ['house_interior_pack_houseplant_1', 2.5, 2.5, 2],
       ['house_interior_pack_plate_1', 0, 0.8, 1.5],
     ];
     
