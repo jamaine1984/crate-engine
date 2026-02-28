@@ -1034,6 +1034,14 @@ class CharacterController {
         }
         this.modelContainer = new THREE.Group();
         this.modelContainer.add(this.model);
+        
+        // Blob shadow for consistent ground contact visual
+        const shadowGeo = new THREE.CircleGeometry(0.5, 16);
+        const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false });
+        this._blobShadow = new THREE.Mesh(shadowGeo, shadowMat);
+        this._blobShadow.rotation.x = -Math.PI / 2;
+        this._blobShadow.position.y = 0.02; // just above ground
+        this.modelContainer.add(this._blobShadow);
         this.modelContainer.userData.groundOffset = this.groundOffset;
         this.modelContainer.userData.isPlayer = true;
         this.modelContainer.userData.name = 'player_' + type;
