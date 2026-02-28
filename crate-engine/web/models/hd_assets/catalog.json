@@ -1,0 +1,2296 @@
+{
+  "props": [
+    {
+      "name": "hd_AntiqueCamera",
+      "file": "hd_AntiqueCamera.glb",
+      "size": 17540348
+    },
+    {
+      "name": "hd_DamagedHelmet",
+      "file": "hd_DamagedHelmet.glb",
+      "size": 3773916
+    },
+    {
+      "name": "hd_DragonAttenuation",
+      "file": "hd_DragonAttenuation.glb",
+      "size": 6401616
+    },
+    {
+      "name": "hd_MaterialsVariantsShoe",
+      "file": "hd_MaterialsVariantsShoe.glb",
+      "size": 7833592
+    },
+    {
+      "name": "hd_WaterBottle",
+      "file": "hd_WaterBottle.glb",
+      "size": 8966700
+    },
+    {
+      "name": "hd_flamingo",
+      "file": "hd_flamingo.glb",
+      "size": 77428
+    },
+    {
+      "name": "hd_flamingo_anim",
+      "file": "hd_flamingo_anim.glb",
+      "size": 77428
+    },
+    {
+      "name": "hd_horse",
+      "file": "hd_horse.glb",
+      "size": 181808
+    },
+    {
+      "name": "hd_horse_anim",
+      "file": "hd_horse_anim.glb",
+      "size": 181808
+    },
+    {
+      "name": "hd_parrot",
+      "file": "hd_parrot.glb",
+      "size": 97024
+    },
+    {
+      "name": "hd_parrot_anim",
+      "file": "hd_parrot_anim.glb",
+      "size": 97024
+    },
+    {
+      "name": "hd_pbr_barramundi",
+      "file": "hd_pbr_barramundi.glb",
+      "size": 12488144
+    },
+    {
+      "name": "hd_pbr_camera",
+      "file": "hd_pbr_camera.glb",
+      "size": 17540348
+    },
+    {
+      "name": "hd_pbr_corset",
+      "file": "hd_pbr_corset.glb",
+      "size": 13491364
+    },
+    {
+      "name": "hd_pbr_dragon",
+      "file": "hd_pbr_dragon.glb",
+      "size": 6401616
+    },
+    {
+      "name": "hd_pbr_duck",
+      "file": "hd_pbr_duck.glb",
+      "size": 120484
+    },
+    {
+      "name": "hd_pbr_helmet",
+      "file": "hd_pbr_helmet.glb",
+      "size": 3773916
+    },
+    {
+      "name": "hd_pbr_shoe",
+      "file": "hd_pbr_shoe.glb",
+      "size": 7833592
+    },
+    {
+      "name": "hd_pbr_waterbottle",
+      "file": "hd_pbr_waterbottle.glb",
+      "size": 8966700
+    },
+    {
+      "name": "hd_stork",
+      "file": "hd_stork.glb",
+      "size": 76852
+    },
+    {
+      "name": "hd_stork_anim",
+      "file": "hd_stork_anim.glb",
+      "size": 76852
+    },
+    {
+      "name": "hd_tokyo_city",
+      "file": "hd_tokyo_city.glb",
+      "size": 4133072
+    },
+    {
+      "name": "hd_tokyo_scene",
+      "file": "hd_tokyo_scene.glb",
+      "size": 4133072
+    },
+    {
+      "name": "ph_Camera_01",
+      "file": "ph_Camera_01.glb",
+      "size": 9886
+    },
+    {
+      "name": "ph_CashRegister_01",
+      "file": "ph_CashRegister_01.glb",
+      "size": 6300
+    },
+    {
+      "name": "ph_ClassicConsole_01",
+      "file": "ph_ClassicConsole_01.glb",
+      "size": 2729
+    },
+    {
+      "name": "ph_Drill_01",
+      "file": "ph_Drill_01.glb",
+      "size": 2637
+    },
+    {
+      "name": "ph_Megaphone_01",
+      "file": "ph_Megaphone_01.glb",
+      "size": 2689
+    },
+    {
+      "name": "ph_Television_01",
+      "file": "ph_Television_01.glb",
+      "size": 2933
+    },
+    {
+      "name": "ph_Ukulele_01",
+      "file": "ph_Ukulele_01.glb",
+      "size": 2665
+    },
+    {
+      "name": "ph_WetFloorSign_01",
+      "file": "ph_WetFloorSign_01.glb",
+      "size": 2688
+    },
+    {
+      "name": "ph_alarm_clock_01",
+      "file": "ph_alarm_clock_01.glb",
+      "size": 10056
+    },
+    {
+      "name": "ph_all_purpose_cleaner",
+      "file": "ph_all_purpose_cleaner.glb",
+      "size": 3211
+    },
+    {
+      "name": "ph_american_football",
+      "file": "ph_american_football.glb",
+      "size": 2816
+    },
+    {
+      "name": "ph_anthurium_botany_01",
+      "file": "ph_anthurium_botany_01.glb",
+      "size": 10675
+    },
+    {
+      "name": "ph_antique_ceramic_vase_01",
+      "file": "ph_antique_ceramic_vase_01.glb",
+      "size": 2789
+    },
+    {
+      "name": "ph_bark_debris_01",
+      "file": "ph_bark_debris_01.glb",
+      "size": 7646
+    },
+    {
+      "name": "ph_baseball_01",
+      "file": "ph_baseball_01.glb",
+      "size": 2678
+    },
+    {
+      "name": "ph_baseball_bat",
+      "file": "ph_baseball_bat.glb",
+      "size": 2874
+    },
+    {
+      "name": "ph_bench_vice_01",
+      "file": "ph_bench_vice_01.glb",
+      "size": 13222
+    },
+    {
+      "name": "ph_bleach_bottle",
+      "file": "ph_bleach_bottle.glb",
+      "size": 2784
+    },
+    {
+      "name": "ph_bolt_cutters_01",
+      "file": "ph_bolt_cutters_01.glb",
+      "size": 2797
+    },
+    {
+      "name": "ph_book_encyclopedia_set_01",
+      "file": "ph_book_encyclopedia_set_01.glb",
+      "size": 55011
+    },
+    {
+      "name": "ph_brass_blowtorch",
+      "file": "ph_brass_blowtorch.glb",
+      "size": 2779
+    },
+    {
+      "name": "ph_brass_goblets",
+      "file": "ph_brass_goblets.glb",
+      "size": 7782
+    },
+    {
+      "name": "ph_brass_pan_01",
+      "file": "ph_brass_pan_01.glb",
+      "size": 2676
+    },
+    {
+      "name": "ph_brass_pot_01",
+      "file": "ph_brass_pot_01.glb",
+      "size": 2681
+    },
+    {
+      "name": "ph_brass_pot_02",
+      "file": "ph_brass_pot_02.glb",
+      "size": 2683
+    },
+    {
+      "name": "ph_brass_vase_01",
+      "file": "ph_brass_vase_01.glb",
+      "size": 2693
+    },
+    {
+      "name": "ph_brass_vase_02",
+      "file": "ph_brass_vase_02.glb",
+      "size": 2672
+    },
+    {
+      "name": "ph_brass_vase_03",
+      "file": "ph_brass_vase_03.glb",
+      "size": 2668
+    },
+    {
+      "name": "ph_brass_vase_04",
+      "file": "ph_brass_vase_04.glb",
+      "size": 2677
+    },
+    {
+      "name": "ph_bull_head",
+      "file": "ph_bull_head.glb",
+      "size": 2738
+    },
+    {
+      "name": "ph_calathea_orbifolia_01",
+      "file": "ph_calathea_orbifolia_01.glb",
+      "size": 9309
+    },
+    {
+      "name": "ph_can_rusted",
+      "file": "ph_can_rusted.glb",
+      "size": 2990
+    },
+    {
+      "name": "ph_cannon_01",
+      "file": "ph_cannon_01.glb",
+      "size": 17734
+    },
+    {
+      "name": "ph_cassette_player",
+      "file": "ph_cassette_player.glb",
+      "size": 7549
+    },
+    {
+      "name": "ph_ceiling_fan",
+      "file": "ph_ceiling_fan.glb",
+      "size": 4777
+    },
+    {
+      "name": "ph_ceramic_vase_01",
+      "file": "ph_ceramic_vase_01.glb",
+      "size": 2706
+    },
+    {
+      "name": "ph_ceramic_vase_02",
+      "file": "ph_ceramic_vase_02.glb",
+      "size": 2716
+    },
+    {
+      "name": "ph_ceramic_vase_03",
+      "file": "ph_ceramic_vase_03.glb",
+      "size": 2690
+    },
+    {
+      "name": "ph_ceramic_vase_04",
+      "file": "ph_ceramic_vase_04.glb",
+      "size": 2716
+    },
+    {
+      "name": "ph_cheiridopsis_succulent",
+      "file": "ph_cheiridopsis_succulent.glb",
+      "size": 21966
+    },
+    {
+      "name": "ph_chess_set",
+      "file": "ph_chess_set.glb",
+      "size": 53740
+    },
+    {
+      "name": "ph_chinese_screen_panels",
+      "file": "ph_chinese_screen_panels.glb",
+      "size": 4225
+    },
+    {
+      "name": "ph_cleaner_tin_01",
+      "file": "ph_cleaner_tin_01.glb",
+      "size": 3154
+    },
+    {
+      "name": "ph_concrete_cat_statue",
+      "file": "ph_concrete_cat_statue.glb",
+      "size": 2853
+    },
+    {
+      "name": "ph_concrete_road_barrier",
+      "file": "ph_concrete_road_barrier.glb",
+      "size": 2868
+    },
+    {
+      "name": "ph_concrete_road_barrier_02",
+      "file": "ph_concrete_road_barrier_02.glb",
+      "size": 2910
+    },
+    {
+      "name": "ph_crowbar_01",
+      "file": "ph_crowbar_01.glb",
+      "size": 2741
+    },
+    {
+      "name": "ph_dartboard",
+      "file": "ph_dartboard.glb",
+      "size": 2732
+    },
+    {
+      "name": "ph_dead_quiver_trunk",
+      "file": "ph_dead_quiver_trunk.glb",
+      "size": 2833
+    },
+    {
+      "name": "ph_didelta_spinosa",
+      "file": "ph_didelta_spinosa.glb",
+      "size": 5730
+    },
+    {
+      "name": "ph_dirty_football",
+      "file": "ph_dirty_football.glb",
+      "size": 3255
+    },
+    {
+      "name": "ph_drain_cleaner",
+      "file": "ph_drain_cleaner.glb",
+      "size": 2793
+    },
+    {
+      "name": "ph_dry_quiver_leaf",
+      "file": "ph_dry_quiver_leaf.glb",
+      "size": 4517
+    },
+    {
+      "name": "ph_electric_stove",
+      "file": "ph_electric_stove.glb",
+      "size": 31234
+    },
+    {
+      "name": "ph_exterior_aircon_unit",
+      "file": "ph_exterior_aircon_unit.glb",
+      "size": 9634
+    },
+    {
+      "name": "ph_fancy_picture_frame_01",
+      "file": "ph_fancy_picture_frame_01.glb",
+      "size": 5059
+    },
+    {
+      "name": "ph_fancy_picture_frame_02",
+      "file": "ph_fancy_picture_frame_02.glb",
+      "size": 5085
+    },
+    {
+      "name": "ph_fire_hydrant",
+      "file": "ph_fire_hydrant.glb",
+      "size": 20926
+    },
+    {
+      "name": "ph_flathead_screwdriver",
+      "file": "ph_flathead_screwdriver.glb",
+      "size": 2848
+    },
+    {
+      "name": "ph_football",
+      "file": "ph_football.glb",
+      "size": 4366
+    },
+    {
+      "name": "ph_gamepad",
+      "file": "ph_gamepad.glb",
+      "size": 2728
+    },
+    {
+      "name": "ph_gaming_console",
+      "file": "ph_gaming_console.glb",
+      "size": 4943
+    },
+    {
+      "name": "ph_garden_gloves_01",
+      "file": "ph_garden_gloves_01.glb",
+      "size": 2813
+    },
+    {
+      "name": "ph_garden_gnome",
+      "file": "ph_garden_gnome.glb",
+      "size": 2784
+    },
+    {
+      "name": "ph_garden_hose_wall_mounted_01",
+      "file": "ph_garden_hose_wall_mounted_01.glb",
+      "size": 4432
+    },
+    {
+      "name": "ph_garden_sprinkler_01",
+      "file": "ph_garden_sprinkler_01.glb",
+      "size": 9574
+    },
+    {
+      "name": "ph_hand_plane_no4",
+      "file": "ph_hand_plane_no4.glb",
+      "size": 2917
+    },
+    {
+      "name": "ph_handsaw_wood",
+      "file": "ph_handsaw_wood.glb",
+      "size": 2762
+    },
+    {
+      "name": "ph_hanging_picture_frame_01",
+      "file": "ph_hanging_picture_frame_01.glb",
+      "size": 6495
+    },
+    {
+      "name": "ph_hanging_picture_frame_02",
+      "file": "ph_hanging_picture_frame_02.glb",
+      "size": 6433
+    },
+    {
+      "name": "ph_hanging_picture_frame_03",
+      "file": "ph_hanging_picture_frame_03.glb",
+      "size": 7644
+    },
+    {
+      "name": "ph_hatchet",
+      "file": "ph_hatchet.glb",
+      "size": 2718
+    },
+    {
+      "name": "ph_horse_head",
+      "file": "ph_horse_head.glb",
+      "size": 2755
+    },
+    {
+      "name": "ph_horse_statue_01",
+      "file": "ph_horse_statue_01.glb",
+      "size": 5858
+    },
+    {
+      "name": "ph_jug_01",
+      "file": "ph_jug_01.glb",
+      "size": 2612
+    },
+    {
+      "name": "ph_korean_fire_extinguisher_01",
+      "file": "ph_korean_fire_extinguisher_01.glb",
+      "size": 7450
+    },
+    {
+      "name": "ph_korean_public_payphone_01",
+      "file": "ph_korean_public_payphone_01.glb",
+      "size": 2929
+    },
+    {
+      "name": "ph_ladder_sectioned_01",
+      "file": "ph_ladder_sectioned_01.glb",
+      "size": 7585
+    },
+    {
+      "name": "ph_lambis_shell",
+      "file": "ph_lambis_shell.glb",
+      "size": 2772
+    },
+    {
+      "name": "ph_lateral_sea_marker",
+      "file": "ph_lateral_sea_marker.glb",
+      "size": 2735
+    },
+    {
+      "name": "ph_leather_cleaner_can",
+      "file": "ph_leather_cleaner_can.glb",
+      "size": 2824
+    },
+    {
+      "name": "ph_leipoldtia_schultzei",
+      "file": "ph_leipoldtia_schultzei.glb",
+      "size": 6120
+    },
+    {
+      "name": "ph_lion_head",
+      "file": "ph_lion_head.glb",
+      "size": 2746
+    },
+    {
+      "name": "ph_lubricant_spray",
+      "file": "ph_lubricant_spray.glb",
+      "size": 5622
+    },
+    {
+      "name": "ph_machete",
+      "file": "ph_machete.glb",
+      "size": 2716
+    },
+    {
+      "name": "ph_magnifying_glass_01",
+      "file": "ph_magnifying_glass_01.glb",
+      "size": 4929
+    },
+    {
+      "name": "ph_mantel_clock_01",
+      "file": "ph_mantel_clock_01.glb",
+      "size": 5628
+    },
+    {
+      "name": "ph_marble_bust_01",
+      "file": "ph_marble_bust_01.glb",
+      "size": 2793
+    },
+    {
+      "name": "ph_measuring_tape_01",
+      "file": "ph_measuring_tape_01.glb",
+      "size": 2720
+    },
+    {
+      "name": "ph_metal_detector",
+      "file": "ph_metal_detector.glb",
+      "size": 3249
+    },
+    {
+      "name": "ph_metal_jug",
+      "file": "ph_metal_jug.glb",
+      "size": 2752
+    },
+    {
+      "name": "ph_metal_tool_chest",
+      "file": "ph_metal_tool_chest.glb",
+      "size": 12256
+    },
+    {
+      "name": "ph_metal_trash_can",
+      "file": "ph_metal_trash_can.glb",
+      "size": 15481
+    },
+    {
+      "name": "ph_mousetrap",
+      "file": "ph_mousetrap.glb",
+      "size": 2738
+    },
+    {
+      "name": "ph_multi_cleaner_5_litre",
+      "file": "ph_multi_cleaner_5_litre.glb",
+      "size": 4406
+    },
+    {
+      "name": "ph_multi_cleaner_bottle",
+      "file": "ph_multi_cleaner_bottle.glb",
+      "size": 4289
+    },
+    {
+      "name": "ph_old_tyre",
+      "file": "ph_old_tyre.glb",
+      "size": 2734
+    },
+    {
+      "name": "ph_ornate_mirror_01",
+      "file": "ph_ornate_mirror_01.glb",
+      "size": 2697
+    },
+    {
+      "name": "ph_othonna_cerarioides",
+      "file": "ph_othonna_cerarioides.glb",
+      "size": 21758
+    },
+    {
+      "name": "ph_pachira_aquatica_01",
+      "file": "ph_pachira_aquatica_01.glb",
+      "size": 13730
+    },
+    {
+      "name": "ph_painted_wooden_bench",
+      "file": "ph_painted_wooden_bench.glb",
+      "size": 2835
+    },
+    {
+      "name": "ph_painted_wooden_shelves",
+      "file": "ph_painted_wooden_shelves.glb",
+      "size": 2858
+    },
+    {
+      "name": "ph_picke_dirty_01",
+      "file": "ph_picke_dirty_01.glb",
+      "size": 2782
+    },
+    {
+      "name": "ph_plastic_bottle_gallon",
+      "file": "ph_plastic_bottle_gallon.glb",
+      "size": 2868
+    },
+    {
+      "name": "ph_plunger",
+      "file": "ph_plunger.glb",
+      "size": 2741
+    },
+    {
+      "name": "ph_pot_enamel_01",
+      "file": "ph_pot_enamel_01.glb",
+      "size": 4018
+    },
+    {
+      "name": "ph_ratchet_wrench",
+      "file": "ph_ratchet_wrench.glb",
+      "size": 2788
+    },
+    {
+      "name": "ph_rubber_duck_toy",
+      "file": "ph_rubber_duck_toy.glb",
+      "size": 3180
+    },
+    {
+      "name": "ph_rusted_spade_01",
+      "file": "ph_rusted_spade_01.glb",
+      "size": 2799
+    },
+    {
+      "name": "ph_rusted_wheel_rim_01",
+      "file": "ph_rusted_wheel_rim_01.glb",
+      "size": 3748
+    },
+    {
+      "name": "ph_rusted_wheel_rim_02",
+      "file": "ph_rusted_wheel_rim_02.glb",
+      "size": 3747
+    },
+    {
+      "name": "ph_scandinavian_masonry_heater",
+      "file": "ph_scandinavian_masonry_heater.glb",
+      "size": 3451
+    },
+    {
+      "name": "ph_searsia_burchellii",
+      "file": "ph_searsia_burchellii.glb",
+      "size": 15079
+    },
+    {
+      "name": "ph_searsia_lucida",
+      "file": "ph_searsia_lucida.glb",
+      "size": 31443
+    },
+    {
+      "name": "ph_security_camera_01",
+      "file": "ph_security_camera_01.glb",
+      "size": 4743
+    },
+    {
+      "name": "ph_security_camera_02",
+      "file": "ph_security_camera_02.glb",
+      "size": 6299
+    },
+    {
+      "name": "ph_seeding_tray_01",
+      "file": "ph_seeding_tray_01.glb",
+      "size": 2796
+    },
+    {
+      "name": "ph_small_oil_can_01",
+      "file": "ph_small_oil_can_01.glb",
+      "size": 2722
+    },
+    {
+      "name": "ph_spinning_wheel_01",
+      "file": "ph_spinning_wheel_01.glb",
+      "size": 2737
+    },
+    {
+      "name": "ph_spray_paint_bottles",
+      "file": "ph_spray_paint_bottles.glb",
+      "size": 5191
+    },
+    {
+      "name": "ph_spray_paint_bottles_02",
+      "file": "ph_spray_paint_bottles_02.glb",
+      "size": 4510
+    },
+    {
+      "name": "ph_standing_chalkboard_01",
+      "file": "ph_standing_chalkboard_01.glb",
+      "size": 5145
+    },
+    {
+      "name": "ph_standing_picture_frame_01",
+      "file": "ph_standing_picture_frame_01.glb",
+      "size": 6936
+    },
+    {
+      "name": "ph_standing_picture_frame_02",
+      "file": "ph_standing_picture_frame_02.glb",
+      "size": 6671
+    },
+    {
+      "name": "ph_steel_frame_shelves_01",
+      "file": "ph_steel_frame_shelves_01.glb",
+      "size": 2766
+    },
+    {
+      "name": "ph_steel_frame_shelves_02",
+      "file": "ph_steel_frame_shelves_02.glb",
+      "size": 2775
+    },
+    {
+      "name": "ph_steel_frame_shelves_03",
+      "file": "ph_steel_frame_shelves_03.glb",
+      "size": 9767
+    },
+    {
+      "name": "ph_sungka_board",
+      "file": "ph_sungka_board.glb",
+      "size": 2777
+    },
+    {
+      "name": "ph_sungka_board_02",
+      "file": "ph_sungka_board_02.glb",
+      "size": 4241
+    },
+    {
+      "name": "ph_tea_set_01",
+      "file": "ph_tea_set_01.glb",
+      "size": 15836
+    },
+    {
+      "name": "ph_throw_pillows_01",
+      "file": "ph_throw_pillows_01.glb",
+      "size": 4548
+    },
+    {
+      "name": "ph_tire_pump",
+      "file": "ph_tire_pump.glb",
+      "size": 2735
+    },
+    {
+      "name": "ph_treasure_chest",
+      "file": "ph_treasure_chest.glb",
+      "size": 8584
+    },
+    {
+      "name": "ph_trowel_01",
+      "file": "ph_trowel_01.glb",
+      "size": 2738
+    },
+    {
+      "name": "ph_vintage_crutches_01",
+      "file": "ph_vintage_crutches_01.glb",
+      "size": 4601
+    },
+    {
+      "name": "ph_vintage_grandfather_clock_01",
+      "file": "ph_vintage_grandfather_clock_01.glb",
+      "size": 8727
+    },
+    {
+      "name": "ph_vintage_hand_drill",
+      "file": "ph_vintage_hand_drill.glb",
+      "size": 9084
+    },
+    {
+      "name": "ph_vintage_pocket_watch",
+      "file": "ph_vintage_pocket_watch.glb",
+      "size": 10104
+    },
+    {
+      "name": "ph_vintage_suitcase",
+      "file": "ph_vintage_suitcase.glb",
+      "size": 15481
+    },
+    {
+      "name": "ph_vintage_video_camera",
+      "file": "ph_vintage_video_camera.glb",
+      "size": 4620
+    },
+    {
+      "name": "ph_water_manhole_cover",
+      "file": "ph_water_manhole_cover.glb",
+      "size": 4253
+    },
+    {
+      "name": "ph_watering_can_metal_01",
+      "file": "ph_watering_can_metal_01.glb",
+      "size": 3183
+    },
+    {
+      "name": "ph_wine_bottles_01",
+      "file": "ph_wine_bottles_01.glb",
+      "size": 29107
+    },
+    {
+      "name": "ph_wooden_bowl_01",
+      "file": "ph_wooden_bowl_01.glb",
+      "size": 2811
+    },
+    {
+      "name": "ph_wooden_bowl_02",
+      "file": "ph_wooden_bowl_02.glb",
+      "size": 2800
+    },
+    {
+      "name": "ph_wooden_cutting_board",
+      "file": "ph_wooden_cutting_board.glb",
+      "size": 2852
+    },
+    {
+      "name": "ph_wooden_display_shelves_01",
+      "file": "ph_wooden_display_shelves_01.glb",
+      "size": 6795
+    },
+    {
+      "name": "ph_wooden_spoon",
+      "file": "ph_wooden_spoon.glb",
+      "size": 2773
+    }
+  ],
+  "food": [
+    {
+      "name": "hd_Avocado",
+      "file": "hd_Avocado.glb",
+      "size": 8110040
+    },
+    {
+      "name": "hd_pbr_avocado",
+      "file": "hd_pbr_avocado.glb",
+      "size": 8110040
+    },
+    {
+      "name": "ph_croissant",
+      "file": "ph_croissant.glb",
+      "size": 2680
+    },
+    {
+      "name": "ph_food_apple_01",
+      "file": "ph_food_apple_01.glb",
+      "size": 2705
+    },
+    {
+      "name": "ph_food_avocado_01",
+      "file": "ph_food_avocado_01.glb",
+      "size": 2735
+    },
+    {
+      "name": "ph_food_ginger_01",
+      "file": "ph_food_ginger_01.glb",
+      "size": 2715
+    },
+    {
+      "name": "ph_food_kiwi_01",
+      "file": "ph_food_kiwi_01.glb",
+      "size": 2693
+    },
+    {
+      "name": "ph_food_lime_01",
+      "file": "ph_food_lime_01.glb",
+      "size": 2696
+    },
+    {
+      "name": "ph_food_lychee_01",
+      "file": "ph_food_lychee_01.glb",
+      "size": 2715
+    },
+    {
+      "name": "ph_food_pears_asian_01",
+      "file": "ph_food_pears_asian_01.glb",
+      "size": 9955
+    },
+    {
+      "name": "ph_food_pomegranate_01",
+      "file": "ph_food_pomegranate_01.glb",
+      "size": 2761
+    },
+    {
+      "name": "ph_lemon",
+      "file": "ph_lemon.glb",
+      "size": 3036
+    },
+    {
+      "name": "ph_russian_food_cans_01",
+      "file": "ph_russian_food_cans_01.glb",
+      "size": 5587
+    },
+    {
+      "name": "ph_strawberry_chocolate_cake",
+      "file": "ph_strawberry_chocolate_cake.glb",
+      "size": 2933
+    },
+    {
+      "name": "ph_sweet_potato",
+      "file": "ph_sweet_potato.glb",
+      "size": 2778
+    },
+    {
+      "name": "ph_yellow_onion",
+      "file": "ph_yellow_onion.glb",
+      "size": 2785
+    }
+  ],
+  "lighting": [
+    {
+      "name": "hd_IridescenceLamp",
+      "file": "hd_IridescenceLamp.glb",
+      "size": 4083912
+    },
+    {
+      "name": "hd_Lantern",
+      "file": "hd_Lantern.glb",
+      "size": 9564264
+    },
+    {
+      "name": "hd_pbr_lamp",
+      "file": "hd_pbr_lamp.glb",
+      "size": 4083912
+    },
+    {
+      "name": "hd_pbr_lantern",
+      "file": "hd_pbr_lantern.glb",
+      "size": 9564264
+    },
+    {
+      "name": "ph_Chandelier_01",
+      "file": "ph_Chandelier_01.glb",
+      "size": 4438
+    },
+    {
+      "name": "ph_Chandelier_02",
+      "file": "ph_Chandelier_02.glb",
+      "size": 4206
+    },
+    {
+      "name": "ph_Chandelier_03",
+      "file": "ph_Chandelier_03.glb",
+      "size": 4876
+    },
+    {
+      "name": "ph_Lantern_01",
+      "file": "ph_Lantern_01.glb",
+      "size": 4866
+    },
+    {
+      "name": "ph_brass_candleholders",
+      "file": "ph_brass_candleholders.glb",
+      "size": 14865
+    },
+    {
+      "name": "ph_brass_diya_lantern",
+      "file": "ph_brass_diya_lantern.glb",
+      "size": 10202
+    },
+    {
+      "name": "ph_chinese_chandelier",
+      "file": "ph_chinese_chandelier.glb",
+      "size": 2824
+    },
+    {
+      "name": "ph_hanging_industrial_lamp",
+      "file": "ph_hanging_industrial_lamp.glb",
+      "size": 5436
+    },
+    {
+      "name": "ph_industrial_wall_lamp",
+      "file": "ph_industrial_wall_lamp.glb",
+      "size": 5800
+    },
+    {
+      "name": "ph_industrial_wall_sconce",
+      "file": "ph_industrial_wall_sconce.glb",
+      "size": 4961
+    },
+    {
+      "name": "ph_lantern_chandelier_01",
+      "file": "ph_lantern_chandelier_01.glb",
+      "size": 7774
+    },
+    {
+      "name": "ph_lightbulb_01",
+      "file": "ph_lightbulb_01.glb",
+      "size": 5721
+    },
+    {
+      "name": "ph_lightbulb_led",
+      "file": "ph_lightbulb_led.glb",
+      "size": 2779
+    },
+    {
+      "name": "ph_modern_ceiling_lamp_01",
+      "file": "ph_modern_ceiling_lamp_01.glb",
+      "size": 6177
+    },
+    {
+      "name": "ph_pull_chain_light_socket",
+      "file": "ph_pull_chain_light_socket.glb",
+      "size": 4348
+    },
+    {
+      "name": "ph_security_light",
+      "file": "ph_security_light.glb",
+      "size": 6556
+    },
+    {
+      "name": "ph_vintage_oil_lamp",
+      "file": "ph_vintage_oil_lamp.glb",
+      "size": 7786
+    },
+    {
+      "name": "ph_wooden_candlestick",
+      "file": "ph_wooden_candlestick.glb",
+      "size": 2799
+    },
+    {
+      "name": "ph_wooden_lantern_01",
+      "file": "ph_wooden_lantern_01.glb",
+      "size": 9540
+    }
+  ],
+  "furniture": [
+    {
+      "name": "hd_SheenChair",
+      "file": "hd_SheenChair.glb",
+      "size": 4125648
+    },
+    {
+      "name": "hd_pbr_chair",
+      "file": "hd_pbr_chair.glb",
+      "size": 4125648
+    },
+    {
+      "name": "ph_ArmChair_01",
+      "file": "ph_ArmChair_01.glb",
+      "size": 2643
+    },
+    {
+      "name": "ph_BarberShopChair_01",
+      "file": "ph_BarberShopChair_01.glb",
+      "size": 2706
+    },
+    {
+      "name": "ph_ClassicNightstand_01",
+      "file": "ph_ClassicNightstand_01.glb",
+      "size": 2754
+    },
+    {
+      "name": "ph_CoffeeTable_01",
+      "file": "ph_CoffeeTable_01.glb",
+      "size": 3182
+    },
+    {
+      "name": "ph_GothicBed_01",
+      "file": "ph_GothicBed_01.glb",
+      "size": 2683
+    },
+    {
+      "name": "ph_GothicCabinet_01",
+      "file": "ph_GothicCabinet_01.glb",
+      "size": 8968
+    },
+    {
+      "name": "ph_GothicCommode_01",
+      "file": "ph_GothicCommode_01.glb",
+      "size": 7054
+    },
+    {
+      "name": "ph_GreenChair_01",
+      "file": "ph_GreenChair_01.glb",
+      "size": 2695
+    },
+    {
+      "name": "ph_Ottoman_01",
+      "file": "ph_Ottoman_01.glb",
+      "size": 2656
+    },
+    {
+      "name": "ph_Rockingchair_01",
+      "file": "ph_Rockingchair_01.glb",
+      "size": 2712
+    },
+    {
+      "name": "ph_SchoolChair_01",
+      "file": "ph_SchoolChair_01.glb",
+      "size": 2695
+    },
+    {
+      "name": "ph_SchoolDesk_01",
+      "file": "ph_SchoolDesk_01.glb",
+      "size": 2686
+    },
+    {
+      "name": "ph_Shelf_01",
+      "file": "ph_Shelf_01.glb",
+      "size": 2617
+    },
+    {
+      "name": "ph_Sofa_01",
+      "file": "ph_Sofa_01.glb",
+      "size": 2636
+    },
+    {
+      "name": "ph_WoodenChair_01",
+      "file": "ph_WoodenChair_01.glb",
+      "size": 2705
+    },
+    {
+      "name": "ph_WoodenTable_01",
+      "file": "ph_WoodenTable_01.glb",
+      "size": 2688
+    },
+    {
+      "name": "ph_WoodenTable_02",
+      "file": "ph_WoodenTable_02.glb",
+      "size": 2692
+    },
+    {
+      "name": "ph_WoodenTable_03",
+      "file": "ph_WoodenTable_03.glb",
+      "size": 9950
+    },
+    {
+      "name": "ph_bar_chair_round_01",
+      "file": "ph_bar_chair_round_01.glb",
+      "size": 2833
+    },
+    {
+      "name": "ph_chinese_armchair",
+      "file": "ph_chinese_armchair.glb",
+      "size": 2816
+    },
+    {
+      "name": "ph_chinese_cabinet",
+      "file": "ph_chinese_cabinet.glb",
+      "size": 8975
+    },
+    {
+      "name": "ph_chinese_commode",
+      "file": "ph_chinese_commode.glb",
+      "size": 7067
+    },
+    {
+      "name": "ph_chinese_console_table",
+      "file": "ph_chinese_console_table.glb",
+      "size": 2861
+    },
+    {
+      "name": "ph_chinese_sofa",
+      "file": "ph_chinese_sofa.glb",
+      "size": 2759
+    },
+    {
+      "name": "ph_chinese_stool",
+      "file": "ph_chinese_stool.glb",
+      "size": 2883
+    },
+    {
+      "name": "ph_chinese_tea_table",
+      "file": "ph_chinese_tea_table.glb",
+      "size": 2793
+    },
+    {
+      "name": "ph_coffee_table_round_01",
+      "file": "ph_coffee_table_round_01.glb",
+      "size": 2776
+    },
+    {
+      "name": "ph_desk_lamp_arm_01",
+      "file": "ph_desk_lamp_arm_01.glb",
+      "size": 4453
+    },
+    {
+      "name": "ph_dining_chair_02",
+      "file": "ph_dining_chair_02.glb",
+      "size": 2723
+    },
+    {
+      "name": "ph_drawer_cabinet",
+      "file": "ph_drawer_cabinet.glb",
+      "size": 8031
+    },
+    {
+      "name": "ph_folding_wooden_stool",
+      "file": "ph_folding_wooden_stool.glb",
+      "size": 2842
+    },
+    {
+      "name": "ph_gallinera_chair",
+      "file": "ph_gallinera_chair.glb",
+      "size": 2805
+    },
+    {
+      "name": "ph_gallinera_table",
+      "file": "ph_gallinera_table.glb",
+      "size": 5632
+    },
+    {
+      "name": "ph_gothic_coffee_table",
+      "file": "ph_gothic_coffee_table.glb",
+      "size": 2842
+    },
+    {
+      "name": "ph_industrial_coffee_table",
+      "file": "ph_industrial_coffee_table.glb",
+      "size": 2993
+    },
+    {
+      "name": "ph_mid_century_lounge_chair",
+      "file": "ph_mid_century_lounge_chair.glb",
+      "size": 2884
+    },
+    {
+      "name": "ph_modern_arm_chair_01",
+      "file": "ph_modern_arm_chair_01.glb",
+      "size": 5121
+    },
+    {
+      "name": "ph_modern_coffee_table_01",
+      "file": "ph_modern_coffee_table_01.glb",
+      "size": 2771
+    },
+    {
+      "name": "ph_modern_coffee_table_02",
+      "file": "ph_modern_coffee_table_02.glb",
+      "size": 4979
+    },
+    {
+      "name": "ph_modern_wooden_cabinet",
+      "file": "ph_modern_wooden_cabinet.glb",
+      "size": 10960
+    },
+    {
+      "name": "ph_outdoor_table_chair_set_01",
+      "file": "ph_outdoor_table_chair_set_01.glb",
+      "size": 6826
+    },
+    {
+      "name": "ph_painted_wooden_cabinet",
+      "file": "ph_painted_wooden_cabinet.glb",
+      "size": 9253
+    },
+    {
+      "name": "ph_painted_wooden_cabinet_02",
+      "file": "ph_painted_wooden_cabinet_02.glb",
+      "size": 6085
+    },
+    {
+      "name": "ph_painted_wooden_chair_01",
+      "file": "ph_painted_wooden_chair_01.glb",
+      "size": 2785
+    },
+    {
+      "name": "ph_painted_wooden_chair_02",
+      "file": "ph_painted_wooden_chair_02.glb",
+      "size": 2972
+    },
+    {
+      "name": "ph_painted_wooden_nightstand",
+      "file": "ph_painted_wooden_nightstand.glb",
+      "size": 4427
+    },
+    {
+      "name": "ph_painted_wooden_sofa",
+      "file": "ph_painted_wooden_sofa.glb",
+      "size": 2816
+    },
+    {
+      "name": "ph_painted_wooden_stool",
+      "file": "ph_painted_wooden_stool.glb",
+      "size": 2848
+    },
+    {
+      "name": "ph_painted_wooden_table",
+      "file": "ph_painted_wooden_table.glb",
+      "size": 2830
+    },
+    {
+      "name": "ph_plastic_monobloc_chair_01",
+      "file": "ph_plastic_monobloc_chair_01.glb",
+      "size": 2892
+    },
+    {
+      "name": "ph_round_wooden_table_01",
+      "file": "ph_round_wooden_table_01.glb",
+      "size": 4089
+    },
+    {
+      "name": "ph_round_wooden_table_02",
+      "file": "ph_round_wooden_table_02.glb",
+      "size": 2851
+    },
+    {
+      "name": "ph_side_table_01",
+      "file": "ph_side_table_01.glb",
+      "size": 2700
+    },
+    {
+      "name": "ph_side_table_tall_01",
+      "file": "ph_side_table_tall_01.glb",
+      "size": 2755
+    },
+    {
+      "name": "ph_small_wooden_table_01",
+      "file": "ph_small_wooden_table_01.glb",
+      "size": 2764
+    },
+    {
+      "name": "ph_sofa_02",
+      "file": "ph_sofa_02.glb",
+      "size": 4183
+    },
+    {
+      "name": "ph_sofa_03",
+      "file": "ph_sofa_03.glb",
+      "size": 4465
+    },
+    {
+      "name": "ph_vintage_cabinet_01",
+      "file": "ph_vintage_cabinet_01.glb",
+      "size": 22562
+    },
+    {
+      "name": "ph_vintage_wooden_drawer_01",
+      "file": "ph_vintage_wooden_drawer_01.glb",
+      "size": 11491
+    },
+    {
+      "name": "ph_wheelchair_01",
+      "file": "ph_wheelchair_01.glb",
+      "size": 2702
+    },
+    {
+      "name": "ph_wooden_bookshelf_worn",
+      "file": "ph_wooden_bookshelf_worn.glb",
+      "size": 2849
+    },
+    {
+      "name": "ph_wooden_picnic_table",
+      "file": "ph_wooden_picnic_table.glb",
+      "size": 5099
+    },
+    {
+      "name": "ph_wooden_stool_01",
+      "file": "ph_wooden_stool_01.glb",
+      "size": 2715
+    },
+    {
+      "name": "ph_wooden_stool_02",
+      "file": "ph_wooden_stool_02.glb",
+      "size": 4077
+    },
+    {
+      "name": "ph_wooden_table_02",
+      "file": "ph_wooden_table_02.glb",
+      "size": 2687
+    }
+  ],
+  "characters": [
+    {
+      "name": "hd_char_facecap",
+      "file": "hd_char_facecap.glb",
+      "size": 332808
+    },
+    {
+      "name": "hd_char_kira",
+      "file": "hd_char_kira.glb",
+      "size": 12173128
+    },
+    {
+      "name": "hd_char_michelle",
+      "file": "hd_char_michelle.glb",
+      "size": 3276888
+    },
+    {
+      "name": "hd_char_rpm_male",
+      "file": "hd_char_rpm_male.glb",
+      "size": 868520
+    },
+    {
+      "name": "hd_char_soldier",
+      "file": "hd_char_soldier.glb",
+      "size": 2160468
+    },
+    {
+      "name": "hd_char_xbot",
+      "file": "hd_char_xbot.glb",
+      "size": 2930032
+    },
+    {
+      "name": "hd_character_michelle",
+      "file": "hd_character_michelle.glb",
+      "size": 3276888
+    },
+    {
+      "name": "hd_pbr_brain_stem",
+      "file": "hd_pbr_brain_stem.glb",
+      "size": 3194848
+    },
+    {
+      "name": "hd_pbr_cesium_man",
+      "file": "hd_pbr_cesium_man.glb",
+      "size": 438044
+    },
+    {
+      "name": "hd_pbr_fox",
+      "file": "hd_pbr_fox.glb",
+      "size": 162852
+    },
+    {
+      "name": "hd_robot",
+      "file": "hd_robot.glb",
+      "size": 463988
+    },
+    {
+      "name": "hd_robot_expressive",
+      "file": "hd_robot_expressive.glb",
+      "size": 463988
+    },
+    {
+      "name": "hd_soldier",
+      "file": "hd_soldier.glb",
+      "size": 2160468
+    }
+  ],
+  "vehicles": [
+    {
+      "name": "hd_ferrari",
+      "file": "hd_ferrari.glb",
+      "size": 1681572
+    },
+    {
+      "name": "hd_pbr_cesium_milk_truck",
+      "file": "hd_pbr_cesium_milk_truck.glb",
+      "size": 369980
+    },
+    {
+      "name": "ph_CoffeeCart_01",
+      "file": "ph_CoffeeCart_01.glb",
+      "size": 6637
+    },
+    {
+      "name": "ph_cardboard_box_01",
+      "file": "ph_cardboard_box_01.glb",
+      "size": 2903
+    },
+    {
+      "name": "ph_carrot_cake",
+      "file": "ph_carrot_cake.glb",
+      "size": 2682
+    },
+    {
+      "name": "ph_carved_wooden_elephant",
+      "file": "ph_carved_wooden_elephant.glb",
+      "size": 2791
+    },
+    {
+      "name": "ph_carved_wooden_plate",
+      "file": "ph_carved_wooden_plate.glb",
+      "size": 2836
+    },
+    {
+      "name": "ph_covered_car",
+      "file": "ph_covered_car.glb",
+      "size": 9687
+    },
+    {
+      "name": "ph_dutch_ship_large_01",
+      "file": "ph_dutch_ship_large_01.glb",
+      "size": 7540
+    },
+    {
+      "name": "ph_dutch_ship_large_02",
+      "file": "ph_dutch_ship_large_02.glb",
+      "size": 7544
+    },
+    {
+      "name": "ph_dutch_ship_medium",
+      "file": "ph_dutch_ship_medium.glb",
+      "size": 7494
+    },
+    {
+      "name": "ph_postcard_set_01",
+      "file": "ph_postcard_set_01.glb",
+      "size": 28439
+    },
+    {
+      "name": "ph_ship_pinnace",
+      "file": "ph_ship_pinnace.glb",
+      "size": 17175
+    }
+  ],
+  "containers": [
+    {
+      "name": "ph_Barrel_01",
+      "file": "ph_Barrel_01.glb",
+      "size": 2711
+    },
+    {
+      "name": "ph_Barrel_02",
+      "file": "ph_Barrel_02.glb",
+      "size": 2639
+    },
+    {
+      "name": "ph_CheeseBox_01",
+      "file": "ph_CheeseBox_01.glb",
+      "size": 4069
+    },
+    {
+      "name": "ph_barrel_03",
+      "file": "ph_barrel_03.glb",
+      "size": 2638
+    },
+    {
+      "name": "ph_barrel_stove",
+      "file": "ph_barrel_stove.glb",
+      "size": 2747
+    },
+    {
+      "name": "ph_boombox",
+      "file": "ph_boombox.glb",
+      "size": 4656
+    },
+    {
+      "name": "ph_compost_bag_02",
+      "file": "ph_compost_bag_02.glb",
+      "size": 2792
+    },
+    {
+      "name": "ph_compost_bags",
+      "file": "ph_compost_bags.glb",
+      "size": 11308
+    },
+    {
+      "name": "ph_power_box_01",
+      "file": "ph_power_box_01.glb",
+      "size": 4417
+    },
+    {
+      "name": "ph_utility_box_01",
+      "file": "ph_utility_box_01.glb",
+      "size": 2766
+    },
+    {
+      "name": "ph_utility_box_02",
+      "file": "ph_utility_box_02.glb",
+      "size": 2764
+    },
+    {
+      "name": "ph_wicker_basket_01",
+      "file": "ph_wicker_basket_01.glb",
+      "size": 2792
+    },
+    {
+      "name": "ph_wicker_basket_02",
+      "file": "ph_wicker_basket_02.glb",
+      "size": 4497
+    },
+    {
+      "name": "ph_wine_barrel_01",
+      "file": "ph_wine_barrel_01.glb",
+      "size": 6673
+    },
+    {
+      "name": "ph_wooden_barrels_01",
+      "file": "ph_wooden_barrels_01.glb",
+      "size": 31017
+    },
+    {
+      "name": "ph_wooden_bucket_01",
+      "file": "ph_wooden_bucket_01.glb",
+      "size": 4248
+    },
+    {
+      "name": "ph_wooden_bucket_02",
+      "file": "ph_wooden_bucket_02.glb",
+      "size": 5625
+    },
+    {
+      "name": "ph_wooden_crate_01",
+      "file": "ph_wooden_crate_01.glb",
+      "size": 5612
+    },
+    {
+      "name": "ph_wooden_crate_02",
+      "file": "ph_wooden_crate_02.glb",
+      "size": 4150
+    }
+  ],
+  "weapons": [
+    {
+      "name": "ph_antique_estoc",
+      "file": "ph_antique_estoc.glb",
+      "size": 2884
+    },
+    {
+      "name": "ph_antique_katana_01",
+      "file": "ph_antique_katana_01.glb",
+      "size": 2718
+    },
+    {
+      "name": "ph_katana_stand_01",
+      "file": "ph_katana_stand_01.glb",
+      "size": 2730
+    },
+    {
+      "name": "ph_kite_shield",
+      "file": "ph_kite_shield.glb",
+      "size": 6826
+    },
+    {
+      "name": "ph_ornate_medieval_dagger",
+      "file": "ph_ornate_medieval_dagger.glb",
+      "size": 4405
+    },
+    {
+      "name": "ph_ornate_medieval_mace",
+      "file": "ph_ornate_medieval_mace.glb",
+      "size": 2849
+    },
+    {
+      "name": "ph_ornate_war_hammer",
+      "file": "ph_ornate_war_hammer.glb",
+      "size": 2814
+    },
+    {
+      "name": "ph_sledgehammer_01",
+      "file": "ph_sledgehammer_01.glb",
+      "size": 2796
+    },
+    {
+      "name": "ph_wooden_axe",
+      "file": "ph_wooden_axe.glb",
+      "size": 2744
+    },
+    {
+      "name": "ph_wooden_axe_02",
+      "file": "ph_wooden_axe_02.glb",
+      "size": 2774
+    },
+    {
+      "name": "ph_wooden_axe_03",
+      "file": "ph_wooden_axe_03.glb",
+      "size": 2766
+    },
+    {
+      "name": "ph_wooden_hammer_01",
+      "file": "ph_wooden_hammer_01.glb",
+      "size": 2709
+    },
+    {
+      "name": "ph_wooden_handle_saber",
+      "file": "ph_wooden_handle_saber.glb",
+      "size": 2838
+    }
+  ],
+  "terrain": [
+    {
+      "name": "ph_boulder_01",
+      "file": "ph_boulder_01.glb",
+      "size": 2773
+    },
+    {
+      "name": "ph_coast_land_rocks_02",
+      "file": "ph_coast_land_rocks_02.glb",
+      "size": 2851
+    },
+    {
+      "name": "ph_coast_land_rocks_03",
+      "file": "ph_coast_land_rocks_03.glb",
+      "size": 2853
+    },
+    {
+      "name": "ph_coast_land_rocks_04",
+      "file": "ph_coast_land_rocks_04.glb",
+      "size": 2855
+    },
+    {
+      "name": "ph_coast_line_01",
+      "file": "ph_coast_line_01.glb",
+      "size": 2820
+    },
+    {
+      "name": "ph_coast_line_02",
+      "file": "ph_coast_line_02.glb",
+      "size": 2800
+    },
+    {
+      "name": "ph_coast_rocks_01",
+      "file": "ph_coast_rocks_01.glb",
+      "size": 2810
+    },
+    {
+      "name": "ph_coast_rocks_02",
+      "file": "ph_coast_rocks_02.glb",
+      "size": 2810
+    },
+    {
+      "name": "ph_coast_rocks_03",
+      "file": "ph_coast_rocks_03.glb",
+      "size": 2811
+    },
+    {
+      "name": "ph_coast_rocks_05",
+      "file": "ph_coast_rocks_05.glb",
+      "size": 2821
+    },
+    {
+      "name": "ph_coastal_cliff_01",
+      "file": "ph_coastal_cliff_01.glb",
+      "size": 2825
+    },
+    {
+      "name": "ph_coastal_cliff_02",
+      "file": "ph_coastal_cliff_02.glb",
+      "size": 3220
+    },
+    {
+      "name": "ph_coastal_cliff_04",
+      "file": "ph_coastal_cliff_04.glb",
+      "size": 2828
+    },
+    {
+      "name": "ph_moon_rock_01",
+      "file": "ph_moon_rock_01.glb",
+      "size": 7088
+    },
+    {
+      "name": "ph_moon_rock_02",
+      "file": "ph_moon_rock_02.glb",
+      "size": 2782
+    },
+    {
+      "name": "ph_moon_rock_03",
+      "file": "ph_moon_rock_03.glb",
+      "size": 2789
+    },
+    {
+      "name": "ph_moon_rock_04",
+      "file": "ph_moon_rock_04.glb",
+      "size": 2786
+    },
+    {
+      "name": "ph_moon_rock_05",
+      "file": "ph_moon_rock_05.glb",
+      "size": 2789
+    },
+    {
+      "name": "ph_moon_rock_06",
+      "file": "ph_moon_rock_06.glb",
+      "size": 2790
+    },
+    {
+      "name": "ph_moon_rock_07",
+      "file": "ph_moon_rock_07.glb",
+      "size": 2787
+    },
+    {
+      "name": "ph_mountainside",
+      "file": "ph_mountainside.glb",
+      "size": 2776
+    },
+    {
+      "name": "ph_namaqualand_boulder_02",
+      "file": "ph_namaqualand_boulder_02.glb",
+      "size": 2818
+    },
+    {
+      "name": "ph_namaqualand_boulder_03",
+      "file": "ph_namaqualand_boulder_03.glb",
+      "size": 2823
+    },
+    {
+      "name": "ph_namaqualand_boulder_04",
+      "file": "ph_namaqualand_boulder_04.glb",
+      "size": 2818
+    },
+    {
+      "name": "ph_namaqualand_boulder_05",
+      "file": "ph_namaqualand_boulder_05.glb",
+      "size": 2872
+    },
+    {
+      "name": "ph_namaqualand_boulder_06",
+      "file": "ph_namaqualand_boulder_06.glb",
+      "size": 2880
+    },
+    {
+      "name": "ph_namaqualand_boulders_01",
+      "file": "ph_namaqualand_boulders_01.glb",
+      "size": 4427
+    },
+    {
+      "name": "ph_namaqualand_cliff_01",
+      "file": "ph_namaqualand_cliff_01.glb",
+      "size": 2848
+    },
+    {
+      "name": "ph_namaqualand_cliff_02",
+      "file": "ph_namaqualand_cliff_02.glb",
+      "size": 2857
+    },
+    {
+      "name": "ph_namaqualand_rocks_01",
+      "file": "ph_namaqualand_rocks_01.glb",
+      "size": 7463
+    },
+    {
+      "name": "ph_namaqualand_stones_01",
+      "file": "ph_namaqualand_stones_01.glb",
+      "size": 8681
+    },
+    {
+      "name": "ph_rock_07",
+      "file": "ph_rock_07.glb",
+      "size": 2979
+    },
+    {
+      "name": "ph_rock_09",
+      "file": "ph_rock_09.glb",
+      "size": 2745
+    },
+    {
+      "name": "ph_rock_face_01",
+      "file": "ph_rock_face_01.glb",
+      "size": 2793
+    },
+    {
+      "name": "ph_rock_face_02",
+      "file": "ph_rock_face_02.glb",
+      "size": 2794
+    },
+    {
+      "name": "ph_sand_rocks_small_01",
+      "file": "ph_sand_rocks_small_01.glb",
+      "size": 2887
+    },
+    {
+      "name": "ph_stone_01",
+      "file": "ph_stone_01.glb",
+      "size": 2750
+    },
+    {
+      "name": "ph_stone_fire_pit",
+      "file": "ph_stone_fire_pit.glb",
+      "size": 2792
+    }
+  ],
+  "nature": [
+    {
+      "name": "ph_celandine_01",
+      "file": "ph_celandine_01.glb",
+      "size": 8770
+    },
+    {
+      "name": "ph_crystalline_iceplant",
+      "file": "ph_crystalline_iceplant.glb",
+      "size": 13607
+    },
+    {
+      "name": "ph_dandelion_01",
+      "file": "ph_dandelion_01.glb",
+      "size": 8915
+    },
+    {
+      "name": "ph_dead_quiver_branch_01",
+      "file": "ph_dead_quiver_branch_01.glb",
+      "size": 2866
+    },
+    {
+      "name": "ph_dead_quiver_branch_02",
+      "file": "ph_dead_quiver_branch_02.glb",
+      "size": 2863
+    },
+    {
+      "name": "ph_dead_tree_trunk",
+      "file": "ph_dead_tree_trunk.glb",
+      "size": 2812
+    },
+    {
+      "name": "ph_dead_tree_trunk_02",
+      "file": "ph_dead_tree_trunk_02.glb",
+      "size": 2849
+    },
+    {
+      "name": "ph_dry_branches_medium_01",
+      "file": "ph_dry_branches_medium_01.glb",
+      "size": 5844
+    },
+    {
+      "name": "ph_fern_02",
+      "file": "ph_fern_02.glb",
+      "size": 6899
+    },
+    {
+      "name": "ph_fir_sapling",
+      "file": "ph_fir_sapling.glb",
+      "size": 10979
+    },
+    {
+      "name": "ph_fir_sapling_medium",
+      "file": "ph_fir_sapling_medium.glb",
+      "size": 17059
+    },
+    {
+      "name": "ph_fir_tree_01",
+      "file": "ph_fir_tree_01.glb",
+      "size": 30279
+    },
+    {
+      "name": "ph_flower_empodium",
+      "file": "ph_flower_empodium.glb",
+      "size": 8859
+    },
+    {
+      "name": "ph_flower_gazania",
+      "file": "ph_flower_gazania.glb",
+      "size": 19686
+    },
+    {
+      "name": "ph_flower_heliophila",
+      "file": "ph_flower_heliophila.glb",
+      "size": 5983
+    },
+    {
+      "name": "ph_flower_stinkkruid",
+      "file": "ph_flower_stinkkruid.glb",
+      "size": 7539
+    },
+    {
+      "name": "ph_flower_ursinia",
+      "file": "ph_flower_ursinia.glb",
+      "size": 8902
+    },
+    {
+      "name": "ph_grass_bermuda_01",
+      "file": "ph_grass_bermuda_01.glb",
+      "size": 32912
+    },
+    {
+      "name": "ph_grass_medium_01",
+      "file": "ph_grass_medium_01.glb",
+      "size": 27110
+    },
+    {
+      "name": "ph_grass_medium_02",
+      "file": "ph_grass_medium_02.glb",
+      "size": 8864
+    },
+    {
+      "name": "ph_island_tree_01",
+      "file": "ph_island_tree_01.glb",
+      "size": 8576
+    },
+    {
+      "name": "ph_island_tree_02",
+      "file": "ph_island_tree_02.glb",
+      "size": 8545
+    },
+    {
+      "name": "ph_island_tree_03",
+      "file": "ph_island_tree_03.glb",
+      "size": 8557
+    },
+    {
+      "name": "ph_jacaranda_tree",
+      "file": "ph_jacaranda_tree.glb",
+      "size": 9526
+    },
+    {
+      "name": "ph_modular_street_seating",
+      "file": "ph_modular_street_seating.glb",
+      "size": 29629
+    },
+    {
+      "name": "ph_moss_01",
+      "file": "ph_moss_01.glb",
+      "size": 18481
+    },
+    {
+      "name": "ph_nettle_plant",
+      "file": "ph_nettle_plant.glb",
+      "size": 10450
+    },
+    {
+      "name": "ph_periwinkle_plant",
+      "file": "ph_periwinkle_plant.glb",
+      "size": 15189
+    },
+    {
+      "name": "ph_pine_roots",
+      "file": "ph_pine_roots.glb",
+      "size": 5161
+    },
+    {
+      "name": "ph_pine_sapling_medium",
+      "file": "ph_pine_sapling_medium.glb",
+      "size": 16365
+    },
+    {
+      "name": "ph_pine_sapling_small",
+      "file": "ph_pine_sapling_small.glb",
+      "size": 11442
+    },
+    {
+      "name": "ph_pine_tree_01",
+      "file": "ph_pine_tree_01.glb",
+      "size": 30596
+    },
+    {
+      "name": "ph_planter_box_01",
+      "file": "ph_planter_box_01.glb",
+      "size": 2787
+    },
+    {
+      "name": "ph_planter_box_02",
+      "file": "ph_planter_box_02.glb",
+      "size": 2787
+    },
+    {
+      "name": "ph_planter_box_03",
+      "file": "ph_planter_box_03.glb",
+      "size": 2790
+    },
+    {
+      "name": "ph_planter_pot_clay",
+      "file": "ph_planter_pot_clay.glb",
+      "size": 2813
+    },
+    {
+      "name": "ph_potted_plant_01",
+      "file": "ph_potted_plant_01.glb",
+      "size": 7969
+    },
+    {
+      "name": "ph_potted_plant_02",
+      "file": "ph_potted_plant_02.glb",
+      "size": 6653
+    },
+    {
+      "name": "ph_potted_plant_04",
+      "file": "ph_potted_plant_04.glb",
+      "size": 7081
+    },
+    {
+      "name": "ph_quiver_tree_01",
+      "file": "ph_quiver_tree_01.glb",
+      "size": 5080
+    },
+    {
+      "name": "ph_quiver_tree_02",
+      "file": "ph_quiver_tree_02.glb",
+      "size": 2809
+    },
+    {
+      "name": "ph_rock_moss_set_01",
+      "file": "ph_rock_moss_set_01.glb",
+      "size": 9987
+    },
+    {
+      "name": "ph_rock_moss_set_02",
+      "file": "ph_rock_moss_set_02.glb",
+      "size": 11608
+    },
+    {
+      "name": "ph_root_cluster_01",
+      "file": "ph_root_cluster_01.glb",
+      "size": 2827
+    },
+    {
+      "name": "ph_root_cluster_02",
+      "file": "ph_root_cluster_02.glb",
+      "size": 15712
+    },
+    {
+      "name": "ph_shrub_01",
+      "file": "ph_shrub_01.glb",
+      "size": 2895
+    },
+    {
+      "name": "ph_shrub_02",
+      "file": "ph_shrub_02.glb",
+      "size": 8083
+    },
+    {
+      "name": "ph_shrub_03",
+      "file": "ph_shrub_03.glb",
+      "size": 7296
+    },
+    {
+      "name": "ph_shrub_04",
+      "file": "ph_shrub_04.glb",
+      "size": 2882
+    },
+    {
+      "name": "ph_shrub_sorrel_01",
+      "file": "ph_shrub_sorrel_01.glb",
+      "size": 17428
+    },
+    {
+      "name": "ph_single_root",
+      "file": "ph_single_root.glb",
+      "size": 3023
+    },
+    {
+      "name": "ph_street_lamp_01",
+      "file": "ph_street_lamp_01.glb",
+      "size": 6419
+    },
+    {
+      "name": "ph_street_lamp_02",
+      "file": "ph_street_lamp_02.glb",
+      "size": 6429
+    },
+    {
+      "name": "ph_street_rat",
+      "file": "ph_street_rat.glb",
+      "size": 2770
+    },
+    {
+      "name": "ph_tree_small_02",
+      "file": "ph_tree_small_02.glb",
+      "size": 9075
+    },
+    {
+      "name": "ph_tree_stump_01",
+      "file": "ph_tree_stump_01.glb",
+      "size": 2793
+    },
+    {
+      "name": "ph_tree_stump_02",
+      "file": "ph_tree_stump_02.glb",
+      "size": 2802
+    },
+    {
+      "name": "ph_weed_plant_02",
+      "file": "ph_weed_plant_02.glb",
+      "size": 9128
+    },
+    {
+      "name": "ph_wild_rooibos_bush",
+      "file": "ph_wild_rooibos_bush.glb",
+      "size": 23122
+    }
+  ],
+  "buildings": [
+    {
+      "name": "ph_gate_latch_01",
+      "file": "ph_gate_latch_01.glb",
+      "size": 5885
+    },
+    {
+      "name": "ph_large_castle_door",
+      "file": "ph_large_castle_door.glb",
+      "size": 6111
+    },
+    {
+      "name": "ph_large_iron_gate",
+      "file": "ph_large_iron_gate.glb",
+      "size": 7101
+    },
+    {
+      "name": "ph_modular_chainlink_fence",
+      "file": "ph_modular_chainlink_fence.glb",
+      "size": 41838
+    },
+    {
+      "name": "ph_modular_factory_facade",
+      "file": "ph_modular_factory_facade.glb",
+      "size": 372666
+    },
+    {
+      "name": "ph_modular_fort_01",
+      "file": "ph_modular_fort_01.glb",
+      "size": 71433
+    },
+    {
+      "name": "ph_modular_urban_apartments_facade",
+      "file": "ph_modular_urban_apartments_facade.glb",
+      "size": 270799
+    },
+    {
+      "name": "ph_modular_wooden_pier",
+      "file": "ph_modular_wooden_pier.glb",
+      "size": 21127
+    },
+    {
+      "name": "ph_rollershutter_door",
+      "file": "ph_rollershutter_door.glb",
+      "size": 5378
+    },
+    {
+      "name": "ph_rollershutter_window_01",
+      "file": "ph_rollershutter_window_01.glb",
+      "size": 4991
+    },
+    {
+      "name": "ph_rollershutter_window_02",
+      "file": "ph_rollershutter_window_02.glb",
+      "size": 4994
+    },
+    {
+      "name": "ph_rollershutter_window_03",
+      "file": "ph_rollershutter_window_03.glb",
+      "size": 4779
+    }
+  ],
+  "industrial": [
+    {
+      "name": "ph_modular_airduct_circular_01",
+      "file": "ph_modular_airduct_circular_01.glb",
+      "size": 26467
+    },
+    {
+      "name": "ph_modular_airduct_rectangular_01",
+      "file": "ph_modular_airduct_rectangular_01.glb",
+      "size": 37157
+    },
+    {
+      "name": "ph_modular_electric_cables",
+      "file": "ph_modular_electric_cables.glb",
+      "size": 82607
+    },
+    {
+      "name": "ph_modular_electricity_poles",
+      "file": "ph_modular_electricity_poles.glb",
+      "size": 149324
+    },
+    {
+      "name": "ph_modular_fire_escape",
+      "file": "ph_modular_fire_escape.glb",
+      "size": 13672
+    },
+    {
+      "name": "ph_modular_industrial_pipes_01",
+      "file": "ph_modular_industrial_pipes_01.glb",
+      "size": 15014
+    },
+    {
+      "name": "ph_modular_metal_gutter",
+      "file": "ph_modular_metal_gutter.glb",
+      "size": 20545
+    },
+    {
+      "name": "ph_modular_pipes",
+      "file": "ph_modular_pipes.glb",
+      "size": 107409
+    },
+    {
+      "name": "ph_modular_pipes_plastic_01",
+      "file": "ph_modular_pipes_plastic_01.glb",
+      "size": 24759
+    },
+    {
+      "name": "ph_pipe_wrench",
+      "file": "ph_pipe_wrench.glb",
+      "size": 2756
+    }
+  ]
+}
