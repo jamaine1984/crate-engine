@@ -752,6 +752,99 @@ function showAISettingsModal() {
 }
 window.showAISettingsModal = showAISettingsModal;
 
+// ═══ MESHY API KEY MODAL ═══
+function showMeshyKeyModal() {
+  if (document.getElementById('meshy-key-modal')) document.getElementById('meshy-key-modal').remove();
+  const existingKey = getMeshyApiKey();
+  const m = document.createElement('div');
+  m.id = 'meshy-key-modal';
+  m.innerHTML = `
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
+      <div style="background:#1a1a2e;border-radius:16px;width:480px;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5);padding:28px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h2 style="margin:0;font-size:1.3rem">🔑 Connect Meshy AI</h2>
+          <button onclick="this.closest('#meshy-key-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
+        </div>
+        <p style="color:#888;font-size:0.85rem;margin-bottom:16px">Generate 3D models from text or images using Meshy AI. Connect your own Meshy account — <a href="https://www.meshy.ai/settings/api" target="_blank" style="color:#6366f1">get an API key here</a>.</p>
+        <p style="color:#666;font-size:0.78rem;margin-bottom:12px">Free tier: 200 credits/month. Pro ($16/mo): 1000 credits. Your key stays in your browser (localStorage).</p>
+        
+        <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Meshy API Key</label>
+        <input id="meshy-key-input" type="password" value="${existingKey}" placeholder="msy-..." style="width:100%;padding:12px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.9rem;box-sizing:border-box;margin-bottom:16px">
+        
+        <div style="display:flex;gap:10px">
+          <button id="meshy-save-btn" style="flex:1;padding:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.95rem">Save Key</button>
+          <button id="meshy-test-btn" style="flex:1;padding:12px;background:#2a2a4a;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.95rem">Test Connection</button>
+        </div>
+        <div id="meshy-key-status" style="margin-top:10px;font-size:0.8rem;color:#666;text-align:center"></div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(m);
+  
+  document.getElementById('meshy-save-btn').onclick = () => {
+    const key = document.getElementById('meshy-key-input').value.trim();
+    setMeshyApiKey(key);
+    document.getElementById('meshy-key-status').innerHTML = '<span style="color:#4ade80">✓ Saved! You can now generate 3D models.</span>';
+    setTimeout(() => m.remove(), 1200);
+  };
+  
+  document.getElementById('meshy-test-btn').onclick = async () => {
+    const key = document.getElementById('meshy-key-input').value.trim();
+    const statusEl = document.getElementById('meshy-key-status');
+    if (!key) { statusEl.innerHTML = '<span style="color:#f87171">Enter your Meshy API key (msy-...)</span>'; return; }
+    statusEl.innerHTML = '<span style="color:#fbbf24">Testing...</span>';
+    try {
+      const resp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d?page_size=1', { headers: { 'Authorization': 'Bearer ' + key } });
+      if (resp.ok) {
+        statusEl.innerHTML = '<span style="color:#4ade80">✓ Connected to Meshy AI!</span>';
+      } else {
+        const err = await resp.json().catch(()=>({}));
+        statusEl.innerHTML = '<span style="color:#f87171">❌ ' + (err.message || 'Auth failed — check your key') + '</span>';
+      }
+    } catch(e) {
+      statusEl.innerHTML = '<span style="color:#f87171">❌ Connection error</span>';
+    }
+  };
+}
+window.showMeshyKeyModal = showMeshyKeyModal;
+
+// ═══ GAME MODES SELECTOR ═══
+function showGameModesModal() {
+  if (document.getElementById('game-modes-modal')) { document.getElementById('game-modes-modal').remove(); return; }
+  const m = document.createElement('div');
+  m.id = 'game-modes-modal';
+  
+  const presets = {
+    zombie: { icon: '🧟', name: 'Zombie Survival', desc: 'Survive waves of undead in an abandoned city', color: '#dc2626' },
+    racing: { icon: '🏎️', name: 'Street Racing', desc: 'Race through city streets in sports cars', color: '#f59e0b' },
+    rpg: { icon: '⚔️', name: 'Fantasy RPG', desc: 'Medieval world with quests and combat', color: '#8b5cf6' },
+    survival: { icon: '🏕️', name: 'Survival Sandbox', desc: 'Gather, build, survive the night', color: '#22c55e' },
+    fps: { icon: '🔫', name: 'Arena FPS', desc: 'Fast-paced first-person combat', color: '#ef4444' },
+    horror: { icon: '👻', name: 'Horror Exploration', desc: 'Dark abandoned town — something watches', color: '#6b21a8' },
+    city_builder: { icon: '🏗️', name: 'City Builder', desc: 'Build your dream city from scratch', color: '#3b82f6' },
+    sandbox: { icon: '🎨', name: 'Creative Sandbox', desc: 'No rules, infinite freedom', color: '#14b8a6' },
+  };
+  
+  const cards = Object.entries(presets).map(([key, p]) => 
+    '<div onclick="document.getElementById(\'game-modes-modal\').remove();execSingle(\'' + key + ' game\')" style="background:#1a1a2e;border:2px solid #333;border-radius:12px;padding:16px;cursor:pointer;transition:all 0.2s;display:flex;gap:12px;align-items:center" onmouseenter="this.style.borderColor=\'' + p.color + '\';this.style.transform=\'scale(1.02)\'" onmouseleave="this.style.borderColor=\'#333\';this.style.transform=\'scale(1)\'">' +
+    '<div style="font-size:2rem;width:48px;text-align:center">' + p.icon + '</div>' +
+    '<div><div style="font-weight:700;font-size:0.95rem;color:#fff">' + p.name + '</div>' +
+    '<div style="color:#888;font-size:0.78rem;margin-top:2px">' + p.desc + '</div></div></div>'
+  ).join('');
+  
+  m.innerHTML = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">' +
+    '<div style="background:#0d0d1a;border-radius:16px;width:520px;max-height:85vh;overflow-y:auto;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5);padding:28px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
+    '<div><h2 style="margin:0;font-size:1.4rem">🎮 Game Modes</h2>' +
+    '<p style="margin:4px 0 0;color:#888;font-size:0.8rem">Pick a mode — instant playable game</p></div>' +
+    '<button onclick="this.closest(\'#game-modes-modal\').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button></div>' +
+    '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div></div></div>';
+  document.body.appendChild(m);
+}
+window.showGameModesModal = showGameModesModal;
+
+
+
 
 // === PLAY MODE (WASD First-Person) ===
 let playMode = false;
@@ -5140,8 +5233,11 @@ renderer.setSize(canvas.clientWidth, canvas.clientHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.4;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Atmospheric fog for depth perception
+  scene.fog = new THREE.FogExp2(0x88aabb, 0.0015);
+
 
 const scene = new THREE.Scene();
 if (window._loadProgress) window._loadProgress(20, "Creating scene...");
@@ -5441,7 +5537,7 @@ async function initPostProcessing() {
     new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
     0.3,   // strength (subtle)
     0.5,   // radius
-    0.9    // threshold (higher = less bloom work) (only bright stuff blooms)
+    0.85   // threshold — subtle bloom on bright surfaces
   );
   composer.addPass(bloomPass);
   
@@ -5590,7 +5686,7 @@ function loadEnvironmentMap(preset) {
   new RGBELoader().load(url, (texture) => {
     envMap = pmremGenerator.fromEquirectangular(texture).texture;
     scene.environment = envMap;
-    scene.background = null; // Keep our custom sky, just use HDRI for reflections
+    scene.background = envMap; // Use HDRI as sky background for realism
     texture.dispose();
     pmremGenerator.dispose();
     console.log('[EnvMap] HDRI loaded: ' + (preset || 'default'));
@@ -9016,6 +9112,228 @@ async function execSingle(cmd) {
     showToast('🗺️ Generating ' + mapTheme + '...');
     
     // JSON Map Templates — structured layouts with positions
+
+    // ═══════════════════════════════════════════════════════════════
+    // GAME PRESETS — "make this a zombie game" auto-configures everything
+    // Each preset defines: map template, NPC behavior, objectives, HUD, rules
+    // ═══════════════════════════════════════════════════════════════
+    const GAME_PRESETS = {
+      'zombie': {
+        name: 'Zombie Survival',
+        description: 'Survive waves of zombies in an abandoned city',
+        map: 'city',
+        env: ['time night', 'fog on'],
+        commands: [
+          'flat height:0',
+          'generate city',
+          'add npc zombie at 30,0,30',
+          'add npc zombie at -20,0,40',
+          'add npc zombie at 50,0,-10',
+          'add npc zombie at -40,0,20',
+          'add npc zombie at 10,0,-50',
+          'add npc zombie at 60,0,60',
+          'add npc zombie at -30,0,-30',
+          'add npc zombie at 0,0,70',
+          'equip sword',
+        ],
+        hud: { showHealth: true, showWaves: true, showKills: true },
+        rules: { hostile: true, respawn: true, waveInterval: 45, maxWave: 10 },
+        music: 'horror',
+      },
+      'racing': {
+        name: 'Street Racing',
+        description: 'Race through city streets in sports cars',
+        map: 'city',
+        env: ['time sunset'],
+        commands: [
+          'flat height:0',
+          'generate city',
+          'add ferrari at 0,0,5',
+          'add ferrari at 5,0,5',
+          'add ferrari at -5,0,5',
+        ],
+        hud: { showSpeed: true, showLap: true, showPosition: true },
+        rules: { laps: 3, checkpoints: true },
+        music: 'electronic',
+      },
+      'rpg': {
+        name: 'Fantasy RPG',
+        description: 'Explore a medieval world with quests and combat',
+        map: 'medieval',
+        env: ['time day'],
+        commands: [
+          'flat height:0',
+          'generate medieval village',
+          'add npc guard at 10,0,10',
+          'add npc guard at -10,0,10',
+          'add npc at 20,0,5',
+          'add npc at -15,0,15',
+          'add npc at 5,0,25',
+          'equip sword',
+        ],
+        hud: { showHealth: true, showXP: true, showQuests: true },
+        rules: { quests: true, levelUp: true },
+        music: 'fantasy',
+      },
+      'survival': {
+        name: 'Survival Sandbox',
+        description: 'Gather resources, build shelter, survive the night',
+        map: 'forest',
+        env: ['time dawn'],
+        commands: [
+          'terrain hills',
+          'add 20 trees',
+          'add 10 rocks',
+          'add campfire at 5,0,5',
+          'equip axe',
+        ],
+        hud: { showHealth: true, showHunger: true, showInventory: true },
+        rules: { dayNightCycle: true, crafting: true },
+        music: 'ambient',
+      },
+      'fps': {
+        name: 'First Person Shooter',
+        description: 'Fast-paced arena combat',
+        map: 'arena',
+        env: ['time noon'],
+        commands: [
+          'flat height:0',
+          'generate arena',
+          'camera first_person',
+          'add npc enemy at 30,0,0',
+          'add npc enemy at -30,0,0',
+          'add npc enemy at 0,0,30',
+          'add npc enemy at 0,0,-30',
+          'equip rifle',
+        ],
+        hud: { showHealth: true, showAmmo: true, showKills: true },
+        rules: { hostile: true, respawn: true },
+        music: 'action',
+      },
+      'sandbox': {
+        name: 'Creative Sandbox',
+        description: 'Build anything — no rules, infinite freedom',
+        map: 'flat',
+        env: ['time day'],
+        commands: [
+          'flat height:0',
+        ],
+        hud: {},
+        rules: {},
+        music: 'chill',
+      },
+      'horror': {
+        name: 'Horror Exploration',
+        description: 'Explore a dark abandoned town — something is watching',
+        map: 'abandoned',
+        env: ['time midnight', 'fog on'],
+        commands: [
+          'flat height:0',
+          'generate abandoned town',
+          'add streetlamp at 10,0,0',
+          'add streetlamp at -10,0,20',
+          'add npc at 50,0,50',
+        ],
+        hud: { showHealth: true, showFlashlight: true },
+        rules: { hostile: true, ambiance: 'creepy' },
+        music: 'horror',
+      },
+      'city_builder': {
+        name: 'City Builder',
+        description: 'Build your dream city from scratch',
+        map: 'flat',
+        env: ['time day'],
+        commands: [
+          'flat height:0',
+          'add road at 0,0,0',
+        ],
+        hud: { showMoney: true, showPopulation: true },
+        rules: { economy: true, building: true },
+        music: 'chill',
+      },
+    };
+
+    // ═══ GAME PRESET COMMAND HANDLER ═══
+    // Matches: "make this a zombie game", "zombie mode", "start zombie survival", etc.
+    const gamePresetRegex = /^(?:make\s+(?:this\s+)?(?:a\s+)?|start\s+|play\s+|mode\s+|game\s*mode\s+)?(\w+)\s*(?:game|mode|survival|match)?$/i;
+    function tryApplyGamePreset(input) {
+      const lower = input.toLowerCase().trim();
+      
+      // Direct match attempts
+      for (const [key, preset] of Object.entries(GAME_PRESETS)) {
+        if (lower === key || lower === key + ' game' || lower === key + ' mode' ||
+            lower === 'make this a ' + key + ' game' || lower === 'make ' + key + ' game' ||
+            lower === 'start ' + key || lower === 'play ' + key ||
+            lower === preset.name.toLowerCase()) {
+          return applyGamePreset(key, preset);
+        }
+      }
+      return null;
+    }
+    
+    async function applyGamePreset(key, preset) {
+      appendToOutput('🎮 Loading game mode: ' + preset.name + '...\n' + preset.description);
+      
+      // Clear existing scene
+      execSingle('clear');
+      
+      // Apply environment
+      if (preset.env) {
+        for (const envCmd of preset.env) {
+          execSingle(envCmd);
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+      
+      // Run commands sequentially
+      for (const cmd of preset.commands) {
+        appendToOutput('  → ' + cmd);
+        execSingle(cmd);
+        await new Promise(r => setTimeout(r, 300));
+      }
+      
+      // Set game state
+      window._currentGameMode = key;
+      window._gamePreset = preset;
+      
+      // Show HUD overlay
+      if (preset.hud && Object.keys(preset.hud).length > 0) {
+        showGameHUD(preset);
+      }
+      
+      appendToOutput('\n✅ ' + preset.name + ' loaded! Use voice or text commands to play.');
+      return '🎮 ' + preset.name + ' — Ready!';
+    }
+    
+    // ═══ GAME HUD OVERLAY ═══
+    function showGameHUD(preset) {
+      let hud = document.getElementById('game-hud');
+      if (hud) hud.remove();
+      
+      hud = document.createElement('div');
+      hud.id = 'game-hud';
+      hud.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;gap:16px;background:rgba(0,0,0,0.6);padding:8px 20px;border-radius:20px;font-family:-apple-system,sans-serif;color:#fff;font-size:14px;backdrop-filter:blur(8px);pointer-events:none';
+      
+      const items = [];
+      if (preset.hud.showHealth) items.push('<span>❤️ <span id="hud-health">100</span></span>');
+      if (preset.hud.showKills) items.push('<span>💀 <span id="hud-kills">0</span></span>');
+      if (preset.hud.showWaves) items.push('<span>🌊 Wave <span id="hud-wave">1</span></span>');
+      if (preset.hud.showSpeed) items.push('<span>🏎️ <span id="hud-speed">0</span> mph</span>');
+      if (preset.hud.showLap) items.push('<span>🏁 Lap <span id="hud-lap">1</span>/3</span>');
+      if (preset.hud.showXP) items.push('<span>⭐ <span id="hud-xp">0</span> XP</span>');
+      if (preset.hud.showAmmo) items.push('<span>🔫 <span id="hud-ammo">30</span></span>');
+      if (preset.hud.showMoney) items.push('<span>💰 $<span id="hud-money">10000</span></span>');
+      if (preset.hud.showPopulation) items.push('<span>👥 <span id="hud-pop">0</span></span>');
+      if (preset.hud.showHunger) items.push('<span>🍖 <span id="hud-hunger">100</span></span>');
+      if (preset.hud.showQuests) items.push('<span>📜 <span id="hud-quests">0</span></span>');
+      if (preset.hud.showPosition) items.push('<span>🏆 <span id="hud-position">1st</span></span>');
+      if (preset.hud.showFlashlight) items.push('<span>🔦 <span id="hud-flashlight">ON</span></span>');
+      if (preset.hud.showInventory) items.push('<span>🎒 <span id="hud-inv">Empty</span></span>');
+      
+      hud.innerHTML = items.join('');
+      document.body.appendChild(hud);
+    }
+
     const MAP_TEMPLATES = {
       // ===== MEDIEVAL FANTASY =====
       town: {
@@ -9781,7 +10099,15 @@ async function execSingle(cmd) {
   }
 
   if (window._handleGenerateCommand) { const r = window._handleGenerateCommand(lower); if (r) return r; }
+  
+  // Game preset commands — "make this a zombie game", "zombie mode", etc.
+  const presetResult = tryApplyGamePreset(lower);
+  if (presetResult) return presetResult;
+  
   if (lower === "3d generator" || lower === "generator" || lower === "generate 3d") { showGeneratorModal(); return "🎨 Opening 3D Generator..."; }
+  if (lower === "game modes" || lower === "games" || lower === "game mode" || lower === "modes") { showGameModesModal(); return "🎮 Opening Game Modes..."; }
+  if (lower === "game modes" || lower === "games" || lower === "game mode" || lower === "modes") { showGameModesModal(); return "🎮 Opening Game Modes..."; }
+  if (lower === "meshy" || lower === "meshy key" || lower === "meshy settings" || lower === "meshy api") { showMeshyKeyModal(); return "🔑 Opening Meshy AI settings..."; }
 
   // ─── RESIZE / SCALE COMMANDS ───
   // GPU instancing commands
@@ -13311,6 +13637,8 @@ window._engineBridge = {
   // Help
   showHelp: showHelp,
   showGenerator: showGeneratorModal,
+  showGameModes: showGameModesModal,
+  showMeshyKey: showMeshyKeyModal,
   
   // Inventory
   async toggleInventory() {
@@ -17618,7 +17946,19 @@ document.addEventListener('keydown', (e) => {
 
 // ═══════════════════════════════════════════════════════════════
 
-const GENERATOR_API = 'https://jamaine1984--crate-engine-3d-generate.modal.run';
+// ═══════════════════════════════════════════════════════════════
+// MESHY AI INTEGRATION — Users connect their own Meshy account
+// Text-to-3D and Image-to-3D via api.meshy.ai
+// ═══════════════════════════════════════════════════════════════
+const MESHY_API_BASE = 'https://api.meshy.ai';
+const MESHY_TEST_KEY = 'msy_dummy_api_key_for_test_mode_12345678';
+
+function getMeshyApiKey() {
+  return localStorage.getItem('crate_meshy_api_key') || '';
+}
+function setMeshyApiKey(key) {
+  localStorage.setItem('crate_meshy_api_key', key);
+}
 
 // Credit system
 window._userCredits = JSON.parse(localStorage.getItem('crate-credits') || '{"plan":"free","credits":5,"used":0}');
@@ -17639,7 +17979,7 @@ function showGeneratorModal() {
         <div style="padding:24px 28px 0;display:flex;justify-content:space-between;align-items:center">
           <div>
             <h2 style="margin:0;font-size:22px">🎨 3D Model Generator</h2>
-            <p style="margin:4px 0 0;color:#888;font-size:13px">Turn any image into a 3D model (GLB)</p>
+            <p style="margin:4px 0 0;color:#888;font-size:13px">Generate 3D models from text or images via Meshy AI</p>
           </div>
           <div style="text-align:right">
             <div style="background:#2a2a4a;padding:6px 14px;border-radius:20px;font-size:13px">
@@ -17689,15 +18029,15 @@ function showGeneratorModal() {
           <div style="margin-top:16px;display:flex;gap:8px">
             <button class="gen3d-quality" data-quality="draft" data-cost="0.5" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#aaa;cursor:pointer;font-size:12px;text-align:center">
               <div style="font-weight:600">Draft</div>
-              <div style="color:#666;font-size:11px">0.5 credits · ~15s</div>
+              <div style="color:#666;font-size:11px">Preview only · ~30s</div>
             </button>
             <button class="gen3d-quality selected" data-quality="standard" data-cost="1" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #6366f1;border-radius:8px;background:#1a1a3e;color:#fff;cursor:pointer;font-size:12px;text-align:center">
               <div style="font-weight:600">Standard ✓</div>
-              <div style="color:#888;font-size:11px">1 credit · ~30s</div>
+              <div style="color:#888;font-size:11px">Full quality · ~60s</div>
             </button>
             <button class="gen3d-quality" data-quality="hd" data-cost="2" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#aaa;cursor:pointer;font-size:12px;text-align:center">
               <div style="font-weight:600">HD</div>
-              <div style="color:#666;font-size:11px">2 credits · ~60s</div>
+              <div style="color:#666;font-size:11px">HD + PBR · ~90s</div>
             </button>
           </div>
 
@@ -17817,53 +18157,123 @@ async function startGeneration() {
   }, 500);
   
   try {
-    // Extract base64 from data URL (only for image mode)
-    const b64 = isTextMode ? null : window._gen3dImage.split(',')[1];
-    
-    // Retry logic for Modal cold starts (GPU takes 30-60s to spin up)
-    let resp;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 90000); // 90s timeout
-        resp = await fetch(GENERATOR_API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(isTextMode ? { text_prompt: textPrompt, quality: window._gen3dQuality, mode: 'text_to_3d' } : { image_base64: b64, quality: window._gen3dQuality, mode: 'image_to_3d' }),
-          signal: controller.signal
-        });
-        clearTimeout(timeout);
-        if (resp.ok) break;
-      } catch(retryErr) {
-        if (attempt < 2) {
-          status.textContent = '🔄 GPU warming up... retrying (' + (attempt+2) + '/3)';
-          await new Promise(r => setTimeout(r, 5000));
-        } else throw retryErr;
-      }
-    }
-    
-    const data = await resp.json();
-    clearInterval(progressInterval);
-    
-    if (data.status === 'success') {
-      progressBar.style.width = '100%';
-      status.textContent = `✅ Done! ${data.file_size_mb}MB GLB model`;
-      
-      // Convert base64 to blob
-      const glbBytes = Uint8Array.from(atob(data.model_base64), c => c.charCodeAt(0));
-      window._gen3dResultBlob = new Blob([glbBytes], { type: 'model/gltf-binary' });
-      window._gen3dResultUrl = URL.createObjectURL(window._gen3dResultBlob);
-      
-      useCredits(cost);
-      // Update credits display
-      const creditsEl = document.querySelector('#gen3d-modal strong');
-      if (creditsEl) creditsEl.textContent = getCreditsRemaining();
-      
-      result.style.display = 'block';
-    } else {
-      status.textContent = '❌ ' + (data.message || 'Generation failed');
+    const apiKey = getMeshyApiKey();
+    if (!apiKey) {
+      clearInterval(progressInterval);
+      status.textContent = '🔑 Please set your Meshy API key first!';
       progressBar.style.width = '0%';
+      btn.disabled = false; btn.textContent = '🚀 Generate 3D Model'; btn.style.opacity = '1';
+      showMeshyKeyModal();
+      return;
     }
+    
+    const headers = { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' };
+    
+    // ── MESHY API CALL ──
+    let taskId;
+    if (isTextMode) {
+      // Text-to-3D: Preview stage first
+      status.textContent = '📝 Creating preview from your description...';
+      const previewResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d', {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          mode: 'preview',
+          prompt: textPrompt,
+          negative_prompt: 'low quality, low resolution, ugly, blurry',
+          should_remesh: true,
+        })
+      });
+      if (!previewResp.ok) { const err = await previewResp.json().catch(()=>({})); throw new Error(err.message || 'Meshy API error: ' + previewResp.status); }
+      const previewData = await previewResp.json();
+      taskId = previewData.result;
+      
+      // Poll preview
+      let previewTask;
+      while (true) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
+        previewTask = await pollResp.json();
+        if (previewTask.status === 'SUCCEEDED') break;
+        if (previewTask.status === 'FAILED') throw new Error('Preview failed: ' + (previewTask.task_error?.message || 'unknown'));
+        pct = Math.min(10 + (previewTask.progress || 0) * 0.4, 50);
+        progressBar.style.width = pct + '%';
+        status.textContent = '🎨 Building preview... ' + (previewTask.progress || 0) + '%';
+      }
+      
+      // Refine stage (if not draft quality)
+      if (window._gen3dQuality !== 'draft') {
+        status.textContent = '✨ Refining with textures...';
+        const refineResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d', {
+          method: 'POST', headers,
+          body: JSON.stringify({ mode: 'refine', preview_task_id: taskId })
+        });
+        if (!refineResp.ok) { const err = await refineResp.json().catch(()=>({})); throw new Error(err.message || 'Refine error: ' + refineResp.status); }
+        const refineData = await refineResp.json();
+        taskId = refineData.result;
+        
+        while (true) {
+          await new Promise(r => setTimeout(r, 3000));
+          const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
+          const refineTask = await pollResp.json();
+          if (refineTask.status === 'SUCCEEDED') { previewTask = refineTask; break; }
+          if (refineTask.status === 'FAILED') throw new Error('Refine failed: ' + (refineTask.task_error?.message || 'unknown'));
+          pct = Math.min(50 + (refineTask.progress || 0) * 0.45, 95);
+          progressBar.style.width = pct + '%';
+          status.textContent = '✨ Refining... ' + (refineTask.progress || 0) + '%';
+        }
+      }
+      
+      // Download GLB
+      const glbUrl = previewTask.model_urls?.glb;
+      if (!glbUrl) throw new Error('No GLB URL in response');
+      const glbResp = await fetch(glbUrl);
+      const glbBlob = await glbResp.blob();
+      window._gen3dResultBlob = glbBlob;
+      window._gen3dResultUrl = URL.createObjectURL(glbBlob);
+      
+    } else {
+      // Image-to-3D (single step)
+      status.textContent = '🧠 Sending image to Meshy AI...';
+      const imgResp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d', {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          image_url: window._gen3dImage, // data URI works!
+          enable_pbr: true,
+          should_remesh: window._gen3dQuality !== 'draft',
+          should_texture: true,
+        })
+      });
+      if (!imgResp.ok) { const err = await imgResp.json().catch(()=>({})); throw new Error(err.message || 'Meshy API error: ' + imgResp.status); }
+      const imgData = await imgResp.json();
+      taskId = imgData.result;
+      
+      // Poll until done
+      let imgTask;
+      while (true) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pollResp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
+        imgTask = await pollResp.json();
+        if (imgTask.status === 'SUCCEEDED') break;
+        if (imgTask.status === 'FAILED') throw new Error('Generation failed: ' + (imgTask.task_error?.message || 'unknown'));
+        pct = Math.min(5 + (imgTask.progress || 0) * 0.9, 95);
+        progressBar.style.width = pct + '%';
+        status.textContent = '🧠 Generating 3D model... ' + (imgTask.progress || 0) + '%';
+      }
+      
+      // Download GLB
+      const glbUrl = imgTask.model_urls?.glb;
+      if (!glbUrl) throw new Error('No GLB URL in response');
+      const glbResp = await fetch(glbUrl);
+      const glbBlob = await glbResp.blob();
+      window._gen3dResultBlob = glbBlob;
+      window._gen3dResultUrl = URL.createObjectURL(glbBlob);
+    }
+    
+    clearInterval(progressInterval);
+    progressBar.style.width = '100%';
+    const sizeMB = window._gen3dResultBlob ? (window._gen3dResultBlob.size / 1048576).toFixed(1) : '?';
+    status.textContent = '✅ Done! ' + sizeMB + 'MB GLB model';
+    result.style.display = 'block';
   } catch (err) {
     clearInterval(progressInterval);
     status.textContent = '❌ Error: ' + err.message;

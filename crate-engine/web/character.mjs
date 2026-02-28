@@ -1130,38 +1130,60 @@ class CharacterController {
         
         // Setup animations — load from model or shared animation source
         const hasAnims = gltf.animations.length > 0;
-        if (!hasAnims) {
-          // No embedded animations — replace with Soldier model (has Mixamo walk/idle/run)
-          console.log('[NPC] Replacing with Soldier model for', type);
-          const soldierFile = 'models/anim_idle.glb';
-          const _loader = window._gltfLoader || loader;
-          _loader.load(soldierFile, (soldierGltf) => {
-            if (!soldierGltf.animations || soldierGltf.animations.length === 0) return;
+        if (hasAnims) {
+          // Model has built-in animations (Quaternius characters)
+          npc.mixer = new THREE.AnimationMixer(model);
+          const prefix = 'HumanArmature|HumanArmature|';
+          for (const clip of gltf.animations) {
+            const rawName = clip.name.replace(prefix, '').toLowerCase();
+            let stdName = null;
+            if (rawName.includes('walk')) stdName = 'walk';
+            else if (rawName.includes('idle') || rawName.includes('standing')) stdName = 'idle';
+            else if (rawName.includes('run') && !rawName.includes('jump')) stdName = 'run';
+            else if (rawName.includes('punch')) stdName = 'punch';
+            else if (rawName.includes('death')) stdName = 'death';
+            else if (rawName.includes('jump') && !rawName.includes('running')) stdName = 'jump';
+            else if (rawName.includes('sword')) stdName = 'attack';
+            else if (rawName.includes('sit')) stdName = 'sit';
+            else if (rawName.includes('clap')) stdName = 'clap';
             
-            // Replace KayKit mesh with Soldier mesh (same skeleton = perfect animation)
-            const soldierScene = soldierGltf.scene;
-            // Remove old children from model group
-            while (model.children.length > 0) model.remove(model.children[0]);
-            // Add Soldier children
-            while (soldierScene.children.length > 0) {
-              const child = soldierScene.children[0];
-              soldierScene.remove(child);
-              model.add(child);
+            if (stdName && !npc.animations[stdName]) {
+              const action = npc.mixer.clipAction(clip);
+              npc.animations[stdName] = action;
             }
-            
-            // Animations work directly — no retargeting needed
+          }
+          
+          // Play walk or idle
+          if (npc.animations.walk && npc.behavior === 'wander') {
+            npc.animations.walk.play();
+            npc.currentAnim = 'walk';
+          } else if (npc.animations.idle) {
+            npc.animations.idle.play();
+            npc.currentAnim = 'idle';
+          }
+          
+          npc.proceduralAnim = false;
+          console.log('[NPC] Built-in anims:', Object.keys(npc.animations).join(', '));
+        } else {
+          // Fallback: load Soldier animations
+          console.log('[NPC] No embedded anims, loading Soldier animations');
+          const _loader = window._gltfLoader || loader;
+          _loader.load('models/anim_idle.glb', (animGltf) => {
+            if (!animGltf.animations || animGltf.animations.length === 0) return;
             npc.mixer = new THREE.AnimationMixer(model);
-            soldierGltf.animations.forEach(clip => {
+            animGltf.animations.forEach(clip => {
               const name = clip.name.toLowerCase();
               if (name === 'tpose') return;
-              const action = npc.mixer.clipAction(clip);
-              if (name === 'idle') npc.animations.idle = action;
-              else if (name === 'walk' || name === 'walking') npc.animations.walk = action;
-              else if (name === 'run' || name === 'running') npc.animations.run = action;
+              const rotTracks = clip.tracks.filter(t => t.name.endsWith('.quaternion'));
+              if (rotTracks.length > 0) {
+                const rotClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
+                const action = npc.mixer.clipAction(rotClip);
+                if (name === 'idle') npc.animations.idle = action;
+                else if (name === 'walk') npc.animations.walk = action;
+                else if (name === 'run') npc.animations.run = action;
+              }
             });
-            
-            // Play animation
-            if (npc.behavior === 'wander' && npc.animations.walk) {
+            if (npc.animations.walk && npc.behavior === 'wander') {
               npc.animations.walk.play();
               npc.currentAnim = 'walk';
             } else if (npc.animations.idle) {
@@ -1169,8 +1191,7 @@ class CharacterController {
               npc.currentAnim = 'idle';
             }
             npc.proceduralAnim = false;
-            console.log('[NPC] Soldier model loaded, anims:', Object.keys(npc.animations).join(', '));
-          }, null, (e) => console.warn('[NPC] Failed to load Soldier model:', e));
+          }, null, (e) => console.warn('[NPC] Failed to load anims:', e));
         }
         if (gltf.animations.length > 0) {
           this.mixer = new THREE.AnimationMixer(this.model);
@@ -4012,22 +4033,27 @@ export class NPCController {
   }
   
   async spawnNPC(type, x, z, behavior = 'wander') {
-    const npcModels = {
-      'villager': 'modular_men_casual',
-      'soldier': 'modular_men_swat',
-      'knight': 'modular_men_adventurer',
-      'guard': 'modular_men_swat',
-      'king': 'modular_men_king',
-      'punk': 'modular_men_punk',
-      'worker': 'modular_men_worker',
-      'farmer': 'modular_men_farmer',
-      'woman': 'modular_women_adventurer',
-      'witch': 'modular_women_witch',
-      'medieval': 'modular_women_medieval',
-      'scifi': 'modular_women_scifi',
-    };
+    // Quaternius animated character models — each has 11 built-in animations!
+    // (Walk, Run, Idle, Jump, Punch, Death, SwordSlash, Clapping, Sitting, Standing, RunningJump)
+    const npcModelsMen = [
+      'smooth_male_casual', 'smooth_male_longsleeve', 'smooth_male_shirt', 'smooth_male_suit',
+      'male_casual', 'male_longsleeve', 'male_shirt', 'male_suit', 'animated_human'
+    ];
+    const npcModelsWomen = [
+      'smooth_female_casual', 'smooth_female_dress', 'smooth_female_tanktop', 'smooth_female_alternative',
+      'female_casual', 'female_dress', 'female_tanktop', 'female_alternative',
+      'animated_woman_smooth', 'animated_woman'
+    ];
+    const allNpcModels = [...npcModelsMen, ...npcModelsWomen];
     
-    const file = npcModels[type] || npcModels['villager'];
+    let file;
+    if (type === 'woman' || type === 'female' || type === 'girl') {
+      file = 'npcs/' + npcModelsWomen[Math.floor(Math.random() * npcModelsWomen.length)];
+    } else if (type === 'man' || type === 'male' || type === 'guy') {
+      file = 'npcs/' + npcModelsMen[Math.floor(Math.random() * npcModelsMen.length)];
+    } else {
+      file = 'npcs/' + allNpcModels[Math.floor(Math.random() * allNpcModels.length)];
+    }
     
     return new Promise(resolve => {
       loader.load('models/' + file + '.glb', (gltf) => {
@@ -4512,13 +4538,7 @@ export class NPCController {
         if (dist < 1) return false; // arrived
         dir.normalize();
         npc.model.position.addScaledVector(dir, speed * dt);
-        // Set facing while preserving animation X rotation
-                const faceAngle = Math.atan2(dir.x, dir.z);
-                if (npc._mixamoRotFix) {
-                  npc.model.rotation.set(-Math.PI / 2, 0, -faceAngle, 'XYZ');
-                } else {
-                  npc.model.rotation.y = faceAngle;
-                }
+        npc.model.rotation.y = Math.atan2(dir.x, dir.z) + Math.PI;
         // Terrain snap (throttled — every 3rd frame per NPC)
         npc._groundFrame = ((npc._groundFrame || 0) + 1) % 3;
         const ty = npc._groundFrame === 0 ? _getTerrainY(npc.model.position.x, npc.model.position.z) : (npc._lastGroundY || 0);
