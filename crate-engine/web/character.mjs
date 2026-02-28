@@ -1940,6 +1940,52 @@ class CharacterController {
       }
     }
 
+    // === SWIMMING SYSTEM ===
+    const WATER_LEVEL = -0.3;
+    const isInWater = this.position.y < WATER_LEVEL + 0.5;
+    const isDeepWater = this.position.y < WATER_LEVEL - 0.3;
+    
+    if (isInWater && !this.isClimbing && !this.inVehicle) {
+      if (!this._isSwimming) {
+        this._isSwimming = true;
+        this.stateMachine.transition(CharacterState.SWIM);
+        if (window._sound) window._sound.SFX.splash && window._sound.SFX.splash();
+      }
+      
+      // Buoyancy — float at water level
+      if (this.collider && this.collider.world.built) {
+        if (this.position.y < WATER_LEVEL) {
+          this.collider.velocity.y = Math.max(this.collider.velocity.y, 2); // float up
+        }
+        // Clamp at water surface
+        if (this.position.y > WATER_LEVEL - 0.2 && this.position.y < WATER_LEVEL + 0.3) {
+          this.collider.velocity.y *= 0.8; // dampen vertical at surface
+        }
+      } else {
+        // Legacy: float at water level
+        if (this.position.y < WATER_LEVEL) {
+          this.position.y += 3 * dt;
+          this.jumpVelocity = 0;
+        }
+      }
+      
+      // Slower movement in water
+      this.speed *= 0.5;
+      
+      // Space to swim up, Shift to dive
+      if (this.keys[' ']) {
+        if (this.collider) this.collider.velocity.y = 3;
+        else this.position.y += 3 * dt;
+      }
+      if (this.keys['shift']) {
+        if (this.collider) this.collider.velocity.y = -2;
+        else this.position.y -= 2 * dt;
+      }
+    } else if (this._isSwimming) {
+      this._isSwimming = false;
+      this.stateMachine.transition(this.isMoving ? CharacterState.RUN : CharacterState.IDLE);
+    }
+
     // === CLIMBING SYSTEM ===
     // Detect ladders, vines, climbable walls nearby
     if (!this._climbCooldown) {
