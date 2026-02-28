@@ -887,21 +887,47 @@ class CharacterController {
           
           // Retarget track names: remove "HumanArmature|" prefix from track targets
           // Knight tracks: "HumanArmature|Hips.position" → need "Hips.position" for other chars
-          const retargetedTracks = clip.tracks.map(track => {
+          const retargetedTracks = [];
+          for (const track of clip.tracks) {
             let newName = track.name;
-            // Remove HumanArmature prefix: "HumanArmature.bones[Hips].position" or similar
-            // Three.js format: "boneName.property" 
-            // If track targets "HumanArmature|BoneName", strip the prefix
+            // Strip HumanArmature prefix
             if (newName.includes(prefix)) {
               newName = newName.replace(prefix, '');
             }
-            return new THREE.KeyframeTrack(
-              newName,
+            
+            // Extract bone name and property from track name
+            // Format: "BoneName.property" (e.g., "Hips.position", "UpperArmL.quaternion")
+            const dotIdx = newName.lastIndexOf('.');
+            const boneName = dotIdx >= 0 ? newName.substring(0, dotIdx) : newName;
+            const prop = dotIdx >= 0 ? newName.substring(dotIdx + 1) : '';
+            
+            // FILTER: Skip position tracks for all bones except Hips
+            // Different skeleton proportions make position anims destructive (limb detachment)
+            if (prop === 'position' && boneName !== 'Hips') continue;
+            
+            // FILTER: Skip scale tracks (rarely useful in retargeting)
+            if (prop === 'scale') continue;
+            
+            // Bone name mapping: knight → modular character differences
+            const boneMap = {
+              'Body': 'Root',           // Knight uses "Body" as root, modular uses "Root"  
+              'MiddleHandR': 'HandR',   // Knight hand naming
+              'MiddleHandL': 'HandL',
+              'PalmR': 'HandR',
+              'PalmL': 'HandL',
+              'FingersR': 'Index2R',
+              'FingersL': 'Index2L',
+            };
+            const mappedBone = boneMap[boneName] || boneName;
+            const finalName = mappedBone + '.' + prop;
+            
+            retargetedTracks.push(new THREE.KeyframeTrack(
+              finalName,
               track.times,
               track.values,
               track.interpolation
-            );
-          });
+            ));
+          }
           
           const retargetedClip = new THREE.AnimationClip(stdName, clip.duration, retargetedTracks);
           
@@ -2534,20 +2560,26 @@ class CharacterController {
         toCamera.normalize();
         const ray = new THREE.Raycaster(charHead, toCamera, 0.3, dist);
         
-        // Check terrain
         let closestHit = dist;
-        if (window._terrainMesh) {
-          const hits = ray.intersectObject(window._terrainMesh);
-          if (hits.length > 0) closestHit = Math.min(closestHit, hits[0].distance);
-        }
-        // Check solid scene objects (buildings, walls, interiors)
-        if (window._sceneObjects) {
-          const solids = window._sceneObjects.filter(o => o && o.userData && (o.userData.isSolid || o.userData.isInterior || o.userData.isGLB));
-          for (const obj of solids) {
-            try {
-              const hits = ray.intersectObject(obj, true);
-              if (hits.length > 0) closestHit = Math.min(closestHit, hits[0].distance);
-            } catch(e) {}
+        
+        // Use Octree for camera collision (fast single check)
+        if (this.collider && this.collider.world.built) {
+          const octreeHit = this.collider.world.octree.rayIntersect(ray.ray);
+          if (octreeHit && octreeHit.distance < dist) closestHit = octreeHit.distance;
+        } else {
+          // Fallback: raycast terrain + objects
+          if (window._terrainMesh) {
+            const hits = ray.intersectObject(window._terrainMesh);
+            if (hits.length > 0) closestHit = Math.min(closestHit, hits[0].distance);
+          }
+          if (window._sceneObjects) {
+            const solids = window._sceneObjects.filter(o => o && o.userData && (o.userData.isSolid || o.userData.isInterior || o.userData.isGLB));
+            for (const obj of solids) {
+              try {
+                const hits = ray.intersectObject(obj, true);
+                if (hits.length > 0) closestHit = Math.min(closestHit, hits[0].distance);
+              } catch(e) {}
+            }
           }
         }
         if (closestHit < dist) {
