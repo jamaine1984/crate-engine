@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { collisionWorld } from './collision.mjs?v=1';
 
 const loader = new GLTFLoader();
 // Get terrain height at world position
@@ -833,6 +834,9 @@ class CharacterController {
     this.bones = {};
     
     this._setupInput();
+    
+    // Capsule collider for Octree physics
+    this.collider = collisionWorld.createPlayerCollider(1.7, 0.35);
   }
   
 
@@ -1750,46 +1754,54 @@ class CharacterController {
     
     // Jump
     if ((this.keys[' '] || this.keys['space']) && this.isGrounded) {
-      this.jumpVelocity = this.jumpForce; if (window._sound) window._sound.SFX.jump();
+      if (this.collider && this.collider.world.built) {
+        this.collider.jump(this.jumpForce);
+      } else {
+        this.jumpVelocity = this.jumpForce;
+      }
+      if (window._sound) window._sound.SFX.jump();
       this.isGrounded = false;
       this.stateMachine.transition(CharacterState.JUMP);
     }
     
-    // Apply gravity — ground check uses terrain height, not y=0
-    if (!this.isGrounded) {
-      this.jumpVelocity += this.gravity * dt;
-      if (!this._wasFalling && this.jumpVelocity < -2) { this._wasFalling = true; this._fallStartY = this.position.y; }
-      this.position.y += this.jumpVelocity * dt;
-      // Get ground height at current position (terrain or y=0)
-      const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
-      if (this.position.y <= groundY) {
-        this.position.y = groundY;
-        this.isGrounded = true;
-        this.jumpVelocity = 0;
-        // Landing impact — screen shake based on fall distance
-        if (this._wasFalling && this._fallStartY !== undefined) {
-          const fallDist = this._fallStartY - this.position.y;
-          if (fallDist > 2 && window._screenShake) window._screenShake.trigger(Math.min(fallDist * 0.5, 4), 0.2);
-          if (fallDist > 1) this._createSprintDust();
-        }
-        this._wasFalling = false;
-      }
+    // === PHYSICS: Octree capsule (preferred) or legacy raycast fallback ===
+    if (this.collider && this.collider.world.built) {
+      // Octree capsule physics — gravity + collision handled by collider
+      // Sync collider position from character
+      this.collider.setPosition(this.position.x, this.position.y, this.position.z);
+      // Update will be called after movement below (in _postPhysics)
     } else {
-      // Snap to ground (terrain + interior floors + solid objects)
-      const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
-      if (Math.abs(this.position.y - groundY) < 1.5) {
-        // Smooth ground following
-        const _dy = groundY - this.position.y;
-        if (Math.abs(_dy) < 0.5) {
-          this.position.y += _dy * (_dy > 0 ? 0.25 : 0.35);
-        } else if (_dy > 0) {
-          // Step up (stairs) — only if step is < 0.4m
-          if (_dy < 0.4) this.position.y += _dy * 0.5;
-          else { this.isGrounded = false; this.jumpVelocity = 0; }
+      // Legacy raycast ground check
+      if (!this.isGrounded) {
+        this.jumpVelocity += this.gravity * dt;
+        if (!this._wasFalling && this.jumpVelocity < -2) { this._wasFalling = true; this._fallStartY = this.position.y; }
+        this.position.y += this.jumpVelocity * dt;
+        const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
+        if (this.position.y <= groundY) {
+          this.position.y = groundY;
+          this.isGrounded = true;
+          this.jumpVelocity = 0;
+          if (this._wasFalling && this._fallStartY !== undefined) {
+            const fallDist = this._fallStartY - this.position.y;
+            if (fallDist > 2 && window._screenShake) window._screenShake.trigger(Math.min(fallDist * 0.5, 4), 0.2);
+            if (fallDist > 1) this._createSprintDust();
+          }
+          this._wasFalling = false;
         }
-      } else if (this.position.y > groundY + 1.5) {
-        this.isGrounded = false;
-        this.jumpVelocity = 0;
+      } else {
+        const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
+        if (Math.abs(this.position.y - groundY) < 1.5) {
+          const _dy = groundY - this.position.y;
+          if (Math.abs(_dy) < 0.5) {
+            this.position.y += _dy * (_dy > 0 ? 0.25 : 0.35);
+          } else if (_dy > 0) {
+            if (_dy < 0.4) this.position.y += _dy * 0.5;
+            else { this.isGrounded = false; this.jumpVelocity = 0; }
+          }
+        } else if (this.position.y > groundY + 1.5) {
+          this.isGrounded = false;
+          this.jumpVelocity = 0;
+        }
       }
     }
     
@@ -1827,20 +1839,27 @@ class CharacterController {
       
       this.speed = THREE.MathUtils.lerp(this.speed, targetSpeed, dt * 8);
       
-      // Wall collision check (every 2 frames for performance)
+      // Movement + collision
       const moveDir = new THREE.Vector3(Math.sin(this.rotation), 0, Math.cos(this.rotation));
       const moveDist = this.speed * dt;
-      this._wallFrame = ((this._wallFrame || 0) + 1) % 2;
-      const wallCheck = this._wallFrame === 0 ? _checkWallCollision(this.position, moveDir, moveDist) : (this._lastWallCheck || {hit: false});
-      if (this._wallFrame === 0) this._lastWallCheck = wallCheck;
-      if (!wallCheck.hit) {
+      
+      if (this.collider && this.collider.world.built) {
+        // Octree handles wall sliding automatically
         this.position.x += moveDir.x * moveDist;
         this.position.z += moveDir.z * moveDist;
       } else {
-        // Slide along wall
-        const slide = moveDir.clone().sub(wallCheck.normal.clone().multiplyScalar(moveDir.dot(wallCheck.normal)));
-        this.position.x += slide.x * moveDist * 0.7;
-        this.position.z += slide.z * moveDist * 0.7;
+        // Legacy wall collision check
+        this._wallFrame = ((this._wallFrame || 0) + 1) % 2;
+        const wallCheck = this._wallFrame === 0 ? _checkWallCollision(this.position, moveDir, moveDist) : (this._lastWallCheck || {hit: false});
+        if (this._wallFrame === 0) this._lastWallCheck = wallCheck;
+        if (!wallCheck.hit) {
+          this.position.x += moveDir.x * moveDist;
+          this.position.z += moveDir.z * moveDist;
+        } else {
+          const slide = moveDir.clone().sub(wallCheck.normal.clone().multiplyScalar(moveDir.dot(wallCheck.normal)));
+          this.position.x += slide.x * moveDist * 0.7;
+          this.position.z += slide.z * moveDist * 0.7;
+        }
       }
       if (window._sound && this.speed > 0.5) window._sound.updateFootsteps(dt, true, this.isRunning);
       // Sprint dust particles
@@ -1862,6 +1881,35 @@ class CharacterController {
       this.position.z += Math.cos(this.rotation) * this.rollSpeed * dt;
     }
     
+
+    // === OCTREE POST-PHYSICS: resolve collisions after all movement ===
+    if (this.collider && this.collider.world.built && !this.isClimbing) {
+      // Sync capsule to current position, then let octree resolve
+      this.collider.setPosition(this.position.x, this.position.y, this.position.z);
+      this.collider.update(dt, null); // gravity + collision resolution
+      // Read back resolved position
+      const resolvedPos = this.collider.position;
+      this.position.x = resolvedPos.x;
+      this.position.y = resolvedPos.y;
+      this.position.z = resolvedPos.z;
+      // Sync grounded state
+      const wasGrounded = this.isGrounded;
+      this.isGrounded = this.collider.onFloor;
+      // Landing effects
+      if (!wasGrounded && this.isGrounded) {
+        if (this._wasFalling && this._fallStartY !== undefined) {
+          const fallDist = this._fallStartY - this.position.y;
+          if (fallDist > 2 && window._screenShake) window._screenShake.trigger(Math.min(fallDist * 0.5, 4), 0.2);
+          if (fallDist > 1) this._createSprintDust();
+        }
+        this._wasFalling = false;
+        this.jumpVelocity = 0;
+      }
+      if (!this.isGrounded && !this._wasFalling && this.collider.velocity.y < -2) {
+        this._wasFalling = true;
+        this._fallStartY = this.position.y;
+      }
+    }
 
     // === CLIMBING SYSTEM ===
     // Detect ladders, vines, climbable walls nearby

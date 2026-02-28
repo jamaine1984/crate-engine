@@ -317,7 +317,8 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=100';
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh } from './character.mjs?v=103'
+import { collisionWorld } from './collision.mjs?v=1';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -4955,6 +4956,10 @@ let currentGround = createGround('grass');
 let groundSize = 300; // current ground plane size
 scene.add(currentGround);
 
+// Build initial octree from ground plane
+currentGround.updateMatrixWorld(true);
+collisionWorld.build(currentGround, scene);
+
 let currentGroundType = 'grass';
 
 // === GROUND EXPANSION SYSTEM ===
@@ -6591,6 +6596,11 @@ function createTerrain(type, params) {
   terrainMesh.userData.name = 'Terrain_' + type;
   terrainMesh.userData.isTerrain = true;
   scene.add(terrainMesh);
+  
+  // Build collision octree from terrain
+  terrainMesh.updateMatrixWorld(true);
+  collisionWorld.build(terrainMesh, scene);
+  logOutput('✓ Collision octree built from terrain', 'ok');
   
   // Hide the flat ground + grid
   if (currentGround) currentGround.visible = false;
