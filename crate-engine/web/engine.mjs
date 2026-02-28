@@ -3737,7 +3737,7 @@ const GLB_MODELS = {
   'zombie':'recursive_skeletons',
   'lantern':'survival_pack_woodentorch_fire',
   'torch':'modular_dungeon_1_torch',
-,
+
   // === HD POLY HAVEN MODELS ===
   'alarm_clock_01':'ph_alarm_clock_01',
   'alarm clock 01':'ph_alarm_clock_01',
@@ -6550,6 +6550,158 @@ function createInteriorHouse(opts) {
   return g;
 }
 
+
+// === MODERN FURNISHED HOUSE (HD GLB Models) ===
+function createModernHouse(opts) {
+  const o = opts || {};
+  const w = o.width || 8;
+  const d = o.depth || 8;
+  const h = o.height || 3.2;
+  const floors = o.floors || 1;
+  const wallT = 0.18;
+  
+  const g = new THREE.Group();
+  g.userData.isInterior = true;
+  g.userData.isModernHouse = true;
+  g.userData.interiorBounds = { width: w, depth: d, height: h * floors, floors };
+  g.userData.name = 'Modern House';
+  
+  const extWallMat = makeMat(0xd0cec5, {rough: 0.6});
+  const intWallMat = makeMat(0xf0ece3, {rough: 0.85});
+  const floorMat = makeMat(0x8B6B4A, {rough: 0.75});
+  const ceilMat = makeMat(0xf5f2ee, {rough: 0.9});
+  const glassMat = new THREE.MeshPhysicalMaterial({color:0x88ccee, roughness:0.05, metalness:0.2, transparent:true, opacity:0.3});
+  const trimMat = makeMat(0x333333, {rough: 0.4});
+  const roofMat = makeMat(0x444444, {rough: 0.7});
+  const stairMat = makeMat(0x5a3a1a, {rough: 0.8});
+  
+  for (let fl = 0; fl < floors; fl++) {
+    const by = fl * h;
+    
+    // Floor slab
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2+0.2, 0.15, d+wallT*2+0.2), fl===0 ? makeMat(0x888888,{rough:0.7}) : floorMat);
+    slab.position.set(0, by+0.075, 0);
+    slab.receiveShadow = true; slab.userData.isSolid = true; g.add(slab);
+    
+    // Interior hardwood
+    const ifl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), floorMat);
+    ifl.position.set(0, by+0.165, 0); ifl.receiveShadow = true; g.add(ifl);
+    
+    // Front wall with door (ground floor only)
+    if (fl === 0) {
+      const dw = 1.2, dh = 2.2;
+      const halfSide = (w - dw) / 2;
+      // Left of door
+      const fL = new THREE.Mesh(new THREE.BoxGeometry(halfSide, h, wallT), extWallMat);
+      fL.position.set(-(dw/2 + halfSide/2), by+h/2, d/2+wallT/2);
+      fL.castShadow=true; fL.userData.isSolid=true; g.add(fL);
+      // Right of door
+      const fR = new THREE.Mesh(new THREE.BoxGeometry(halfSide, h, wallT), extWallMat);
+      fR.position.set(dw/2 + halfSide/2, by+h/2, d/2+wallT/2);
+      fR.castShadow=true; fR.userData.isSolid=true; g.add(fR);
+      // Above door
+      const fT = new THREE.Mesh(new THREE.BoxGeometry(dw, h-dh, wallT), extWallMat);
+      fT.position.set(0, by+dh+(h-dh)/2, d/2+wallT/2);
+      fT.userData.isSolid=true; g.add(fT);
+      // Door frame trim
+      [[-(dw/2), dh/2, 0.06, dh, 0.04],[dw/2, dh/2, 0.06, dh, 0.04],[0, dh, dw+0.12, 0.06, 0.04]].forEach(([x,y,sx,sy,sz]) => {
+        const fr = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), trimMat);
+        fr.position.set(x, by+y, d/2+wallT/2); g.add(fr);
+      });
+    } else {
+      const fw = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), extWallMat);
+      fw.position.set(0, by+h/2, d/2+wallT/2); fw.castShadow=true; fw.userData.isSolid=true; g.add(fw);
+    }
+    
+    // Back wall
+    const bw = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), extWallMat);
+    bw.position.set(0, by+h/2, -(d/2+wallT/2)); bw.castShadow=true; bw.userData.isSolid=true; g.add(bw);
+    // Back picture windows
+    [-w*0.25, w*0.25].forEach(x => {
+      const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.2), glassMat);
+      gl.position.set(x, by+h*0.55, -(d/2+wallT+0.01)); g.add(gl);
+      const wf = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.3, 0.03), trimMat);
+      wf.position.set(x, by+h*0.55, -(d/2+wallT/2)); g.add(wf);
+    });
+    
+    // Side walls with windows
+    [-1, 1].forEach(side => {
+      const sw = new THREE.Mesh(new THREE.BoxGeometry(wallT, h, d), extWallMat);
+      sw.position.set(side*(w/2+wallT/2), by+h/2, 0); sw.castShadow=true; sw.userData.isSolid=true; g.add(sw);
+      const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.0), glassMat);
+      gl.position.set(side*(w/2+wallT+0.01), by+h*0.55, 0); gl.rotation.y = side*Math.PI/2; g.add(gl);
+    });
+    
+    // Interior wall panels
+    [[0, h/2, -(d/2-0.01), w, h, 0],[0, h/2, d/2-0.01, w, h, Math.PI],
+     [-(w/2-0.01), h/2, 0, d, h, Math.PI/2],[w/2-0.01, h/2, 0, d, h, -Math.PI/2]].forEach(([x,y,z,sx,sy,ry]) => {
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(sx,sy), intWallMat);
+      p.position.set(x, by+y, z); p.rotation.y = ry; p.receiveShadow=true; g.add(p);
+    });
+    
+    // Ceiling
+    const ceil = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2, 0.12, d+wallT*2), fl===floors-1 ? roofMat : ceilMat);
+    ceil.position.set(0, by+h, 0); ceil.receiveShadow=true; ceil.userData.isSolid=true; g.add(ceil);
+    
+    // Lighting
+    const cL = new THREE.PointLight(0xfff0dd, 1.2, w*2);
+    cL.position.set(0, by+h-0.2, 0); g.add(cL);
+    const fL = new THREE.PointLight(0xffe8cc, 0.4, w*1.5);
+    fL.position.set(w*0.25, by+h-0.2, d*0.25); g.add(fL);
+    
+    // === HD FURNITURE ===
+    const furniture = [];
+    if (fl === 0) {
+      furniture.push({m:'ph_Sofa_01', p:[-w*0.22,0.18,d*0.15], r:Math.PI, s:1.8});
+      furniture.push({m:'ph_ArmChair_01', p:[w*0.25,0.18,d*0.2], r:-Math.PI/4, s:1.5});
+      furniture.push({m:'ph_CoffeeTable_01', p:[0,0.18,d*0.15], s:1.5});
+      furniture.push({m:'ph_Television_01', p:[0,0.9,-d*0.35], s:2.0});
+      furniture.push({m:'ph_Shelf_01', p:[-w*0.35,0.18,-d*0.35], s:1.5});
+      furniture.push({m:'ph_electric_stove', p:[w*0.3,0.18,-d*0.35], s:1.0});
+      furniture.push({m:'ph_bar_chair_round_01', p:[w*0.1,0.18,-d*0.15], s:1.2});
+      furniture.push({m:'ph_WoodenTable_01', p:[-w*0.25,0.18,-d*0.2], s:2.0});
+      furniture.push({m:'ph_WoodenChair_01', p:[-w*0.35,0.18,-d*0.1], r:Math.PI/2, s:1.3});
+      furniture.push({m:'ph_WoodenChair_01', p:[-w*0.15,0.18,-d*0.1], r:-Math.PI/2, s:1.3});
+      furniture.push({m:'ph_alarm_clock_01', p:[w*0.35,0.85,d*0.1], s:0.8});
+    }
+    if (fl === 1) {
+      furniture.push({m:'ph_GothicBed_01', p:[-w*0.2,0.18,0], s:1.8});
+      furniture.push({m:'ph_drawer_cabinet', p:[w*0.3,0.18,-d*0.35], s:1.3});
+      furniture.push({m:'ph_desk_lamp_arm_01', p:[w*0.3,0.9,-d*0.35], s:0.8});
+      furniture.push({m:'ph_Rockingchair_01', p:[w*0.25,0.18,d*0.2], r:-Math.PI/3, s:1.3});
+      furniture.push({m:'ph_GothicCabinet_01', p:[-w*0.35,0.18,-d*0.35], s:1.2});
+    }
+    
+    furniture.forEach(f => {
+      gltfLoader.load('models/' + f.m + '.glb', (gltf) => {
+        const obj = gltf.scene;
+        obj.position.set(f.p[0], f.p[1]+by, f.p[2]);
+        if (f.r) obj.rotation.y = f.r;
+        if (f.s) obj.scale.setScalar(f.s);
+        obj.traverse(c => { if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}});
+        g.add(obj);
+      }, null, (e) => console.warn('Furniture fail:', f.m, e));
+    });
+  }
+  
+  // Stairs
+  if (floors > 1) {
+    const sw = 1.0, steps = 12, stepH = h/steps, stepD = (d*0.5)/steps;
+    for (let s = 0; s < steps; s++) {
+      const st = new THREE.Mesh(new THREE.BoxGeometry(sw, stepH, stepD+0.02), stairMat);
+      st.position.set(w/2-sw/2-0.3, s*stepH+stepH/2, d/2-0.8-s*stepD);
+      st.receiveShadow=true; st.userData.isSolid=true; st.userData.isStair=true; g.add(st);
+    }
+  }
+  
+  // Front porch
+  const porch = new THREE.Mesh(new THREE.BoxGeometry(w*0.6, 0.1, 1.0), makeMat(0x777777,{rough:0.7}));
+  porch.position.set(0, 0.05, d/2+wallT+0.5); porch.receiveShadow=true; porch.userData.isSolid=true; g.add(porch);
+  
+  return g;
+}
+
+
 function createInteriorShop(opts) {
   const o = opts || {};
   const g = createInteriorHouse({ width: o.width || 6, depth: o.depth || 5, height: 3.5, floors: 1, color: o.color || 0x7a6a4a });
@@ -8235,17 +8387,17 @@ async function execSingle(cmd) {
           // === NORTH STREET — wide spacing (15+ units between buildings) ===
           { cmd: 'add tavern', pos: [-30, 35] },
           { cmd: 'add blacksmith', pos: [0, 38] },
-          { cmd: 'add house', pos: [30, 35] },
+          { cmd: 'add modern house', pos: [30, 35] },
           // === SOUTH STREET ===
-          { cmd: 'add house', pos: [-30, -35] },
-          { cmd: 'add house', pos: [0, -38] },
-          { cmd: 'add house', pos: [30, -35] },
+          { cmd: 'add modern house', pos: [-30, -35] },
+          { cmd: 'add modern house', pos: [0, -38] },
+          { cmd: 'add modern house', pos: [30, -35] },
           // === EAST STREET ===
-          { cmd: 'add house', pos: [45, 0] },
-          { cmd: 'add house', pos: [45, 25] },
+          { cmd: 'add modern house', pos: [45, 0] },
+          { cmd: 'add modern house', pos: [45, 25] },
           // === WEST STREET ===
-          { cmd: 'add house', pos: [-45, 0] },
-          { cmd: 'add house', pos: [-45, -25] },
+          { cmd: 'add modern house', pos: [-45, 0] },
+          { cmd: 'add modern house', pos: [-45, -25] },
           // === TORCHES — line the wide paths ===
           { cmd: 'add torch', pos: [-15, 18] }, { cmd: 'add torch', pos: [15, 18] },
           { cmd: 'add torch', pos: [-15, -18] }, { cmd: 'add torch', pos: [15, -18] },
@@ -8268,8 +8420,8 @@ async function execSingle(cmd) {
         terrain: { type: 'flat', height: 0 },
         ground: 'grass', env: ['time morning'],
         items: [
-          { cmd: 'add house', pos: [12, -8] }, { cmd: 'add house', pos: [-14, 6] },
-          { cmd: 'add house', pos: [6, 18] }, { cmd: 'add house', pos: [-10, -20] },
+          { cmd: 'add modern house', pos: [12, -8] }, { cmd: 'add modern house', pos: [-14, 6] },
+          { cmd: 'add modern house', pos: [6, 18] }, { cmd: 'add modern house', pos: [-10, -20] },
           { cmd: 'add campfire', pos: [0, 0] },
           { cmd: 'add well', pos: [8, -4] },
           { cmd: 'add log', pos: [-2, 2] }, { cmd: 'add log', pos: [2, -2] },
@@ -8292,7 +8444,7 @@ async function execSingle(cmd) {
           { cmd: 'add wall', pos: [-20, -45] }, { cmd: 'add wall', pos: [20, -45] },
           { cmd: 'add gate', pos: [0, -30] },
           { cmd: 'add tavern', pos: [25, 10] }, { cmd: 'add blacksmith', pos: [-25, 10] },
-          { cmd: 'add house', scatter: { count: 10, radius: 40, avoidCenter: 15 } },
+          { cmd: 'add modern house', scatter: { count: 10, radius: 40, avoidCenter: 15 } },
           { cmd: 'add market stall', scatter: { count: 4, radius: 25 } },
           { cmd: 'add tree', scatter: { count: 15, radius: 70, avoidCenter: 25 } },
           { cmd: 'add torch', scatter: { count: 15, radius: 45 } },
@@ -8453,7 +8605,7 @@ async function execSingle(cmd) {
           { cmd: 'add pine tree', scatter: { count: 15, radius: 60 } },
           { cmd: 'add rock', scatter: { count: 15, radius: 70 } },
           { cmd: 'add boulder', scatter: { count: 8, radius: 60 } },
-          { cmd: 'add house', pos: [0, 0] },
+          { cmd: 'add modern house', pos: [0, 0] },
           { cmd: 'add campfire', pos: [8, 0] },
           { cmd: 'add barrel', scatter: { count: 4, radius: 15 } },
           { cmd: 'add wolf', scatter: { count: 3, radius: 40 } },
@@ -8495,7 +8647,7 @@ async function execSingle(cmd) {
           { cmd: 'add rock', scatter: { count: 12, radius: 40 } },
           { cmd: 'add boat', pos: [45, 10] },
           { cmd: 'add barrel', scatter: { count: 6, radius: 25 } },
-          { cmd: 'add house', pos: [0, 0] },
+          { cmd: 'add modern house', pos: [0, 0] },
         ]
       },
       'ocean voyage': {
@@ -8713,8 +8865,8 @@ async function execSingle(cmd) {
         terrain: { type: 'dunes', height: 0.4 },
         ground: 'sand', env: ['time noon'], particles: 'dust',
         items: [
-          { cmd: 'add house', pos: [20, 0] }, { cmd: 'add house', pos: [-20, 0] },
-          { cmd: 'add house', pos: [0, 20] }, { cmd: 'add tavern', pos: [0, -20] },
+          { cmd: 'add modern house', pos: [20, 0] }, { cmd: 'add modern house', pos: [-20, 0] },
+          { cmd: 'add modern house', pos: [0, 20] }, { cmd: 'add tavern', pos: [0, -20] },
           { cmd: 'add well', pos: [0, 0] },
           { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
           { cmd: 'add cactus', scatter: { count: 10, radius: 50 } },
@@ -8730,7 +8882,7 @@ async function execSingle(cmd) {
         ground: 'concrete', env: ['time afternoon'],
         items: [
           { cmd: 'add building', scatter: { count: 14, radius: 60 } },
-          { cmd: 'add house', scatter: { count: 6, radius: 40 } },
+          { cmd: 'add modern house', scatter: { count: 6, radius: 40 } },
           { cmd: 'add car', scatter: { count: 8, radius: 45 } },
           { cmd: 'add tree', scatter: { count: 10, radius: 50 } },
           { cmd: 'add bench', scatter: { count: 6, radius: 35 } },
@@ -9613,6 +9765,9 @@ async function execSingle(cmd) {
   // === EQUIP WEAPON ===
   
   // === INTERIOR BUILDINGS ===
+  
+  // Modern house command
+
   const interiorMatch = lower.match(/^(?:add |create |build )?(?:an? )?(interior house|interior shop|interior tavern|walkable house|walkable building|enterable house|enterable building|house with interior|building with interior)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
   if (interiorMatch) {
     const type = interiorMatch[1];
@@ -10180,7 +10335,17 @@ async function execSingle(cmd) {
     pz = pp.z + (Math.random() - 0.5) * 15;
   }
   
-  // Parse count
+  
+  // Modern house command
+  const modernMatch = lower.match(/^(?:add |create |build )?(?:an? )?(modern house|modern home|modern building|hd house|furnished house|nice house)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
+  if (modernMatch) {
+    const floorCount = modernMatch[2] ? parseInt(modernMatch[2]) : 1;
+    const obj = createModernHouse({ floors: floorCount });
+    addObj('Modern House', obj, px || 0, pz || 0);
+    return '🏠 Modern furnished house created! Walk inside — HD furniture included.' + (floorCount > 1 ? ' (' + floorCount + ' floors)' : '');
+  }
+
+// Parse count
   let count = 1;
   const numMatch = lower.match(/(\d+)\s+(cube|sphere|tree|house|rock|bush|flower|avatar|building|pine)/);
   if (numMatch) count = Math.min(parseInt(numMatch[1]), 50);
