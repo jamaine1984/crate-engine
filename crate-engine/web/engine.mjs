@@ -9478,6 +9478,26 @@ async function execSingle(cmd) {
     return '💾 Saves: ' + saves.map((s,i) => s.name).join(', ');
   }
 
+  // === GENERIC ADD <THING> HANDLER ===
+  // Catch-all for "add <name> [at X Z]" using GLB_MODELS lookup
+  {
+    const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.]+)\s+(-?[\d.]+))?$/);
+    if (addGenMatch) {
+      const rawName = addGenMatch[1].trim().replace(/\s+/g, '_');
+      const ax = addGenMatch[2] !== undefined ? parseFloat(addGenMatch[2]) : (Math.random() - 0.5) * 20;
+      const az = addGenMatch[3] !== undefined ? parseFloat(addGenMatch[3]) : (Math.random() - 0.5) * 20;
+      // Try GLB_MODELS alias map first, then direct name
+      const glb = GLB_MODELS[rawName] || GLB_MODELS[rawName.replace(/_/g, '')] || GLB_MODELS[addGenMatch[1].trim()] || null;
+      // Also try the modelMap (window._modelMap)
+      const modelMap = window._modelMap || {};
+      const fromMap = modelMap[rawName] || modelMap[addGenMatch[1].trim()] || null;
+      const finalGlb = glb || fromMap || rawName;
+      // Check if file exists in models/ by trying to load
+      loadGLBModel(addGenMatch[1].trim(), finalGlb, ax, az);
+      return '✅ Adding ' + addGenMatch[1].trim() + '...';
+    }
+  }
+
   return '⚠ Try: "add cube", "build a castle with trees and rain", or "help"';
 }
 
