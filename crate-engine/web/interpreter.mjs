@@ -242,6 +242,12 @@ function interpret(input) {
     return { action: 'load' };
   }
 
+  // --- SPECIFIC STRUCTURES (route to execSingle, not fuzzy search) ---
+  const structureMatch = lower.match(/^(?:add|place|put|create|build|make)\s+(?:a |an |the )?(?:\d+ )?(modern house|modern home|hd house|furnished house|nice house|skyscraper|highrise|high.?rise|tower|tall building|swimming pool|pool|salon|barber|grocery|clothing|restaurant|pharmacy|bank|cafe|gym|laundry|store|shop|commercial|pitched house|ranch house|ranch|duplex|mansion|stadium|park|fence|stop sign|traffic light|road|intersection|interior house|house|building|lake|pond|ocean|river|sea)/i);
+  if (structureMatch) {
+    return { action: 'execRaw' };
+  }
+
   // --- GENERIC ADD OBJECT (fuzzy search) ---
   // "add house", "add big tree", "place a boat", "I want a dragon"
   const addMatch = lower.match(/^(?:add|place|put|spawn|create|i want|give me|make)\s+(?:a |an |the |some |my )?(.+)/);

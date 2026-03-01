@@ -17383,6 +17383,12 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
     // Execute based on intent
     let result = null;
     try {
+      // execRaw = pass directly to parseAndExecute (specific structures, etc.)
+      if (intent.action === 'execRaw') {
+        result = await bridge.execSingle(cmd);
+        if (result) addToLog(result);
+        return result;
+      }
       switch (intent.action) {
         case 'playAs':
           result = await bridge.execSingle('play as ' + intent.character);
