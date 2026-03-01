@@ -12823,19 +12823,19 @@ function showGameHUD(preset) {
           setTimeout(function() {
             // Smart traffic cars with GLB models and AI
             console.log("[Traffic] Spawning 20 smart traffic cars...");
-            for (let ci = 0; ci < 14; ci++) {
+            for (let ci = 0; ci < 8; ci++) {
               const lane = ci % 2 === 0 ? -2.5 : 2.5;
               const startZ = -60 + ci * 20;
               const dir = new THREE.Vector3(0, 0, lane < 0 ? 1 : -1);
-              spawnTrafficCar(lane, startZ, dir, 0);
+              setTimeout(() => spawnTrafficCar(lane, startZ, dir, 0), ci * 500);
             }
             // Also spawn some on cross streets
-            for (let ci = 0; ci < 6; ci++) {
+            for (let ci = 0; ci < 4; ci++) {
               const lane = ci % 2 === 0 ? -2.5 : 2.5;
               const crossZ = ci < 3 ? -40 : 40;
               const startX = -40 + ci * 15;
               const dir = new THREE.Vector3(ci % 2 === 0 ? 1 : -1, 0, 0);
-              spawnTrafficCar(startX, crossZ + lane, dir, 0);
+              setTimeout(() => spawnTrafficCar(startX, crossZ + lane, dir, 0), (ci + 8) * 500);
             }
           }, 1000);
         }
@@ -17461,7 +17461,7 @@ function spawnTrafficCar(roadX, roadZ, dir, laneOffset) {
   const carColor = TRAFFIC_CAR_COLORS[Math.floor(Math.random() * TRAFFIC_CAR_COLORS.length)];
   
   // Load GLB car
-  const modelPath = 'Models/' + carModel + '.glb';
+  const modelPath = 'models/' + carModel + '.glb';
   const loader = window._gltfLoader || new THREE.GLTFLoader();
   
   loader.load(modelPath, (gltf) => {
