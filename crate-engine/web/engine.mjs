@@ -1517,6 +1517,104 @@ function generatePresetQuests(presetName) {
 window.generatePresetQuests = generatePresetQuests;
 
 
+
+// === SNAP-TO-GRID BUILDING MODE (v218c) ===
+let _snapGrid = false;
+let _snapSize = 2;
+let _gridHelper = null;
+
+function toggleSnapGrid() {
+  _snapGrid = !_snapGrid;
+  if (_snapGrid) {
+    if (!_gridHelper) {
+      _gridHelper = new THREE.GridHelper(200, 200 / _snapSize, 0x444444, 0x222222);
+      _gridHelper.position.y = 0.01;
+      _gridHelper.material.transparent = true;
+      _gridHelper.material.opacity = 0.3;
+      scene.add(_gridHelper);
+    }
+    _gridHelper.visible = true;
+    showNotification('📐 Grid snap ON (' + _snapSize + 'm)');
+  } else {
+    if (_gridHelper) _gridHelper.visible = false;
+    showNotification('📐 Grid snap OFF');
+  }
+}
+
+function snapToGrid(pos) {
+  if (!_snapGrid) return pos;
+  return new THREE.Vector3(
+    Math.round(pos.x / _snapSize) * _snapSize,
+    pos.y,
+    Math.round(pos.z / _snapSize) * _snapSize
+  );
+}
+window.toggleSnapGrid = toggleSnapGrid;
+
+// === UNDO/REDO SYSTEM (v218c) ===
+let _undoStack = [];
+let _redoStack = [];
+let _maxUndoSteps = 50;
+
+function pushUndo(action) {
+  _undoStack.push(action);
+  if (_undoStack.length > _maxUndoSteps) _undoStack.shift();
+  _redoStack = [];
+}
+
+function undo() {
+  if (_undoStack.length === 0) { showNotification('Nothing to undo'); return; }
+  var action = _undoStack.pop();
+  _redoStack.push(action);
+  if (action.type === 'add' && action.object) {
+    scene.remove(action.object);
+    objects = objects.filter(function(o) { return o !== action.object; });
+    showNotification('↩ Undo: removed ' + (action.name || 'object'));
+  } else if (action.type === 'remove' && action.object) {
+    scene.add(action.object);
+    objects.push(action.object);
+    showNotification('↩ Undo: restored ' + (action.name || 'object'));
+  }
+}
+
+function redo() {
+  if (_redoStack.length === 0) { showNotification('Nothing to redo'); return; }
+  var action = _redoStack.pop();
+  _undoStack.push(action);
+  if (action.type === 'add' && action.object) {
+    scene.add(action.object);
+    objects.push(action.object);
+    showNotification('↪ Redo: added ' + (action.name || 'object'));
+  } else if (action.type === 'remove' && action.object) {
+    scene.remove(action.object);
+    objects = objects.filter(function(o) { return o !== action.object; });
+    showNotification('↪ Redo: removed ' + (action.name || 'object'));
+  }
+}
+
+// Ctrl+Z / Ctrl+Y keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+  if (playMode) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+});
+window.undo = undo;
+window.redo = redo;
+
+// === FPS DISPLAY IMPROVEMENT (v218c) ===
+let _fpsHistory = [];
+function updateFPSDisplay(fps) {
+  _fpsHistory.push(fps);
+  if (_fpsHistory.length > 60) _fpsHistory.shift();
+  var avg = Math.round(_fpsHistory.reduce(function(a, b) { return a + b; }, 0) / _fpsHistory.length);
+  var el = document.getElementById('fps-counter');
+  if (el) {
+    el.textContent = avg + ' FPS';
+    el.style.color = avg > 50 ? '#4ade80' : avg > 30 ? '#f59e0b' : '#ef4444';
+  }
+}
+
+
 // === HUD (score, health, etc.) ===
 let hudDiv = null;
 function initHUD() {
