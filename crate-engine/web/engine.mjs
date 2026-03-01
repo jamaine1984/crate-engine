@@ -10059,6 +10059,58 @@ function createSnow() {
   return new THREE.Points(geo, new THREE.PointsMaterial({color:0xffffff, size:0.1, transparent:true, opacity:0.8}));
 }
 
+// === LIGHTNING & THUNDER SYSTEM ===
+let _lightningLight = null;
+let _lightningTimer = 0;
+let _lightningFlash = 0;
+let _thunderAudio = null;
+
+function triggerLightning() {
+  if (!_lightningLight) {
+    _lightningLight = new THREE.DirectionalLight(0xccccff, 0);
+    _lightningLight.position.set(50, 80, 30);
+    scene.add(_lightningLight);
+  }
+  _lightningFlash = 1.0;
+  _lightningLight.intensity = 8;
+  // Thunder sound after delay (sound travels slower than light)
+  const thunderDelay = 500 + Math.random() * 2000;
+  setTimeout(() => {
+    if (_thunderAudio) { _thunderAudio.pause(); _thunderAudio.currentTime = 0; }
+    // Simple thunder via oscillator
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(60 + Math.random() * 40, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 1.5);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 2);
+    } catch(e) {}
+  }, thunderDelay);
+}
+
+function updateLightning(dt) {
+  if (_lightningFlash > 0) {
+    _lightningFlash -= dt * 4;
+    if (_lightningLight) _lightningLight.intensity = _lightningFlash * 8;
+    if (_lightningFlash <= 0) { _lightningFlash = 0; if (_lightningLight) _lightningLight.intensity = 0; }
+  }
+  if (weatherSystem === 'rain' || weatherSystem === 'storm') {
+    _lightningTimer -= dt;
+    if (_lightningTimer <= 0) {
+      _lightningTimer = 4 + Math.random() * 12; // Random interval 4-16 seconds
+      if (Math.random() < 0.4) triggerLightning(); // 40% chance each interval
+    }
+  }
+}
+
+
 // === PARTICLE EFFECTS SYSTEM ===
 var activeParticleEffects = [];
 
@@ -14326,6 +14378,7 @@ function setWeather(type) {
   weatherSystem = type;
   if (type==='rain') { rainParticles=createRain(); scene.add(rainParticles); }
   if (type==='snow') { snowParticles=createSnow(); scene.add(snowParticles); }
+  if (type==='storm') { rainParticles=createRain(); scene.add(rainParticles); scene.fog = new THREE.FogExp2(0x222233, 0.008); _lightningTimer = 2; }
 }
 
 // === UI ===
@@ -16905,9 +16958,10 @@ function animate() {
     rainParticles.position.x = _wcam.x;
     rainParticles.position.z = _wcam.z;
     const p = rainParticles.geometry.attributes.position.array;
-    for (let i=0;i<p.length;i+=3) { p[i+1]-=22*dt; if(p[i+1]<-2){p[i+1]=20+Math.random()*8;p[i]=(Math.random()-0.5)*150;p[i+2]=(Math.random()-0.5)*150;} }
+    const _windX = weatherSystem === 'storm' ? 8 : 2; for (let i=0;i<p.length;i+=3) { p[i+1]-=22*dt; p[i]+=_windX*dt; if(p[i+1]<-2||p[i]>75){p[i+1]=20+Math.random()*8;p[i]=(Math.random()-0.5)*150;p[i+2]=(Math.random()-0.5)*150;} }
     rainParticles.geometry.attributes.position.needsUpdate=true;
   }
+  updateLightning(dt);
   if (snowParticles) {
     snowParticles.position.x = _wcam.x;
     snowParticles.position.z = _wcam.z;
