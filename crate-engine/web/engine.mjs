@@ -8935,6 +8935,48 @@ function createBridge(opts) {
 
 
 
+
+function createSupermarket(opts) {
+  const o = opts || {};
+  const g = new THREE.Group(); g.userData.name = 'Supermarket';
+  g.userData.isBuilding = true;
+  const w = 20, d = 14, h = 5;
+  const wallMat = makeMat(0xeeeeee, {rough:0.5});
+  const roofMat = makeMat(0x444444, {rough:0.6});
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+  body.position.y = h/2; body.castShadow = true; g.add(body);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(w+0.5, 0.2, d+0.5), roofMat);
+  roof.position.y = h+0.1; g.add(roof);
+  // Big front windows
+  const glassMat = new THREE.MeshPhysicalMaterial({color: 0x88ccee, roughness: 0.05, transparent: true, opacity: 0.25});
+  const frontGlass = new THREE.Mesh(new THREE.PlaneGeometry(w*0.8, h*0.6), glassMat);
+  frontGlass.position.set(0, h*0.45, d/2+0.01); g.add(frontGlass);
+  // Sign band
+  const signColors = [0x22aa44, 0x2244aa, 0xcc2222, 0xcc8822];
+  const signColor = signColors[Math.floor(Math.random()*signColors.length)];
+  const signMat = makeMat(signColor, {rough:0.3});
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(w, 1.2, 0.15), signMat);
+  sign.position.set(0, h-0.4, d/2+0.08); g.add(sign);
+  // Automatic doors
+  const doorMat = makeMat(0x666666, {rough:0.3, metal:0.5});
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(3, 2.5), doorMat);
+  door.position.set(0, 1.25, d/2+0.02); g.add(door);
+  // Shopping cart corral
+  const cartMat = makeMat(0xaaaaaa, {rough:0.3, metal:0.7});
+  const corral = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 1), cartMat);
+  corral.position.set(-6, 0.3, d/2+2); g.add(corral);
+  // Parking lot in front
+  const asphalt = new THREE.Mesh(new THREE.BoxGeometry(w+4, 0.06, 10), makeMat(0x333333, {rough:0.9}));
+  asphalt.position.set(0, 0, d/2+8); asphalt.receiveShadow = true; g.add(asphalt);
+  // Parking lines
+  const lineMat = makeMat(0xdddddd, {rough:0.5});
+  for (let li = -8; li <= 8; li += 2.5) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 4), lineMat);
+    line.position.set(li, 0.04, d/2+8); g.add(line);
+  }
+  return g;
+}
+
 function createApartmentBuilding(opts) {
   const o = opts || {};
   const floors = o.floors || (3 + Math.floor(Math.random() * 3));
@@ -12467,6 +12509,8 @@ function showGameHUD(preset) {
           { cmd: 'add ph_park_bench', pos: [5, 142] },
           { cmd: 'add well', pos: [0, 140] },
           
+          // Supermarket at edge of commercial zone
+          { cmd: 'add supermarket', pos: [-40, 0], rot: Math.PI/2 },
           // === POOLS in some backyards ===
           { cmd: 'add pool', pos: [-35, 58] },
           { cmd: 'add gas station', pos: [50, -55] },
@@ -14167,6 +14211,13 @@ function showGameHUD(preset) {
     addObj('Apartment', obj, px || 0, pz || 0);
     return '🏢 Apartment building created!';
   }
+
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(supermarket|super market|grocery store|megastore)/)) {
+    const obj = createSupermarket();
+    addObj('Supermarket', obj, px || 0, pz || 0);
+    return '🛒 Supermarket created!';
+  }
+
 
 
   if (lower.match(/^(?:add |create |build )?(?:an? )?(bus stop|bus shelter)/)) {
