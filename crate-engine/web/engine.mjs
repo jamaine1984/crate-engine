@@ -12496,7 +12496,22 @@ function showGameHUD(preset) {
     // Execute all commands sequentially
     let ci = 0;
     const runNext = () => {
-      if (ci >= commands.length) { showToast('🗺️ ' + mapTheme + ' generated! ' + commands.length + ' elements placed.'); return; }
+      if (ci >= commands.length) {
+        showToast('🗺️ ' + mapTheme + ' generated! ' + commands.length + ' elements placed.');
+        // Spawn driving cars for city
+        if (mapType === 'city' || mapType === 'cyberpunk') {
+          setTimeout(function() {
+            spawnDrivingCar(scene, -2, -60, 1);
+            spawnDrivingCar(scene, -2, -20, 1);
+            spawnDrivingCar(scene, -2, 40, 1);
+            spawnDrivingCar(scene, -2, 80, 1);
+            spawnDrivingCar(scene, 2, 0, -1);
+            spawnDrivingCar(scene, 2, 60, -1);
+            spawnDrivingCar(scene, 2, 100, -1);
+          }, 1000);
+        }
+        return;
+      }
       const cmd = commands[ci];
       execSingle(cmd).then(() => {
         // Apply pending rotation if any
