@@ -1745,6 +1745,30 @@ function searchModels(query, limit = 10) {
 // Load catalog on startup
 loadModelCatalog();
 
+
+// === MODEL SCALE OVERRIDES ===
+const MODEL_SCALE_OVERRIDES = {
+  'hd_ferrari': 2.5,
+  'kenney_cars/sedan': 2.8,
+  'kenney_cars/sedan-sports': 2.8,
+  'kenney_cars/suv': 2.8,
+  'kenney_cars/suv-luxury': 2.8,
+  'kenney_cars/taxi': 2.8,
+  'kenney_cars/police': 2.8,
+  'kenney_cars/hatchback-sports': 2.8,
+  'kenney_cars/van': 2.8,
+  'kenney_cars/truck': 2.8,
+  'kenney_cars/ambulance': 2.8,
+  'kenney_cars/delivery': 2.8,
+  'kenney_cars/firetruck': 2.8,
+  'kenney_cars/garbage-truck': 2.8,
+  'kenney_cars/race': 2.8,
+  'kenney_cars/race-future': 2.8,
+  'helicopter': 2.0,
+  'milk_truck': 2.0,
+};
+window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
+
 const GLB_MODELS = {
   
   // ═══ QUATERNIUS CREATURES (CC0, animated) ═══
@@ -6677,7 +6701,11 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
       // Add gentle bob animation data
       model.userData.bobPhase = Math.random() * Math.PI * 2;
     }
-    scene.add(model);
+    
+    // Apply model scale overrides
+    const scaleOverride = (window.MODEL_SCALE_OVERRIDES || {})[modelFile] || (window.MODEL_SCALE_OVERRIDES || {})[modelPath];
+    if (scaleOverride) model.scale.setScalar(scaleOverride);
+scene.add(model);
     objects.push(model);
     // Add to collision octree (buildings, stairs, platforms are solid)
     const _ln = (name || '').toLowerCase();
@@ -10178,7 +10206,7 @@ function createRainPuddles(count = 15) {
     const puddle = new THREE.Mesh(geo, mat);
     const px = (Math.random() - 0.5) * 80;
     const pz = (Math.random() - 0.5) * 80;
-    const py = _getTerrainY(px, pz);
+    const py = (typeof _getTerrainY === "function") ? _getTerrainY(px, pz) : 0;
     puddle.position.set(px, py + 0.02, pz);
     puddle.rotation.x = -Math.PI / 2;
     puddle.userData.isPuddle = true;
@@ -12629,14 +12657,10 @@ function showGameHUD(preset) {
           // === VEHICLES (Kenney + HD) ===
           { cmd: 'add hd_ferrari', pos: [2, -15] },
           // Driving cars will be spawned after template loads
-          { cmd: 'add sedan', pos: [-3, 10] },
-          { cmd: 'add taxi', pos: [3, 35] },
-          { cmd: 'add suv', pos: [-3, 55] },
           { cmd: 'add police', pos: [3, 75] },
           { cmd: 'add van', pos: [-3, 95] },
           { cmd: 'add ambulance', pos: [3, 115] },
           { cmd: 'add hd_pbr_cesium_milk_truck', pos: [3, 135] },
-          { cmd: 'add sedan-sports', pos: [-3, -45] },
           { cmd: 'add truck', pos: [35, -35] },
           
           // === GREENERY (street trees, planters) ===
@@ -12707,9 +12731,6 @@ function showGameHUD(preset) {
           { cmd: 'add trash can', pos: [14, -9] },
           { cmd: 'add trash can', pos: [-14, 16] },
           // Parked cars
-          { cmd: 'add sedan', pos: [-10, -32] },
-          { cmd: 'add suv', pos: [10, 18] },
-          { cmd: 'add sedan', pos: [-10, 45] },
           // Park at the end
           { cmd: 'add tree', pos: [0, 90] }, { cmd: 'add tree', pos: [-8, 95] },
           { cmd: 'add tree', pos: [8, 95] }, { cmd: 'add tree', pos: [-4, 100] },
@@ -12800,13 +12821,22 @@ function showGameHUD(preset) {
         // Spawn driving cars for city
         if (mapType === 'city' || mapType === 'cyberpunk') {
           setTimeout(function() {
-            spawnDrivingCar(scene, -2, -60, 1);
-            spawnDrivingCar(scene, -2, -20, 1);
-            spawnDrivingCar(scene, -2, 40, 1);
-            spawnDrivingCar(scene, -2, 80, 1);
-            spawnDrivingCar(scene, 2, 0, -1);
-            spawnDrivingCar(scene, 2, 60, -1);
-            spawnDrivingCar(scene, 2, 100, -1);
+            // Smart traffic cars with GLB models and AI
+            console.log("[Traffic] Spawning 20 smart traffic cars...");
+            for (let ci = 0; ci < 14; ci++) {
+              const lane = ci % 2 === 0 ? -2.5 : 2.5;
+              const startZ = -60 + ci * 20;
+              const dir = new THREE.Vector3(0, 0, lane < 0 ? 1 : -1);
+              spawnTrafficCar(lane, startZ, dir, 0);
+            }
+            // Also spawn some on cross streets
+            for (let ci = 0; ci < 6; ci++) {
+              const lane = ci % 2 === 0 ? -2.5 : 2.5;
+              const crossZ = ci < 3 ? -40 : 40;
+              const startX = -40 + ci * 15;
+              const dir = new THREE.Vector3(ci % 2 === 0 ? 1 : -1, 0, 0);
+              spawnTrafficCar(startX, crossZ + lane, dir, 0);
+            }
           }, 1000);
         }
         return;
@@ -13235,7 +13265,7 @@ function showGameHUD(preset) {
 
 
   // Terrain gallery
-  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:terrain|landscape|environment|maps?|worlds?)/)) {
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )(?:terrain|landscape|environment)/)) {
     const result = await showGallery('terrain');
     if (result) {
       loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
@@ -14718,7 +14748,7 @@ function addObj(name, mesh, x, z, scatter) {
 
 function setWeather(type) {
   if (rainParticles) { scene.remove(rainParticles); rainParticles=null; }
-  if (_rainPuddles.length > 0) updateRainPuddles(dt);
+  clearRainPuddles();
   if (snowParticles) { scene.remove(snowParticles); snowParticles=null; }
   weatherSystem = type;
   if (type==='rain') { rainParticles=createRain(); scene.add(rainParticles); createRainPuddles(20); }
@@ -17411,6 +17441,269 @@ function updateTrafficCars(dt) {
 
 
 
+
+// === SMART TRAFFIC AI SYSTEM (v228) ===
+window._trafficCars = window._trafficCars || [];
+window._trafficLights = window._trafficLights || [];
+window._stopLines = [];
+
+const TRAFFIC_CAR_MODELS = [
+  'kenney_cars/sedan', 'kenney_cars/sedan-sports', 'kenney_cars/suv', 
+  'kenney_cars/suv-luxury', 'kenney_cars/taxi', 'kenney_cars/police',
+  'kenney_cars/hatchback-sports', 'kenney_cars/van', 'kenney_cars/truck',
+  'kenney_cars/ambulance', 'kenney_cars/delivery'
+];
+
+const TRAFFIC_CAR_COLORS = [0xcc3333, 0x3333cc, 0x33cc33, 0xcccc33, 0x333333, 0xffffff, 0x666666, 0xcc6633, 0x663399];
+
+function spawnTrafficCar(roadX, roadZ, dir, laneOffset) {
+  const carModel = TRAFFIC_CAR_MODELS[Math.floor(Math.random() * TRAFFIC_CAR_MODELS.length)];
+  const carColor = TRAFFIC_CAR_COLORS[Math.floor(Math.random() * TRAFFIC_CAR_COLORS.length)];
+  
+  // Load GLB car
+  const modelPath = 'Models/' + carModel + '.glb';
+  const loader = window._gltfLoader || new THREE.GLTFLoader();
+  
+  loader.load(modelPath, (gltf) => {
+    const car = gltf.scene;
+    car.scale.setScalar(2.8); // Kenney cars need upscaling to match world
+    
+    // Position on road lane
+    const lx = roadX + laneOffset;
+    car.position.set(lx, 0.05, roadZ);
+    car.rotation.y = Math.atan2(dir.x, dir.z);
+    
+    // Tint car color
+    car.traverse(child => {
+      if (child.isMesh && child.material) {
+        const mat = child.material.clone();
+        if (Math.random() < 0.5) mat.color.setHex(carColor);
+        child.material = mat;
+      }
+    });
+    
+    scene.add(car);
+    objects.push(car);
+    
+    const carData = {
+      mesh: car,
+      speed: 5 + Math.random() * 8, // 5-13 m/s (18-47 km/h city speed)
+      maxSpeed: 5 + Math.random() * 8,
+      direction: dir.clone(),
+      lane: laneOffset,
+      roadAxis: Math.abs(dir.x) > Math.abs(dir.z) ? 'x' : 'z',
+      stopped: false,
+      stopTimer: 0,
+      brakingDistance: 8,
+      turnCooldown: 0,
+      // Headlights
+      headlightL: null, headlightR: null,
+      // Taillights
+      taillightL: null, taillightR: null,
+    };
+    
+    // Add headlights
+    const hlGeo = new THREE.SphereGeometry(0.08, 4, 4);
+    const hlMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+    const tlMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+    
+    const hlL = new THREE.Mesh(hlGeo, hlMat);
+    const hlR = new THREE.Mesh(hlGeo, hlMat);
+    hlL.position.set(-0.4, 0.5, 0.9);
+    hlR.position.set(0.4, 0.5, 0.9);
+    car.add(hlL); car.add(hlR);
+    
+    const tlL = new THREE.Mesh(hlGeo, tlMat);
+    const tlR = new THREE.Mesh(hlGeo, tlMat);
+    tlL.position.set(-0.4, 0.5, -0.9);
+    tlR.position.set(0.4, 0.5, -0.9);
+    car.add(tlL); car.add(tlR);
+    
+    carData.headlightL = hlL;
+    carData.headlightR = hlR;
+    carData.taillightL = tlL;
+    carData.taillightR = tlR;
+    
+    window._trafficCars.push(carData);
+  }, undefined, (err) => {
+    // Fallback to box car if model fails
+    const geo = new THREE.BoxGeometry(1.8, 1.2, 3.5);
+    const mat = new THREE.MeshStandardMaterial({ color: carColor, roughness: 0.3, metalness: 0.6 });
+    const car = new THREE.Mesh(geo, mat);
+    car.position.set(roadX + laneOffset, 0.6, roadZ);
+    car.rotation.y = Math.atan2(dir.x, dir.z);
+    scene.add(car);
+    objects.push(car);
+    window._trafficCars.push({ mesh: car, speed: 6 + Math.random() * 6, maxSpeed: 12, direction: dir.clone(), lane: laneOffset, roadAxis: 'z', stopped: false, stopTimer: 0, brakingDistance: 8, turnCooldown: 0 });
+  });
+}
+
+function updateSmartTraffic(dt) {
+  if (!window._trafficCars) return;
+  
+  const playerPos = window._characterController ? 
+    (window._characterController.position || window._characterController.model?.position) : null;
+  
+  for (let i = window._trafficCars.length - 1; i >= 0; i--) {
+    const car = window._trafficCars[i];
+    if (!car.mesh || !car.mesh.parent) { window._trafficCars.splice(i, 1); continue; }
+    
+    const pos = car.mesh.position;
+    let shouldStop = false;
+    let brakePower = 0;
+    
+    // 1. CHECK FOR OTHER CARS AHEAD (collision avoidance)
+    for (const other of window._trafficCars) {
+      if (other === car || !other.mesh) continue;
+      const toOther = new THREE.Vector3().subVectors(other.mesh.position, pos);
+      const forward = car.direction.clone();
+      const dot = toOther.normalize().dot(forward);
+      const dist = pos.distanceTo(other.mesh.position);
+      
+      if (dot > 0.7 && dist < car.brakingDistance) {
+        shouldStop = true;
+        brakePower = Math.max(brakePower, 1 - dist / car.brakingDistance);
+      }
+    }
+    
+    // 2. CHECK FOR PEDESTRIANS (NPCs) CROSSING
+    if (typeof npcController !== 'undefined' && npcController.npcs) {
+      for (const npc of npcController.npcs) {
+        if (!npc.model) continue;
+        const npcPos = npc.model.position;
+        const toNPC = new THREE.Vector3().subVectors(npcPos, pos);
+        const forward = car.direction.clone();
+        const dot = toNPC.normalize().dot(forward);
+        const dist = pos.distanceTo(npcPos);
+        
+        if (dot > 0.5 && dist < 6) {
+          shouldStop = true;
+          brakePower = Math.max(brakePower, 1 - dist / 6);
+        }
+      }
+    }
+    
+    // 3. CHECK FOR PLAYER
+    if (playerPos) {
+      const toPlayer = new THREE.Vector3().subVectors(playerPos, pos);
+      const forward = car.direction.clone();
+      const dot = toPlayer.normalize().dot(forward);
+      const dist = pos.distanceTo(playerPos);
+      
+      if (dot > 0.5 && dist < 7) {
+        shouldStop = true;
+        brakePower = Math.max(brakePower, 1 - dist / 7);
+      }
+    }
+    
+    // 4. STOP AT INTERSECTIONS (every 30 units on both axes)
+    const crossX = Math.round(pos.x / 30) * 30;
+    const crossZ = Math.round(pos.z / 30) * 30;
+    const distToIntersectionX = Math.abs(pos.x - crossX);
+    const distToIntersectionZ = Math.abs(pos.z - crossZ);
+    const nearIntersection = (distToIntersectionX < 8 && distToIntersectionZ < 8);
+    
+    // Simple traffic light logic: alternate every 8 seconds
+    const lightPhase = Math.floor(Date.now() / 8000) % 2;
+    const carOnXRoad = car.roadAxis === 'x';
+    const redLight = nearIntersection && ((carOnXRoad && lightPhase === 1) || (!carOnXRoad && lightPhase === 0));
+    
+    if (redLight && ((car.roadAxis === 'z' && distToIntersectionZ > 3 && distToIntersectionZ < 8) ||
+                     (car.roadAxis === 'x' && distToIntersectionX > 3 && distToIntersectionX < 8))) {
+      shouldStop = true;
+      brakePower = Math.max(brakePower, 0.9);
+    }
+    
+    // 5. APPLY SPEED
+    if (shouldStop) {
+      car.speed = Math.max(0, car.speed - car.maxSpeed * brakePower * dt * 3);
+      // Taillights brighter when braking
+      if (car.taillightL) car.taillightL.material.emissiveIntensity = 2;
+      if (car.taillightR) car.taillightR.material.emissiveIntensity = 2;
+    } else {
+      car.speed = Math.min(car.maxSpeed, car.speed + car.maxSpeed * dt * 2);
+      if (car.taillightL) car.taillightL.material.emissiveIntensity = 0.5;
+    }
+    
+    // 6. MOVE
+    if (car.speed > 0.1) {
+      pos.addScaledVector(car.direction, car.speed * dt);
+      car.mesh.rotation.y = Math.atan2(car.direction.x, car.direction.z);
+    }
+    
+    // 7. TURN AT INTERSECTIONS (random chance)
+    car.turnCooldown = Math.max(0, (car.turnCooldown || 0) - dt);
+    if (nearIntersection && distToIntersectionX < 2 && distToIntersectionZ < 2 && car.turnCooldown <= 0 && Math.random() < 0.03) {
+      const turn = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
+      car.direction.applyAxisAngle(new THREE.Vector3(0, 1, 0), turn);
+      car.direction.normalize();
+      car.roadAxis = Math.abs(car.direction.x) > Math.abs(car.direction.z) ? 'x' : 'z';
+      car.turnCooldown = 5;
+    }
+    
+    // 8. SNAP TO ROAD Y
+    const ty = (typeof _getTerrainY === 'function') ? _getTerrainY(pos.x, pos.z) : 0;
+    if (ty > -0.1) pos.y = ty + 0.05;
+    
+    // 9. HEADLIGHTS at night
+    const isNight = window._dayTime !== undefined ? (window._dayTime < 6 || window._dayTime > 18) : false;
+    if (car.headlightL) {
+      car.headlightL.visible = isNight;
+      car.headlightR.visible = isNight;
+    }
+    
+    // 10. DESPAWN / RESPAWN if too far from camera
+    const cam = window._cam || camera;
+    if (cam && pos.distanceTo(cam.position) > 150) {
+      // Respawn on a road near camera
+      const angle = Math.random() * Math.PI * 2;
+      const spawnDist = 60 + Math.random() * 30;
+      const nx = cam.position.x + Math.cos(angle) * spawnDist;
+      const nz = cam.position.z + Math.sin(angle) * spawnDist;
+      // Snap to nearest road (roads at multiples of 30 offset by lane)
+      const nearestRoadX = Math.round(nx / 30) * 30;
+      const nearestRoadZ = Math.round(nz / 30) * 30;
+      const useX = Math.abs(nx - nearestRoadX) < Math.abs(nz - nearestRoadZ);
+      if (useX) {
+        pos.set(nearestRoadX + car.lane, 0.05, nz);
+        car.direction.set(0, 0, Math.random() < 0.5 ? 1 : -1);
+      } else {
+        pos.set(nx, 0.05, nearestRoadZ + car.lane);
+        car.direction.set(Math.random() < 0.5 ? 1 : -1, 0, 0);
+      }
+      car.roadAxis = Math.abs(car.direction.x) > Math.abs(car.direction.z) ? 'x' : 'z';
+      car.speed = car.maxSpeed * 0.5;
+    }
+  }
+}
+window.updateSmartTraffic = updateSmartTraffic;
+window.spawnTrafficCar = spawnTrafficCar;
+
+
+
+// === BUILDING PLACEMENT HELPER — avoid roads ===
+function snapBuildingOffRoad(x, z) {
+  // Main avenue at x=0, ±30
+  // Cross streets at z=-40, 40, 120
+  const roadHalf = 8; // half road + sidewalk width to keep buildings off
+  
+  // Check main avenue
+  if (Math.abs(x) < roadHalf) x = (x >= 0 ? 1 : -1) * (roadHalf + 2);
+  
+  // Check secondary avenues  
+  for (const ax of [-30, 30]) {
+    if (Math.abs(x - ax) < roadHalf) x = ax + (x >= ax ? 1 : -1) * (roadHalf + 2);
+  }
+  
+  // Check cross streets
+  for (const cz of [-40, 40, 120]) {
+    if (Math.abs(z - cz) < roadHalf) z = cz + (z >= cz ? 1 : -1) * (roadHalf + 2);
+  }
+  
+  return { x, z };
+}
+window.snapBuildingOffRoad = snapBuildingOffRoad;
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -17453,6 +17746,7 @@ function animate() {
     const fps = 1 / Math.max(dt, 0.001);
     const col = fps > 55 ? '#4ade80' : fps > 30 ? '#f59e0b' : '#ef4444';
     window._fpsEl.innerHTML = '<span style="color:' + col + '">' + fps.toFixed(0) + ' FPS</span> | ' + objects.length + ' obj | ' + (npcController ? npcController.npcs.length : 0) + ' npc | ' + renderer.info.render.triangles + ' tri';
+  updateSmartTraffic(dt);
 
   // Minimap render
   if (window._minimapOn && window._minimapCtx && window._minimapCanvas) {
@@ -17582,7 +17876,7 @@ function animate() {
   }
   updateLightning(dt);
   updateNightLighting(t);
-  updateDrivingCars(dt);
+  // updateDrivingCars replaced by updateSmartTraffic
   if (snowParticles) {
     snowParticles.position.x = _wcam.x;
     snowParticles.position.z = _wcam.z;
@@ -21050,7 +21344,8 @@ let dragCounter = 0;
 // === TUTORIAL / ONBOARDING SYSTEM ===
 (function() {
   const TUTORIAL_KEY = 'crate_tutorial_done';
-  if (localStorage.getItem(TUTORIAL_KEY)) return;
+  // Tour is now manual — triggered from toolbar button
+  return; // Don't auto-show
   
   const steps = [
     { title: '👋 Welcome to Crate Engine!', text: 'Build 3D worlds with voice or text commands. Let\'s take a quick tour!', target: null },
@@ -22114,20 +22409,23 @@ function showQuickStart() {
 
 // Show quick start after tutorial is dismissed
 // Hook into tutorial skip/complete
-window._onTutorialDone = function() {
-  setTimeout(() => {
-    if ((window._sceneObjects || []).length < 3) {
-      showQuickStart();
-    }
-  }, 300);
-};
-// If no tutorial shown (returning user), show quick start after delay
+window._onTutorialDone = function() { /* No auto quick-start */ };
+// Quick start is now manual — triggered from toolbar button or ? icon
+// Auto-show disabled to prevent popup on load
+
+// Add "New World" button to toolbar
 setTimeout(() => {
-  const tutorial = document.getElementById('tutorial-overlay');
-  if (!tutorial && (window._sceneObjects || []).length < 3) {
-    showQuickStart();
+  const toolbar = document.querySelector('.toolbar, #toolbar, [class*=toolbar]');
+  if (toolbar) {
+    const btn = document.createElement('button');
+    btn.textContent = '🌍';
+    btn.title = 'New World';
+    btn.style.cssText = 'background:none;border:none;font-size:20px;cursor:pointer;padding:4px 8px;';
+    btn.onclick = () => showQuickStart();
+    toolbar.prepend(btn);
   }
-}, 2000);
+}, 1500);
+
 window.showQuickStart = showQuickStart;
 
 
