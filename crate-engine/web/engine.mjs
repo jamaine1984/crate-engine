@@ -9081,6 +9081,273 @@ function createPark(opts) {
   return g;
 }
 
+// === PARKING LOT (v218) ===
+function createParkingLot(opts) {
+  opts = opts || {};
+  var w = opts.width || 30, d = opts.depth || 20;
+  var g = new THREE.Group();
+  // Asphalt surface
+  var surface = new THREE.Mesh(
+    new THREE.PlaneGeometry(w, d),
+    new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 })
+  );
+  surface.rotation.x = -Math.PI / 2;
+  surface.receiveShadow = true;
+  g.add(surface);
+  // Parking lines
+  var lineCount = Math.floor(w / 3);
+  for (var li = 0; li < lineCount; li++) {
+    var line = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.15, 5),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    line.rotation.x = -Math.PI / 2;
+    line.position.set(-w/2 + 1.5 + li * 3, 0.02, -d/4);
+    g.add(line);
+  }
+  // Curbs
+  var curb = new THREE.Mesh(
+    new THREE.BoxGeometry(w, 0.15, 0.3),
+    new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8 })
+  );
+  curb.position.set(0, 0.075, d/2);
+  g.add(curb);
+  g.userData = { objectType: 'parking_lot', displayName: 'Parking Lot' };
+  return g;
+}
+
+// === GAS STATION (v218) ===
+function createGasStation(opts) {
+  opts = opts || {};
+  var g = new THREE.Group();
+  // Canopy
+  var canopy = new THREE.Mesh(
+    new THREE.BoxGeometry(12, 0.3, 8),
+    new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.3 })
+  );
+  canopy.position.y = 4;
+  canopy.castShadow = true;
+  g.add(canopy);
+  // Pillars
+  for (var px = -4; px <= 4; px += 8) {
+    for (var pz = -2.5; pz <= 2.5; pz += 5) {
+      var pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.15, 4, 8),
+        new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.5 })
+      );
+      pillar.position.set(px, 2, pz);
+      pillar.castShadow = true;
+      g.add(pillar);
+    }
+  }
+  // Gas pumps
+  for (var gi = -3; gi <= 3; gi += 6) {
+    var pump = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 1.5, 0.4),
+      new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.4 })
+    );
+    pump.position.set(gi, 0.75, 0);
+    pump.castShadow = true;
+    g.add(pump);
+    // Screen
+    var screen = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.4, 0.3),
+      new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+    );
+    screen.position.set(gi, 1.2, 0.21);
+    g.add(screen);
+  }
+  // Store building
+  var store = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 3, 5),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 })
+  );
+  store.position.set(0, 1.5, -6);
+  store.castShadow = true;
+  g.add(store);
+  // Sign
+  var sign = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 1, 0.1),
+    new THREE.MeshBasicMaterial({ color: 0xff4400 })
+  );
+  sign.position.set(0, 3.5, -3.5);
+  g.add(sign);
+  // Ground
+  var ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(16, 14),
+    new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0.01;
+  ground.receiveShadow = true;
+  g.add(ground);
+  g.userData = { objectType: 'gas_station', displayName: 'Gas Station' };
+  return g;
+}
+
+// === SIDEWALK (v218) ===
+function createSidewalk(opts) {
+  opts = opts || {};
+  var length = opts.length || 60, width = opts.width || 2;
+  var g = new THREE.Group();
+  var walk = new THREE.Mesh(
+    new THREE.BoxGeometry(length, 0.15, width),
+    new THREE.MeshStandardMaterial({ color: 0xccccbb, roughness: 0.85 })
+  );
+  walk.position.y = 0.075;
+  walk.receiveShadow = true;
+  g.add(walk);
+  g.userData = { objectType: 'sidewalk', displayName: 'Sidewalk' };
+  return g;
+}
+
+// === BRIDGE/OVERPASS (v218) ===
+function createBridge(opts) {
+  opts = opts || {};
+  var length = opts.length || 40, width = opts.width || 8, height = opts.height || 6;
+  var g = new THREE.Group();
+  // Road deck
+  var deck = new THREE.Mesh(
+    new THREE.BoxGeometry(length, 0.5, width),
+    new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8 })
+  );
+  deck.position.y = height;
+  deck.castShadow = true;
+  deck.receiveShadow = true;
+  g.add(deck);
+  // Lane markings on top
+  var centerLine = new THREE.Mesh(
+    new THREE.BoxGeometry(length * 0.9, 0.02, 0.15),
+    new THREE.MeshBasicMaterial({ color: 0xffcc00 })
+  );
+  centerLine.position.y = height + 0.26;
+  g.add(centerLine);
+  // Support pillars
+  for (var sp = -length/3; sp <= length/3; sp += length/3) {
+    var support = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, height, 1.5),
+      new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.7 })
+    );
+    support.position.set(sp, height/2, 0);
+    support.castShadow = true;
+    g.add(support);
+  }
+  // Railings
+  for (var side = -1; side <= 1; side += 2) {
+    var rail = new THREE.Mesh(
+      new THREE.BoxGeometry(length, 1, 0.1),
+      new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.5 })
+    );
+    rail.position.set(0, height + 0.75, side * (width/2 - 0.1));
+    g.add(rail);
+  }
+  // Ramps on both ends
+  for (var rampSide = -1; rampSide <= 1; rampSide += 2) {
+    var ramp = new THREE.Mesh(
+      new THREE.BoxGeometry(height * 2.5, 0.5, width),
+      new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8 })
+    );
+    ramp.position.set(rampSide * (length/2 + height * 1.2), height/2, 0);
+    ramp.rotation.z = rampSide * Math.atan2(height, height * 2.5);
+    ramp.castShadow = true;
+    g.add(ramp);
+  }
+  g.userData = { objectType: 'bridge', displayName: 'Bridge' };
+  return g;
+}
+
+// === STREET LAMP WITH GLOW (v218) ===
+function createStreetLamp(opts) {
+  opts = opts || {};
+  var h = opts.height || 5;
+  var g = new THREE.Group();
+  // Pole
+  var pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.1, h, 8),
+    new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.3 })
+  );
+  pole.position.y = h/2;
+  pole.castShadow = true;
+  g.add(pole);
+  // Arm
+  var arm = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 0.08, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7 })
+  );
+  arm.position.set(0.75, h - 0.2, 0);
+  g.add(arm);
+  // Light housing
+  var housing = new THREE.Mesh(
+    new THREE.BoxGeometry(0.6, 0.15, 0.3),
+    new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.5 })
+  );
+  housing.position.set(1.5, h - 0.3, 0);
+  g.add(housing);
+  // Glow bulb
+  var bulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffdd88 })
+  );
+  bulb.position.set(1.5, h - 0.4, 0);
+  g.add(bulb);
+  // Point light
+  var light = new THREE.PointLight(0xffdd88, 0.8, 15);
+  light.position.set(1.5, h - 0.5, 0);
+  light.castShadow = false; // Performance
+  g.add(light);
+  g.userData = { objectType: 'street_lamp', displayName: 'Street Lamp' };
+  return g;
+}
+
+// === DUMPSTER (v218) ===
+function createDumpster(opts) {
+  var g = new THREE.Group();
+  var body = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 1.2, 1),
+    new THREE.MeshStandardMaterial({ color: 0x2d5a27, roughness: 0.7 })
+  );
+  body.position.y = 0.6;
+  body.castShadow = true;
+  g.add(body);
+  var lid = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 0.08, 1.1),
+    new THREE.MeshStandardMaterial({ color: 0x1a3a15, roughness: 0.6 })
+  );
+  lid.position.set(0, 1.24, 0);
+  g.add(lid);
+  g.userData = { objectType: 'dumpster', displayName: 'Dumpster' };
+  return g;
+}
+
+// === BENCH (v218) ===  
+function createBench(opts) {
+  var g = new THREE.Group();
+  var seat = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 0.08, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 })
+  );
+  seat.position.set(0, 0.45, 0);
+  g.add(seat);
+  var back = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 0.5, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 })
+  );
+  back.position.set(0, 0.7, -0.17);
+  g.add(back);
+  for (var ls = -0.6; ls <= 0.6; ls += 1.2) {
+    var leg = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.45, 0.35),
+      new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.5 })
+    );
+    leg.position.set(ls, 0.225, 0);
+    g.add(leg);
+  }
+  g.userData = { objectType: 'bench', displayName: 'Park Bench' };
+  return g;
+}
+
+
+
 function createModernHouse(opts) {
   const o = opts || {};
   const w = o.width || 8;
@@ -12052,6 +12319,19 @@ function showGameHUD(preset) {
           { cmd: 'add ph_shrub_02', pos: [-30, 60] },
           { cmd: 'add ph_shrub_02', pos: [30, 80] },
           
+          // === v218 CITY INFRASTRUCTURE ===
+          { cmd: 'add parking lot', pos: [50, -50] },
+          { cmd: 'add parking lot', pos: [-50, 100] },
+          { cmd: 'add gas station', pos: [55, 20] },
+          { cmd: 'add bench', pos: [-8, 138] },
+          { cmd: 'add bench', pos: [8, 142] },
+          { cmd: 'add bench', pos: [0, 150] },
+          { cmd: 'add dumpster', pos: [-28, -20] },
+          { cmd: 'add dumpster', pos: [28, 80] },
+          { cmd: 'add dumpster', pos: [-28, 110] },
+          { cmd: 'add sidewalk', pos: [-12, 0] },
+          { cmd: 'add sidewalk', pos: [12, 0] },
+          
           // === PEDESTRIANS ===
           { cmd: 'spawn villager', scatter: { count: 4, radius: 60 } },
           { cmd: 'spawn woman', scatter: { count: 3, radius: 55 } },
@@ -14640,6 +14920,16 @@ function isVehicle(obj) {
   if (VEHICLE_NAMES.test(n)) return 'ground';
   if (BOAT_NAMES.test(n)) return 'water';
   if (AIRCRAFT_NAMES.test(n)) return 'air';
+  
+  // v218 city objects
+  if (/^add (parking\s*lot|parking)/i.test(raw)) { var o = createParkingLot(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added parking lot"; }
+  if (/^add gas\s*station/i.test(raw)) { var o = createGasStation(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added gas station"; }
+  if (/^add sidewalk/i.test(raw)) { var o = createSidewalk(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added sidewalk"; }
+  if (/^add (bridge|overpass)/i.test(raw)) { var o = createBridge(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added bridge"; }
+  if (/^add street\s*lamp/i.test(raw)) { var o = createStreetLamp(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added street lamp"; }
+  if (/^add dumpster/i.test(raw)) { var o = createDumpster(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added dumpster"; }
+  if (/^add bench/i.test(raw)) { var o = createBench(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added bench"; }
+
   return null;
 }
 
