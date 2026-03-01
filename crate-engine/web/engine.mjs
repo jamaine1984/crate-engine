@@ -16836,7 +16836,7 @@ function updateNightLighting(t) {
   if (t - _lastNightCheck < 2) return;
   _lastNightCheck = t;
   
-  const isNight = (typeof _dayTime !== 'undefined') ? (_dayTime < 0.25 || _dayTime > 0.75) : false;
+  const isNight = (_dayTime < 6 || _dayTime > 18);
   
   if (isNight && _nightLights.length === 0) {
     // Add point lights to street lamps and buildings
