@@ -7679,7 +7679,7 @@ createSun();
 function createGround(type) {
   const colors = { grass: 0x3a7a3a, dirt: 0x6b4a2a, sand: 0xc4a96a, snow: 0xd8dce8, gravel: 0x888888, stone: 0x666666, mud: 0x4a3a2a, lava: 0xcc3300, water: 0x2266aa, wood: 0x7a5530, marble: 0xddddcc, metal: 0x888899, concrete: 0x999999, asphalt: 0x333333, gold: 0xccaa22, obsidian: 0x111115, crystal: 0x8899cc, ice: 0xaaddff, rock: 0x555555 };
   const color = colors[type] || colors.grass;
-  const geo = new THREE.PlaneGeometry(300, 300, 256, 256);
+  const geo = new THREE.PlaneGeometry(800, 800, 256, 256);
   
   // Smooth procedural height — layered sine waves (no visible grid)
   const pos = geo.attributes.position;
@@ -12549,181 +12549,329 @@ function showGameHUD(preset) {
         terrain: { type: 'flat', height: 0 },
         ground: 'grass', env: ['time afternoon'],
         items: [
-          // =============================================
-          // SIMCITY-STYLE GRID — wide roads, spaced blocks
-          // Road width = 12m (7m road + 2.5m sidewalk each side)
-          // Block size = ~60m between roads
-          // Buildings set back 20m from road center
-          // =============================================
-          
-          // === MAIN AVENUE (north-south, center) ===
-          { cmd: 'add road', pos: [0, -60] },
-          { cmd: 'add road', pos: [0, -20] },
-          { cmd: 'add road', pos: [0, 20] },
-          { cmd: 'add road', pos: [0, 60] },
-          { cmd: 'add road', pos: [0, 100] },
-          { cmd: 'add road', pos: [0, 140] },
-          
-          // === CROSS STREETS (east-west) every 60 units ===
-          { cmd: 'add road at 0 0 ew', pos: [-30, -40] },
-          { cmd: 'add road at 0 0 ew', pos: [30, -40] },
-          { cmd: 'add road at 0 0 ew', pos: [-30, 40] },
-          { cmd: 'add road at 0 0 ew', pos: [30, 40] },
-          { cmd: 'add road at 0 0 ew', pos: [-30, 120] },
-          { cmd: 'add road at 0 0 ew', pos: [30, 120] },
-          
-          // === INTERSECTIONS ===
-          { cmd: 'add intersection', pos: [0, -40] },
-          { cmd: 'add intersection', pos: [0, 40] },
-          { cmd: 'add intersection', pos: [0, 120] },
-          
-          // ======================
-          // BLOCK 1: DOWNTOWN (south, z = -60 to -40)
-          // ======================
-          { cmd: 'add skyscraper', pos: [-25, -60] },
-          { cmd: 'add skyscraper', pos: [25, -60] },
-          { cmd: 'add skyscraper', pos: [-25, -50] },
-          { cmd: 'add skyscraper', pos: [25, -50] },
-          { cmd: 'add apartment', pos: [-25, -40] },
-          { cmd: 'add apartment', pos: [25, -40] },
-          
-          // ======================
-          // BLOCK 2: COMMERCIAL (z = -40 to 40)
-          // ======================
-          // West side of avenue
-          { cmd: 'add grocery', pos: [-18, -25], rot: Math.PI/2 },
-          { cmd: 'add salon', pos: [-18, -10], rot: Math.PI/2 },
-          { cmd: 'add restaurant', pos: [-18, 5], rot: Math.PI/2 },
-          { cmd: 'add pharmacy', pos: [-18, 20], rot: Math.PI/2 },
-          // East side of avenue
-          { cmd: 'add barber', pos: [18, -25], rot: -Math.PI/2 },
-          { cmd: 'add clothing', pos: [18, -10], rot: -Math.PI/2 },
-          { cmd: 'add cafe', pos: [18, 5], rot: -Math.PI/2 },
-          { cmd: 'add bank', pos: [18, 20], rot: -Math.PI/2 },
-          
-          // ======================
-          // BLOCK 3: RESIDENTIAL (z = 40 to 120)
-          // ======================
-          // West side — houses with yards
-          { cmd: 'add pitched house', pos: [-28, 55], rot: Math.PI/2 },
-          { cmd: 'add modern house 2 floors', pos: [-28, 75], rot: Math.PI/2 },
-          { cmd: 'add mansion', pos: [-28, 95], rot: Math.PI/2 },
-          { cmd: 'add ranch', pos: [-28, 115], rot: Math.PI/2 },
-          // East side — mix of houses and apartments
-          { cmd: 'add apartment', pos: [28, 55], rot: -Math.PI/2 },
-          { cmd: 'add duplex', pos: [28, 75], rot: -Math.PI/2 },
-          { cmd: 'add pitched house', pos: [28, 95], rot: -Math.PI/2 },
-          { cmd: 'add modern house 2 floors', pos: [28, 115], rot: -Math.PI/2 },
-          
-          // === Along cross streets ===
-          { cmd: 'add pitched house', pos: [-50, -30], rot: 0 },
-          { cmd: 'add modern house', pos: [50, -30], rot: Math.PI },
-          { cmd: 'add pitched house', pos: [-50, 50], rot: 0 },
-          { cmd: 'add modern house', pos: [50, 50], rot: Math.PI },
-          
-          // ======================
-          // PARK (center block, z = 130-150)
-          // ======================
-          { cmd: 'add tree', pos: [-10, 135] },
-          { cmd: 'add tree', pos: [10, 135] },
-          { cmd: 'add tree', pos: [0, 145] },
-          { cmd: 'add tree', pos: [-15, 145] },
-          { cmd: 'add tree', pos: [15, 145] },
-          { cmd: 'add tree', pos: [-5, 155] },
-          { cmd: 'add tree', pos: [5, 155] },
-          { cmd: 'add ph_park_bench', pos: [-5, 138] },
-          { cmd: 'add ph_park_bench', pos: [5, 142] },
-          { cmd: 'add well', pos: [0, 140] },
-          
-          // Supermarket at edge of commercial zone
-          { cmd: 'add supermarket', pos: [-40, 0], rot: Math.PI/2 },
-          // === POOLS in some backyards ===
-          { cmd: 'add pool', pos: [-35, 58] },
-          { cmd: 'add gas station', pos: [50, -55] },
-          { cmd: 'add parking lot', pos: [-50, 10] },
-          { cmd: 'add pool', pos: [35, 98] },
-          
-          // ======================
-          // TRAFFIC + STREET FURNITURE
-          // ======================
-          { cmd: 'add traffic light', pos: [-5, -40] },
-          { cmd: 'add traffic light', pos: [5, -40] },
-          { cmd: 'add traffic light', pos: [-5, 40] },
-          { cmd: 'add traffic light', pos: [5, 40] },
-          { cmd: 'add traffic light', pos: [-5, 120] },
-          { cmd: 'add traffic light', pos: [5, 120] },
-          { cmd: 'add stop sign', pos: [-5, -20] },
-          { cmd: 'add stop sign', pos: [5, 10] },
-          { cmd: 'add stop sign', pos: [-5, 65] },
-          { cmd: 'add stop sign', pos: [5, 100] },
-          
-          // Street lamps (evenly spaced along avenue)
-          { cmd: 'add ph_street_lamp_01', pos: [-7, -55] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, -55] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, -35] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, -35] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, -15] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, -15] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 5] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, 5] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 25] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, 25] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 55] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, 55] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 85] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, 85] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 115] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, 115] },
-          
-          // Bus stops
-          { cmd: 'add bus stop', pos: [8, -55] },
-          { cmd: 'add bus stop', pos: [-8, 50] },
-          // Dumpsters (behind shops)
-          { cmd: 'add dumpster', pos: [-24, -18] },
-          { cmd: 'add dumpster', pos: [24, -18] },
-          // Trash cans along sidewalks
-          { cmd: 'add trash can', pos: [-7, -45] },
-          { cmd: 'add trash can', pos: [7, 15] },
-          { cmd: 'add trash can', pos: [-7, 65] },
-          { cmd: 'add trash can', pos: [7, 105] },
-          // Fire hydrants
-          { cmd: 'add ph_fire_hydrant', pos: [-7, -50] },
-          { cmd: 'add ph_fire_hydrant', pos: [7, 0] },
-          { cmd: 'add ph_fire_hydrant', pos: [-7, 50] },
-          { cmd: 'add ph_fire_hydrant', pos: [7, 90] },
-          
-          // === VEHICLES (Kenney + HD) ===
-          { cmd: 'add hd_ferrari', pos: [2, -15] },
-          // Driving cars will be spawned after template loads
-          { cmd: 'add police', pos: [3, 75] },
-          { cmd: 'add van', pos: [-3, 95] },
-          { cmd: 'add ambulance', pos: [3, 115] },
-          { cmd: 'add hd_pbr_cesium_milk_truck', pos: [3, 135] },
-          { cmd: 'add truck', pos: [35, -35] },
-          
-          // === GREENERY (street trees, planters) ===
-          { cmd: 'add ph_potted_plant_01', pos: [-14, -8] },
-          { cmd: 'add ph_potted_plant_01', pos: [14, 8] },
-          { cmd: 'add ph_shrub_02', pos: [-30, 60] },
-          { cmd: 'add ph_shrub_02', pos: [30, 80] },
-          
-          // === v218 CITY INFRASTRUCTURE ===
-          { cmd: 'add parking lot', pos: [50, -50] },
-          { cmd: 'add parking lot', pos: [-50, 100] },
-          { cmd: 'add gas station', pos: [55, 20] },
-          { cmd: 'add bench', pos: [-8, 138] },
-          { cmd: 'add bench', pos: [8, 142] },
-          { cmd: 'add bench', pos: [0, 150] },
-          { cmd: 'add dumpster', pos: [-28, -20] },
-          { cmd: 'add dumpster', pos: [28, 80] },
-          { cmd: 'add dumpster', pos: [-28, 110] },
-          { cmd: 'add sidewalk', pos: [-12, 0] },
-          { cmd: 'add sidewalk', pos: [12, 0] },
-          
-          // === PEDESTRIANS ===
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 60 } },
-          { cmd: 'spawn woman', scatter: { count: 3, radius: 55 } },
-          { cmd: 'spawn worker', scatter: { count: 2, radius: 50 } },
+          { cmd: 'add road', pos: [-200, -280] },
+          { cmd: 'add road', pos: [-200, -240] },
+          { cmd: 'add road', pos: [-200, -160] },
+          { cmd: 'add road', pos: [-200, -120] },
+          { cmd: 'add road', pos: [-200, -80] },
+          { cmd: 'add road', pos: [-200, -40] },
+          { cmd: 'add road', pos: [-200, 40] },
+          { cmd: 'add road', pos: [-200, 80] },
+          { cmd: 'add road', pos: [-200, 120] },
+          { cmd: 'add road', pos: [-200, 160] },
+          { cmd: 'add road', pos: [-200, 240] },
+          { cmd: 'add road', pos: [-100, -280] },
+          { cmd: 'add road', pos: [-100, -240] },
+          { cmd: 'add road', pos: [-100, -160] },
+          { cmd: 'add road', pos: [-100, -120] },
+          { cmd: 'add road', pos: [-100, -80] },
+          { cmd: 'add road', pos: [-100, -40] },
+          { cmd: 'add road', pos: [-100, 40] },
+          { cmd: 'add road', pos: [-100, 80] },
+          { cmd: 'add road', pos: [-100, 120] },
+          { cmd: 'add road', pos: [-100, 160] },
+          { cmd: 'add road', pos: [-100, 240] },
+          { cmd: 'add road', pos: [0, -280] },
+          { cmd: 'add road', pos: [0, -240] },
+          { cmd: 'add road', pos: [0, -160] },
+          { cmd: 'add road', pos: [0, -120] },
+          { cmd: 'add road', pos: [0, -80] },
+          { cmd: 'add road', pos: [0, -40] },
+          { cmd: 'add road', pos: [0, 40] },
+          { cmd: 'add road', pos: [0, 80] },
+          { cmd: 'add road', pos: [0, 120] },
+          { cmd: 'add road', pos: [0, 160] },
+          { cmd: 'add road', pos: [0, 240] },
+          { cmd: 'add road', pos: [100, -280] },
+          { cmd: 'add road', pos: [100, -240] },
+          { cmd: 'add road', pos: [100, -160] },
+          { cmd: 'add road', pos: [100, -120] },
+          { cmd: 'add road', pos: [100, -80] },
+          { cmd: 'add road', pos: [100, -40] },
+          { cmd: 'add road', pos: [100, 40] },
+          { cmd: 'add road', pos: [100, 80] },
+          { cmd: 'add road', pos: [100, 120] },
+          { cmd: 'add road', pos: [100, 160] },
+          { cmd: 'add road', pos: [100, 240] },
+          { cmd: 'add road', pos: [200, -280] },
+          { cmd: 'add road', pos: [200, -240] },
+          { cmd: 'add road', pos: [200, -160] },
+          { cmd: 'add road', pos: [200, -120] },
+          { cmd: 'add road', pos: [200, -80] },
+          { cmd: 'add road', pos: [200, -40] },
+          { cmd: 'add road', pos: [200, 40] },
+          { cmd: 'add road', pos: [200, 80] },
+          { cmd: 'add road', pos: [200, 120] },
+          { cmd: 'add road', pos: [200, 160] },
+          { cmd: 'add road', pos: [200, 240] },
+          { cmd: 'add road at 0 0 ew', pos: [-280, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [-240, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [-160, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [-120, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [-80, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [-40, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [40, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [80, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [120, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [160, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [240, -200] },
+          { cmd: 'add road at 0 0 ew', pos: [-280, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [-240, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [-160, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [-120, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [-80, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [-40, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [40, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [80, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [120, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [160, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [240, -100] },
+          { cmd: 'add road at 0 0 ew', pos: [-280, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [-240, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [-160, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [-120, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [-80, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [-40, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [40, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [80, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [120, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [160, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [240, 0] },
+          { cmd: 'add road at 0 0 ew', pos: [-280, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [-240, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [-160, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [-120, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [-80, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [-40, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [40, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [80, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [120, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [160, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [240, 100] },
+          { cmd: 'add road at 0 0 ew', pos: [-280, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [-240, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [-160, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [-120, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [-80, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [-40, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [40, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [80, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [120, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [160, 200] },
+          { cmd: 'add road at 0 0 ew', pos: [240, 200] },
+          { cmd: 'add intersection', pos: [-200, -200] },
+          { cmd: 'add intersection', pos: [-200, -100] },
+          { cmd: 'add intersection', pos: [-200, 0] },
+          { cmd: 'add intersection', pos: [-200, 100] },
+          { cmd: 'add intersection', pos: [-200, 200] },
+          { cmd: 'add intersection', pos: [-100, -200] },
+          { cmd: 'add intersection', pos: [-100, -100] },
+          { cmd: 'add intersection', pos: [-100, 0] },
+          { cmd: 'add intersection', pos: [-100, 100] },
+          { cmd: 'add intersection', pos: [-100, 200] },
+          { cmd: 'add intersection', pos: [0, -200] },
+          { cmd: 'add intersection', pos: [0, -100] },
+          { cmd: 'add intersection', pos: [0, 0] },
+          { cmd: 'add intersection', pos: [0, 100] },
+          { cmd: 'add intersection', pos: [0, 200] },
+          { cmd: 'add intersection', pos: [100, -200] },
+          { cmd: 'add intersection', pos: [100, -100] },
+          { cmd: 'add intersection', pos: [100, 0] },
+          { cmd: 'add intersection', pos: [100, 100] },
+          { cmd: 'add intersection', pos: [100, 200] },
+          { cmd: 'add intersection', pos: [200, -200] },
+          { cmd: 'add intersection', pos: [200, -100] },
+          { cmd: 'add intersection', pos: [200, 0] },
+          { cmd: 'add intersection', pos: [200, 100] },
+          { cmd: 'add intersection', pos: [200, 200] },
+          { cmd: 'add skyscraper', pos: [-50, -50] },
+          { cmd: 'add apartment', pos: [-15, -50] },
+          { cmd: 'add skyscraper', pos: [-50, 50] },
+          { cmd: 'add apartment', pos: [-15, 50] },
+          { cmd: 'add skyscraper', pos: [50, -50] },
+          { cmd: 'add apartment', pos: [85, -50] },
+          { cmd: 'add skyscraper', pos: [50, 50] },
+          { cmd: 'add apartment', pos: [85, 50] },
+          { cmd: 'add grocery', pos: [-175, -165], rot: 1.5707963267948966 },
+          { cmd: 'add restaurant', pos: [-175, -135], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [-150, -150] },
+          { cmd: 'add restaurant', pos: [-175, -65], rot: 1.5707963267948966 },
+          { cmd: 'add bank', pos: [-175, -35], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [-150, -50] },
+          { cmd: 'add bank', pos: [-175, 35], rot: 1.5707963267948966 },
+          { cmd: 'add cafe', pos: [-175, 65], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [-150, 50] },
+          { cmd: 'add cafe', pos: [-175, 135], rot: 1.5707963267948966 },
+          { cmd: 'add salon', pos: [-175, 165], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [-150, 150] },
+          { cmd: 'add salon', pos: [-75, -165], rot: 1.5707963267948966 },
+          { cmd: 'add pharmacy', pos: [-75, -135], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [-50, -150] },
+          { cmd: 'add pharmacy', pos: [-75, 135], rot: 1.5707963267948966 },
+          { cmd: 'add clothing', pos: [-75, 165], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [-50, 150] },
+          { cmd: 'add clothing', pos: [25, -165], rot: 1.5707963267948966 },
+          { cmd: 'add barber', pos: [25, -135], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [50, -150] },
+          { cmd: 'add barber', pos: [25, 135], rot: 1.5707963267948966 },
+          { cmd: 'add grocery', pos: [25, 165], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [50, 150] },
+          { cmd: 'add grocery', pos: [125, -165], rot: 1.5707963267948966 },
+          { cmd: 'add restaurant', pos: [125, -135], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [150, -150] },
+          { cmd: 'add restaurant', pos: [125, -65], rot: 1.5707963267948966 },
+          { cmd: 'add bank', pos: [125, -35], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [150, -50] },
+          { cmd: 'add bank', pos: [125, 35], rot: 1.5707963267948966 },
+          { cmd: 'add cafe', pos: [125, 65], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [150, 50] },
+          { cmd: 'add cafe', pos: [125, 135], rot: 1.5707963267948966 },
+          { cmd: 'add salon', pos: [125, 165], rot: 1.5707963267948966 },
+          { cmd: 'add apartment', pos: [150, 150] },
+          { cmd: 'add traffic light', pos: [-8, -8] },
+          { cmd: 'add traffic light', pos: [8, 8] },
+          { cmd: 'add traffic light', pos: [-108, -8] },
+          { cmd: 'add traffic light', pos: [-92, 8] },
+          { cmd: 'add traffic light', pos: [92, -8] },
+          { cmd: 'add traffic light', pos: [108, 8] },
+          { cmd: 'add traffic light', pos: [-8, -108] },
+          { cmd: 'add traffic light', pos: [8, -92] },
+          { cmd: 'add traffic light', pos: [-8, 92] },
+          { cmd: 'add traffic light', pos: [8, 108] },
+          { cmd: 'add stop sign', pos: [-193, -193] },
+          { cmd: 'add stop sign', pos: [-193, -93] },
+          { cmd: 'add stop sign', pos: [-193, 107] },
+          { cmd: 'add stop sign', pos: [-193, 207] },
+          { cmd: 'add stop sign', pos: [207, -193] },
+          { cmd: 'add stop sign', pos: [207, -93] },
+          { cmd: 'add stop sign', pos: [207, 107] },
+          { cmd: 'add stop sign', pos: [207, 207] },
+          { cmd: 'add stop sign', pos: [-93, -193] },
+          { cmd: 'add stop sign', pos: [107, -193] },
+          { cmd: 'add stop sign', pos: [-93, 207] },
+          { cmd: 'add stop sign', pos: [107, 207] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -250] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -250] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -220] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -220] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -190] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -190] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -160] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -160] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -130] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -130] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -100] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -100] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -70] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -70] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -40] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -40] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, -10] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, -10] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, 20] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, 20] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, 50] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, 50] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, 80] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, 80] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, 110] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, 110] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, 140] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, 140] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, 170] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, 170] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, 200] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, 200] },
+          { cmd: 'add ph_street_lamp_01', pos: [-9, 230] },
+          { cmd: 'add ph_street_lamp_01', pos: [9, 230] },
+          { cmd: 'add ph_street_lamp_01', pos: [-250, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-250, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-220, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-220, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-190, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-190, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-160, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-160, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-130, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-130, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-100, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-100, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-70, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-70, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-40, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [-40, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [20, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [20, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [50, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [50, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [80, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [80, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [110, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [110, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [140, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [140, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [170, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [170, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [200, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [200, 9] },
+          { cmd: 'add ph_street_lamp_01', pos: [230, -9] },
+          { cmd: 'add ph_street_lamp_01', pos: [230, 9] },
+          { cmd: 'add ph_fire_hydrant', pos: [-9, -200] },
+          { cmd: 'add ph_fire_hydrant', pos: [109, -200] },
+          { cmd: 'add ph_fire_hydrant', pos: [-9, -120] },
+          { cmd: 'add ph_fire_hydrant', pos: [109, -120] },
+          { cmd: 'add ph_fire_hydrant', pos: [-9, -40] },
+          { cmd: 'add ph_fire_hydrant', pos: [109, -40] },
+          { cmd: 'add ph_fire_hydrant', pos: [-9, 40] },
+          { cmd: 'add ph_fire_hydrant', pos: [109, 40] },
+          { cmd: 'add ph_fire_hydrant', pos: [-9, 120] },
+          { cmd: 'add ph_fire_hydrant', pos: [109, 120] },
+          { cmd: 'add ph_fire_hydrant', pos: [-9, 200] },
+          { cmd: 'add ph_fire_hydrant', pos: [109, 200] },
+          { cmd: 'add bench', pos: [-9, -150] },
+          { cmd: 'add bench', pos: [9, -150] },
+          { cmd: 'add bench', pos: [-9, -100] },
+          { cmd: 'add bench', pos: [9, -100] },
+          { cmd: 'add bench', pos: [-9, -50] },
+          { cmd: 'add bench', pos: [9, -50] },
+          { cmd: 'add bench', pos: [-9, 0] },
+          { cmd: 'add bench', pos: [9, 0] },
+          { cmd: 'add bench', pos: [-9, 50] },
+          { cmd: 'add bench', pos: [9, 50] },
+          { cmd: 'add bench', pos: [-9, 100] },
+          { cmd: 'add bench', pos: [9, 100] },
+          { cmd: 'add bench', pos: [-9, 150] },
+          { cmd: 'add bench', pos: [9, 150] },
+          { cmd: 'add tree', pos: [-170, 130] },
+          { cmd: 'add tree', pos: [-170, 140] },
+          { cmd: 'add tree', pos: [-170, 150] },
+          { cmd: 'add tree', pos: [-170, 160] },
+          { cmd: 'add tree', pos: [-162, 130] },
+          { cmd: 'add tree', pos: [-162, 140] },
+          { cmd: 'add tree', pos: [-162, 150] },
+          { cmd: 'add tree', pos: [-162, 160] },
+          { cmd: 'add tree', pos: [-154, 130] },
+          { cmd: 'add tree', pos: [-154, 140] },
+          { cmd: 'add tree', pos: [-154, 150] },
+          { cmd: 'add tree', pos: [-154, 160] },
+          { cmd: 'add tree', pos: [-146, 130] },
+          { cmd: 'add tree', pos: [-146, 140] },
+          { cmd: 'add tree', pos: [-146, 150] },
+          { cmd: 'add tree', pos: [-146, 160] },
+          { cmd: 'add tree', pos: [-138, 130] },
+          { cmd: 'add tree', pos: [-138, 140] },
+          { cmd: 'add tree', pos: [-138, 150] },
+          { cmd: 'add tree', pos: [-138, 160] },
+          { cmd: 'add ph_park_bench', pos: [-155, 150] },
+          { cmd: 'add ph_park_bench', pos: [-145, 155] },
+          { cmd: 'add ph_park_bench', pos: [-150, 140] },
+          { cmd: 'add well', pos: [-150, 150] },
+          { cmd: 'add gas station', pos: [150, -150] },
+          { cmd: 'add parking lot', pos: [-150, -150] },
+          { cmd: 'add parking lot', pos: [150, 150] },
+          { cmd: 'spawn villager', scatter: { count: 12, radius: 200 } },
+          { cmd: 'spawn woman', scatter: { count: 10, radius: 180 } },
+          { cmd: 'spawn worker', scatter: { count: 6, radius: 150 } },
         ]
       },
       suburban: {
@@ -12860,21 +13008,32 @@ function showGameHUD(preset) {
         if (mapType === 'city' || mapType === 'cyberpunk') {
           setTimeout(function() {
             // Smart traffic cars with GLB models and AI
-            console.log("[Traffic] Spawning 20 smart traffic cars...");
-            for (let ci = 0; ci < 8; ci++) {
-              const lane = ci % 2 === 0 ? -2.5 : 2.5;
-              const startZ = -60 + ci * 20;
-              const dir = new THREE.Vector3(0, 0, lane < 0 ? 1 : -1);
-              setTimeout(() => spawnTrafficCar(lane, startZ, dir, 0), ci * 500);
+            console.log("[Traffic] Spawning smart traffic cars on city grid...");
+            // N-S roads at x = -200, -100, 0, 100, 200
+            const nsRoads = [-200, -100, 0, 100, 200];
+            const ewRoads = [-200, -100, 0, 100, 200];
+            let carIdx = 0;
+            // Cars on N-S roads
+            for (const rx of nsRoads) {
+              for (let ci = 0; ci < 3; ci++) {
+                const lane = ci % 2 === 0 ? -2.5 : 2.5;
+                const startZ = -180 + ci * 120;
+                const dir = new THREE.Vector3(0, 0, lane < 0 ? 1 : -1);
+                setTimeout(() => spawnTrafficCar(rx + lane, startZ, dir, 0), carIdx * 400);
+                carIdx++;
+              }
             }
-            // Also spawn some on cross streets
-            for (let ci = 0; ci < 4; ci++) {
-              const lane = ci % 2 === 0 ? -2.5 : 2.5;
-              const crossZ = ci < 3 ? -40 : 40;
-              const startX = -40 + ci * 15;
-              const dir = new THREE.Vector3(ci % 2 === 0 ? 1 : -1, 0, 0);
-              setTimeout(() => spawnTrafficCar(startX, crossZ + lane, dir, 0), (ci + 8) * 500);
+            // Cars on E-W roads
+            for (const rz of ewRoads) {
+              for (let ci = 0; ci < 2; ci++) {
+                const lane = ci % 2 === 0 ? -2.5 : 2.5;
+                const startX = -150 + ci * 200;
+                const dir = new THREE.Vector3(ci % 2 === 0 ? 1 : -1, 0, 0);
+                setTimeout(() => spawnTrafficCar(startX, rz + lane, dir, 0), carIdx * 400);
+                carIdx++;
+              }
             }
+            console.log("[Traffic] Queued " + carIdx + " cars");
           }, 1000);
         }
         return;
