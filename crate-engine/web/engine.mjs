@@ -11396,6 +11396,13 @@ async function execSingle(cmd) {
       }
       window._pendingWaterPreset = null;
     }
+    // Register water zone for swimming
+    const halfS = oceanSize / 2;
+    const waterY = isLake ? 0.15 : -0.3;
+    registerWaterZone(new THREE.Box3(
+      new THREE.Vector3(ox - halfS, waterY - 5, oz - halfS),
+      new THREE.Vector3(ox + halfS, waterY + 0.3, oz + halfS)
+    ));
     return '🌊 ' + label.charAt(0).toUpperCase() + label.slice(1) + ' created! (' + oceanSize + 'm)';
   }
   // Resize ocean command
@@ -13951,39 +13958,6 @@ function showGameHUD(preset) {
   }
   // Stop sign
 
-  // === WATER BODIES ===
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(lake|pond|ocean|river|sea)/)) {
-    const type = lower.match(/(lake|pond|ocean|river|sea)/)[1];
-    const sizes = {lake:[40,40], pond:[15,15], ocean:[200,200], river:[10,80], sea:[150,150]};
-    const [bw,bd] = sizes[type] || [40,40];
-    const g = new THREE.Group(); g.userData.name = type.charAt(0).toUpperCase() + type.slice(1);
-    const waterMat = new THREE.MeshPhysicalMaterial({color:0x1a6b8a, roughness:0.0, transparent:true, opacity:0.65, metalness:0.1});
-    const bedMat = makeMat(0x665544, {rough:0.9});
-    const depth = type === 'ocean' || type === 'sea' ? 8 : type === 'river' ? 2 : 3;
-    // Bed
-    const bed = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.2, bd), bedMat);
-    bed.position.y = -depth; bed.receiveShadow = true; g.add(bed);
-    // Walls
-    [[0,-depth/2,bd/2,bw,depth,0.2],[0,-depth/2,-bd/2,bw,depth,0.2],[bw/2,-depth/2,0,0.2,depth,bd],[-bw/2,-depth/2,0,0.2,depth,bd]].forEach(([x,y,z,sx,sy,sz])=>{
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), bedMat); wall.position.set(x,y,z); g.add(wall);
-    });
-    // Water surface
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(bw, bd), waterMat);
-    water.rotation.x = -Math.PI/2; water.position.y = -0.05; g.add(water);
-    // Animate water
-    water.userData._baseY = -0.05;
-    water.onBeforeRender = () => { water.position.y = water.userData._baseY + Math.sin(performance.now()*0.0008)*0.1; };
-    scene.add(g);
-    if (typeof px !== 'undefined') g.position.set(px, 0, pz);
-    // Register water zone
-    const pos = g.position.clone();
-    registerWaterZone(new THREE.Box3(
-      new THREE.Vector3(pos.x - bw/2, pos.y - depth, pos.z - bd/2),
-      new THREE.Vector3(pos.x + bw/2, pos.y + 0.1, pos.z + bd/2)
-    ));
-    if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
-    return '🌊 ' + type.charAt(0).toUpperCase() + type.slice(1) + ' created! Jump in to swim!';
-  }
 
   if (lower.match(/^(?:add |create )?(?:an? )?(stop ?sign)/)) {
     const obj = createStopSign();
