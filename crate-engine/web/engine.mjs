@@ -11503,8 +11503,8 @@ function showGameHUD(preset) {
   
   // Smart model search — "search car", "find zombie", "browse weapons"
   const searchMatch = lower.match(/^(?:search|find|browse|look for|show)\s+(.+)/);
-  if (modelSearchMatch) {
-    const query = modelSearchMatch[1];
+  if (searchMatch) {
+    const query = searchMatch[1];
     const results = searchModels(query, 15);
     if (results.length === 0) {
       return '🔍 No models found for "' + query + '"';
