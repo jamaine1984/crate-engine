@@ -1615,6 +1615,67 @@ function updateFPSDisplay(fps) {
 }
 
 
+
+// === NPC DIALOGUE SYSTEM (v218) ===
+let _dialogueActive = false;
+let _currentDialogue = null;
+
+function showDialogue(npcName, lines, options) {
+  _dialogueActive = true;
+  _currentDialogue = { npc: npcName, lines: lines, lineIdx: 0, options: options || null };
+  var el = document.getElementById('dialogue-box');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'dialogue-box';
+    el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);width:500px;background:rgba(0,0,0,0.92);border:1px solid rgba(255,255,255,0.15);border-radius:12px;z-index:10016;padding:16px;font-family:-apple-system,sans-serif;backdrop-filter:blur(10px);display:none;';
+    document.body.appendChild(el);
+  }
+  el.style.display = 'block';
+  renderDialogueLine();
+}
+function renderDialogueLine() {
+  var el = document.getElementById('dialogue-box');
+  if (!el || !_currentDialogue) return;
+  var d = _currentDialogue;
+  var line = d.lines[d.lineIdx];
+  var html = '<div style="color:#f59e0b;font-size:13px;font-weight:600;margin-bottom:8px;">' + d.npc + '</div>';
+  html += '<div style="color:#fff;font-size:15px;line-height:1.5;margin-bottom:12px;">' + line + '</div>';
+  if (d.lineIdx < d.lines.length - 1) {
+    html += '<div style="color:#888;font-size:11px;text-align:right;">Press SPACE to continue ▶</div>';
+  } else if (d.options) {
+    d.options.forEach(function(opt, i) {
+      html += '<div class="dialogue-opt" data-idx="' + i + '" style="color:#4ade80;font-size:13px;padding:6px 8px;margin-top:4px;cursor:pointer;border:1px solid rgba(74,222,128,0.2);border-radius:6px;">' + (i+1) + '. ' + opt.text + '</div>';
+    });
+  } else {
+    html += '<div style="color:#888;font-size:11px;text-align:right;">Press SPACE to close ▶</div>';
+  }
+  el.innerHTML = html;
+  el.querySelectorAll('.dialogue-opt').forEach(function(opt) {
+    opt.onclick = function() {
+      var idx = parseInt(this.getAttribute('data-idx'));
+      if (d.options[idx].action) d.options[idx].action();
+      closeDialogue();
+    };
+  });
+}
+function advanceDialogue() {
+  if (!_currentDialogue) return;
+  _currentDialogue.lineIdx++;
+  if (_currentDialogue.lineIdx >= _currentDialogue.lines.length) {
+    if (!_currentDialogue.options) closeDialogue();
+    else renderDialogueLine();
+  } else { renderDialogueLine(); }
+}
+function closeDialogue() {
+  _dialogueActive = false;
+  _currentDialogue = null;
+  var el = document.getElementById('dialogue-box');
+  if (el) el.style.display = 'none';
+}
+window.showDialogue = showDialogue;
+window.closeDialogue = closeDialogue;
+
+
 // === HUD (score, health, etc.) ===
 let hudDiv = null;
 function initHUD() {
