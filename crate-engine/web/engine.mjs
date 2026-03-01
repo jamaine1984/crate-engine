@@ -10111,7 +10111,7 @@ function showGallery(category, options = {}) {
     const closeBtn = document.createElement('div');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'font-size:24px;color:#666;cursor:pointer;margin-left:16px;';
-    closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+    closeBtn.onclick = () => { overlay.remove(); if (window._onTutorialDone) window._onTutorialDone(); resolve(null); };
     header.appendChild(closeBtn);
     overlay.appendChild(header);
 
@@ -18954,6 +18954,7 @@ let dragCounter = 0;
     if (currentStep >= steps.length) {
       localStorage.setItem(TUTORIAL_KEY, '1');
       overlay.remove();
+      if (window._onTutorialDone) window._onTutorialDone();
       document.querySelectorAll('.tutorial-highlight').forEach(el => {
         el.style.boxShadow = '';
         el.style.zIndex = '';
@@ -19931,12 +19932,22 @@ function showQuickStart() {
   document.addEventListener('keydown', escHandler);
 }
 
-// Show quick start after engine loads (if no objects in scene)
+// Show quick start after tutorial is dismissed
+// Hook into tutorial skip/complete
+window._onTutorialDone = function() {
+  setTimeout(() => {
+    if ((window._sceneObjects || []).length < 3) {
+      showQuickStart();
+    }
+  }, 300);
+};
+// If no tutorial shown (returning user), show quick start after delay
 setTimeout(() => {
-  if ((window._sceneObjects || []).length < 3) {
+  const tutorial = document.getElementById('tutorial-overlay');
+  if (!tutorial && (window._sceneObjects || []).length < 3) {
     showQuickStart();
   }
-}, 1500);
+}, 2000);
 window.showQuickStart = showQuickStart;
 
 // === BUILD TOOLBAR — Always visible category icons ===
