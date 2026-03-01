@@ -12294,35 +12294,35 @@ function showGameHUD(preset) {
           // BLOCK 2: COMMERCIAL (z = -40 to 40)
           // ======================
           // West side of avenue
-          { cmd: 'add grocery', pos: [-20, -25] },
-          { cmd: 'add salon', pos: [-20, -10] },
-          { cmd: 'add restaurant', pos: [-20, 5] },
-          { cmd: 'add pharmacy', pos: [-20, 20] },
+          { cmd: 'add grocery', pos: [-18, -25], rot: Math.PI/2 },
+          { cmd: 'add salon', pos: [-18, -10], rot: Math.PI/2 },
+          { cmd: 'add restaurant', pos: [-18, 5], rot: Math.PI/2 },
+          { cmd: 'add pharmacy', pos: [-18, 20], rot: Math.PI/2 },
           // East side of avenue
-          { cmd: 'add barber', pos: [20, -25] },
-          { cmd: 'add clothing', pos: [20, -10] },
-          { cmd: 'add cafe', pos: [20, 5] },
-          { cmd: 'add bank', pos: [20, 20] },
+          { cmd: 'add barber', pos: [18, -25], rot: -Math.PI/2 },
+          { cmd: 'add clothing', pos: [18, -10], rot: -Math.PI/2 },
+          { cmd: 'add cafe', pos: [18, 5], rot: -Math.PI/2 },
+          { cmd: 'add bank', pos: [18, 20], rot: -Math.PI/2 },
           
           // ======================
           // BLOCK 3: RESIDENTIAL (z = 40 to 120)
           // ======================
           // West side — houses with yards
-          { cmd: 'add pitched house', pos: [-22, 55] },
-          { cmd: 'add modern house 2 floors', pos: [-22, 75] },
-          { cmd: 'add mansion', pos: [-22, 95] },
-          { cmd: 'add ranch', pos: [-22, 115] },
+          { cmd: 'add pitched house', pos: [-28, 55], rot: Math.PI/2 },
+          { cmd: 'add modern house 2 floors', pos: [-28, 75], rot: Math.PI/2 },
+          { cmd: 'add mansion', pos: [-28, 95], rot: Math.PI/2 },
+          { cmd: 'add ranch', pos: [-28, 115], rot: Math.PI/2 },
           // East side
-          { cmd: 'add modern house', pos: [22, 55] },
-          { cmd: 'add duplex', pos: [22, 75] },
-          { cmd: 'add pitched house', pos: [22, 95] },
-          { cmd: 'add modern house 2 floors', pos: [22, 115] },
+          { cmd: 'add modern house', pos: [28, 55], rot: -Math.PI/2 },
+          { cmd: 'add duplex', pos: [28, 75], rot: -Math.PI/2 },
+          { cmd: 'add pitched house', pos: [28, 95], rot: -Math.PI/2 },
+          { cmd: 'add modern house 2 floors', pos: [28, 115], rot: -Math.PI/2 },
           
           // === Along cross streets ===
-          { cmd: 'add pitched house', pos: [-50, -35] },
-          { cmd: 'add modern house', pos: [50, -35] },
-          { cmd: 'add pitched house', pos: [-50, 45] },
-          { cmd: 'add modern house', pos: [50, 45] },
+          { cmd: 'add pitched house', pos: [-50, -30], rot: 0 },
+          { cmd: 'add modern house', pos: [50, -30], rot: Math.PI },
+          { cmd: 'add pitched house', pos: [-50, 50], rot: 0 },
+          { cmd: 'add modern house', pos: [50, 50], rot: Math.PI },
           
           // ======================
           // PARK (center block, z = 130-150)
@@ -12384,6 +12384,7 @@ function showGameHUD(preset) {
           
           // === VEHICLES (Kenney + HD) ===
           { cmd: 'add hd_ferrari', pos: [2, -15] },
+          // Driving cars will be spawned after template loads
           { cmd: 'add sedan', pos: [-3, 10] },
           { cmd: 'add taxi', pos: [3, 35] },
           { cmd: 'add suv', pos: [-3, 55] },
@@ -12482,6 +12483,11 @@ function showGameHUD(preset) {
         }
       } else if (item.pos) {
         commands.push(item.cmd + ' at ' + item.pos[0] + ' ' + item.pos[1]);
+        if (item.rot !== undefined) {
+          // Store rotation to apply after placement
+          if (!window._pendingRotations) window._pendingRotations = {};
+          window._pendingRotations[item.pos[0] + ',' + item.pos[1]] = item.rot;
+        }
       } else {
         commands.push(item.cmd);
       }
@@ -12491,7 +12497,26 @@ function showGameHUD(preset) {
     let ci = 0;
     const runNext = () => {
       if (ci >= commands.length) { showToast('🗺️ ' + mapTheme + ' generated! ' + commands.length + ' elements placed.'); return; }
-      execSingle(commands[ci]);
+      const cmd = commands[ci];
+      execSingle(cmd).then(() => {
+        // Apply pending rotation if any
+        const posMatch = cmd.match(/at\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+        if (posMatch && window._pendingRotations) {
+          const key = posMatch[1] + ',' + posMatch[2];
+          if (window._pendingRotations[key] !== undefined) {
+            // Find the last added object at this position
+            const tx = parseFloat(posMatch[1]), tz = parseFloat(posMatch[2]);
+            for (let oi = objects.length - 1; oi >= 0; oi--) {
+              const o = objects[oi];
+              if (Math.abs(o.position.x - tx) < 2 && Math.abs(o.position.z - tz) < 2) {
+                o.rotation.y = window._pendingRotations[key];
+                break;
+              }
+            }
+            delete window._pendingRotations[key];
+          }
+        }
+      });
       ci++;
       setTimeout(runNext, 80);
     };
@@ -13816,8 +13841,17 @@ function showGameHUD(preset) {
     var placed = 0;
     for (var pi = 0; pi < npcCount; pi++) {
       var t = types[pi % types.length];
-      var npx = (Math.random() - 0.5) * 60;
-      var npz = (Math.random() - 0.5) * 60;
+      // Spawn NPCs on sidewalks, not on roads
+      var sidewalkPositions = [
+        [-7, -50], [7, -50], [-7, -30], [7, -30], [-7, -10], [7, -10],
+        [-7, 10], [7, 10], [-7, 30], [7, 30], [-7, 50], [7, 50],
+        [-7, 70], [7, 70], [-7, 90], [7, 90], [-7, 110], [7, 110],
+        [-15, -38], [15, -38], [-15, 42], [15, 42], [-15, 122], [15, 122],
+        [-25, 60], [25, 60], [-25, 80], [25, 80], [-25, 100], [25, 100]
+      ];
+      var sp = sidewalkPositions[pi % sidewalkPositions.length];
+      var npx = sp[0] + (Math.random() - 0.5) * 3;
+      var npz = sp[1] + (Math.random() - 0.5) * 3;
       npcController.spawnNPC(t, npx, npz, "wander");
       placed++;
     }
@@ -16827,6 +16861,86 @@ window._grantExploreXP = function() { addXP(10, 'New area explored'); };
 
 
 
+
+// === AUTO-DRIVING CARS ===
+let _drivingCars = [];
+
+function spawnDrivingCar(scene, roadX, startZ, direction) {
+  const carModels = ['sedan', 'taxi', 'suv', 'police_car', 'van', 'ambulance'];
+  const modelName = carModels[Math.floor(Math.random() * carModels.length)];
+  const carColors = [0x2244aa, 0xcc2222, 0x22aa44, 0xeeeeee, 0x222222, 0xaaaa22, 0x8844cc];
+  const color = carColors[Math.floor(Math.random() * carColors.length)];
+  
+  // Simple box car for now (GLB loading is async and complex)
+  const g = new THREE.Group();
+  g.userData.name = 'Driving Car';
+  g.userData.isDrivingCar = true;
+  const bodyMat = new THREE.MeshStandardMaterial({color, roughness: 0.3, metalness: 0.5});
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 4), bodyMat);
+  body.position.y = 0.8; body.castShadow = true; g.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 2), bodyMat);
+  cabin.position.y = 1.7; cabin.castShadow = true; g.add(cabin);
+  // Windows
+  const glassMat = new THREE.MeshPhysicalMaterial({color: 0x88ccee, roughness: 0.05, transparent: true, opacity: 0.3});
+  const windshield = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.7), glassMat);
+  windshield.position.set(0, 1.7, -0.99); g.add(windshield);
+  // Wheels
+  const wheelMat = new THREE.MeshStandardMaterial({color: 0x222222, roughness: 0.8});
+  [[-0.9, 0.35, -1.2], [0.9, 0.35, -1.2], [-0.9, 0.35, 1.2], [0.9, 0.35, 1.2]].forEach(([wx,wy,wz]) => {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.2, 12), wheelMat);
+    wheel.rotation.z = Math.PI/2; wheel.position.set(wx,wy,wz); g.add(wheel);
+  });
+  // Headlights
+  const lightMat = new THREE.MeshBasicMaterial({color: 0xffffcc});
+  [-0.6, 0.6].forEach(x => {
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), lightMat);
+    hl.position.set(x, 0.7, -2); g.add(hl);
+  });
+  // Tail lights
+  const tailMat = new THREE.MeshBasicMaterial({color: 0xff0000});
+  [-0.6, 0.6].forEach(x => {
+    const tl = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), tailMat);
+    tl.position.set(x, 0.7, 2); g.add(tl);
+  });
+  
+  g.position.set(roadX, 0, startZ);
+  g.rotation.y = direction > 0 ? 0 : Math.PI; // Face direction of travel
+  scene.add(g);
+  
+  _drivingCars.push({
+    obj: g,
+    speed: 8 + Math.random() * 12, // 8-20 units/sec
+    roadX: roadX,
+    direction: direction, // 1 = +z, -1 = -z
+    minZ: -80,
+    maxZ: 160
+  });
+  return g;
+}
+
+function updateDrivingCars(dt) {
+  for (let i = 0; i < _drivingCars.length; i++) {
+    const car = _drivingCars[i];
+    car.obj.position.z += car.speed * car.direction * dt;
+    // Loop around
+    if (car.direction > 0 && car.obj.position.z > car.maxZ) {
+      car.obj.position.z = car.minZ;
+    } else if (car.direction < 0 && car.obj.position.z < car.minZ) {
+      car.obj.position.z = car.maxZ;
+    }
+    // Keep on road height
+    car.obj.position.y = 0.05;
+    car.obj.position.x = car.roadX; // Stay in lane
+  }
+}
+
+function clearDrivingCars() {
+  for (let i = 0; i < _drivingCars.length; i++) {
+    scene.remove(_drivingCars[i].obj);
+  }
+  _drivingCars.length = 0;
+}
+
 // === NIGHT LIGHTING SYSTEM ===
 let _nightLights = [];
 let _lastNightCheck = 0;
@@ -16972,6 +17086,7 @@ function animate() {
   }
   updateLightning(dt);
   updateNightLighting(t);
+  updateDrivingCars(dt);
   if (snowParticles) {
     snowParticles.position.x = _wcam.x;
     snowParticles.position.z = _wcam.z;
@@ -17314,6 +17429,7 @@ window._engineBridge = {
     }
     sceneHistory.length = 0;
     if (window._waterZones) window._waterZones.length = 0;
+    if (typeof clearDrivingCars === 'function') clearDrivingCars();
   },
   removeObject(obj) {
     const idx = objects.indexOf(obj);

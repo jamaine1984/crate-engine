@@ -4553,7 +4553,7 @@ export class NPCController {
         if (dist < 1) return false; // arrived
         dir.normalize();
         npc.model.position.addScaledVector(dir, speed * dt);
-        npc.model.rotation.y = Math.atan2(dir.x, dir.z) + Math.PI;
+        npc.model.rotation.y = Math.atan2(dir.x, dir.z);
         // Terrain snap (throttled — every 3rd frame per NPC)
         npc._groundFrame = ((npc._groundFrame || 0) + 1) % 3;
         const ty = npc._groundFrame === 0 ? _getTerrainY(npc.model.position.x, npc.model.position.z) : (npc._lastGroundY || 0);
@@ -4578,10 +4578,19 @@ export class NPCController {
       // Helper: pick random waypoint near home
       const _pickWaypoint = (range) => {
         const home = npc.homePosition || npc.model.position.clone();
-        const wx = home.x + (Math.random() - 0.5) * range;
-        const wz = home.z + (Math.random() - 0.5) * range;
+        let wx = home.x + (Math.random() - 0.5) * range;
+        let wz = home.z + (Math.random() - 0.5) * range;
+        // Snap to sidewalk — keep NPCs off the road center
+        // Roads are at x=0 (main avenue), sidewalks at x=±5 to ±8
+        // Cross streets at various z values, sidewalks at z offsets
+        const roadHalfWidth = 4; // half of road width
+        const sidewalkOffset = 6; // distance from road center to sidewalk
+        // If near main avenue (x near 0), push to sidewalk
+        if (Math.abs(wx) < roadHalfWidth) {
+          wx = (wx >= 0 ? 1 : -1) * (sidewalkOffset + Math.random() * 2);
+        }
         const wy = _getTerrainY(wx, wz);
-        if (wy < -0.1) npc.waypoint.copy(home); // don't wander into water
+        if (wy < -0.1) npc.waypoint.copy(home);
         else npc.waypoint.set(wx, wy, wz);
       };
       
