@@ -955,12 +955,22 @@ function enterPlayMode() {
   try { controls.enabled = false; } catch(e) {}
   var pi = document.getElementById('prompt-input'); if (pi) { pi.blur(); pi.parentElement.style.display = "none"; } // Create minimap
   if (typeof createMiniMap === 'function') createMiniMap();
-  return '🎮 Play mode ON — WASD to move, mouse to look, ESC to exit';
+  createCompass();
+  createStaminaBar();
+  showCrosshair(true);
+  return '🎮 Play mode ON — WASD move, Mouse look, G grapple, P photo, V first/third person, C crouch, E interact';
 }
 
 function exitPlayMode() {
   playMode = false;
   _showEditorUI();
+  // Hide v215 HUD elements
+  ['compass','crosshair','stamina-bar','interact-prompt','damage-vignette','underwater-fx','speed-lines','kill-feed'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  cancelGrapple();
+  if (_photoMode) window._togglePhotoMode();
   try { controls.enabled = true; } catch(e) {}
   var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return '🎮 Play mode OFF — back to editor';
 }
@@ -10305,7 +10315,56 @@ function showAnimationGallery(targetName) {
 async function execSingle(cmd) {
   sceneHistory.push(cmd);
   const lower = cmd.toLowerCase().trim();
-  
+
+  // === V215 NEW COMMANDS ===
+  if (lower === 'photo mode' || lower === 'photo' || lower === 'camera mode') {
+    if (window._togglePhotoMode) window._togglePhotoMode();
+    return '📸 Photo mode ' + (_photoMode ? 'ON' : 'OFF');
+  }
+  if (lower === 'compass' || lower === 'show compass' || lower === 'toggle compass') {
+    createCompass();
+    return '🧭 Compass enabled';
+  }
+  if (lower === 'crosshair' || lower === 'show crosshair' || lower === 'toggle crosshair') {
+    const ch = document.getElementById('crosshair');
+    showCrosshair(!ch || ch.style.display === 'none');
+    return '🎯 Crosshair toggled';
+  }
+  if (lower === 'grapple' || lower === 'grappling hook' || lower === 'hook') {
+    if (window._grappleHook) window._grappleHook();
+    return '🪝 Grappling hook fired! (Press G in play mode)';
+  }
+  if (lower === 'first person' || lower === 'fps' || lower === 'fp' || lower === '1st person') {
+    if (characterController) { characterController._firstPerson = true; if (characterController.model) characterController.model.visible = false; }
+    return '👁 First person mode';
+  }
+  if (lower === 'third person' || lower === 'tps' || lower === 'tp' || lower === '3rd person') {
+    if (characterController) { characterController._firstPerson = false; if (characterController.model) characterController.model.visible = true; }
+    return '👤 Third person mode';
+  }
+  if (lower.match(/^make .+ destructible$/) || lower.match(/^destructible$/)) {
+    // Make last placed or selected object destructible
+    const target = selectedObj || (window._sceneObjects && window._sceneObjects[window._sceneObjects.length - 1]);
+    if (target) { makeDestructible(target); return '💥 Object is now destructible (shoot or press E to break)'; }
+    return '⚠ No object to make destructible';
+  }
+  if (lower === 'destroy all' || lower === 'break all') {
+    const list = [..._destructibles];
+    list.forEach(m => shatterObject(m));
+    return '💥 Destroyed ' + list.length + ' objects';
+  }
+  if (lower === 'double jump' || lower === 'enable double jump') {
+    window._setMaxJumps(2);
+    return '⬆ Double jump enabled';
+  }
+  if (lower === 'triple jump') {
+    window._setMaxJumps(3);
+    return '⬆ Triple jump enabled';
+  }
+  if (lower === 'slide' || lower === 'enable slide') {
+    return '🏃 Slide: Press C while sprinting';
+  }
+
   // 3D Generator commands
   
   
@@ -14490,6 +14549,641 @@ function updateLOD(cameraPos) {
 }
 window._updateLOD = updateLOD;
 
+
+// === DESTRUCTIBLE OBJECTS SYSTEM (v215) ===
+const _destructibles = new Set();
+window._destructibles = _destructibles;
+
+function makeDestructible(mesh, opts = {}) {
+  if (!mesh) return;
+  mesh.userData.destructible = true;
+  mesh.userData.hp = opts.hp || 100;
+  mesh.userData.maxHp = opts.hp || 100;
+  mesh.userData.debrisCount = opts.debris || 8;
+  mesh.userData.debrisScale = opts.debrisScale || 0.3;
+  _destructibles.add(mesh);
+  return mesh;
+}
+window.makeDestructible = makeDestructible;
+
+function damageObject(mesh, amount) {
+  if (!mesh || !mesh.userData.destructible) return false;
+  mesh.userData.hp -= amount;
+  
+  // Flash red on hit
+  mesh.traverse(c => {
+    if (c.isMesh && c.material) {
+      const origColor = c.material.color ? c.material.color.clone() : new THREE.Color(1,1,1);
+      c.material.emissive = new THREE.Color(1, 0.2, 0);
+      c.material.emissiveIntensity = 0.5;
+      setTimeout(() => {
+        if (c.material) { c.material.emissive = new THREE.Color(0,0,0); c.material.emissiveIntensity = 0; }
+      }, 100);
+    }
+  });
+  
+  if (mesh.userData.hp <= 0) {
+    shatterObject(mesh);
+    return true; // destroyed
+  }
+  return false;
+}
+window.damageObject = damageObject;
+
+function shatterObject(mesh) {
+  const pos = mesh.position.clone();
+  const scale = new THREE.Vector3();
+  mesh.getWorldScale(scale);
+  const avgScale = (scale.x + scale.y + scale.z) / 3;
+  const count = mesh.userData.debrisCount || 8;
+  const debrisSize = avgScale * (mesh.userData.debrisScale || 0.3);
+  
+  // Get color from original mesh
+  let color = 0x888888;
+  mesh.traverse(c => { if (c.isMesh && c.material && c.material.color) color = c.material.color.getHex(); });
+  
+  // Create debris pieces
+  const debris = [];
+  for (let i = 0; i < count; i++) {
+    const geo = Math.random() > 0.5 
+      ? new THREE.TetrahedronGeometry(debrisSize * (0.5 + Math.random()))
+      : new THREE.BoxGeometry(debrisSize * (0.3 + Math.random()*0.7), debrisSize * (0.3 + Math.random()*0.7), debrisSize * (0.3 + Math.random()*0.7));
+    const mat = new THREE.MeshStandardMaterial({ 
+      color: color, 
+      roughness: 0.8,
+      metalness: 0.1
+    });
+    const piece = new THREE.Mesh(geo, mat);
+    piece.position.copy(pos).add(new THREE.Vector3(
+      (Math.random() - 0.5) * avgScale,
+      Math.random() * avgScale * 0.5,
+      (Math.random() - 0.5) * avgScale
+    ));
+    piece.castShadow = true;
+    piece.userData._debris = true;
+    piece.userData._vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 10,
+      5 + Math.random() * 8,
+      (Math.random() - 0.5) * 10
+    );
+    piece.userData._angVel = new THREE.Vector3(
+      (Math.random() - 0.5) * 10,
+      (Math.random() - 0.5) * 10,
+      (Math.random() - 0.5) * 10
+    );
+    piece.userData._life = 3 + Math.random() * 2;
+    piece.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
+    scene.add(piece);
+    debris.push(piece);
+  }
+  
+  // Remove original
+  scene.remove(mesh);
+  _destructibles.delete(mesh);
+  const idx = (window._sceneObjects || []).indexOf(mesh);
+  if (idx >= 0) window._sceneObjects.splice(idx, 1);
+  
+  // Animate debris (runs in animate loop)
+  if (!window._activeDebris) window._activeDebris = [];
+  window._activeDebris.push(...debris);
+}
+
+function updateDebris(dt) {
+  if (!window._activeDebris || window._activeDebris.length === 0) return;
+  const gravity = -20;
+  const toRemove = [];
+  for (const piece of window._activeDebris) {
+    piece.userData._life -= dt;
+    if (piece.userData._life <= 0) {
+      toRemove.push(piece);
+      continue;
+    }
+    // Fade out in last second
+    if (piece.userData._life < 1 && piece.material) {
+      piece.material.transparent = true;
+      piece.material.opacity = piece.userData._life;
+    }
+    const v = piece.userData._vel;
+    v.y += gravity * dt;
+    piece.position.addScaledVector(v, dt);
+    // Bounce off ground
+    if (piece.position.y < 0.1) {
+      piece.position.y = 0.1;
+      v.y = -v.y * 0.3;
+      v.x *= 0.8;
+      v.z *= 0.8;
+    }
+    // Angular velocity
+    const av = piece.userData._angVel;
+    piece.rotation.x += av.x * dt;
+    piece.rotation.y += av.y * dt;
+    piece.rotation.z += av.z * dt;
+    av.multiplyScalar(0.98); // dampen
+  }
+  for (const p of toRemove) {
+    scene.remove(p);
+    p.geometry.dispose();
+    p.material.dispose();
+    const idx = window._activeDebris.indexOf(p);
+    if (idx >= 0) window._activeDebris.splice(idx, 1);
+  }
+}
+
+// === GRAPPLING HOOK SYSTEM (v215) ===
+let _grappleState = null;
+window._grappleHook = function() {
+  if (_grappleState) { cancelGrapple(); return; }
+  const cam = window._cam || camera;
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+  const rc = new THREE.Raycaster(cam.position.clone(), dir, 0, 80);
+  const targets = [];
+  scene.traverse(c => { if (c.isMesh && !c.userData._debris && !c.userData._bullet) targets.push(c); });
+  const hits = rc.intersectObjects(targets, false);
+  if (hits.length === 0) return;
+  
+  const hitPoint = hits[0].point;
+  
+  // Create rope visual
+  const ropeGeo = new THREE.BufferGeometry();
+  const ropeMat = new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2 });
+  const startPos = cam.position.clone().add(new THREE.Vector3(0, -0.5, 0));
+  ropeGeo.setFromPoints([startPos, hitPoint]);
+  const rope = new THREE.Line(ropeGeo, ropeMat);
+  scene.add(rope);
+  
+  _grappleState = {
+    target: hitPoint.clone(),
+    rope: rope,
+    speed: 0,
+    maxSpeed: 40,
+    accel: 50,
+  };
+};
+
+function cancelGrapple() {
+  if (_grappleState) {
+    scene.remove(_grappleState.rope);
+    _grappleState.rope.geometry.dispose();
+    _grappleState.rope.material.dispose();
+    _grappleState = null;
+  }
+}
+
+function updateGrapple(dt) {
+  if (!_grappleState || !characterController) return;
+  const target = _grappleState.target;
+  const dir = target.clone().sub(characterController.position);
+  const dist = dir.length();
+  
+  if (dist < 2) { cancelGrapple(); return; }
+  
+  dir.normalize();
+  _grappleState.speed = Math.min(_grappleState.speed + _grappleState.accel * dt, _grappleState.maxSpeed);
+  
+  characterController.position.addScaledVector(dir, _grappleState.speed * dt);
+  
+  // Update rope visual
+  const startPos = characterController.position.clone().add(new THREE.Vector3(0, 1, 0));
+  _grappleState.rope.geometry.setFromPoints([startPos, target]);
+  _grappleState.rope.geometry.attributes.position.needsUpdate = true;
+}
+
+// === PHOTO MODE (v215) ===
+let _photoMode = false;
+let _photoCamera = null;
+let _photoPrevCam = null;
+window._togglePhotoMode = function() {
+  _photoMode = !_photoMode;
+  if (_photoMode) {
+    // Save current camera state
+    _photoPrevCam = { pos: camera.position.clone(), rot: camera.quaternion.clone() };
+    // Create free-fly camera
+    _photoCamera = { speed: 0.3, fov: camera.fov };
+    // Show photo UI
+    let ui = document.getElementById('photo-mode-ui');
+    if (!ui) {
+      ui = document.createElement('div');
+      ui.id = 'photo-mode-ui';
+      ui.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:12px 24px;border-radius:12px;font-family:system-ui;font-size:13px;z-index:99999;display:flex;gap:16px;align-items:center;';
+      ui.innerHTML = `
+        <span>📸 PHOTO MODE</span>
+        <label>FOV <input type="range" id="photo-fov" min="20" max="120" value="${camera.fov}" style="width:80px"></label>
+        <label>Filter <select id="photo-filter" style="background:#333;color:#fff;border:none;padding:2px 6px;border-radius:4px;">
+          <option value="none">None</option>
+          <option value="vintage">Vintage</option>
+          <option value="noir">Noir</option>
+          <option value="vibrant">Vibrant</option>
+          <option value="cold">Cold</option>
+        </select></label>
+        <button id="photo-snap" style="background:#4ade80;color:#000;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:bold;">📷 Snap</button>
+        <button id="photo-exit" style="background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;">✕ Exit</button>
+      `;
+      document.body.appendChild(ui);
+      
+      document.getElementById('photo-fov').addEventListener('input', e => {
+        camera.fov = parseFloat(e.target.value);
+        camera.updateProjectionMatrix();
+      });
+      
+      document.getElementById('photo-filter').addEventListener('change', e => {
+        const canvas = renderer.domElement;
+        const filters = {
+          none: 'none',
+          vintage: 'sepia(0.4) contrast(1.1) brightness(0.9)',
+          noir: 'grayscale(1) contrast(1.3) brightness(0.8)',
+          vibrant: 'saturate(1.5) contrast(1.1)',
+          cold: 'hue-rotate(20deg) saturate(0.8) brightness(1.05)',
+        };
+        canvas.style.filter = filters[e.target.value] || 'none';
+      });
+      
+      document.getElementById('photo-snap').addEventListener('click', () => {
+        renderer.render(scene, camera);
+        const link = document.createElement('a');
+        link.download = 'crate-engine-photo.png';
+        link.href = renderer.domElement.toDataURL('image/png');
+        link.click();
+      });
+      
+      document.getElementById('photo-exit').addEventListener('click', () => { window._togglePhotoMode(); });
+    }
+    ui.style.display = 'flex';
+    
+    // Pause game time
+    if (characterController && characterController.model) characterController.model.visible = true;
+    
+    // Unlock pointer for free camera
+    document.exitPointerLock();
+  } else {
+    // Exit photo mode
+    const ui = document.getElementById('photo-mode-ui');
+    if (ui) ui.style.display = 'none';
+    renderer.domElement.style.filter = 'none';
+    if (_photoPrevCam) {
+      camera.position.copy(_photoPrevCam.pos);
+      camera.quaternion.copy(_photoPrevCam.rot);
+      camera.fov = 60;
+      camera.updateProjectionMatrix();
+    }
+    _photoMode = false;
+  }
+  return _photoMode;
+};
+
+// === SCREEN EFFECTS (v215) ===
+function showDamageVignette() {
+  let v = document.getElementById('damage-vignette');
+  if (!v) {
+    v = document.createElement('div');
+    v.id = 'damage-vignette';
+    v.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:99990;opacity:0;transition:opacity 0.1s;';
+    v.style.background = 'radial-gradient(ellipse at center, transparent 50%, rgba(180,0,0,0.5) 100%)';
+    document.body.appendChild(v);
+  }
+  v.style.opacity = '1';
+  setTimeout(() => { v.style.opacity = '0'; }, 300);
+}
+window.showDamageVignette = showDamageVignette;
+
+function showUnderwaterEffect(active) {
+  let uw = document.getElementById('underwater-fx');
+  if (!uw) {
+    uw = document.createElement('div');
+    uw.id = 'underwater-fx';
+    uw.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:99989;opacity:0;transition:opacity 0.5s;';
+    uw.style.background = 'radial-gradient(ellipse at center, rgba(0,40,80,0.2) 0%, rgba(0,20,50,0.5) 100%)';
+    document.body.appendChild(uw);
+  }
+  uw.style.opacity = active ? '1' : '0';
+  renderer.domElement.style.filter = active ? 'blur(0.5px) brightness(0.8) hue-rotate(10deg)' : (_photoMode ? '' : 'none');
+}
+
+function showSpeedLines(active) {
+  let sl = document.getElementById('speed-lines');
+  if (!sl) {
+    sl = document.createElement('div');
+    sl.id = 'speed-lines';
+    sl.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:99988;opacity:0;transition:opacity 0.3s;background:radial-gradient(ellipse at center, transparent 40%, rgba(255,255,255,0.05) 100%);';
+    document.body.appendChild(sl);
+  }
+  sl.style.opacity = active ? '1' : '0';
+}
+
+// === WALL RUNNING (v215) ===
+let _wallRunState = null;
+
+function checkWallRun(playerPos, moveDir, dt) {
+  if (!characterController || !playMode) return;
+  if (characterController._onGround) { _wallRunState = null; return; }
+  
+  // Cast rays left and right to detect walls
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const left = right.clone().negate();
+  
+  const targets = [];
+  scene.traverse(c => { if (c.isMesh && c.userData._building) targets.push(c); });
+  if (targets.length === 0) return;
+  
+  for (const [dir, side] of [[right, 'right'], [left, 'left']]) {
+    const rc = new THREE.Raycaster(playerPos.clone(), dir, 0, 1.5);
+    const hits = rc.intersectObjects(targets, true);
+    if (hits.length > 0) {
+      // Start wall run
+      if (!_wallRunState) {
+        _wallRunState = { side, normal: hits[0].face.normal.clone(), timer: 0 };
+      }
+      _wallRunState.timer += dt;
+      if (_wallRunState.timer > 1.5) { _wallRunState = null; return; } // Max 1.5s
+      
+      // Slow fall + move forward along wall
+      characterController.velocity.y = 1; // Slight upward
+      // Tilt camera
+      const tilt = side === 'right' ? -0.15 : 0.15;
+      camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, tilt, 0.1);
+      return;
+    }
+  }
+  
+  // No wall nearby, reset
+  if (_wallRunState) {
+    _wallRunState = null;
+    camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, 0, 0.1);
+  }
+}
+
+// === DOUBLE JUMP (v215) ===
+let _jumpCount = 0;
+let _maxJumps = 2;
+window._setMaxJumps = function(n) { _maxJumps = n; };
+
+// Hook into existing jump logic - expose for animate loop
+window._checkDoubleJump = function(keys) {
+  if (!characterController) return false;
+  if (characterController._onGround) { _jumpCount = 0; }
+  if (keys.space && _jumpCount < _maxJumps) {
+    _jumpCount++;
+    return true;
+  }
+  return false;
+};
+
+// === SLIDE / CROUCH (v215) ===
+let _isCrouching = false;
+let _isSliding = false;
+let _slideTimer = 0;
+const _normalHeight = 1.7;
+const _crouchHeight = 0.9;
+
+window._toggleCrouch = function() {
+  _isCrouching = !_isCrouching;
+  if (characterController) {
+    // Adjust capsule height conceptually
+    if (_isCrouching) {
+      camera.position.y -= 0.5;
+    } else {
+      camera.position.y += 0.5;
+    }
+  }
+  return _isCrouching;
+};
+
+function startSlide() {
+  if (_isSliding || !characterController) return;
+  _isSliding = true;
+  _slideTimer = 0.8; // 0.8s slide duration
+  _isCrouching = true;
+  camera.position.y -= 0.5;
+  // Speed boost
+  if (characterController.velocity) {
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    characterController.velocity.addScaledVector(fwd, 8);
+  }
+}
+
+function updateSlide(dt) {
+  if (!_isSliding) return;
+  _slideTimer -= dt;
+  if (_slideTimer <= 0) {
+    _isSliding = false;
+    if (_isCrouching) window._toggleCrouch();
+  }
+}
+
+// === HEADBOB (v215) ===
+let _headbobTime = 0;
+function updateHeadbob(dt, isMoving, isRunning) {
+  if (!playMode || _photoMode || activeVehicle) return;
+  if (isMoving) {
+    const speed = isRunning ? 14 : 8;
+    const intensity = isRunning ? 0.04 : 0.02;
+    _headbobTime += dt * speed;
+    const bobY = Math.sin(_headbobTime) * intensity;
+    const bobX = Math.cos(_headbobTime * 0.5) * intensity * 0.5;
+    camera.position.y += bobY;
+    camera.position.x += bobX;
+  } else {
+    _headbobTime = 0;
+  }
+}
+
+// === INTERACTION SYSTEM (v215) ===
+let _interactTarget = null;
+function updateInteractionPrompt() {
+  if (!playMode || _photoMode) return;
+  const cam = window._cam || camera;
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+  const rc = new THREE.Raycaster(cam.position.clone(), dir, 0, 5);
+  const targets = [];
+  scene.traverse(c => { 
+    if (c.isMesh && (c.userData.interactable || c.userData.destructible || c.userData._door || c.userData._vehicle)) 
+      targets.push(c); 
+  });
+  const hits = rc.intersectObjects(targets, true);
+  
+  let prompt = document.getElementById('interact-prompt');
+  if (!prompt) {
+    prompt = document.createElement('div');
+    prompt.id = 'interact-prompt';
+    prompt.style.cssText = 'position:fixed;bottom:30%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 18px;border-radius:8px;font-family:system-ui;font-size:14px;z-index:99995;display:none;border:1px solid rgba(255,255,255,0.2);';
+    document.body.appendChild(prompt);
+  }
+  
+  if (hits.length > 0) {
+    const obj = hits[0].object;
+    let label = '';
+    if (obj.userData._door) label = '[E] Open Door';
+    else if (obj.userData._vehicle) label = '[E] Enter Vehicle';
+    else if (obj.userData.destructible) label = '[E] Break';
+    else if (obj.userData.interactable) label = `[E] ${obj.userData.interactLabel || 'Interact'}`;
+    
+    if (label) {
+      prompt.textContent = label;
+      prompt.style.display = 'block';
+      _interactTarget = obj;
+    } else {
+      prompt.style.display = 'none';
+      _interactTarget = null;
+    }
+  } else {
+    prompt.style.display = 'none';
+    _interactTarget = null;
+  }
+}
+
+// === CROSSHAIR (v215) ===
+function showCrosshair(show) {
+  let ch = document.getElementById('crosshair');
+  if (!ch) {
+    ch = document.createElement('div');
+    ch.id = 'crosshair';
+    ch.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:99994;display:none;';
+    ch.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="1"/><line x1="12" y1="4" x2="12" y2="9" stroke="rgba(255,255,255,0.6)" stroke-width="1"/><line x1="12" y1="15" x2="12" y2="20" stroke="rgba(255,255,255,0.6)" stroke-width="1"/><line x1="4" y1="12" x2="9" y2="12" stroke="rgba(255,255,255,0.6)" stroke-width="1"/><line x1="15" y1="12" x2="20" y2="12" stroke="rgba(255,255,255,0.6)" stroke-width="1"/></svg>';
+    document.body.appendChild(ch);
+  }
+  ch.style.display = show ? 'block' : 'none';
+}
+window.showCrosshair = showCrosshair;
+
+// === COMPASS / HEADING (v215) ===
+function createCompass() {
+  let comp = document.getElementById('compass');
+  if (comp) return;
+  comp = document.createElement('div');
+  comp.id = 'compass';
+  comp.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);color:#fff;padding:4px 20px;border-radius:20px;font-family:monospace;font-size:12px;z-index:99993;letter-spacing:4px;pointer-events:none;white-space:nowrap;overflow:hidden;width:200px;text-align:center;';
+  document.body.appendChild(comp);
+}
+
+function updateCompass() {
+  const comp = document.getElementById('compass');
+  if (!comp || !playMode) { if (comp) comp.style.display = 'none'; return; }
+  comp.style.display = 'block';
+  
+  const cam = window._cam || camera;
+  let angle = Math.atan2(-cam.getWorldDirection(new THREE.Vector3()).x, -cam.getWorldDirection(new THREE.Vector3()).z);
+  angle = ((angle * 180 / Math.PI) + 360) % 360;
+  
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const idx = Math.round(angle / 45) % 8;
+  const mainDir = dirs[idx];
+  
+  comp.innerHTML = `<span style="color:#4ade80;font-weight:bold">${mainDir}</span> <span style="opacity:0.6">${Math.round(angle)}°</span>`;
+}
+
+// === SPRINT STAMINA VISUAL (v215) ===
+function createStaminaBar() {
+  let bar = document.getElementById('stamina-bar');
+  if (bar) return;
+  bar = document.createElement('div');
+  bar.id = 'stamina-bar';
+  bar.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);width:200px;height:4px;background:rgba(0,0,0,0.4);border-radius:2px;z-index:99993;display:none;';
+  bar.innerHTML = '<div id="stamina-fill" style="width:100%;height:100%;background:#4ade80;border-radius:2px;transition:width 0.1s;"></div>';
+  document.body.appendChild(bar);
+}
+
+function updateStaminaBar(current, max) {
+  const bar = document.getElementById('stamina-bar');
+  const fill = document.getElementById('stamina-fill');
+  if (!bar || !fill) return;
+  const pct = Math.max(0, Math.min(1, current / max));
+  bar.style.display = pct < 0.99 ? 'block' : 'none';
+  fill.style.width = (pct * 100) + '%';
+  fill.style.background = pct > 0.5 ? '#4ade80' : pct > 0.25 ? '#f59e0b' : '#ef4444';
+}
+window.updateStaminaBar = updateStaminaBar;
+
+// === KILL FEED / EVENT LOG (v215) ===
+function showKillFeed(text, color) {
+  let feed = document.getElementById('kill-feed');
+  if (!feed) {
+    feed = document.createElement('div');
+    feed.id = 'kill-feed';
+    feed.style.cssText = 'position:fixed;top:80px;right:20px;z-index:99993;pointer-events:none;font-family:system-ui;font-size:13px;';
+    document.body.appendChild(feed);
+  }
+  const entry = document.createElement('div');
+  entry.style.cssText = `color:${color || '#fff'};background:rgba(0,0,0,0.5);padding:4px 12px;border-radius:4px;margin-bottom:4px;opacity:1;transition:opacity 0.5s;`;
+  entry.textContent = text;
+  feed.appendChild(entry);
+  setTimeout(() => { entry.style.opacity = '0'; }, 3000);
+  setTimeout(() => { entry.remove(); }, 3500);
+  // Max 5 entries
+  while (feed.children.length > 5) feed.removeChild(feed.firstChild);
+}
+window.showKillFeed = showKillFeed;
+
+// Hit markers — using existing showHitMarker()
+
+// === OBJECT HIGHLIGHTING (v215) ===
+let _highlightedObj = null;
+function updateHighlight() {
+  if (!playMode || _photoMode) return;
+  const cam = window._cam || camera;
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+  const rc = new THREE.Raycaster(cam.position.clone(), dir, 0, 30);
+  const meshes = [];
+  (window._sceneObjects || []).forEach(o => { if (o) o.traverse(c => { if (c.isMesh) meshes.push(c); }); });
+  const hits = rc.intersectObjects(meshes, false);
+  
+  // Remove old highlight
+  if (_highlightedObj && _highlightedObj.userData._origEmissive !== undefined) {
+    _highlightedObj.material.emissive = new THREE.Color(_highlightedObj.userData._origEmissive);
+    _highlightedObj.material.emissiveIntensity = _highlightedObj.userData._origEmissiveInt || 0;
+    _highlightedObj = null;
+  }
+  
+  if (hits.length > 0 && hits[0].object.material && hits[0].object.material.emissive) {
+    const obj = hits[0].object;
+    obj.userData._origEmissive = obj.material.emissive.getHex();
+    obj.userData._origEmissiveInt = obj.material.emissiveIntensity;
+    obj.material.emissive = new THREE.Color(0x222222);
+    obj.material.emissiveIntensity = 0.3;
+    _highlightedObj = obj;
+  }
+}
+
+
+// === V215 KEYBINDINGS ===
+window.addEventListener('keydown', e => {
+  if (!playMode) return;
+  const k = e.key.toLowerCase();
+  // G = Grappling hook
+  if (k === 'g' && !e.ctrlKey && !e.metaKey) { if (window._grappleHook) window._grappleHook(); }
+  // F = Flashlight (already exists, just ensure)
+  // P = Photo mode
+  if (k === 'p' && !e.ctrlKey && !e.metaKey) { if (window._togglePhotoMode) window._togglePhotoMode(); e.preventDefault(); }
+  // C = Crouch
+  if (k === 'c' && !e.ctrlKey && !e.metaKey) { if (window._toggleCrouch) window._toggleCrouch(); }
+  // E = Interact with looked-at object
+  if (k === 'e' && !e.ctrlKey && !e.metaKey) {
+    if (_interactTarget) {
+      if (_interactTarget.userData._vehicle) {
+        // Enter vehicle
+        if (window._runCommand) window._runCommand('enter vehicle');
+      } else if (_interactTarget.userData._door) {
+        // Open door
+        const door = _interactTarget;
+        if (!door.userData._opened) {
+          door.rotation.y += Math.PI / 2;
+          door.userData._opened = true;
+        } else {
+          door.rotation.y -= Math.PI / 2;
+          door.userData._opened = false;
+        }
+      } else if (_interactTarget.userData.destructible) {
+        damageObject(_interactTarget, 50);
+      }
+    }
+  }
+  // V = Toggle first/third person
+  if (k === 'v' && !e.ctrlKey && !e.metaKey && characterController) {
+    characterController._firstPerson = !characterController._firstPerson;
+    if (characterController.model) characterController.model.visible = !characterController._firstPerson;
+    showKillFeed(characterController._firstPerson ? '👁 First Person' : '👤 Third Person', '#4ade80');
+  }
+});
+
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -14539,6 +15233,12 @@ function animate() {
   if (window._sound && window._sound.updateMusic) { window._sound.updateMusic(dt); } if (window._sound && window._sound.updateAmbient) { window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
   if (window._updateAmbientOneShots) window._updateAmbientOneShots(dt);
   updateDayNightCycle(dt);
+  updateDebris(dt);
+  updateGrapple(dt);
+  updateSlide(dt);
+  updateInteractionPrompt();
+  updateCompass();
+  updateHighlight();
   if (!playMode) controls.update();
   if (window._updateShadowCascades) window._updateShadowCascades();
   updateAmbientParticles(clock.getDelta() || 0.016, camera.position);
