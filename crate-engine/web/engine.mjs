@@ -10462,6 +10462,99 @@ async function execSingle(cmd) {
     return '⭐ God mode — invincible!';
   }
 
+
+  if (lower === 'help' || lower === 'commands' || lower === '?') {
+    const helpHTML = `
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10020;overflow-y:auto;font-family:-apple-system,sans-serif;color:#e0e0e0;padding:40px;backdrop-filter:blur(10px);">
+        <div style="max-width:800px;margin:0 auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+            <h1 style="margin:0;font-size:24px;color:#ff6b35;">📖 Crate Engine Commands</h1>
+            <div onclick="this.parentElement.parentElement.parentElement.remove()" style="cursor:pointer;font-size:24px;color:#666;">✕</div>
+          </div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+            <div>
+              <h3 style="color:#4ade80;margin:0 0 8px;">🏗️ Building</h3>
+              <div style="font-size:13px;line-height:2;color:#aaa;">
+                <code>add house</code> / <code>add modern house</code><br>
+                <code>add skyscraper</code> / <code>add mansion</code><br>
+                <code>add road</code> / <code>add intersection</code><br>
+                <code>add tree</code> / <code>add car</code><br>
+                <code>add [any model name]</code>
+              </div>
+            </div>
+            
+            <div>
+              <h3 style="color:#3b82f6;margin:0 0 8px;">🗺️ Generation</h3>
+              <div style="font-size:13px;line-height:2;color:#aaa;">
+                <code>generate city</code> / <code>generate town</code><br>
+                <code>generate kingdom</code> / <code>generate pirate</code><br>
+                <code>generate dungeon</code> / <code>generate space</code><br>
+                <code>zombie game</code> / <code>racing mode</code>
+              </div>
+            </div>
+            
+            <div>
+              <h3 style="color:#f59e0b;margin:0 0 8px;">🌍 Environment</h3>
+              <div style="font-size:13px;line-height:2;color:#aaa;">
+                <code>set time morning/night/sunset</code><br>
+                <code>rain</code> / <code>snow</code> / <code>fog on/off</code><br>
+                <code>clouds</code> / <code>ocean</code><br>
+                <code>sky sunset</code> / <code>sky night</code>
+              </div>
+            </div>
+            
+            <div>
+              <h3 style="color:#ec4899;margin:0 0 8px;">🎮 Play Mode</h3>
+              <div style="font-size:13px;line-height:2;color:#aaa;">
+                <b>WASD</b> — Move | <b>Mouse</b> — Look<br>
+                <b>Space</b> — Jump | <b>Shift</b> — Sprint<br>
+                <b>G</b> — Grapple | <b>P</b> — Photo mode<br>
+                <b>V</b> — First/Third person<br>
+                <b>C</b> — Crouch | <b>E</b> — Interact<br>
+                <b>F</b> — Enter vehicle | <b>ESC</b> — Pause
+              </div>
+            </div>
+            
+            <div>
+              <h3 style="color:#8b5cf6;margin:0 0 8px;">🛠️ Utility</h3>
+              <div style="font-size:13px;line-height:2;color:#aaa;">
+                <code>stats</code> — Engine statistics<br>
+                <code>wireframe</code> — Toggle wireframe<br>
+                <code>fly</code> / <code>walk</code> — Fly mode<br>
+                <code>god mode</code> — Invincible<br>
+                <code>speed 2x</code> / <code>normal speed</code><br>
+                <code>save</code> / <code>load</code> / <code>screenshot</code>
+              </div>
+            </div>
+            
+            <div>
+              <h3 style="color:#06b6d4;margin:0 0 8px;">📦 Assets</h3>
+              <div style="font-size:13px;line-height:2;color:#aaa;">
+                <code>buildings</code> — Browse 333 buildings<br>
+                <code>vehicles</code> — Browse 130 vehicles<br>
+                <code>weapons</code> — Browse 235 weapons<br>
+                <code>characters</code> — Browse 176 characters<br>
+                <code>search [term]</code> — Find any model<br>
+                <b>3,519 total models available!</b>
+              </div>
+            </div>
+          </div>
+          
+          <div style="text-align:center;margin-top:24px;color:#555;font-size:12px;">
+            Press ESC or click ✕ to close | Crate Engine v217
+          </div>
+        </div>
+      </div>
+    `;
+    const div = document.createElement('div');
+    div.innerHTML = helpHTML;
+    document.body.appendChild(div.firstElementChild);
+    const helpEl = document.body.lastElementChild;
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { helpEl.remove(); document.removeEventListener('keydown', esc); } });
+    return '📖 Help panel opened';
+  }
+
   // 3D Generator commands
   
   
