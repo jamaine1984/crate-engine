@@ -951,6 +951,10 @@ function enterPlayMode() {
     if (hits.length > 0) spawnY = hits[0].point.y + 2;
   }
   camera.position.set(0, spawnY, 0);
+  // Adjust spawn to safe position — check for nearby collision
+  if (characterController && characterController.position) {
+    characterController.position.set(5, spawnY + 1, 5); // Offset from center to avoid spawning in objects
+  }
   camera.rotation.set(0, 0, 0);
   try { controls.enabled = false; } catch(e) {}
   var pi = document.getElementById('prompt-input'); if (pi) { pi.blur(); pi.parentElement.style.display = "none"; } // Create minimap
@@ -10364,6 +10368,49 @@ async function execSingle(cmd) {
     return '🏃 Slide: Press C while sprinting';
   }
 
+
+  // === TIME OF DAY COMMANDS (v215) ===
+  if (lower.match(/^(?:set )?time\s+(morning|sunrise|dawn|day|noon|afternoon|evening|sunset|dusk|night|midnight)/)) {
+    const timeMap = { morning: 7, sunrise: 6, dawn: 5.5, day: 12, noon: 12, afternoon: 15, evening: 18, sunset: 19, dusk: 20, night: 22, midnight: 0 };
+    const t = lower.match(/(morning|sunrise|dawn|day|noon|afternoon|evening|sunset|dusk|night|midnight)/)[1];
+    _dayTime = timeMap[t] || 12;
+    _dayNightCycle = true;
+    if (typeof setSkyTime === 'function') {
+      const hourAngle = (_dayTime - 6) / 12 * Math.PI;
+      const elevation = Math.sin(hourAngle) * 60;
+      const azimuth = 180 + (_dayTime / 24) * 360;
+      if (elevation > -5) setSkyTime(Math.max(elevation, 0.5), azimuth % 360);
+    }
+    // Adjust lighting
+    const hourAngle = (_dayTime - 6) / 12 * Math.PI;
+    const brightness = Math.max(0.1, Math.sin(hourAngle) * 0.8 + 0.2);
+    scene.traverse(c => {
+      if (c.isAmbientLight) c.intensity = brightness * 0.6;
+      if (c.isDirectionalLight) c.intensity = brightness * 1.2;
+    });
+    if (_dayTime > 19 || _dayTime < 5) {
+      scene.fog = new THREE.FogExp2(0x0a0a1a, 0.005);
+    } else {
+      scene.fog = null;
+    }
+    return '🕐 Time set to ' + t + ' (' + _dayTime + ':00)';
+  }
+
+  // Fog commands
+  if (lower === 'fog on' || lower === 'add fog' || lower === 'enable fog') {
+    scene.fog = new THREE.FogExp2(0x888888, 0.008);
+    return '🌫️ Fog enabled';
+  }
+  if (lower === 'fog off' || lower === 'remove fog' || lower === 'disable fog' || lower === 'clear fog') {
+    scene.fog = null;
+    return '☀️ Fog cleared';
+  }
+  if (lower.match(/^fog\s+([\d.]+)/)) {
+    const density = parseFloat(lower.match(/fog\s+([\d.]+)/)[1]);
+    scene.fog = new THREE.FogExp2(0x888888, density);
+    return '🌫️ Fog density: ' + density;
+  }
+
   // 3D Generator commands
   
   
@@ -15195,6 +15242,81 @@ window.addEventListener('keydown', e => {
   }
 });
 
+// === WEAPON PICKUP SYSTEM (v215) ===
+const _pickupItems = [];
+window._pickupItems = _pickupItems;
+
+function registerPickup(mesh, type, data) {
+  if (!mesh) return;
+  mesh.userData._pickup = true;
+  mesh.userData._pickupType = type; // 'weapon', 'health', 'ammo', 'key'
+  mesh.userData._pickupData = data || {};
+  _pickupItems.push(mesh);
+  
+  // Add floating/bobbing animation
+  mesh.userData._pickupBaseY = mesh.position.y;
+  mesh.userData._pickupPhase = Math.random() * Math.PI * 2;
+  
+  // Add glow
+  const glow = new THREE.PointLight(
+    type === 'health' ? 0x22ff22 : type === 'ammo' ? 0xffaa00 : 0x4488ff,
+    0.5, 5
+  );
+  glow.position.set(0, 0.5, 0);
+  mesh.add(glow);
+  mesh.userData._pickupGlow = glow;
+}
+window.registerPickup = registerPickup;
+
+function updatePickups(dt, t) {
+  if (!playMode || !characterController) return;
+  const playerPos = characterController.position;
+  const toRemove = [];
+  
+  for (const item of _pickupItems) {
+    if (!item.parent) { toRemove.push(item); continue; }
+    
+    // Bob up and down
+    const baseY = item.userData._pickupBaseY || 0.5;
+    item.position.y = baseY + Math.sin(t * 2 + (item.userData._pickupPhase || 0)) * 0.15;
+    item.rotation.y += dt * 1.5; // Slow spin
+    
+    // Check pickup distance
+    const dist = playerPos.distanceTo(item.position);
+    if (dist < 2.5) {
+      // Pick up!
+      const type = item.userData._pickupType;
+      const data = item.userData._pickupData;
+      
+      if (type === 'weapon') {
+        showKillFeed('🗡️ Picked up ' + (data.name || 'weapon'), '#4ade80');
+        // Add to inventory if characterController has it
+        if (characterController.inventory) {
+          characterController.inventory.push(data);
+        }
+      } else if (type === 'health') {
+        if (characterController.hp !== undefined) {
+          characterController.hp = Math.min(characterController.maxHp || 200, characterController.hp + (data.amount || 50));
+          showKillFeed('❤️ +' + (data.amount || 50) + ' HP', '#22ff22');
+        }
+      } else if (type === 'ammo') {
+        ammo = Math.min(maxAmmo, ammo + (data.amount || 15));
+        showKillFeed('🔫 +' + (data.amount || 15) + ' ammo', '#ffaa00');
+      }
+      
+      // Remove from scene with a little flash
+      scene.remove(item);
+      toRemove.push(item);
+    }
+  }
+  
+  for (const item of toRemove) {
+    const idx = _pickupItems.indexOf(item);
+    if (idx >= 0) _pickupItems.splice(idx, 1);
+  }
+}
+
+
 
 function animate() {
   requestAnimationFrame(animate);
@@ -15246,6 +15368,7 @@ function animate() {
   if (window._updateAmbientOneShots) window._updateAmbientOneShots(dt);
   updateDayNightCycle(dt);
   updateDebris(dt);
+  updatePickups(dt, t);
   updateGrapple(dt);
   updateSlide(dt);
   updateInteractionPrompt();
@@ -19753,6 +19876,68 @@ window._toggleInventory = toggleInventory;
 
 // Marketplace loader removed — all models are in the built-in catalog
 
+
+
+// === QUICK START SCENE SELECTOR (v215) ===
+function showQuickStart() {
+  // Don't show if scene already has objects
+  if ((window._sceneObjects || []).length > 5) return;
+  
+  const scenes = [
+    { name: 'Modern City', cmd: 'generate city', icon: '🏙️', desc: 'Downtown with skyscrapers, shops, roads & traffic' },
+    { name: 'Medieval Town', cmd: 'generate town', icon: '🏰', desc: 'Fantasy village with tavern, blacksmith & houses' },
+    { name: 'Zombie Survival', cmd: 'zombie game', icon: '🧟', desc: 'Abandoned city, waves of zombies, weapons' },
+    { name: 'Racing Track', cmd: 'generate racing', icon: '🏎️', desc: 'Race circuit with cars and checkpoints' },
+    { name: 'Fantasy Kingdom', cmd: 'generate kingdom', icon: '⚔️', desc: 'Castle, knights, dragons & treasure' },
+    { name: 'Space Station', cmd: 'generate space', icon: '🚀', desc: 'Orbital base with sci-fi corridors' },
+    { name: 'Pirate Island', cmd: 'generate pirate', icon: '🏴‍☠️', desc: 'Tropical cove with ships & treasure' },
+    { name: 'Empty Sandbox', cmd: 'flat', icon: '📦', desc: 'Blank canvas — build anything' },
+  ];
+  
+  const modal = document.createElement('div');
+  modal.id = 'quick-start-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10010;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;backdrop-filter:blur(10px);';
+  
+  let html = '<div style="text-align:center;margin-bottom:32px;"><div style="font-size:40px;margin-bottom:8px;">🎮</div><h1 style="color:#fff;font-size:28px;margin:0;">What do you want to build?</h1><p style="color:#888;font-size:14px;margin:8px 0 0 0;">Pick a preset or start from scratch</p></div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(4,180px);gap:12px;max-width:760px;">';
+  
+  for (const s of scenes) {
+    html += `<div class="qs-card" data-cmd="${s.cmd}" style="background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:16px;cursor:pointer;transition:all 0.2s;text-align:center;" onmouseenter="this.style.borderColor='#ff6b35';this.style.transform='translateY(-2px)'" onmouseleave="this.style.borderColor='#333';this.style.transform='none'">
+      <div style="font-size:32px;margin-bottom:8px;">${s.icon}</div>
+      <div style="color:#fff;font-size:14px;font-weight:600;margin-bottom:4px;">${s.name}</div>
+      <div style="color:#666;font-size:11px;line-height:1.4;">${s.desc}</div>
+    </div>`;
+  }
+  
+  html += '</div>';
+  html += '<div style="margin-top:24px;color:#555;font-size:12px;">Or type any command below — "add house", "make it rain", "zombie game"</div>';
+  
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+  
+  // Click handlers
+  modal.querySelectorAll('.qs-card').forEach(card => {
+    card.onclick = () => {
+      const cmd = card.dataset.cmd;
+      modal.remove();
+      if (window._runCommand) window._runCommand(cmd);
+    };
+  });
+  
+  // Close on Escape
+  const escHandler = (e) => {
+    if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', escHandler); }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
+// Show quick start after engine loads (if no objects in scene)
+setTimeout(() => {
+  if ((window._sceneObjects || []).length < 3) {
+    showQuickStart();
+  }
+}, 1500);
+window.showQuickStart = showQuickStart;
 
 // === BUILD TOOLBAR — Always visible category icons ===
 (function() {
