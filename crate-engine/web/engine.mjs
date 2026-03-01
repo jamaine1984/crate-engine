@@ -10071,6 +10071,7 @@ const _CAT_META = {
   scifi: { icon: '🚀', color: '#06b6d4', label: 'Sci-Fi' },
   modern: { icon: '🏙️', color: '#64748b', label: 'Modern' },
   nature: { icon: '⛺', color: '#84cc16', label: 'Nature & Survival' },
+  terrain: { icon: '🏔️', color: '#6b8e23', label: 'Terrain & Landscapes' },
   animations: { icon: '🎬', color: '#ec4899', label: 'Animations' },
   premium: { icon: '💎', color: '#a855f7', label: 'Premium / Marketplace' },
   'my-models': { icon: '⭐', color: '#f59e0b', label: 'My Models' },
@@ -10491,6 +10492,224 @@ async function execSingle(cmd) {
   }
 
   // ═══ MAP / LEVEL GENERATOR (JSON Template System v67) ═══
+const GAME_PRESETS = {
+  'zombie': {
+    name: 'Zombie Survival',
+    description: 'Survive waves of zombies in an abandoned city',
+    map: 'city',
+    env: ['time night', 'fog on'],
+    commands: [
+      'flat height:0',
+      'generate city',
+      'add npc zombie at 30,0,30',
+      'add npc zombie at -20,0,40',
+      'add npc zombie at 50,0,-10',
+      'add npc zombie at -40,0,20',
+      'add npc zombie at 10,0,-50',
+      'add npc zombie at 60,0,60',
+      'add npc zombie at -30,0,-30',
+      'add npc zombie at 0,0,70',
+      'equip sword',
+    ],
+    hud: { showHealth: true, showWaves: true, showKills: true },
+    rules: { hostile: true, respawn: true, waveInterval: 45, maxWave: 10 },
+    music: 'horror',
+  },
+  'racing': {
+    name: 'Street Racing',
+    description: 'Race through city streets in sports cars',
+    map: 'city',
+    env: ['time sunset'],
+    commands: [
+      'flat height:0',
+      'generate city',
+      'add ferrari at 0,0,5',
+      'add ferrari at 5,0,5',
+      'add ferrari at -5,0,5',
+    ],
+    hud: { showSpeed: true, showLap: true, showPosition: true },
+    rules: { laps: 3, checkpoints: true },
+    music: 'electronic',
+  },
+  'rpg': {
+    name: 'Fantasy RPG',
+    description: 'Explore a medieval world with quests and combat',
+    map: 'medieval',
+    env: ['time day'],
+    commands: [
+      'flat height:0',
+      'generate medieval village',
+      'add npc guard at 10,0,10',
+      'add npc guard at -10,0,10',
+      'add npc at 20,0,5',
+      'add npc at -15,0,15',
+      'add npc at 5,0,25',
+      'equip sword',
+    ],
+    hud: { showHealth: true, showXP: true, showQuests: true },
+    rules: { quests: true, levelUp: true },
+    music: 'fantasy',
+  },
+  'survival': {
+    name: 'Survival Sandbox',
+    description: 'Gather resources, build shelter, survive the night',
+    map: 'forest',
+    env: ['time dawn'],
+    commands: [
+      'terrain hills',
+      'add 20 trees',
+      'add 10 rocks',
+      'add campfire at 5,0,5',
+      'equip axe',
+    ],
+    hud: { showHealth: true, showHunger: true, showInventory: true },
+    rules: { dayNightCycle: true, crafting: true },
+    music: 'ambient',
+  },
+  'fps': {
+    name: 'First Person Shooter',
+    description: 'Fast-paced arena combat',
+    map: 'arena',
+    env: ['time noon'],
+    commands: [
+      'flat height:0',
+      'generate arena',
+      'camera first_person',
+      'add npc enemy at 30,0,0',
+      'add npc enemy at -30,0,0',
+      'add npc enemy at 0,0,30',
+      'add npc enemy at 0,0,-30',
+      'equip rifle',
+    ],
+    hud: { showHealth: true, showAmmo: true, showKills: true },
+    rules: { hostile: true, respawn: true },
+    music: 'action',
+  },
+  'sandbox': {
+    name: 'Creative Sandbox',
+    description: 'Build anything — no rules, infinite freedom',
+    map: 'flat',
+    env: ['time day'],
+    commands: [
+      'flat height:0',
+    ],
+    hud: {},
+    rules: {},
+    music: 'chill',
+  },
+  'horror': {
+    name: 'Horror Exploration',
+    description: 'Explore a dark abandoned town — something is watching',
+    map: 'abandoned',
+    env: ['time midnight', 'fog on'],
+    commands: [
+      'flat height:0',
+      'generate abandoned town',
+      'add streetlamp at 10,0,0',
+      'add streetlamp at -10,0,20',
+      'add npc at 50,0,50',
+    ],
+    hud: { showHealth: true, showFlashlight: true },
+    rules: { hostile: true, ambiance: 'creepy' },
+    music: 'horror',
+  },
+  'city_builder': {
+    name: 'City Builder',
+    description: 'Build your dream city from scratch',
+    map: 'flat',
+    env: ['time day'],
+    commands: [
+      'flat height:0',
+      'add road at 0,0,0',
+    ],
+    hud: { showMoney: true, showPopulation: true },
+    rules: { economy: true, building: true },
+    music: 'chill',
+  },
+};
+
+// ═══ GAME PRESET COMMAND HANDLER ═══
+// Matches: "make this a zombie game", "zombie mode", "start zombie survival", etc.
+const gamePresetRegex = /^(?:make\s+(?:this\s+)?(?:a\s+)?|start\s+|play\s+|mode\s+|game\s*mode\s+)?(\w+)\s*(?:game|mode|survival|match)?$/i;
+function tryApplyGamePreset(input) {
+  const lower = input.toLowerCase().trim();
+  
+  // Direct match attempts
+  for (const [key, preset] of Object.entries(GAME_PRESETS)) {
+    if (lower === key || lower === key + ' game' || lower === key + ' mode' ||
+        lower === 'make this a ' + key + ' game' || lower === 'make ' + key + ' game' ||
+        lower === 'start ' + key || lower === 'play ' + key ||
+        lower === preset.name.toLowerCase()) {
+      return applyGamePreset(key, preset);
+    }
+  }
+  return null;
+}
+
+async function applyGamePreset(key, preset) {
+  appendToOutput('🎮 Loading game mode: ' + preset.name + '...\n' + preset.description);
+  
+  // Clear existing scene
+  execSingle('clear');
+  
+  // Apply environment
+  if (preset.env) {
+    for (const envCmd of preset.env) {
+      execSingle(envCmd);
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+  
+  // Run commands sequentially
+  for (const cmd of preset.commands) {
+    appendToOutput('  → ' + cmd);
+    execSingle(cmd);
+    await new Promise(r => setTimeout(r, 300));
+  }
+  
+  // Set game state
+  window._currentGameMode = key;
+  window._gamePreset = preset;
+  
+  // Show HUD overlay
+  if (preset.hud && Object.keys(preset.hud).length > 0) {
+    showGameHUD(preset);
+  }
+  
+  appendToOutput('\n✅ ' + preset.name + ' loaded! Use voice or text commands to play.');
+  return '🎮 ' + preset.name + ' — Ready!';
+}
+
+// ═══ GAME HUD OVERLAY ═══
+function showGameHUD(preset) {
+  let hud = document.getElementById('game-hud');
+  if (hud) hud.remove();
+  
+  hud = document.createElement('div');
+  hud.id = 'game-hud';
+  hud.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;gap:16px;background:rgba(0,0,0,0.6);padding:8px 20px;border-radius:20px;font-family:-apple-system,sans-serif;color:#fff;font-size:14px;backdrop-filter:blur(8px);pointer-events:none';
+  
+  const items = [];
+  if (preset.hud.showHealth) items.push('<span>❤️ <span id="hud-health">100</span></span>');
+  if (preset.hud.showKills) items.push('<span>💀 <span id="hud-kills">0</span></span>');
+  if (preset.hud.showWaves) items.push('<span>🌊 Wave <span id="hud-wave">1</span></span>');
+  if (preset.hud.showSpeed) items.push('<span>🏎️ <span id="hud-speed">0</span> mph</span>');
+  if (preset.hud.showLap) items.push('<span>🏁 Lap <span id="hud-lap">1</span>/3</span>');
+  if (preset.hud.showXP) items.push('<span>⭐ <span id="hud-xp">0</span> XP</span>');
+  if (preset.hud.showAmmo) items.push('<span>🔫 <span id="hud-ammo">30</span></span>');
+  if (preset.hud.showMoney) items.push('<span>💰 $<span id="hud-money">10000</span></span>');
+  if (preset.hud.showPopulation) items.push('<span>👥 <span id="hud-pop">0</span></span>');
+  if (preset.hud.showHunger) items.push('<span>🍖 <span id="hud-hunger">100</span></span>');
+  if (preset.hud.showQuests) items.push('<span>📜 <span id="hud-quests">0</span></span>');
+  if (preset.hud.showPosition) items.push('<span>🏆 <span id="hud-position">1st</span></span>');
+  if (preset.hud.showFlashlight) items.push('<span>🔦 <span id="hud-flashlight">ON</span></span>');
+  if (preset.hud.showInventory) items.push('<span>🎒 <span id="hud-inv">Empty</span></span>');
+  
+  hud.innerHTML = items.join('');
+  document.body.appendChild(hud);
+}
+
+
   if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
     const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
     const mapType = mapMatch ? mapMatch[1].toLowerCase() : 'town';
@@ -10503,223 +10722,6 @@ async function execSingle(cmd) {
     // GAME PRESETS — "make this a zombie game" auto-configures everything
     // Each preset defines: map template, NPC behavior, objectives, HUD, rules
     // ═══════════════════════════════════════════════════════════════
-    const GAME_PRESETS = {
-      'zombie': {
-        name: 'Zombie Survival',
-        description: 'Survive waves of zombies in an abandoned city',
-        map: 'city',
-        env: ['time night', 'fog on'],
-        commands: [
-          'flat height:0',
-          'generate city',
-          'add npc zombie at 30,0,30',
-          'add npc zombie at -20,0,40',
-          'add npc zombie at 50,0,-10',
-          'add npc zombie at -40,0,20',
-          'add npc zombie at 10,0,-50',
-          'add npc zombie at 60,0,60',
-          'add npc zombie at -30,0,-30',
-          'add npc zombie at 0,0,70',
-          'equip sword',
-        ],
-        hud: { showHealth: true, showWaves: true, showKills: true },
-        rules: { hostile: true, respawn: true, waveInterval: 45, maxWave: 10 },
-        music: 'horror',
-      },
-      'racing': {
-        name: 'Street Racing',
-        description: 'Race through city streets in sports cars',
-        map: 'city',
-        env: ['time sunset'],
-        commands: [
-          'flat height:0',
-          'generate city',
-          'add ferrari at 0,0,5',
-          'add ferrari at 5,0,5',
-          'add ferrari at -5,0,5',
-        ],
-        hud: { showSpeed: true, showLap: true, showPosition: true },
-        rules: { laps: 3, checkpoints: true },
-        music: 'electronic',
-      },
-      'rpg': {
-        name: 'Fantasy RPG',
-        description: 'Explore a medieval world with quests and combat',
-        map: 'medieval',
-        env: ['time day'],
-        commands: [
-          'flat height:0',
-          'generate medieval village',
-          'add npc guard at 10,0,10',
-          'add npc guard at -10,0,10',
-          'add npc at 20,0,5',
-          'add npc at -15,0,15',
-          'add npc at 5,0,25',
-          'equip sword',
-        ],
-        hud: { showHealth: true, showXP: true, showQuests: true },
-        rules: { quests: true, levelUp: true },
-        music: 'fantasy',
-      },
-      'survival': {
-        name: 'Survival Sandbox',
-        description: 'Gather resources, build shelter, survive the night',
-        map: 'forest',
-        env: ['time dawn'],
-        commands: [
-          'terrain hills',
-          'add 20 trees',
-          'add 10 rocks',
-          'add campfire at 5,0,5',
-          'equip axe',
-        ],
-        hud: { showHealth: true, showHunger: true, showInventory: true },
-        rules: { dayNightCycle: true, crafting: true },
-        music: 'ambient',
-      },
-      'fps': {
-        name: 'First Person Shooter',
-        description: 'Fast-paced arena combat',
-        map: 'arena',
-        env: ['time noon'],
-        commands: [
-          'flat height:0',
-          'generate arena',
-          'camera first_person',
-          'add npc enemy at 30,0,0',
-          'add npc enemy at -30,0,0',
-          'add npc enemy at 0,0,30',
-          'add npc enemy at 0,0,-30',
-          'equip rifle',
-        ],
-        hud: { showHealth: true, showAmmo: true, showKills: true },
-        rules: { hostile: true, respawn: true },
-        music: 'action',
-      },
-      'sandbox': {
-        name: 'Creative Sandbox',
-        description: 'Build anything — no rules, infinite freedom',
-        map: 'flat',
-        env: ['time day'],
-        commands: [
-          'flat height:0',
-        ],
-        hud: {},
-        rules: {},
-        music: 'chill',
-      },
-      'horror': {
-        name: 'Horror Exploration',
-        description: 'Explore a dark abandoned town — something is watching',
-        map: 'abandoned',
-        env: ['time midnight', 'fog on'],
-        commands: [
-          'flat height:0',
-          'generate abandoned town',
-          'add streetlamp at 10,0,0',
-          'add streetlamp at -10,0,20',
-          'add npc at 50,0,50',
-        ],
-        hud: { showHealth: true, showFlashlight: true },
-        rules: { hostile: true, ambiance: 'creepy' },
-        music: 'horror',
-      },
-      'city_builder': {
-        name: 'City Builder',
-        description: 'Build your dream city from scratch',
-        map: 'flat',
-        env: ['time day'],
-        commands: [
-          'flat height:0',
-          'add road at 0,0,0',
-        ],
-        hud: { showMoney: true, showPopulation: true },
-        rules: { economy: true, building: true },
-        music: 'chill',
-      },
-    };
-
-    // ═══ GAME PRESET COMMAND HANDLER ═══
-    // Matches: "make this a zombie game", "zombie mode", "start zombie survival", etc.
-    const gamePresetRegex = /^(?:make\s+(?:this\s+)?(?:a\s+)?|start\s+|play\s+|mode\s+|game\s*mode\s+)?(\w+)\s*(?:game|mode|survival|match)?$/i;
-    function tryApplyGamePreset(input) {
-      const lower = input.toLowerCase().trim();
-      
-      // Direct match attempts
-      for (const [key, preset] of Object.entries(GAME_PRESETS)) {
-        if (lower === key || lower === key + ' game' || lower === key + ' mode' ||
-            lower === 'make this a ' + key + ' game' || lower === 'make ' + key + ' game' ||
-            lower === 'start ' + key || lower === 'play ' + key ||
-            lower === preset.name.toLowerCase()) {
-          return applyGamePreset(key, preset);
-        }
-      }
-      return null;
-    }
-    
-    async function applyGamePreset(key, preset) {
-      appendToOutput('🎮 Loading game mode: ' + preset.name + '...\n' + preset.description);
-      
-      // Clear existing scene
-      execSingle('clear');
-      
-      // Apply environment
-      if (preset.env) {
-        for (const envCmd of preset.env) {
-          execSingle(envCmd);
-          await new Promise(r => setTimeout(r, 200));
-        }
-      }
-      
-      // Run commands sequentially
-      for (const cmd of preset.commands) {
-        appendToOutput('  → ' + cmd);
-        execSingle(cmd);
-        await new Promise(r => setTimeout(r, 300));
-      }
-      
-      // Set game state
-      window._currentGameMode = key;
-      window._gamePreset = preset;
-      
-      // Show HUD overlay
-      if (preset.hud && Object.keys(preset.hud).length > 0) {
-        showGameHUD(preset);
-      }
-      
-      appendToOutput('\n✅ ' + preset.name + ' loaded! Use voice or text commands to play.');
-      return '🎮 ' + preset.name + ' — Ready!';
-    }
-    
-    // ═══ GAME HUD OVERLAY ═══
-    function showGameHUD(preset) {
-      let hud = document.getElementById('game-hud');
-      if (hud) hud.remove();
-      
-      hud = document.createElement('div');
-      hud.id = 'game-hud';
-      hud.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;gap:16px;background:rgba(0,0,0,0.6);padding:8px 20px;border-radius:20px;font-family:-apple-system,sans-serif;color:#fff;font-size:14px;backdrop-filter:blur(8px);pointer-events:none';
-      
-      const items = [];
-      if (preset.hud.showHealth) items.push('<span>❤️ <span id="hud-health">100</span></span>');
-      if (preset.hud.showKills) items.push('<span>💀 <span id="hud-kills">0</span></span>');
-      if (preset.hud.showWaves) items.push('<span>🌊 Wave <span id="hud-wave">1</span></span>');
-      if (preset.hud.showSpeed) items.push('<span>🏎️ <span id="hud-speed">0</span> mph</span>');
-      if (preset.hud.showLap) items.push('<span>🏁 Lap <span id="hud-lap">1</span>/3</span>');
-      if (preset.hud.showXP) items.push('<span>⭐ <span id="hud-xp">0</span> XP</span>');
-      if (preset.hud.showAmmo) items.push('<span>🔫 <span id="hud-ammo">30</span></span>');
-      if (preset.hud.showMoney) items.push('<span>💰 $<span id="hud-money">10000</span></span>');
-      if (preset.hud.showPopulation) items.push('<span>👥 <span id="hud-pop">0</span></span>');
-      if (preset.hud.showHunger) items.push('<span>🍖 <span id="hud-hunger">100</span></span>');
-      if (preset.hud.showQuests) items.push('<span>📜 <span id="hud-quests">0</span></span>');
-      if (preset.hud.showPosition) items.push('<span>🏆 <span id="hud-position">1st</span></span>');
-      if (preset.hud.showFlashlight) items.push('<span>🔦 <span id="hud-flashlight">ON</span></span>');
-      if (preset.hud.showInventory) items.push('<span>🎒 <span id="hud-inv">Empty</span></span>');
-      
-      hud.innerHTML = items.join('');
-      document.body.appendChild(hud);
-    }
-
     const MAP_TEMPLATES = {
       // ===== MEDIEVAL FANTASY =====
       town: {
@@ -11884,6 +11886,18 @@ async function execSingle(cmd) {
       return '⛺ Added ' + result.name + ' to the scene!';
     }
     return '↩ Nature gallery closed';
+  }
+
+
+  // Terrain gallery
+  if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:terrain|landscape|environment|maps?|worlds?)/)) {
+    const result = await showGallery('terrain');
+    if (result) {
+      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+      sceneHistory.push('add ' + result.file);
+      return '🏔️ Added ' + result.name + ' to the scene!';
+    }
+    return '↩ Terrain gallery closed';
   }
 
   // Browse all / asset library
@@ -19904,7 +19918,7 @@ window._toggleInventory = toggleInventory;
     { action: 'load', icon: '📂', tip: 'Load', color: '#60a5fa' },
     { action: 'share', icon: '🔗', tip: 'Share', color: '#ff6b35' },
     { action: 'export_html', icon: '📦', tip: 'Export', color: '#c084fc' },
-    { action: 'marketplace', icon: '🏪', tip: 'Marketplace', color: '#f59e0b' },
+    { cmd: 'terrain', icon: '🏔️', tip: 'Terrain', color: '#6b8e23' },
     { action: 'unity', icon: '🎮', tip: 'Unity', color: '#4ade80' },
     { action: 'unreal', icon: '🕹️', tip: 'Unreal', color: '#3b82f6' },
     { cmd: '_sep2', icon: '|', tip: '', isSep: true },
