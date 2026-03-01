@@ -10411,6 +10411,15 @@ async function execSingle(cmd) {
     return '🌫️ Fog density: ' + density;
   }
 
+
+  if (lower === 'clouds' || lower === 'add clouds' || lower === 'create clouds') {
+    createClouds();
+    return '☁️ Clouds added';
+  }
+  if (lower === 'remove clouds' || lower === 'no clouds' || lower === 'clear clouds') {
+    if (_cloudGroup) { scene.remove(_cloudGroup); _cloudGroup = null; }
+    return '☀️ Clouds removed';
+  }
   // 3D Generator commands
   
   
@@ -15556,6 +15565,63 @@ function updateCoordDisplay() {
 
 
 
+// === PROCEDURAL CLOUD SYSTEM (v217) ===
+let _cloudGroup = null;
+function createClouds(count = 15) {
+  if (_cloudGroup) { scene.remove(_cloudGroup); }
+  _cloudGroup = new THREE.Group();
+  _cloudGroup.userData.name = '_clouds';
+  
+  for (let i = 0; i < count; i++) {
+    const cloud = new THREE.Group();
+    // Each cloud is 3-6 merged spheres
+    const puffs = 3 + Math.floor(Math.random() * 4);
+    for (let j = 0; j < puffs; j++) {
+      const size = 4 + Math.random() * 8;
+      const geo = new THREE.SphereGeometry(size, 8, 6);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 1,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.7 + Math.random() * 0.2,
+      });
+      const puff = new THREE.Mesh(geo, mat);
+      puff.position.set(
+        (Math.random() - 0.5) * size * 2,
+        (Math.random() - 0.5) * size * 0.5,
+        (Math.random() - 0.5) * size * 1.5
+      );
+      puff.scale.y = 0.4 + Math.random() * 0.3; // Flatten
+      cloud.add(puff);
+    }
+    
+    cloud.position.set(
+      (Math.random() - 0.5) * 400,
+      40 + Math.random() * 30,
+      (Math.random() - 0.5) * 400
+    );
+    cloud.userData._speed = 0.5 + Math.random() * 1.5;
+    _cloudGroup.add(cloud);
+  }
+  
+  scene.add(_cloudGroup);
+  return _cloudGroup;
+}
+window.createClouds = createClouds;
+
+function updateClouds(dt) {
+  if (!_cloudGroup) return;
+  for (const cloud of _cloudGroup.children) {
+    cloud.position.x += (cloud.userData._speed || 1) * dt;
+    if (cloud.position.x > 220) cloud.position.x = -220;
+  }
+}
+
+// Auto-create clouds on load
+setTimeout(() => { if (!_cloudGroup) createClouds(); }, 2000);
+
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -15611,6 +15677,7 @@ function animate() {
   updateSlide(dt);
   updateInteractionPrompt();
   updateCompass();
+  updateClouds(dt);
   updateCoordDisplay();
   updateHighlight();
   if (!playMode) controls.update();
