@@ -908,6 +908,7 @@ function _showEditorUI() {
 }
 
 function enterPlayMode() {
+  startReplayRecording();
   playMode = true;
     if (window._mobileControls) window._mobileControls.show();
   _hideEditorUI();
@@ -940,6 +941,7 @@ function enterPlayMode() {
 }
 
 function exitPlayMode() {
+  stopReplayRecording();
   playMode = false;
   _showEditorUI();
   // Hide v215 HUD elements
@@ -1131,6 +1133,198 @@ function executeTriggerAction(trig, obj) {
 }
 
 function createExplosion(pos) { createExplosionV2(pos); }
+
+
+// === REPLAY RECORDING SYSTEM (Phase 1 — AI World Model Data Collection) ===
+let _replayRecording = false;
+let _replayData = null;
+let _replayFrameCount = 0;
+const REPLAY_SAMPLE_RATE = 5; // Record every 5th frame (~12fps at 60fps)
+
+function startReplayRecording() {
+  _replayRecording = true;
+  _replayFrameCount = 0;
+  _replayData = {
+    version: 1,
+    startTime: Date.now(),
+    scene: getSceneSummary(),
+    frames: [],
+    buildActions: [],
+    events: []
+  };
+  showNotification('🔴 Recording session...');
+  console.log('[Replay] Recording started');
+}
+
+function stopReplayRecording() {
+  if (!_replayRecording || !_replayData) return null;
+  _replayRecording = false;
+  _replayData.endTime = Date.now();
+  _replayData.duration = _replayData.endTime - _replayData.startTime;
+  _replayData.totalFrames = _replayData.frames.length;
+  
+  // Save to localStorage
+  const key = 'replay_' + _replayData.startTime;
+  try {
+    const json = JSON.stringify(_replayData);
+    localStorage.setItem(key, json);
+    const sizeMB = (json.length / 1024 / 1024).toFixed(2);
+    showNotification('⏹ Session saved (' + _replayData.totalFrames + ' frames, ' + sizeMB + 'MB)');
+    console.log('[Replay] Saved:', key, sizeMB + 'MB');
+  } catch(e) {
+    // localStorage full — offer download
+    console.warn('[Replay] Storage full, downloading instead');
+    downloadReplayData(_replayData);
+  }
+  
+  const data = _replayData;
+  _replayData = null;
+  return data;
+}
+
+function recordReplayFrame() {
+  if (!_replayRecording || !_replayData) return;
+  _replayFrameCount++;
+  if (_replayFrameCount % REPLAY_SAMPLE_RATE !== 0) return;
+  
+  const pos = characterController ? characterController.position : camera.position;
+  const cam = window._cam || camera;
+  
+  // Get nearby objects (within 30 units)
+  const nearby = [];
+  scene.children.forEach(obj => {
+    if (!obj.position || obj === cam) return;
+    const d = pos.distanceTo(obj.position);
+    if (d < 30 && obj.userData && obj.userData.objectType) {
+      nearby.push({
+        type: obj.userData.objectType,
+        name: obj.userData.displayName || obj.name || '',
+        dist: Math.round(d * 10) / 10
+      });
+    }
+  });
+  
+  // Get look direction
+  const lookDir = new THREE.Vector3();
+  cam.getWorldDirection(lookDir);
+  
+  const frame = {
+    t: Date.now() - _replayData.startTime,
+    f: _replayFrameCount,
+    p: [Math.round(pos.x*10)/10, Math.round(pos.y*10)/10, Math.round(pos.z*10)/10],
+    r: [Math.round(lookDir.x*100)/100, Math.round(lookDir.y*100)/100, Math.round(lookDir.z*100)/100],
+    v: characterController ? [
+      Math.round(characterController.velocity.x*10)/10,
+      Math.round(characterController.velocity.y*10)/10,
+      Math.round(characterController.velocity.z*10)/10
+    ] : [0,0,0],
+    n: nearby.length
+  };
+  
+  // Only include nearby objects every 30th sample to save space
+  if (_replayFrameCount % (REPLAY_SAMPLE_RATE * 30) === 0) {
+    frame.nearby = nearby.slice(0, 20);
+  }
+  
+  _replayData.frames.push(frame);
+}
+
+function recordBuildAction(command, result) {
+  if (!_replayRecording || !_replayData) return;
+  _replayData.buildActions.push({
+    t: Date.now() - _replayData.startTime,
+    cmd: command,
+    pos: camera.position ? [
+      Math.round(camera.position.x),
+      Math.round(camera.position.y),
+      Math.round(camera.position.z)
+    ] : null,
+    ok: !!result
+  });
+}
+
+function recordEvent(eventName, data) {
+  if (!_replayRecording || !_replayData) return;
+  _replayData.events.push({
+    t: Date.now() - _replayData.startTime,
+    event: eventName,
+    data: data || null
+  });
+}
+
+function getSceneSummary() {
+  const objects = [];
+  scene.children.forEach(obj => {
+    if (obj.userData && obj.userData.objectType) {
+      objects.push({
+        type: obj.userData.objectType,
+        name: obj.userData.displayName || obj.name || '',
+        pos: [Math.round(obj.position.x), Math.round(obj.position.y), Math.round(obj.position.z)]
+      });
+    }
+  });
+  return { objectCount: objects.length, objects: objects.slice(0, 200) };
+}
+
+function downloadReplayData(data) {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'crate-replay-' + data.startTime + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function listReplays() {
+  const replays = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith('replay_')) {
+      try {
+        const d = JSON.parse(localStorage.getItem(key));
+        replays.push({
+          key,
+          date: new Date(d.startTime).toLocaleString(),
+          duration: Math.round(d.duration / 1000) + 's',
+          frames: d.totalFrames,
+          builds: d.buildActions ? d.buildActions.length : 0,
+          events: d.events ? d.events.length : 0
+        });
+      } catch(e) {}
+    }
+  }
+  return replays;
+}
+
+function exportAllReplays() {
+  const replays = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith('replay_')) {
+      try { replays.push(JSON.parse(localStorage.getItem(key))); } catch(e) {}
+    }
+  }
+  if (replays.length === 0) { showNotification('No replays saved'); return; }
+  const blob = new Blob([JSON.stringify(replays)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'crate-all-replays-' + Date.now() + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showNotification('Exported ' + replays.length + ' replays');
+}
+
+// Auto-start recording when entering play mode, stop when exiting
+window._replayRecord = recordReplayFrame;
+window._replayBuildAction = recordBuildAction;
+window._replayEvent = recordEvent;
+window._replayStart = startReplayRecording;
+window._replayStop = stopReplayRecording;
+window._replayList = listReplays;
+window._replayExportAll = exportAllReplays;
+
 
 // === HUD (score, health, etc.) ===
 let hudDiv = null;
@@ -15994,7 +16188,7 @@ function animate() {
   updateInteractionPrompt();
   updateCompass();
   updateClouds(dt);
-  updateCoordDisplay();
+  updateCoordDisplay(); recordReplayFrame();
   updateHighlight();
   if (!playMode) controls.update();
   if (window._updateShadowCascades) window._updateShadowCascades();
