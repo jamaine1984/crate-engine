@@ -910,7 +910,7 @@ function _showEditorUI() {
 function enterPlayMode() {
   startReplayRecording();
   playMode = true;
-    if (window._mobileControls) window._mobileControls.show();
+    if (window._mobileControls && window._mobileControls.show) window._mobileControls.show();
   _hideEditorUI();
   // Create or find avatar
   playAvatar = objects.find(o => o.userData.name && o.userData.name.includes('player'));
@@ -7507,7 +7507,10 @@ function nextColor() { return colors[colorIdx++ % colors.length]; }
 
 // === MESH FACTORIES ===
 function makeMat(color, opts = {}) {
-  return new THREE.MeshStandardMaterial({ color, roughness: opts.rough || 0.5, metalness: opts.metal || 0.1, flatShading: opts.flat || false, ...opts });
+  var _r = opts.rough || opts.roughness || 0.5
+  var _m = opts.metal || opts.metalness || 0.1
+  var _f = opts.flat || opts.flatShading || false
+  return new THREE.MeshStandardMaterial({ color, roughness: _r, metalness: _m, flatShading: _f, transparent: opts.transparent || false, opacity: opts.opacity !== undefined ? opts.opacity : 1 });
 }
 
 function createCube(color, s=1) { const m = new THREE.Mesh(new THREE.BoxGeometry(s,s,s), makeMat(color, {rough:0.4,metal:0.2})); m.castShadow=true; m.receiveShadow=true; m.position.y=s/2; return m; }
