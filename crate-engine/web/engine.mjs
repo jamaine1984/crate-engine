@@ -1386,6 +1386,137 @@ function updateObjectCounter() {
 }
 
 
+
+// === QUEST SYSTEM (v218b) ===
+let _activeQuests = [];
+let _completedQuests = [];
+let _questUI = null;
+
+function addQuest(quest) {
+  // quest = { id, title, description, objectives: [{text, count, current}], reward }
+  if (_activeQuests.find(function(q) { return q.id === quest.id; })) return;
+  quest.objectives = quest.objectives.map(function(o) { o.current = o.current || 0; return o; });
+  _activeQuests.push(quest);
+  showNotification('📜 New Quest: ' + quest.title);
+  updateQuestUI();
+}
+
+function completeObjective(questId, objectiveIndex) {
+  var quest = _activeQuests.find(function(q) { return q.id === questId; });
+  if (!quest) return;
+  var obj = quest.objectives[objectiveIndex];
+  if (!obj) return;
+  obj.current = Math.min(obj.current + 1, obj.count);
+  // Check if all objectives complete
+  var allDone = quest.objectives.every(function(o) { return o.current >= o.count; });
+  if (allDone) {
+    _completedQuests.push(quest);
+    _activeQuests = _activeQuests.filter(function(q) { return q.id !== questId; });
+    showNotification('✅ Quest Complete: ' + quest.title + (quest.reward ? ' — ' + quest.reward : ''));
+    recordEvent('quest_complete', { id: questId, title: quest.title });
+  }
+  updateQuestUI();
+}
+
+function updateQuestUI() {
+  if (!playMode) return;
+  var el = document.getElementById('quest-tracker');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'quest-tracker';
+    el.style.cssText = 'position:fixed;top:80px;left:12px;max-width:250px;z-index:9002;font-family:-apple-system,sans-serif;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  if (_activeQuests.length === 0) { el.innerHTML = ''; return; }
+  var html = '';
+  _activeQuests.forEach(function(q) {
+    html += '<div style="background:rgba(0,0,0,0.6);border-left:3px solid #f59e0b;padding:8px 10px;margin-bottom:6px;border-radius:0 6px 6px 0;">';
+    html += '<div style="color:#f59e0b;font-size:12px;font-weight:600;">' + q.title + '</div>';
+    q.objectives.forEach(function(o) {
+      var done = o.current >= o.count;
+      html += '<div style="color:' + (done ? '#4ade80' : '#ccc') + ';font-size:11px;margin-top:3px;">';
+      html += (done ? '✓ ' : '○ ') + o.text + ' (' + o.current + '/' + o.count + ')</div>';
+    });
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+window.addQuest = addQuest;
+window.completeObjective = completeObjective;
+
+// === NPC DIALOG SYSTEM (v218b) ===
+let _dialogActive = false;
+let _dialogQueue = [];
+
+function showDialog(npcName, lines, onComplete) {
+  // lines = ["Hello traveler!", "The town needs your help.", ...]
+  _dialogActive = true;
+  _dialogQueue = lines.slice();
+  var el = document.getElementById('dialog-box');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'dialog-box';
+    el.style.cssText = 'position:fixed;bottom:120px;left:50%;transform:translateX(-50%);width:500px;max-width:90vw;' +
+      'background:rgba(0,0,0,0.85);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:16px 20px;' +
+      'z-index:9010;font-family:-apple-system,sans-serif;backdrop-filter:blur(8px);cursor:pointer;';
+    el.onclick = function() { advanceDialog(npcName, onComplete); };
+    document.body.appendChild(el);
+  }
+  el.style.display = 'block';
+  showDialogLine(npcName, _dialogQueue.shift());
+  recordEvent('npc_dialog', { npc: npcName, lines: lines.length });
+}
+
+function showDialogLine(npcName, text) {
+  var el = document.getElementById('dialog-box');
+  if (!el) return;
+  el.innerHTML = '<div style="color:#f59e0b;font-size:13px;font-weight:600;margin-bottom:6px;">' + npcName + '</div>' +
+    '<div style="color:#fff;font-size:14px;line-height:1.5;">' + text + '</div>' +
+    '<div style="color:rgba(255,255,255,0.3);font-size:10px;text-align:right;margin-top:8px;">Click to continue ▸</div>';
+}
+
+function advanceDialog(npcName, onComplete) {
+  if (_dialogQueue.length > 0) {
+    showDialogLine(npcName, _dialogQueue.shift());
+  } else {
+    var el = document.getElementById('dialog-box');
+    if (el) el.style.display = 'none';
+    _dialogActive = false;
+    if (onComplete) onComplete();
+  }
+}
+
+window.showDialog = showDialog;
+
+// === AUTO-GENERATE QUESTS FOR GAME PRESETS (v218b) ===
+function generatePresetQuests(presetName) {
+  var quests = {
+    zombie: [
+      { id: 'z1', title: 'Survive the Night', description: 'Kill zombies to survive', objectives: [{ text: 'Kill zombies', count: 10 }], reward: '+50 XP' },
+      { id: 'z2', title: 'Find Shelter', description: 'Enter a building', objectives: [{ text: 'Enter a building', count: 1 }], reward: 'Safe zone unlocked' },
+    ],
+    rpg: [
+      { id: 'r1', title: 'Explore the Land', description: 'Visit different areas', objectives: [{ text: 'Walk 500 meters', count: 1 }], reward: '+100 XP' },
+      { id: 'r2', title: 'Gather Resources', description: 'Pick up items', objectives: [{ text: 'Pick up items', count: 5 }], reward: 'Craft unlocked' },
+    ],
+    survival: [
+      { id: 's1', title: 'Basic Needs', description: 'Find food and shelter', objectives: [{ text: 'Find food', count: 3 }, { text: 'Build shelter', count: 1 }], reward: 'Campfire recipe' },
+    ],
+    fps: [
+      { id: 'f1', title: 'Lock and Load', description: 'Arm yourself', objectives: [{ text: 'Pick up a weapon', count: 1 }], reward: 'Ammo cache' },
+      { id: 'f2', title: 'Target Practice', description: 'Eliminate targets', objectives: [{ text: 'Hit targets', count: 5 }], reward: '+200 XP' },
+    ],
+    horror: [
+      { id: 'h1', title: 'Investigate', description: 'Search the area', objectives: [{ text: 'Find clues', count: 3 }], reward: 'Flashlight' },
+    ],
+  };
+  var presetQuests = quests[presetName];
+  if (presetQuests) presetQuests.forEach(function(q) { addQuest(q); });
+}
+window.generatePresetQuests = generatePresetQuests;
+
+
 // === HUD (score, health, etc.) ===
 let hudDiv = null;
 function initHUD() {
@@ -11062,6 +11193,8 @@ function tryApplyGamePreset(input) {
 
 async function applyGamePreset(key, preset) {
   appendToOutput('🎮 Loading game mode: ' + preset.name + '...\n' + preset.description);
+  // Generate quests for this game mode
+  if (typeof generatePresetQuests === 'function') generatePresetQuests(key);
   
   // Clear existing scene
   execSingle('clear');
@@ -21675,3 +21808,127 @@ console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
   }, (duration + 21) * 1000)
   
 })()
+
+// === AUTO-RECORD MODE (v218 — editor orbit recording) ===
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var sceneCmd = params.get("autorecord");
+  if (!sceneCmd) return;
+  
+  var cmdMap = {
+    city: "generate city", town: "generate town", zombie: "zombie game",
+    racing: "racing mode", rpg: "rpg game", horror: "horror game",
+    survival: "survival game", fps: "fps game", fantasy: "generate fantasy"
+  };
+  var cmd = cmdMap[sceneCmd] || ("generate " + sceneCmd);
+  var duration = parseInt(params.get("duration")) || 120;
+  
+  console.log("[AutoRecord] v218 Mode: " + sceneCmd + " (" + duration + "s)");
+  
+  // Step 1: Kill overlays + generate scene
+  function clearOverlays() {
+    document.querySelectorAll("div").forEach(function(d) {
+      if (d.style && d.style.zIndex && parseInt(d.style.zIndex) > 9500) d.style.display = "none";
+    });
+  }
+  
+  setTimeout(function() {
+    clearOverlays();
+    if (window._runCommand) {
+      window._runCommand(cmd);
+      console.log("[AutoRecord] Generated: " + cmd);
+    }
+  }, 3000);
+  
+  // Step 2: Start recording + orbit camera around scene
+  var orbitAngle = 0;
+  var orbitRadius = 80;
+  var orbitHeight = 40;
+  var orbitSpeed = 0.3;
+  var recording = false;
+  var moveInt = null;
+  
+  setTimeout(function() {
+    clearOverlays();
+    
+    // Start manual recording (not play mode — editor mode recording)
+    recording = true;
+    window._autoRecordData = {
+      version: 2,
+      mode: "orbit",
+      sceneType: sceneCmd,
+      startTime: Date.now(),
+      frames: [],
+      sceneObjects: []
+    };
+    
+    // Capture scene objects
+    if (typeof scene !== "undefined") {
+      scene.children.forEach(function(obj) {
+        if (obj.userData && (obj.userData.objectType || obj.userData.name)) {
+          window._autoRecordData.sceneObjects.push({
+            type: obj.userData.objectType || "unknown",
+            name: obj.userData.displayName || obj.userData.name || obj.name || "",
+            pos: [Math.round(obj.position.x), Math.round(obj.position.y), Math.round(obj.position.z)],
+            scale: obj.scale ? [obj.scale.x.toFixed(1), obj.scale.y.toFixed(1), obj.scale.z.toFixed(1)] : [1,1,1]
+          });
+        }
+      });
+    }
+    
+    console.log("[AutoRecord] Recording started. Scene objects: " + window._autoRecordData.sceneObjects.length);
+    
+    // Orbit the camera around the world
+    moveInt = setInterval(function() {
+      if (!recording) return;
+      orbitAngle += orbitSpeed * 0.05;
+      
+      // Vary orbit: change height and radius over time
+      var t = (Date.now() - window._autoRecordData.startTime) / 1000;
+      var currentRadius = orbitRadius + Math.sin(t * 0.1) * 30;
+      var currentHeight = orbitHeight + Math.sin(t * 0.15) * 20;
+      
+      var cx = Math.cos(orbitAngle) * currentRadius;
+      var cz = Math.sin(orbitAngle) * currentRadius;
+      
+      if (typeof camera !== "undefined") {
+        camera.position.set(cx, currentHeight, cz);
+        camera.lookAt(0, 5, 0);
+      }
+      
+      // Record frame
+      window._autoRecordData.frames.push({
+        t: Math.round(t * 1000),
+        cam: [Math.round(cx), Math.round(currentHeight), Math.round(cz)],
+        angle: Math.round(orbitAngle * 100) / 100
+      });
+    }, 100); // 10fps recording
+    
+  }, 15000); // Wait 15s for scene to fully generate
+  
+  // Step 3: Stop and save
+  setTimeout(function() {
+    recording = false;
+    if (moveInt) clearInterval(moveInt);
+    
+    if (window._autoRecordData) {
+      window._autoRecordData.endTime = Date.now();
+      window._autoRecordData.duration = window._autoRecordData.endTime - window._autoRecordData.startTime;
+      window._autoRecordData.totalFrames = window._autoRecordData.frames.length;
+      
+      var json = JSON.stringify(window._autoRecordData);
+      var sizeMB = (json.length / 1024 / 1024).toFixed(2);
+      
+      try {
+        localStorage.setItem("autorec_" + sceneCmd + "_" + Date.now(), json);
+        console.log("[AutoRecord] SAVED! " + window._autoRecordData.totalFrames + " frames, " + window._autoRecordData.sceneObjects.length + " objects, " + sizeMB + "MB");
+      } catch(e) {
+        console.log("[AutoRecord] Storage full, data in window._autoRecordData");
+      }
+    }
+    
+    document.title = "✅ DONE — " + sceneCmd + " (" + window._autoRecordData.totalFrames + " frames, " + window._autoRecordData.sceneObjects.length + " objects)";
+    console.log("[AutoRecord] COMPLETE ✅");
+  }, (duration + 15) * 1000);
+  
+})();
