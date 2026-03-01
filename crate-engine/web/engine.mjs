@@ -10164,6 +10164,42 @@ function createRain() {
   return new THREE.Points(geo, new THREE.PointsMaterial({color:0x99bbff, size:0.06, transparent:true, opacity:0.5}));
 }
 
+// === RAIN PUDDLES ===
+let _rainPuddles = [];
+function createRainPuddles(count = 15) {
+  clearRainPuddles();
+  const cam = window._cam || camera;
+  for (let i = 0; i < count; i++) {
+    const geo = new THREE.CircleGeometry(1.5 + Math.random() * 3, 16);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x335577, transparent: true, opacity: 0.4,
+      roughness: 0.05, metalness: 0.9, side: THREE.DoubleSide
+    });
+    const puddle = new THREE.Mesh(geo, mat);
+    const px = (Math.random() - 0.5) * 80;
+    const pz = (Math.random() - 0.5) * 80;
+    const py = _getTerrainY(px, pz);
+    puddle.position.set(px, py + 0.02, pz);
+    puddle.rotation.x = -Math.PI / 2;
+    puddle.userData.isPuddle = true;
+    scene.add(puddle);
+    _rainPuddles.push(puddle);
+  }
+}
+function clearRainPuddles() {
+  for (const p of _rainPuddles) { scene.remove(p); p.geometry.dispose(); p.material.dispose(); }
+  _rainPuddles = [];
+}
+function updateRainPuddles(dt) {
+  for (const p of _rainPuddles) {
+    // Ripple effect - subtle scale pulse
+    const t = Date.now() * 0.001 + p.position.x;
+    p.material.opacity = 0.3 + Math.sin(t * 2) * 0.1;
+  }
+}
+
+
+
 function createSnow() {
   const count = 6000;
   const geo = new THREE.BufferGeometry();
@@ -11869,6 +11905,30 @@ function showGameHUD(preset) {
   document.body.appendChild(hud);
 }
 
+
+  
+  // Desert/Snow/Jungle themed city commands
+  if (lower.match(/^generate\s+(desert|snow|arctic|jungle|swamp|volcanic)\s*(city|town|village)?/)) {
+    const biomeMatch = lower.match(/^generate\s+(\w+)/);
+    const biome = biomeMatch[1];
+    const type = lower.includes('city') ? 'city' : lower.includes('village') ? 'town' : 'city';
+    await parseAndExecute('generate ' + type);
+    await parseAndExecute('biome ' + biome);
+    // Add biome-specific props
+    if (biome === 'desert') {
+      await parseAndExecute('time noon');
+      for (let i = 0; i < 8; i++) await parseAndExecute('add rock at ' + ((Math.random()-0.5)*80) + ' 0 ' + ((Math.random()-0.5)*80));
+    }
+    if (biome === 'snow' || biome === 'arctic') {
+      await parseAndExecute('time morning');
+      await parseAndExecute('particles snow');
+    }
+    if (biome === 'jungle') {
+      await parseAndExecute('time noon');
+      await parseAndExecute('fog on');
+    }
+    return '🌍 Generated ' + biome + ' ' + type + '!';
+  }
 
   if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
     const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
@@ -14658,11 +14718,12 @@ function addObj(name, mesh, x, z, scatter) {
 
 function setWeather(type) {
   if (rainParticles) { scene.remove(rainParticles); rainParticles=null; }
+  if (_rainPuddles.length > 0) updateRainPuddles(dt);
   if (snowParticles) { scene.remove(snowParticles); snowParticles=null; }
   weatherSystem = type;
-  if (type==='rain') { rainParticles=createRain(); scene.add(rainParticles); }
+  if (type==='rain') { rainParticles=createRain(); scene.add(rainParticles); createRainPuddles(20); }
   if (type==='snow') { snowParticles=createSnow(); scene.add(snowParticles); }
-  if (type==='storm') { rainParticles=createRain(); scene.add(rainParticles); scene.fog = new THREE.FogExp2(0x222233, 0.008); _lightningTimer = 2; }
+  if (type==='storm') { rainParticles=createRain(); scene.add(rainParticles); createRainPuddles(30); scene.fog = new THREE.FogExp2(0x222233, 0.008); _lightningTimer = 2; }
 }
 
 // === UI ===
@@ -17310,6 +17371,46 @@ function updateNightLighting(t) {
   }
 }
 
+
+// === TRAFFIC AI - Better Road Following ===
+function updateTrafficCars(dt) {
+  if (!window._trafficCars) return;
+  for (const car of window._trafficCars) {
+    if (!car.mesh || !car.mesh.parent) continue;
+    const pos = car.mesh.position;
+    const speed = car.speed || 8;
+    
+    // Move along lane direction
+    const dir = car.direction || new THREE.Vector3(0, 0, 1);
+    pos.addScaledVector(dir, speed * dt);
+    
+    // Snap to road Y
+    const ty = _getTerrainY(pos.x, pos.z);
+    if (ty > -0.1) pos.y = ty + 0.1;
+    
+    // Turn at intersections
+    const crossZ = Math.round(pos.z / 30) * 30;
+    if (Math.abs(pos.z - crossZ) < 1 && Math.random() < 0.02) {
+      // Random turn
+      const turn = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
+      dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), turn);
+      car.mesh.rotation.y = Math.atan2(dir.x, dir.z);
+    }
+    
+    // Despawn if too far
+    const cam = window._cam || camera;
+    if (cam && pos.distanceTo(cam.position) > 200) {
+      // Respawn near camera
+      const angle = Math.random() * Math.PI * 2;
+      pos.set(cam.position.x + Math.cos(angle) * 80, 0, cam.position.z + Math.sin(angle) * 80);
+      pos.y = _getTerrainY(pos.x, pos.z) + 0.1;
+    }
+  }
+}
+
+
+
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -17352,6 +17453,75 @@ function animate() {
     const fps = 1 / Math.max(dt, 0.001);
     const col = fps > 55 ? '#4ade80' : fps > 30 ? '#f59e0b' : '#ef4444';
     window._fpsEl.innerHTML = '<span style="color:' + col + '">' + fps.toFixed(0) + ' FPS</span> | ' + objects.length + ' obj | ' + (npcController ? npcController.npcs.length : 0) + ' npc | ' + renderer.info.render.triangles + ' tri';
+
+  // Minimap render
+  if (window._minimapOn && window._minimapCtx && window._minimapCanvas) {
+    const ctx = window._minimapCtx;
+    const mc = window._minimapCanvas;
+    const sz = mc.width;
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, sz, sz);
+    // Clip to circle
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(sz/2, sz/2, sz/2 - 2, 0, Math.PI*2);
+    ctx.clip();
+    
+    const player = window._characterController;
+    const pp = player ? (player.position || player.model?.position) : null;
+    const px = pp ? pp.x : 0;
+    const pz = pp ? pp.z : 0;
+    const scale = 2; // pixels per unit
+    
+    // Draw objects
+    for (const obj of objects) {
+      const ox = (obj.position.x - px) * scale + sz/2;
+      const oz = (obj.position.z - pz) * scale + sz/2;
+      if (ox < -10 || ox > sz+10 || oz < -10 || oz > sz+10) continue;
+      const isRoad = obj.userData?.name?.includes('Road');
+      const isBuilding = obj.userData?.name?.includes('Building') || obj.userData?.name?.includes('House') || obj.userData?.name?.includes('Shop');
+      const isNPC = false;
+      ctx.fillStyle = isRoad ? '#333' : isBuilding ? '#555' : '#444';
+      ctx.fillRect(ox-1, oz-1, 3, 3);
+    }
+    
+    // Draw NPCs
+    if (npcController) {
+      for (const npc of npcController.npcs) {
+        const nx = (npc.model.position.x - px) * scale + sz/2;
+        const nz = (npc.model.position.z - pz) * scale + sz/2;
+        if (nx < 0 || nx > sz || nz < 0 || nz > sz) continue;
+        ctx.fillStyle = npc.behavior === 'aggro' ? '#f44' : '#4f4';
+        ctx.fillRect(nx-2, nz-2, 4, 4);
+      }
+    }
+    
+    // Player dot (center)
+    ctx.fillStyle = '#4af';
+    ctx.beginPath();
+    ctx.arc(sz/2, sz/2, 4, 0, Math.PI*2);
+    ctx.fill();
+    
+    // Player direction arrow
+    if (player && player.model) {
+      const angle = player.model.rotation.y;
+      ctx.strokeStyle = '#4af';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sz/2, sz/2);
+      ctx.lineTo(sz/2 + Math.sin(angle)*12, sz/2 - Math.cos(angle)*12);
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+    // Circle border
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sz/2, sz/2, sz/2 - 1, 0, Math.PI*2);
+    ctx.stroke();
+  }
+
   }
 
 
