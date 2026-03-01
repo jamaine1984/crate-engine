@@ -21527,3 +21527,88 @@ window._handleGenerateCommand = function(cmd) {
 };
 
 console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
+
+// === AUTO-RECORD MODE (URL param: ?autorecord=city) ===
+(function checkAutoRecord() {
+  var params = new URLSearchParams(window.location.search)
+  var sceneCmd = params.get("autorecord")
+  if (!sceneCmd) return
+  console.log("[AutoRecord] Mode activated: " + sceneCmd)
+  
+  // Map short names to commands
+  var cmdMap = {
+    city: "generate city",
+    town: "generate town",
+    zombie: "zombie game",
+    racing: "racing mode",
+    rpg: "rpg game",
+    horror: "horror game",
+    survival: "survival game",
+    fps: "fps game",
+    medieval: "generate town",
+    fantasy: "generate fantasy"
+  }
+  var cmd = cmdMap[sceneCmd] || ("generate " + sceneCmd)
+  
+  // Step 1: Kill overlays + generate scene
+  setTimeout(function() {
+    document.querySelectorAll("div").forEach(function(d) {
+      if (d.style && d.style.zIndex && parseInt(d.style.zIndex) > 9500) d.style.display = "none"
+    })
+    if (window._runCommand) window._runCommand(cmd)
+  }, 3000)
+  
+  // Step 2: Enter play mode
+  setTimeout(function() {
+    document.querySelectorAll("div").forEach(function(d) {
+      if (d.style && d.style.zIndex && parseInt(d.style.zIndex) > 9500) d.style.display = "none"
+    })
+    if (typeof enterPlayMode === "function") enterPlayMode()
+  }, 15000)
+  
+  // Step 3: Auto-select character (first available)
+  setTimeout(function() {
+    var charCards = document.querySelectorAll(".char-select-card")
+    if (charCards.length > 0) charCards[Math.floor(Math.random() * charCards.length)].click()
+    // Also try img clicks for character gallery
+    var imgs = document.querySelectorAll("img[data-model]")
+    if (imgs.length > 0) imgs[Math.floor(Math.random() * imgs.length)].click()
+  }, 17000)
+  
+  // Step 4: Dismiss click-to-play
+  setTimeout(function() {
+    var ctp = document.getElementById("click-to-play")
+    if (ctp) ctp.click()
+    var canvas = document.querySelector("canvas")
+    if (canvas) { canvas.click(); canvas.requestPointerLock && canvas.requestPointerLock() }
+  }, 19000)
+  
+  // Step 5: Simulate movement patterns
+  var patterns = ["w","w","w","wa","wd","w","d","w","a","w","ws","w"," w","w","wd","wa"]
+  var patIdx = 0
+  var moveInt = null
+  setTimeout(function() {
+    moveInt = setInterval(function() {
+      ["w","a","s","d"," "].forEach(function(k) {
+        document.dispatchEvent(new KeyboardEvent("keyup", {key:k, code:"Key"+k.toUpperCase(), bubbles:true}))
+      })
+      var pat = patterns[patIdx % patterns.length]
+      patIdx++
+      pat.split("").forEach(function(k) {
+        document.dispatchEvent(new KeyboardEvent("keydown", {key:k, code:"Key"+k.toUpperCase(), bubbles:true}))
+      })
+    }, 2500)
+  }, 21000)
+  
+  // Step 6: Stop after 2 minutes
+  var duration = parseInt(params.get("duration")) || 120
+  setTimeout(function() {
+    if (moveInt) clearInterval(moveInt)
+    if (window._replayStop) {
+      var data = window._replayStop()
+      console.log("[AutoRecord] COMPLETE. Frames: " + (data ? data.totalFrames : 0) + ", Builds: " + (data ? data.buildActions.length : 0))
+    }
+    document.title = "✅ DONE — " + sceneCmd
+  }, (duration + 21) * 1000)
+  
+})()
