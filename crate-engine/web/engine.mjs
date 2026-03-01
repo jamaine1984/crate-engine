@@ -1006,13 +1006,13 @@ setTimeout(() => {
   canvasEl = document.querySelector('canvas');
   if (canvasEl) {
     canvasEl.addEventListener('mousedown', (e) => {
-      if (playMode && e.button === 2 && characterController) {
+      if (playMode && e.button === 2 && typeof characterController !== 'undefined' && characterController) {
         characterController.startAim();
         e.preventDefault();
       }
     });
     canvasEl.addEventListener('mouseup', (e) => {
-      if (e.button === 2 && characterController) {
+      if (e.button === 2 && typeof characterController !== 'undefined' && characterController) {
         characterController.stopAim();
       }
     });
@@ -1022,7 +1022,7 @@ setTimeout(() => {
         canvasEl.addEventListener('click', () => { if (playMode) canvasEl.requestPointerLock(); });
     document.addEventListener('pointermove', (e) => {
       // Skip when character controller handles camera
-      if (characterController && characterController.model) return;
+      if (typeof characterController !== 'undefined' && characterController && characterController.model) return;
       if (playMode && document.pointerLockElement === canvasEl) {
         playYaw -= e.movementX * 0.002;
         const pitch = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x - e.movementY * 0.002));
@@ -1035,9 +1035,9 @@ setTimeout(() => {
 }, 1000);
 
 window.addEventListener('keydown', e => {
-  if (e.key === ' ' && dialogueSystem && dialogueSystem.active) { dialogueSystem.advance(); e.preventDefault(); return; }
+  if (typeof dialogueSystem !== 'undefined' && e.key === ' ' && dialogueSystem && dialogueSystem.active) { dialogueSystem.advance(); e.preventDefault(); return; }
   if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
-  if ((e.key === 'Tab' || e.key === 'i') && playMode && characterController && !e.ctrlKey && !e.metaKey) {
+  if ((e.key === 'Tab' || e.key === 'i') && playMode && typeof characterController !== 'undefined' && characterController && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
     characterController.toggleInventoryPanel();
     return;
