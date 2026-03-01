@@ -17375,7 +17375,11 @@ window._engineBridge = {
   
   // Weather
   async setWeather(type) {
-    if (type === 'clear') { setWeather(null); scene.fog = null; return '✓ Weather cleared'; }
+    if (type === 'clear') { setWeather(null); scene.fog = null; return '☀️ Weather cleared'; }
+    if (type === 'storm') { setWeather('storm'); return '⛈️ Thunderstorm!'; }
+    if (type === 'rain') { setWeather('rain'); return '🌧️ Rain started'; }
+    if (type === 'snow') { setWeather('snow'); return '❄️ Snow started'; }
+    if (type === 'overcast') { scene.fog = new THREE.FogExp2(0x888899, 0.004); return '☁️ Overcast'; }
     return await execSingle(type);
   },
   
