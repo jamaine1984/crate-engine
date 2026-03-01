@@ -8933,6 +8933,67 @@ function createBridge(opts) {
   return g;
 }
 
+
+function createBusStop() {
+  const g = new THREE.Group(); g.userData.name = 'Bus Stop';
+  const poleMat = makeMat(0x666666, {rough:0.3, metal:0.6});
+  const roofMat = makeMat(0x3366aa, {rough:0.4});
+  const glassMat = new THREE.MeshPhysicalMaterial({color: 0x88ccee, roughness: 0.05, transparent: true, opacity: 0.25});
+  // Shelter roof
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1.5), roofMat);
+  roof.position.y = 2.5; roof.castShadow = true; g.add(roof);
+  // Support poles
+  [[-1.3, -0.6], [1.3, -0.6]].forEach(([x, z]) => {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.5), poleMat);
+    pole.position.set(x, 1.25, z); g.add(pole);
+  });
+  // Back panel (glass)
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(3, 2), glassMat);
+  back.position.set(0, 1.5, -0.7); g.add(back);
+  // Bench
+  const benchMat = makeMat(0x885533, {rough:0.7});
+  const bench = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.08, 0.4), benchMat);
+  bench.position.set(0, 0.5, -0.3); g.add(bench);
+  const benchLegs = makeMat(0x555555, {rough:0.4});
+  [-0.9, 0.9].forEach(x => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.06), benchLegs);
+    leg.position.set(x, 0.25, -0.3); g.add(leg);
+  });
+  // Sign
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.02), roofMat);
+  sign.position.set(1.5, 2.8, 0); g.add(sign);
+  const signPole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 3), poleMat);
+  signPole.position.set(1.5, 1.5, 0); g.add(signPole);
+  return g;
+}
+
+function createDumpster() {
+  const g = new THREE.Group(); g.userData.name = 'Dumpster';
+  const mat = makeMat(0x336633, {rough:0.6, metal:0.3});
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 1.2), mat);
+  body.position.y = 0.6; body.castShadow = true; g.add(body);
+  // Lid
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.08, 1.25), mat);
+  lid.position.y = 1.24; g.add(lid);
+  // Wheels
+  const wheelMat = makeMat(0x222222, {rough:0.8});
+  [[-0.8, -0.55], [0.8, -0.55], [-0.8, 0.55], [0.8, 0.55]].forEach(([x, z]) => {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 8), wheelMat);
+    wheel.rotation.z = Math.PI/2; wheel.position.set(x, 0.12, z); g.add(wheel);
+  });
+  return g;
+}
+
+function createTrashCan() {
+  const g = new THREE.Group(); g.userData.name = 'Trash Can';
+  const mat = makeMat(0x555555, {rough:0.5, metal:0.4});
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.8, 12), mat);
+  body.position.y = 0.4; g.add(body);
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.04, 12), mat);
+  lid.position.y = 0.82; g.add(lid);
+  return g;
+}
+
 function createSwimmingPool(opts) {
   const o = opts || {}; const w = o.width || 8; const d = o.depth || 4;
   const g = new THREE.Group(); g.userData.name = 'Swimming Pool';
@@ -9055,6 +9116,28 @@ function createIntersection() {
     const corner = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.12, 2.5), sidewalkMat);
     corner.position.set(sx*(size/2+0.5),0.06,sz*(size/2+0.5)); g.add(corner);
   });
+  // Crosswalk stripes
+  const cwMat = makeMat(0xeeeeee, {rough:0.5});
+  // North crosswalk
+  for (let s = -2; s <= 2; s += 0.8) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 1.5), cwMat);
+    stripe.position.set(s, 0.05, size/2 - 0.5); g.add(stripe);
+  }
+  // South crosswalk
+  for (let s = -2; s <= 2; s += 0.8) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 1.5), cwMat);
+    stripe.position.set(s, 0.05, -(size/2 - 0.5)); g.add(stripe);
+  }
+  // East crosswalk
+  for (let s = -2; s <= 2; s += 0.8) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.09, 0.5), cwMat);
+    stripe.position.set(size/2 - 0.5, 0.05, s); g.add(stripe);
+  }
+  // West crosswalk
+  for (let s = -2; s <= 2; s += 0.8) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.09, 0.5), cwMat);
+    stripe.position.set(-(size/2 - 0.5), 0.05, s); g.add(stripe);
+  }
   return g;
 }
 
@@ -9320,26 +9403,6 @@ function createStreetLamp(opts) {
 }
 
 // === DUMPSTER (v218) ===
-function createDumpster(opts) {
-  var g = new THREE.Group();
-  var body = new THREE.Mesh(
-    new THREE.BoxGeometry(2, 1.2, 1),
-    new THREE.MeshStandardMaterial({ color: 0x2d5a27, roughness: 0.7 })
-  );
-  body.position.y = 0.6;
-  body.castShadow = true;
-  g.add(body);
-  var lid = new THREE.Mesh(
-    new THREE.BoxGeometry(2, 0.08, 1.1),
-    new THREE.MeshStandardMaterial({ color: 0x1a3a15, roughness: 0.6 })
-  );
-  lid.position.set(0, 1.24, 0);
-  g.add(lid);
-  g.userData = { objectType: 'dumpster', displayName: 'Dumpster' };
-  return g;
-}
-
-// === BENCH (v218) ===  
 function createBench(opts) {
   var g = new THREE.Group();
   var seat = new THREE.Mesh(
@@ -12376,6 +12439,17 @@ function showGameHUD(preset) {
           { cmd: 'add ph_street_lamp_01', pos: [-7, 115] },
           { cmd: 'add ph_street_lamp_01', pos: [7, 115] },
           
+          // Bus stops
+          { cmd: 'add bus stop', pos: [8, -55] },
+          { cmd: 'add bus stop', pos: [-8, 50] },
+          // Dumpsters (behind shops)
+          { cmd: 'add dumpster', pos: [-24, -18] },
+          { cmd: 'add dumpster', pos: [24, -18] },
+          // Trash cans along sidewalks
+          { cmd: 'add trash can', pos: [-7, -45] },
+          { cmd: 'add trash can', pos: [7, 15] },
+          { cmd: 'add trash can', pos: [-7, 65] },
+          { cmd: 'add trash can', pos: [7, 105] },
           // Fire hydrants
           { cmd: 'add ph_fire_hydrant', pos: [-7, -50] },
           { cmd: 'add ph_fire_hydrant', pos: [7, 0] },
@@ -14021,6 +14095,23 @@ function showGameHUD(preset) {
     if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
     return '🌉 Bridge created!';
   }
+
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(bus stop|bus shelter)/)) {
+    const obj = createBusStop();
+    addObj('Bus Stop', obj, px || 0, pz || 0);
+    return '🚏 Bus stop created!';
+  }
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(dumpster|skip|bin)/)) {
+    const obj = createDumpster();
+    addObj('Dumpster', obj, px || 0, pz || 0);
+    return '🗑️ Dumpster created!';
+  }
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(trash can|rubbish bin|waste bin)/)) {
+    const obj = createTrashCan();
+    addObj('Trash Can', obj, px || 0, pz || 0);
+    return '🗑️ Trash can created!';
+  }
+
 
   // Stop sign
 
@@ -16934,6 +17025,7 @@ function spawnDrivingCar(scene, roadX, startZ, direction) {
 }
 
 function updateDrivingCars(dt) {
+  const isNight = (_dayTime < 6 || _dayTime > 18);
   for (let i = 0; i < _drivingCars.length; i++) {
     const car = _drivingCars[i];
     car.obj.position.z += car.speed * car.direction * dt;
@@ -16945,7 +17037,21 @@ function updateDrivingCars(dt) {
     }
     // Keep on road height
     car.obj.position.y = 0.05;
-    car.obj.position.x = car.roadX; // Stay in lane
+    car.obj.position.x = car.roadX;
+    // Headlights at night
+    if (isNight && !car.headlight) {
+      const hl = new THREE.SpotLight(0xffffcc, 3, 20, 0.5, 0.5);
+      hl.position.set(0, 1, car.direction > 0 ? -2.5 : 2.5);
+      hl.target.position.set(0, 0, car.direction > 0 ? -10 : 10);
+      car.obj.add(hl);
+      car.obj.add(hl.target);
+      car.headlight = hl;
+    } else if (!isNight && car.headlight) {
+      car.obj.remove(car.headlight);
+      car.obj.remove(car.headlight.target);
+      car.headlight.dispose();
+      car.headlight = null;
+    }
   }
 }
 
