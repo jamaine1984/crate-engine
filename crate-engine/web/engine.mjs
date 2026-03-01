@@ -10555,6 +10555,11 @@ async function execSingle(cmd) {
     return '📖 Help panel opened';
   }
 
+
+  if (lower === 'settings' || lower === 'options' || lower === 'preferences') {
+    showSettings();
+    return '⚙️ Settings opened';
+  }
   // 3D Generator commands
   
   
@@ -18517,6 +18522,7 @@ function getSceneCommands(scene) {
     share: function() { shareScene(); },
     export_html: function() { if (isProUser()) { exportAsHTML(); } else { showUpgradeModal('pro'); } },
     marketplace: function() { openCreatorMarketplace(); },
+    settings: function() { showSettings(); },
     unity: function() { if (isProUser()) { exportForUnity(); } else { showUpgradeModal('pro'); } },
     unreal: function() { if (isProUser()) { exportForUnreal(); } else { showUpgradeModal('pro'); } },
   };
@@ -20605,6 +20611,156 @@ setTimeout(() => {
   }
 }, 2000);
 window.showQuickStart = showQuickStart;
+
+
+// === SETTINGS MENU (v217) ===
+function showSettings() {
+  let panel = document.getElementById('settings-panel');
+  if (panel) { panel.remove(); return; }
+  
+  // Load saved settings
+  const saved = JSON.parse(localStorage.getItem('crate-settings') || '{}');
+  const quality = saved.quality || 'high';
+  const shadows = saved.shadows !== false;
+  const fog = saved.fog !== false;
+  const clouds = saved.clouds !== false;
+  const music = saved.music !== false;
+  const sfx = saved.sfx !== false;
+  const sensitivity = saved.sensitivity || 1;
+  const fov = saved.fov || 60;
+  
+  panel = document.createElement('div');
+  panel.id = 'settings-panel';
+  panel.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10020;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;backdrop-filter:blur(10px);';
+  
+  panel.innerHTML = `
+    <div style="background:#111;border:1px solid #333;border-radius:16px;padding:32px;width:440px;max-height:80vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+        <h2 style="margin:0;color:#fff;font-size:22px;">⚙️ Settings</h2>
+        <div id="settings-close" style="cursor:pointer;font-size:20px;color:#666;">✕</div>
+      </div>
+      
+      <div style="margin-bottom:20px;">
+        <div style="color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Graphics</div>
+        
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <span style="color:#ccc;font-size:14px;">Quality</span>
+          <select id="s-quality" style="background:#222;color:#fff;border:1px solid #444;padding:4px 12px;border-radius:6px;">
+            <option value="low" ${quality==='low'?'selected':''}>Low</option>
+            <option value="medium" ${quality==='medium'?'selected':''}>Medium</option>
+            <option value="high" ${quality==='high'?'selected':''}>High</option>
+            <option value="ultra" ${quality==='ultra'?'selected':''}>Ultra</option>
+          </select>
+        </div>
+        
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <span style="color:#ccc;font-size:14px;">Shadows</span>
+          <label style="position:relative;width:44px;height:24px;">
+            <input type="checkbox" id="s-shadows" ${shadows?'checked':''} style="opacity:0;width:0;height:0;">
+            <span style="position:absolute;cursor:pointer;inset:0;background:${shadows?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
+            <span style="position:absolute;left:${shadows?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
+          </label>
+        </div>
+        
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <span style="color:#ccc;font-size:14px;">Fog</span>
+          <label style="position:relative;width:44px;height:24px;">
+            <input type="checkbox" id="s-fog" ${fog?'checked':''} style="opacity:0;width:0;height:0;">
+            <span style="position:absolute;cursor:pointer;inset:0;background:${fog?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
+            <span style="position:absolute;left:${fog?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
+          </label>
+        </div>
+        
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <span style="color:#ccc;font-size:14px;">Clouds</span>
+          <label style="position:relative;width:44px;height:24px;">
+            <input type="checkbox" id="s-clouds" ${clouds?'checked':''} style="opacity:0;width:0;height:0;">
+            <span style="position:absolute;cursor:pointer;inset:0;background:${clouds?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
+            <span style="position:absolute;left:${clouds?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
+          </label>
+        </div>
+        
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="color:#ccc;font-size:14px;">FOV</span>
+            <span style="color:#666;font-size:13px;" id="s-fov-val">${fov}°</span>
+          </div>
+          <input type="range" id="s-fov" min="40" max="120" value="${fov}" style="width:100%;accent-color:#ff6b35;">
+        </div>
+      </div>
+      
+      <div style="margin-bottom:20px;">
+        <div style="color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Controls</div>
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="color:#ccc;font-size:14px;">Mouse Sensitivity</span>
+            <span style="color:#666;font-size:13px;" id="s-sens-val">${sensitivity.toFixed(1)}x</span>
+          </div>
+          <input type="range" id="s-sensitivity" min="0.1" max="3" step="0.1" value="${sensitivity}" style="width:100%;accent-color:#ff6b35;">
+        </div>
+      </div>
+      
+      <button id="s-apply" style="width:100%;padding:12px;background:#ff6b35;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
+        Apply & Save
+      </button>
+    </div>
+  `;
+  
+  document.body.appendChild(panel);
+  
+  // FOV slider
+  document.getElementById('s-fov').oninput = (e) => {
+    document.getElementById('s-fov-val').textContent = e.target.value + '°';
+  };
+  document.getElementById('s-sensitivity').oninput = (e) => {
+    document.getElementById('s-sens-val').textContent = parseFloat(e.target.value).toFixed(1) + 'x';
+  };
+  
+  // Close
+  document.getElementById('settings-close').onclick = () => panel.remove();
+  document.addEventListener('keydown', function esc(e) { 
+    if (e.key === 'Escape') { panel.remove(); document.removeEventListener('keydown', esc); } 
+  });
+  
+  // Apply
+  document.getElementById('s-apply').onclick = () => {
+    const settings = {
+      quality: document.getElementById('s-quality').value,
+      shadows: document.getElementById('s-shadows').checked,
+      fog: document.getElementById('s-fog').checked,
+      clouds: document.getElementById('s-clouds').checked,
+      sensitivity: parseFloat(document.getElementById('s-sensitivity').value),
+      fov: parseInt(document.getElementById('s-fov').value),
+    };
+    
+    localStorage.setItem('crate-settings', JSON.stringify(settings));
+    
+    // Apply quality
+    const qualityMap = { low: 0.5, medium: 0.75, high: 1, ultra: window.devicePixelRatio || 1 };
+    renderer.setPixelRatio(qualityMap[settings.quality] || 1);
+    
+    // Apply shadows
+    renderer.shadowMap.enabled = settings.shadows;
+    
+    // Apply FOV
+    camera.fov = settings.fov;
+    camera.updateProjectionMatrix();
+    
+    // Apply fog
+    if (!settings.fog) scene.fog = null;
+    
+    // Apply clouds
+    if (!settings.clouds && _cloudGroup) { scene.remove(_cloudGroup); _cloudGroup = null; }
+    else if (settings.clouds && !_cloudGroup) createClouds();
+    
+    // Apply sensitivity (store for mouse handler)
+    window._mouseSensitivity = settings.sensitivity;
+    
+    panel.remove();
+    showToast('⚙️ Settings saved!');
+  };
+}
+window.showSettings = showSettings;
 
 // === BUILD TOOLBAR — Always visible category icons ===
 (function() {
