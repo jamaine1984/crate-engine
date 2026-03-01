@@ -16376,7 +16376,7 @@ function animate() {
   if (window._godmode) window._godmode.updateBehaviors(dt, t);
   if (window._sound && window._sound.updateMusic) { window._sound.updateMusic(dt); } if (window._sound && window._sound.updateAmbient) { window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
   if (window._updateAmbientOneShots) window._updateAmbientOneShots(dt);
-  updateDayNightCycle(dt);
+  updateDayNightCycle(dt); updateHealthRegen(dt);
   updateDebris(dt);
   updatePickups(dt, t);
   updateGrapple(dt);
@@ -21724,92 +21724,8 @@ window._handleGenerateCommand = function(cmd) {
 
 console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
 
-// === AUTO-RECORD MODE (URL param: ?autorecord=city) ===
-(function checkAutoRecord() {
-  var params = new URLSearchParams(window.location.search)
-  var sceneCmd = params.get("autorecord")
-  if (!sceneCmd) return
-  console.log("[AutoRecord] Mode activated: " + sceneCmd)
-  
-  // Map short names to commands
-  var cmdMap = {
-    city: "generate city",
-    town: "generate town",
-    zombie: "zombie game",
-    racing: "racing mode",
-    rpg: "rpg game",
-    horror: "horror game",
-    survival: "survival game",
-    fps: "fps game",
-    medieval: "generate town",
-    fantasy: "generate fantasy"
-  }
-  var cmd = cmdMap[sceneCmd] || ("generate " + sceneCmd)
-  
-  // Step 1: Kill overlays + generate scene
-  setTimeout(function() {
-    document.querySelectorAll("div").forEach(function(d) {
-      if (d.style && d.style.zIndex && parseInt(d.style.zIndex) > 9500) d.style.display = "none"
-    })
-    if (window._runCommand) window._runCommand(cmd)
-  }, 3000)
-  
-  // Step 2: Enter play mode
-  setTimeout(function() {
-    document.querySelectorAll("div").forEach(function(d) {
-      if (d.style && d.style.zIndex && parseInt(d.style.zIndex) > 9500) d.style.display = "none"
-    })
-    if (typeof enterPlayMode === "function") enterPlayMode()
-  }, 15000)
-  
-  // Step 3: Auto-select character (first available)
-  setTimeout(function() {
-    var charCards = document.querySelectorAll(".char-select-card")
-    if (charCards.length > 0) charCards[Math.floor(Math.random() * charCards.length)].click()
-    // Also try img clicks for character gallery
-    var imgs = document.querySelectorAll("img[data-model]")
-    if (imgs.length > 0) imgs[Math.floor(Math.random() * imgs.length)].click()
-  }, 17000)
-  
-  // Step 4: Dismiss click-to-play
-  setTimeout(function() {
-    var ctp = document.getElementById("click-to-play")
-    if (ctp) ctp.click()
-    var canvas = document.querySelector("canvas")
-    if (canvas) { canvas.click(); canvas.requestPointerLock && canvas.requestPointerLock() }
-  }, 19000)
-  
-  // Step 5: Simulate movement patterns
-  var patterns = ["w","w","w","wa","wd","w","d","w","a","w","ws","w"," w","w","wd","wa"]
-  var patIdx = 0
-  var moveInt = null
-  setTimeout(function() {
-    moveInt = setInterval(function() {
-      ["w","a","s","d"," "].forEach(function(k) {
-        document.dispatchEvent(new KeyboardEvent("keyup", {key:k, code:"Key"+k.toUpperCase(), bubbles:true}))
-      })
-      var pat = patterns[patIdx % patterns.length]
-      patIdx++
-      pat.split("").forEach(function(k) {
-        document.dispatchEvent(new KeyboardEvent("keydown", {key:k, code:"Key"+k.toUpperCase(), bubbles:true}))
-      })
-    }, 2500)
-  }, 21000)
-  
-  // Step 6: Stop after 2 minutes
-  var duration = parseInt(params.get("duration")) || 120
-  setTimeout(function() {
-    if (moveInt) clearInterval(moveInt)
-    if (window._replayStop) {
-      var data = window._replayStop()
-      console.log("[AutoRecord] COMPLETE. Frames: " + (data ? data.totalFrames : 0) + ", Builds: " + (data ? data.buildActions.length : 0))
-    }
-    document.title = "✅ DONE — " + sceneCmd
-  }, (duration + 21) * 1000)
-  
-})()
 
-// === AUTO-RECORD MODE (v218 — editor orbit recording) ===
+// === AUTO-RECORD MODE (v218 — orbit camera recording) ===
 (function() {
   var params = new URLSearchParams(window.location.search);
   var sceneCmd = params.get("autorecord");
@@ -21823,112 +21739,89 @@ console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
   var cmd = cmdMap[sceneCmd] || ("generate " + sceneCmd);
   var duration = parseInt(params.get("duration")) || 120;
   
-  console.log("[AutoRecord] v218 Mode: " + sceneCmd + " (" + duration + "s)");
+  console.log("[AutoRecord] v218 orbit mode: " + sceneCmd + " (" + duration + "s)");
   
-  // Step 1: Kill overlays + generate scene
   function clearOverlays() {
     document.querySelectorAll("div").forEach(function(d) {
       if (d.style && d.style.zIndex && parseInt(d.style.zIndex) > 9500) d.style.display = "none";
     });
   }
   
+  // Step 1: Clear overlays + generate scene
+  setTimeout(function() { clearOverlays(); }, 1000);
   setTimeout(function() {
     clearOverlays();
     if (window._runCommand) {
       window._runCommand(cmd);
-      console.log("[AutoRecord] Generated: " + cmd);
+      console.log("[AutoRecord] Generating: " + cmd);
     }
   }, 3000);
+  setTimeout(function() { clearOverlays(); }, 5000);
+  setTimeout(function() { clearOverlays(); }, 10000);
   
-  // Step 2: Start recording + orbit camera around scene
-  var orbitAngle = 0;
-  var orbitRadius = 80;
-  var orbitHeight = 40;
-  var orbitSpeed = 0.3;
+  // Step 2: After scene loads, orbit camera and record
   var recording = false;
+  var recordData = null;
   var moveInt = null;
+  var orbitAngle = 0;
   
   setTimeout(function() {
     clearOverlays();
-    
-    // Start manual recording (not play mode — editor mode recording)
     recording = true;
-    window._autoRecordData = {
-      version: 2,
-      mode: "orbit",
-      sceneType: sceneCmd,
-      startTime: Date.now(),
-      frames: [],
-      sceneObjects: []
+    recordData = {
+      version: 2, mode: "orbit", sceneType: sceneCmd,
+      startTime: Date.now(), frames: [], sceneObjects: []
     };
     
-    // Capture scene objects
+    // Snapshot all scene objects
     if (typeof scene !== "undefined") {
       scene.children.forEach(function(obj) {
         if (obj.userData && (obj.userData.objectType || obj.userData.name)) {
-          window._autoRecordData.sceneObjects.push({
+          recordData.sceneObjects.push({
             type: obj.userData.objectType || "unknown",
             name: obj.userData.displayName || obj.userData.name || obj.name || "",
-            pos: [Math.round(obj.position.x), Math.round(obj.position.y), Math.round(obj.position.z)],
-            scale: obj.scale ? [obj.scale.x.toFixed(1), obj.scale.y.toFixed(1), obj.scale.z.toFixed(1)] : [1,1,1]
+            pos: [Math.round(obj.position.x), Math.round(obj.position.y), Math.round(obj.position.z)]
           });
         }
       });
     }
+    console.log("[AutoRecord] Recording! Objects: " + recordData.sceneObjects.length);
+    document.title = "🔴 REC — " + sceneCmd + " (" + recordData.sceneObjects.length + " objects)";
     
-    console.log("[AutoRecord] Recording started. Scene objects: " + window._autoRecordData.sceneObjects.length);
-    
-    // Orbit the camera around the world
+    // Orbit camera around world center
     moveInt = setInterval(function() {
       if (!recording) return;
-      orbitAngle += orbitSpeed * 0.05;
-      
-      // Vary orbit: change height and radius over time
-      var t = (Date.now() - window._autoRecordData.startTime) / 1000;
-      var currentRadius = orbitRadius + Math.sin(t * 0.1) * 30;
-      var currentHeight = orbitHeight + Math.sin(t * 0.15) * 20;
-      
-      var cx = Math.cos(orbitAngle) * currentRadius;
-      var cz = Math.sin(orbitAngle) * currentRadius;
-      
+      orbitAngle += 0.015;
+      var t = (Date.now() - recordData.startTime) / 1000;
+      var r = 80 + Math.sin(t * 0.1) * 30;
+      var h = 40 + Math.sin(t * 0.15) * 20;
+      var cx = Math.cos(orbitAngle) * r;
+      var cz = Math.sin(orbitAngle) * r;
       if (typeof camera !== "undefined") {
-        camera.position.set(cx, currentHeight, cz);
+        camera.position.set(cx, h, cz);
         camera.lookAt(0, 5, 0);
       }
-      
-      // Record frame
-      window._autoRecordData.frames.push({
-        t: Math.round(t * 1000),
-        cam: [Math.round(cx), Math.round(currentHeight), Math.round(cz)],
-        angle: Math.round(orbitAngle * 100) / 100
-      });
-    }, 100); // 10fps recording
-    
-  }, 15000); // Wait 15s for scene to fully generate
+      if (t % 1 < 0.12) {
+        recordData.frames.push({
+          t: Math.round(t * 1000),
+          cam: [Math.round(cx), Math.round(h), Math.round(cz)]
+        });
+      }
+    }, 100);
+  }, 18000);
   
-  // Step 3: Stop and save
+  // Step 3: Save when done
   setTimeout(function() {
     recording = false;
     if (moveInt) clearInterval(moveInt);
-    
-    if (window._autoRecordData) {
-      window._autoRecordData.endTime = Date.now();
-      window._autoRecordData.duration = window._autoRecordData.endTime - window._autoRecordData.startTime;
-      window._autoRecordData.totalFrames = window._autoRecordData.frames.length;
-      
-      var json = JSON.stringify(window._autoRecordData);
-      var sizeMB = (json.length / 1024 / 1024).toFixed(2);
-      
-      try {
-        localStorage.setItem("autorec_" + sceneCmd + "_" + Date.now(), json);
-        console.log("[AutoRecord] SAVED! " + window._autoRecordData.totalFrames + " frames, " + window._autoRecordData.sceneObjects.length + " objects, " + sizeMB + "MB");
-      } catch(e) {
-        console.log("[AutoRecord] Storage full, data in window._autoRecordData");
-      }
+    if (recordData) {
+      recordData.endTime = Date.now();
+      recordData.duration = recordData.endTime - recordData.startTime;
+      recordData.totalFrames = recordData.frames.length;
+      var json = JSON.stringify(recordData);
+      try { localStorage.setItem("autorec_" + sceneCmd + "_" + Date.now(), json); } catch(e) {}
+      console.log("[AutoRecord] DONE! " + recordData.totalFrames + " frames, " + recordData.sceneObjects.length + " objects");
+      document.title = "✅ DONE — " + sceneCmd + " (" + recordData.sceneObjects.length + " objects)";
     }
-    
-    document.title = "✅ DONE — " + sceneCmd + " (" + window._autoRecordData.totalFrames + " frames, " + window._autoRecordData.sceneObjects.length + " objects)";
-    console.log("[AutoRecord] COMPLETE ✅");
-  }, (duration + 15) * 1000);
-  
+  }, (duration + 18) * 1000);
 })();
