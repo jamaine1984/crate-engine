@@ -195,33 +195,7 @@ function updateBullets(dt) {
   }
 }
 
-function showDamageNumber(pos, damage) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64; canvas.height = 32;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ff4444';
-  ctx.font = 'bold 24px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('-' + damage, 32, 24);
-  const tex = new THREE.CanvasTexture(canvas);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-  sprite.position.copy(pos);
-  sprite.position.y += 2;
-  sprite.scale.set(1.5, 0.75, 1);
-  scene.add(sprite);
-  // Float up and fade
-  const startY = sprite.position.y;
-  const startTime = performance.now();
-  function animDmg() {
-    const elapsed = (performance.now() - startTime) / 1000;
-    if (elapsed > 1) { scene.remove(sprite); return; }
-    sprite.position.y = startY + elapsed * 2;
-    sprite.material.opacity = 1 - elapsed;
-    requestAnimationFrame(animDmg);
-  }
-  animDmg();
-}
-
+function showDamageNumber(pos, damage) { showDamageNumberV2(pos, damage); }
 function createShooterHUD() {
   let hud = document.getElementById('shooter-hud');
   if (hud) return;
@@ -1156,20 +1130,7 @@ function executeTriggerAction(trig, obj) {
   }
 }
 
-function createExplosion(pos) {
-  const count = 30;
-  const geo = new THREE.BufferGeometry();
-  const positions = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    positions[i*3] = pos.x + (Math.random()-0.5)*0.5;
-    positions[i*3+1] = pos.y + Math.random()*0.5;
-    positions[i*3+2] = pos.z + (Math.random()-0.5)*0.5;
-  }
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({color: 0xff4400, size: 0.3}));
-  pts.userData.startTime = performance.now();
-  return pts;
-}
+function createExplosion(pos) { createExplosionV2(pos); }
 
 // === HUD (score, health, etc.) ===
 let hudDiv = null;
