@@ -14696,6 +14696,8 @@ function shatterObject(mesh) {
     debris.push(piece);
   }
   
+  // Explosion effect
+  createExplosionV2(pos, avgScale * 2);
   // Remove original
   scene.remove(mesh);
   _destructibles.delete(mesh);
@@ -15318,6 +15320,242 @@ function updatePickups(dt, t) {
 
 
 
+// === EXPLOSION EFFECT (v217) ===
+function createExplosionV2(position, size = 3, color = 0xff6600) {
+  // Fireball
+  const fireGeo = new THREE.SphereGeometry(size * 0.4, 12, 12);
+  const fireMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.9 });
+  const fireball = new THREE.Mesh(fireGeo, fireMat);
+  fireball.position.copy(position);
+  scene.add(fireball);
+  
+  // Point light
+  const light = new THREE.PointLight(color, 5, size * 8);
+  light.position.copy(position);
+  scene.add(light);
+  
+  // Smoke particles
+  const smokeCount = 20;
+  const smokeParticles = [];
+  for (let i = 0; i < smokeCount; i++) {
+    const sGeo = new THREE.SphereGeometry(size * 0.15 * (0.5 + Math.random()), 6, 6);
+    const sMat = new THREE.MeshBasicMaterial({ 
+      color: Math.random() > 0.5 ? 0x333333 : 0xff4400, 
+      transparent: true, opacity: 0.8 
+    });
+    const smoke = new THREE.Mesh(sGeo, sMat);
+    smoke.position.copy(position);
+    smoke.userData._vel = new THREE.Vector3(
+      (Math.random() - 0.5) * size * 3,
+      2 + Math.random() * size * 2,
+      (Math.random() - 0.5) * size * 3
+    );
+    smoke.userData._life = 0.5 + Math.random() * 1;
+    scene.add(smoke);
+    smokeParticles.push(smoke);
+  }
+  
+  // Animate
+  let elapsed = 0;
+  const tick = () => {
+    elapsed += 0.016;
+    
+    // Expand fireball
+    const scale = 1 + elapsed * 8;
+    fireball.scale.set(scale, scale, scale);
+    fireball.material.opacity = Math.max(0, 0.9 - elapsed * 2);
+    light.intensity = Math.max(0, 5 - elapsed * 10);
+    
+    // Move smoke
+    for (const s of smokeParticles) {
+      s.userData._life -= 0.016;
+      s.position.addScaledVector(s.userData._vel, 0.016);
+      s.userData._vel.y -= 2 * 0.016; // gravity
+      s.material.opacity = Math.max(0, s.userData._life);
+      const ss = 1 + (0.5 - s.userData._life) * 2;
+      s.scale.set(ss, ss, ss);
+    }
+    
+    if (elapsed < 1.5) {
+      requestAnimationFrame(tick);
+    } else {
+      // Cleanup
+      scene.remove(fireball); fireball.geometry.dispose(); fireball.material.dispose();
+      scene.remove(light);
+      smokeParticles.forEach(s => { scene.remove(s); s.geometry.dispose(); s.material.dispose(); });
+    }
+  };
+  requestAnimationFrame(tick);
+  
+  // Screen shake
+  if (characterController) {
+    const origPos = camera.position.clone();
+    let shakeTime = 0;
+    const shake = () => {
+      shakeTime += 0.016;
+      const intensity = Math.max(0, 0.3 - shakeTime * 0.6) * size * 0.3;
+      camera.position.x += (Math.random() - 0.5) * intensity;
+      camera.position.y += (Math.random() - 0.5) * intensity;
+      if (shakeTime < 0.5) requestAnimationFrame(shake);
+    };
+    shake();
+  }
+}
+window.createExplosionV2 = createExplosionV2;
+
+// === LOADING SCREEN FOR WORLD GENERATION (v217) ===
+function showLoadingScreen(title, total) {
+  let ls = document.getElementById('loading-screen');
+  if (ls) ls.remove();
+  ls = document.createElement('div');
+  ls.id = 'loading-screen';
+  ls.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:10020;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;backdrop-filter:blur(5px);';
+  ls.innerHTML = `
+    <div style="font-size:48px;margin-bottom:16px;">🔨</div>
+    <div style="color:#fff;font-size:20px;font-weight:600;margin-bottom:8px;">${title}</div>
+    <div id="loading-status" style="color:#888;font-size:13px;margin-bottom:20px;">Preparing...</div>
+    <div style="width:300px;height:4px;background:#1a1a1a;border-radius:4px;overflow:hidden;">
+      <div id="loading-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#ff6b35,#f59e0b);border-radius:4px;transition:width 0.15s;"></div>
+    </div>
+    <div id="loading-pct" style="color:#666;font-size:11px;margin-top:8px;">0%</div>
+  `;
+  document.body.appendChild(ls);
+  
+  return {
+    update(current, statusText) {
+      const pct = Math.min(100, Math.round((current / total) * 100));
+      const bar = document.getElementById('loading-bar');
+      const pctEl = document.getElementById('loading-pct');
+      const status = document.getElementById('loading-status');
+      if (bar) bar.style.width = pct + '%';
+      if (pctEl) pctEl.textContent = pct + '%';
+      if (status && statusText) status.textContent = statusText;
+    },
+    close() {
+      const el = document.getElementById('loading-screen');
+      if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; setTimeout(() => el.remove(), 300); }
+    }
+  };
+}
+window.showLoadingScreen = showLoadingScreen;
+
+// === FLOATING DAMAGE NUMBERS (v217) ===
+function showDamageNumberV2(position, amount, color) {
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;pointer-events:none;z-index:99996;font-family:monospace;font-weight:bold;font-size:18px;text-shadow:0 0 4px rgba(0,0,0,0.8);transition:all 0.8s ease-out;';
+  div.style.color = color || (amount > 0 ? '#ef4444' : '#4ade80');
+  div.textContent = (amount > 0 ? '-' : '+') + Math.abs(amount);
+  
+  // Project 3D position to screen
+  const cam = window._cam || camera;
+  const vec = position.clone().project(cam);
+  const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+  const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
+  div.style.left = x + 'px';
+  div.style.top = y + 'px';
+  
+  document.body.appendChild(div);
+  
+  requestAnimationFrame(() => {
+    div.style.top = (y - 60) + 'px';
+    div.style.opacity = '0';
+    div.style.fontSize = '24px';
+  });
+  
+  setTimeout(() => div.remove(), 800);
+}
+window.showDamageNumberV2 = showDamageNumberV2;
+
+// === FOOTSTEP SOUND SYSTEM (v217) ===
+let _footstepCtx = null;
+let _lastFootstep = 0;
+function playFootstep(surface) {
+  const now = performance.now();
+  if (now - _lastFootstep < 300) return; // Rate limit
+  _lastFootstep = now;
+  
+  if (!_footstepCtx) {
+    try { _footstepCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
+  }
+  const ctx = _footstepCtx;
+  if (ctx.state === 'suspended') ctx.resume();
+  
+  // Synthesize a footstep
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  
+  osc.type = 'white' in osc ? 'white' : 'sawtooth'; // noise-like
+  osc.frequency.value = surface === 'concrete' ? 200 : surface === 'grass' ? 80 : 120;
+  filter.type = 'lowpass';
+  filter.frequency.value = surface === 'concrete' ? 800 : 400;
+  gain.gain.value = 0.05;
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+  
+  osc.connect(filter).connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.08);
+}
+
+// === AMBIENT SOUND GENERATOR (v217) ===
+let _ambientCtx = null;
+let _ambientNodes = {};
+function setAmbientSound(type) {
+  if (!_ambientCtx) {
+    try { _ambientCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
+  }
+  // Stop existing
+  Object.values(_ambientNodes).forEach(n => { try { n.stop(); } catch(e) {} });
+  _ambientNodes = {};
+  
+  if (type === 'off' || type === 'none') return;
+  
+  const ctx = _ambientCtx;
+  if (ctx.state === 'suspended') ctx.resume();
+  
+  if (type === 'wind' || type === 'outdoor') {
+    // Brown noise for wind
+    const bufferSize = ctx.sampleRate * 2;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      data[i] = (last + (0.02 * white)) / 1.02;
+      last = data[i];
+      data[i] *= 3.5;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.03;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 400;
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start();
+    _ambientNodes.wind = src;
+  }
+}
+window.setAmbientSound = setAmbientSound;
+
+// === COORDINATE DISPLAY (v217) ===
+function updateCoordDisplay() {
+  if (!playMode) return;
+  let cd = document.getElementById('coord-display');
+  if (!cd) {
+    cd = document.createElement('div');
+    cd.id = 'coord-display';
+    cd.style.cssText = 'position:fixed;bottom:44px;left:8px;color:rgba(255,255,255,0.3);font-family:monospace;font-size:10px;z-index:99990;pointer-events:none;';
+    document.body.appendChild(cd);
+  }
+  const pos = characterController ? characterController.position : camera.position;
+  cd.textContent = `X:${pos.x.toFixed(0)} Y:${pos.y.toFixed(1)} Z:${pos.z.toFixed(0)}`;
+}
+
+
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -15373,6 +15611,7 @@ function animate() {
   updateSlide(dt);
   updateInteractionPrompt();
   updateCompass();
+  updateCoordDisplay();
   updateHighlight();
   if (!playMode) controls.update();
   if (window._updateShadowCascades) window._updateShadowCascades();
