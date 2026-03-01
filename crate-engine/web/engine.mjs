@@ -8848,6 +8848,20 @@ function createSwimmingPool(opts) {
   [[0,0.1,d/2+0.05,w+0.2,0.15,0.15],[0,0.1,-(d/2+0.05),w+0.2,0.15,0.15],[w/2+0.05,0.1,0,0.15,0.15,d+0.2],[-(w/2+0.05),0.1,0,0.15,0.15,d+0.2]].forEach(([x,y,z,sx,sy,sz])=>{
     const edge = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), edgeMat); edge.position.set(x,y,z); g.add(edge);
   });
+    // Register water zone for swimming detection
+  g.userData.isPool = true;
+  g.userData.poolWidth = w;
+  g.userData.poolDepth = d;
+  g.userData.registerWaterZone = function() {
+    const pos = new THREE.Vector3();
+    g.getWorldPosition(pos);
+    const halfW = w/2, halfD = d/2;
+    const box = new THREE.Box3(
+      new THREE.Vector3(pos.x - halfW, pos.y - 1.5, pos.z - halfD),
+      new THREE.Vector3(pos.x + halfW, pos.y + 0.1, pos.z + halfD)
+    );
+    registerWaterZone(box);
+  };
   return g;
 }
 
@@ -13932,9 +13946,45 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:add |create |build )?(?:an? )?(swimming ?pool|pool)/)) {
     const obj = createSwimmingPool();
     addObj('Swimming Pool', obj, px || 0, pz || 0);
-    return '🏊 Swimming pool created!';
+    obj.userData.registerWaterZone();
+    return '🏊 Swimming pool created! Jump in to swim!';
   }
   // Stop sign
+
+  // === WATER BODIES ===
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(lake|pond|ocean|river|sea)/)) {
+    const type = lower.match(/(lake|pond|ocean|river|sea)/)[1];
+    const sizes = {lake:[40,40], pond:[15,15], ocean:[200,200], river:[10,80], sea:[150,150]};
+    const [bw,bd] = sizes[type] || [40,40];
+    const g = new THREE.Group(); g.userData.name = type.charAt(0).toUpperCase() + type.slice(1);
+    const waterMat = new THREE.MeshPhysicalMaterial({color:0x1a6b8a, roughness:0.0, transparent:true, opacity:0.65, metalness:0.1});
+    const bedMat = makeMat(0x665544, {rough:0.9});
+    const depth = type === 'ocean' || type === 'sea' ? 8 : type === 'river' ? 2 : 3;
+    // Bed
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.2, bd), bedMat);
+    bed.position.y = -depth; bed.receiveShadow = true; g.add(bed);
+    // Walls
+    [[0,-depth/2,bd/2,bw,depth,0.2],[0,-depth/2,-bd/2,bw,depth,0.2],[bw/2,-depth/2,0,0.2,depth,bd],[-bw/2,-depth/2,0,0.2,depth,bd]].forEach(([x,y,z,sx,sy,sz])=>{
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), bedMat); wall.position.set(x,y,z); g.add(wall);
+    });
+    // Water surface
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(bw, bd), waterMat);
+    water.rotation.x = -Math.PI/2; water.position.y = -0.05; g.add(water);
+    // Animate water
+    water.userData._baseY = -0.05;
+    water.onBeforeRender = () => { water.position.y = water.userData._baseY + Math.sin(performance.now()*0.0008)*0.1; };
+    scene.add(g);
+    if (typeof px !== 'undefined') g.position.set(px, 0, pz);
+    // Register water zone
+    const pos = g.position.clone();
+    registerWaterZone(new THREE.Box3(
+      new THREE.Vector3(pos.x - bw/2, pos.y - depth, pos.z - bd/2),
+      new THREE.Vector3(pos.x + bw/2, pos.y + 0.1, pos.z + bd/2)
+    ));
+    if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
+    return '🌊 ' + type.charAt(0).toUpperCase() + type.slice(1) + ' created! Jump in to swim!';
+  }
+
   if (lower.match(/^(?:add |create )?(?:an? )?(stop ?sign)/)) {
     const obj = createStopSign();
     addObj('Stop Sign', obj, px || 0, pz || 0);
@@ -15077,14 +15127,21 @@ function updateVehicle(dt) {
     if (Math.abs(v.speed) < 0.5) v.speed = 0;
   }
   
-  // Aircraft altitude
+  // Aircraft flight — Space=ascend, Shift=descend, Q/E=roll, smooth banking
   if (v.type === 'air') {
-    if (playKeys[' ']) { v.altitude += 10 * dt; }
-    if (playKeys['shift']) { v.altitude = Math.max(0.5, v.altitude - 10 * dt); }
-    obj.position.y = v.altitude;
-    // Tilt based on speed/turn
-    obj.rotation.x = -v.speed * 0.005;
-    obj.rotation.z = (playKeys['a'] ? 0.3 : playKeys['d'] ? -0.3 : 0) * Math.min(Math.abs(v.speed) * 0.1, 1);
+    const ascendRate = 12;
+    if (playKeys[' ']) { v.altitude += ascendRate * dt; }
+    if (playKeys['shift']) { v.altitude = Math.max(1.0, v.altitude - ascendRate * dt); }
+    // Smooth altitude interpolation
+    obj.position.y += (v.altitude - obj.position.y) * Math.min(dt * 5, 0.3);
+    // Nose pitch based on climb/dive
+    const targetPitch = playKeys[' '] ? 0.15 : playKeys['shift'] ? -0.2 : -v.speed * 0.003;
+    obj.rotation.x += (targetPitch - obj.rotation.x) * Math.min(dt * 3, 0.2);
+    // Banking on turns
+    const bankTarget = turnInput * 0.4 * Math.min(Math.abs(v.speed) * 0.05, 1);
+    obj.rotation.z += (bankTarget - obj.rotation.z) * Math.min(dt * 4, 0.25);
+    // Auto-accelerate slightly (aircraft don't stop mid-air)
+    if (v.speed < 5 && v.altitude > 2) v.speed += 2 * dt;
   }
   
   // Move forward in facing direction
@@ -15125,7 +15182,7 @@ function updateVehicle(dt) {
   
   // Speed HUD
   const speedKmh = Math.abs(Math.round(v.speed * 3.6));
-  if (hudDiv) { hudDiv.style.display = 'block'; hudDiv.textContent = '🚗 ' + speedKmh + ' km/h'; }
+  if (hudDiv) { hudDiv.style.display = 'block'; hudDiv.textContent = (v.type === 'air' ? '✈️ ' + speedKmh + ' km/h | Alt: ' + Math.round(v.altitude) + 'm' : '🚗 ' + speedKmh + ' km/h'); }
 }
 
 // Vehicle proximity prompt
@@ -17218,6 +17275,7 @@ window._engineBridge = {
       scene.remove(obj);
     }
     sceneHistory.length = 0;
+    if (window._waterZones) window._waterZones.length = 0;
   },
   removeObject(obj) {
     const idx = objects.indexOf(obj);
@@ -22274,3 +22332,8 @@ console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
     }
   }, (duration + 18) * 1000);
 })();
+
+// === WATER ZONES REGISTRY ===
+window._waterZones = [];
+function registerWaterZone(box3) { window._waterZones.push(box3); }
+function clearWaterZones() { window._waterZones.length = 0; }

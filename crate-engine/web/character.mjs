@@ -2025,8 +2025,23 @@ class CharacterController {
 
     // === SWIMMING SYSTEM ===
     const WATER_LEVEL = -0.3;
-    const isInWater = this.position.y < WATER_LEVEL + 0.5;
-    const isDeepWater = this.position.y < WATER_LEVEL - 0.3;
+    // Check water zones (pools, lakes, etc.)
+    let inWaterZone = false;
+    let waterZoneTop = WATER_LEVEL;
+    if (window._waterZones) {
+      const pp = this.position;
+      for (let i = 0; i < window._waterZones.length; i++) {
+        const wz = window._waterZones[i];
+        if (pp.x >= wz.min.x && pp.x <= wz.max.x && pp.z >= wz.min.z && pp.z <= wz.max.z && pp.y <= wz.max.y + 0.5) {
+          inWaterZone = true;
+          waterZoneTop = wz.max.y;
+          break;
+        }
+      }
+    }
+    const isInWater = inWaterZone || this.position.y < WATER_LEVEL + 0.5;
+    const isDeepWater = inWaterZone ? this.position.y < waterZoneTop - 0.3 : this.position.y < WATER_LEVEL - 0.3;
+    const effectiveWaterLevel = inWaterZone ? waterZoneTop : WATER_LEVEL;
     
     if (isInWater && !this.isClimbing && !this.inVehicle) {
       if (!this._isSwimming) {
@@ -2037,16 +2052,16 @@ class CharacterController {
       
       // Buoyancy — float at water level
       if (this.collider && this.collider.world.built) {
-        if (this.position.y < WATER_LEVEL) {
+        if (this.position.y < effectiveWaterLevel) {
           this.collider.velocity.y = Math.max(this.collider.velocity.y, 2); // float up
         }
         // Clamp at water surface
-        if (this.position.y > WATER_LEVEL - 0.2 && this.position.y < WATER_LEVEL + 0.3) {
+        if (this.position.y > effectiveWaterLevel - 0.2 && this.position.y < effectiveWaterLevel + 0.3) {
           this.collider.velocity.y *= 0.8; // dampen vertical at surface
         }
       } else {
         // Legacy: float at water level
-        if (this.position.y < WATER_LEVEL) {
+        if (this.position.y < effectiveWaterLevel) {
           this.position.y += 3 * dt;
           this.jumpVelocity = 0;
         }
