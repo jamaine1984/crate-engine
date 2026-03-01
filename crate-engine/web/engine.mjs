@@ -6510,11 +6510,9 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.4;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
   // Atmospheric fog for depth perception
   scene.fog = new THREE.FogExp2(0x88aabb, 0.0015);
-
-
-const scene = new THREE.Scene();
 if (window._loadProgress) window._loadProgress(20, "Creating scene...");
 // === PROCEDURAL SOUND SYSTEM (Web Audio API) ===
 // No audio files needed — generates sounds mathematically
