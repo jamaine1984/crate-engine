@@ -243,7 +243,7 @@ function interpret(input) {
   }
 
   // --- SPECIFIC STRUCTURES (route to execSingle, not fuzzy search) ---
-  const structureMatch = lower.match(/^(?:add|place|put|create|build|make)\s+(?:a |an |the )?(?:\d+ )?(modern house|modern home|hd house|furnished house|nice house|skyscraper|highrise|high.?rise|tower|tall building|swimming pool|pool|salon|barber|grocery|clothing|restaurant|pharmacy|bank|cafe|gym|laundry|store|shop|commercial|pitched house|ranch house|ranch|duplex|mansion|stadium|park|fence|stop sign|traffic light|road|intersection|interior house|house|building|lake|pond|ocean|river|sea|parking lot|parking|gas station|petrol station|bridge|bus stop|bus shelter|dumpster|trash can)/i);
+  const structureMatch = lower.match(/^(?:add|place|put|create|build|make)\s+(?:a |an |the )?(?:\d+ )?(modern house|modern home|hd house|furnished house|nice house|skyscraper|highrise|high.?rise|tower|tall building|swimming pool|pool|salon|barber|grocery|clothing|restaurant|pharmacy|bank|cafe|gym|laundry|store|shop|commercial|pitched house|ranch house|ranch|duplex|mansion|stadium|park|fence|stop sign|traffic light|road|intersection|interior house|house|building|lake|pond|ocean|river|sea|parking lot|parking|gas station|petrol station|bridge|bus stop|bus shelter|dumpster|trash can|apartment|apartments)/i);
   if (structureMatch) {
     return { action: 'execRaw' };
   }

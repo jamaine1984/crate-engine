@@ -8934,6 +8934,70 @@ function createBridge(opts) {
 }
 
 
+
+function createApartmentBuilding(opts) {
+  const o = opts || {};
+  const floors = o.floors || (3 + Math.floor(Math.random() * 3));
+  const w = o.width || 16, d = o.depth || 10;
+  const floorH = 3;
+  const totalH = floors * floorH;
+  const g = new THREE.Group();
+  g.userData.name = 'Apartment (' + floors + 'F)';
+  g.userData.isBuilding = true;
+  
+  const colors = [0xcc8866, 0xaa7755, 0x998877, 0xbbaa88, 0xddccaa];
+  const wallColor = colors[Math.floor(Math.random() * colors.length)];
+  const wallMat = makeMat(wallColor, {rough:0.7});
+  const roofMat = makeMat(0x555555, {rough:0.6});
+  const windowMat = new THREE.MeshPhysicalMaterial({color: 0x88bbdd, roughness: 0.05, transparent: true, opacity: 0.3});
+  const frameMat = makeMat(0x444444, {rough:0.4});
+  const balconyMat = makeMat(0x777777, {rough:0.5});
+  
+  // Main body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, totalH, d), wallMat);
+  body.position.y = totalH/2; body.castShadow = true; body.receiveShadow = true; g.add(body);
+  
+  // Roof
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(w+0.3, 0.2, d+0.3), roofMat);
+  roof.position.y = totalH + 0.1; g.add(roof);
+  
+  // Windows per floor
+  for (let fl = 0; fl < floors; fl++) {
+    const y = fl * floorH + 1.8;
+    const windowsPerSide = Math.floor(w / 3);
+    for (let wi = 0; wi < windowsPerSide; wi++) {
+      const x = -w/2 + 1.5 + wi * 3;
+      // Front windows
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.5), windowMat);
+      win.position.set(x, y, d/2 + 0.01); g.add(win);
+      // Back windows
+      const win2 = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.5), windowMat);
+      win2.position.set(x, y, -(d/2 + 0.01)); win2.rotation.y = Math.PI; g.add(win2);
+    }
+    // Balconies on front (every other floor)
+    if (fl > 0 && fl % 2 === 0) {
+      for (let bi = 0; bi < 2; bi++) {
+        const bx = -w/4 + bi * w/2;
+        const balcony = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1.2), balconyMat);
+        balcony.position.set(bx, fl * floorH + 0.05, d/2 + 0.6); g.add(balcony);
+        // Railing
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(3, 0.8, 0.05), frameMat);
+        rail.position.set(bx, fl * floorH + 0.45, d/2 + 1.15); g.add(rail);
+      }
+    }
+  }
+  
+  // Entry door
+  const doorMat = makeMat(0x664422, {rough:0.6});
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.5), doorMat);
+  door.position.set(0, 1.25, d/2 + 0.01); g.add(door);
+  // Entry awning
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1.5), roofMat);
+  awning.position.set(0, 2.8, d/2 + 0.5); g.add(awning);
+  
+  return g;
+}
+
 function createBusStop() {
   const g = new THREE.Group(); g.userData.name = 'Bus Stop';
   const poleMat = makeMat(0x666666, {rough:0.3, metal:0.6});
@@ -12352,6 +12416,8 @@ function showGameHUD(preset) {
           { cmd: 'add skyscraper', pos: [25, -60] },
           { cmd: 'add skyscraper', pos: [-25, -50] },
           { cmd: 'add skyscraper', pos: [25, -50] },
+          { cmd: 'add apartment', pos: [-25, -40] },
+          { cmd: 'add apartment', pos: [25, -40] },
           
           // ======================
           // BLOCK 2: COMMERCIAL (z = -40 to 40)
@@ -12375,8 +12441,8 @@ function showGameHUD(preset) {
           { cmd: 'add modern house 2 floors', pos: [-28, 75], rot: Math.PI/2 },
           { cmd: 'add mansion', pos: [-28, 95], rot: Math.PI/2 },
           { cmd: 'add ranch', pos: [-28, 115], rot: Math.PI/2 },
-          // East side
-          { cmd: 'add modern house', pos: [28, 55], rot: -Math.PI/2 },
+          // East side — mix of houses and apartments
+          { cmd: 'add apartment', pos: [28, 55], rot: -Math.PI/2 },
           { cmd: 'add duplex', pos: [28, 75], rot: -Math.PI/2 },
           { cmd: 'add pitched house', pos: [28, 95], rot: -Math.PI/2 },
           { cmd: 'add modern house 2 floors', pos: [28, 115], rot: -Math.PI/2 },
@@ -14095,6 +14161,13 @@ function showGameHUD(preset) {
     if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
     return '🌉 Bridge created!';
   }
+
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(apartment|apartment building|apartments|flat|flats)/)) {
+    const obj = createApartmentBuilding();
+    addObj('Apartment', obj, px || 0, pz || 0);
+    return '🏢 Apartment building created!';
+  }
+
 
   if (lower.match(/^(?:add |create |build )?(?:an? )?(bus stop|bus shelter)/)) {
     const obj = createBusStop();
