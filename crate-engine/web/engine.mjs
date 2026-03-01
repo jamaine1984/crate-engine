@@ -17457,7 +17457,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
           break;
         case 'setCharacter': result = await bridge.setCharacter(intent.id); break;
         case 'setWater': 
-          if (intent.create) await execSingle('add ocean' + (intent.size ? ' ' + intent.size : ''));
+          if (intent.create) await execSingle((intent.preset === 'lake' ? 'add lake' : intent.preset === 'pond' ? 'add pond' : 'add ocean') + (intent.size ? ' ' + intent.size : ''));
           result = bridge.setWaterPreset(intent.preset);
           break;
         case 'setTerrain': result = await bridge.setTerrain(intent.type); break;
