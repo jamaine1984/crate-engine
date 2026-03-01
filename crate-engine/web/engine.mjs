@@ -15920,6 +15920,58 @@ function createMuzzleFlash(position, direction) {
 window.createMuzzleFlash = createMuzzleFlash;
 
 
+// === XP & LEVEL PROGRESSION (v217) ===
+let _playerXP = 0;
+let _playerLevel = 1;
+const _xpPerLevel = 100;
+
+function addXP(amount, reason) {
+  _playerXP += amount;
+  
+  // Level up check
+  const newLevel = Math.floor(_playerXP / _xpPerLevel) + 1;
+  if (newLevel > _playerLevel) {
+    _playerLevel = newLevel;
+    showLevelUp(_playerLevel);
+  }
+  
+  // Update HUD if exists
+  const xpEl = document.getElementById('hud-xp');
+  if (xpEl) xpEl.textContent = _playerXP;
+  
+  if (reason) showKillFeed('⭐ +' + amount + ' XP — ' + reason, '#ffd700');
+}
+window.addXP = addXP;
+window._getXP = () => ({ xp: _playerXP, level: _playerLevel });
+
+function showLevelUp(level) {
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:30%;left:50%;transform:translate(-50%,-50%);z-index:99999;text-align:center;pointer-events:none;animation:levelUp 2s forwards;';
+  div.innerHTML = `
+    <div style="font-size:48px;color:#ffd700;font-weight:bold;font-family:-apple-system,sans-serif;text-shadow:0 0 20px rgba(255,215,0,0.5);">
+      ⬆ LEVEL ${level}
+    </div>
+    <div style="font-size:16px;color:#ffaa00;margin-top:8px;">Keep building!</div>
+  `;
+  
+  // Add animation keyframes if not exist
+  if (!document.getElementById('level-up-style')) {
+    const style = document.createElement('style');
+    style.id = 'level-up-style';
+    style.textContent = '@keyframes levelUp { 0% { opacity:0; transform:translate(-50%,-50%) scale(0.5); } 20% { opacity:1; transform:translate(-50%,-50%) scale(1.2); } 40% { transform:translate(-50%,-50%) scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-70%) scale(1); } }';
+    document.head.appendChild(style);
+  }
+  
+  document.body.appendChild(div);
+  setTimeout(() => div.remove(), 2000);
+}
+
+// Grant XP for various actions
+window._grantBuildXP = function() { addXP(5, 'Object placed'); };
+window._grantKillXP = function() { addXP(20, 'Enemy defeated'); };
+window._grantExploreXP = function() { addXP(10, 'New area explored'); };
+
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
