@@ -8829,6 +8829,110 @@ function createRanchHouse(opts) {
   return createPitchedRoofHouse({width:16, depth:10, floors:1, pitch:0.25, name:'Ranch House', style:'siding', ...(opts||{})});
 }
 
+
+function createParkingLot(opts) {
+  const o = opts || {};
+  const w = o.width || 30, d = o.depth || 20;
+  const g = new THREE.Group(); g.userData.name = 'Parking Lot';
+  // Asphalt surface
+  const asphalt = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), makeMat(0x333333, {rough:0.9}));
+  asphalt.receiveShadow = true; g.add(asphalt);
+  // Parking lines
+  const lineMat = makeMat(0xdddddd, {rough:0.5});
+  const spots = Math.floor(w / 3);
+  for (let i = 0; i < spots; i++) {
+    const x = -w/2 + 1.5 + i * 3;
+    // Top row
+    const line = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 5), lineMat);
+    line.position.set(x, 0.04, -d/4); g.add(line);
+    // Bottom row  
+    const line2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 5), lineMat);
+    line2.position.set(x, 0.04, d/4); g.add(line2);
+  }
+  // Horizontal end lines
+  const endLine1 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.08), lineMat);
+  endLine1.position.set(0, 0.04, -d/4 - 2.5); g.add(endLine1);
+  const endLine2 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.08), lineMat);
+  endLine2.position.set(0, 0.04, -d/4 + 2.5); g.add(endLine2);
+  const endLine3 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.08), lineMat);
+  endLine3.position.set(0, 0.04, d/4 - 2.5); g.add(endLine3);
+  const endLine4 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.08), lineMat);
+  endLine4.position.set(0, 0.04, d/4 + 2.5); g.add(endLine4);
+  return g;
+}
+
+function createGasStation(opts) {
+  const o = opts || {};
+  const g = new THREE.Group(); g.userData.name = 'Gas Station';
+  // Main building
+  const wallMat = makeMat(0xdddddd, {rough:0.5});
+  const roofMat = makeMat(0x2244aa, {rough:0.4});
+  const building = new THREE.Mesh(new THREE.BoxGeometry(8, 3, 6), wallMat);
+  building.position.y = 1.5; building.castShadow = true; g.add(building);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.2, 6.5), roofMat);
+  roof.position.y = 3.1; g.add(roof);
+  // Canopy over pumps
+  const canopyMat = makeMat(0xeeeeee, {rough:0.3});
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(12, 0.15, 8), canopyMat);
+  canopy.position.set(0, 4, -6); canopy.castShadow = true; g.add(canopy);
+  // Canopy pillars
+  const pillarMat = makeMat(0x888888, {rough:0.4, metal:0.5});
+  [[-5, -9], [-5, -3], [5, -9], [5, -3]].forEach(([x, z]) => {
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 4), pillarMat);
+    pillar.position.set(x, 2, z); g.add(pillar);
+  });
+  // Gas pumps
+  const pumpMat = makeMat(0x444444, {rough:0.3});
+  [-2, 2].forEach(x => {
+    const pump = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.4), pumpMat);
+    pump.position.set(x, 0.9, -6); pump.castShadow = true; g.add(pump);
+    // Screen
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.3), makeMat(0x00ff00, {rough:0.2, emissive:0x00ff00, emissiveIntensity:0.3}));
+    screen.position.set(x, 1.4, -5.79); g.add(screen);
+  });
+  // Sign
+  const signPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 6), pillarMat);
+  signPole.position.set(-6, 3, -6); g.add(signPole);
+  const signBoard = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 0.1), roofMat);
+  signBoard.position.set(-6, 6.5, -6); g.add(signBoard);
+  return g;
+}
+
+function createBridge(opts) {
+  const o = opts || {};
+  const length = o.length || 40, width = o.width || 8;
+  const g = new THREE.Group(); g.userData.name = 'Bridge';
+  const concreteMat = makeMat(0x999999, {rough:0.7});
+  const railMat = makeMat(0x666666, {rough:0.4, metal:0.6});
+  // Road deck
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(width, 0.3, length), concreteMat);
+  deck.position.y = 3; deck.receiveShadow = true; deck.castShadow = true; g.add(deck);
+  // Support pillars
+  for (let z = -length/3; z <= length/3; z += length/3) {
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 6, 1.5), concreteMat);
+    pillar.position.set(0, 0, z); pillar.castShadow = true; g.add(pillar);
+  }
+  // Railings
+  for (let z = -length/2; z <= length/2; z += 3) {
+    [-width/2, width/2].forEach(x => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2), railMat);
+      post.position.set(x, 3.75, z); g.add(post);
+    });
+  }
+  // Top rails
+  [-width/2, width/2].forEach(x => {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, length), railMat);
+    rail.position.set(x, 4.4, 0); g.add(rail);
+  });
+  // Ramps
+  const rampGeo = new THREE.BoxGeometry(width, 0.3, 8);
+  const ramp1 = new THREE.Mesh(rampGeo, concreteMat);
+  ramp1.position.set(0, 1.5, -length/2 - 3); ramp1.rotation.x = 0.35; g.add(ramp1);
+  const ramp2 = new THREE.Mesh(rampGeo, concreteMat);
+  ramp2.position.set(0, 1.5, length/2 + 3); ramp2.rotation.x = -0.35; g.add(ramp2);
+  return g;
+}
+
 function createSwimmingPool(opts) {
   const o = opts || {}; const w = o.width || 8; const d = o.depth || 4;
   const g = new THREE.Group(); g.userData.name = 'Swimming Pool';
@@ -9157,110 +9261,6 @@ function createPark(opts) {
 }
 
 // === PARKING LOT (v218) ===
-function createParkingLot(opts) {
-  opts = opts || {};
-  var w = opts.width || 30, d = opts.depth || 20;
-  var g = new THREE.Group();
-  // Asphalt surface
-  var surface = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, d),
-    new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 })
-  );
-  surface.rotation.x = -Math.PI / 2;
-  surface.receiveShadow = true;
-  g.add(surface);
-  // Parking lines
-  var lineCount = Math.floor(w / 3);
-  for (var li = 0; li < lineCount; li++) {
-    var line = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.15, 5),
-      new THREE.MeshBasicMaterial({ color: 0xffffff })
-    );
-    line.rotation.x = -Math.PI / 2;
-    line.position.set(-w/2 + 1.5 + li * 3, 0.02, -d/4);
-    g.add(line);
-  }
-  // Curbs
-  var curb = new THREE.Mesh(
-    new THREE.BoxGeometry(w, 0.15, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8 })
-  );
-  curb.position.set(0, 0.075, d/2);
-  g.add(curb);
-  g.userData = { objectType: 'parking_lot', displayName: 'Parking Lot' };
-  return g;
-}
-
-// === GAS STATION (v218) ===
-function createGasStation(opts) {
-  opts = opts || {};
-  var g = new THREE.Group();
-  // Canopy
-  var canopy = new THREE.Mesh(
-    new THREE.BoxGeometry(12, 0.3, 8),
-    new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.3 })
-  );
-  canopy.position.y = 4;
-  canopy.castShadow = true;
-  g.add(canopy);
-  // Pillars
-  for (var px = -4; px <= 4; px += 8) {
-    for (var pz = -2.5; pz <= 2.5; pz += 5) {
-      var pillar = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.15, 0.15, 4, 8),
-        new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.5 })
-      );
-      pillar.position.set(px, 2, pz);
-      pillar.castShadow = true;
-      g.add(pillar);
-    }
-  }
-  // Gas pumps
-  for (var gi = -3; gi <= 3; gi += 6) {
-    var pump = new THREE.Mesh(
-      new THREE.BoxGeometry(0.6, 1.5, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.4 })
-    );
-    pump.position.set(gi, 0.75, 0);
-    pump.castShadow = true;
-    g.add(pump);
-    // Screen
-    var screen = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.4, 0.3),
-      new THREE.MeshBasicMaterial({ color: 0x00ff00 })
-    );
-    screen.position.set(gi, 1.2, 0.21);
-    g.add(screen);
-  }
-  // Store building
-  var store = new THREE.Mesh(
-    new THREE.BoxGeometry(6, 3, 5),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 })
-  );
-  store.position.set(0, 1.5, -6);
-  store.castShadow = true;
-  g.add(store);
-  // Sign
-  var sign = new THREE.Mesh(
-    new THREE.BoxGeometry(4, 1, 0.1),
-    new THREE.MeshBasicMaterial({ color: 0xff4400 })
-  );
-  sign.position.set(0, 3.5, -3.5);
-  g.add(sign);
-  // Ground
-  var ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(16, 14),
-    new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = 0.01;
-  ground.receiveShadow = true;
-  g.add(ground);
-  g.userData = { objectType: 'gas_station', displayName: 'Gas Station' };
-  return g;
-}
-
-// === SIDEWALK (v218) ===
 function createSidewalk(opts) {
   opts = opts || {};
   var length = opts.length || 60, width = opts.width || 2;
@@ -9277,61 +9277,6 @@ function createSidewalk(opts) {
 }
 
 // === BRIDGE/OVERPASS (v218) ===
-function createBridge(opts) {
-  opts = opts || {};
-  var length = opts.length || 40, width = opts.width || 8, height = opts.height || 6;
-  var g = new THREE.Group();
-  // Road deck
-  var deck = new THREE.Mesh(
-    new THREE.BoxGeometry(length, 0.5, width),
-    new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8 })
-  );
-  deck.position.y = height;
-  deck.castShadow = true;
-  deck.receiveShadow = true;
-  g.add(deck);
-  // Lane markings on top
-  var centerLine = new THREE.Mesh(
-    new THREE.BoxGeometry(length * 0.9, 0.02, 0.15),
-    new THREE.MeshBasicMaterial({ color: 0xffcc00 })
-  );
-  centerLine.position.y = height + 0.26;
-  g.add(centerLine);
-  // Support pillars
-  for (var sp = -length/3; sp <= length/3; sp += length/3) {
-    var support = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, height, 1.5),
-      new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.7 })
-    );
-    support.position.set(sp, height/2, 0);
-    support.castShadow = true;
-    g.add(support);
-  }
-  // Railings
-  for (var side = -1; side <= 1; side += 2) {
-    var rail = new THREE.Mesh(
-      new THREE.BoxGeometry(length, 1, 0.1),
-      new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.5 })
-    );
-    rail.position.set(0, height + 0.75, side * (width/2 - 0.1));
-    g.add(rail);
-  }
-  // Ramps on both ends
-  for (var rampSide = -1; rampSide <= 1; rampSide += 2) {
-    var ramp = new THREE.Mesh(
-      new THREE.BoxGeometry(height * 2.5, 0.5, width),
-      new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8 })
-    );
-    ramp.position.set(rampSide * (length/2 + height * 1.2), height/2, 0);
-    ramp.rotation.z = rampSide * Math.atan2(height, height * 2.5);
-    ramp.castShadow = true;
-    g.add(ramp);
-  }
-  g.userData = { objectType: 'bridge', displayName: 'Bridge' };
-  return g;
-}
-
-// === STREET LAMP WITH GLOW (v218) ===
 function createStreetLamp(opts) {
   opts = opts || {};
   var h = opts.height || 5;
@@ -12395,6 +12340,8 @@ function showGameHUD(preset) {
           
           // === POOLS in some backyards ===
           { cmd: 'add pool', pos: [-35, 58] },
+          { cmd: 'add gas station', pos: [50, -55] },
+          { cmd: 'add parking lot', pos: [-50, 10] },
           { cmd: 'add pool', pos: [35, 98] },
           
           // ======================
@@ -14008,6 +13955,24 @@ function showGameHUD(preset) {
     obj.userData.registerWaterZone();
     return '🏊 Swimming pool created! Jump in to swim!';
   }
+
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(parking lot|parking|carpark)/)) {
+    const obj = createParkingLot();
+    addObj('Parking Lot', obj, px || 0, pz || 0);
+    return '🅿️ Parking lot created!';
+  }
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(gas station|petrol station|fuel station)/)) {
+    const obj = createGasStation();
+    addObj('Gas Station', obj, px || 0, pz || 0);
+    return '⛽ Gas station created!';
+  }
+  if (lower.match(/^(?:add |create |build )?(?:an? )?(bridge)/)) {
+    const obj = createBridge();
+    addObj('Bridge', obj, px || 0, pz || 0);
+    if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
+    return '🌉 Bridge created!';
+  }
+
   // Stop sign
 
 
@@ -16861,6 +16826,50 @@ window._grantKillXP = function() { addXP(20, 'Enemy defeated'); };
 window._grantExploreXP = function() { addXP(10, 'New area explored'); };
 
 
+
+// === NIGHT LIGHTING SYSTEM ===
+let _nightLights = [];
+let _lastNightCheck = 0;
+
+function updateNightLighting(t) {
+  // Check every 2 seconds
+  if (t - _lastNightCheck < 2) return;
+  _lastNightCheck = t;
+  
+  const isNight = (typeof _dayTime !== 'undefined') ? (_dayTime < 0.25 || _dayTime > 0.75) : false;
+  
+  if (isNight && _nightLights.length === 0) {
+    // Add point lights to street lamps and buildings
+    for (let i = 0; i < objects.length; i++) {
+      const obj = objects[i];
+      const name = (obj.userData.name || '').toLowerCase();
+      if (name.includes('lamp') || name.includes('street_lamp') || name.includes('light_post')) {
+        const pos = new THREE.Vector3();
+        obj.getWorldPosition(pos);
+        const light = new THREE.PointLight(0xffcc66, 2, 15);
+        light.position.set(pos.x, pos.y + 3.5, pos.z);
+        scene.add(light);
+        _nightLights.push(light);
+      } else if (name.includes('house') || name.includes('shop') || name.includes('salon') || name.includes('restaurant') || name.includes('cafe') || name.includes('grocery') || name.includes('pharmacy') || name.includes('bank') || name.includes('barber') || name.includes('clothing') || name.includes('gym')) {
+        // Window glow for buildings
+        const pos = new THREE.Vector3();
+        obj.getWorldPosition(pos);
+        const light = new THREE.PointLight(0xffeecc, 0.8, 12);
+        light.position.set(pos.x, pos.y + 2, pos.z);
+        scene.add(light);
+        _nightLights.push(light);
+      }
+    }
+  } else if (!isNight && _nightLights.length > 0) {
+    // Remove night lights during day
+    for (let i = 0; i < _nightLights.length; i++) {
+      scene.remove(_nightLights[i]);
+      _nightLights[i].dispose();
+    }
+    _nightLights.length = 0;
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -16962,6 +16971,7 @@ function animate() {
     rainParticles.geometry.attributes.position.needsUpdate=true;
   }
   updateLightning(dt);
+  updateNightLighting(t);
   if (snowParticles) {
     snowParticles.position.x = _wcam.x;
     snowParticles.position.z = _wcam.z;
