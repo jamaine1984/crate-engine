@@ -15803,6 +15803,123 @@ function updateVehicleHUD(vp) {
 }
 
 
+// === WATER SPLASH EFFECT (v217) ===
+function createWaterSplash(position) {
+  const count = 12;
+  const splashes = [];
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    const geo = new THREE.SphereGeometry(0.1 + Math.random() * 0.15, 4, 4);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x66bbff, transparent: true, opacity: 0.7 });
+    const drop = new THREE.Mesh(geo, mat);
+    drop.position.copy(position);
+    drop.userData._vel = new THREE.Vector3(
+      Math.cos(angle) * speed * (0.5 + Math.random()),
+      3 + Math.random() * 4,
+      Math.sin(angle) * speed * (0.5 + Math.random())
+    );
+    drop.userData._life = 0.8 + Math.random() * 0.5;
+    scene.add(drop);
+    splashes.push(drop);
+  }
+  
+  // Ring ripple
+  const ringGeo = new THREE.RingGeometry(0.1, 0.5, 16);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.position.copy(position);
+  ring.position.y += 0.05;
+  ring.rotation.x = -Math.PI / 2;
+  scene.add(ring);
+  
+  let t = 0;
+  const animate = () => {
+    t += 0.016;
+    
+    // Expand ring
+    const rs = 1 + t * 15;
+    ring.scale.set(rs, rs, 1);
+    ring.material.opacity = Math.max(0, 0.5 - t);
+    
+    // Move drops
+    for (const drop of splashes) {
+      drop.userData._life -= 0.016;
+      drop.userData._vel.y -= 15 * 0.016;
+      drop.position.addScaledVector(drop.userData._vel, 0.016);
+      drop.material.opacity = Math.max(0, drop.userData._life * 0.7);
+    }
+    
+    if (t < 1.2) {
+      requestAnimationFrame(animate);
+    } else {
+      scene.remove(ring); ring.geometry.dispose(); ring.material.dispose();
+      splashes.forEach(s => { scene.remove(s); s.geometry.dispose(); s.material.dispose(); });
+    }
+  };
+  requestAnimationFrame(animate);
+}
+window.createWaterSplash = createWaterSplash;
+
+// === LANDING DUST EFFECT (v217) ===
+function createLandingDust(position) {
+  const count = 8;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const geo = new THREE.SphereGeometry(0.2 + Math.random() * 0.3, 4, 4);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x998866, transparent: true, opacity: 0.4 });
+    const puff = new THREE.Mesh(geo, mat);
+    puff.position.copy(position);
+    const speed = 1.5 + Math.random() * 2;
+    puff.userData._vel = new THREE.Vector3(Math.cos(angle) * speed, 0.5 + Math.random(), Math.sin(angle) * speed);
+    puff.userData._life = 0.5 + Math.random() * 0.3;
+    scene.add(puff);
+    
+    const tick = () => {
+      puff.userData._life -= 0.016;
+      puff.position.addScaledVector(puff.userData._vel, 0.016);
+      puff.userData._vel.multiplyScalar(0.95);
+      const s = 1 + (0.5 - puff.userData._life) * 3;
+      puff.scale.set(s, s, s);
+      puff.material.opacity = Math.max(0, puff.userData._life * 0.4);
+      if (puff.userData._life > 0) requestAnimationFrame(tick);
+      else { scene.remove(puff); puff.geometry.dispose(); puff.material.dispose(); }
+    };
+    requestAnimationFrame(tick);
+  }
+}
+window.createLandingDust = createLandingDust;
+
+// === MUZZLE FLASH IMPROVEMENT (v217) ===
+function createMuzzleFlash(position, direction) {
+  const flashGeo = new THREE.SphereGeometry(0.2, 6, 6);
+  const flashMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 1 });
+  const flash = new THREE.Mesh(flashGeo, flashMat);
+  flash.position.copy(position).addScaledVector(direction, 0.5);
+  scene.add(flash);
+  
+  const light = new THREE.PointLight(0xffaa00, 3, 8);
+  light.position.copy(flash.position);
+  scene.add(light);
+  
+  let t = 0;
+  const tick = () => {
+    t += 0.016;
+    flash.material.opacity = Math.max(0, 1 - t * 15);
+    light.intensity = Math.max(0, 3 - t * 40);
+    const s = 1 + t * 5;
+    flash.scale.set(s, s, s);
+    if (t < 0.1) requestAnimationFrame(tick);
+    else {
+      scene.remove(flash); flash.geometry.dispose(); flash.material.dispose();
+      scene.remove(light);
+    }
+  };
+  requestAnimationFrame(tick);
+}
+window.createMuzzleFlash = createMuzzleFlash;
+
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
