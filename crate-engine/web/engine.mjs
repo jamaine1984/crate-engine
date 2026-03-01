@@ -10111,7 +10111,7 @@ function showGallery(category, options = {}) {
     const closeBtn = document.createElement('div');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'font-size:24px;color:#666;cursor:pointer;margin-left:16px;';
-    closeBtn.onclick = () => { overlay.remove(); if (window._onTutorialDone) window._onTutorialDone(); resolve(null); };
+    closeBtn.onclick = () => { overlay.remove(); resolve(null); };
     header.appendChild(closeBtn);
     overlay.appendChild(header);
 
@@ -18908,7 +18908,7 @@ let dragCounter = 0;
   const skipBtn = document.createElement('button');
   skipBtn.textContent = 'Skip Tour';
   skipBtn.style.cssText = 'background:none;border:1px solid #555;color:#888;padding:10px 24px;border-radius:10px;cursor:pointer;font-size:14px;';
-  skipBtn.onclick = () => { localStorage.setItem(TUTORIAL_KEY, '1'); overlay.remove(); };
+  skipBtn.onclick = () => { localStorage.setItem(TUTORIAL_KEY, '1'); overlay.remove(); if (window._onTutorialDone) window._onTutorialDone(); };
   
   const nextBtn = document.createElement('button');
   nextBtn.style.cssText = 'background:linear-gradient(135deg,#7c5cff,#5c3cdf);color:#fff;border:none;padding:10px 32px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;';
