@@ -6539,6 +6539,45 @@ function upgradeMaterials(obj) {
   });
 }
 
+
+function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone) {
+  const statusEl = document.getElementById('engine-status');
+  if (statusEl) statusEl.textContent = 'Loading ' + glbFile + '...';
+  if (x === undefined || x === null) x = (Math.random() - 0.5) * 10;
+  if (z === undefined || z === null) z = (Math.random() - 0.5) * 10;
+  gltfLoader.load(url, (gltf) => {
+    const modelPath = url;
+    const modelFile = url.split('/').pop();
+    const model = gltf.scene;
+    if (gltf.animations && gltf.animations.length > 0) {
+      const mixer = new THREE.AnimationMixer(model);
+      gltf.animations.forEach(clip => { mixer.clipAction(clip).play(); });
+      if (!window._mixers) window._mixers = [];
+      window._mixers.push(mixer);
+    }
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const autoScale = maxDim > 20 ? 3 / maxDim : maxDim < 0.5 ? 2 : 1;
+    const scale = scaleOverride || autoScale;
+    model.scale.setScalar(scale);
+    const bottom = box.min.y * scale;
+    const ty = (window._getTerrainY ? window._getTerrainY(x, z) : 0);
+    model.position.set(x, ty - bottom, z);
+    model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    model.userData.name = name;
+    model.userData.isGLB = true;
+    scene.add(model);
+    objects.push(model);
+    if (statusEl) statusEl.textContent = '3D Ready';
+    if (typeof onDone === 'function') onDone();
+  }, undefined, (error) => {
+    console.warn('Failed to load ' + url + ':', error);
+    if (statusEl) statusEl.textContent = '3D Ready';
+    if (typeof onDone === 'function') onDone();
+  });
+}
+
 function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
   // Check if this is a user-saved model (from IndexedDB or catalog _b64)
   const catalogItem = _assetCatalog && Object.values(_assetCatalog).flat().find(a => a.file === glbFile || a.file === name);
@@ -6703,8 +6742,8 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     }
     
     // Apply model scale overrides
-    const scaleOverride = (window.MODEL_SCALE_OVERRIDES || {})[modelFile] || (window.MODEL_SCALE_OVERRIDES || {})[modelPath];
-    if (scaleOverride) model.scale.setScalar(scaleOverride);
+    const modelScaleOvr = (window.MODEL_SCALE_OVERRIDES || {})[modelFile] || (window.MODEL_SCALE_OVERRIDES || {})[modelPath];
+    if (modelScaleOvr) model.scale.setScalar(modelScaleOvr);
 scene.add(model);
     objects.push(model);
     // Add to collision octree (buildings, stairs, platforms are solid)
@@ -6719,7 +6758,7 @@ scene.add(model);
       if (window._addToCollision) window._addToCollision(model);
     }
     if (statusEl) statusEl.textContent = '3D Ready';
-    if (onDone) onDone();
+    if (typeof onDone === 'function') onDone();
   }, 
   (progress) => {
     // Loading progress
@@ -6727,7 +6766,6 @@ scene.add(model);
   (error) => {
     console.warn('Failed to load ' + url + ':', error);
     if (statusEl) statusEl.textContent = '3D Ready';
-    if (onDone) onDone();
   });
 }
 
