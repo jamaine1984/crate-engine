@@ -12682,6 +12682,7 @@ function showGameHUD(preset) {
     const runNext = () => {
       if (ci >= commands.length) {
         showToast('🗺️ ' + mapTheme + ' generated! ' + commands.length + ' elements placed.');
+        if (mapType === 'city') setAmbientSound('city');
         // Spawn driving cars for city
         if (mapType === 'city' || mapType === 'cyberpunk') {
           setTimeout(function() {
@@ -16776,7 +16777,33 @@ function setAmbientSound(type) {
   const ctx = _ambientCtx;
   if (ctx.state === 'suspended') ctx.resume();
   
-  if (type === 'wind' || type === 'outdoor') {
+  if (type === 'city' || type === 'traffic' || type === 'urban') {
+    // City ambient — low traffic rumble + occasional horn
+    const bufferSize = ctx.sampleRate * 4;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      data[i] = (last + (0.015 * white)) / 1.015;
+      last = data[i];
+      data[i] *= 2.5;
+      // Occasional honk bursts
+      if (Math.random() < 0.00002) {
+        for (let j = 0; j < Math.min(800, bufferSize - i); j++) {
+          data[i + j] += Math.sin(j * 0.15) * 0.3 * Math.exp(-j * 0.005);
+        }
+      }
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer; src.loop = true;
+    const gain = ctx.createGain(); gain.gain.value = 0.04;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass'; filter.frequency.value = 600;
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start();
+    _ambientNodes.city = src;
+  } else if (type === 'wind' || type === 'outdoor') {
     // Brown noise for wind
     const bufferSize = ctx.sampleRate * 2;
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
