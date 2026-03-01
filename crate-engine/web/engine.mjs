@@ -10420,6 +10420,48 @@ async function execSingle(cmd) {
     if (_cloudGroup) { scene.remove(_cloudGroup); _cloudGroup = null; }
     return '☀️ Clouds removed';
   }
+
+  // === QUICK COMMANDS (v217) ===
+  if (lower === 'clear scene' || lower === 'clear all' || lower === 'reset') {
+    if (window._runCommand) window._runCommand('clear');
+    return '🧹 Scene cleared';
+  }
+  if (lower === 'fullscreen' || lower === 'full screen' || lower === 'fs') {
+    if (window.toggleFullscreen) window.toggleFullscreen();
+    return '🖥️ Toggled fullscreen';
+  }
+  if (lower === 'wireframe' || lower === 'toggle wireframe') {
+    scene.traverse(c => { if (c.isMesh && c.material) c.material.wireframe = !c.material.wireframe; });
+    return '🔲 Wireframe toggled';
+  }
+  if (lower === 'stats' || lower === 'show stats' || lower === 'engine stats') {
+    const objCount = (window._sceneObjects || []).length;
+    const npcCount = npcController ? npcController.npcs.length : 0;
+    const tri = renderer.info.render.triangles;
+    const calls = renderer.info.render.calls;
+    return `📊 Objects: ${objCount} | NPCs: ${npcCount} | Triangles: ${tri.toLocaleString()} | Draw calls: ${calls}`;
+  }
+  if (lower === 'gravity off' || lower === 'no gravity' || lower === 'fly' || lower === 'fly mode') {
+    if (characterController) { characterController._fly = true; }
+    return '🕊️ Fly mode ON — Space to go up, Shift to go down';
+  }
+  if (lower === 'gravity on' || lower === 'walk' || lower === 'walk mode') {
+    if (characterController) { characterController._fly = false; }
+    return '🚶 Walk mode ON';
+  }
+  if (lower === 'speed 2x' || lower === 'fast') {
+    if (characterController) characterController._speedMultiplier = 2;
+    return '⚡ Speed 2x';
+  }
+  if (lower === 'speed 1x' || lower === 'normal speed') {
+    if (characterController) characterController._speedMultiplier = 1;
+    return '🚶 Normal speed';
+  }
+  if (lower === 'god mode' || lower === 'godmode' || lower === 'invincible') {
+    if (characterController) { characterController.hp = 99999; characterController.maxHp = 99999; }
+    return '⭐ God mode — invincible!';
+  }
+
   // 3D Generator commands
   
   
@@ -14066,6 +14108,7 @@ function getNearestVehicle(playerPos, range) {
 }
 
 function enterVehicle(veh) {
+  showVehicleHUD(true);
   // Auto-enable play mode so vehicle controls work
   if (!playMode) {
     playMode = true;
@@ -15622,6 +15665,51 @@ function updateClouds(dt) {
 setTimeout(() => { if (!_cloudGroup) createClouds(); }, 2000);
 
 
+// === ENHANCED VEHICLE HUD (v217) ===
+function showVehicleHUD(active) {
+  let vhud = document.getElementById('vehicle-hud');
+  if (!active) {
+    if (vhud) vhud.style.display = 'none';
+    return;
+  }
+  if (!vhud) {
+    vhud = document.createElement('div');
+    vhud.id = 'vehicle-hud';
+    vhud.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9998;font-family:monospace;pointer-events:none;text-align:right;';
+    vhud.innerHTML = `
+      <div style="background:rgba(0,0,0,0.7);border:1px solid #333;border-radius:12px;padding:12px 20px;backdrop-filter:blur(5px);">
+        <div style="font-size:36px;color:#4ade80;font-weight:bold;" id="v-speed">0</div>
+        <div style="font-size:11px;color:#666;">KM/H</div>
+        <div style="margin-top:8px;width:120px;height:3px;background:#1a1a1a;border-radius:2px;">
+          <div id="v-rpm-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#4ade80,#f59e0b,#ef4444);border-radius:2px;transition:width 0.1s;"></div>
+        </div>
+        <div style="font-size:10px;color:#555;margin-top:4px;">
+          <span id="v-gear">N</span> | RPM <span id="v-rpm">0</span>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(vhud);
+  }
+  vhud.style.display = 'block';
+}
+
+function updateVehicleHUD(vp) {
+  const speed = Math.abs(Math.round(vp.speed * 3.6));
+  const rpm = Math.round(vp.rpm || 0);
+  const gear = speed < 5 ? 'N' : speed < 30 ? '1' : speed < 60 ? '2' : speed < 100 ? '3' : speed < 150 ? '4' : '5';
+  
+  const sEl = document.getElementById('v-speed');
+  const rEl = document.getElementById('v-rpm');
+  const gEl = document.getElementById('v-gear');
+  const rBar = document.getElementById('v-rpm-bar');
+  
+  if (sEl) sEl.textContent = speed;
+  if (rEl) rEl.textContent = rpm;
+  if (gEl) gEl.textContent = gear;
+  if (rBar) rBar.style.width = Math.min(100, (rpm / 7000) * 100) + '%';
+}
+
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -15683,7 +15771,7 @@ function animate() {
   if (!playMode) controls.update();
   if (window._updateShadowCascades) window._updateShadowCascades();
   updateAmbientParticles(clock.getDelta() || 0.016, camera.position);
-  if (activeVehicle) { updateVehicle(dt); updateVehiclePrompt();
+  if (activeVehicle) { updateVehicle(dt); updateVehiclePrompt(); if (activeVehicle) updateVehicleHUD(activeVehicle);
   // Swimming/buoyancy — keep player above water
   const _waterLevel = -0.1; // Just above ocean surface at -0.3
   if (playMode && !activeVehicle) {
