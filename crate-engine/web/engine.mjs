@@ -11870,8 +11870,8 @@ function showGameHUD(preset) {
 }
 
 
-  if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
-    const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
+  if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
+    const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
     const mapType = mapMatch ? mapMatch[1].toLowerCase() : 'town';
     const mapTheme = lower.replace(/^(generate|create|build|make)\s+(a\s+)?/i, '').trim();
     showToast('🗺️ Generating ' + mapTheme + '...');
@@ -12603,6 +12603,60 @@ function showGameHUD(preset) {
           { cmd: 'spawn woman', scatter: { count: 3, radius: 55 } },
           { cmd: 'spawn worker', scatter: { count: 2, radius: 50 } },
         ]
+      },
+      suburban: {
+        terrain: { type: 'flat', height: 0 },
+        ground: 'grass', env: ['time morning'],
+        items: [
+          // Quiet residential street
+          { cmd: 'add road', pos: [0, -40] },
+          { cmd: 'add road', pos: [0, 0] },
+          { cmd: 'add road', pos: [0, 40] },
+          { cmd: 'add road', pos: [0, 80] },
+          // Houses with yards — spaced out
+          { cmd: 'add modern house', pos: [-25, -35], rot: Math.PI/2 },
+          { cmd: 'add pitched house', pos: [-25, -10], rot: Math.PI/2 },
+          { cmd: 'add ranch', pos: [-25, 15], rot: Math.PI/2 },
+          { cmd: 'add modern house 2 floors', pos: [-25, 40], rot: Math.PI/2 },
+          { cmd: 'add mansion', pos: [-25, 65], rot: Math.PI/2 },
+          { cmd: 'add pitched house', pos: [25, -35], rot: -Math.PI/2 },
+          { cmd: 'add modern house 2 floors', pos: [25, -10], rot: -Math.PI/2 },
+          { cmd: 'add duplex', pos: [25, 15], rot: -Math.PI/2 },
+          { cmd: 'add modern house', pos: [25, 40], rot: -Math.PI/2 },
+          { cmd: 'add ranch', pos: [25, 65], rot: -Math.PI/2 },
+          // Pools in backyards
+          { cmd: 'add pool', pos: [-35, -8] },
+          { cmd: 'add pool', pos: [35, 42] },
+          { cmd: 'add pool', pos: [-35, 67] },
+          // Trees in yards
+          { cmd: 'add tree', pos: [-20, -25] }, { cmd: 'add tree', pos: [-20, 5] },
+          { cmd: 'add tree', pos: [20, -20] }, { cmd: 'add tree', pos: [20, 25] },
+          { cmd: 'add tree', pos: [-20, 50] }, { cmd: 'add tree', pos: [20, 55] },
+          { cmd: 'add tree', pos: [-32, -30] }, { cmd: 'add tree', pos: [32, 10] },
+          // Street lamps
+          { cmd: 'add ph_street_lamp_01', pos: [-7, -30] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, -10] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, 20] },
+          { cmd: 'add ph_street_lamp_01', pos: [7, 50] },
+          { cmd: 'add ph_street_lamp_01', pos: [-7, 75] },
+          // Fire hydrants
+          { cmd: 'add ph_fire_hydrant', pos: [-7, -20] },
+          { cmd: 'add ph_fire_hydrant', pos: [7, 30] },
+          // Mailboxes (just small boxes for now)
+          { cmd: 'add trash can', pos: [-14, -34] },
+          { cmd: 'add trash can', pos: [14, -9] },
+          { cmd: 'add trash can', pos: [-14, 16] },
+          // Parked cars
+          { cmd: 'add sedan', pos: [-10, -32] },
+          { cmd: 'add suv', pos: [10, 18] },
+          { cmd: 'add sedan', pos: [-10, 45] },
+          // Park at the end
+          { cmd: 'add tree', pos: [0, 90] }, { cmd: 'add tree', pos: [-8, 95] },
+          { cmd: 'add tree', pos: [8, 95] }, { cmd: 'add tree', pos: [-4, 100] },
+          { cmd: 'add tree', pos: [4, 100] },
+          { cmd: 'add ph_park_bench', pos: [0, 92] },
+        ],
+        npcs: { count: 6 },
       },
     }
     
