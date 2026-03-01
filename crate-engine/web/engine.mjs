@@ -1326,6 +1326,66 @@ window._replayList = listReplays;
 window._replayExportAll = exportAllReplays;
 
 
+
+// === HEALTH & DAMAGE SYSTEM (v218) ===
+let _healthRegenDelay = 5000;
+let _healthRegenRate = 2;
+let _lastDamageTime = 0;
+let _playerMaxHP = 100;
+
+function damagePlayer(amount, source) {
+  if (!characterController) return;
+  _lastDamageTime = performance.now();
+  characterController.hp = Math.max(0, (characterController.hp || _playerMaxHP) - amount);
+  if (typeof showDamageNumberV2 === 'function') {
+    showDamageNumberV2(characterController.position.clone().add(new THREE.Vector3(0, 2, 0)), amount, '#ef4444');
+  }
+  var vignette = document.getElementById('damage-vignette');
+  if (vignette && amount > 10) {
+    vignette.style.opacity = String(Math.min(0.6, amount / 50));
+    setTimeout(function() { if(vignette) vignette.style.opacity = '0'; }, 300);
+  }
+  if (characterController.hp <= 0) {
+    showNotification('You died! Respawning...');
+    setTimeout(function() {
+      characterController.hp = _playerMaxHP;
+      characterController.position.set(0, 5, 0);
+    }, 2000);
+  }
+}
+
+function updateHealthRegen(dt) {
+  if (!characterController || !playMode) return;
+  if (characterController.hp === undefined) characterController.hp = _playerMaxHP;
+  if (performance.now() - _lastDamageTime > _healthRegenDelay && characterController.hp < _playerMaxHP) {
+    characterController.hp = Math.min(_playerMaxHP, characterController.hp + _healthRegenRate * dt);
+  }
+}
+window.damagePlayer = damagePlayer;
+
+// === CAMERA SCROLL ZOOM (v218) ===
+document.addEventListener('wheel', function(e) {
+  if (!playMode || activeVehicle) return;
+  if (window._cameraDistance === undefined) window._cameraDistance = 5;
+  window._cameraDistance = Math.max(1.5, Math.min(12, window._cameraDistance + e.deltaY * 0.005));
+}, { passive: true });
+
+// === OBJECT COUNTER HUD (v218) ===
+function updateObjectCounter() {
+  if (!playMode) return;
+  var el = document.getElementById('object-counter');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'object-counter';
+    el.style.cssText = 'position:fixed;bottom:44px;right:8px;color:rgba(255,255,255,0.25);font-family:monospace;font-size:10px;z-index:99990;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  var count = 0;
+  scene.traverse(function(o) { if (o.isMesh) count++; });
+  el.textContent = count + ' meshes';
+}
+
+
 // === HUD (score, health, etc.) ===
 let hudDiv = null;
 function initHUD() {
