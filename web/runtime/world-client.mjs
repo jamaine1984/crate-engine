@@ -61,6 +61,85 @@ class SeededRng {
 
 const ZONES = { DOWNTOWN: 'downtown', COMMERCIAL: 'commercial', SUBURBS: 'suburbs', INDUSTRIAL: 'industrial', PARK: 'park' };
 
+// ---------------------------------------------------------------------------
+// Template Configurations — mirrors template_config.rs
+// ---------------------------------------------------------------------------
+
+const TEMPLATE_CONFIGS = {
+  CITY_MODERN: {
+    name: 'CITY_MODERN', style: 'modern',
+    zones: [
+      { name: 'downtown', ringOrder: 0, ringRadius: 1.0, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'commercial', ringOrder: 1, ringRadius: 2.5, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'suburbs', ringOrder: 2, ringRadius: Infinity, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'park', ringOrder: null, ringRadius: 0, cornerPlacement: 'random', blockSize: [2, 2] },
+      { name: 'industrial', ringOrder: null, ringRadius: 0, cornerPlacement: 'opposite', blockSize: [2, 2] },
+    ],
+    roadStyle: 'urban_grid', roadDensity: 1.0, spawnZone: 'downtown',
+    roadSubcategory: 'straight', intersectionSubcategory: '4way',
+    zoneRules: {
+      downtown:   { buildingCount: [1, 2], furnitureSpacing: 20, vegetationDensity: [0, 1], vehicleCount: [3, 6], characterCount: [2, 5] },
+      commercial: { buildingCount: [2, 4], furnitureSpacing: 20, vegetationDensity: [1, 3], vehicleCount: [2, 4], characterCount: [1, 3] },
+      suburbs:    { buildingCount: [3, 6], furnitureSpacing: 30, vegetationDensity: [2, 5], vehicleCount: [1, 2], characterCount: [0, 2] },
+      industrial: { buildingCount: [1, 3], furnitureSpacing: 25, vegetationDensity: [0, 1], vehicleCount: [2, 4], characterCount: [0, 1] },
+      park:       { buildingCount: [0, 0], furnitureSpacing: 15, vegetationDensity: [8, 15], vehicleCount: [0, 1], characterCount: [1, 4] },
+    },
+  },
+  MEDIEVAL_VILLAGE: {
+    name: 'MEDIEVAL_VILLAGE', style: 'medieval',
+    zones: [
+      { name: 'castle', ringOrder: 0, ringRadius: 1.0, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'market', ringOrder: 1, ringRadius: 2.0, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'cottage', ringOrder: 2, ringRadius: Infinity, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'farm', ringOrder: null, ringRadius: 0, cornerPlacement: 'random', blockSize: [2, 2] },
+    ],
+    roadStyle: 'organic_paths', roadDensity: 0.4, spawnZone: 'market',
+    roadSubcategory: 'path', intersectionSubcategory: 'path_square',
+    zoneRules: {
+      castle:  { buildingCount: [1, 2], furnitureSpacing: 15, vegetationDensity: [0, 2], vehicleCount: [0, 0], characterCount: [1, 3] },
+      market:  { buildingCount: [2, 4], furnitureSpacing: 10, vegetationDensity: [1, 2], vehicleCount: [0, 1], characterCount: [2, 5] },
+      cottage: { buildingCount: [2, 5], furnitureSpacing: 20, vegetationDensity: [3, 6], vehicleCount: [0, 1], characterCount: [1, 3] },
+      farm:    { buildingCount: [1, 2], furnitureSpacing: 25, vegetationDensity: [4, 8], vehicleCount: [0, 1], characterCount: [0, 2] },
+    },
+  },
+  ZOMBIELAND: {
+    name: 'ZOMBIELAND', style: 'zombie',
+    zones: [
+      { name: 'ruin', ringOrder: 0, ringRadius: Infinity, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'barricade', ringOrder: null, ringRadius: 0, cornerPlacement: 'random', blockSize: [2, 2] },
+      { name: 'safe_zone', ringOrder: null, ringRadius: 0, cornerPlacement: 'opposite', blockSize: [2, 2] },
+      { name: 'evac_point', ringOrder: null, ringRadius: 0, cornerPlacement: 'random', blockSize: [1, 1] },
+    ],
+    roadStyle: 'damaged_grid', roadDensity: 0.6, spawnZone: 'safe_zone',
+    roadSubcategory: 'straight', intersectionSubcategory: '4way',
+    zoneRules: {
+      ruin:       { buildingCount: [1, 3], furnitureSpacing: 25, vegetationDensity: [2, 4], vehicleCount: [1, 3], characterCount: [0, 1] },
+      barricade:  { buildingCount: [0, 1], furnitureSpacing: 10, vegetationDensity: [1, 2], vehicleCount: [0, 1], characterCount: [0, 2] },
+      safe_zone:  { buildingCount: [1, 2], furnitureSpacing: 10, vegetationDensity: [1, 3], vehicleCount: [0, 1], characterCount: [1, 3] },
+      evac_point: { buildingCount: [0, 0], furnitureSpacing: 15, vegetationDensity: [0, 1], vehicleCount: [1, 2], characterCount: [0, 1] },
+    },
+  },
+  SPACE_STATION: {
+    name: 'SPACE_STATION', style: 'space',
+    zones: [
+      { name: 'command', ringOrder: 0, ringRadius: 1.5, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'lab', ringOrder: 1, ringRadius: 3.0, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'quarters', ringOrder: 2, ringRadius: Infinity, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'hangar', ringOrder: null, ringRadius: 0, cornerPlacement: 'random', blockSize: [3, 3] },
+    ],
+    roadStyle: 'corridors', roadDensity: 0.5, spawnZone: 'command',
+    roadSubcategory: 'connector', intersectionSubcategory: 'connector',
+    zoneRules: {
+      command:  { buildingCount: [1, 2], furnitureSpacing: 12, vegetationDensity: [0, 1], vehicleCount: [0, 1], characterCount: [1, 3] },
+      lab:      { buildingCount: [1, 3], furnitureSpacing: 15, vegetationDensity: [1, 3], vehicleCount: [0, 0], characterCount: [0, 2] },
+      quarters: { buildingCount: [2, 4], furnitureSpacing: 15, vegetationDensity: [2, 4], vehicleCount: [0, 0], characterCount: [1, 3] },
+      hangar:   { buildingCount: [0, 1], furnitureSpacing: 20, vegetationDensity: [0, 1], vehicleCount: [1, 3], characterCount: [0, 1] },
+    },
+  },
+};
+
+const DEFAULT_ZONE_RULE = { buildingCount: [2, 4], furnitureSpacing: 20, vegetationDensity: [1, 3], vehicleCount: [1, 3], characterCount: [1, 3] };
+
 function generateGrid(width, height, chunkSize, rng) {
   const zones = Array.from({ length: width }, () => Array(height).fill(ZONES.SUBURBS));
   const cx = width / 2;
@@ -113,6 +192,88 @@ function generateGrid(width, height, chunkSize, rng) {
 }
 
 // ---------------------------------------------------------------------------
+// Generic grid from config (mirrors grid.rs generate_from_config)
+// ---------------------------------------------------------------------------
+
+function generateGridFromConfig(width, height, chunkSize, config, rng) {
+  // Collect ring zones sorted by ringOrder (ascending)
+  const ringZones = config.zones
+    .filter(z => z.ringOrder !== null)
+    .sort((a, b) => a.ringOrder - b.ringOrder);
+
+  const defaultZone = ringZones.length > 0
+    ? ringZones[ringZones.length - 1].name
+    : 'suburbs';
+
+  const zones = Array.from({ length: width }, () => Array(height).fill(defaultZone));
+  const cx = width / 2;
+  const cz = height / 2;
+
+  // Assign ring zones by Chebyshev distance from center
+  for (let x = 0; x < width; x++) {
+    for (let z = 0; z < height; z++) {
+      const dx = Math.abs(x + 0.5 - cx);
+      const dz = Math.abs(z + 0.5 - cz);
+      const dist = Math.max(dx, dz);
+      for (const zone of ringZones) {
+        if (dist <= zone.ringRadius) {
+          zones[x][z] = zone.name;
+          break;
+        }
+      }
+    }
+  }
+
+  // Handle corner-placed zones
+  const cornerZones = config.zones.filter(z => z.cornerPlacement !== null);
+  const usedCorners = [];
+
+  for (const zoneCfg of cornerZones) {
+    let corner;
+    if (zoneCfg.cornerPlacement === 'random') {
+      const available = [0, 1, 2, 3].filter(c => !usedCorners.includes(c));
+      if (available.length === 0) continue;
+      corner = available[rng.rangeUsize(0, available.length - 1)];
+    } else {
+      // opposite
+      if (usedCorners.length > 0) {
+        const last = usedCorners[usedCorners.length - 1];
+        corner = [3, 2, 1, 0][last];
+      } else {
+        corner = rng.rangeUsize(0, 3);
+      }
+    }
+
+    const [bw, bh] = zoneCfg.blockSize;
+    const bases = [[0, 0], [width - bw, 0], [0, height - bh], [width - bw, height - bh]];
+    const [baseX, baseZ] = bases[corner];
+
+    for (let dx = 0; dx < bw; dx++) {
+      for (let dz = 0; dz < bh; dz++) {
+        const x = Math.max(0, Math.min(baseX + dx, width - 1));
+        const z = Math.max(0, Math.min(baseZ + dz, height - 1));
+        zones[x][z] = zoneCfg.name;
+      }
+    }
+
+    usedCorners.push(corner);
+  }
+
+  return {
+    width, height, chunkSize, zones,
+    zoneAt(x, z) {
+      if (x >= 0 && x < width && z >= 0 && z < height) return zones[x][z];
+      return defaultZone;
+    },
+    worldPos(gx, gz) { return [gx * chunkSize, gz * chunkSize]; },
+    chunkCenter(gx, gz) { return [gx * chunkSize + chunkSize / 2, gz * chunkSize + chunkSize / 2]; },
+    worldSize() { return [width * chunkSize, height * chunkSize]; },
+    isMajorRoadX(gx) { return gx % 3 === 0 || gx === width; },
+    isMajorRoadZ(gz) { return gz % 3 === 0 || gz === height; },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Asset query helpers
 // ---------------------------------------------------------------------------
 
@@ -125,6 +286,20 @@ function queryAssets(category, zone, subcategory) {
 
 function pickAsset(category, zone, subcategory, rng) {
   const results = queryAssets(category, zone, subcategory);
+  if (results.length === 0) return null;
+  return rng.pick(results);
+}
+
+function queryAssetsStyled(category, zone, subcategory, style) {
+  const opts = { category };
+  if (zone) opts.zone = zone;
+  if (subcategory) opts.subcategory = subcategory;
+  if (style) opts.style = style;
+  return assetIndex.query(opts);
+}
+
+function pickAssetStyled(category, zone, subcategory, style, rng) {
+  const results = queryAssetsStyled(category, zone, subcategory, style);
   if (results.length === 0) return null;
   return rng.pick(results);
 }
@@ -203,6 +378,140 @@ function generateRoads(grid, rng) {
       } else continue;
 
       intersections.push({ asset_id: assetId, position: [x, 0, z], rotation, scale: 1, intersection_type: itype });
+    }
+  }
+
+  return { roads, intersections };
+}
+
+// ---------------------------------------------------------------------------
+// Generic road generation from config (mirrors roads.rs generate_roads_with_config)
+// ---------------------------------------------------------------------------
+
+function generateRoadsWithConfig(grid, config, rng) {
+  const roads = [];
+  const intersections = [];
+  const piecesPerEdge = Math.round(grid.chunkSize / ROAD_PIECE_SIZE);
+
+  const style = config.style;
+  const straightId = pickAssetStyled('road', null, config.roadSubcategory, style, rng)?.id
+    || pickAsset('road', null, 'straight', rng)?.id || 'street_pack_street_straight';
+  const fourwayId = pickAssetStyled('road', null, config.intersectionSubcategory, style, rng)?.id
+    || pickAsset('road', null, '4way', rng)?.id || 'street_pack_street_4way';
+
+  // Build edge sets based on road style
+  const hEdges = new Set(); // (gz * (grid.width + 1) + gx) for E-W edges at row gz, column gx
+  const vEdges = new Set(); // (gx * (grid.height + 1) + gz) for N-S edges at column gx, row gz
+
+  const hKey = (gx, gz) => gz * grid.width + gx;
+  const vKey = (gx, gz) => gx * grid.height + gz;
+
+  if (config.roadStyle === 'urban_grid') {
+    // All edges present
+    for (let gz = 0; gz <= grid.height; gz++)
+      for (let gx = 0; gx < grid.width; gx++) hEdges.add(hKey(gx, gz));
+    for (let gx = 0; gx <= grid.width; gx++)
+      for (let gz = 0; gz < grid.height; gz++) vEdges.add(vKey(gx, gz));
+
+  } else if (config.roadStyle === 'organic_paths') {
+    // Only major grid lines, with random removal
+    for (let gz = 0; gz <= grid.height; gz++) {
+      if (gz % 3 !== 0 && gz !== grid.height) continue;
+      for (let gx = 0; gx < grid.width; gx++) {
+        if (rng.nextF32() < config.roadDensity) hEdges.add(hKey(gx, gz));
+      }
+    }
+    for (let gx = 0; gx <= grid.width; gx++) {
+      if (gx % 3 !== 0 && gx !== grid.width) continue;
+      for (let gz = 0; gz < grid.height; gz++) {
+        if (rng.nextF32() < config.roadDensity) vEdges.add(vKey(gx, gz));
+      }
+    }
+
+  } else if (config.roadStyle === 'damaged_grid') {
+    // Start with full grid, then remove segments
+    for (let gz = 0; gz <= grid.height; gz++)
+      for (let gx = 0; gx < grid.width; gx++) hEdges.add(hKey(gx, gz));
+    for (let gx = 0; gx <= grid.width; gx++)
+      for (let gz = 0; gz < grid.height; gz++) vEdges.add(vKey(gx, gz));
+
+    // Remove ~(1 - density) of non-boundary edges
+    const removeProbability = 1.0 - config.roadDensity;
+    for (let gz = 1; gz < grid.height; gz++) {
+      for (let gx = 0; gx < grid.width; gx++) {
+        if (rng.nextF32() < removeProbability) hEdges.delete(hKey(gx, gz));
+      }
+    }
+    for (let gx = 1; gx < grid.width; gx++) {
+      for (let gz = 0; gz < grid.height; gz++) {
+        if (rng.nextF32() < removeProbability) vEdges.delete(vKey(gx, gz));
+      }
+    }
+
+  } else if (config.roadStyle === 'corridors') {
+    // Only major grid lines
+    for (let gz = 0; gz <= grid.height; gz++) {
+      if (gz % 3 !== 0 && gz !== grid.height) continue;
+      for (let gx = 0; gx < grid.width; gx++) hEdges.add(hKey(gx, gz));
+    }
+    for (let gx = 0; gx <= grid.width; gx++) {
+      if (gx % 3 !== 0 && gx !== grid.width) continue;
+      for (let gz = 0; gz < grid.height; gz++) vEdges.add(vKey(gx, gz));
+    }
+  }
+
+  // Place E-W road pieces
+  for (let gz = 0; gz <= grid.height; gz++) {
+    for (let gx = 0; gx < grid.width; gx++) {
+      if (!hEdges.has(hKey(gx, gz))) continue;
+      const roadType = grid.isMajorRoadZ(gz) ? 'major' : 'minor';
+      const baseX = gx * grid.chunkSize;
+      const baseZ = gz * grid.chunkSize;
+      for (let p = 0; p < piecesPerEdge; p++) {
+        roads.push({
+          asset_id: straightId,
+          position: [baseX + p * ROAD_PIECE_SIZE + ROAD_PIECE_SIZE / 2, 0, baseZ],
+          rotation: 0, scale: 1, road_type: roadType,
+        });
+      }
+    }
+  }
+
+  // Place N-S road pieces
+  for (let gx = 0; gx <= grid.width; gx++) {
+    for (let gz = 0; gz < grid.height; gz++) {
+      if (!vEdges.has(vKey(gx, gz))) continue;
+      const roadType = grid.isMajorRoadX(gx) ? 'major' : 'minor';
+      const baseX = gx * grid.chunkSize;
+      const baseZ = gz * grid.chunkSize;
+      for (let p = 0; p < piecesPerEdge; p++) {
+        roads.push({
+          asset_id: straightId,
+          position: [baseX, 0, baseZ + p * ROAD_PIECE_SIZE + ROAD_PIECE_SIZE / 2],
+          rotation: 90, scale: 1, road_type: roadType,
+        });
+      }
+    }
+  }
+
+  // Intersections
+  for (let gx = 0; gx <= grid.width; gx++) {
+    for (let gz = 0; gz <= grid.height; gz++) {
+      const left = gx > 0 && hEdges.has(hKey(gx - 1, gz));
+      const right = gx < grid.width && hEdges.has(hKey(gx, gz));
+      const up = gz > 0 && vEdges.has(vKey(gx, gz - 1));
+      const down = gz < grid.height && vEdges.has(vKey(gx, gz));
+      const count = [left, right, up, down].filter(Boolean).length;
+
+      if (count < 2) continue;
+
+      const x = gx * grid.chunkSize;
+      const z = gz * grid.chunkSize;
+      intersections.push({
+        asset_id: fourwayId,
+        position: [x, 0, z],
+        rotation: 0, scale: 1, intersection_type: count >= 4 ? '4way' : '3way',
+      });
     }
   }
 
@@ -413,6 +722,122 @@ function placeCharacters(zone, rng, cx, cz, cs, out) {
 }
 
 // ---------------------------------------------------------------------------
+// Generic config-driven placement (mirrors placer.rs place_all_chunks_with_config)
+// ---------------------------------------------------------------------------
+
+function placeAllChunksWithConfig(grid, config, rng) {
+  const chunks = [];
+  const style = config.style;
+
+  for (let gx = 0; gx < grid.width; gx++) {
+    for (let gz = 0; gz < grid.height; gz++) {
+      const zone = grid.zoneAt(gx, gz);
+      const [wx, wz] = grid.worldPos(gx, gz);
+      const cs = grid.chunkSize;
+      const placements = [];
+
+      const rule = config.zoneRules[zone] || DEFAULT_ZONE_RULE;
+
+      const bMinX = wx + ROAD_BUFFER, bMinZ = wz + ROAD_BUFFER;
+      const bW = cs - 2 * ROAD_BUFFER, bD = cs - 2 * ROAD_BUFFER;
+
+      // Buildings
+      const buildCount = rng.rangeUsize(rule.buildingCount[0], rule.buildingCount[1]);
+      if (buildCount > 0) {
+        const cols = buildCount <= 2 ? 1 : 2;
+        const rows = Math.max(Math.ceil(buildCount / cols), 1);
+        const lotW = bW / cols, lotD = bD / rows;
+        let placed = 0;
+        for (let row = 0; row < rows && placed < buildCount; row++) {
+          for (let col = 0; col < cols && placed < buildCount; col++) {
+            const cx = bMinX + col * lotW + lotW / 2;
+            const cz = bMinZ + row * lotD + lotD / 2;
+            const asset = pickAssetStyled('building', zone, null, style, rng);
+            if (!asset) continue;
+            const jx = rng.rangeF32(-lotW * 0.15, lotW * 0.15);
+            const jz = rng.rangeF32(-lotD * 0.15, lotD * 0.15);
+            const rotation = rng.pickFrom([0, 90, 180, 270]);
+            const scale = rng.rangeF32(0.9, 1.1);
+            placements.push({ asset_id: asset.id, position: [cx + jx, 0, cz + jz], rotation, scale, category: 'building' });
+            placed++;
+          }
+        }
+      }
+
+      // Street furniture
+      const swOff = 4.0;
+      const spacing = rule.furnitureSpacing;
+      for (let x = wx + spacing / 2; x < wx + cs; x += spacing) {
+        const light = pickAssetStyled('street_furniture', zone, 'streetlight', style, rng)
+          || pickAssetStyled('street_furniture', zone, null, style, rng);
+        if (light) {
+          placements.push({ asset_id: light.id, position: [x, 0, wz + swOff], rotation: 0, scale: 1, category: 'street_furniture' });
+          placements.push({ asset_id: light.id, position: [x, 0, wz + cs - swOff], rotation: 180, scale: 1, category: 'street_furniture' });
+        }
+      }
+
+      // Vegetation
+      const vegCount = rng.rangeUsize(rule.vegetationDensity[0], rule.vegetationDensity[1]);
+      for (let i = 0; i < vegCount; i++) {
+        const veg = pickAssetStyled('vegetation', zone, null, style, rng);
+        if (veg) {
+          placements.push({
+            asset_id: veg.id,
+            position: [rng.rangeF32(wx + 5, wx + cs - 5), 0, rng.rangeF32(wz + 5, wz + cs - 5)],
+            rotation: rng.rangeF32(0, 360), scale: rng.rangeF32(0.8, 1.3), category: 'vegetation',
+          });
+        }
+      }
+
+      // Vehicles
+      const vehCount = rng.rangeUsize(rule.vehicleCount[0], rule.vehicleCount[1]);
+      const parkOff = 3.0;
+      for (let i = 0; i < vehCount; i++) {
+        const edge = i % 4;
+        const t = rng.rangeF32(0.15, 0.85);
+        const along = wx + t * cs, across = wz + t * cs;
+        let x, z, rot;
+        if (edge === 0) { x = along; z = wz + parkOff; rot = 0; }
+        else if (edge === 1) { x = along; z = wz + cs - parkOff; rot = 180; }
+        else if (edge === 2) { x = wx + parkOff; z = across; rot = 270; }
+        else { x = wx + cs - parkOff; z = across; rot = 90; }
+        const vehicle = pickAssetStyled('vehicle', zone, null, style, rng);
+        if (vehicle) placements.push({ asset_id: vehicle.id, position: [x, 0, z], rotation: rot, scale: 1, category: 'vehicle' });
+      }
+
+      // Traffic control
+      const corners = [[gx, gz], [gx + 1, gz], [gx, gz + 1], [gx + 1, gz + 1]];
+      for (const [icx, icz] of corners) {
+        const isMajorX = grid.isMajorRoadX(icx);
+        const isMajorZ = grid.isMajorRoadZ(icz);
+        if (isMajorX && isMajorZ) {
+          const sign = pickAssetStyled('traffic_control', zone, null, style, rng);
+          if (sign) {
+            const iwx = icx * grid.chunkSize, iwz = icz * grid.chunkSize;
+            placements.push({ asset_id: sign.id, position: [iwx + 3, 0, iwz + 3], rotation: 0, scale: 1, category: 'traffic_control' });
+          }
+        }
+      }
+
+      // Characters
+      const charCount = rng.rangeUsize(rule.characterCount[0], rule.characterCount[1]);
+      for (let i = 0; i < charCount; i++) {
+        const swZ = rng.nextBool() ? wz + 5 : wz + cs - 5;
+        const x = rng.rangeF32(wx + 5, wx + cs - 5);
+        const ped = pickAssetStyled('character', zone, null, style, rng);
+        if (ped) placements.push({ asset_id: ped.id, position: [x, 0, swZ], rotation: rng.rangeF32(0, 360), scale: 1, category: 'character' });
+      }
+
+      chunks.push({
+        id: `chunk_${gx}_${gz}`, grid_x: gx, grid_z: gz, zone,
+        bounds_min: [wx, wz], bounds_max: [wx + cs, wz + cs], placements,
+      });
+    }
+  }
+  return chunks;
+}
+
+// ---------------------------------------------------------------------------
 // compile() — the JS-side world compiler (mirrors Rust compile_world)
 // ---------------------------------------------------------------------------
 
@@ -421,33 +846,78 @@ const SIZE_MAP = {
 };
 
 /**
- * Compile a CITY_MODERN world entirely in JavaScript.
+ * Compile a world entirely in JavaScript.
+ * Supports all 4 templates: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION.
  *
  * @param {object} opts
- * @param {string} opts.template - Template name (only "CITY_MODERN" supported)
+ * @param {string} opts.template - Template name
  * @param {number} opts.seed - Deterministic seed
  * @param {string} opts.size - "small" | "medium" | "large" | "huge"
  * @returns {object} WorldManifest JSON
  */
 export function compileWorld({ template = 'CITY_MODERN', seed = 42, size = 'medium' } = {}) {
-  if (template.toUpperCase() !== 'CITY_MODERN') {
-    throw new Error(`Unknown template: ${template}. Available: CITY_MODERN`);
+  const templateName = template.toUpperCase();
+
+  // CITY_MODERN uses original functions for backward compatibility (identical RNG sequence)
+  if (templateName === 'CITY_MODERN') {
+    return compileCityModern(seed, size);
   }
 
+  const config = TEMPLATE_CONFIGS[templateName];
+  if (!config) {
+    throw new Error(`Unknown template: ${template}. Available: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION`);
+  }
+
+  return compileTemplate(config, seed, size);
+}
+
+/** Backward-compatible CITY_MODERN compilation — uses original functions. */
+function compileCityModern(seed, size) {
   const rng = new SeededRng(seed);
   const [gw, gh] = SIZE_MAP[size] || SIZE_MAP.medium;
   const chunkSize = 50.0;
 
-  // 1. Grid
   const grid = generateGrid(gw, gh, chunkSize, rng);
-
-  // 2. Roads
   const { roads, intersections } = generateRoads(grid, rng);
-
-  // 3. Chunks
   const chunks = placeAllChunks(grid, rng);
 
-  // 4. Spawn
+  const [worldW, worldH] = grid.worldSize();
+  const spawn = { position: [worldW / 2, 0, worldH / 2], rotation: 0 };
+
+  const totalChunkAssets = chunks.reduce((sum, c) => sum + c.placements.length, 0);
+  const totalAssets = totalChunkAssets + roads.length + intersections.length;
+
+  const zoneCounts = {};
+  for (let x = 0; x < gw; x++) {
+    for (let z = 0; z < gh; z++) {
+      const zone = grid.zoneAt(x, z);
+      zoneCounts[zone] = (zoneCounts[zone] || 0) + 1;
+    }
+  }
+
+  return {
+    template: 'CITY_MODERN', seed, world_size: [worldW, worldH], chunk_size: chunkSize,
+    chunks, roads, intersections, spawn,
+    stats: { total_assets: totalAssets, chunk_count: chunks.length, road_segments: roads.length, intersection_count: intersections.length, zone_breakdown: zoneCounts },
+  };
+}
+
+/** Generic template compilation — uses config-driven functions. */
+function compileTemplate(config, seed, size) {
+  const rng = new SeededRng(seed);
+  const [gw, gh] = SIZE_MAP[size] || SIZE_MAP.medium;
+  const chunkSize = 50.0;
+
+  // 1. Grid from config
+  const grid = generateGridFromConfig(gw, gh, chunkSize, config, rng);
+
+  // 2. Roads from config
+  const { roads, intersections } = generateRoadsWithConfig(grid, config, rng);
+
+  // 3. Chunks from config
+  const chunks = placeAllChunksWithConfig(grid, config, rng);
+
+  // 4. Spawn at center of spawn zone (or world center as fallback)
   const [worldW, worldH] = grid.worldSize();
   const spawn = { position: [worldW / 2, 0, worldH / 2], rotation: 0 };
 
@@ -464,7 +934,7 @@ export function compileWorld({ template = 'CITY_MODERN', seed = 42, size = 'medi
   }
 
   return {
-    template: 'CITY_MODERN', seed, world_size: [worldW, worldH], chunk_size: chunkSize,
+    template: config.name, seed, world_size: [worldW, worldH], chunk_size: chunkSize,
     chunks, roads, intersections, spawn,
     stats: { total_assets: totalAssets, chunk_count: chunks.length, road_segments: roads.length, intersection_count: intersections.length, zone_breakdown: zoneCounts },
   };
@@ -640,7 +1110,7 @@ export async function buildAndApply({ template = 'CITY_MODERN', seed, size = 'me
 
   return {
     ok: true,
-    message: `Built ${template}: ${result.placed} assets, ${manifest.chunks.length} chunks streaming`,
+    message: `Built ${manifest.template}: ${result.placed} assets, ${manifest.chunks.length} chunks streaming`,
     data: { seed, size, manifest: manifest.stats, sim: simulation.getStats(), streaming: result.streaming },
   };
 }

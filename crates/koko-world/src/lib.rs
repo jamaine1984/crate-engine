@@ -17,6 +17,7 @@ pub mod manifest;
 pub mod placer;
 pub mod roads;
 pub mod rng;
+pub mod template_config;
 
 use catalog::{AssetCatalog, AssetEntry};
 use grid::CityGrid;
@@ -66,8 +67,63 @@ pub struct WorldBuildRequest {
 pub fn compile_world(request: &WorldBuildRequest) -> Result<WorldManifest, String> {
     match request.template.to_uppercase().as_str() {
         "CITY_MODERN" => compile_city_modern(request),
-        other => Err(format!("Unknown template: {}. Available: CITY_MODERN", other)),
+        "MEDIEVAL_VILLAGE" | "ZOMBIELAND" | "SPACE_STATION" => compile_template(request),
+        other => Err(format!(
+            "Unknown template: {}. Available: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION",
+            other
+        )),
     }
+}
+
+/// Generic template compiler — works for any template via TemplateConfig.
+fn compile_template(request: &WorldBuildRequest) -> Result<WorldManifest, String> {
+    let config = template_config::get_template_config(&request.template)?;
+    let mut rng = rng::SeededRng::new(request.seed);
+    let (gw, gh) = request.size.grid_size();
+    let chunk_size = 50.0;
+
+    // Build asset catalog
+    let catalog = AssetCatalog::new(request.assets.clone());
+    if catalog.is_empty() {
+        return Err("Empty asset catalog — cannot build world".into());
+    }
+
+    // 1. Generate grid from template config
+    let grid = CityGrid::generate_from_config(gw, gh, chunk_size, &config, &mut rng);
+
+    // 2. Generate road network using template's road style
+    let (road_placements, intersection_placements) =
+        roads::generate_roads_with_config(&grid, &catalog, &config, &mut rng);
+
+    // 3. Place assets using template's zone rules
+    let chunks = placer::place_all_chunks_with_config(&grid, &catalog, &config, &mut rng);
+
+    // 4. Spawn point at center
+    let spawn = find_spawn_point(&grid);
+
+    // 5. Statistics
+    let total_chunk_assets: usize = chunks.iter().map(|c| c.placements.len()).sum();
+    let total_assets = total_chunk_assets + road_placements.len() + intersection_placements.len();
+
+    let stats = WorldStats {
+        total_assets,
+        chunk_count: chunks.len(),
+        road_segments: road_placements.len(),
+        intersection_count: intersection_placements.len(),
+        zone_breakdown: grid.zone_counts(),
+    };
+
+    Ok(WorldManifest {
+        template: config.name.clone(),
+        seed: request.seed,
+        world_size: grid.world_size(),
+        chunk_size,
+        chunks,
+        roads: road_placements,
+        intersections: intersection_placements,
+        spawn,
+        stats,
+    })
 }
 
 /// Compile a CITY_MODERN world.
@@ -405,8 +461,162 @@ mod tests {
     #[test]
     fn unknown_template_returns_error() {
         let mut req = test_request(WorldSize::Small);
-        req.template = "SPACE_STATION".into();
+        req.template = "ATLANTIS".into();
         assert!(compile_world(&req).is_err());
+    }
+
+    // --- New template tests ---
+
+    fn template_test_assets() -> Vec<AssetEntry> {
+        // Multi-style assets that match any template's zone/style filters
+        vec![
+            AssetEntry {
+                id: "generic_building".into(), category: "building".into(),
+                subcategory: "generic".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "on_lot".into(),
+                footprint: [8.0, 8.0], height: 10.0, snap: "lot_boundary".into(),
+                variant_group: None, max_per_chunk: 4,
+            },
+            AssetEntry {
+                id: "generic_road".into(), category: "road".into(),
+                subcategory: "straight".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "ground".into(),
+                footprint: [10.0, 10.0], height: 0.1, snap: "ground".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+            AssetEntry {
+                id: "generic_path".into(), category: "road".into(),
+                subcategory: "path".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "ground".into(),
+                footprint: [10.0, 10.0], height: 0.1, snap: "ground".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+            AssetEntry {
+                id: "generic_connector".into(), category: "road".into(),
+                subcategory: "connector".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "ground".into(),
+                footprint: [10.0, 10.0], height: 0.1, snap: "ground".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+            AssetEntry {
+                id: "generic_4way".into(), category: "road".into(),
+                subcategory: "4way".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "intersection".into(),
+                footprint: [10.0, 10.0], height: 0.1, snap: "intersection_center".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+            AssetEntry {
+                id: "generic_path_square".into(), category: "road".into(),
+                subcategory: "path_square".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "intersection".into(),
+                footprint: [10.0, 10.0], height: 0.1, snap: "intersection_center".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+            AssetEntry {
+                id: "generic_light".into(), category: "street_furniture".into(),
+                subcategory: "light".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "sidewalk".into(),
+                footprint: [0.5, 0.5], height: 4.0, snap: "sidewalk_edge".into(),
+                variant_group: None, max_per_chunk: 8,
+            },
+            AssetEntry {
+                id: "generic_tree".into(), category: "vegetation".into(),
+                subcategory: "tree".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "ground".into(),
+                footprint: [2.0, 2.0], height: 6.0, snap: "ground".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+            AssetEntry {
+                id: "generic_vehicle".into(), category: "vehicle".into(),
+                subcategory: "generic".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "on_road".into(),
+                footprint: [2.0, 4.0], height: 1.5, snap: "road_surface".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+            AssetEntry {
+                id: "generic_character".into(), category: "character".into(),
+                subcategory: "npc".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "sidewalk".into(),
+                footprint: [0.5, 0.5], height: 1.8, snap: "ground".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+            AssetEntry {
+                id: "generic_traffic".into(), category: "traffic_control".into(),
+                subcategory: "traffic_light".into(), zones: vec!["any".into()],
+                style: "any".into(), placement: "intersection".into(),
+                footprint: [0.5, 0.5], height: 5.0, snap: "intersection_center".into(),
+                variant_group: None, max_per_chunk: 0,
+            },
+        ]
+    }
+
+    fn template_request(template: &str, size: WorldSize) -> WorldBuildRequest {
+        WorldBuildRequest {
+            template: template.into(),
+            seed: 42,
+            size,
+            style: "any".into(),
+            assets: template_test_assets(),
+        }
+    }
+
+    #[test]
+    fn compile_medieval_village() {
+        let req = template_request("MEDIEVAL_VILLAGE", WorldSize::Small);
+        let manifest = compile_world(&req).unwrap();
+        assert_eq!(manifest.template, "MEDIEVAL_VILLAGE");
+        assert_eq!(manifest.chunk_count(), 36);
+        let counts = &manifest.stats.zone_breakdown;
+        assert!(counts.contains_key("castle"), "Should have castle zone");
+        assert!(counts.contains_key("market"), "Should have market zone");
+        assert!(counts.contains_key("cottage"), "Should have cottage zone");
+        println!(
+            "Medieval: {} assets, zones: {:?}",
+            manifest.stats.total_assets, counts
+        );
+    }
+
+    #[test]
+    fn compile_zombieland() {
+        let req = template_request("ZOMBIELAND", WorldSize::Small);
+        let manifest = compile_world(&req).unwrap();
+        assert_eq!(manifest.template, "ZOMBIELAND");
+        let counts = &manifest.stats.zone_breakdown;
+        let ruin_count = counts.get("ruin").copied().unwrap_or(0);
+        assert!(ruin_count > 20, "Zombieland should be mostly ruin, got {}", ruin_count);
+        // DamagedGrid should have fewer roads than full grid
+        assert!(manifest.stats.road_segments > 0);
+        println!(
+            "Zombieland: {} assets, {} roads, ruin chunks: {}",
+            manifest.stats.total_assets, manifest.stats.road_segments, ruin_count
+        );
+    }
+
+    #[test]
+    fn compile_space_station() {
+        let req = template_request("SPACE_STATION", WorldSize::Small);
+        let manifest = compile_world(&req).unwrap();
+        assert_eq!(manifest.template, "SPACE_STATION");
+        let counts = &manifest.stats.zone_breakdown;
+        assert!(counts.contains_key("command"), "Should have command zone");
+        assert!(counts.contains_key("hangar"), "Should have hangar zone");
+        println!(
+            "Space station: {} assets, zones: {:?}",
+            manifest.stats.total_assets, counts
+        );
+    }
+
+    #[test]
+    fn all_templates_deterministic() {
+        for template in &["MEDIEVAL_VILLAGE", "ZOMBIELAND", "SPACE_STATION"] {
+            let req = template_request(template, WorldSize::Small);
+            let m1 = compile_world(&req).unwrap();
+            let m2 = compile_world(&req).unwrap();
+            assert_eq!(m1.stats.total_assets, m2.stats.total_assets,
+                "{} not deterministic (assets differ)", template);
+            assert_eq!(m1.chunks.len(), m2.chunks.len(),
+                "{} not deterministic (chunks differ)", template);
+        }
     }
 
     #[test]

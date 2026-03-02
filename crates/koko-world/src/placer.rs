@@ -9,6 +9,7 @@ use crate::catalog::{AssetCatalog, AssetFilter};
 use crate::grid::{CityGrid, Zone};
 use crate::manifest::{ChunkManifest, Placement};
 use crate::rng::SeededRng;
+use crate::template_config::{TemplateConfig, ZonePlacementRule};
 
 /// Road buffer: assets are placed this far inside the chunk edge to avoid roads.
 const ROAD_BUFFER: f32 = 8.0;
@@ -43,25 +44,25 @@ pub fn place_all_chunks(
 
             // 1. Place buildings based on zone
             place_buildings(
-                zone, catalog, rng,
+                &zone, catalog, rng,
                 build_min_x, build_min_z, build_width, build_depth,
                 &mut placements,
             );
 
             // 2. Street furniture along chunk edges (near roads)
-            place_street_furniture(zone, catalog, rng, wx, wz, cs, &mut placements);
+            place_street_furniture(&zone, catalog, rng, wx, wz, cs, &mut placements);
 
             // 3. Vegetation
-            place_vegetation(zone, catalog, rng, wx, wz, cs, &mut placements);
+            place_vegetation(&zone, catalog, rng, wx, wz, cs, &mut placements);
 
             // 4. Vehicles (parked along roads)
-            place_vehicles(zone, catalog, rng, wx, wz, cs, &mut placements);
+            place_vehicles(&zone, catalog, rng, wx, wz, cs, &mut placements);
 
             // 5. Traffic control at chunk corners
-            place_traffic_control(zone, grid, gx, gz, catalog, rng, &mut placements);
+            place_traffic_control(&zone, grid, gx, gz, catalog, rng, &mut placements);
 
             // 6. Characters/pedestrians
-            place_characters(zone, catalog, rng, wx, wz, cs, &mut placements);
+            place_characters(&zone, catalog, rng, wx, wz, cs, &mut placements);
 
             chunks.push(ChunkManifest {
                 id: format!("chunk_{}_{}", gx, gz),
@@ -78,9 +79,293 @@ pub fn place_all_chunks(
     chunks
 }
 
+// ============================================================================
+// Config-driven placement — used by all templates via compile_template()
+// ============================================================================
+
+/// Default placement rule for zones not in the config.
+const DEFAULT_RULE: ZonePlacementRule = ZonePlacementRule {
+    building_count: (2, 4),
+    furniture_spacing: 20.0,
+    vegetation_density: (1, 3),
+    vehicle_count: (1, 3),
+    character_count: (1, 3),
+};
+
+/// Place all assets for every chunk using template configuration.
+/// Counts and densities come from ZonePlacementRule; style filtering from config.
+pub fn place_all_chunks_with_config(
+    grid: &CityGrid,
+    catalog: &AssetCatalog,
+    config: &TemplateConfig,
+    rng: &mut SeededRng,
+) -> Vec<ChunkManifest> {
+    let mut chunks = Vec::new();
+
+    for gx in 0..grid.width {
+        for gz in 0..grid.height {
+            let zone = grid.zone_at(gx, gz);
+            let zone_name = zone.as_str();
+            let [wx, wz] = grid.world_pos(gx, gz);
+            let cs = grid.chunk_size;
+            let rule = config.zone_rules.get(zone_name).unwrap_or(&DEFAULT_RULE);
+
+            let mut placements = Vec::new();
+
+            // Buildable area (inset from roads)
+            let build_min_x = wx + ROAD_BUFFER;
+            let build_min_z = wz + ROAD_BUFFER;
+            let build_width = cs - 2.0 * ROAD_BUFFER;
+            let build_depth = cs - 2.0 * ROAD_BUFFER;
+
+            // 1. Buildings
+            let bcount = rng.range_usize(rule.building_count.0, rule.building_count.1);
+            if bcount > 0 {
+                let filter = AssetFilter::new()
+                    .category("building")
+                    .zone(zone_name)
+                    .style(&config.style);
+                place_on_lots(
+                    catalog, &filter, rng,
+                    build_min_x, build_min_z, build_width, build_depth,
+                    bcount, &mut placements,
+                );
+            }
+
+            // 2. Street furniture
+            place_furniture_config(
+                zone_name, &config.style, rule.furniture_spacing,
+                catalog, rng, wx, wz, cs, &mut placements,
+            );
+
+            // 3. Vegetation
+            let vcount = rng.range_usize(rule.vegetation_density.0, rule.vegetation_density.1);
+            scatter_category(
+                "vegetation", zone_name, &config.style, vcount,
+                catalog, rng, wx, wz, cs, &mut placements,
+            );
+
+            // 4. Vehicles
+            let veh_count = rng.range_usize(rule.vehicle_count.0, rule.vehicle_count.1);
+            place_vehicles_generic(
+                zone_name, &config.style, veh_count,
+                catalog, rng, wx, wz, cs, &mut placements,
+            );
+
+            // 5. Traffic control
+            place_traffic_control(&zone, grid, gx, gz, catalog, rng, &mut placements);
+
+            // 6. Characters
+            let char_count = rng.range_usize(rule.character_count.0, rule.character_count.1);
+            place_characters_generic(
+                zone_name, &config.style, char_count,
+                catalog, rng, wx, wz, cs, &mut placements,
+            );
+
+            chunks.push(ChunkManifest {
+                id: format!("chunk_{}_{}", gx, gz),
+                grid_x: gx,
+                grid_z: gz,
+                zone: zone_name.to_string(),
+                bounds_min: [wx, wz],
+                bounds_max: [wx + cs, wz + cs],
+                placements,
+            });
+        }
+    }
+
+    chunks
+}
+
+/// Generic furniture placement with configurable spacing and style.
+fn place_furniture_config(
+    zone_name: &str,
+    style: &str,
+    spacing: f32,
+    catalog: &AssetCatalog,
+    rng: &mut SeededRng,
+    chunk_x: f32,
+    chunk_z: f32,
+    chunk_size: f32,
+    out: &mut Vec<Placement>,
+) {
+    let sidewalk_offset = 4.0;
+    let filter = AssetFilter::new()
+        .category("street_furniture")
+        .zone(zone_name)
+        .style(style);
+
+    // Place along north and south edges
+    let mut x = chunk_x + spacing / 2.0;
+    while x < chunk_x + chunk_size {
+        if let Some(asset) = catalog.pick(&filter, rng) {
+            out.push(Placement {
+                asset_id: asset.id.clone(),
+                position: [x, 0.0, chunk_z + sidewalk_offset],
+                rotation: 0.0,
+                scale: 1.0,
+                category: "street_furniture".to_string(),
+            });
+        }
+        if let Some(asset) = catalog.pick(&filter, rng) {
+            out.push(Placement {
+                asset_id: asset.id.clone(),
+                position: [x, 0.0, chunk_z + chunk_size - sidewalk_offset],
+                rotation: 180.0,
+                scale: 1.0,
+                category: "street_furniture".to_string(),
+            });
+        }
+        x += spacing;
+    }
+
+    // Place along west and east edges
+    let mut z = chunk_z + spacing / 2.0;
+    while z < chunk_z + chunk_size {
+        if let Some(asset) = catalog.pick(&filter, rng) {
+            out.push(Placement {
+                asset_id: asset.id.clone(),
+                position: [chunk_x + sidewalk_offset, 0.0, z],
+                rotation: 270.0,
+                scale: 1.0,
+                category: "street_furniture".to_string(),
+            });
+        }
+        if let Some(asset) = catalog.pick(&filter, rng) {
+            out.push(Placement {
+                asset_id: asset.id.clone(),
+                position: [chunk_x + chunk_size - sidewalk_offset, 0.0, z],
+                rotation: 90.0,
+                scale: 1.0,
+                category: "street_furniture".to_string(),
+            });
+        }
+        z += spacing;
+    }
+}
+
+/// Scatter N items of a category randomly within a chunk.
+fn scatter_category(
+    category: &str,
+    zone_name: &str,
+    style: &str,
+    count: usize,
+    catalog: &AssetCatalog,
+    rng: &mut SeededRng,
+    chunk_x: f32,
+    chunk_z: f32,
+    chunk_size: f32,
+    out: &mut Vec<Placement>,
+) {
+    let filter = AssetFilter::new()
+        .category(category)
+        .zone(zone_name)
+        .style(style);
+
+    for _ in 0..count {
+        let x = rng.range_f32(chunk_x + 5.0, chunk_x + chunk_size - 5.0);
+        let z = rng.range_f32(chunk_z + 5.0, chunk_z + chunk_size - 5.0);
+        let scale = rng.range_f32(0.8, 1.2);
+        let rotation = rng.range_f32(0.0, 360.0);
+        if let Some(asset) = catalog.pick(&filter, rng) {
+            out.push(Placement {
+                asset_id: asset.id.clone(),
+                position: [x, 0.0, z],
+                rotation,
+                scale,
+                category: category.to_string(),
+            });
+        }
+    }
+}
+
+/// Place N vehicles along road edges with style filtering.
+fn place_vehicles_generic(
+    zone_name: &str,
+    style: &str,
+    count: usize,
+    catalog: &AssetCatalog,
+    rng: &mut SeededRng,
+    chunk_x: f32,
+    chunk_z: f32,
+    chunk_size: f32,
+    out: &mut Vec<Placement>,
+) {
+    let filter = AssetFilter::new()
+        .category("vehicle")
+        .zone(zone_name)
+        .style(style);
+    let parking_offset = 3.0;
+
+    for i in 0..count {
+        let edge = i % 4;
+        let t = rng.range_f32(0.15, 0.85);
+        let pos_along = chunk_x + t * chunk_size;
+        let pos_across = chunk_z + t * chunk_size;
+
+        let (x, z, rotation) = match edge {
+            0 => (pos_along, chunk_z + parking_offset, 0.0),
+            1 => (pos_along, chunk_z + chunk_size - parking_offset, 180.0),
+            2 => (chunk_x + parking_offset, pos_across, 270.0),
+            _ => (chunk_x + chunk_size - parking_offset, pos_across, 90.0),
+        };
+
+        if let Some(asset) = catalog.pick(&filter, rng) {
+            out.push(Placement {
+                asset_id: asset.id.clone(),
+                position: [x, 0.0, z],
+                rotation,
+                scale: 1.0,
+                category: "vehicle".to_string(),
+            });
+        }
+    }
+}
+
+/// Place N characters on sidewalks with style filtering.
+fn place_characters_generic(
+    zone_name: &str,
+    style: &str,
+    count: usize,
+    catalog: &AssetCatalog,
+    rng: &mut SeededRng,
+    chunk_x: f32,
+    chunk_z: f32,
+    chunk_size: f32,
+    out: &mut Vec<Placement>,
+) {
+    let filter = AssetFilter::new()
+        .category("character")
+        .zone(zone_name)
+        .style(style);
+
+    for _ in 0..count {
+        let sidewalk_z = if rng.next_bool() {
+            chunk_z + 5.0
+        } else {
+            chunk_z + chunk_size - 5.0
+        };
+        let x = rng.range_f32(chunk_x + 5.0, chunk_x + chunk_size - 5.0);
+
+        if let Some(asset) = catalog.pick(&filter, rng) {
+            out.push(Placement {
+                asset_id: asset.id.clone(),
+                position: [x, 0.0, sidewalk_z],
+                rotation: rng.range_f32(0.0, 360.0),
+                scale: 1.0,
+                category: "character".to_string(),
+            });
+        }
+    }
+}
+
+// ============================================================================
+// Original CITY_MODERN-specific placement (backward compat)
+// ============================================================================
+
 /// Place buildings appropriate to the zone.
 fn place_buildings(
-    zone: Zone,
+    zone: &Zone,
     catalog: &AssetCatalog,
     rng: &mut SeededRng,
     min_x: f32,
@@ -115,6 +400,11 @@ fn place_buildings(
         }
         Zone::Park => {
             // No buildings in parks (maybe a small gazebo)
+        }
+        Zone::Custom(_) => {
+            // Custom zones: use generic building placement (2-4 buildings)
+            let count = rng.range_usize(2, 4);
+            place_on_lots(catalog, &filter, rng, min_x, min_z, width, depth, count, out);
         }
     }
 }
@@ -177,7 +467,7 @@ fn place_on_lots(
 
 /// Place street furniture (lights, benches, trash cans) along road edges.
 fn place_street_furniture(
-    zone: Zone,
+    zone: &Zone,
     catalog: &AssetCatalog,
     rng: &mut SeededRng,
     chunk_x: f32,
@@ -273,7 +563,7 @@ fn place_street_furniture(
 
 /// Place vegetation (trees, bushes) appropriate to the zone.
 fn place_vegetation(
-    zone: Zone,
+    zone: &Zone,
     catalog: &AssetCatalog,
     rng: &mut SeededRng,
     chunk_x: f32,
@@ -372,7 +662,7 @@ fn place_vegetation(
 
 /// Place vehicles parked along roads.
 fn place_vehicles(
-    zone: Zone,
+    zone: &Zone,
     catalog: &AssetCatalog,
     rng: &mut SeededRng,
     chunk_x: f32,
@@ -390,6 +680,7 @@ fn place_vehicles(
         Zone::Suburbs => rng.range_usize(1, 3),
         Zone::Industrial => rng.range_usize(1, 3),
         Zone::Park => rng.range_usize(0, 1),
+        Zone::Custom(_) => rng.range_usize(1, 3),
     };
 
     let parking_offset = 3.0; // Distance from road edge for parked cars
@@ -422,7 +713,7 @@ fn place_vehicles(
 
 /// Place traffic control at chunk corners (traffic lights, stop signs).
 fn place_traffic_control(
-    zone: Zone,
+    zone: &Zone,
     grid: &CityGrid,
     gx: i32,
     gz: i32,
@@ -485,7 +776,7 @@ fn place_traffic_control(
 
 /// Place pedestrian characters.
 fn place_characters(
-    zone: Zone,
+    zone: &Zone,
     catalog: &AssetCatalog,
     rng: &mut SeededRng,
     chunk_x: f32,
@@ -502,6 +793,7 @@ fn place_characters(
         Zone::Park => rng.range_usize(1, 3),
         Zone::Suburbs => rng.range_usize(0, 2),
         Zone::Industrial => rng.range_usize(0, 1),
+        Zone::Custom(_) => rng.range_usize(1, 3),
     };
 
     for _ in 0..count {
