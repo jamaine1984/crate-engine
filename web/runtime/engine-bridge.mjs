@@ -10,6 +10,7 @@ import { intentToCommand, requiresPro } from './command-schema.mjs';
 import { interpret } from '../interpreter.mjs';
 import { assetIndex } from './asset-index.mjs';
 import { buildAndApply } from './world-client.mjs';
+import { initWasm, isWasmReady } from './wasm-bridge.mjs';
 
 // ---------------------------------------------------------------------------
 // Initialize: register all handlers that route to the legacy engine
@@ -27,6 +28,11 @@ export function initBridge() {
   }
 
   commandBus.init();
+
+  // Initialize WASM module (non-blocking — JS fallback if it fails)
+  initWasm().then(ok => {
+    console.log(`[Bridge] WASM: ${ok ? 'active' : 'JS fallback'}`);
+  });
 
   // -------------------------------------------------------------------------
   // Register handlers for every command type

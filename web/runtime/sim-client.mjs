@@ -6,6 +6,7 @@
 // ============================================================================
 
 import { commandBus } from './command-bus.mjs';
+import { isWasmReady, wasmSimInit, wasmSimTick, wasmSimSnapshots, wasmSimSetRunning, wasmSimSetSpeed } from './wasm-bridge.mjs';
 
 // ---------------------------------------------------------------------------
 // Nav Graph (mirrors koko-nav/graph.rs)
@@ -56,6 +57,25 @@ class NavGraph {
 
   nodesOfType(type) {
     return this.nodes.filter(n => n.nodeType === type).map(n => n.id);
+  }
+
+  /** Serialize to JSON matching Rust koko-nav Graph format (for WASM bridge). */
+  toJSON() {
+    return {
+      nodes: this.nodes.map(n => ({
+        id: n.id,
+        position: n.position,
+        node_type: n.nodeType,
+        chunk_id: n.chunkId,
+      })),
+      edges: this.edges.map(e => ({
+        from: e.from,
+        to: e.to,
+        cost: e.cost,
+        edge_type: e.edgeType,
+        speed_factor: e.speedFactor,
+      })),
+    };
   }
 
   _distance(a, b) {
@@ -545,11 +565,13 @@ export class SimulationRunner {
     this._lastTime = 0;
     this._execCmd = null;
     this._spawnedIds = new Set();
+    this._useWasm = false; // set to true if WASM sim init succeeds
   }
 
   /**
    * Initialize simulation from a world manifest.
    * Builds nav graphs, spawns agents, starts the tick loop.
+   * Tries WASM first; falls back to JS if unavailable.
    */
   async init(manifest, seed) {
     this._execCmd = window._parseAndExecute;
@@ -558,43 +580,83 @@ export class SimulationRunner {
       return;
     }
 
-    console.log('[Sim] Building nav graphs...');
-    const { pedGraph, vehGraph } = buildNavGraphs(manifest);
-    this.pedGraph = pedGraph;
-    this.vehGraph = vehGraph;
+    this._useWasm = false;
 
-    console.log(`[Sim] Nav: ${pedGraph.nodes.length} ped nodes, ${vehGraph.nodes.length} veh nodes`);
+    // --- Try WASM sim path ---
+    if (isWasmReady()) {
+      try {
+        console.log('[Sim] Initializing via WASM...');
+        // Build nav graphs via JS (we need them for WASM sim setup)
+        const { pedGraph, vehGraph } = buildNavGraphs(manifest);
+        this.pedGraph = pedGraph;
+        this.vehGraph = vehGraph;
 
-    console.log('[Sim] Spawning population...');
-    this.agents = spawnPopulation(manifest, pedGraph, vehGraph, seed || 42);
-    console.log(`[Sim] Spawned ${this.agents.length} agents`);
+        // Prepare WASM setup input
+        const chunks = manifest.chunks.map(c => ({
+          id: c.id, zone: c.zone, grid_x: c.grid_x, grid_z: c.grid_z,
+        }));
+        const navManifest = {
+          pedestrian_graph: pedGraph.toJSON(),
+          vehicle_graph: vehGraph.toJSON(),
+          stats: { pedestrian_nodes: pedGraph.nodes.length, pedestrian_edges: pedGraph.edges.length, vehicle_nodes: vehGraph.nodes.length, vehicle_edges: vehGraph.edges.length, building_entrances: 0, crosswalks: 0 },
+        };
+        const setupJson = JSON.stringify({ chunks, nav: navManifest });
+        const result = wasmSimInit(setupJson, seed || 42);
+
+        if (result) {
+          this._useWasm = true;
+          this.agents = result.snapshots || [];
+          console.log(`[Sim] WASM initialized: ${result.agent_count} agents (${result.pedestrians} ped, ${result.vehicles} veh)`);
+        }
+      } catch (err) {
+        console.warn('[Sim] WASM sim init failed, falling back to JS:', err.message);
+        this._useWasm = false;
+      }
+    }
+
+    // --- JS fallback path ---
+    if (!this._useWasm) {
+      console.log('[Sim] Building nav graphs (JS)...');
+      const { pedGraph, vehGraph } = buildNavGraphs(manifest);
+      this.pedGraph = pedGraph;
+      this.vehGraph = vehGraph;
+
+      console.log(`[Sim] Nav: ${pedGraph.nodes.length} ped nodes, ${vehGraph.nodes.length} veh nodes`);
+
+      console.log('[Sim] Spawning population (JS)...');
+      this.agents = spawnPopulation(manifest, pedGraph, vehGraph, seed || 42);
+      console.log(`[Sim] Spawned ${this.agents.length} agents`);
+    }
 
     // Spawn agent models in the scene
     for (const agent of this.agents) {
-      const [x, y, z] = agent.position;
+      const pos = agent.position || [0, 0, 0];
+      const assetId = agent.assetId || agent.asset_id || 'pedestrian_a';
+      const [x, y, z] = pos;
       try {
-        await this._execCmd(`add ${agent.assetId} at ${x} ${y} ${z}`);
-        agent.sceneObjectId = `sim_agent_${agent.id}`;
+        await this._execCmd(`add ${assetId} at ${x} ${y} ${z}`);
       } catch (e) {
         // Silent fail — asset might not exist
       }
     }
 
-    console.log('[Sim] Ready. Call start() to begin simulation.');
+    console.log(`[Sim] Ready (${this._useWasm ? 'WASM' : 'JS'}). Call start() to begin simulation.`);
   }
 
   /** Start the simulation loop. */
   start() {
     if (this.running) return;
     this.running = true;
+    if (this._useWasm) wasmSimSetRunning(true);
     this._lastTime = performance.now();
     this._tick();
-    console.log('[Sim] Started');
+    console.log(`[Sim] Started (${this._useWasm ? 'WASM' : 'JS'})`);
   }
 
   /** Stop the simulation loop. */
   stop() {
     this.running = false;
+    if (this._useWasm) wasmSimSetRunning(false);
     if (this._rafId) cancelAnimationFrame(this._rafId);
     this._rafId = null;
     console.log('[Sim] Stopped');
@@ -603,6 +665,7 @@ export class SimulationRunner {
   /** Set simulation speed (0.1 - 10.0). */
   setSpeed(s) {
     this.speed = Math.max(0.1, Math.min(10.0, s));
+    if (this._useWasm) wasmSimSetSpeed(this.speed);
   }
 
   /** Internal tick — called via requestAnimationFrame. */
@@ -610,22 +673,22 @@ export class SimulationRunner {
     if (!this.running) return;
 
     const now = performance.now();
-    const dt = Math.min((now - this._lastTime) / 1000, 0.1) * this.speed; // cap at 100ms
+    const rawDt = Math.min((now - this._lastTime) / 1000, 0.1); // cap at 100ms
     this._lastTime = now;
-    this.time += dt;
 
-    // Update all agents
-    const updates = [];
-    for (const agent of this.agents) {
-      if (tickAgent(agent, this.pedGraph, this.vehGraph, dt)) {
-        updates.push(agent);
+    if (this._useWasm) {
+      // WASM path — tick is handled internally (speed applied in Rust)
+      const dt = rawDt * this.speed;
+      this.time += dt;
+      wasmSimTick(dt);
+    } else {
+      // JS path
+      const dt = rawDt * this.speed;
+      this.time += dt;
+      for (const agent of this.agents) {
+        tickAgent(agent, this.pedGraph, this.vehGraph, dt);
       }
     }
-
-    // Apply position updates to scene (batch for performance)
-    // In a real implementation, we'd track scene object IDs and move them.
-    // For now, we just track state — the render integration comes when
-    // we have proper scene object handles.
 
     this._rafId = requestAnimationFrame(() => this._tick());
   }

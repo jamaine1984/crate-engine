@@ -9,6 +9,7 @@
 import { assetIndex } from './asset-index.mjs';
 import { commandBus } from './command-bus.mjs';
 import { simulation, registerSimCommands } from './sim-client.mjs';
+import { isWasmReady, wasmCompileWorld } from './wasm-bridge.mjs';
 
 // ---------------------------------------------------------------------------
 // Seeded RNG — SplitMix64, identical to the Rust implementation.
@@ -856,6 +857,18 @@ const SIZE_MAP = {
  * @returns {object} WorldManifest JSON
  */
 export function compileWorld({ template = 'CITY_MODERN', seed = 42, size = 'medium' } = {}) {
+  // --- WASM path (Phase 7) — try Rust first, fall back to JS ---
+  if (isWasmReady()) {
+    const assets = assetIndex.getAll ? assetIndex.getAll() : Object.values(assetIndex);
+    const manifest = wasmCompileWorld(template, seed, size, assets);
+    if (manifest) {
+      console.log(`[WorldClient] Compiled via WASM: ${manifest.stats.total_assets} assets`);
+      return manifest;
+    }
+    console.warn('[WorldClient] WASM compile failed, falling back to JS');
+  }
+
+  // --- JS fallback path ---
   const templateName = template.toUpperCase();
 
   // CITY_MODERN uses original functions for backward compatibility (identical RNG sequence)
