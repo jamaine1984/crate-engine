@@ -57,6 +57,9 @@ export const COMMAND_TYPES = new Set([
   // Simulation (Phase 4)
   'SIM_START', 'SIM_STOP', 'SIM_SPEED', 'SIM_STATS',
 
+  // Rendering (Phase 5 — streaming + instancing)
+  'RENDER_STATS', 'RENDER_QUALITY',
+
   // Special
   'EXEC_RAW', 'AAA_SKY', 'TOGGLE_DAY_NIGHT', 'SHOOTER_MODE', 'DRIVING_DEMO',
 ]);
@@ -85,6 +88,7 @@ const REQUIRED_FIELDS = {
   EXEC_RAW:         ['input'],
   QUICK_PLAY:       ['mode'],
   QUERY_ASSETS:     [],  // all filter fields optional: category, zone, style, placement, subcategory, search, minHeight, maxHeight
+  RENDER_QUALITY:   ['level'],  // low, medium, high, ultra
   SAVE_SCENE:       [],  // name is optional
 };
 
@@ -111,6 +115,9 @@ const VALID_VALUES = {
     type: ['rain', 'snow', 'fire', 'dust', 'fireflies', 'embers', 'ash', 'spores', 'bubbles', 'leaves', 'petals', 'off'],
   },
   SET_GRAPHICS: {
+    level: ['low', 'medium', 'high', 'ultra'],
+  },
+  RENDER_QUALITY: {
     level: ['low', 'medium', 'high', 'ultra'],
   },
   QUICK_PLAY: {

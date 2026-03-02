@@ -408,6 +408,21 @@ export function initBridge() {
     };
   });
 
+  // --- Rendering (Phase 5 — streaming + instancing) ---
+  commandBus.on('RENDER_STATS', async () => {
+    const scheduler = window._renderScheduler;
+    if (!scheduler) return { ok: false, message: 'No render scheduler active' };
+    const stats = scheduler.getStats();
+    return { ok: true, message: `Rendering: ${stats.chunks.loaded} chunks loaded, ${stats.instances.instances} instances`, data: stats };
+  });
+
+  commandBus.on('RENDER_QUALITY', async (payload) => {
+    const scheduler = window._renderScheduler;
+    if (!scheduler) return { ok: false, message: 'No render scheduler active' };
+    scheduler.setQuality(payload.level);
+    return { ok: true, message: `Render quality: ${payload.level}` };
+  });
+
   // -------------------------------------------------------------------------
   // Middleware: logging
   // -------------------------------------------------------------------------

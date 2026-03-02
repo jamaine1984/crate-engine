@@ -471,89 +471,112 @@ export function compileWorld({ template = 'CITY_MODERN', seed = 42, size = 'medi
 }
 
 // ---------------------------------------------------------------------------
-// applyManifest() — spawn every asset from a manifest into the scene
+// applyManifest() — spawn world assets using streaming renderer
 // ---------------------------------------------------------------------------
 
 /**
  * Apply a WorldManifest to the Three.js scene.
- * Spawns all assets by calling parseAndExecute.
+ *
+ * Default mode (streaming=true): Uses the Phase 5 RenderScheduler for
+ * chunk-based streaming, instanced rendering, and camera-following shadows.
+ * Only loads chunks near the camera; streams in/out as camera moves.
+ *
+ * Legacy mode (streaming=false): Spawns ALL assets sequentially via
+ * parseAndExecute (the Phase 3 behaviour).
  *
  * @param {object} manifest - WorldManifest JSON
  * @param {object} opts
  * @param {function} opts.onProgress - callback(current, total)
- * @param {number} opts.batchSize - assets per frame (default 10)
- * @param {number} opts.batchDelay - ms between batches (default 16)
+ * @param {boolean} opts.streaming - use chunk streaming (default true)
  * @returns {Promise<object>} stats
  */
-export async function applyManifest(manifest, { onProgress, batchSize = 10, batchDelay = 16 } = {}) {
+export async function applyManifest(manifest, { onProgress, streaming = true } = {}) {
+  if (!streaming) {
+    return applyManifestLegacy(manifest, { onProgress });
+  }
+
+  // Phase 5: RenderScheduler-driven streaming
+  const { RenderScheduler } = await import('./render-scheduler.mjs');
+  const scheduler = new RenderScheduler();
+  await scheduler.init(manifest);
+
+  // Stash globally so engine-bridge can query stats
+  window._renderScheduler = scheduler;
+
+  // Start the streaming loop
+  scheduler.start();
+
+  const totalAssets = manifest.stats.total_assets;
+  const roadCount = manifest.roads.length + manifest.intersections.length;
+
+  if (onProgress) onProgress(roadCount, totalAssets);
+
+  console.log(`[WorldClient] Streaming mode: ${roadCount} roads loaded eagerly, ${manifest.chunks.length} chunks streaming on demand`);
+
+  return {
+    placed: roadCount,
+    total: totalAssets,
+    streaming: true,
+    scheduler,
+    manifest: manifest.stats,
+  };
+}
+
+/**
+ * Legacy applyManifest — spawns all assets sequentially.
+ * Preserved for backwards compatibility (streaming=false).
+ * @private
+ */
+async function applyManifestLegacy(manifest, { onProgress, batchSize = 10, batchDelay = 16 } = {}) {
   const execCmd = window._parseAndExecute;
   if (!execCmd) throw new Error('Engine not loaded — window._parseAndExecute not available');
 
-  // Gather all placements in order: roads → intersections → chunk assets
   const allPlacements = [];
 
-  // Roads first (ground layer)
   for (const road of manifest.roads) {
     allPlacements.push({ asset_id: road.asset_id, position: road.position, rotation: road.rotation, scale: road.scale });
   }
-
-  // Intersections
   for (const inter of manifest.intersections) {
     allPlacements.push({ asset_id: inter.asset_id, position: inter.position, rotation: inter.rotation, scale: inter.scale });
   }
 
-  // Chunk assets (buildings, furniture, vehicles, etc.)
-  // Sort chunks by distance from spawn for closest-first loading
   const sx = manifest.spawn.position[0];
   const sz = manifest.spawn.position[2];
   const sortedChunks = [...manifest.chunks].sort((a, b) => {
-    const [ax, az] = a.bounds_min;
-    const [bx, bz] = b.bounds_min;
-    const da = (ax - sx) ** 2 + (az - sz) ** 2;
-    const db = (bx - sx) ** 2 + (bz - sz) ** 2;
+    const da = (a.bounds_min[0] - sx) ** 2 + (a.bounds_min[1] - sz) ** 2;
+    const db = (b.bounds_min[0] - sx) ** 2 + (b.bounds_min[1] - sz) ** 2;
     return da - db;
   });
 
   for (const chunk of sortedChunks) {
-    for (const p of chunk.placements) {
-      allPlacements.push(p);
-    }
+    for (const p of chunk.placements) allPlacements.push(p);
   }
 
   const total = allPlacements.length;
   let placed = 0;
 
-  console.log(`[WorldClient] Applying manifest: ${total} assets to place`);
+  console.log(`[WorldClient] Legacy mode: ${total} assets to place`);
 
-  // Batch placement to avoid blocking the main thread
   for (let i = 0; i < allPlacements.length; i += batchSize) {
     const batch = allPlacements.slice(i, i + batchSize);
-
     for (const p of batch) {
       const [x, y, z] = p.position;
       try {
         await execCmd(`add ${p.asset_id} at ${x} ${y} ${z}`);
-        if (p.rotation && p.rotation !== 0) {
-          await execCmd(`rotate last ${p.rotation}`);
-        }
-        if (p.scale && p.scale !== 1) {
-          await execCmd(`scale last ${p.scale}`);
-        }
+        if (p.rotation && p.rotation !== 0) await execCmd(`rotate last ${p.rotation}`);
+        if (p.scale && p.scale !== 1) await execCmd(`scale last ${p.scale}`);
       } catch (err) {
         console.warn(`[WorldClient] Failed to place ${p.asset_id}:`, err.message);
       }
       placed++;
     }
-
     if (onProgress) onProgress(placed, total);
-
-    // Yield to the event loop between batches
     if (batchDelay > 0 && i + batchSize < allPlacements.length) {
       await new Promise(resolve => setTimeout(resolve, batchDelay));
     }
   }
 
-  console.log(`[WorldClient] Done: ${placed}/${total} assets placed`);
+  console.log(`[WorldClient] Legacy done: ${placed}/${total} assets placed`);
   return { placed, total, manifest: manifest.stats };
 }
 
@@ -584,13 +607,19 @@ export async function buildAndApply({ template = 'CITY_MODERN', seed, size = 'me
   console.log(`[WorldClient] Compiled: ${manifest.stats.total_assets} assets, ${manifest.stats.chunk_count} chunks`);
   console.log(`[WorldClient] Zones:`, manifest.stats.zone_breakdown);
 
+  // Dispose previous render scheduler if any
+  if (window._renderScheduler) {
+    window._renderScheduler.dispose();
+    window._renderScheduler = null;
+  }
+
   // Clear existing scene first
   const execCmd = window._parseAndExecute;
   if (execCmd) {
     await execCmd('clear');
   }
 
-  // Apply to scene
+  // Apply to scene (streaming by default)
   const result = await applyManifest(manifest, { onProgress });
 
   // Initialize simulation (NPCs + vehicles)
@@ -611,7 +640,7 @@ export async function buildAndApply({ template = 'CITY_MODERN', seed, size = 'me
 
   return {
     ok: true,
-    message: `Built ${template}: ${result.placed} assets placed`,
-    data: { seed, size, manifest: manifest.stats, sim: simulation.getStats() },
+    message: `Built ${template}: ${result.placed} assets, ${manifest.chunks.length} chunks streaming`,
+    data: { seed, size, manifest: manifest.stats, sim: simulation.getStats(), streaming: result.streaming },
   };
 }

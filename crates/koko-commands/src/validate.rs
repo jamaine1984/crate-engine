@@ -170,6 +170,12 @@ fn validate_payload(
         // Simulation speed has optional speed field
         CommandType::SimSpeed => {}
 
+        // Rendering commands (Phase 5)
+        CommandType::RenderStats => {}
+        CommandType::RenderQuality => {
+            require_field(obj, "level")?;
+        }
+
         // Remaining commands with optional validation
         CommandType::SetFog
         | CommandType::SetWetness

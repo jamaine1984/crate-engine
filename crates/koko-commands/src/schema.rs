@@ -94,6 +94,10 @@ pub enum CommandType {
     SimSpeed,
     SimStats,
 
+    // Rendering (Phase 5 — streaming + instancing)
+    RenderStats,
+    RenderQuality,
+
     // Special
     ExecRaw,
     AaaSky,
