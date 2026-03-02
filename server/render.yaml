@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: crate-engine-multiplayer
+    runtime: node
+    buildCommand: npm install
+    startCommand: node multiplayer.mjs
+    envVars:
+      - key: PORT
+        value: 8860
+    healthCheckPath: /health
+    plan: free

@@ -1,0 +1,92 @@
+[workspace]
+members = [
+    "crates/koko-core",
+    "crates/koko-ecs",
+    "crates/koko-render",
+    "crates/koko-physics",
+    "crates/koko-audio",
+    "crates/koko-input",
+    "crates/koko-animation",
+    "crates/koko-ui",
+    "crates/koko-scripting",
+    "crates/koko-ai",
+    "crates/koko-assets",
+    "crates/koko-scene",
+    "crates/koko-net",
+    "crates/koko-editor",
+    "crates/koko-commands",
+    "crates/koko-world",
+    "koko-app",
+]
+resolver = "2"
+exclude = ["src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Kohari <kohari@koko-engine.com>"]
+
+[workspace.dependencies]
+# Rendering
+wgpu = "27"
+winit = "0.30"
+# Math
+glam = { version = "0.30", features = ["serde"] }
+# ECS
+hecs = "0.11"
+# Physics
+rapier3d = "0.32"
+rapier2d = "0.32"
+# Audio
+kira = "0.12"
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+# Scripting
+mlua = { version = "0.11", features = ["lua54", "vendored", "serialize"] }
+# Async
+tokio = { version = "1", features = ["full"] }
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+# Input
+gilrs = "0.11"
+# Image
+image = "0.25"
+# 3D models
+gltf = "1"
+# Font
+fontdue = "0.9"
+# UI
+egui = "0.33"
+egui-wgpu = "0.33"
+egui-winit = { version = "0.30", default-features = false, features = ["links"] }
+# Misc
+bytemuck = { version = "1", features = ["derive"] }
+parking_lot = "0.12"
+uuid = { version = "1", features = ["v4", "serde", "js"] }
+thiserror = "2"
+anyhow = "1"
+pollster = "0.4"
+log = "0.4"
+env_logger = "0.11"
+cfg-if = "1"
+bitflags = "2"
+notify = "8"
+walkdir = "2"
+reqwest = { version = "0.12", features = ["json"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+

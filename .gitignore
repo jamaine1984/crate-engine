@@ -13,3 +13,8 @@ koko-engine/model-factory/curated_models/
 koko-engine/model-factory/meshy-input/
 koko-engine/web/marketplace/models/
 *.glb
+target/
+KOKO.app/
+*.rlib
+*.rmeta
+*.dylib

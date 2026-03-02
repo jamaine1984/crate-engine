@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crate Engine — AI-Powered 3D Game Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; color: #e0e0e0; font-family: 'Inter', -apple-system, system-ui, sans-serif; min-height: 100vh; }
+  
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-bottom: 1px solid #1a1a1a; position: sticky; top: 0; background: rgba(10,10,10,0.95); backdrop-filter: blur(12px); z-index: 100; }
+  nav .logo { font-size: 1.2rem; font-weight: 900; background: linear-gradient(135deg, #ff6b35, #f7c948); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  nav .links { display: flex; gap: 20px; align-items: center; }
+  nav .links a { color: #888; text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+  nav .links a:hover { color: #ff6b35; }
+  .btn-nav { padding: 6px 16px; background: #ff6b35; color: white; border-radius: 8px; font-weight: 600; font-size: 0.8rem; }
+
+  .hero { text-align: center; padding: 60px 20px 30px; max-width: 700px; margin: 0 auto; }
+  .hero h1 { font-size: 3.5rem; font-weight: 900; background: linear-gradient(135deg, #ff6b35, #f7c948, #ff6b35); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; letter-spacing: -2px; line-height: 1; }
+  .hero .sub { font-size: 1.1rem; color: #888; line-height: 1.5; }
+  .hero .sub strong { color: #f7c948; }
+
+  /* Viewport */
+  .viewport-container { max-width: 100%; margin: 0; padding: 0; position: relative; }
+  .viewport-wrapper { position: relative; background: #0d0d0d; overflow: hidden; }
+  .viewport-wrapper.fullscreen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 200; }
+  .viewport-toolbar { display: flex; align-items: center; padding: 6px 12px; background: #111; border-bottom: 1px solid #252525; gap: 6px; }
+  .viewport-toolbar .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .viewport-toolbar .dot.red { background: #ff5f57; }
+  .viewport-toolbar .dot.yel { background: #ffbd2e; }
+  .viewport-toolbar .dot.grn { background: #28c840; }
+  .viewport-toolbar .title { margin-left: 8px; color: #555; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; }
+  .viewport-toolbar .status { margin-left: auto; color: #4ade80; font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; }
+  .viewport-toolbar .expand-btn { margin-left: 8px; background: none; border: 1px solid #333; color: #888; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+  .viewport-toolbar .expand-btn:hover { border-color: #ff6b35; color: #ff6b35; }
+  
+  #crate-canvas { width: 100%; height: 70vh; display: block; background: #111; }
+  .viewport-wrapper.fullscreen #crate-canvas { height: calc(100vh - 80px); }
+  
+  .prompt-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 8px 12px; background: rgba(0,0,0,0.9); backdrop-filter: blur(8px); border-top: 1px solid #333; display: flex; align-items: center; gap: 6px; z-index: 10; }
+  .prompt-overlay .prefix { color: #ff6b35; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.85rem; }
+  .prompt-overlay input { flex: 1; background: transparent; border: none; color: #e0e0e0; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; outline: none; }
+  .prompt-overlay input::placeholder { color: #333; }
+  
+  .output-log { position: absolute; bottom: 36px; left: 0; right: 0; max-height: 80px; overflow-y: auto; padding: 4px 12px; background: rgba(0,0,0,0.75); font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; display: none; z-index: 5; }
+  .output-log .entry { padding: 1px 0; }
+  .output-log .cmd { color: #666; }
+  .output-log .ok { color: #4ade80; }
+  .output-log .err { color: #ef4444; }
+  .output-log .info { color: #f7c948; }
+
+  /* Below viewport */
+  .stats-bar { display: flex; justify-content: center; gap: 40px; padding: 24px 20px; flex-wrap: wrap; background: #0d0d0d; border-top: 1px solid #1a1a1a; }
+  .stat { text-align: center; }
+  .stat .num { font-size: 1.8rem; font-weight: 900; color: #ff6b35; font-family: 'JetBrains Mono', monospace; }
+  .stat .label { font-size: 0.65rem; color: #555; text-transform: uppercase; letter-spacing: 2px; margin-top: 2px; }
+
+  .features-section { max-width: 960px; margin: 40px auto; padding: 0 20px; }
+  .features-section h2 { font-size: 1.5rem; font-weight: 900; margin-bottom: 24px; text-align: center; }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+  .feature { background: #111; border: 1px solid #1a1a1a; border-radius: 10px; padding: 16px; transition: all 0.3s; }
+  .feature:hover { border-color: #ff6b35; transform: translateY(-2px); }
+  .feature h3 { color: #fff; font-size: 0.9rem; margin-bottom: 4px; }
+  .feature p { color: #666; font-size: 0.78rem; line-height: 1.4; }
+  .feature .tag { display: inline-block; background: #1a1a2e; color: #f7c948; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; margin-top: 6px; }
+
+  .comparison { max-width: 700px; margin: 40px auto; padding: 0 20px; }
+  .comparison h2 { font-size: 1.5rem; font-weight: 900; margin-bottom: 20px; text-align: center; }
+  .compare-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .compare-table th { text-align: left; padding: 10px; border-bottom: 1px solid #252525; color: #888; font-weight: 600; }
+  .compare-table td { padding: 8px 10px; border-bottom: 1px solid #151515; }
+  .compare-table .check { color: #4ade80; }
+  .compare-table .cross { color: #ef4444; }
+  .compare-table .partial { color: #f7c948; }
+
+  footer { padding: 30px 20px; text-align: center; border-top: 1px solid #151515; margin-top: 40px; }
+  footer p { color: #333; font-size: 0.75rem; }
+  footer a { color: #ff6b35; text-decoration: none; }
+  
+  @media (max-width: 600px) {
+    .hero h1 { font-size: 2.5rem; }
+    #crate-canvas { height: 50vh; }
+    .stat .num { font-size: 1.4rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">📦 Crate Engine</div>
+  <div class="links">
+    <a href="#features">Features</a>
+    <a href="#compare">Compare</a>
+    <a href="#pricing">Pricing</a>
+    <a href="https://github.com/jamaine1984/crateshipgames">GitHub</a>
+    <a href="#pricing" class="btn-nav" style="background:#ff6b35">⚡ Upgrade</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1>Crate Engine</h1>
+  <p class="sub">Build 3D games with <strong>natural language</strong>.<br>1,339 real 3D models. 15 AI scene presets. Zero code.</p>
+</div>
+
+<!-- Engine Viewport -->
+<div class="viewport-container">
+  <div class="viewport-wrapper">
+    <div class="viewport-toolbar">
+      <div class="dot red"></div>
+      <div class="dot yel"></div>
+      <div class="dot grn"></div>
+      <div class="title">crate-engine — 3D viewport</div>
+      <div class="status" id="engine-status">● 3D Ready</div>
+      <button class="expand-btn" id="expand-btn" onclick="toggleFullscreen()">⛶ Expand</button>
+    </div>
+    <canvas id="crate-canvas"></canvas>
+    <div class="output-log" id="output-log"></div>
+    <div class="prompt-overlay">
+      <span class="prefix">❯</span>
+      <input type="text" id="prompt-input" placeholder="Type a command... (try 'add cube' or 'make it rain')" autocomplete="off" spellcheck="false">
+      <span class="hint">⏎</span>
+    </div>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat"><div class="num" id="stat-lines">0</div><div class="label">Lines of Rust</div></div>
+  <div class="stat"><div class="num" id="stat-cmds">0</div><div class="label">Commands</div></div>
+  <div class="stat"><div class="num" id="stat-systems">0</div><div class="label">Systems</div></div>
+  <div class="stat"><div class="num" id="stat-models">0</div><div class="label">3D Models</div></div>
+</div>
+
+<!-- Prompt Demo -->
+<div class="demo-section">
+  <h2>Just Type</h2>
+  <div class="terminal">
+    <div class="line"><span class="p">❯ </span><span class="c">add dragon at 0 5 0</span></div>
+    <div class="line"><span class="r">✓ Added dragon at (0, 5, 0) — scaled 2.0x</span></div>
+    <div class="line"><span class="p">❯ </span><span class="c">make it rain</span></div>
+    <div class="line"><span class="r">✓ Rain enabled — 1000 particles, splash FX on</span></div>
+    <div class="line"><span class="p">❯ </span><span class="c">combat system v2</span></div>
+    <div class="line"><span class="r">✓ Combat v2 — hit stop, parry window 150ms, style ranks D→SSS</span></div>
+    <div class="line"><span class="p">❯ </span><span class="c">build a castle</span></div>
+    <div class="line"><span class="r">✓ Generated castle — 47 pieces, 4 towers, portcullis, moat</span></div>
+    <div class="line"><span class="d">// 800+ commands. No menus. No tutorials. Just type.</span></div>
+  </div>
+</div>
+
+<!-- Features -->
+<div class="features-section" id="features">
+  <h2>Everything You Need</h2>
+  <div class="features">
+    <div class="feature"><div class="icon">🎮</div><h3>Full 3D Renderer</h3><p>PBR, shadows, MSAA, bloom, SSAO, volumetric fog, cel shading, ray marching</p><span class="tag">wgpu + WebGPU</span></div>
+    <div class="feature"><div class="icon">💬</div><h3>Prompt-First</h3><p>800+ natural language commands. "add tree", "set gravity 0", "spawn 100 enemies"</p><span class="tag">AI-powered</span></div>
+    <div class="feature"><div class="icon">⚔️</div><h3>Combat & RPG</h3><p>Damage calc, status effects, skill trees, crafting, quests, inventory, loot tables</p><span class="tag">60+ systems</span></div>
+    <div class="feature"><div class="icon">🌍</div><h3>World Building</h3><p>Terrain, weather (18 types), vegetation, water (8 types), destruction, day/night</p><span class="tag">Procedural</span></div>
+    <div class="feature"><div class="icon">🤖</div><h3>Advanced AI</h3><p>Behavior trees, utility AI, sensors, squads, pathfinding, dialogue, personalities</p><span class="tag">Brain system</span></div>
+    <div class="feature"><div class="icon">🏗️</div><h3>Building</h3><p>16 piece types, snap points, stability sim, materials, electricity, plumbing</p><span class="tag">Rust-based</span></div>
+    <div class="feature"><div class="icon">🚗</div><h3>Vehicles</h3><p>18 types — cars, tanks, helicopters, boats, mechs. Damage model, fuel, customization</p><span class="tag">Physics</span></div>
+    <div class="feature"><div class="icon">🎬</div><h3>Cinematics</h3><p>12 track types, camera shots, facial capture, keyframes, letterbox, subtitles</p><span class="tag">Director</span></div>
+    <div class="feature"><div class="icon">🛡️</div><h3>Multiplayer</h3><p>Lobbies, matchmaking, 18 game modes, killcam, voice chat, anti-cheat</p><span class="tag">Networking</span></div>
+    <div class="feature"><div class="icon">🎨</div><h3>Visual FX</h3><p>GPU particles, decals, 20 screen effects, shader graph, material editor</p><span class="tag">Eye candy</span></div>
+    <div class="feature"><div class="icon">👤</div><h3>Characters</h3><p>Body/face sliders, skin tones, hairstyles, tattoos, scars, accessories</p><span class="tag">Customizer</span></div>
+    <div class="feature"><div class="icon">📊</div><h3>Analytics</h3><p>Heatmaps, A/B testing, funnels, retention, crash reports, custom metrics</p><span class="tag">Telemetry</span></div>
+  </div>
+</div>
+
+
+<div class="features-section" id="gallery">
+  <h2>🎮 One-Click Scenes</h2>
+  <p style="text-align:center;color:#888;font-size:0.85rem;margin-bottom:20px">Click any scene to build it instantly in the viewport above</p>
+  <div class="features" id="scene-gallery">
+    <div class="feature scene-card" data-scene="medieval village" style="cursor:pointer">
+      <h3>🏰 Medieval Village</h3>
+      <p>Houses, tavern, well, fences, trees, villagers, horse, torches, sunset lighting</p>
+      <span class="tag">39 objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="haunted graveyard" style="cursor:pointer">
+      <h3>👻 Haunted Graveyard</h3>
+      <p>Tombstones, crypts, dead trees, skulls, bats, spiders, cobwebs, heavy rain</p>
+      <span class="tag">33 objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="pirate island" style="cursor:pointer">
+      <h3>🏴‍☠️ Pirate Island</h3>
+      <p>Palm trees, treasure chests, ships, cannons, parrots, skeletons, campfire</p>
+      <span class="tag">32 objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="cyberpunk city" style="cursor:pointer">
+      <h3>🌆 Cyberpunk City</h3>
+      <p>Neon buildings, cars, motorcycles, robots, drones, rain, night fog</p>
+      <span class="tag">38 objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="zombie apocalypse" style="cursor:pointer">
+      <h3>🧟 Zombie Apocalypse</h3>
+      <p>Destroyed buildings, barriers, fires, soldiers, zombies, night, heavy fog</p>
+      <span class="tag">34 objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="japanese garden" style="cursor:pointer">
+      <h3>⛩️ Japanese Garden</h3>
+      <p>Cherry blossoms, bamboo, bridge, lanterns, koi fish, rocks, peaceful fog</p>
+      <span class="tag">28 objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="castle siege" style="cursor:pointer">
+      <h3>⚔️ Castle Siege</h3>
+      <p>Castle, walls, towers, catapults, knights, archers, horses, banners</p>
+      <span class="tag">36 objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="space base" style="cursor:pointer">
+      <h3>🚀 Space Base</h3>
+      <p>Alien planet, hab modules, solar arrays, rovers, spaceships, alien flora, enemies</p>
+      <span class="tag">60+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="farm" style="cursor:pointer">
+      <h3>🌾 Farm</h3>
+      <p>Barn, windmill, cows, horses, chickens, fences, hay bales, pumpkins</p>
+      <span class="tag">40 objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="zombie wasteland" style="cursor:pointer">
+      <h3>🧟 Zombie Wasteland</h3>
+      <p>Ruined buildings, survival camp, bear traps, shotguns, skeletons, dead trees</p>
+      <span class="tag">80+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="frozen tundra" style="cursor:pointer">
+      <h3>❄️ Frozen Tundra</h3>
+      <p>Snow forests, ice camp, wolves, deer, rocks, survival gear, blizzard vibes</p>
+      <span class="tag">70+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="dungeon" style="cursor:pointer">
+      <h3>🏚️ Dungeon Crawler</h3>
+      <p>Stone halls, traps, treasure, skeletons, spiders, potions, torches, boss room</p>
+      <span class="tag">80+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="dinosaur valley" style="cursor:pointer">
+      <h3>🦖 Dinosaur Valley</h3>
+      <p>T-Rex, triceratops, raptors, apatosaurus, prehistoric jungle, giant ferns</p>
+      <span class="tag">90+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="underwater ruins" style="cursor:pointer">
+      <h3>🐠 Underwater Ruins</h3>
+      <p>Sunken temple, sharks, whales, tropical fish, shipwreck, coral, treasure</p>
+      <span class="tag">80+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="war zone" style="cursor:pointer">
+      <h3>💥 War Zone</h3>
+      <p>4 tanks, military vehicles, soldiers, weapons, barricades, ruins, explosions</p>
+      <span class="tag">70+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="enchanted forest" style="cursor:pointer">
+      <h3>🌿 Enchanted Forest</h3>
+      <p>Magical trees, giant mushrooms, crystals, fairy ring, woodland creatures</p>
+      <span class="tag">90+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="dark forest" style="cursor:pointer">
+      <h3>🕸️ Dark Forest</h3>
+      <p>Dead trees, cobwebs, spiders, wolf pack, abandoned camp, skeletons</p>
+      <span class="tag">70+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="jungle temple" style="cursor:pointer">
+      <h3>🏛️ Jungle Temple</h3>
+      <p>Stepped pyramid, columns, treasure, torches, jungle canopy, guardian statues</p>
+      <span class="tag">80+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="modern city" style="cursor:pointer">
+      <h3>🏙️ Modern City</h3>
+      <p>Skyscrapers, streets, traffic lights, cars, pedestrians, signs</p>
+      <span class="tag">90+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="neon alley" style="cursor:pointer">
+      <h3>💜 Neon Alley</h3>
+      <p>Cyberpunk alley, neon signs, pipes, cables, enemies, loot boxes</p>
+      <span class="tag">50+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="arena" style="cursor:pointer">
+      <h3>⚔️ Arena</h3>
+      <p>Colosseum walls, towers, weapon racks, knights, banners, torches, audience</p>
+      <span class="tag">70+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="platformer world" style="cursor:pointer">
+      <h3>🍄 Platformer World</h3>
+      <p>Floating platforms, coins, gems, enemies, hazards, bouncer, cannon, goal flag</p>
+      <span class="tag">40+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="desert wasteland" style="cursor:pointer">
+      <h3>🏜️ Desert Wasteland</h3>
+      <p>Cacti, boulders, ruins, abandoned tank, survival camp, skeletons, snakes</p>
+      <span class="tag">70+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="ice fortress" style="cursor:pointer">
+      <h3>🏔️ Ice Fortress</h3>
+      <p>Walled fortress, towers, keep, snow forest, ice crystals, frozen landscape</p>
+      <span class="tag">60+ objects</span>
+    </div>
+    <div class="feature scene-card" data-scene="shipwreck cove" style="cursor:pointer">
+      <h3>⚓ Shipwreck Cove</h3>
+      <p>Wrecked ships, rocky shore, treasure, docks, skeletons, tropical palms</p>
+      <span class="tag">50+ objects</span>
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.scene-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const scene = card.dataset.scene;
+    const input = document.getElementById('prompt-input');
+    if (input) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => {
+        input.value = 'build a ' + scene;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        input.value = '';
+      }, 500);
+    }
+  });
+});
+</script>
+
+<!-- Comparison -->
+<div class="comparison" id="compare">
+
+<!-- Pricing -->
+<div class="features-section" id="pricing">
+  <h2>💎 Plans</h2>
+  <p style="text-align:center;color:#888;font-size:0.85rem;margin-bottom:24px">Build for free. Upgrade when you're ready.</p>
+  <div style="display:flex;gap:12px;max-width:960px;margin:0 auto;flex-wrap:wrap;justify-content:center">
+    <div style="flex:1;min-width:250px;max-width:300px;background:#111;border:1px solid #252525;border-radius:16px;padding:24px">
+      <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Free</div>
+      <div style="font-size:2.5rem;font-weight:900;color:#fff;font-family:'JetBrains Mono',monospace">$0</div>
+      <div style="color:#555;font-size:0.8rem;margin-bottom:16px">forever</div>
+      <div style="font-size:0.78rem;color:#aaa;line-height:2">
+        ✅ Full 3D engine<br>
+        ✅ 800+ commands<br>
+        ✅ 20 basic models<br>
+        ✅ Save &amp; Load<br>
+        ✅ Share &amp; Remix<br>
+        ✅ 50 AI prompts/day<br>
+        ⬜ Export (branded)<br>
+        ❌ Premium models<br>
+        ❌ Publish to .com
+      </div>
+    </div>
+    <div style="flex:1;min-width:250px;max-width:300px;background:#111;border:2px solid #ff6b35;border-radius:16px;padding:24px;position:relative">
+      <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#ff6b35;color:#000;font-size:0.65rem;font-weight:700;padding:4px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:1px">Most Popular</div>
+      <div style="font-size:0.7rem;color:#ff6b35;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Pro</div>
+      <div style="font-size:2.5rem;font-weight:900;color:#fff;font-family:'JetBrains Mono',monospace">$4.99<span style="font-size:1rem;color:#888">/mo</span></div>
+      <div style="color:#555;font-size:0.8rem;margin-bottom:16px">cancel anytime</div>
+      <div style="font-size:0.78rem;color:#aaa;line-height:2">
+        ✅ Everything in Free<br>
+        ✅ 200+ premium models<br>
+        ✅ Unlimited AI prompts<br>
+        ✅ Export (no watermark)<br>
+        🔜 Publish to .com <span style="color:#555;font-size:0.65rem">(coming soon)</span><br>
+        ✅ Priority support
+      </div>
+      <button onclick="window._showUpgradeModal?window._showUpgradeModal('pro'):alert('Engine loading...')" style="width:100%;margin-top:16px;padding:12px;background:#ff6b35;color:#000;border:none;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;font-family:'JetBrains Mono',monospace">⚡ Go Pro</button>
+    </div>
+    <div style="flex:1;min-width:250px;max-width:300px;background:#111;border:2px solid #f7c948;border-radius:16px;padding:24px;position:relative">
+      <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#f7c948;color:#000;font-size:0.65rem;font-weight:700;padding:4px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:1px">Best Value</div>
+      <div style="font-size:0.7rem;color:#f7c948;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Premium</div>
+      <div style="font-size:2.5rem;font-weight:900;color:#fff;font-family:'JetBrains Mono',monospace">$14.99<span style="font-size:1rem;color:#888">/mo</span></div>
+      <div style="color:#555;font-size:0.8rem;margin-bottom:16px">cancel anytime</div>
+      <div style="font-size:0.78rem;color:#aaa;line-height:2">
+        ✅ Everything in Pro<br>
+        ✅ 500+ premium models<br>
+        ✅ Custom model uploads<br>
+        🔜 Publish to .com <span style="color:#555;font-size:0.65rem">(coming soon)</span><br>
+        ✅ Early access features<br>
+        ✅ Commercial license
+      </div>
+      <button onclick="window._showUpgradeModal?window._showUpgradeModal('premium'):alert('Engine loading...')" style="width:100%;margin-top:16px;padding:12px;background:#f7c948;color:#000;border:none;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;font-family:'JetBrains Mono',monospace">💎 Go Premium</button>
+    </div>
+  </div>
+</div>
+
+  <h2>How We Compare</h2>
+  <table class="compare-table">
+    <tr><th>Feature</th><th>Crate Engine</th><th>Rosebud AI</th><th>Unity</th></tr>
+    <tr><td>Natural language commands</td><td class="check">✓ 800+</td><td class="check">✓ AI chat</td><td class="cross">✗</td></tr>
+    <tr><td>Runs in browser</td><td class="check">✓ WebGPU</td><td class="check">✓</td><td class="partial">~ WebGL</td></tr>
+    <tr><td>Combat/RPG systems</td><td class="check">✓ 60+ built-in</td><td class="cross">✗</td><td class="partial">~ Plugins</td></tr>
+    <tr><td>Real 3D renderer</td><td class="check">✓ wgpu PBR</td><td class="cross">✗ 2.5D</td><td class="check">✓</td></tr>
+    <tr><td>Physics engine</td><td class="check">✓ Rapier</td><td class="cross">✗</td><td class="check">✓ PhysX</td></tr>
+    <tr><td>No download needed</td><td class="check">✓ 199KB WASM</td><td class="check">✓</td><td class="cross">✗ 2GB+</td></tr>
+    <tr><td>Open source</td><td class="check">✓ Rust</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+    <tr><td>One-prompt game gen</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td></tr>
+  </table>
+</div>
+
+<!-- CTA -->
+<div class="cta">
+  <h2>Start Building</h2>
+  <p>No signup. No download. Just type.</p>
+  <div class="buttons">
+    <button class="btn btn-primary" id="launch-btn" onclick="launchEngine()">🎮 Launch Engine</button>
+    <a class="btn btn-secondary" href="https://github.com/jamaine1984/crateshipgames">View Source</a>
+  </div>
+</div>
+
+<footer>
+  <p>Built by <a href="https://crateshipgames.com">Crateship Games</a> · Powered by Rust, wgpu, egui, Rapier</p>
+</footer>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+<script type="module" src="engine.mjs?v=8"></script>
+</body>
+</html>
+<!-- v8 -->

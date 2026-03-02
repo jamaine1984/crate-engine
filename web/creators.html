@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Creator Marketplace — Crate Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e0;font-family:'Inter',system-ui,sans-serif}
+a{color:#ff6b35;text-decoration:none}
+
+nav{display:flex;align-items:center;padding:12px 24px;border-bottom:1px solid #151515;position:sticky;top:0;background:#0a0a0f;z-index:100}
+nav .logo{font-size:1.2rem;font-weight:900;color:#ff6b35;font-family:'JetBrains Mono',monospace}
+nav .links{margin-left:auto;display:flex;gap:20px;align-items:center;font-size:0.85rem}
+nav .links a{color:#888;transition:color 0.2s}
+nav .links a:hover{color:#ff6b35}
+
+.hero{text-align:center;padding:60px 20px 40px;max-width:800px;margin:0 auto}
+.hero h1{font-size:3rem;font-weight:900;background:linear-gradient(135deg,#f59e0b,#ff6b35);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
+.hero p{color:#888;font-size:1.05rem;line-height:1.6;max-width:600px;margin:0 auto}
+
+.stats-row{display:flex;justify-content:center;gap:50px;padding:30px 20px;flex-wrap:wrap}
+.stat{text-align:center}
+.stat .num{font-size:2rem;font-weight:900;color:#f59e0b;font-family:'JetBrains Mono',monospace}
+.stat .label{font-size:0.65rem;color:#555;text-transform:uppercase;letter-spacing:2px;margin-top:2px}
+
+.section{max-width:1000px;margin:40px auto;padding:0 20px}
+.section h2{font-size:1.6rem;font-weight:900;margin-bottom:8px}
+.section .sub{color:#888;font-size:0.85rem;margin-bottom:24px}
+
+/* How it works */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:40px}
+.step{background:#111;border:1px solid #1a1a1a;border-radius:14px;padding:24px;text-align:center;transition:all 0.3s}
+.step:hover{border-color:#f59e0b;transform:translateY(-3px)}
+.step .num{font-size:2rem;margin-bottom:8px}
+.step h3{font-size:0.95rem;margin-bottom:6px;color:#fff}
+.step p{font-size:0.78rem;color:#888;line-height:1.5}
+
+/* Upload form */
+.upload-card{background:#111;border:2px dashed #333;border-radius:16px;padding:40px;text-align:center;max-width:700px;margin:0 auto 40px;transition:all 0.3s;cursor:pointer}
+.upload-card:hover,.upload-card.dragover{border-color:#f59e0b;background:#111a00}
+.upload-card .icon{font-size:3rem;margin-bottom:12px}
+.upload-card h3{font-size:1.1rem;margin-bottom:6px}
+.upload-card p{color:#666;font-size:0.8rem}
+
+.upload-form{display:none;background:#111;border:1px solid #252525;border-radius:16px;padding:32px;max-width:700px;margin:0 auto 40px}
+.upload-form.active{display:block}
+.form-group{margin-bottom:16px;text-align:left}
+.form-group label{display:block;color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-family:'JetBrains Mono',monospace;font-size:0.85rem;outline:none}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#f59e0b}
+.form-row{display:flex;gap:12px}
+.form-row .form-group{flex:1}
+
+.btn-primary{padding:14px 32px;background:linear-gradient(135deg,#f59e0b,#ff6b35);color:#000;border:none;border-radius:10px;font-weight:700;font-size:0.95rem;cursor:pointer;font-family:'Inter',sans-serif;transition:all 0.2s}
+.btn-primary:hover{transform:scale(1.03);box-shadow:0 8px 30px rgba(245,158,11,0.2)}
+.btn-secondary{padding:12px 24px;background:#222;color:#888;border:1px solid #333;border-radius:10px;cursor:pointer;font-family:'Inter',sans-serif;transition:all 0.2s}
+.btn-secondary:hover{border-color:#888;color:#fff}
+
+/* Preview area */
+.preview-container{width:100%;height:250px;background:#0a0a0f;border:1px solid #252525;border-radius:12px;overflow:hidden;margin-bottom:16px;position:relative}
+.preview-container canvas{width:100%;height:100%}
+.preview-placeholder{display:flex;align-items:center;justify-content:center;height:100%;color:#444;font-size:3rem}
+
+/* Listings */
+.listings{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.listing{background:#111;border:1px solid #1a1a1a;border-radius:14px;overflow:hidden;transition:all 0.3s;cursor:pointer}
+.listing:hover{border-color:#f59e0b;transform:translateY(-3px);box-shadow:0 8px 30px rgba(245,158,11,0.1)}
+.listing .thumb{width:100%;height:160px;background:#0d0d0d;display:flex;align-items:center;justify-content:center;color:#333;font-size:2.5rem}
+.listing .info{padding:14px}
+.listing .name{font-weight:700;font-size:0.9rem;margin-bottom:4px}
+.listing .creator{font-size:0.75rem;color:#888}
+.listing .price-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.listing .price{font-weight:900;color:#f59e0b;font-family:'JetBrains Mono',monospace}
+.listing .downloads{font-size:0.7rem;color:#555}
+.listing .tag{display:inline-block;padding:2px 8px;background:rgba(245,158,11,0.1);color:#f59e0b;font-size:0.65rem;border-radius:4px;margin-top:6px}
+
+/* Revenue section */
+.revenue-card{background:linear-gradient(135deg,#1a1a0a,#111);border:2px solid #f59e0b;border-radius:16px;padding:32px;text-align:center;margin:40px auto;max-width:600px}
+.revenue-card .big{font-size:4rem;font-weight:900;color:#f59e0b;font-family:'JetBrains Mono',monospace}
+.revenue-card .label{color:#888;font-size:0.9rem;margin-top:4px}
+
+footer{padding:30px 20px;text-align:center;border-top:1px solid #151515;margin-top:40px}
+footer p{color:#333;font-size:0.75rem}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">⚙️ Crate Engine</div>
+  <div class="links">
+    <a href="/">Engine</a>
+    <a href="/marketplace.html">Marketplace</a>
+    <a href="/creators.html" style="color:#f59e0b">Creators</a>
+    <a href="/play/">Games</a>
+    <a href="https://github.com/jamaine1984/crate-engine" target="_blank">GitHub</a>
+    <span id="account-nav"></span>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1>🎨 Creator Marketplace</h1>
+  <p>Upload your 3D models. Set your price. Earn <strong style="color:#f59e0b">70%</strong> of every sale. Your creations power thousands of games built with Crate Engine.</p>
+</div>
+
+<div class="stats-row">
+  <div class="stat"><div class="num" id="creator-count">0</div><div class="label">Creators</div></div>
+  <div class="stat"><div class="num" id="model-count">0</div><div class="label">Models Listed</div></div>
+  <div class="stat"><div class="num" id="download-count">0</div><div class="label">Downloads</div></div>
+  <div class="stat"><div class="num" id="payout-total">$0</div><div class="label">Paid to Creators</div></div>
+</div>
+
+<!-- How it works -->
+<div class="section">
+  <h2>How It Works</h2>
+  <p class="sub">From upload to payday in 3 steps</p>
+  <div class="steps">
+    <div class="step">
+      <div class="num">📤</div>
+      <h3>1. Upload Your Model</h3>
+      <p>Drop any .GLB file. Add a name, description, category, and price. We generate 3D previews automatically.</p>
+    </div>
+    <div class="step">
+      <div class="num">🛒</div>
+      <h3>2. Users Buy or Download</h3>
+      <p>Your models appear in the marketplace and inside the engine's asset galleries. One-click to add to any game.</p>
+    </div>
+    <div class="step">
+      <div class="num">💰</div>
+      <h3>3. Get Paid</h3>
+      <p>You keep 70% of every sale. Payouts via Stripe on the 1st of each month. Free models earn you exposure.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Revenue split -->
+<div class="revenue-card">
+  <div class="big">70/30</div>
+  <div class="label">You keep 70% · We keep 30% for hosting, CDN, and platform</div>
+  <div style="margin-top:16px;color:#666;font-size:0.8rem">Sell a model for $5 → you earn <strong style="color:#4ade80">$3.50</strong> per sale</div>
+</div>
+
+<!-- Upload section -->
+<div class="section" id="upload-section">
+  <h2>Upload a Model</h2>
+  <p class="sub">Accepted format: .GLB (max 50MB). Free or paid — your choice.</p>
+
+  <div class="upload-card" id="drop-zone">
+    <div class="icon">📦</div>
+    <h3>Drop your .GLB file here</h3>
+    <p>or click to browse</p>
+    <input type="file" id="file-input" accept=".glb" style="display:none">
+  </div>
+
+  <div class="upload-form" id="upload-form">
+    <div class="preview-container" id="preview-box">
+      <div class="preview-placeholder" id="preview-placeholder">📦</div>
+    </div>
+
+    <div class="form-group">
+      <label>Model Name</label>
+      <input id="model-name" placeholder="e.g. Sci-Fi Assault Rifle">
+    </div>
+
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="model-desc" placeholder="Low-poly sci-fi weapon with PBR materials. 2K triangles." rows="3"></textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Category</label>
+        <select id="model-category">
+          <option value="weapons">⚔️ Weapons</option>
+          <option value="characters">🧑 Characters</option>
+          <option value="buildings">🏠 Buildings</option>
+          <option value="vehicles">🚗 Vehicles</option>
+          <option value="animals">🐾 Animals</option>
+          <option value="trees">🌳 Nature / Trees</option>
+          <option value="furniture">🪑 Furniture</option>
+          <option value="food">🍖 Food / Items</option>
+          <option value="scifi">🚀 Sci-Fi</option>
+          <option value="dungeon">💀 Dungeon</option>
+          <option value="rocks">🪨 Rocks / Terrain</option>
+          <option value="effects">✨ Effects / Props</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Price</label>
+        <select id="model-price">
+          <option value="0">Free</option>
+          <option value="0.99">$0.99</option>
+          <option value="1.99">$1.99</option>
+          <option value="2.99">$2.99</option>
+          <option value="4.99">$4.99</option>
+          <option value="9.99">$9.99</option>
+          <option value="14.99">$14.99</option>
+          <option value="19.99">$19.99</option>
+          <option value="custom">Custom...</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Tags (comma separated)</label>
+        <input id="model-tags" placeholder="sci-fi, weapon, low-poly, pbr">
+      </div>
+      <div class="form-group">
+        <label>Your Creator Name</label>
+        <input id="creator-name" placeholder="Your name or studio">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:20px">
+      <button class="btn-primary" id="submit-btn">🚀 List on Marketplace</button>
+      <button class="btn-secondary" id="cancel-btn">Cancel</button>
+    </div>
+
+    <div id="upload-status" style="margin-top:16px;text-align:center;font-size:0.85rem;color:#4ade80;display:none"></div>
+  </div>
+</div>
+
+<!-- Your Listings -->
+<div class="section">
+  <h2>Your Listings</h2>
+  <p class="sub">Models you've uploaded to the marketplace</p>
+  <div class="listings" id="my-listings"></div>
+  <div id="no-listings" style="text-align:center;color:#555;padding:40px;font-size:0.9rem">You haven't listed any models yet. Upload your first one above! ☝️</div>
+</div>
+
+<!-- Browse Creator Models -->
+<div class="section">
+  <h2>🔥 Featured Creator Models</h2>
+  <p class="sub">Top models from the community</p>
+  <div class="listings" id="featured-listings"></div>
+</div>
+
+<footer>
+  <p>© 2026 <a href="/">Crateship Studios</a> · <a href="/marketplace.html">Asset Marketplace</a> · <a href="https://github.com/jamaine1984/crate-engine">Open Source</a></p>
+</footer>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.162.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.162.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import auth from './auth.mjs';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// Auth badge
+auth.renderAccountBadge(document.getElementById('account-nav'));
+
+const STORAGE_KEY = 'crate_creator_models';
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const uploadForm = document.getElementById('upload-form');
+let currentFile = null;
+let previewRenderer = null;
+
+// Stats
+function updateStats() {
+  const models = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    // Upload to server
+    try {
+      await auth.uploadModel({ name, description: desc, category, price: parseFloat(document.getElementById('model-price').value) || 0, tags: tags.split(',').map(t=>t.trim()).filter(Boolean), fileName: currentFile.name, fileSize: currentFile.size, fileData: base64 });
+    } catch(e) { console.warn('Server upload failed, saved locally:', e); }
+
+  document.getElementById('creator-count').textContent = [...new Set(models.map(m => m.creator))].length || 0;
+  document.getElementById('model-count').textContent = models.length;
+  document.getElementById('download-count').textContent = models.reduce((a,m) => a + (m.downloads||0), 0);
+}
+updateStats();
+
+// Drop zone
+dropZone.onclick = () => fileInput.click();
+dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
+dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+dropZone.ondrop = e => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); };
+fileInput.onchange = e => handleFile(e.target.files[0]);
+
+function handleFile(file) {
+  if (!file || !file.name.endsWith('.glb')) { alert('Please upload a .GLB file'); return; }
+  if (file.size > 50 * 1024 * 1024) { alert('File too large (max 50MB)'); return; }
+  currentFile = file;
+  dropZone.style.display = 'none';
+  uploadForm.classList.add('active');
+  
+  // Auto-fill name from filename
+  const name = file.name.replace('.glb','').replace(/[_-]/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+  document.getElementById('model-name').value = name;
+  
+  // 3D preview
+  renderPreview(file);
+}
+
+function renderPreview(file) {
+  const container = document.getElementById('preview-box');
+  document.getElementById('preview-placeholder').style.display = 'none';
+  
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'width:100%;height:100%';
+  container.appendChild(canvas);
+  
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setClearColor(0x0a0a0f, 1);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  previewRenderer = renderer;
+  
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
+  cam.position.set(3, 2, 3);
+  
+  const controls = new OrbitControls(cam, canvas);
+  controls.enableDamping = true;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 2;
+  
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dl = new THREE.DirectionalLight(0xffffff, 1);
+  dl.position.set(5, 8, 5);
+  scene.add(dl);
+  
+  // Grid
+  scene.add(new THREE.GridHelper(10, 10, 0x222222, 0x181818));
+  
+  const loader = new GLTFLoader();
+  const url = URL.createObjectURL(file);
+  loader.load(url, gltf => {
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim > 0) model.scale.setScalar(2 / maxDim);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.sub(center.multiplyScalar(2/maxDim));
+    scene.add(model);
+    controls.target.set(0, size.y * 0.5 / maxDim, 0);
+  });
+  
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, cam);
+  }
+  animate();
+}
+
+// Cancel
+document.getElementById('cancel-btn').onclick = () => {
+  uploadForm.classList.remove('active');
+  dropZone.style.display = '';
+  currentFile = null;
+  if (previewRenderer) { previewRenderer.dispose(); previewRenderer = null; }
+  document.getElementById('preview-box').innerHTML = '<div class="preview-placeholder" id="preview-placeholder">📦</div>';
+};
+
+// Submit
+document.getElementById('submit-btn').onclick = async () => {
+    // Require login
+    if (!auth.isLoggedIn) {
+      auth.showAuthModal(() => document.getElementById('submit-btn').click());
+      return;
+    }
+
+  if (!currentFile) return;
+  const name = document.getElementById('model-name').value.trim();
+  const desc = document.getElementById('model-desc').value.trim();
+  const category = document.getElementById('model-category').value;
+  const price = parseFloat(document.getElementById('model-price').value) || 0;
+  const tags = document.getElementById('model-tags').value.trim();
+  const creator = document.getElementById('creator-name').value.trim() || 'Anonymous';
+  
+  if (!name) { alert('Please enter a model name'); return; }
+  
+  const btn = document.getElementById('submit-btn');
+  btn.textContent = '⏳ Uploading...';
+  btn.style.opacity = '0.6';
+  
+  // Read file as base64
+  const reader = new FileReader();
+  reader.onload = () => {
+    const base64 = reader.result.split(',')[1];
+    const listing = {
+      id: 'cm_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      name, desc, category, price, tags: tags.split(',').map(t=>t.trim()).filter(Boolean),
+      creator, fileName: currentFile.name, fileSize: currentFile.size,
+      data: base64, // Store model data (for localStorage; real backend would use CDN)
+      downloads: 0, rating: 0, reviews: 0,
+      listedAt: Date.now()
+    };
+    
+    const models = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    models.push(listing);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(models));
+    
+    // Also add to engine's marketplace models
+    const engineModels = JSON.parse(localStorage.getItem('engine_marketplace_models') || '[]');
+    engineModels.push({
+      file: listing.id, name: listing.name, category: listing.category,
+      path: 'blob', addedAt: Date.now(), source: 'creator', data: base64
+    });
+    localStorage.setItem('engine_marketplace_models', JSON.stringify(engineModels));
+    
+    const status = document.getElementById('upload-status');
+    status.style.display = 'block';
+    status.innerHTML = '🎉 <strong>' + name + '</strong> is now listed on the Creator Marketplace!<br><span style="color:#888;font-size:0.75rem">' + (price > 0 ? 'Price: $' + price.toFixed(2) + ' · You earn: $' + (price * 0.7).toFixed(2) + ' per sale' : 'Listed as FREE — great for building your audience!') + '</span>';
+    btn.textContent = '✅ Listed!';
+    
+    updateStats();
+    renderMyListings();
+    
+    setTimeout(() => {
+      btn.textContent = '🚀 List on Marketplace';
+      btn.style.opacity = '1';
+    }, 3000);
+  };
+  reader.readAsDataURL(currentFile);
+};
+
+// Render my listings
+function renderMyListings() {
+  const models = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  const container = document.getElementById('my-listings');
+  const noListings = document.getElementById('no-listings');
+  
+  if (models.length === 0) { noListings.style.display = 'block'; container.innerHTML = ''; return; }
+  noListings.style.display = 'none';
+  
+  container.innerHTML = '';
+  models.slice().reverse().forEach(m => {
+    const card = document.createElement('div');
+    card.className = 'listing';
+    card.innerHTML = `
+      <div class="thumb">📦</div>
+      <div class="info">
+        <div class="name">${m.name}</div>
+        <div class="creator">by ${m.creator}</div>
+        <div class="price-row">
+          <span class="price">${m.price > 0 ? '$' + m.price.toFixed(2) : 'FREE'}</span>
+          <span class="downloads">${m.downloads || 0} downloads</span>
+        </div>
+        <span class="tag">${m.category}</span>
+        ${m.tags?.length ? m.tags.map(t => '<span class="tag" style="margin-left:4px">' + t + '</span>').join('') : ''}
+      </div>`;
+    container.appendChild(card);
+  });
+}
+renderMyListings();
+
+// Featured — show sample data for now
+const featured = document.getElementById('featured-listings');
+const sampleCreatorModels = [
+  { name: 'Neon Katana', creator: 'PixelForge', price: 2.99, category: 'weapons', downloads: 142 },
+  { name: 'Mech Warrior V2', creator: 'RoboStudio', price: 4.99, category: 'characters', downloads: 89 },
+  { name: 'Haunted Mansion', creator: 'DarkArts3D', price: 9.99, category: 'buildings', downloads: 67 },
+  { name: 'Crystal Dragon', creator: 'MythicModels', price: 4.99, category: 'animals', downloads: 203 },
+  { name: 'Space Buggy', creator: 'StarCraft3D', price: 1.99, category: 'vehicles', downloads: 156 },
+  { name: 'Enchanted Tree Pack', creator: 'NatureLab', price: 0, category: 'trees', downloads: 512 },
+  { name: 'Dungeon Torch Set', creator: 'DarkArts3D', price: 0.99, category: 'dungeon', downloads: 334 },
+  { name: 'Alien Flora Pack', creator: 'CosmicAssets', price: 2.99, category: 'scifi', downloads: 178 },
+];
+sampleCreatorModels.forEach(m => {
+  const card = document.createElement('div');
+  card.className = 'listing';
+  const icons = {weapons:'⚔️',characters:'🧑',buildings:'🏠',vehicles:'🚗',animals:'🐾',trees:'🌳',furniture:'🪑',food:'🍖',scifi:'🚀',dungeon:'💀',rocks:'🪨',effects:'✨'};
+  card.innerHTML = `
+    <div class="thumb">${icons[m.category]||'📦'}</div>
+    <div class="info">
+      <div class="name">${m.name}</div>
+      <div class="creator">by ${m.creator}</div>
+      <div class="price-row">
+        <span class="price">${m.price > 0 ? '$'+m.price.toFixed(2) : 'FREE'}</span>
+        <span class="downloads">${m.downloads} downloads</span>
+      </div>
+      <span class="tag">${m.category}</span>
+    </div>`;
+  featured.appendChild(card);
+});
+</script>
+</body>
+</html>

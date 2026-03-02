@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Model Viewer</title>
+<style>
+body{margin:0;background:#1a1a2e;font-family:system-ui;color:#fff;overflow-x:hidden}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;padding:20px}
+.card{background:#16213e;border-radius:12px;overflow:hidden;border:1px solid #0f3460}
+.card canvas{width:100%;height:220px;display:block}
+.card .label{padding:10px;font-size:13px;text-align:center;color:#e94560}
+h1{text-align:center;padding:20px 0 0;color:#e94560}
+p{text-align:center;color:#888;margin:0 0 10px}
+</style>
+</head><body>
+<h1>🏭 Crate Engine Model Factory — Preview</h1>
+<p>19,600 procedural GLB models — sample below</p>
+<div class="grid" id="grid"></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"}}</script>
+<script type="module">
+import*as THREE from'three';
+import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
+import{OrbitControls}from'three/addons/controls/OrbitControls.js';
+
+const models=[
+  {path:'output/weapons/swords/ancient-sword-0034.glb',name:'Ancient Sword'},
+  {path:'output/weapons/axes/ancient-axe-0001.glb',name:'Ancient Axe'},
+  {path:'output/weapons/shields/ancient-shield-0001.glb',name:'Ancient Shield'},
+  {path:'output/weapons/hammers/ancient-hammer-0001.glb',name:'Ancient Hammer'},
+  {path:'output/nature/trees/ancient-tre-0009.glb',name:'Ancient Tree'},
+  {path:'output/nature/rocks/ancient-rock-0001.glb',name:'Ancient Rock'},
+  {path:'output/nature/bushes/ancient-bush-0001.glb',name:'Ancient Bush'},
+  {path:'output/furniture/chairs/ancient-chair-0014.glb',name:'Ancient Chair'},
+  {path:'output/furniture/tables/ancient-table-0001.glb',name:'Ancient Table'},
+  {path:'output/furniture/bookshelves/ancient-bookshelf-0001.glb',name:'Bookshelf'},
+  {path:'output/items/potions/ancient-potion-0024.glb',name:'Ancient Potion'},
+  {path:'output/items/gems/ancient-gem-0001.glb',name:'Ancient Gem'},
+  {path:'output/buildings/houses/ancient-house-0001.glb',name:'Ancient House'},
+  {path:'output/buildings/towers/ancient-tower-0001.glb',name:'Ancient Tower'},
+  {path:'output/armor/helmets/ancient-helmet-0001.glb',name:'Ancient Helmet'},
+  {path:'output/props/campfires/ancient-campfire-0001.glb',name:'Campfire'},
+  {path:'output/vehicles/carts/ancient-cart-0001.glb',name:'Ancient Cart'},
+  {path:'output/food/apples/ancient-apple-0001.glb',name:'Apple'},
+  {path:'output/dungeon/pillars/ancient-pillar-0001.glb',name:'Dungeon Pillar'},
+  {path:'output/dungeon/crystals/ancient-crystal-0001.glb',name:'Crystal'},
+];
+
+const loader=new GLTFLoader();
+const grid=document.getElementById('grid');
+
+for(const m of models){
+  const card=document.createElement('div');card.className='card';
+  const cvs=document.createElement('canvas');cvs.width=560;cvs.height=440;
+  const label=document.createElement('div');label.className='label';label.textContent=m.name;
+  card.append(cvs,label);grid.append(card);
+
+  const renderer=new THREE.WebGLRenderer({canvas:cvs,antialias:true,alpha:true});
+  renderer.setPixelRatio(2);renderer.setSize(280,220);
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x0a0a1a);
+  const cam=new THREE.PerspectiveCamera(40,280/220,0.01,100);
+  cam.position.set(2,2,2);
+  const ctrl=new OrbitControls(cam,cvs);ctrl.enableDamping=true;ctrl.autoRotate=true;ctrl.autoRotateSpeed=3;
+
+  scene.add(new THREE.AmbientLight(0xffffff,0.6));
+  const dl=new THREE.DirectionalLight(0xffffff,1.2);dl.position.set(3,5,3);scene.add(dl);
+  const dl2=new THREE.DirectionalLight(0x4488ff,0.4);dl2.position.set(-3,2,-3);scene.add(dl2);
+
+  loader.load(m.path,(gltf)=>{
+    const obj=gltf.scene;
+    const box=new THREE.Box3().setFromObject(obj);
+    const size=box.getSize(new THREE.Vector3());
+    const center=box.getCenter(new THREE.Vector3());
+    const maxDim=Math.max(size.x,size.y,size.z);
+    const scale=2/maxDim;
+    obj.scale.setScalar(scale);
+    obj.position.sub(center.multiplyScalar(scale));
+    scene.add(obj);
+    cam.position.set(2,1.5,2);cam.lookAt(0,0,0);
+  },undefined,(err)=>{label.textContent=m.name+' ❌';});
+
+  function anim(){requestAnimationFrame(anim);ctrl.update();renderer.render(scene,cam);}
+  anim();
+}
+</script></body></html>

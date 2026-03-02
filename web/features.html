@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Features — Crate Engine</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a0a;color:#e0e0e0;font-family:'Inter',system-ui,sans-serif;min-height:100vh}
+  nav{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:rgba(10,10,10,0.95);border-bottom:1px solid #1a1a1a;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+  nav .logo{font-size:1.1rem;font-weight:900;background:linear-gradient(135deg,#ff6b35,#f7c948);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-decoration:none}
+  nav .links{display:flex;gap:16px;align-items:center}
+  nav .links a{color:#888;text-decoration:none;font-size:0.8rem}
+  nav .links a:hover{color:#ff6b35}
+  nav .links a.active{color:#ff6b35;font-weight:600}
+  .btn-nav{padding:4px 12px;background:#ff6b35;color:white!important;border-radius:6px;font-weight:600;font-size:0.7rem}
+  h1{text-align:center;font-size:2.2rem;font-weight:900;padding:50px 20px 10px}
+  .sub{text-align:center;color:#888;font-size:0.9rem;margin-bottom:30px}
+  .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;max-width:1000px;margin:0 auto;padding:0 20px 60px}
+  .feature{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:18px;transition:all 0.3s}
+  .feature:hover{border-color:#ff6b35;transform:translateY(-2px)}
+  .feature .icon{font-size:1.5rem;margin-bottom:6px}
+  .feature h3{color:#fff;font-size:0.9rem;margin-bottom:4px}
+  .feature p{color:#666;font-size:0.78rem;line-height:1.4}
+  .feature .tag{display:inline-block;background:#1a1a2e;color:#f7c948;font-size:0.6rem;padding:2px 6px;border-radius:4px;margin-top:6px}
+  footer{padding:30px 20px;text-align:center;border-top:1px solid #151515}
+  footer p{color:#333;font-size:0.75rem}
+  footer a{color:#ff6b35;text-decoration:none}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">📦 Crate Engine</a>
+  <div class="links">
+    <a href="/" >Engine</a>
+    <a href="/features.html" class="active">Features</a>
+    <a href="/compare.html">Compare</a>
+    <a href="/marketplace.html">Marketplace</a>
+    <a href="/creators.html">Creators</a>
+    <a href="/pricing.html">Pricing</a>
+    <a href="/docs/">Docs</a>
+  </div>
+</nav>
+<h1>Everything You Need</h1>
+<p class="sub">Built-in. No plugins. No coding. No downloads.</p>
+<div class="features">
+  <div class="feature"><div class="icon">🎮</div><h3>Full 3D Renderer</h3><p>PBR, shadows, MSAA, bloom, SSAO, volumetric fog, cel shading, ray marching</p><span class="tag">wgpu + WebGPU</span></div>
+  <div class="feature"><div class="icon">💬</div><h3>Prompt-First</h3><p>800+ natural language commands. "add tree", "set gravity 0", "spawn 100 enemies"</p><span class="tag">AI-powered</span></div>
+  <div class="feature"><div class="icon">⚔️</div><h3>Combat & RPG</h3><p>Damage calc, status effects, skill trees, crafting, quests, inventory, loot tables</p><span class="tag">60+ systems</span></div>
+  <div class="feature"><div class="icon">🌍</div><h3>World Building</h3><p>Terrain, weather (18 types), vegetation, water (8 types), destruction, day/night</p><span class="tag">Procedural</span></div>
+  <div class="feature"><div class="icon">🤖</div><h3>Advanced AI</h3><p>Behavior trees, utility AI, sensors, squads, pathfinding, dialogue, personalities</p><span class="tag">Brain system</span></div>
+  <div class="feature"><div class="icon">🏗️</div><h3>Building</h3><p>16 piece types, snap points, stability sim, materials, electricity, plumbing</p><span class="tag">Rust-based</span></div>
+  <div class="feature"><div class="icon">🚗</div><h3>Vehicles</h3><p>18 types — cars, tanks, helicopters, boats, mechs. Damage model, fuel, customization</p><span class="tag">Physics</span></div>
+  <div class="feature"><div class="icon">🎬</div><h3>Cinematics</h3><p>12 track types, camera shots, facial capture, keyframes, letterbox, subtitles</p><span class="tag">Director</span></div>
+  <div class="feature"><div class="icon">🛡️</div><h3>Multiplayer</h3><p>Lobbies, matchmaking, 18 game modes, killcam, voice chat, anti-cheat</p><span class="tag">Networking</span></div>
+  <div class="feature"><div class="icon">🎨</div><h3>Visual FX</h3><p>GPU particles, decals, 20 screen effects, shader graph, material editor</p><span class="tag">Eye candy</span></div>
+  <div class="feature"><div class="icon">👤</div><h3>Characters</h3><p>Body/face sliders, skin tones, hairstyles, tattoos, scars, accessories</p><span class="tag">Customizer</span></div>
+  <div class="feature"><div class="icon">📊</div><h3>Analytics</h3><p>Heatmaps, A/B testing, funnels, retention, crash reports, custom metrics</p><span class="tag">Telemetry</span></div>
+  <div class="feature"><div class="icon">🔫</div><h3>FPS Shooter</h3><p>First-person mode, ammo, reloading, bullet physics, enemy AI, HP system</p><span class="tag">Built-in</span></div>
+  <div class="feature"><div class="icon">🎨</div><h3>3D Model Generator</h3><p>Turn any image into a 3D model (GLB). Powered by AI on L4 GPUs. ~$0.005/model</p><span class="tag">AI-powered</span></div>
+  <div class="feature"><div class="icon">🏪</div><h3>Marketplace</h3><p>5,783 assets. Buy, sell, and share 3D models. 70% revenue to creators</p><span class="tag">Creator economy</span></div>
+  <div class="feature"><div class="icon">📱</div><h3>Cross-Platform</h3><p>Browser, Desktop (Tauri), iOS, Android. One codebase, every platform</p><span class="tag">Universal</span></div>
+</div>
+<footer><p>Built by <a href="https://crateshipgames.com">Crateship Games</a></p></footer>
+</body>
+</html>

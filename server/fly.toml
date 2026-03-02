@@ -1,0 +1,34 @@
+# fly.toml app configuration file generated for crate-engine-mp on 2026-02-24T13:31:41-08:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'crate-engine-mp'
+primary_region = 'sjc'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[http_service]
+  internal_port = 8860
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+
+[[services]]
+  protocol = 'tcp'
+  internal_port = 8860
+
+  [[services.ports]]
+    port = 443
+    handlers = ['tls', 'http']
+
+  [[services.ports]]
+    port = 80
+    handlers = ['http']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024

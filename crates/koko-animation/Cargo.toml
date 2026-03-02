@@ -1,0 +1,10 @@
+[package]
+name = "koko-animation"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+koko-core = { path = "../koko-core" }
+glam = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }

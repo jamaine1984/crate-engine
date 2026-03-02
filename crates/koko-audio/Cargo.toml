@@ -1,0 +1,11 @@
+[package]
+name = "koko-audio"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+koko-core = { path = "../koko-core" }
+tracing = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+kira = { workspace = true }

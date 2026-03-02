@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compare — Crate Engine vs Unity vs Unreal vs Rosebud</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a0a;color:#e0e0e0;font-family:'Inter',system-ui,sans-serif;min-height:100vh}
+  nav{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:rgba(10,10,10,0.95);border-bottom:1px solid #1a1a1a;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+  nav .logo{font-size:1.1rem;font-weight:900;background:linear-gradient(135deg,#ff6b35,#f7c948);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-decoration:none}
+  nav .links{display:flex;gap:16px;align-items:center}
+  nav .links a{color:#888;text-decoration:none;font-size:0.8rem}
+  nav .links a:hover{color:#ff6b35}
+  nav .links a.active{color:#ff6b35;font-weight:600}
+  h1{text-align:center;font-size:2.2rem;font-weight:900;padding:50px 20px 10px}
+  .sub{text-align:center;color:#888;font-size:0.9rem;margin-bottom:30px}
+  .table-wrap{overflow-x:auto;max-width:1100px;margin:0 auto;padding:0 20px 60px}
+  table{width:100%;border-collapse:collapse;font-size:0.8rem;min-width:800px}
+  th{text-align:left;padding:10px;border-bottom:1px solid #252525;color:#888;font-weight:600}
+  td{padding:8px 10px;border-bottom:1px solid #151515}
+  .check{color:#4ade80}
+  .cross{color:#ef4444}
+  .partial{color:#f7c948}
+  .cat td{color:#4ade80;font-weight:700;font-size:0.75rem;text-transform:uppercase;letter-spacing:2px;padding:12px 10px 6px;background:rgba(74,222,128,0.03)}
+  .ce{background:rgba(74,222,128,0.05)}
+  .ceh{color:#4ade80;background:rgba(74,222,128,0.05);border-bottom:2px solid #4ade80}
+  .summary{text-align:center;margin:20px 0 40px;color:#4ade80;font-size:0.9rem;font-weight:700}
+  footer{padding:30px 20px;text-align:center;border-top:1px solid #151515}
+  footer p{color:#333;font-size:0.75rem}
+  footer a{color:#ff6b35;text-decoration:none}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">📦 Crate Engine</a>
+  <div class="links">
+    <a href="/">Engine</a>
+    <a href="/features.html">Features</a>
+    <a href="/compare.html" class="active">Compare</a>
+    <a href="/marketplace.html">Marketplace</a>
+    <a href="/creators.html">Creators</a>
+    <a href="/pricing.html">Pricing</a>
+    <a href="/docs/">Docs</a>
+  </div>
+</nav>
+<h1>How We Compare</h1>
+<p class="sub">See how Crate Engine stacks up against the biggest names in game development</p>
+<div class="table-wrap">
+<table>
+  <tr><th style="width:22%">Feature</th><th class="ceh" style="width:15.6%">⚙️ Crate Engine</th><th style="width:15.6%">Rosebud AI</th><th style="width:15.6%">Unity</th><th style="width:15.6%">Unreal</th><th style="width:15.6%">GDevelop</th></tr>
+  <tr class="cat"><td colspan="6">🧠 AI & Intelligence</td></tr>
+  <tr><td>🤖 In-engine AI agent</td><td class="check ce">✓ Context-aware</td><td class="partial">~ Chat only</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+  <tr><td>🗣️ Natural language commands</td><td class="check ce">✓ 77,918 phrases</td><td class="check">✓ AI chat</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+  <tr><td>🎤 Voice control</td><td class="check ce">✓ Built-in mic</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+  <tr><td>🤖 AI NPC dialogue</td><td class="check ce">✓ 7 NPC types</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+  <tr class="cat"><td colspan="6">🌍 World Building</td></tr>
+  <tr><td>🌍 One-prompt world gen</td><td class="check ce">✓ 100+ biomes</td><td class="check">✓ Basic</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+  <tr><td>🏔️ Terrain system</td><td class="check ce">✓ 10 types</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td></tr>
+  <tr><td>🪐 Sci-fi / space</td><td class="check ce">✓ Planets, stations</td><td class="cross">✗</td><td class="partial">~ Build it</td><td class="partial">~ Build it</td><td class="cross">✗</td></tr>
+  <tr class="cat"><td colspan="6">🎬 Animation & Motion</td></tr>
+  <tr><td>🎬 Procedural animations</td><td class="check ce">✓ 80 types</td><td class="cross">✗</td><td class="partial">~ Mecanim</td><td class="check">✓ Sequencer</td><td class="partial">~ Basic</td></tr>
+  <tr><td>⚔️ Combat animations</td><td class="check ce">✓ slash, combo, parry</td><td class="cross">✗</td><td class="partial">~ Import</td><td class="partial">~ Import</td><td class="cross">✗</td></tr>
+  <tr><td>🎮 Apply to ANY model</td><td class="check ce">✓ One command</td><td class="cross">✗</td><td class="cross">✗ Retarget</td><td class="cross">✗ Retarget</td><td class="cross">✗</td></tr>
+  <tr class="cat"><td colspan="6">⚔️ Gameplay</td></tr>
+  <tr><td>⚔️ Combat / RPG</td><td class="check ce">✓ 60+ built-in</td><td class="cross">✗</td><td class="partial">~ Plugins $$$</td><td class="partial">~ Marketplace</td><td class="cross">✗</td></tr>
+  <tr><td>🗡️ Weapon equip</td><td class="check ce">✓ 24 weapons</td><td class="cross">✗</td><td class="cross">✗ Code it</td><td class="cross">✗ Code it</td><td class="cross">✗</td></tr>
+  <tr><td>🎮 Multiplayer</td><td class="check ce">✓ WebSocket</td><td class="cross">✗</td><td class="check">✓ Netcode</td><td class="check">✓</td><td class="partial">~ P2P</td></tr>
+  <tr class="cat"><td colspan="6">🏪 Assets & Platform</td></tr>
+  <tr><td>🏪 Built-in marketplace</td><td class="check ce">✓ 5,783 assets</td><td class="cross">✗</td><td class="check">✓ Asset Store</td><td class="check">✓ Marketplace</td><td class="check">✓</td></tr>
+  <tr><td>🎨 Creator marketplace</td><td class="check ce">✓ 70% to creator</td><td class="cross">✗</td><td class="partial">~ 70/30</td><td class="partial">~ 88/12</td><td class="partial">~ Rev share</td></tr>
+  <tr class="cat"><td colspan="6">🚀 Accessibility</td></tr>
+  <tr><td>🌐 Runs in browser</td><td class="check ce" style="font-weight:700">✓ Instant</td><td class="check">✓</td><td class="partial">~ WebGL export</td><td class="cross">✗</td><td class="check">✓</td></tr>
+  <tr><td>📦 Download size</td><td class="check ce" style="font-weight:700">0 MB</td><td class="check">0 MB</td><td class="cross">2GB+</td><td class="cross">40GB+</td><td class="check">0 MB</td></tr>
+  <tr><td>💰 Price</td><td class="check ce" style="font-weight:700">FREE</td><td class="partial">Freemium</td><td class="cross">$22/mo</td><td class="cross">5% royalty</td><td class="check">Free tier</td></tr>
+  <tr><td>⏱️ Time to first game</td><td class="check ce" style="font-weight:700">30 seconds</td><td class="check">~1 min</td><td class="cross">Hours</td><td class="cross">Days</td><td class="partial">~30 min</td></tr>
+  <tr><td>🧠 Learning curve</td><td class="check ce" style="font-weight:700">Type English</td><td class="check">Easy</td><td class="cross">Steep</td><td class="cross">Very steep</td><td class="partial">Medium</td></tr>
+</table>
+</div>
+<p class="summary">⚡ 35 features compared · All built-in · No plugins · No coding · No downloads</p>
+<footer><p>Built by <a href="https://crateshipgames.com">Crateship Games</a></p></footer>
+</body>
+</html>

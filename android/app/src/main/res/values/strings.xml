@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Crate Engine</string>
+    <string name="title_activity_main">Crate Engine</string>
+    <string name="package_name">com.crateshipgames.crateengine</string>
+    <string name="custom_url_scheme">com.crateshipgames.crateengine</string>
+</resources>
