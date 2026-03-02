@@ -15,7 +15,7 @@ use wasm_bindgen::prelude::*;
 
 /// Compile a complete world from template parameters and an asset catalog.
 ///
-/// - `template`: Template name (CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION)
+/// - `template`: Template name (CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION, TROPICAL_ISLAND, DESERT_OUTPOST)
 /// - `seed`: RNG seed for deterministic generation
 /// - `size`: World size preset (small, medium, large, huge)
 /// - `assets_json`: JSON array of asset entries from the JS asset-index
@@ -265,6 +265,28 @@ pub fn sim_set_speed(speed: f32) -> Result<(), JsError> {
 }
 
 // ==========================================================================
+// Scene save/load
+// ==========================================================================
+
+/// Save a scene to JSON. Takes a scene JSON string and returns a pretty-printed version.
+///
+/// The input should be a SceneData JSON object. Returns the serialized scene.
+#[wasm_bindgen]
+pub fn save_scene(scene_json: &str) -> Result<String, JsError> {
+    let scene: koko_scene::SceneData = serde_json::from_str(scene_json)
+        .map_err(|e| JsError::new(&format!("Invalid scene JSON: {e}")))?;
+    koko_scene::save_scene(&scene).map_err(|e| JsError::new(&e))
+}
+
+/// Load a scene from JSON. Validates the version and returns the parsed scene as a JS object.
+#[wasm_bindgen]
+pub fn load_scene(json: &str) -> Result<JsValue, JsError> {
+    let scene = koko_scene::load_scene(json).map_err(|e| JsError::new(&e))?;
+    serde_wasm_bindgen::to_value(&scene)
+        .map_err(|e| JsError::new(&format!("Serialization error: {e}")))
+}
+
+// ==========================================================================
 // get_version
 // ==========================================================================
 
@@ -480,7 +502,7 @@ mod tests {
     #[test]
     fn compile_all_templates_native() {
         let assets = test_assets_json();
-        for template in &["CITY_MODERN", "MEDIEVAL_VILLAGE", "ZOMBIELAND", "SPACE_STATION"] {
+        for template in &["CITY_MODERN", "MEDIEVAL_VILLAGE", "ZOMBIELAND", "SPACE_STATION", "TROPICAL_ISLAND", "DESERT_OUTPOST"] {
             let request = koko_world::WorldBuildRequest {
                 template: template.to_string(),
                 seed: 42,

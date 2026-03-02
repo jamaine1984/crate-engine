@@ -57,3 +57,66 @@ impl Color {
 impl Default for Color {
     fn default() -> Self { Self::WHITE }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn white_is_full() {
+        assert_eq!(Color::WHITE, Color::new(1.0, 1.0, 1.0, 1.0));
+    }
+
+    #[test]
+    fn black_is_zero_rgb() {
+        assert_eq!(Color::BLACK.r, 0.0);
+        assert_eq!(Color::BLACK.g, 0.0);
+        assert_eq!(Color::BLACK.b, 0.0);
+        assert_eq!(Color::BLACK.a, 1.0);
+    }
+
+    #[test]
+    fn from_hex_rgb() {
+        let c = Color::from_hex("#FF0000").unwrap();
+        assert!((c.r - 1.0).abs() < 0.01);
+        assert!((c.g - 0.0).abs() < 0.01);
+        assert!((c.b - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn from_hex_rgba() {
+        let c = Color::from_hex("FF000080").unwrap();
+        assert!((c.a - 128.0 / 255.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn from_hex_invalid() {
+        assert!(Color::from_hex("ZZ").is_none());
+    }
+
+    #[test]
+    fn from_rgba8_conversion() {
+        let c = Color::from_rgba8(255, 0, 128, 255);
+        assert!((c.r - 1.0).abs() < 0.01);
+        assert!((c.b - 128.0 / 255.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn lerp_midpoint() {
+        let mid = Color::BLACK.lerp(Color::WHITE, 0.5);
+        assert!((mid.r - 0.5).abs() < 0.01);
+        assert!((mid.g - 0.5).abs() < 0.01);
+        assert!((mid.b - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn to_array() {
+        let arr = Color::RED.to_array();
+        assert_eq!(arr, [1.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn default_is_white() {
+        assert_eq!(Color::default(), Color::WHITE);
+    }
+}

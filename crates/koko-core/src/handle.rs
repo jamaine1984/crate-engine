@@ -37,3 +37,44 @@ impl<T> Eq for Handle<T> {}
 impl<T> std::hash::Hash for Handle<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) { self.index.hash(state); self.generation.hash(state); }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_handle_is_valid() {
+        let h = Handle::<u32>::new(0, 1);
+        assert!(h.is_valid());
+    }
+
+    #[test]
+    fn invalid_handle() {
+        let h = Handle::<u32>::invalid();
+        assert!(!h.is_valid());
+        assert_eq!(h.index, u32::MAX);
+    }
+
+    #[test]
+    fn equality() {
+        let a = Handle::<u32>::new(1, 2);
+        let b = Handle::<u32>::new(1, 2);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn different_generation_not_equal() {
+        let a = Handle::<u32>::new(1, 1);
+        let b = Handle::<u32>::new(1, 2);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn clone_and_copy() {
+        let a = Handle::<u32>::new(5, 3);
+        let b = a;
+        let c = a.clone();
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+    }
+}

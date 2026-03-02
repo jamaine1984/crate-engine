@@ -77,3 +77,42 @@ impl ScriptEngine {
 impl Default for ScriptEngine {
     fn default() -> Self { Self }
 }
+
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_engine() {
+        let engine = ScriptEngine::new().expect("Failed to create Lua VM");
+        // Just verify it creates without error
+        let _ = engine;
+    }
+
+    #[test]
+    fn run_simple_code() {
+        let engine = ScriptEngine::new().unwrap();
+        engine.run("local x = 1 + 1").unwrap();
+    }
+
+    #[test]
+    fn set_and_read_global() {
+        let engine = ScriptEngine::new().unwrap();
+        engine.set_global("my_val", 42.0).unwrap();
+        engine.run("assert(my_val == 42)").unwrap();
+    }
+
+    #[test]
+    fn call_defined_function() {
+        let engine = ScriptEngine::new().unwrap();
+        engine.run("function greet() return 'hello' end").unwrap();
+        engine.call_function("greet").unwrap();
+    }
+
+    #[test]
+    fn error_on_invalid_code() {
+        let engine = ScriptEngine::new().unwrap();
+        assert!(engine.run("this is not valid lua !!!").is_err());
+    }
+}

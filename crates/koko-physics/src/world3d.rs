@@ -75,3 +75,62 @@ impl PhysicsWorld3D {
     }
 }
 impl Default for PhysicsWorld3D { fn default() -> Self { Self::new() } }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_physics_world() {
+        let world = PhysicsWorld3D::new();
+        assert!(world.rigid_body_set.is_empty());
+        assert!(world.collider_set.is_empty());
+    }
+
+    #[test]
+    fn add_dynamic_body() {
+        let mut world = PhysicsWorld3D::new();
+        let h = world.add_dynamic_body([0.0, 10.0, 0.0]);
+        let pos = world.body_position(h).unwrap();
+        assert!((pos[1] - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn add_static_body() {
+        let mut world = PhysicsWorld3D::new();
+        let h = world.add_static_body([5.0, 0.0, 0.0]);
+        let pos = world.body_position(h).unwrap();
+        assert!((pos[0] - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn step_applies_gravity() {
+        let mut world = PhysicsWorld3D::new();
+        let h = world.add_dynamic_body([0.0, 10.0, 0.0]);
+        world.add_sphere_collider(h, 0.5);
+
+        let before = world.body_position(h).unwrap()[1];
+        for _ in 0..10 {
+            world.step();
+        }
+        let after = world.body_position(h).unwrap()[1];
+        assert!(after < before, "Body should fall due to gravity");
+    }
+
+    #[test]
+    fn add_colliders() {
+        let mut world = PhysicsWorld3D::new();
+        let h = world.add_dynamic_body([0.0, 0.0, 0.0]);
+        world.add_box_collider(h, [1.0, 1.0, 1.0]);
+        world.add_sphere_collider(h, 0.5);
+        assert_eq!(world.collider_set.len(), 2);
+    }
+
+    #[test]
+    fn character_sprint_faster_than_run() {
+        use crate::character::CharacterConfig;
+        let config = CharacterConfig::default();
+        assert!(config.sprint_speed > config.run_speed);
+        assert!(config.run_speed > config.walk_speed);
+    }
+}

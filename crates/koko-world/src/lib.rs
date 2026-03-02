@@ -67,9 +67,10 @@ pub struct WorldBuildRequest {
 pub fn compile_world(request: &WorldBuildRequest) -> Result<WorldManifest, String> {
     match request.template.to_uppercase().as_str() {
         "CITY_MODERN" => compile_city_modern(request),
-        "MEDIEVAL_VILLAGE" | "ZOMBIELAND" | "SPACE_STATION" => compile_template(request),
+        "MEDIEVAL_VILLAGE" | "ZOMBIELAND" | "SPACE_STATION"
+        | "TROPICAL_ISLAND" | "DESERT_OUTPOST" => compile_template(request),
         other => Err(format!(
-            "Unknown template: {}. Available: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION",
+            "Unknown template: {}. Available: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION, TROPICAL_ISLAND, DESERT_OUTPOST",
             other
         )),
     }
@@ -607,8 +608,55 @@ mod tests {
     }
 
     #[test]
+    fn compile_tropical_island() {
+        let req = template_request("TROPICAL_ISLAND", WorldSize::Small);
+        let manifest = compile_world(&req).unwrap();
+        assert_eq!(manifest.template, "TROPICAL_ISLAND");
+        assert_eq!(manifest.chunk_count(), 36);
+        let counts = &manifest.stats.zone_breakdown;
+        assert!(counts.contains_key("beach"), "Should have beach zone");
+        // At least 2 distinct zones present
+        assert!(counts.len() >= 2, "Should have multiple zones, got {:?}", counts);
+        println!(
+            "Tropical Island: {} assets, zones: {:?}",
+            manifest.stats.total_assets, counts
+        );
+    }
+
+    #[test]
+    fn compile_desert_outpost() {
+        let req = template_request("DESERT_OUTPOST", WorldSize::Small);
+        let manifest = compile_world(&req).unwrap();
+        assert_eq!(manifest.template, "DESERT_OUTPOST");
+        assert_eq!(manifest.chunk_count(), 36);
+        let counts = &manifest.stats.zone_breakdown;
+        assert!(counts.contains_key("outpost"), "Should have outpost zone");
+        assert!(counts.len() >= 2, "Should have multiple zones, got {:?}", counts);
+        println!(
+            "Desert Outpost: {} assets, zones: {:?}",
+            manifest.stats.total_assets, counts
+        );
+    }
+
+    #[test]
+    fn tropical_island_deterministic() {
+        let req = template_request("TROPICAL_ISLAND", WorldSize::Small);
+        let m1 = compile_world(&req).unwrap();
+        let m2 = compile_world(&req).unwrap();
+        assert_eq!(m1.stats.total_assets, m2.stats.total_assets);
+    }
+
+    #[test]
+    fn desert_outpost_deterministic() {
+        let req = template_request("DESERT_OUTPOST", WorldSize::Small);
+        let m1 = compile_world(&req).unwrap();
+        let m2 = compile_world(&req).unwrap();
+        assert_eq!(m1.stats.total_assets, m2.stats.total_assets);
+    }
+
+    #[test]
     fn all_templates_deterministic() {
-        for template in &["MEDIEVAL_VILLAGE", "ZOMBIELAND", "SPACE_STATION"] {
+        for template in &["MEDIEVAL_VILLAGE", "ZOMBIELAND", "SPACE_STATION", "TROPICAL_ISLAND", "DESERT_OUTPOST"] {
             let req = template_request(template, WorldSize::Small);
             let m1 = compile_world(&req).unwrap();
             let m2 = compile_world(&req).unwrap();

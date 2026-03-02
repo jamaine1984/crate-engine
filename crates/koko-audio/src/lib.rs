@@ -89,3 +89,37 @@ impl AudioEngine {
     pub fn sound_names(&self) -> Vec<&str> { Vec::new() }
     pub fn load_directory(&mut self, _dir: &Path) -> usize { 0 }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_audio_engine() {
+        // AudioEngine::new() may fail without audio device — that's OK
+        let result = AudioEngine::new();
+        // Just verify the API exists and returns a Result
+        let _ = result;
+    }
+
+    #[test]
+    fn audio_engine_operations() {
+        // If we can create the engine, test its operations
+        if let Ok(mut engine) = AudioEngine::new() {
+            assert!(engine.list_sounds().is_empty());
+            assert!(engine.sound_names().is_empty());
+            // Play non-existent sound should error
+            assert!(engine.play("nonexistent").is_err());
+            engine.stop("nonexistent"); // should not panic
+            engine.stop_all(); // should not panic
+        }
+    }
+
+    #[test]
+    fn load_nonexistent_directory() {
+        if let Ok(mut engine) = AudioEngine::new() {
+            let count = engine.load_directory(Path::new("/nonexistent/path"));
+            assert_eq!(count, 0);
+        }
+    }
+}

@@ -7,3 +7,10 @@ edition.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 koko-nav = { path = "../koko-nav" }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "sim_bench"
+harness = false

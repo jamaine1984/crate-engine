@@ -201,7 +201,7 @@ impl MeshData {
         Self { vertices, indices }
     }
 
-    /// Torus
+    /// Torus (ring around Y axis)
     pub fn torus(ring_segments: u32, tube_segments: u32, ring_radius: f32, tube_radius: f32) -> Self {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -240,5 +240,60 @@ impl MeshData {
         }
 
         Self { vertices, indices }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cube_has_24_vertices_36_indices() {
+        let cube = MeshData::cube();
+        assert_eq!(cube.vertices.len(), 24);
+        assert_eq!(cube.indices.len(), 36);
+    }
+
+    #[test]
+    fn cube_normals_are_unit() {
+        let cube = MeshData::cube();
+        for v in &cube.vertices {
+            let len = (v.normal[0].powi(2) + v.normal[1].powi(2) + v.normal[2].powi(2)).sqrt();
+            assert!((len - 1.0).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn sphere_vertex_count() {
+        let sphere = MeshData::sphere(16, 8);
+        assert_eq!(sphere.vertices.len(), 17 * 9);
+    }
+
+    #[test]
+    fn plane_subdivisions() {
+        let p1 = MeshData::plane(1);
+        assert_eq!(p1.vertices.len(), 4);
+        assert_eq!(p1.indices.len(), 6);
+        let p4 = MeshData::plane(4);
+        assert_eq!(p4.vertices.len(), 25);
+    }
+
+    #[test]
+    fn cylinder_nonempty() {
+        let c = MeshData::cylinder(8, 2.0, 0.5);
+        assert!(!c.vertices.is_empty());
+        assert!(!c.indices.is_empty());
+    }
+
+    #[test]
+    fn cone_nonempty() {
+        let c = MeshData::cone(8, 2.0, 0.5);
+        assert!(!c.vertices.is_empty());
+    }
+
+    #[test]
+    fn torus_nonempty() {
+        let t = MeshData::torus(16, 8, 1.0, 0.3);
+        assert!(!t.vertices.is_empty());
     }
 }

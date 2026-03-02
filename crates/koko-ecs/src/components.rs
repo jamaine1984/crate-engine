@@ -338,3 +338,83 @@ pub enum NetworkAuthority {
     Server,
     Owner,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn health_new_full() {
+        let h = Health::new(100.0);
+        assert_eq!(h.current, 100.0);
+        assert_eq!(h.max, 100.0);
+        assert!(!h.is_dead());
+        assert!((h.ratio() - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn health_damage() {
+        let mut h = Health::new(100.0);
+        h.damage(30.0);
+        assert!((h.current - 70.0).abs() < 0.001);
+        assert!((h.ratio() - 0.7).abs() < 0.001);
+    }
+
+    #[test]
+    fn health_damage_floors_at_zero() {
+        let mut h = Health::new(50.0);
+        h.damage(999.0);
+        assert_eq!(h.current, 0.0);
+        assert!(h.is_dead());
+    }
+
+    #[test]
+    fn health_heal() {
+        let mut h = Health::new(100.0);
+        h.damage(60.0);
+        h.heal(30.0);
+        assert!((h.current - 70.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn health_heal_caps_at_max() {
+        let mut h = Health::new(100.0);
+        h.damage(10.0);
+        h.heal(999.0);
+        assert_eq!(h.current, 100.0);
+    }
+
+    #[test]
+    fn default_active_is_true() {
+        assert!(Active::default().0);
+    }
+
+    #[test]
+    fn camera_default_perspective() {
+        let cam = Camera::default();
+        assert!(matches!(cam.mode, CameraMode::Perspective));
+        assert!((cam.fov - 60.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn light_default_point() {
+        let light = Light::default();
+        assert!(matches!(light.kind, LightKind::Point));
+        assert!((light.intensity - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn collider_default_box() {
+        let c = Collider::default();
+        assert!(matches!(c.shape, ColliderShape::Box { .. }));
+        assert!(!c.is_trigger);
+    }
+
+    #[test]
+    fn character_stats_default() {
+        let s = CharacterStats::default();
+        assert_eq!(s.level, 1);
+        assert_eq!(s.experience, 0.0);
+        assert_eq!(s.strength, 10.0);
+    }
+}

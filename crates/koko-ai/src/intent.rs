@@ -85,3 +85,83 @@ fn parse_color(val: Option<&serde_json::Value>) -> [f32; 4] {
          a.get(3).and_then(|x| x.as_f64()).unwrap_or(1.0) as f32]
     }).unwrap_or([1.0; 4])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_add_entity() {
+        let json = r#"[{"type":"add_entity","name":"tree","mesh":"tree","position":[1,2,3],"scale":2.0}]"#;
+        let intents = parse_ai_response(json);
+        assert_eq!(intents.len(), 1);
+        match &intents[0] {
+            GameIntent::AddEntity { name, mesh, position, scale, .. } => {
+                assert_eq!(name, "tree");
+                assert_eq!(mesh, "tree");
+                assert_eq!(position, &[1.0, 2.0, 3.0]);
+                assert!((scale - 2.0).abs() < 0.01);
+            }
+            _ => panic!("expected AddEntity"),
+        }
+    }
+
+    #[test]
+    fn parse_remove_entity() {
+        let json = r#"[{"type":"remove_entity","name":"rock"}]"#;
+        let intents = parse_ai_response(json);
+        assert_eq!(intents.len(), 1);
+        assert!(matches!(&intents[0], GameIntent::RemoveEntity { name } if name == "rock"));
+    }
+
+    #[test]
+    fn parse_chat_response() {
+        let json = r#"[{"type":"chat","message":"Hello!"}]"#;
+        let intents = parse_ai_response(json);
+        assert_eq!(intents.len(), 1);
+        assert!(matches!(&intents[0], GameIntent::ChatResponse { message } if message == "Hello!"));
+    }
+
+    #[test]
+    fn invalid_json_becomes_chat() {
+        let intents = parse_ai_response("not json at all");
+        assert_eq!(intents.len(), 1);
+        assert!(matches!(&intents[0], GameIntent::ChatResponse { .. }));
+    }
+
+    #[test]
+    fn extract_from_markdown_code_block() {
+        let input = "```json\n[{\"type\":\"chat\",\"message\":\"hi\"}]\n```";
+        let intents = parse_ai_response(input);
+        assert_eq!(intents.len(), 1);
+        assert!(matches!(&intents[0], GameIntent::ChatResponse { message } if message == "hi"));
+    }
+
+    #[test]
+    fn parse_set_camera() {
+        let json = r#"[{"type":"set_camera","position":[0,10,0],"look_at":[0,0,0]}]"#;
+        let intents = parse_ai_response(json);
+        assert_eq!(intents.len(), 1);
+        match &intents[0] {
+            GameIntent::SetCamera { position, look_at } => {
+                assert_eq!(position, &[0.0, 10.0, 0.0]);
+                assert_eq!(look_at, &[0.0, 0.0, 0.0]);
+            }
+            _ => panic!("expected SetCamera"),
+        }
+    }
+
+    #[test]
+    fn multiple_actions() {
+        let json = r#"[{"type":"add_entity","name":"a","mesh":"cube"},{"type":"add_entity","name":"b","mesh":"sphere"}]"#;
+        let intents = parse_ai_response(json);
+        assert_eq!(intents.len(), 2);
+    }
+
+    #[test]
+    fn unknown_type_filtered_out() {
+        let json = r#"[{"type":"teleport","target":"moon"}]"#;
+        let intents = parse_ai_response(json);
+        assert_eq!(intents.len(), 0);
+    }
+}

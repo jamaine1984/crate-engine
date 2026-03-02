@@ -79,3 +79,43 @@ pub struct CameraRaw {
     pub view: [f32; 16],
     pub position: [f32; 4],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn perspective_at_origin() {
+        let t = Transform::IDENTITY;
+        let cam = CameraUniforms::perspective(&t, 60.0, 1.0, 0.1, 100.0);
+        assert_eq!(cam.position, Vec3::ZERO);
+        assert!((cam.near - 0.1).abs() < 0.001);
+        assert!((cam.far - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn view_proj_equals_product() {
+        let t = Transform::from_xyz(0.0, 5.0, 10.0);
+        let cam = CameraUniforms::perspective(&t, 60.0, 16.0 / 9.0, 0.1, 1000.0);
+        let product = cam.projection * cam.view;
+        assert!((cam.view_projection - product).abs_diff_eq(Mat4::ZERO, 0.001));
+    }
+
+    #[test]
+    fn orthographic_has_matrices() {
+        let t = Transform::IDENTITY;
+        let cam = CameraUniforms::orthographic(&t, 10.0, 1.0, 0.1, 100.0);
+        assert_ne!(cam.projection, Mat4::ZERO);
+        assert_ne!(cam.view, Mat4::ZERO);
+    }
+
+    #[test]
+    fn to_raw_position() {
+        let t = Transform::from_xyz(1.0, 2.0, 3.0);
+        let cam = CameraUniforms::perspective(&t, 60.0, 1.0, 0.1, 100.0);
+        let raw = cam.to_raw();
+        assert!((raw.position[0] - 1.0).abs() < 0.001);
+        assert!((raw.position[1] - 2.0).abs() < 0.001);
+        assert!((raw.position[2] - 3.0).abs() < 0.001);
+    }
+}

@@ -137,6 +137,40 @@ const TEMPLATE_CONFIGS = {
       hangar:   { buildingCount: [0, 1], furnitureSpacing: 20, vegetationDensity: [0, 1], vehicleCount: [1, 3], characterCount: [0, 1] },
     },
   },
+  TROPICAL_ISLAND: {
+    style: 'tropical',
+    zones: [
+      { name: 'beach', ringOrder: 0, ringRadius: 2.0, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'village', ringOrder: 1, ringRadius: 3.0, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'jungle', ringOrder: 2, ringRadius: Infinity, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'volcano', ringOrder: null, ringRadius: 0, cornerPlacement: 'random', blockSize: [2, 2] },
+    ],
+    roadStyle: 'organic', roadDensity: 0.3, spawnZone: 'beach',
+    roadSubcategory: 'path', intersectionSubcategory: 'path',
+    zoneRules: {
+      beach:   { buildingCount: [0, 1], furnitureSpacing: 20, vegetationDensity: [3, 5], vehicleCount: [0, 0], characterCount: [1, 3] },
+      village: { buildingCount: [2, 4], furnitureSpacing: 12, vegetationDensity: [2, 4], vehicleCount: [0, 1], characterCount: [2, 4] },
+      jungle:  { buildingCount: [0, 1], furnitureSpacing: 25, vegetationDensity: [5, 8], vehicleCount: [0, 0], characterCount: [0, 1] },
+      volcano: { buildingCount: [0, 0], furnitureSpacing: 30, vegetationDensity: [1, 2], vehicleCount: [0, 0], characterCount: [0, 0] },
+    },
+  },
+  DESERT_OUTPOST: {
+    style: 'desert',
+    zones: [
+      { name: 'outpost', ringOrder: 0, ringRadius: 1.5, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'bazaar', ringOrder: 1, ringRadius: 2.5, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'dunes', ringOrder: 2, ringRadius: Infinity, cornerPlacement: null, blockSize: [2, 2] },
+      { name: 'oasis', ringOrder: null, ringRadius: 0, cornerPlacement: 'random', blockSize: [2, 2] },
+    ],
+    roadStyle: 'organic', roadDensity: 0.3, spawnZone: 'outpost',
+    roadSubcategory: 'trail', intersectionSubcategory: 'trail',
+    zoneRules: {
+      outpost: { buildingCount: [1, 3], furnitureSpacing: 10, vegetationDensity: [0, 1], vehicleCount: [1, 2], characterCount: [2, 4] },
+      bazaar:  { buildingCount: [3, 5], furnitureSpacing: 8, vegetationDensity: [0, 1], vehicleCount: [0, 1], characterCount: [3, 6] },
+      dunes:   { buildingCount: [0, 1], furnitureSpacing: 30, vegetationDensity: [0, 0], vehicleCount: [0, 0], characterCount: [0, 1] },
+      oasis:   { buildingCount: [0, 1], furnitureSpacing: 15, vegetationDensity: [3, 5], vehicleCount: [0, 0], characterCount: [1, 2] },
+    },
+  },
 };
 
 const DEFAULT_ZONE_RULE = { buildingCount: [2, 4], furnitureSpacing: 20, vegetationDensity: [1, 3], vehicleCount: [1, 3], characterCount: [1, 3] };
@@ -878,7 +912,7 @@ export function compileWorld({ template = 'CITY_MODERN', seed = 42, size = 'medi
 
   const config = TEMPLATE_CONFIGS[templateName];
   if (!config) {
-    throw new Error(`Unknown template: ${template}. Available: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION`);
+    throw new Error(`Unknown template: ${template}. Available: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION, TROPICAL_ISLAND, DESERT_OUTPOST`);
   }
 
   return compileTemplate(config, seed, size);

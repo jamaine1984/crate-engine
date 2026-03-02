@@ -195,3 +195,113 @@ impl Input {
 impl Default for Input {
     fn default() -> Self { Self::new() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_press_and_release() {
+        let mut input = Input::new();
+        input.on_key(KeyCode::KeyW, ElementState::Pressed);
+        assert!(input.key_down(KeyCode::KeyW));
+        assert!(input.key_pressed(KeyCode::KeyW));
+
+        input.on_key(KeyCode::KeyW, ElementState::Released);
+        assert!(!input.key_down(KeyCode::KeyW));
+        assert!(input.key_released(KeyCode::KeyW));
+    }
+
+    #[test]
+    fn begin_frame_clears_per_frame() {
+        let mut input = Input::new();
+        input.on_key(KeyCode::KeyA, ElementState::Pressed);
+        assert!(input.key_pressed(KeyCode::KeyA));
+
+        input.begin_frame();
+        assert!(!input.key_pressed(KeyCode::KeyA));
+        // key_down should persist
+        assert!(input.key_down(KeyCode::KeyA));
+    }
+
+    #[test]
+    fn mouse_button_press() {
+        let mut input = Input::new();
+        input.on_mouse_button(MouseButton::Left, ElementState::Pressed);
+        assert!(input.mouse_down(MouseButton::Left));
+        assert!(input.mouse_pressed(MouseButton::Left));
+
+        input.on_mouse_button(MouseButton::Left, ElementState::Released);
+        assert!(!input.mouse_down(MouseButton::Left));
+        assert!(input.mouse_released(MouseButton::Left));
+    }
+
+    #[test]
+    fn mouse_move_delta() {
+        let mut input = Input::new();
+        input.on_mouse_move(Vec2::new(100.0, 200.0));
+        assert_eq!(input.mouse_position, Vec2::new(100.0, 200.0));
+        assert_eq!(input.mouse_delta, Vec2::new(100.0, 200.0));
+
+        input.on_mouse_move(Vec2::new(110.0, 210.0));
+        assert_eq!(input.mouse_delta, Vec2::new(10.0, 10.0));
+    }
+
+    #[test]
+    fn scroll_accumulates() {
+        let mut input = Input::new();
+        input.on_scroll(Vec2::new(0.0, 1.0));
+        input.on_scroll(Vec2::new(0.0, 2.0));
+        assert_eq!(input.scroll_delta, Vec2::new(0.0, 3.0));
+    }
+
+    #[test]
+    fn action_binding() {
+        let mut input = Input::new();
+        // Default: jump = Space
+        input.on_key(KeyCode::Space, ElementState::Pressed);
+        assert!(input.action_down("jump"));
+        assert!(input.action_pressed("jump"));
+    }
+
+    #[test]
+    fn action_unknown_returns_false() {
+        let input = Input::new();
+        assert!(!input.action_down("nonexistent"));
+        assert!(!input.action_pressed("nonexistent"));
+    }
+
+    #[test]
+    fn axis_wasd() {
+        let mut input = Input::new();
+        input.on_key(KeyCode::KeyD, ElementState::Pressed);
+        assert!((input.axis("move_x") - 1.0).abs() < 0.001);
+
+        input.on_key(KeyCode::KeyA, ElementState::Pressed);
+        // Both pressed = 0
+        assert!((input.axis("move_x")).abs() < 0.001);
+    }
+
+    #[test]
+    fn movement_vector() {
+        let mut input = Input::new();
+        input.on_key(KeyCode::KeyW, ElementState::Pressed);
+        input.on_key(KeyCode::KeyD, ElementState::Pressed);
+        let mv = input.movement();
+        assert!((mv.x - 1.0).abs() < 0.001);
+        assert!((mv.y - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn no_duplicate_pressed_on_hold() {
+        let mut input = Input::new();
+        input.on_key(KeyCode::KeyW, ElementState::Pressed);
+        assert!(input.key_pressed(KeyCode::KeyW));
+
+        input.begin_frame();
+        // Holding the key (pressed again while already down) should NOT trigger pressed
+        input.on_key(KeyCode::KeyW, ElementState::Pressed);
+        assert!(!input.key_pressed(KeyCode::KeyW));
+        assert!(input.key_down(KeyCode::KeyW));
+    }
+}

@@ -126,6 +126,95 @@ impl Default for Transform2D {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identity_is_origin() {
+        let t = Transform::IDENTITY;
+        assert_eq!(t.position, Vec3::ZERO);
+        assert_eq!(t.scale, Vec3::ONE);
+        assert_eq!(t.rotation, Quat::IDENTITY);
+    }
+
+    #[test]
+    fn from_xyz_sets_position() {
+        let t = Transform::from_xyz(1.0, 2.0, 3.0);
+        assert_eq!(t.position, Vec3::new(1.0, 2.0, 3.0));
+        assert_eq!(t.scale, Vec3::ONE);
+    }
+
+    #[test]
+    fn forward_is_neg_z() {
+        let t = Transform::IDENTITY;
+        let fwd = t.forward();
+        assert!((fwd - Vec3::NEG_Z).length() < 0.001);
+    }
+
+    #[test]
+    fn right_is_pos_x() {
+        let t = Transform::IDENTITY;
+        let right = t.right();
+        assert!((right - Vec3::X).length() < 0.001);
+    }
+
+    #[test]
+    fn up_is_pos_y() {
+        let t = Transform::IDENTITY;
+        assert!((t.up() - Vec3::Y).length() < 0.001);
+    }
+
+    #[test]
+    fn matrix_identity() {
+        let t = Transform::IDENTITY;
+        let m = t.matrix();
+        assert!((m - Mat4::IDENTITY).abs_diff_eq(Mat4::ZERO, 0.001));
+    }
+
+    #[test]
+    fn translate_moves_position() {
+        let mut t = Transform::IDENTITY;
+        t.translate(Vec3::new(5.0, 0.0, 0.0));
+        assert_eq!(t.position, Vec3::new(5.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn lerp_midpoint() {
+        let a = Transform::from_xyz(0.0, 0.0, 0.0);
+        let b = Transform::from_xyz(10.0, 0.0, 0.0);
+        let mid = a.lerp(&b, 0.5);
+        assert!((mid.position.x - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn transform2d_to_3d() {
+        let t2 = Transform2D::from_xy(3.0, 4.0);
+        let t3 = t2.to_3d();
+        assert!((t3.position.x - 3.0).abs() < 0.001);
+        assert!((t3.position.y - 4.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn hierarchy_no_parent() {
+        let local = Transform::from_xyz(1.0, 2.0, 3.0);
+        let mut h = TransformHierarchy::new(local);
+        assert!(h.dirty);
+        h.compute_world(None);
+        assert!(!h.dirty);
+        assert_eq!(h.world.position, h.local.position);
+    }
+
+    #[test]
+    fn hierarchy_with_parent() {
+        let parent = Transform::from_xyz(10.0, 0.0, 0.0);
+        let local = Transform::from_xyz(5.0, 0.0, 0.0);
+        let mut h = TransformHierarchy::new(local);
+        h.compute_world(Some(&parent));
+        assert!((h.world.position.x - 15.0).abs() < 0.01);
+    }
+}
+
 /// Hierarchical transform — tracks parent-child for world matrix computation
 #[derive(Debug, Clone)]
 pub struct TransformHierarchy {

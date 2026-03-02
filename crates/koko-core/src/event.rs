@@ -47,3 +47,57 @@ impl Events {
 impl Default for Events {
     fn default() -> Self { Self::new() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct TestEvent(String);
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct OtherEvent(i32);
+
+    #[test]
+    fn send_and_read() {
+        let events = Events::new();
+        events.send(TestEvent("hello".into()));
+        let read = events.read::<TestEvent>();
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0], TestEvent("hello".into()));
+    }
+
+    #[test]
+    fn read_empty_returns_empty() {
+        let events = Events::new();
+        let read = events.read::<TestEvent>();
+        assert!(read.is_empty());
+    }
+
+    #[test]
+    fn multiple_events() {
+        let events = Events::new();
+        events.send(TestEvent("a".into()));
+        events.send(TestEvent("b".into()));
+        assert_eq!(events.read::<TestEvent>().len(), 2);
+    }
+
+    #[test]
+    fn clear_removes_all() {
+        let events = Events::new();
+        events.send(TestEvent("x".into()));
+        events.send(OtherEvent(42));
+        events.clear();
+        assert!(events.read::<TestEvent>().is_empty());
+        assert!(events.read::<OtherEvent>().is_empty());
+    }
+
+    #[test]
+    fn typed_channels_isolated() {
+        let events = Events::new();
+        events.send(TestEvent("hello".into()));
+        events.send(OtherEvent(99));
+        assert_eq!(events.read::<TestEvent>().len(), 1);
+        assert_eq!(events.read::<OtherEvent>().len(), 1);
+    }
+}

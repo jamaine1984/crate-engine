@@ -11,6 +11,7 @@ koko-world = { path = "../koko-world" }
 koko-commands = { path = "../koko-commands" }
 koko-nav = { path = "../koko-nav" }
 koko-sim = { path = "../koko-sim" }
+koko-scene = { path = "../koko-scene" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 wasm-bindgen = "0.2"

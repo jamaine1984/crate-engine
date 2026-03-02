@@ -50,3 +50,68 @@ pub fn smooth_damp(current: f32, target: f32, velocity: &mut f32, smooth_time: f
     *velocity = (*velocity - omega * temp) * exp;
     target + (change + temp) * exp
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn easing_linear_endpoints() {
+        assert_eq!(easing::linear(0.0), 0.0);
+        assert_eq!(easing::linear(1.0), 1.0);
+        assert_eq!(easing::linear(0.5), 0.5);
+    }
+
+    #[test]
+    fn easing_quad_endpoints() {
+        assert!((easing::ease_in_quad(0.0)).abs() < 0.001);
+        assert!((easing::ease_in_quad(1.0) - 1.0).abs() < 0.001);
+        assert!((easing::ease_out_quad(0.0)).abs() < 0.001);
+        assert!((easing::ease_out_quad(1.0) - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn easing_in_out_quad_midpoint() {
+        assert!((easing::ease_in_out_quad(0.5) - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn easing_cubic_endpoints() {
+        assert!((easing::ease_in_cubic(1.0) - 1.0).abs() < 0.001);
+        assert!((easing::ease_out_cubic(1.0) - 1.0).abs() < 0.001);
+        assert!((easing::ease_in_out_cubic(0.0)).abs() < 0.001);
+        assert!((easing::ease_in_out_cubic(1.0) - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn easing_elastic_endpoints() {
+        assert_eq!(easing::ease_in_elastic(0.0), 0.0);
+        assert_eq!(easing::ease_in_elastic(1.0), 1.0);
+        assert_eq!(easing::ease_out_elastic(0.0), 0.0);
+        assert_eq!(easing::ease_out_elastic(1.0), 1.0);
+    }
+
+    #[test]
+    fn easing_bounce_endpoints() {
+        assert!((easing::ease_out_bounce(0.0)).abs() < 0.001);
+        assert!((easing::ease_out_bounce(1.0) - 1.0).abs() < 0.001);
+        assert!((easing::ease_in_bounce(0.0)).abs() < 0.001);
+        assert!((easing::ease_in_bounce(1.0) - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn remap_basic() {
+        assert!((remap(5.0, 0.0, 10.0, 0.0, 100.0) - 50.0).abs() < 0.001);
+        assert!((remap(0.0, 0.0, 10.0, 100.0, 200.0) - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn smooth_damp_approaches_target() {
+        let mut vel = 0.0_f32;
+        let mut current = 0.0_f32;
+        for _ in 0..100 {
+            current = smooth_damp(current, 10.0, &mut vel, 0.3, 0.016);
+        }
+        assert!((current - 10.0).abs() < 0.1);
+    }
+}

@@ -39,3 +39,39 @@ impl Resources {
 impl Default for Resources {
     fn default() -> Self { Self::new() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_and_get() {
+        let res = Resources::new();
+        res.insert(42_i32);
+        let val = res.get::<i32>().unwrap();
+        assert_eq!(*val, 42);
+    }
+
+    #[test]
+    fn get_missing_returns_none() {
+        let res = Resources::new();
+        assert!(res.get::<String>().is_none());
+    }
+
+    #[test]
+    fn remove_returns_value() {
+        let res = Resources::new();
+        res.insert("hello".to_string());
+        let val = res.remove::<String>().unwrap();
+        assert_eq!(val, "hello");
+        assert!(res.get::<String>().is_none());
+    }
+
+    #[test]
+    fn overwrite_resource() {
+        let res = Resources::new();
+        res.insert(10_i32);
+        res.insert(20_i32);
+        assert_eq!(*res.get::<i32>().unwrap(), 20);
+    }
+}

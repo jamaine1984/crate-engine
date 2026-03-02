@@ -258,6 +258,84 @@ pub fn space_station_config() -> TemplateConfig {
     }
 }
 
+/// TROPICAL_ISLAND — beach ring, village, jungle interior, volcano corner.
+pub fn tropical_island_config() -> TemplateConfig {
+    let mut zone_rules = HashMap::new();
+    zone_rules.insert("beach".into(), ZonePlacementRule {
+        building_count: (0, 1), furniture_spacing: 25.0,
+        vegetation_density: (3, 6), vehicle_count: (0, 0), character_count: (1, 3),
+    });
+    zone_rules.insert("village".into(), ZonePlacementRule {
+        building_count: (2, 4), furniture_spacing: 15.0,
+        vegetation_density: (2, 4), vehicle_count: (0, 1), character_count: (2, 5),
+    });
+    zone_rules.insert("jungle".into(), ZonePlacementRule {
+        building_count: (0, 0), furniture_spacing: 10.0,
+        vegetation_density: (10, 20), vehicle_count: (0, 0), character_count: (0, 1),
+    });
+    zone_rules.insert("volcano".into(), ZonePlacementRule {
+        building_count: (0, 0), furniture_spacing: 30.0,
+        vegetation_density: (1, 3), vehicle_count: (0, 0), character_count: (0, 0),
+    });
+
+    TemplateConfig {
+        name: "TROPICAL_ISLAND".into(),
+        style: "tropical".into(),
+        zones: vec![
+            ZoneConfig { name: "beach".into(), ring_order: Some(0), ring_radius: 2.0, corner_placement: None, block_size: (2, 2) },
+            ZoneConfig { name: "village".into(), ring_order: Some(1), ring_radius: 3.0, corner_placement: None, block_size: (2, 2) },
+            ZoneConfig { name: "jungle".into(), ring_order: Some(2), ring_radius: f32::MAX, corner_placement: None, block_size: (2, 2) },
+            ZoneConfig { name: "volcano".into(), ring_order: None, ring_radius: 0.0, corner_placement: Some(CornerPlacement::Random), block_size: (2, 2) },
+        ],
+        zone_layout: ZoneLayout::ConcentricRings,
+        road_style: RoadStyle::OrganicPaths,
+        road_density: 0.3,
+        spawn_zone: "beach".into(),
+        zone_rules,
+        road_subcategory: "path".into(),
+        intersection_subcategory: "path_square".into(),
+    }
+}
+
+/// DESERT_OUTPOST — outpost center, bazaar ring, endless dunes, oasis corner.
+pub fn desert_outpost_config() -> TemplateConfig {
+    let mut zone_rules = HashMap::new();
+    zone_rules.insert("outpost".into(), ZonePlacementRule {
+        building_count: (1, 3), furniture_spacing: 12.0,
+        vegetation_density: (0, 1), vehicle_count: (1, 2), character_count: (2, 4),
+    });
+    zone_rules.insert("bazaar".into(), ZonePlacementRule {
+        building_count: (2, 5), furniture_spacing: 8.0,
+        vegetation_density: (0, 2), vehicle_count: (0, 1), character_count: (3, 6),
+    });
+    zone_rules.insert("dunes".into(), ZonePlacementRule {
+        building_count: (0, 0), furniture_spacing: 40.0,
+        vegetation_density: (0, 2), vehicle_count: (0, 0), character_count: (0, 1),
+    });
+    zone_rules.insert("oasis".into(), ZonePlacementRule {
+        building_count: (0, 1), furniture_spacing: 15.0,
+        vegetation_density: (4, 8), vehicle_count: (0, 0), character_count: (1, 3),
+    });
+
+    TemplateConfig {
+        name: "DESERT_OUTPOST".into(),
+        style: "desert".into(),
+        zones: vec![
+            ZoneConfig { name: "outpost".into(), ring_order: Some(0), ring_radius: 1.5, corner_placement: None, block_size: (2, 2) },
+            ZoneConfig { name: "bazaar".into(), ring_order: Some(1), ring_radius: 2.5, corner_placement: None, block_size: (2, 2) },
+            ZoneConfig { name: "dunes".into(), ring_order: Some(2), ring_radius: f32::MAX, corner_placement: None, block_size: (2, 2) },
+            ZoneConfig { name: "oasis".into(), ring_order: None, ring_radius: 0.0, corner_placement: Some(CornerPlacement::Random), block_size: (2, 2) },
+        ],
+        zone_layout: ZoneLayout::ConcentricRings,
+        road_style: RoadStyle::OrganicPaths,
+        road_density: 0.3,
+        spawn_zone: "outpost".into(),
+        zone_rules,
+        road_subcategory: "path".into(),
+        intersection_subcategory: "path_square".into(),
+    }
+}
+
 /// Get template config by name.
 pub fn get_template_config(name: &str) -> Result<TemplateConfig, String> {
     match name.to_uppercase().as_str() {
@@ -265,8 +343,10 @@ pub fn get_template_config(name: &str) -> Result<TemplateConfig, String> {
         "MEDIEVAL_VILLAGE" => Ok(medieval_village_config()),
         "ZOMBIELAND" => Ok(zombieland_config()),
         "SPACE_STATION" => Ok(space_station_config()),
+        "TROPICAL_ISLAND" => Ok(tropical_island_config()),
+        "DESERT_OUTPOST" => Ok(desert_outpost_config()),
         other => Err(format!(
-            "Unknown template: {}. Available: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION",
+            "Unknown template: {}. Available: CITY_MODERN, MEDIEVAL_VILLAGE, ZOMBIELAND, SPACE_STATION, TROPICAL_ISLAND, DESERT_OUTPOST",
             other
         )),
     }
@@ -278,7 +358,10 @@ mod tests {
 
     #[test]
     fn all_configs_have_zone_rules() {
-        for config in [city_modern_config(), medieval_village_config(), zombieland_config(), space_station_config()] {
+        for config in [
+            city_modern_config(), medieval_village_config(), zombieland_config(),
+            space_station_config(), tropical_island_config(), desert_outpost_config(),
+        ] {
             for zone in &config.zones {
                 assert!(
                     config.zone_rules.contains_key(&zone.name),
@@ -303,11 +386,29 @@ mod tests {
     }
 
     #[test]
+    fn tropical_island_has_4_zones() {
+        let cfg = tropical_island_config();
+        assert_eq!(cfg.zones.len(), 4);
+        assert_eq!(cfg.style, "tropical");
+        assert_eq!(cfg.road_style, RoadStyle::OrganicPaths);
+    }
+
+    #[test]
+    fn desert_outpost_has_4_zones() {
+        let cfg = desert_outpost_config();
+        assert_eq!(cfg.zones.len(), 4);
+        assert_eq!(cfg.style, "desert");
+        assert_eq!(cfg.spawn_zone, "outpost");
+    }
+
+    #[test]
     fn get_config_dispatches_correctly() {
         assert!(get_template_config("CITY_MODERN").is_ok());
         assert!(get_template_config("medieval_village").is_ok());
         assert!(get_template_config("ZOMBIELAND").is_ok());
         assert!(get_template_config("space_station").is_ok());
+        assert!(get_template_config("TROPICAL_ISLAND").is_ok());
+        assert!(get_template_config("DESERT_OUTPOST").is_ok());
         assert!(get_template_config("UNKNOWN").is_err());
     }
 }

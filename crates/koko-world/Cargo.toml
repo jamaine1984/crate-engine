@@ -7,3 +7,10 @@ edition.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "compile_bench"
+harness = false

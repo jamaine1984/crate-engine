@@ -11,6 +11,7 @@ import { interpret } from '../interpreter.mjs';
 import { assetIndex } from './asset-index.mjs';
 import { buildAndApply } from './world-client.mjs';
 import { initWasm, isWasmReady } from './wasm-bridge.mjs';
+import { registerMultiplayerHandlers } from './multiplayer-bridge.mjs';
 
 // ---------------------------------------------------------------------------
 // Initialize: register all handlers that route to the legacy engine
@@ -331,26 +332,8 @@ export function initBridge() {
     return { ok: true, message: 'Script manager opened' };
   });
 
-  // --- Multiplayer ---
-  commandBus.on('JOIN_MULTIPLAYER', async () => {
-    await execCmd('multiplayer');
-    return { ok: true, message: 'Joining multiplayer' };
-  });
-
-  commandBus.on('JOIN_ROOM', async (payload) => {
-    await execCmd(`join ${payload.room}`);
-    return { ok: true, message: `Joining room: ${payload.room}` };
-  });
-
-  commandBus.on('LEAVE_MULTIPLAYER', async () => {
-    await execCmd('disconnect');
-    return { ok: true, message: 'Left multiplayer' };
-  });
-
-  commandBus.on('CHAT_MESSAGE', async (payload) => {
-    await execCmd(`chat ${payload.message}`);
-    return { ok: true, message: 'Message sent' };
-  });
+  // --- Multiplayer (wired via multiplayer-bridge.mjs) ---
+  registerMultiplayerHandlers();
 
   // --- Animation ---
   commandBus.on('PLAY_ANIMATION', async (payload) => {

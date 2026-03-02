@@ -79,3 +79,67 @@ impl GameWorld {
 impl Default for GameWorld {
     fn default() -> Self { Self::new() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_world_empty() {
+        let w = GameWorld::new();
+        assert_eq!(w.entity_count(), 0);
+    }
+
+    #[test]
+    fn spawn_named_increments_count() {
+        let mut w = GameWorld::new();
+        w.spawn_named("tree", Transform::IDENTITY);
+        assert_eq!(w.entity_count(), 1);
+        w.spawn_named("rock", Transform::IDENTITY);
+        assert_eq!(w.entity_count(), 2);
+    }
+
+    #[test]
+    fn despawn_decrements_count() {
+        let mut w = GameWorld::new();
+        let e = w.spawn_named("tree", Transform::IDENTITY);
+        assert_eq!(w.entity_count(), 1);
+        w.despawn(e).unwrap();
+        assert_eq!(w.entity_count(), 0);
+    }
+
+    #[test]
+    fn clear_resets_to_zero() {
+        let mut w = GameWorld::new();
+        w.spawn_named("a", Transform::IDENTITY);
+        w.spawn_named("b", Transform::IDENTITY);
+        w.spawn_named("c", Transform::IDENTITY);
+        assert_eq!(w.entity_count(), 3);
+        w.clear();
+        assert_eq!(w.entity_count(), 0);
+    }
+
+    #[test]
+    fn spawn_camera_has_camera_component() {
+        let mut w = GameWorld::new();
+        let cam = crate::components::Camera::default();
+        let e = w.spawn_camera("main_cam", Transform::IDENTITY, cam);
+        assert!(w.world.get::<&crate::components::Camera>(e).is_ok());
+    }
+
+    #[test]
+    fn spawn_light_has_light_component() {
+        let mut w = GameWorld::new();
+        let light = crate::components::Light::default();
+        let e = w.spawn_light("sun", Transform::IDENTITY, light);
+        assert!(w.world.get::<&crate::components::Light>(e).is_ok());
+    }
+
+    #[test]
+    fn spawned_entity_has_name() {
+        let mut w = GameWorld::new();
+        let e = w.spawn_named("hello", Transform::IDENTITY);
+        let name = w.world.get::<&Name>(e).unwrap();
+        assert_eq!(name.0, "hello");
+    }
+}

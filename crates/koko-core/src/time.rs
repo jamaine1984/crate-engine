@@ -141,3 +141,69 @@ impl Timer {
         self.finished = false;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn time_initial_state() {
+        let t = Time::new();
+        assert_eq!(t.frame, 0);
+        assert_eq!(t.dt, 0.0);
+        assert_eq!(t.scale, 1.0);
+        assert!((t.fixed_dt - 1.0 / 60.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn time_update_increments_frame() {
+        let mut t = Time::new();
+        t.update();
+        assert_eq!(t.frame, 1);
+        t.update();
+        assert_eq!(t.frame, 2);
+    }
+
+    #[test]
+    fn timer_once_fires() {
+        let mut timer = Timer::once(1.0);
+        assert!(!timer.tick(0.5));
+        assert!(!timer.finished);
+        assert!(timer.tick(0.6));
+        assert!(timer.finished);
+    }
+
+    #[test]
+    fn timer_repeating_resets() {
+        let mut timer = Timer::repeating(1.0);
+        assert!(timer.tick(1.1));
+        assert!(timer.finished);
+        // elapsed should wrap around
+        assert!(timer.elapsed < 1.0);
+    }
+
+    #[test]
+    fn timer_progress() {
+        let mut timer = Timer::once(2.0);
+        timer.tick(1.0);
+        assert!((timer.progress() - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn timer_reset() {
+        let mut timer = Timer::once(1.0);
+        timer.tick(1.5);
+        assert!(timer.finished);
+        timer.reset();
+        assert!(!timer.finished);
+        assert_eq!(timer.elapsed, 0.0);
+    }
+
+    #[test]
+    fn fixed_step_accumulator() {
+        let mut t = Time::new();
+        t.fixed_accumulator = 0.02; // > 1/60
+        assert!(t.consume_fixed_step());
+        assert!(!t.consume_fixed_step()); // accumulator drained
+    }
+}

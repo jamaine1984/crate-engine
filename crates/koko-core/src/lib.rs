@@ -29,3 +29,22 @@ impl Default for Id {
     }
 }
 pub mod validate;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn id_unique() {
+        let a = Id::new();
+        let b = Id::new();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn id_clone_equal() {
+        let a = Id::new();
+        let b = a;
+        assert_eq!(a, b);
+    }
+}

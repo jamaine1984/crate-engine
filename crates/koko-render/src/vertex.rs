@@ -49,3 +49,20 @@ impl Vertex2D {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vertex3d_size() {
+        // 3 + 3 + 2 + 4 = 12 floats * 4 bytes = 48 bytes
+        assert_eq!(std::mem::size_of::<Vertex3D>(), 48);
+    }
+
+    #[test]
+    fn vertex2d_size() {
+        // 2 + 2 + 4 = 8 floats * 4 bytes = 32 bytes
+        assert_eq!(std::mem::size_of::<Vertex2D>(), 32);
+    }
+}
