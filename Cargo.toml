@@ -16,6 +16,8 @@ members = [
     "crates/koko-editor",
     "crates/koko-commands",
     "crates/koko-world",
+    "crates/koko-nav",
+    "crates/koko-sim",
     "koko-app",
 ]
 resolver = "2"

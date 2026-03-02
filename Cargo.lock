@@ -2180,6 +2180,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "koko-nav"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "koko-net"
 version = "0.1.0"
 dependencies = [
@@ -2237,6 +2245,15 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "koko-sim"
+version = "0.1.0"
+dependencies = [
+ "koko-nav",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

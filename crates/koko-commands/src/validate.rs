@@ -162,6 +162,14 @@ fn validate_payload(
         // Asset query — all filter fields are optional
         CommandType::QueryAssets => {}
 
+        // Simulation commands — no required fields
+        CommandType::SimStart
+        | CommandType::SimStop
+        | CommandType::SimStats => {}
+
+        // Simulation speed has optional speed field
+        CommandType::SimSpeed => {}
+
         // Remaining commands with optional validation
         CommandType::SetFog
         | CommandType::SetWetness

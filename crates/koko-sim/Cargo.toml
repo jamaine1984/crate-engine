@@ -1,0 +1,9 @@
+[package]
+name = "koko-sim"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+koko-nav = { path = "../koko-nav" }

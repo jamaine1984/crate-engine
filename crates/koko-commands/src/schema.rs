@@ -88,6 +88,12 @@ pub enum CommandType {
     // Asset Queries (Phase 2 — world compiler feeds)
     QueryAssets,
 
+    // Simulation (Phase 4 — NPC/traffic)
+    SimStart,
+    SimStop,
+    SimSpeed,
+    SimStats,
+
     // Special
     ExecRaw,
     AaaSky,

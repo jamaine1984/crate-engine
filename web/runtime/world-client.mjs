@@ -8,6 +8,7 @@
 
 import { assetIndex } from './asset-index.mjs';
 import { commandBus } from './command-bus.mjs';
+import { simulation, registerSimCommands } from './sim-client.mjs';
 
 // ---------------------------------------------------------------------------
 // Seeded RNG — SplitMix64, identical to the Rust implementation.
@@ -592,6 +593,16 @@ export async function buildAndApply({ template = 'CITY_MODERN', seed, size = 'me
   // Apply to scene
   const result = await applyManifest(manifest, { onProgress });
 
+  // Initialize simulation (NPCs + vehicles)
+  try {
+    registerSimCommands();
+    await simulation.init(manifest, seed);
+    simulation.start();
+    console.log(`[WorldClient] Simulation started: ${simulation.getStats().total} agents`);
+  } catch (err) {
+    console.warn('[WorldClient] Simulation init failed:', err.message);
+  }
+
   // Notify command bus listeners
   commandBus.notify?.({
     type: 'WORLD_BUILD_COMPLETE',
@@ -601,6 +612,6 @@ export async function buildAndApply({ template = 'CITY_MODERN', seed, size = 'me
   return {
     ok: true,
     message: `Built ${template}: ${result.placed} assets placed`,
-    data: { seed, size, manifest: manifest.stats },
+    data: { seed, size, manifest: manifest.stats, sim: simulation.getStats() },
   };
 }

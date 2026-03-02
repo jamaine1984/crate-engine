@@ -54,6 +54,9 @@ export const COMMAND_TYPES = new Set([
   // Quick Play
   'QUICK_PLAY',
 
+  // Simulation (Phase 4)
+  'SIM_START', 'SIM_STOP', 'SIM_SPEED', 'SIM_STATS',
+
   // Special
   'EXEC_RAW', 'AAA_SKY', 'TOGGLE_DAY_NIGHT', 'SHOOTER_MODE', 'DRIVING_DEMO',
 ]);
