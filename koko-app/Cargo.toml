@@ -1,0 +1,53 @@
+[package]
+name = "koko-app"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "koko"
+path = "src/main.rs"
+
+[dependencies]
+koko-core = { path = "../crates/koko-core" }
+koko-ecs = { path = "../crates/koko-ecs" }
+koko-render = { path = "../crates/koko-render" }
+koko-input = { path = "../crates/koko-input" }
+koko-physics = { path = "../crates/koko-physics" }
+koko-scripting = { path = "../crates/koko-scripting" }
+koko-ai = { path = "../crates/koko-ai" }
+koko-assets = { path = "../crates/koko-assets" }
+wgpu = { workspace = true }
+winit = { workspace = true }
+glam = { workspace = true }
+pollster = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+bytemuck = { version = "1", features = ["derive"] }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+# egui-winit gated below
+# reqwest gated below
+# tokio gated below
+serde = { workspace = true }
+serde_json = { workspace = true }
+koko-audio = { path = "../crates/koko-audio" }
+image = { workspace = true }
+regex = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Document", "Window", "Element", "HtmlCanvasElement"] }
+console_error_panic_hook = "0.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.egui-winit]
+version = "0.33"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.egui-winit]
+version = "0.33"
+default-features = false
+features = ["links"]

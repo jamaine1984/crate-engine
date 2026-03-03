@@ -1,0 +1,16 @@
+[package]
+name = "koko-editor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+koko-core = { path = "../koko-core" }
+koko-ecs = { path = "../koko-ecs" }
+koko-render = { path = "../koko-render" }
+koko-ai = { path = "../koko-ai" }
+koko-assets = { path = "../koko-assets" }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+glam = { workspace = true }
+tracing = { workspace = true }

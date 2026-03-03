@@ -1,0 +1,11 @@
+[package]
+name = "koko-scene"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+koko-core = { path = "../koko-core" }
+koko-ecs = { path = "../koko-ecs" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }

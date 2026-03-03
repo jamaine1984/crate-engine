@@ -1,0 +1,443 @@
+[
+  {
+    "name": "golden-sword-0000",
+    "category": "weapons",
+    "subcategory": "swords",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/swords/golden-sword-0000.glb",
+    "size": 446344
+  },
+  {
+    "name": "frost-sword-0001",
+    "category": "weapons",
+    "subcategory": "swords",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/swords/frost-sword-0001.glb",
+    "size": 448304
+  },
+  {
+    "name": "shadow-sword-0002",
+    "category": "weapons",
+    "subcategory": "swords",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/swords/shadow-sword-0002.glb",
+    "size": 513456
+  },
+  {
+    "name": "crystal-axe-0000",
+    "category": "weapons",
+    "subcategory": "axes",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/axes/crystal-axe-0000.glb",
+    "size": 272416
+  },
+  {
+    "name": "battle-axe-0001",
+    "category": "weapons",
+    "subcategory": "axes",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/axes/battle-axe-0001.glb",
+    "size": 272412
+  },
+  {
+    "name": "mystic-axe-0002",
+    "category": "weapons",
+    "subcategory": "axes",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/axes/mystic-axe-0002.glb",
+    "size": 197692
+  },
+  {
+    "name": "iron-shield-0000",
+    "category": "weapons",
+    "subcategory": "shields",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/shields/iron-shield-0000.glb",
+    "size": 128664
+  },
+  {
+    "name": "rustic-shield-0001",
+    "category": "weapons",
+    "subcategory": "shields",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/shields/rustic-shield-0001.glb",
+    "size": 159964
+  },
+  {
+    "name": "crystal-shield-0002",
+    "category": "weapons",
+    "subcategory": "shields",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/shields/crystal-shield-0002.glb",
+    "size": 159968
+  },
+  {
+    "name": "ancient-hammer-0000",
+    "category": "weapons",
+    "subcategory": "hammers",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/hammers/ancient-hammer-0000.glb",
+    "size": 46056
+  },
+  {
+    "name": "shadow-hammer-0001",
+    "category": "weapons",
+    "subcategory": "hammers",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/hammers/shadow-hammer-0001.glb",
+    "size": 39340
+  },
+  {
+    "name": "storm-hammer-0002",
+    "category": "weapons",
+    "subcategory": "hammers",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/weapons/hammers/storm-hammer-0002.glb",
+    "size": 81888
+  },
+  {
+    "name": "noble-tree-0000",
+    "category": "nature",
+    "subcategory": "trees",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/nature/trees/noble-tree-0000.glb",
+    "size": 31116
+  },
+  {
+    "name": "storm-tree-0001",
+    "category": "nature",
+    "subcategory": "trees",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/nature/trees/storm-tree-0001.glb",
+    "size": 10936
+  },
+  {
+    "name": "elegant-tree-0002",
+    "category": "nature",
+    "subcategory": "trees",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/nature/trees/elegant-tree-0002.glb",
+    "size": 16180
+  },
+  {
+    "name": "battle-rock-0000",
+    "category": "nature",
+    "subcategory": "rocks",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/nature/rocks/battle-rock-0000.glb",
+    "size": 20036
+  },
+  {
+    "name": "silver-rock-0001",
+    "category": "nature",
+    "subcategory": "rocks",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/nature/rocks/silver-rock-0001.glb",
+    "size": 76464
+  },
+  {
+    "name": "ember-rock-0002",
+    "category": "nature",
+    "subcategory": "rocks",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/nature/rocks/ember-rock-0002.glb",
+    "size": 24140
+  },
+  {
+    "name": "dark-chair-0000",
+    "category": "furniture",
+    "subcategory": "chairs",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/chairs/dark-chair-0000.glb",
+    "size": 44708
+  },
+  {
+    "name": "rustic-chair-0001",
+    "category": "furniture",
+    "subcategory": "chairs",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/chairs/rustic-chair-0001.glb",
+    "size": 56432
+  },
+  {
+    "name": "battle-chair-0002",
+    "category": "furniture",
+    "subcategory": "chairs",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/chairs/battle-chair-0002.glb",
+    "size": 56440
+  },
+  {
+    "name": "elegant-table-0000",
+    "category": "furniture",
+    "subcategory": "tables",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/tables/elegant-table-0000.glb",
+    "size": 19676
+  },
+  {
+    "name": "crystal-table-0001",
+    "category": "furniture",
+    "subcategory": "tables",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/tables/crystal-table-0001.glb",
+    "size": 19672
+  },
+  {
+    "name": "battle-table-0002",
+    "category": "furniture",
+    "subcategory": "tables",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/tables/battle-table-0002.glb",
+    "size": 37076
+  },
+  {
+    "name": "storm-bookshelve-0000",
+    "category": "furniture",
+    "subcategory": "bookshelves",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/bookshelves/storm-bookshelve-0000.glb",
+    "size": 71124
+  },
+  {
+    "name": "storm-bookshelve-0001",
+    "category": "furniture",
+    "subcategory": "bookshelves",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/bookshelves/storm-bookshelve-0001.glb",
+    "size": 70924
+  },
+  {
+    "name": "shadow-bookshelve-0002",
+    "category": "furniture",
+    "subcategory": "bookshelves",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/furniture/bookshelves/shadow-bookshelve-0002.glb",
+    "size": 67780
+  },
+  {
+    "name": "elegant-potion-0000",
+    "category": "items",
+    "subcategory": "potions",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/potions/elegant-potion-0000.glb",
+    "size": 23096
+  },
+  {
+    "name": "frost-potion-0001",
+    "category": "items",
+    "subcategory": "potions",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/potions/frost-potion-0001.glb",
+    "size": 23088
+  },
+  {
+    "name": "crystal-potion-0002",
+    "category": "items",
+    "subcategory": "potions",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/potions/crystal-potion-0002.glb",
+    "size": 23104
+  },
+  {
+    "name": "crystal-gem-0000",
+    "category": "items",
+    "subcategory": "gems",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/gems/crystal-gem-0000.glb",
+    "size": 7436
+  },
+  {
+    "name": "elegant-gem-0001",
+    "category": "items",
+    "subcategory": "gems",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/gems/elegant-gem-0001.glb",
+    "size": 7432
+  },
+  {
+    "name": "golden-gem-0002",
+    "category": "items",
+    "subcategory": "gems",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/gems/golden-gem-0002.glb",
+    "size": 7428
+  },
+  {
+    "name": "elegant-chest-0000",
+    "category": "items",
+    "subcategory": "chests",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/chests/elegant-chest-0000.glb",
+    "size": 26168
+  },
+  {
+    "name": "silver-chest-0001",
+    "category": "items",
+    "subcategory": "chests",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/chests/silver-chest-0001.glb",
+    "size": 24800
+  },
+  {
+    "name": "frost-chest-0002",
+    "category": "items",
+    "subcategory": "chests",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/items/chests/frost-chest-0002.glb",
+    "size": 26172
+  },
+  {
+    "name": "ancient-house-0000",
+    "category": "buildings",
+    "subcategory": "houses",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/buildings/houses/ancient-house-0000.glb",
+    "size": 42744
+  },
+  {
+    "name": "crystal-house-0001",
+    "category": "buildings",
+    "subcategory": "houses",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/buildings/houses/crystal-house-0001.glb",
+    "size": 38796
+  },
+  {
+    "name": "elegant-house-0002",
+    "category": "buildings",
+    "subcategory": "houses",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/buildings/houses/elegant-house-0002.glb",
+    "size": 42748
+  },
+  {
+    "name": "battle-tower-0000",
+    "category": "buildings",
+    "subcategory": "towers",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/buildings/towers/battle-tower-0000.glb",
+    "size": 38084
+  },
+  {
+    "name": "ember-tower-0001",
+    "category": "buildings",
+    "subcategory": "towers",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/buildings/towers/ember-tower-0001.glb",
+    "size": 30924
+  },
+  {
+    "name": "iron-tower-0002",
+    "category": "buildings",
+    "subcategory": "towers",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/buildings/towers/iron-tower-0002.glb",
+    "size": 34588
+  },
+  {
+    "name": "battle-barrel-0000",
+    "category": "props",
+    "subcategory": "barrels",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/barrels/battle-barrel-0000.glb",
+    "size": 235452
+  },
+  {
+    "name": "iron-barrel-0001",
+    "category": "props",
+    "subcategory": "barrels",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/barrels/iron-barrel-0001.glb",
+    "size": 235464
+  },
+  {
+    "name": "ancient-barrel-0002",
+    "category": "props",
+    "subcategory": "barrels",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/barrels/ancient-barrel-0002.glb",
+    "size": 235448
+  },
+  {
+    "name": "shadow-campfire-0000",
+    "category": "props",
+    "subcategory": "campfires",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/campfires/shadow-campfire-0000.glb",
+    "size": 58556
+  },
+  {
+    "name": "storm-campfire-0001",
+    "category": "props",
+    "subcategory": "campfires",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/campfires/storm-campfire-0001.glb",
+    "size": 37740
+  },
+  {
+    "name": "iron-campfire-0002",
+    "category": "props",
+    "subcategory": "campfires",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/campfires/iron-campfire-0002.glb",
+    "size": 56580
+  },
+  {
+    "name": "storm-fence-0000",
+    "category": "props",
+    "subcategory": "fences",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/fences/storm-fence-0000.glb",
+    "size": 26064
+  },
+  {
+    "name": "ember-fence-0001",
+    "category": "props",
+    "subcategory": "fences",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/fences/ember-fence-0001.glb",
+    "size": 42328
+  },
+  {
+    "name": "iron-fence-0002",
+    "category": "props",
+    "subcategory": "fences",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/fences/iron-fence-0002.glb",
+    "size": 44900
+  },
+  {
+    "name": "ancient-well-0000",
+    "category": "props",
+    "subcategory": "wells",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/wells/ancient-well-0000.glb",
+    "size": 18092
+  },
+  {
+    "name": "storm-well-0001",
+    "category": "props",
+    "subcategory": "wells",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/wells/storm-well-0001.glb",
+    "size": 18088
+  },
+  {
+    "name": "golden-well-0002",
+    "category": "props",
+    "subcategory": "wells",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/props/wells/golden-well-0002.glb",
+    "size": 18096
+  },
+  {
+    "name": "frost-helmet-0000",
+    "category": "armor",
+    "subcategory": "helmets",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/armor/helmets/frost-helmet-0000.glb",
+    "size": 112024
+  },
+  {
+    "name": "crystal-helmet-0001",
+    "category": "armor",
+    "subcategory": "helmets",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/armor/helmets/crystal-helmet-0001.glb",
+    "size": 103420
+  },
+  {
+    "name": "dark-helmet-0002",
+    "category": "armor",
+    "subcategory": "helmets",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/armor/helmets/dark-helmet-0002.glb",
+    "size": 112016
+  },
+  {
+    "name": "iron-pillar-0000",
+    "category": "dungeon",
+    "subcategory": "pillars",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/dungeon/pillars/iron-pillar-0000.glb",
+    "size": 32092
+  },
+  {
+    "name": "ember-pillar-0001",
+    "category": "dungeon",
+    "subcategory": "pillars",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/dungeon/pillars/ember-pillar-0001.glb",
+    "size": 34036
+  },
+  {
+    "name": "crystal-pillar-0002",
+    "category": "dungeon",
+    "subcategory": "pillars",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/dungeon/pillars/crystal-pillar-0002.glb",
+    "size": 23996
+  },
+  {
+    "name": "rustic-crystal-0000",
+    "category": "dungeon",
+    "subcategory": "crystals",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/dungeon/crystals/rustic-crystal-0000.glb",
+    "size": 8632
+  },
+  {
+    "name": "crystal-crystal-0001",
+    "category": "dungeon",
+    "subcategory": "crystals",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/dungeon/crystals/crystal-crystal-0001.glb",
+    "size": 5444
+  },
+  {
+    "name": "storm-crystal-0002",
+    "category": "dungeon",
+    "subcategory": "crystals",
+    "file": "/Users/jamainemartin/.openclaw/workspace/koko-engine/model-factory/output_v2/dungeon/crystals/storm-crystal-0002.glb",
+    "size": 9836
+  }
+]

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pricing — Crate Engine</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a0a; color:#e0e0e0; font-family:'Inter',system-ui,sans-serif; min-height:100vh; }
+  nav { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:rgba(10,10,10,0.95); border-bottom:1px solid #1a1a1a; }
+  nav .logo { font-size:1.1rem; font-weight:900; background:linear-gradient(135deg,#ff6b35,#f7c948); -webkit-background-clip:text; -webkit-text-fill-color:transparent; text-decoration:none; }
+  nav .links { display:flex; gap:16px; align-items:center; }
+  nav .links a { color:#888; text-decoration:none; font-size:0.8rem; }
+  nav .links a:hover { color:#ff6b35; }
+  .hero { text-align:center; padding:60px 20px 20px; }
+  .hero h1 { font-size:2.5rem; font-weight:900; margin-bottom:8px; }
+  .hero p { color:#888; font-size:0.95rem; }
+  .plans { display:flex; gap:16px; max-width:960px; margin:40px auto; padding:0 20px; flex-wrap:wrap; justify-content:center; }
+  .plan { flex:1; min-width:260px; max-width:300px; background:#111; border:1px solid #252525; border-radius:16px; padding:28px; }
+  .plan.pop { border:2px solid #ff6b35; }
+  .plan.best { border:2px solid #f7c948; }
+  .plan .badge { display:inline-block; background:#ff6b35; color:#000; font-size:0.6rem; font-weight:700; padding:3px 10px; border-radius:20px; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+  .plan.best .badge { background:#f7c948; }
+  .plan .tier { font-size:0.7rem; color:#888; text-transform:uppercase; letter-spacing:2px; }
+  .plan.pop .tier { color:#ff6b35; }
+  .plan.best .tier { color:#f7c948; }
+  .plan .price { font-size:2.5rem; font-weight:900; color:#fff; font-family:'JetBrains Mono',monospace; margin:4px 0; }
+  .plan .price span { font-size:1rem; color:#888; }
+  .plan .sub { color:#555; font-size:0.8rem; margin-bottom:16px; }
+  .plan .features { font-size:0.78rem; color:#aaa; line-height:2; }
+  .plan button { width:100%; margin-top:16px; padding:12px; border:none; border-radius:10px; font-weight:700; font-size:0.9rem; cursor:pointer; font-family:'JetBrains Mono',monospace; }
+  .btn-pro { background:#ff6b35; color:#000; }
+  .btn-prem { background:#f7c948; color:#000; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">📦 Crate Engine</a>
+  <div class="links">
+    <a href="/">Engine</a>
+    <a href="/marketplace.html">Marketplace</a>
+    <a href="/creators.html">Creators</a>
+    <a href="/docs/">Docs</a>
+  </div>
+</nav>
+<div class="hero">
+  <h1>💎 Plans</h1>
+  <p>Build for free. Upgrade when you're ready.</p>
+</div>
+<div class="plans">
+  <div class="plan">
+    <div class="tier">Free</div>
+    <div class="price">$0</div>
+    <div class="sub">forever</div>
+    <div class="features">
+      ✅ Full 3D engine<br>✅ 77,000+ commands<br>✅ 120 free models<br>✅ Save & Load<br>✅ Share & Remix<br>✅ 50 AI prompts/day<br>❌ Premium models<br>❌ Publish to .com
+    </div>
+  </div>
+  <div class="plan pop">
+    <div class="badge">Most Popular</div>
+    <div class="tier">Pro</div>
+    <div class="price">$4.99<span>/mo</span></div>
+    <div class="sub">cancel anytime</div>
+    <div class="features">
+      ✅ Everything in Free<br>✅ 5,783 premium models<br>✅ Unlimited AI prompts<br>✅ Export (no watermark)<br>✅ Buy creator models<br>✅ Priority support
+    </div>
+    <button class="btn-pro" onclick="window.location.href='/'">⚡ Go Pro</button>
+  </div>
+  <div class="plan best">
+    <div class="badge">Best Value</div>
+    <div class="tier">Premium</div>
+    <div class="price">$14.99<span>/mo</span></div>
+    <div class="sub">cancel anytime</div>
+    <div class="features">
+      ✅ Everything in Pro<br>✅ Publish to .com 🚀<br>✅ Custom domain support<br>✅ Sell on Marketplace<br>✅ Early access features<br>✅ Commercial license
+    </div>
+    <button class="btn-prem" onclick="window.location.href='/'">💎 Go Premium</button>
+  </div>
+</div>
+</body>
+</html>

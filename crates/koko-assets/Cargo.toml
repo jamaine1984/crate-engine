@@ -1,0 +1,15 @@
+[package]
+name = "koko-assets"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+koko-core = { path = "../koko-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+walkdir = { workspace = true }
+notify = { workspace = true }
+image = { workspace = true }
+gltf = { workspace = true }

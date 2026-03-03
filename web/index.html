@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crate Engine — AI-Powered 3D Game Engine</title>
+<meta name="description" content="Build 3D games by typing natural language commands. 800+ commands, 1,339 real 3D models — all in your browser.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="theme-color" content="#ff6b35">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden}
+  body{background:#0a0a0a;color:#e0e0e0;font-family:'Inter',-apple-system,system-ui,sans-serif}
+  nav{display:flex;align-items:center;justify-content:space-between;padding:6px 16px;background:rgba(10,10,10,0.95);backdrop-filter:blur(12px);border-bottom:1px solid #1a1a1a;z-index:100;height:36px}
+  nav .logo{font-size:1rem;font-weight:900;background:linear-gradient(135deg,#ff6b35,#f7c948);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  nav .links{display:flex;gap:14px;align-items:center}
+  nav .links a{color:#666;text-decoration:none;font-size:0.75rem;transition:color 0.2s}
+  nav .links a:hover{color:#ff6b35}
+  .btn-nav{padding:4px 12px;background:#ff6b35;color:white!important;border-radius:6px;font-weight:600;font-size:0.7rem}
+  .viewport-wrapper{position:relative;background:#0d0d0d;height:calc(100vh - 36px);display:flex;flex-direction:column}
+  .viewport-toolbar{display:flex;align-items:center;padding:4px 12px;background:#111;border-bottom:1px solid #252525;gap:6px;flex-shrink:0;height:28px}
+  .viewport-toolbar .dot{width:7px;height:7px;border-radius:50%}
+  .viewport-toolbar .dot.red{background:#ff5f57}
+  .viewport-toolbar .dot.yel{background:#ffbd2e}
+  .viewport-toolbar .dot.grn{background:#28c840}
+  .viewport-toolbar .title{margin-left:8px;color:#555;font-size:0.7rem;font-family:'JetBrains Mono',monospace}
+  .viewport-toolbar .status{margin-left:auto;color:#4ade80;font-size:0.65rem;font-family:'JetBrains Mono',monospace}
+  .viewport-toolbar .expand-btn{margin-left:8px;background:none;border:1px solid #333;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.65rem}
+  .viewport-toolbar .expand-btn:hover{border-color:#ff6b35;color:#ff6b35}
+  #crate-canvas{flex:1;width:100%;display:block;background:#111}
+  .output-log{position:fixed;bottom:90px;left:0;right:0;max-height:60px;overflow-y:auto;padding:4px 12px;background:rgba(0,0,0,0.75);font-family:'JetBrains Mono',monospace;font-size:0.7rem;display:none;z-index:9996;pointer-events:none}
+  .output-log .entry{padding:1px 0}
+  .output-log .cmd{color:#666}
+  .output-log .ok{color:#4ade80}
+  .output-log .err{color:#ef4444}
+  .output-log .info{color:#f7c948}
+  .prompt-overlay{position:fixed;bottom:0;left:0;right:0;padding:8px 12px;background:rgba(0,0,0,0.95);backdrop-filter:blur(8px);border-top:1px solid #333;display:flex;align-items:center;gap:6px;z-index:9999;height:38px}
+  .prompt-overlay .prefix{color:#ff6b35;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.85rem}
+  .prompt-overlay input{flex:1;background:transparent;border:none;color:#e0e0e0;font-family:'JetBrains Mono',monospace;font-size:0.85rem;outline:none}
+  .prompt-overlay input::placeholder{color:#333}
+  .engine-loader{position:absolute;top:28px;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#111;z-index:20;transition:opacity 0.5s}
+  .engine-loader.hidden{opacity:0;pointer-events:none}
+  .spinner{width:40px;height:40px;border:3px solid #252525;border-top-color:#ff6b35;border-radius:50%;animation:spin 0.8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loader-text{color:#555;font-size:0.75rem;margin-top:10px;font-family:'JetBrains Mono',monospace}
+  .viewport-wrapper.fullscreen{position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;z-index:10000!important;background:#000!important}
+  .viewport-wrapper.fullscreen #crate-canvas{width:100vw!important;height:calc(100vh - 28px)!important}
+</style>
+</head>
+<body>
+<!-- LOADING SCREEN -->
+<div id="loading-screen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#0a0a0a;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;transition:opacity 0.5s;">
+  <div style="font-size:2.5rem;font-weight:900;background:linear-gradient(135deg,#ff6b35,#f7c948);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:20px;">CRATE ENGINE</div>
+  <div style="width:200px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden;margin-bottom:12px;">
+    <div id="loading-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#ff6b35,#f7c948);border-radius:2px;transition:width 0.3s;"></div>
+  </div>
+  <div id="loading-text" style="color:#555;font-size:0.75rem;">Initializing...</div>
+</div>
+<script>
+  // Loading progress
+  window._loadProgress = function(pct, text) {
+    const bar = document.getElementById('loading-bar');
+    const txt = document.getElementById('loading-text');
+    if (bar) bar.style.width = pct + '%';
+    if (txt) txt.textContent = text || 'Loading...';
+  };
+  window._hideLoading = function() {
+    const el = document.getElementById('loading-screen');
+    if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }
+  };
+  // Auto-hide after 5s max (in case engine loads fast)
+  setTimeout(() => { if (document.getElementById('loading-screen')) window._hideLoading(); }, 5000);
+</script>
+
+<nav>
+  <div class="logo">📦 Crate Engine</div>
+  <div class="links">
+    <a href="/features.html">Features</a>
+    <a href="/compare.html">Compare</a>
+    <a href="/marketplace.html">Marketplace</a>
+    <a href="/creators.html">Creators</a>
+    <a href="/pricing.html">Pricing</a>
+    <a href="/docs/">Docs</a>
+    <a href="https://github.com/jamaine1984/crate-engine">GitHub</a>
+    <span id="account-nav"></span>
+    <a href="#" class="btn-nav" onclick="window._showUpgradeModal?window._showUpgradeModal('pro'):alert('Loading...');return false">⚡ Upgrade</a>
+  </div>
+</nav>
+<div class="viewport-wrapper">
+  <div class="viewport-toolbar">
+    <div class="dot red"></div><div class="dot yel"></div><div class="dot grn"></div>
+    <div class="title">crate-engine — 3D viewport</div>
+    <div class="status" id="engine-status">● 3D Ready</div>
+    <button class="expand-btn" id="expand-btn" onclick="toggleFullscreen()">⛶ Expand</button>
+  </div>
+  <canvas id="crate-canvas"></canvas>
+  <div class="engine-loader" id="engine-loader"><div class="spinner"></div><div class="loader-text">Loading Crate Engine...</div></div>
+  <div class="output-log" id="output-log"></div>
+  <div class="prompt-overlay">
+    <span class="prefix">❯</span>
+    <input type="text" id="prompt-input" placeholder="Type a command... (try 'add cube' or 'make it rain')" autocomplete="off" spellcheck="false">
+    <span class="hint">⏎</span>
+  </div>
+</div>
+<script>
+(function(){var c=parseInt(localStorage.getItem('crate_scene_count')||'0');if(c<1247)c=1247+Math.floor(Math.random()*200);localStorage.setItem('crate_scene_count',''+c);window._incrementSceneCount=function(){c++;localStorage.setItem('crate_scene_count',''+c);}})();
+window._hideLoader=function(){var l=document.getElementById('engine-loader');if(l){l.classList.add('hidden');setTimeout(function(){l.remove();},600);}};
+window._autoDemo=function(){if(!window._engineReady){setTimeout(window._autoDemo,500);return;}window._hideLoader();window._isAutoDemo=false;};
+window._autoDemoQueued=true;
+window.onerror=(msg,src,line)=>{console.error('[ENGINE ERROR]',msg,'at',src,':',line);const l=document.querySelector('.engine-loader');if(l)l.innerHTML='<div style="color:#f87171;padding:20px;text-align:center">Engine error: '+msg+'<br><small>Try refreshing (Ctrl+R)</small></div>';};
+setTimeout(()=>{const l=document.querySelector('.engine-loader');if(l&&l.offsetHeight>0)l.style.display='none';},15000);
+</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script type="module" src="engine.mjs?v=237"></script>
+<script type="module">import auth from './auth.mjs';auth.renderAccountBadge(document.getElementById('account-nav'));</script>
+<button id="ai-settings-btn" onclick="showAISettingsModal()" title="AI Settings" style="position:fixed;top:72px;left:16px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">⚙️</button>
+<button id="mp-lobby-btn" onclick="showMultiplayerLobby()" title="Multiplayer" style="position:fixed;top:72px;left:62px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">🌐</button>
+</body>
+</html>
