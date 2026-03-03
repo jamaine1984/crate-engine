@@ -952,6 +952,10 @@ function exitPlayMode() {
   cancelGrapple();
   if (_photoMode) window._togglePhotoMode();
   try { controls.enabled = true; } catch(e) {}
+  // Release pointer lock so editor selection works
+  if (document.pointerLockElement) {
+    try { document.exitPointerLock(); } catch(e) {}
+  }
   var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return '🎮 Play mode OFF — back to editor';
 }
 
@@ -1770,7 +1774,47 @@ const MODEL_SCALE_OVERRIDES = {
 window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
 
 const GLB_MODELS = {
-  
+
+  // ═══ COMMON WORD ALIASES (user-friendly names) ═══
+  'car':'kenney_cars/sedan',
+  'sports_car':'kenney_cars/sedan-sports',
+  'sports car':'kenney_cars/sedan-sports',
+  'race_car':'kenney_cars/race',
+  'racecar':'kenney_cars/race',
+  'police_car':'kenney_cars/police',
+  'house':'buildings_pack_2_house1',
+  'tree':'nature_pack_commontree_1',
+  'bush':'nature_pack_bush_1',
+  'pine':'nature_pack_pinetree_1',
+  'palm':'nature_pack_palmtree_1',
+  'building':'kenney_city/building-a',
+  'skyscraper':'kenney_city/building-skyscraper-a',
+  'streetlamp':'lamp_post_modern',
+  'street_lamp':'lamp_post_modern',
+  'lamp_post':'lamp_post_modern',
+  'lamp':'kenney_fantasy/lantern',
+  'campfire':'campfire',
+  'barrel':'barrel_00',
+  'crate':'crate_00',
+  'sword':'medieval_weapons_pack_sword',
+  'shield':'medieval_weapons_pack_shield_round',
+  'bow':'crossbow_00',
+  'horse':'animals_pack_horse',
+  'wolf':'animals_pack_wolf',
+  'fox':'animals_pack_fox',
+  'cow':'animals_pack_cow',
+  'deer':'animals_pack_deer',
+  'dog':'animals_pack_husky',
+  'chair':'chair_00',
+  'table':'table_01',
+  'bench':'medieval_village_pack_bench_1',
+  'fence':'kenney_city/fence',
+  'road':'kenney_city/path-long',
+  'fountain':'fountain',
+  'cart':'kenney_fantasy/cart',
+  'helicopter':'helicopter',
+  'tank':'tank_pack_tank',
+
   // ═══ QUATERNIUS CREATURES (CC0, animated) ═══
   'zombie':'npcs/quat_zombie',
   'zombie_smooth':'npcs/quat_zombiesmooth',
@@ -3322,7 +3366,7 @@ const GLB_MODELS = {
   'candle':'modular_dungeon_pack_candle',
   'cannon':'platformer_game_pack_cannon',
   'cannonball':'platformer_game_pack_cannonball',
-  'car':'car',
+  'car':'kenney_cars/sedan',
   'carbon_fibre':'carbon_fibre',
   'cardinalfish':'cute_fish_pack_cardinalfish',
   'carpet':'modular_dungeon_pack_carpet',
@@ -6610,7 +6654,8 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
   const spread = objects.length * 3;
   if (x === undefined || x === null) x = (Math.random() - 0.5) * 10 + spread * 0.3;
   if (z === undefined || z === null) z = (Math.random() - 0.5) * 10;
-  
+
+  console.log('[loadGLBModel] Loading:', url, '(name:', name, 'glbFile:', glbFile, ')');
   gltfLoader.load(url, (gltf) => {
     const model = gltf.scene;
     // Play animations if present
@@ -6742,7 +6787,7 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     }
     
     // Apply model scale overrides
-    const modelScaleOvr = (window.MODEL_SCALE_OVERRIDES || {})[modelFile] || (window.MODEL_SCALE_OVERRIDES || {})[modelPath];
+    const modelScaleOvr = (window.MODEL_SCALE_OVERRIDES || {})[glbFile] || (window.MODEL_SCALE_OVERRIDES || {})[url];
     if (modelScaleOvr) model.scale.setScalar(modelScaleOvr);
 scene.add(model);
     objects.push(model);
@@ -6766,6 +6811,20 @@ scene.add(model);
   (error) => {
     console.warn('Failed to load ' + url + ':', error);
     if (statusEl) statusEl.textContent = '3D Ready';
+    // Show user-visible feedback and try fuzzy search fallback
+    const cleanName = (name || glbFile || '').replace(/_/g, ' ');
+    if (typeof searchModels === 'function') {
+      const results = searchModels(cleanName, 3);
+      if (results.length > 0 && results[0].path !== glbFile) {
+        // Auto-load best match
+        const best = results[0];
+        console.log('[loadGLBModel] 404 fallback: "' + glbFile + '" → "' + best.path + '"');
+        loadGLBModel(best.name, best.path || best.name, x, z, scaleOverride);
+        if (typeof showToast === 'function') showToast('Loading ' + best.name.replace(/_/g, ' ') + '...');
+        return;
+      }
+    }
+    if (typeof showToast === 'function') showToast('Model not found: ' + cleanName);
   });
 }
 
@@ -6868,7 +6927,7 @@ window._exitToEditor = function() {
 const PlayerAgent = {
   // Default player profile
   _defaults: {
-    walkSpeed: 5, sprintSpeed: 10, jumpForce: 8,
+    walkSpeed: 8, sprintSpeed: 14, jumpForce: 8,
     rollSpeed: 12, rollDistance: 3,
     maxHealth: 100, maxStamina: 100,
     staminaRegen: 20, healthRegen: 0,
@@ -10913,6 +10972,7 @@ function addSpotLight(x, y, z, targetX, targetY, targetZ, color) {
 }
 
 // === NLP COMMAND PARSER ===
+// Bridge: expose for command bus (Engine 2.0)
 async function parseAndExecute(rawCmd) {
   // Skip NL rewrite for gallery keywords — let gallery commands handle directly
   const _galBypass = /^(?:show |browse |open |pick |choose |select )?(characters?|weapons?|swords?|axes?|guns?|buildings?|houses?|vehicles?|cars?|animals?|trees?|plants?|rocks?|stones?|furniture|tables?|chairs?|food|items?|potions?|dungeon|sci-?fi|space|nature|survival|animations?|library|asset library|browse all|all assets|all models|model library|browse$)$/i;
@@ -11425,11 +11485,25 @@ async function execSingle(cmd) {
     return '🏃 Slide: Press C while sprinting';
   }
 
+  // === WEATHER COMMANDS ===
+  if (lower === 'rain' || lower === 'make it rain' || lower === 'start rain') {
+    setWeather('rain'); return '🌧️ Rain started';
+  }
+  if (lower === 'snow' || lower === 'make it snow' || lower === 'start snow') {
+    setWeather('snow'); return '❄️ Snow started';
+  }
+  if (lower === 'storm' || lower === 'thunderstorm' || lower === 'thunder') {
+    setWeather('storm'); return '⛈️ Thunderstorm!';
+  }
+  if (lower === 'clear weather' || lower === 'stop rain' || lower === 'stop snow' || lower === 'weather off' || lower === 'weather clear') {
+    setWeather(null); scene.fog = null; return '☀️ Weather cleared';
+  }
 
   // === TIME OF DAY COMMANDS (v215) ===
-  if (lower.match(/^(?:set )?time\s+(morning|sunrise|dawn|day|noon|afternoon|evening|sunset|dusk|night|midnight)/)) {
+  const _timeMatch = lower.match(/^(?:set )?time\s+(morning|sunrise|dawn|day|noon|afternoon|evening|sunset|dusk|night|midnight)/);
+  if (_timeMatch) {
     const timeMap = { morning: 7, sunrise: 6, dawn: 5.5, day: 12, noon: 12, afternoon: 15, evening: 18, sunset: 19, dusk: 20, night: 22, midnight: 0 };
-    const t = lower.match(/(morning|sunrise|dawn|day|noon|afternoon|evening|sunset|dusk|night|midnight)/)[1];
+    const t = _timeMatch[1];
     _dayTime = timeMap[t] || 12;
     _dayNightCycle = true;
     if (typeof setSkyTime === 'function') {
@@ -11462,8 +11536,9 @@ async function execSingle(cmd) {
     scene.fog = null;
     return '☀️ Fog cleared';
   }
-  if (lower.match(/^fog\s+([\d.]+)/)) {
-    const density = parseFloat(lower.match(/fog\s+([\d.]+)/)[1]);
+  const _fogMatch = lower.match(/^fog\s+([\d.]+)/);
+  if (_fogMatch) {
+    const density = parseFloat(_fogMatch[1]);
     scene.fog = new THREE.FogExp2(0x888888, density);
     return '🌫️ Fog density: ' + density;
   }
@@ -11996,13 +12071,41 @@ function showGameHUD(preset) {
     return '🌍 Generated ' + biome + ' ' + type + '!';
   }
 
-  if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
-    const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
+  if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|urban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|farm|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted|underwater|reef|castle|siege|outpost|rpg|tropical)\b/i)) {
+    const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|urban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|farm|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted|underwater|reef|castle|siege|outpost|rpg|tropical)/i);
     const mapType = mapMatch ? mapMatch[1].toLowerCase() : 'town';
     const mapTheme = lower.replace(/^(generate|create|build|make)\s+(a\s+)?/i, '').trim();
     showToast('🗺️ Generating ' + mapTheme + '...');
-    
-    // JSON Map Templates — structured layouts with positions
+
+    // Route matching map types to Phase 5 world compiler (14 templates)
+    const WORLD_COMPILER_MAP = {
+      city: 'CITY_MODERN', suburban: 'CITY_MODERN', urban: 'CITY_MODERN',
+      town: 'MEDIEVAL_VILLAGE', village: 'MEDIEVAL_VILLAGE', medieval: 'MEDIEVAL_VILLAGE', 'medieval siege': 'MEDIEVAL_VILLAGE',
+      zombie: 'ZOMBIELAND', graveyard: 'ZOMBIELAND',
+      space: 'SPACE_STATION', station: 'SPACE_STATION',
+      island: 'TROPICAL_ISLAND', 'tropical paradise': 'TROPICAL_ISLAND', jungle: 'TROPICAL_ISLAND', tropical: 'TROPICAL_ISLAND',
+      desert: 'DESERT_OUTPOST', outpost: 'DESERT_OUTPOST', volcano: 'DESERT_OUTPOST',
+      pirate: 'PIRATE_COVE', 'pirate cove': 'PIRATE_COVE',
+      haunted: 'HAUNTED_GRAVEYARD',
+      dungeon: 'DUNGEON_CRAWL',
+      cyberpunk: 'CYBERPUNK_CITY',
+      camp: 'FARM_COUNTRY', farm: 'FARM_COUNTRY',
+      kingdom: 'RPG_VILLAGE', rpg: 'RPG_VILLAGE',
+      ruins: 'CASTLE_SIEGE', castle: 'CASTLE_SIEGE', siege: 'CASTLE_SIEGE', frozen: 'CASTLE_SIEGE',
+      underwater: 'UNDERWATER_REEF', reef: 'UNDERWATER_REEF',
+    };
+    const worldTemplate = WORLD_COMPILER_MAP[mapType];
+    if (worldTemplate) {
+      try {
+        const { buildAndApply } = await import('./runtime/world-client.mjs');
+        await buildAndApply({ template: worldTemplate, size: 'medium' });
+        return '✅ Built ' + worldTemplate + ' world';
+      } catch(e) {
+        console.warn('[Generate] World compiler failed for ' + worldTemplate + ', falling back to legacy:', e.message);
+      }
+    }
+
+    // JSON Map Templates — structured layouts with positions (legacy fallback)
 
     // ═══════════════════════════════════════════════════════════════
     // GAME PRESETS — "make this a zombie game" auto-configures everything
@@ -12994,6 +13097,17 @@ function showGameHUD(preset) {
             console.log("[Traffic] Queued " + carIdx + " cars");
           }, 1000);
         }
+        // Spawn GPU instanced grass for any generated world
+        try {
+          if (window._grassSystem) { window._grassSystem.dispose(); window._grassSystem = null; }
+          import('./runtime/grass-system.mjs').then(({ createGrassForWorld }) => {
+            if (window._scene) {
+              const manifest = { spawn: { position: [0, 0, 0] }, world_size: [200, 200] };
+              window._grassSystem = createGrassForWorld(window._scene, manifest);
+              console.log('[Grass] Spawned ' + window._grassSystem.count + ' blades');
+            }
+          }).catch(e => console.warn('[Grass] Failed:', e.message));
+        } catch(e) {}
         return;
       }
       const cmd = commands[ci];
@@ -13092,13 +13206,15 @@ function showGameHUD(preset) {
   }
   
   // Reflection/wetness commands
-  if (lower.match(/^wet(ness)?\s+(\d+\.?\d*)/)) { setSceneWetness(parseFloat(lower.match(/(\d+\.?\d*)/)[1])); return addToLog('✓ Wetness set'); }
+  const _wetMatch = lower.match(/^wet(?:ness)?\s+(\d+\.?\d*)/);
+  if (_wetMatch) { setSceneWetness(parseFloat(_wetMatch[1])); return addToLog('✓ Wetness set'); }
   if (lower === 'wet' || lower === 'wet ground' || lower === 'puddles') { setSceneWetness(0.6); return addToLog('✓ Wet ground enabled'); }
   if (lower === 'dry' || lower === 'dry ground') { setSceneWetness(0); return addToLog('✓ Ground dried'); }
   
   // Particle commands
-  if (lower.match(/^particles?\s+(dust|fireflies|embers|fire|rain|snow|ash|spores|bubbles|leaves|petals|off|none|clear)/)) {
-    let pType = lower.match(/(dust|fireflies|embers|fire|rain|snow|ash|spores|bubbles|leaves|petals|off|none|clear)/)[1]; if (pType === 'fire') pType = 'embers'; if (pType === 'rain') { setWeather('rain'); return '✓ Rain'; } if (pType === 'clear') pType = 'off';
+  const _partMatch = lower.match(/^particles?\s+(dust|fireflies|embers|fire|rain|snow|ash|spores|bubbles|leaves|petals|off|none|clear)/);
+  if (_partMatch) {
+    let pType = _partMatch[1]; if (pType === 'fire') pType = 'embers'; if (pType === 'rain') { setWeather('rain'); return '✓ Rain'; } if (pType === 'clear') pType = 'off';
     if (pType === 'off' || pType === 'none') { if (ambientParticles) { scene.remove(ambientParticles); ambientParticles = null; } return addToLog('✓ Particles off'); }
     createAmbientParticles(pType);
     return addToLog('✓ Ambient particles: ' + pType);
@@ -13530,28 +13646,40 @@ function showGameHUD(preset) {
   // === PLAY WITH CHARACTER ===
   if ((lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo') && characterController) {
     var isDemoMode = lower === 'demo' || window._isAutoDemo;
-    // Auto-generate a starter world if scene is empty BEFORE entering play mode
-    if (!objects || objects.filter(o => o && o.userData && o.userData.name).length === 0) {
-      showToast('🏗️ Building world...');
-      try { await parseAndExecute('generate town'); } catch(e) { console.warn('Auto-world gen failed:', e); }
-      // Wait a moment for models to start loading
-      await new Promise(r => setTimeout(r, 2000));
-    }
     playMode = true;
     _hideEditorUI();
     try { controls.enabled = isDemoMode ? true : false; } catch(e) {}
     if (!characterController.model) {
       // Show character select if user hasn't chosen yet (skip for demo mode)
-      if (!isDemoMode && !selectedCharacterType) {
-        var chosen = await showCharacterGallery();
-        if (!chosen) { playMode = false; _showEditorUI(); return '↩ Character select cancelled'; }
-        if (!characterController.characterModels[chosen]) {
-          var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
-          if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
+      try {
+        if (!isDemoMode && !selectedCharacterType) {
+          var chosen = await showCharacterGallery();
+          if (!chosen) { playMode = false; _showEditorUI(); return '↩ Character select cancelled'; }
+          if (!characterController.characterModels[chosen]) {
+            var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
+            if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
+          }
+          await characterController.loadCharacter(chosen);
+        } else {
+          await characterController.loadCharacter(selectedCharacterType || 'knight');
         }
-        await characterController.loadCharacter(chosen);
-      } else {
-        await characterController.loadCharacter(selectedCharacterType || 'knight');
+      } catch (charErr) {
+        console.warn('[Play] Character load failed, using fallback:', charErr.message);
+        // Force fallback capsule if loadCharacter threw
+        if (!characterController.model) {
+          const capsuleGeo = new THREE.CapsuleGeometry(0.3, 1.2, 8, 16);
+          const capsuleMat = new THREE.MeshStandardMaterial({ color: 0x4488ff });
+          characterController.model = new THREE.Mesh(capsuleGeo, capsuleMat);
+          characterController.model.castShadow = true;
+          characterController.modelContainer = new THREE.Group();
+          characterController.modelContainer.add(characterController.model);
+          characterController.modelContainer.userData.isPlayer = true;
+          characterController.modelContainer.userData.name = 'player_fallback';
+          characterController.modelContainer.position.copy(characterController.position);
+          scene.add(characterController.modelContainer);
+          objects.push(characterController.modelContainer);
+          characterController.proceduralAnim = true;
+        }
       }
     }
     // Spawn at origin ON TOP of terrain
@@ -14227,7 +14355,11 @@ function showGameHUD(preset) {
     if (characterController) {
       // This shouldn't normally be reached, but just in case:
       if (!characterController.model) {
-        await characterController.loadCharacter('knight');
+        try {
+          await characterController.loadCharacter('knight');
+        } catch(e) {
+          console.warn('[Play] Fallback character load failed:', e.message);
+        }
       }
       playMode = true;
       _hideEditorUI();
@@ -14712,8 +14844,9 @@ function showGameHUD(preset) {
     createTerrain(cmd);
 
   // Ground type change
-  if (lower.match(/^ground\s+(grass|dirt|sand|snow|gravel|stone|mud|lava|water|wood|marble|metal|concrete|asphalt|gold|obsidian|crystal|ice|rock)$/)) {
-    const gType = lower.match(/^ground\s+(\w+)/)[1];
+  const _groundMatch = lower.match(/^ground\s+(grass|dirt|sand|snow|gravel|stone|mud|lava|water|wood|marble|metal|concrete|asphalt|gold|obsidian|crystal|ice|rock)$/);
+  if (_groundMatch) {
+    const gType = _groundMatch[1];
     if (currentGround) { scene.remove(currentGround); currentGround.geometry.dispose(); currentGround.material.dispose(); }
     currentGround = createGround(gType);
     currentGroundType = gType;
@@ -14833,22 +14966,45 @@ function showGameHUD(preset) {
   }
 
   // === GENERIC ADD <THING> HANDLER ===
-  // Catch-all for "add <name> [at X Z]" using GLB_MODELS lookup
+  // Catch-all for "add <name> [at X Z]" using GLB_MODELS lookup + fuzzy search
   {
-    const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.]+)\s+(-?[\d.]+))?$/);
+    const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+))?$/);
     if (addGenMatch) {
-      const rawName = addGenMatch[1].trim().replace(/\s+/g, '_');
+      const rawInput = addGenMatch[1].trim();
+      const rawName = rawInput.replace(/\s+/g, '_');
       const ax = addGenMatch[2] !== undefined ? parseFloat(addGenMatch[2]) : (Math.random() - 0.5) * 20;
       const az = addGenMatch[3] !== undefined ? parseFloat(addGenMatch[3]) : (Math.random() - 0.5) * 20;
-      // Try GLB_MODELS alias map first, then direct name
-      const glb = GLB_MODELS[rawName] || GLB_MODELS[rawName.replace(/_/g, '')] || GLB_MODELS[addGenMatch[1].trim()] || null;
-      // Also try the modelMap (window._modelMap)
+
+      // 1. Try GLB_MODELS alias map (exact match)
+      const glb = GLB_MODELS[rawName] || GLB_MODELS[rawName.replace(/_/g, '-')] || GLB_MODELS[rawInput] || null;
+
+      // 2. Try window._modelMap
       const modelMap = window._modelMap || {};
-      const fromMap = modelMap[rawName] || modelMap[addGenMatch[1].trim()] || null;
-      const finalGlb = glb || fromMap || rawName;
-      // Check if file exists in models/ by trying to load
-      loadGLBModel(addGenMatch[1].trim(), finalGlb, ax, az);
-      return '✅ Adding ' + addGenMatch[1].trim() + '...';
+      const fromMap = modelMap[rawName] || modelMap[rawInput] || null;
+
+      // 3. If no direct match, use searchModels fuzzy search
+      let finalGlb = glb || fromMap || null;
+      let displayName = rawInput;
+
+      if (!finalGlb) {
+        // Try fuzzy search from model catalog
+        const searchResults = typeof searchModels === 'function' ? searchModels(rawInput, 5) : [];
+        if (searchResults.length > 0) {
+          // Pick best match — prefer name containing the search term
+          const best = searchResults[0];
+          finalGlb = best.path || best.name;
+          displayName = best.name.replace(/_/g, ' ');
+          console.log('[ADD] Fuzzy matched "' + rawInput + '" → "' + finalGlb + '" (score: ' + best.score + ')');
+        }
+      }
+
+      // 4. If still nothing, try the raw name as a direct model path
+      if (!finalGlb) {
+        finalGlb = rawName;
+      }
+
+      loadGLBModel(displayName, finalGlb, ax, az);
+      return '✅ Adding ' + displayName + '...';
     }
   }
 
@@ -15127,6 +15283,7 @@ function highlightSelected(obj) {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  if (playMode) return; // Don't select objects in play mode
   if (e.button !== 0) return;
   const rect = canvas.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -15588,16 +15745,6 @@ function isVehicle(obj) {
   if (VEHICLE_NAMES.test(n)) return 'ground';
   if (BOAT_NAMES.test(n)) return 'water';
   if (AIRCRAFT_NAMES.test(n)) return 'air';
-  
-  // v218 city objects
-  if (/^add (parking\s*lot|parking)/i.test(raw)) { var o = createParkingLot(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added parking lot"; }
-  if (/^add gas\s*station/i.test(raw)) { var o = createGasStation(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added gas station"; }
-  if (/^add sidewalk/i.test(raw)) { var o = createSidewalk(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added sidewalk"; }
-  if (/^add (bridge|overpass)/i.test(raw)) { var o = createBridge(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added bridge"; }
-  if (/^add street\s*lamp/i.test(raw)) { var o = createStreetLamp(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added street lamp"; }
-  if (/^add dumpster/i.test(raw)) { var o = createDumpster(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added dumpster"; }
-  if (/^add bench/i.test(raw)) { var o = createBench(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added bench"; }
-
   return null;
 }
 
@@ -17199,8 +17346,8 @@ function updateClouds(dt) {
   }
 }
 
-// Auto-create clouds on load
-setTimeout(() => { if (!_cloudGroup) createClouds(); }, 2000);
+// Low-poly clouds disabled — procedural AAA sky is better
+// To re-enable: createClouds(); or use settings panel
 
 
 // === ENHANCED VEHICLE HUD (v217) ===
@@ -17985,6 +18132,7 @@ function animate() {
   updateInteractionPrompt();
   updateCompass();
   updateClouds(dt);
+  if (window._grassSystem) window._grassSystem.update(dt);
   updateCoordDisplay(); recordReplayFrame();
   updateHighlight();
   if (!playMode) controls.update();
@@ -18215,8 +18363,8 @@ function animate() {
     }
     if (window._gamepad) window._gamepad.update();
     if (window._updateLOD) window._updateLOD(camera.position);
-    characterController.update(dt);
-    if (npcController) {
+    if (characterController) characterController.update(dt);
+    if (npcController && characterController) {
       // Zone-based aggro — NPCs only engage when player enters their zone
       const playerPos = characterController.position;
       const aggroRange = 18; // Distance to trigger aggro
@@ -18224,7 +18372,7 @@ function animate() {
       let currentAttackers = 0;
       
       for (const npc of npcController.npcs) {
-        if (npc.isDead) continue;
+        if (npc.isDead || !npc.model) continue;
         const distToPlayer = npc.model.position.distanceTo(playerPos);
         
         // Zone guard behavior — only aggro when player enters zone
@@ -19044,6 +19192,119 @@ window._runCommand = async function(cmd) {
 
 window._engineReady = true;
 if (window._hideLoader) window._hideLoader();
+
+// === COMMAND PALETTE DROPDOWN ===
+(function initCommandPalette() {
+  const menu = document.getElementById('cmd-dropdown-menu');
+  if (!menu) return;
+  const COMMAND_PALETTE = {
+    'Build World': [
+      { label: 'Modern City', cmd: 'generate city' },
+      { label: 'Medieval Town', cmd: 'generate town' },
+      { label: 'Suburban', cmd: 'generate suburban' },
+      { label: 'Tropical Island', cmd: 'generate island' },
+      { label: 'Desert', cmd: 'generate desert' },
+      { label: 'Space Station', cmd: 'generate space' },
+      { label: 'Dungeon', cmd: 'generate dungeon' },
+      { label: 'Pirate Cove', cmd: 'generate pirate' },
+      { label: 'Cyberpunk City', cmd: 'generate cyberpunk' },
+      { label: 'Haunted', cmd: 'generate haunted' },
+      { label: 'Jungle', cmd: 'generate jungle' },
+      { label: 'Kingdom', cmd: 'generate kingdom' },
+      { label: 'Arena', cmd: 'generate arena' },
+      { label: 'Zen Garden', cmd: 'generate zen' },
+      { label: 'Volcano', cmd: 'generate volcano' },
+      { label: 'Western', cmd: 'generate western' },
+    ],
+    'Add Objects': [
+      { label: 'Car', cmd: 'add sedan', glb: 'kenney_cars/sedan' },
+      { label: 'Truck', cmd: 'add truck', glb: 'truck' },
+      { label: 'Police Car', cmd: 'add police', glb: 'kenney_cars/police' },
+      { label: 'House', cmd: 'add house', glb: 'buildings_pack_2_house1' },
+      { label: 'Building', cmd: 'add building', glb: 'buildings_pack_2_building1_large' },
+      { label: 'Tree', cmd: 'add tree', glb: 'simple_nature_pack_tree1' },
+      { label: 'Rock', cmd: 'add rock', glb: 'simple_nature_pack_rock1' },
+      { label: 'Barrel', cmd: 'add barrel', glb: 'barrel_00' },
+      { label: 'Fence', cmd: 'add fence', glb: 'fence' },
+      { label: 'NPC', cmd: 'add npc' },
+      { label: 'Horse', cmd: 'add horse', glb: 'animals_pack_horse' },
+      { label: 'Campfire', cmd: 'add campfire', glb: 'campfire' },
+      { label: 'Browse Library...', cmd: 'browse all' },
+    ],
+    'Environment': [
+      { label: 'Rain', cmd: 'rain' },
+      { label: 'Snow', cmd: 'snow' },
+      { label: 'Storm', cmd: 'storm' },
+      { label: 'Clear Weather', cmd: 'clear weather' },
+      { label: 'Fog On', cmd: 'fog on' },
+      { label: 'Fog Off', cmd: 'fog off' },
+      { label: 'Time: Morning', cmd: 'time morning' },
+      { label: 'Time: Noon', cmd: 'time noon' },
+      { label: 'Time: Night', cmd: 'time night' },
+      { label: 'Ocean', cmd: 'add ocean' },
+      { label: 'Terrain: Mountains', cmd: 'terrain mountains' },
+    ],
+    'Play Mode': [
+      { label: 'Play', cmd: 'play' },
+      { label: 'Edit Mode', cmd: 'edit' },
+      { label: 'Characters...', cmd: 'characters' },
+      { label: 'Spawn NPCs', cmd: 'populate' },
+      { label: 'Toggle Camera', cmd: 'toggle camera' },
+    ],
+    'Graphics': [
+      { label: 'Low', cmd: 'graphics low' },
+      { label: 'Medium', cmd: 'graphics medium' },
+      { label: 'High', cmd: 'graphics high' },
+      { label: 'Ultra', cmd: 'graphics ultra' },
+    ],
+    'Utility': [
+      { label: 'Save', cmd: 'save' },
+      { label: 'Load', cmd: 'load' },
+      { label: 'Clear Scene', cmd: 'clear' },
+      { label: 'Screenshot', cmd: 'screenshot' },
+      { label: 'Undo', cmd: 'undo' },
+      { label: 'Help', cmd: 'help' },
+    ],
+  };
+  let html = '';
+  for (const [category, items] of Object.entries(COMMAND_PALETTE)) {
+    html += `<div style="padding:4px 12px;color:#888;font-size:0.55rem;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px;">${category}</div>`;
+    for (const item of items) {
+      html += `<div class="cmd-item" data-cmd="${item.cmd}" style="padding:5px 16px;color:#ddd;cursor:pointer;transition:background 0.15s;" onmouseenter="this.style.background='#2a2a2a'" onmouseleave="this.style.background='none'">${item.label}</div>`;
+    }
+  }
+  // Build a glb lookup map for direct-load items
+  const _paletteGlbMap = {};
+  for (const items of Object.values(COMMAND_PALETTE)) {
+    for (const item of items) {
+      if (item.glb) _paletteGlbMap[item.cmd] = { glb: item.glb, label: item.label };
+    }
+  }
+  menu.innerHTML = html;
+  menu.addEventListener('click', (e) => {
+    const item = e.target.closest('.cmd-item');
+    if (!item) return;
+    const cmd = item.dataset.cmd;
+    menu.style.display = 'none';
+    // If this item has a known GLB path, load it directly (bypass command pipeline)
+    const directLoad = _paletteGlbMap[cmd];
+    if (directLoad) {
+      const rx = (Math.random() - 0.5) * 20;
+      const rz = (Math.random() - 0.5) * 20;
+      console.log('[CmdPalette] Direct loading:', directLoad.glb, 'at', rx, rz);
+      loadGLBModel(directLoad.label, directLoad.glb, rx, rz);
+      if (typeof showToast === 'function') showToast('Adding ' + directLoad.label + '...');
+      return;
+    }
+    if (window._parseAndExecute) window._parseAndExecute(cmd);
+  });
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#cmd-menu-btn') && !e.target.closest('#cmd-dropdown-menu')) {
+      menu.style.display = 'none';
+    }
+  });
+})();
 
 // Force canvas resize to fill viewport
 setTimeout(() => {
@@ -19996,6 +20257,14 @@ setInterval(() => {
   scene.traverse(c => { if (c.isMesh || c.isGroup) objs.push(c); });
   agent.updateObjects(objs);
 }, 2000);
+
+// === ENGINE 2.0 BRIDGE ===
+// Expose parseAndExecute for command bus, then initialize the bridge.
+window._parseAndExecute = parseAndExecute;
+import('./runtime/engine-bridge.mjs').then(bridge => {
+  bridge.initBridge();
+  console.log('[Engine] Command bus bridge loaded.');
+}).catch(err => console.warn('[Engine] Bridge load deferred:', err.message));
 
 
 window.addEventListener('keydown', e => {
@@ -22594,7 +22863,7 @@ function showSettings() {
   const quality = saved.quality || 'high';
   const shadows = saved.shadows !== false;
   const fog = saved.fog !== false;
-  const clouds = saved.clouds !== false;
+  const clouds = saved.clouds === true;
   const music = saved.music !== false;
   const sfx = saved.sfx !== false;
   const sensitivity = saved.sensitivity || 1;
@@ -23081,7 +23350,9 @@ async function startGeneration() {
       
       // Poll preview
       let previewTask;
+      let _pollCount1 = 0;
       while (true) {
+        if (++_pollCount1 > 100) throw new Error('Generation timed out after 5 minutes');
         await new Promise(r => setTimeout(r, 3000));
         const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
         previewTask = await pollResp.json();
@@ -23103,7 +23374,9 @@ async function startGeneration() {
         const refineData = await refineResp.json();
         taskId = refineData.result;
         
+        let _pollCount2 = 0;
         while (true) {
+          if (++_pollCount2 > 100) throw new Error('Refine timed out after 5 minutes');
           await new Promise(r => setTimeout(r, 3000));
           const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
           const refineTask = await pollResp.json();
@@ -23141,7 +23414,9 @@ async function startGeneration() {
       
       // Poll until done
       let imgTask;
+      let _pollCount3 = 0;
       while (true) {
+        if (++_pollCount3 > 100) throw new Error('Image-to-3D timed out after 5 minutes');
         await new Promise(r => setTimeout(r, 3000));
         const pollResp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
         imgTask = await pollResp.json();
