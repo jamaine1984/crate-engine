@@ -815,7 +815,8 @@ class CharacterController {
       'king': { file: 'modular_men_king', animPrefix: '' },
       'punk': { file: 'modular_men_punk', animPrefix: '' },
       'knight': { file: 'single_knight_pack_knightcharacter', animPrefix: 'HumanArmature|' },
-      'soldier': { file: 'soldier', animPrefix: '' },
+      'soldier': { file: 'Soldier', animPrefix: 'mixamorig:', isMixamo: true },
+      'xbot': { file: 'Xbot', animPrefix: 'mixamorig:', isMixamo: true },
       'witch': { file: 'modular_women_witch', animPrefix: '' },
       'medieval': { file: 'modular_women_medieval', animPrefix: '' },
       'casual': { file: 'modular_men_casual', animPrefix: '' },
@@ -842,7 +843,8 @@ class CharacterController {
 
   async _loadSharedAnimations(charType) {
     // Load knight model just for its animations, apply to current character
-    const knightFile = 'models/single_knight_pack_knightcharacter.glb';
+    // Use Soldier.glb for shared animations — much higher quality Mixamo anims
+    const knightFile = 'models/Soldier.glb';
     const loader = window._gltfLoader;
     if (!loader || !this.model) return;
     
@@ -869,13 +871,16 @@ class CharacterController {
         const prefix = 'HumanArmature|';
         
         gltf.animations.forEach(clip => {
-          let name = clip.name.replace(prefix, '').toLowerCase();
+          let name = clip.name.replace(prefix, '').replace(/^HumanArmature\|/, '').toLowerCase();
           
           // Map to standard names
           const nameMap = {
+            // Soldier.glb animation names (capitalize first letter)
             'idle': 'idle', 'idle_neutral': 'idle',
-            'walking': 'walk', 'walk': 'walk',
+            'walk': 'walk', 'walking': 'walk',
             'run': 'run', 'running': 'run',
+            'tpose': null, // skip T-pose
+            // Knight animation names (fallback)
             'jump': 'jump', 'jump_full_short': 'jump',
             'roll': 'roll', 'roll_sword': 'roll', 'dodge': 'roll',
             'death': 'death', 'die': 'death',
@@ -885,6 +890,9 @@ class CharacterController {
             'swordattackjump': 'swordAttackJump',
             'hit': 'hit', 'gethit': 'hit', 'get_hit': 'hit',
             'block': 'block', 'shield_block': 'block',
+            // Xbot animations
+            'agree': 'agree', 'headshake': 'headshake', 'sad_pose': 'sad',
+            'sneak_pose': 'sneak',
           };
           const stdName = nameMap[name] || name;
           
@@ -911,10 +919,34 @@ class CharacterController {
             // FILTER: Skip scale tracks (rarely useful in retargeting)
             if (prop === 'scale') continue;
             
-            // Bone name mapping: knight → modular character differences
+            // Bone name mapping: Mixamo → KayKit character bones
             const boneMap = {
-              'Body': 'Root',           // Knight uses "Body" as root, modular uses "Root"  
-              'MiddleHandR': 'HandR',   // Knight hand naming
+              // Mixamo → KayKit mapping (Three.js strips 'mixamorig:' and dots)
+              'mixamorigHips': 'Hips',
+              'mixamorigSpine': 'Abdomen',
+              'mixamorigSpine1': 'Torso',
+              'mixamorigSpine2': 'Chest',
+              'mixamorigNeck': 'Neck',
+              'mixamorigHead': 'Head',
+              'mixamorigLeftShoulder': 'ShoulderL',
+              'mixamorigLeftArm': 'UpperArmL',
+              'mixamorigLeftForeArm': 'LowerArmL',
+              'mixamorigLeftHand': 'HandL',
+              'mixamorigRightShoulder': 'ShoulderR',
+              'mixamorigRightArm': 'UpperArmR',
+              'mixamorigRightForeArm': 'LowerArmR',
+              'mixamorigRightHand': 'HandR',
+              'mixamorigLeftUpLeg': 'UpperLegL',
+              'mixamorigLeftLeg': 'LowerLegL',
+              'mixamorigLeftFoot': 'FootL',
+              'mixamorigRightUpLeg': 'UpperLegR',
+              'mixamorigRightLeg': 'LowerLegR',
+              'mixamorigRightFoot': 'FootR',
+              'mixamorigLeftToeBase': 'FootL',
+              'mixamorigRightToeBase': 'FootR',
+              // Knight → KayKit (fallback)
+              'Body': 'Root',
+              'MiddleHandR': 'HandR',
               'MiddleHandL': 'HandL',
               'PalmR': 'HandR',
               'PalmL': 'HandL',
