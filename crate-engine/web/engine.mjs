@@ -299,7 +299,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=128'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=129'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -1784,7 +1784,7 @@ window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
 const GLB_MODELS = {
 
   // ═══ COMMON WORD ALIASES (user-friendly names) ═══
-  'car':'kenney_cars/sedan',
+  'car':'hd_ferrari',
   'sports_car':'kenney_cars/sedan-sports',
   'sports car':'kenney_cars/sedan-sports',
   'race_car':'kenney_cars/race',

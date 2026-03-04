@@ -904,9 +904,9 @@ class CharacterController {
             const boneName = dotIdx >= 0 ? newName.substring(0, dotIdx) : newName;
             const prop = dotIdx >= 0 ? newName.substring(dotIdx + 1) : '';
             
-            // FILTER: Skip position tracks for all bones except Hips
-            // Different skeleton proportions make position anims destructive (limb detachment)
-            if (prop === 'position' && boneName !== 'Hips') continue;
+            // FILTER: Skip ALL position tracks for shared animations
+            // Position data from knight skeleton causes folding/floating on other rigs
+            if (prop === 'position') continue;
             
             // FILTER: Skip scale tracks (rarely useful in retargeting)
             if (prop === 'scale') continue;
@@ -1171,31 +1171,7 @@ class CharacterController {
           this.playAnimation('idle');
           console.log('[Char] Loaded animations:', Object.keys(this.animations).join(', '));
           
-          // Also set up procedural bones for better movement animation
-          // (embedded knight anims look stiff, procedural is smoother)
-          this.bones = {};
-          this.model.traverse(node => {
-            if (node.isBone || node.type === 'Bone') {
-              const n = node.name.toLowerCase();
-              const isLeft = n.endsWith('l') || n.includes('.l') || n.includes('left');
-              const isRight = n.endsWith('r') || n.includes('.r') || n.includes('right');
-              if (n.includes('hips') && !this.bones.hips) this.bones.hips = node;
-              else if ((n.includes('spine') || n.includes('abdomen') || n.includes('torso')) && !this.bones.spine) this.bones.spine = node;
-              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isLeft && !this.bones.leftLeg) this.bones.leftLeg = node;
-              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isRight && !this.bones.rightLeg) this.bones.rightLeg = node;
-              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isLeft && !this.bones.leftKnee) this.bones.leftKnee = node;
-              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isRight && !this.bones.rightKnee) this.bones.rightKnee = node;
-              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isLeft && !this.bones.leftArm) this.bones.leftArm = node;
-              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isRight && !this.bones.rightArm) this.bones.rightArm = node;
-              else if ((n.includes('lowerarm') || n.includes('forearm')) && isLeft && !this.bones.leftForearm) this.bones.leftForearm = node;
-              else if ((n.includes('lowerarm') || n.includes('forearm')) && isRight && !this.bones.rightForearm) this.bones.rightForearm = node;
-              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !n.includes('_end') && !this.bones.head) this.bones.head = node;
-              else if (n.includes('neck') && !this.bones.neck) this.bones.neck = node;
-            }
-          });
-          // Use procedural for movement (walk/run) — mixer anims for combat/special
-          this.proceduralAnim = true;
-          console.log('[Char] Procedural override for movement, bones:', Object.keys(this.bones).join(', '));
+          // Embedded animations loaded — no procedural override needed
         } else {
           // No embedded animations — enable procedural animation
           console.log('[Char] No embedded animations, enabling procedural animation');
@@ -4144,7 +4120,10 @@ export class NPCController {
             soldierGltf.animations.forEach(clip => {
               const name = clip.name.toLowerCase();
               if (name === 'tpose') return;
-              const action = npc.mixer.clipAction(clip);
+              // Filter position tracks — prevent folding/floating on different rigs
+              const rotTracks = clip.tracks.filter(t => !t.name.endsWith('.position') && !t.name.endsWith('.scale'));
+              const filteredClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
+              const action = npc.mixer.clipAction(filteredClip);
               if (name === 'idle') npc.animations.idle = action;
               else if (name === 'walk' || name === 'walking') npc.animations.walk = action;
               else if (name === 'run' || name === 'running') npc.animations.run = action;
@@ -4166,10 +4145,13 @@ export class NPCController {
           npc.mixer = new THREE.AnimationMixer(model);
           gltf.animations.forEach(clip => {
             let name = clip.name.toLowerCase();
-            if (name.includes('walk')) { npc.animations.walk = npc.mixer.clipAction(clip); }
-            else if (name.includes('idle') && !name.includes('sword')) { npc.animations.idle = npc.mixer.clipAction(clip); }
-            else if (name.includes('run')) { npc.animations.run = npc.mixer.clipAction(clip); }
-            else if (name.includes('attack') || name.includes('slash') || name.includes('sword') || name.includes('punch')) { npc.animations.attack = npc.mixer.clipAction(clip); }
+            // Filter position tracks to prevent folding
+            const rotTracks = clip.tracks.filter(t => !t.name.endsWith('.position') && !t.name.endsWith('.scale'));
+            const fClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
+            if (name.includes('walk')) { npc.animations.walk = npc.mixer.clipAction(fClip); }
+            else if (name.includes('idle') && !name.includes('sword')) { npc.animations.idle = npc.mixer.clipAction(fClip); }
+            else if (name.includes('run')) { npc.animations.run = npc.mixer.clipAction(fClip); }
+            else if (name.includes('attack') || name.includes('slash') || name.includes('sword') || name.includes('punch')) { npc.animations.attack = npc.mixer.clipAction(fClip); }
           });
           if (npc.animations.idle) npc.animations.idle.play();
           else if (npc.animations.walk) npc.animations.walk.play();
