@@ -299,7 +299,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=132'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=133'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -15035,7 +15035,49 @@ function showGameHUD(preset) {
   // === GENERIC ADD <THING> HANDLER ===
   // Catch-all for "add <name> [at X Z]" using GLB_MODELS lookup + fuzzy search
   {
-    const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+))?$/);
+    
+  // === TREE VARIETY SYSTEM ===
+  // When adding 'tree', randomly pick from best available trees for visual variety
+  const TREE_VARIETIES = [
+    'nature_pack_commontree_1', 'nature_pack_commontree_2',
+    'nature_pack_commontree_autumn_1', 'nature_pack_commontree_autumn_2',
+    'nature_pack_birchtree_1', 'nature_pack_birchtree_2', 'nature_pack_birchtree_3', 'nature_pack_birchtree_4',
+    'nature_pack_pinetree_1', 'nature_pack_pinetree_2', 'nature_pack_pinetree_3',
+    'nature_pack_willow_1', 'nature_pack_willow_2',
+    'cherry_tree_00', 'cherry_tree_01', 'cherry_tree_02', 'cherry_tree_03',
+  ];
+  const PINE_VARIETIES = [
+    'nature_pack_pinetree_1', 'nature_pack_pinetree_2', 'nature_pack_pinetree_3',
+    'nature_pack_pinetree_snow_1', 'nature_pack_pinetree_snow_2', 'nature_pack_pinetree_snow_3',
+  ];
+  const PALM_VARIETIES = [
+    'crops_pack_palmtree_1', 'crops_pack_palmtree_2', 'crops_pack_palmtree_3', 'crops_pack_palmtree_4',
+  ];
+  
+  const treeAddMatch = lower.match(/^(?:add|place|put|create)\s+(?:a |an |the )?(?:(\d+)\s+)?(?:(tree|pine|palm|birch|willow|cherry)s?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+))?$/);
+  if (treeAddMatch) {
+    const count = treeAddMatch[1] ? Math.min(parseInt(treeAddMatch[1]), 50) : 1;
+    const treeType = treeAddMatch[2];
+    const bx = treeAddMatch[3] !== undefined ? parseFloat(treeAddMatch[3]) : null;
+    const bz = treeAddMatch[4] !== undefined ? parseFloat(treeAddMatch[4]) : null;
+    
+    let pool = TREE_VARIETIES;
+    if (treeType === 'pine') pool = PINE_VARIETIES;
+    else if (treeType === 'palm') pool = PALM_VARIETIES;
+    else if (treeType === 'birch') pool = TREE_VARIETIES.filter(t => t.includes('birch'));
+    else if (treeType === 'willow') pool = TREE_VARIETIES.filter(t => t.includes('willow'));
+    else if (treeType === 'cherry') pool = TREE_VARIETIES.filter(t => t.includes('cherry'));
+    
+    for (let i = 0; i < count; i++) {
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      const tx = bx !== null ? bx + (count > 1 ? (Math.random()-0.5)*30 : 0) : (Math.random()-0.5) * 40;
+      const tz = bz !== null ? bz + (count > 1 ? (Math.random()-0.5)*30 : 0) : (Math.random()-0.5) * 40;
+      loadGLBModel('tree_' + i, pick, tx, tz);
+    }
+    return '🌳 Added ' + count + ' ' + treeType + (count > 1 ? ' trees' : ' tree') + ' (mixed varieties)';
+  }
+
+  const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+))?$/);
     if (addGenMatch) {
       const rawInput = addGenMatch[1].trim();
       const rawName = rawInput.replace(/\s+/g, '_');

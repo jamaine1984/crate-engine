@@ -1203,6 +1203,93 @@ class CharacterController {
           this.playAnimation('idle');
           console.log('[Char] Loaded animations:', Object.keys(this.animations).join(', '));
           
+          // === LOAD COMBAT ANIMATIONS FROM KNIGHT (retarget to Mixamo skeleton) ===
+          if (config.isMixamo && !this.animations['jump']) {
+            const combatFile = 'models/single_knight_pack_knightcharacter.glb';
+            loader.load(combatFile, (combatGltf) => {
+              // KayKit bone name → Mixamo bone name (as Three.js loads them)
+              // Three.js strips dots: Foot.L → FootL, and colons: mixamorig:Hips → mixamorigHips
+              const kayKitToMixamo = {
+                'Body': 'mixamorigHips',
+                'Hips': 'mixamorigHips',
+                'Abdomen': 'mixamorigSpine',
+                'Torso': 'mixamorigSpine1',
+                'Neck': 'mixamorigNeck',
+                'Head': 'mixamorigHead',
+                'ShoulderL': 'mixamorigLeftShoulder',
+                'UpperArmL': 'mixamorigLeftArm',
+                'LowerArmL': 'mixamorigLeftForeArm',
+                'PalmL': 'mixamorigLeftHand',
+                'MiddleHandL': 'mixamorigLeftHand',
+                'FingersL': 'mixamorigLeftHandIndex1',
+                'ShoulderR': 'mixamorigRightShoulder',
+                'UpperArmR': 'mixamorigRightArm',
+                'LowerArmR': 'mixamorigRightForeArm',
+                'PalmR': 'mixamorigRightHand',
+                'MiddleHandR': 'mixamorigRightHand',
+                'FingersR': 'mixamorigRightHandIndex1',
+                'UpperLegL': 'mixamorigLeftUpLeg',
+                'LowerLegL': 'mixamorigLeftLeg',
+                'FootL': 'mixamorigLeftFoot',
+                'UpperLegR': 'mixamorigRightUpLeg',
+                'LowerLegR': 'mixamorigRightLeg',
+                'FootR': 'mixamorigRightFoot',
+                'ThumbL': 'mixamorigLeftHandThumb1',
+                'Thumb2L': 'mixamorigLeftHandThumb2',
+                'ThumbR': 'mixamorigRightHandThumb1',
+                'Thumb2R': 'mixamorigRightHandThumb2',
+              };
+              
+              // Only load animations we DON'T already have
+              const combatAnims = ['Death', 'Jump', 'Roll', 'Roll_sword', 'swordAttackJump',
+                                   'Run_swordAttack', 'Run_swordRight', 'Idle_swordLeft', 'Idle_swordRight'];
+              const combatMap = {
+                'death': 'death', 'jump': 'jump', 'roll': 'roll', 'roll_sword': 'roll',
+                'swordattackjump': 'jump_attack', 'run_swordattack': 'run_attack',
+                'run_swordright': 'run_attack', 'idle_swordleft': 'idle_sword',
+                'idle_swordright': 'idle_sword', 'sword_slash': 'attack',
+              };
+              
+              let added = 0;
+              combatGltf.animations.forEach(clip => {
+                let rawName = clip.name.replace('HumanArmature|', '').toLowerCase();
+                let stdName = combatMap[rawName];
+                if (!stdName || this.animations[stdName]) return;
+                
+                // Retarget track bone names from KayKit → Mixamo
+                const retargetedTracks = [];
+                clip.tracks.forEach(track => {
+                  // Three.js track name format: BoneName.property
+                  const parts = track.name.split('.');
+                  const prop = parts.pop(); // 'quaternion', 'position', 'scale'
+                  const boneName = parts.join('.');
+                  
+                  // Skip position tracks (except hips) to prevent hopping
+                  if (prop === 'position' && boneName !== 'Body' && boneName !== 'Hips') return;
+                  
+                  const newBone = kayKitToMixamo[boneName];
+                  if (!newBone) return; // skip unmapped bones
+                  
+                  // Clone the track with new bone name
+                  const newTrackName = newBone + '.' + prop;
+                  const newTrack = new track.constructor(newTrackName, track.times, track.values);
+                  retargetedTracks.push(newTrack);
+                });
+                
+                if (retargetedTracks.length > 0) {
+                  const retargetedClip = new THREE.AnimationClip(stdName, clip.duration, retargetedTracks);
+                  this.animations[stdName] = this.mixer.clipAction(retargetedClip);
+                  added++;
+                }
+              });
+              
+              if (added > 0) {
+                console.log('[Char] Added ' + added + ' combat animations from Knight: ' + 
+                  Object.keys(this.animations).filter(k => combatMap[k] || ['death','jump','roll','attack','jump_attack','run_attack','idle_sword'].includes(k)).join(', '));
+              }
+            });
+          }
+          
           // Embedded animations loaded — no procedural override needed
         } else {
           // No embedded animations — enable procedural animation
