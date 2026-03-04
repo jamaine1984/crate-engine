@@ -768,7 +768,7 @@ class CharacterController {
     this.cameraHeight = 2.0;
     this.cameraPitch = 0.2;
     this.cameraYaw = 0;
-    this.cameraSmoothness = 8;
+    this.cameraSmoothness = 5; // Lower = smoother camera
     // TPS over-the-shoulder
     this.shoulderOffset = 1.0; // Right shoulder offset (positive = right)
     this.shoulderSide = 1; // 1 = right, -1 = left (toggle with T key)
@@ -1129,70 +1129,6 @@ class CharacterController {
         }
         
         // Setup animations — load from model or shared animation source
-        const hasAnims = gltf.animations.length > 0;
-        if (hasAnims) {
-          // Model has built-in animations (Quaternius characters)
-          this.mixer = new THREE.AnimationMixer(model);
-          const prefix = 'HumanArmature|HumanArmature|';
-          for (const clip of gltf.animations) {
-            const rawName = clip.name.replace(prefix, '').toLowerCase();
-            let stdName = null;
-            if (rawName.includes('walk')) stdName = 'walk';
-            else if (rawName.includes('idle') || rawName.includes('standing')) stdName = 'idle';
-            else if (rawName.includes('run') && !rawName.includes('jump')) stdName = 'run';
-            else if (rawName.includes('punch')) stdName = 'punch';
-            else if (rawName.includes('death')) stdName = 'death';
-            else if (rawName.includes('jump') && !rawName.includes('running')) stdName = 'jump';
-            else if (rawName.includes('sword')) stdName = 'attack';
-            else if (rawName.includes('sit')) stdName = 'sit';
-            else if (rawName.includes('clap')) stdName = 'clap';
-            
-            if (stdName && !this.animations[stdName]) {
-              const action = this.mixer.clipAction(clip);
-              this.animations[stdName] = action;
-            }
-          }
-          
-          // Play walk or idle
-          if (this.animations.walk && this.behavior === 'wander') {
-            this.animations.walk.play();
-            this.currentAnim = 'walk';
-          } else if (this.animations.idle) {
-            this.animations.idle.play();
-            this.currentAnim = 'idle';
-          }
-          
-          this.proceduralAnim = false;
-          console.log('[NPC] Built-in anims:', Object.keys(this.animations).join(', '));
-        } else {
-          // Fallback: load Soldier animations
-          console.log('[NPC] No embedded anims, loading Soldier animations');
-          const _loader = window._gltfLoader || loader;
-          _loader.load('models/anim_idle.glb', (animGltf) => {
-            if (!animGltf.animations || animGltf.animations.length === 0) return;
-            this.mixer = new THREE.AnimationMixer(model);
-            animGltf.animations.forEach(clip => {
-              const name = clip.name.toLowerCase();
-              if (name === 'tpose') return;
-              const rotTracks = clip.tracks.filter(t => t.name.endsWith('.quaternion'));
-              if (rotTracks.length > 0) {
-                const rotClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
-                const action = this.mixer.clipAction(rotClip);
-                if (name === 'idle') this.animations.idle = action;
-                else if (name === 'walk') this.animations.walk = action;
-                else if (name === 'run') this.animations.run = action;
-              }
-            });
-            if (this.animations.walk && this.behavior === 'wander') {
-              this.animations.walk.play();
-              this.currentAnim = 'walk';
-            } else if (this.animations.idle) {
-              this.animations.idle.play();
-              this.currentAnim = 'idle';
-            }
-            this.proceduralAnim = false;
-          }, null, (e) => console.warn('[NPC] Failed to load anims:', e));
-        }
         if (gltf.animations.length > 0) {
           this.mixer = new THREE.AnimationMixer(this.model);
           this.animations = {};
@@ -1224,6 +1160,39 @@ class CharacterController {
           
           // Start idle
           this.playAnimation('idle');
+          console.log('[Char] Loaded animations:', Object.keys(this.animations).join(', '));
+        } else {
+          // No embedded animations — enable procedural animation
+          console.log('[Char] No embedded animations, enabling procedural animation');
+          this.proceduralAnim = true;
+          this.bones = {};
+          this.model.traverse(node => {
+            if (node.isBone || node.type === 'Bone') {
+              const n = node.name.toLowerCase();
+              const isLeft = n.endsWith('l') || n.includes('.l') || n.includes('left');
+              const isRight = n.endsWith('r') || n.includes('.r') || n.includes('right');
+              if (n.includes('hips') && !this.bones.hips) this.bones.hips = node;
+              else if ((n.includes('spine') || n.includes('abdomen') || n.includes('torso')) && !this.bones.spine) this.bones.spine = node;
+              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isLeft && !this.bones.leftLeg) this.bones.leftLeg = node;
+              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isRight && !this.bones.rightLeg) this.bones.rightLeg = node;
+              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isLeft && !this.bones.leftKnee) this.bones.leftKnee = node;
+              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isRight && !this.bones.rightKnee) this.bones.rightKnee = node;
+              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isLeft && !this.bones.leftArm) this.bones.leftArm = node;
+              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isRight && !this.bones.rightArm) this.bones.rightArm = node;
+              else if ((n.includes('lowerarm') || n.includes('forearm')) && isLeft && !this.bones.leftForearm) this.bones.leftForearm = node;
+              else if ((n.includes('lowerarm') || n.includes('forearm')) && isRight && !this.bones.rightForearm) this.bones.rightForearm = node;
+              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !n.includes('_end') && !this.bones.head) this.bones.head = node;
+              else if (n.includes('neck') && !this.bones.neck) this.bones.neck = node;
+            }
+          });
+          console.log('[Char] Procedural bones found:', Object.keys(this.bones).join(', '));
+          // Save original bone rotations
+          Object.entries(this.bones).forEach(([key, bone]) => {
+            if (bone) {
+              bone.userData.origRot = { x: bone.rotation.x, y: bone.rotation.y, z: bone.rotation.z };
+              bone.userData.origPos = bone.position.clone();
+            }
+          });
         }
         
         // Find clear spawn point away from objects

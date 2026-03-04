@@ -291,7 +291,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=123'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=124'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -7361,7 +7361,10 @@ nearShadowLight.shadow.normalBias = 0.01;
 scene.add(nearShadowLight);
 
 // Update shadow cameras to follow player/camera
+let _shadowFrame = 0;
 function updateShadowCascades() {
+  _shadowFrame++;
+  if (_shadowFrame % 4 !== 0) return; // Only update every 4th frame to reduce jitter
   const camPos = camera.position;
   sunLight.shadow.camera.left = camPos.x - 60;
   sunLight.shadow.camera.right = camPos.x + 60;
@@ -9228,20 +9231,33 @@ function createTrashCan() {
 function createSwimmingPool(opts) {
   const o = opts || {}; const w = o.width || 8; const d = o.depth || 4;
   const g = new THREE.Group(); g.userData.name = 'Swimming Pool';
-  const tileMat = makeMat(0x4488aa, {rough:0.15});
+  const tileMat = makeMat(0x1a6680, {rough:0.15});
   const deckMat = makeMat(0xccbbaa, {rough:0.6});
-  const waterMat = new THREE.MeshPhysicalMaterial({color:0x2288cc, roughness:0.0, transparent:true, opacity:0.6});
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(w+2, 0.15, d+2), deckMat);
-  deck.position.y=0.075; deck.receiveShadow=true; g.add(deck);
+  const waterMat = new THREE.MeshPhysicalMaterial({color:0x2299dd, roughness:0.0, transparent:true, opacity:0.65, side: THREE.DoubleSide});
+  // Raised deck around the pool (above ground)
+  const deckH = 0.4;
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(w+3, deckH, d+3), deckMat);
+  deck.position.y = deckH/2; deck.receiveShadow=true; g.add(deck);
+  // Pool basin — walls and bottom visible above ground level
+  const poolDepth = 1.8;
   const bottom = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), tileMat);
-  bottom.position.y=-1.5; g.add(bottom);
-  [[0,-0.75,d/2,w,1.5,0.1],[0,-0.75,-d/2,w,1.5,0.1],[w/2,-0.75,0,0.1,1.5,d],[-w/2,-0.75,0,0.1,1.5,d]].forEach(([x,y,z,sx,sy,sz])=>{
+  bottom.position.y = deckH - poolDepth; g.add(bottom);
+  // Pool walls (inside the deck, forming the basin)
+  [[0, deckH - poolDepth/2, d/2, w, poolDepth, 0.12],
+   [0, deckH - poolDepth/2, -d/2, w, poolDepth, 0.12],
+   [w/2, deckH - poolDepth/2, 0, 0.12, poolDepth, d],
+   [-w/2, deckH - poolDepth/2, 0, 0.12, poolDepth, d]].forEach(([x,y,z,sx,sy,sz])=>{
     const wall = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), tileMat); wall.position.set(x,y,z); g.add(wall);
   });
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(w-0.1, d-0.1), waterMat);
-  water.rotation.x=-Math.PI/2; water.position.y=-0.1; g.add(water);
-  const edgeMat = makeMat(0xdddddd,{rough:0.3});
-  [[0,0.1,d/2+0.05,w+0.2,0.15,0.15],[0,0.1,-(d/2+0.05),w+0.2,0.15,0.15],[w/2+0.05,0.1,0,0.15,0.15,d+0.2],[-(w/2+0.05),0.1,0,0.15,0.15,d+0.2]].forEach(([x,y,z,sx,sy,sz])=>{
+  // Water surface — sits inside the basin, clearly visible
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(w-0.2, d-0.2), waterMat);
+  water.rotation.x = -Math.PI/2; water.position.y = deckH - 0.15; water.name = 'poolWater'; g.add(water);
+  // White rim edges around the pool opening
+  const edgeMat = makeMat(0xeeeeee,{rough:0.3});
+  [[0, deckH + 0.05, d/2+0.05, w+0.2, 0.12, 0.2],
+   [0, deckH + 0.05, -(d/2+0.05), w+0.2, 0.12, 0.2],
+   [w/2+0.05, deckH + 0.05, 0, 0.2, 0.12, d+0.2],
+   [-(w/2+0.05), deckH + 0.05, 0, 0.2, 0.12, d+0.2]].forEach(([x,y,z,sx,sy,sz])=>{
     const edge = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), edgeMat); edge.position.set(x,y,z); g.add(edge);
   });
     // Register water zone for swimming detection
