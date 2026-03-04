@@ -737,8 +737,8 @@ class CharacterController {
     this.gravity = -20;
     
     // Settings
-    this.walkSpeed = 4;
-    this.runSpeed = 8;
+    this.walkSpeed = 5.5;
+    this.runSpeed = 11;
     this.sprintSpeed = 14;
     this.rollSpeed = 12;
     this.jumpForce = 8;
@@ -1170,6 +1170,32 @@ class CharacterController {
           // Start idle
           this.playAnimation('idle');
           console.log('[Char] Loaded animations:', Object.keys(this.animations).join(', '));
+          
+          // Also set up procedural bones for better movement animation
+          // (embedded knight anims look stiff, procedural is smoother)
+          this.bones = {};
+          this.model.traverse(node => {
+            if (node.isBone || node.type === 'Bone') {
+              const n = node.name.toLowerCase();
+              const isLeft = n.endsWith('l') || n.includes('.l') || n.includes('left');
+              const isRight = n.endsWith('r') || n.includes('.r') || n.includes('right');
+              if (n.includes('hips') && !this.bones.hips) this.bones.hips = node;
+              else if ((n.includes('spine') || n.includes('abdomen') || n.includes('torso')) && !this.bones.spine) this.bones.spine = node;
+              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isLeft && !this.bones.leftLeg) this.bones.leftLeg = node;
+              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isRight && !this.bones.rightLeg) this.bones.rightLeg = node;
+              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isLeft && !this.bones.leftKnee) this.bones.leftKnee = node;
+              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isRight && !this.bones.rightKnee) this.bones.rightKnee = node;
+              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isLeft && !this.bones.leftArm) this.bones.leftArm = node;
+              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isRight && !this.bones.rightArm) this.bones.rightArm = node;
+              else if ((n.includes('lowerarm') || n.includes('forearm')) && isLeft && !this.bones.leftForearm) this.bones.leftForearm = node;
+              else if ((n.includes('lowerarm') || n.includes('forearm')) && isRight && !this.bones.rightForearm) this.bones.rightForearm = node;
+              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !n.includes('_end') && !this.bones.head) this.bones.head = node;
+              else if (n.includes('neck') && !this.bones.neck) this.bones.neck = node;
+            }
+          });
+          // Use procedural for movement (walk/run) — mixer anims for combat/special
+          this.proceduralAnim = true;
+          console.log('[Char] Procedural override for movement, bones:', Object.keys(this.bones).join(', '));
         } else {
           // No embedded animations — enable procedural animation
           console.log('[Char] No embedded animations, enabling procedural animation');
@@ -2572,10 +2598,10 @@ class CharacterController {
     
     if (isMoving) {
       // ─── WALK / RUN CYCLE ───
-      const freq = isSprinting ? 12 : isRunningAnim ? 9 : 6;
-      const legAmp = isSprinting ? 0.9 : isRunningAnim ? 0.7 : 0.4;
-      const armAmp = isSprinting ? 0.9 : isRunningAnim ? 0.75 : 0.45;
-      const kneeAmp = isSprinting ? 1.1 : isRunningAnim ? 0.9 : 0.6;
+      const freq = isSprinting ? 10 : isRunningAnim ? 8 : 5;
+      const legAmp = isSprinting ? 0.55 : isRunningAnim ? 0.45 : 0.3;
+      const armAmp = isSprinting ? 0.5 : isRunningAnim ? 0.4 : 0.25;
+      const kneeAmp = isSprinting ? 0.65 : isRunningAnim ? 0.55 : 0.4;
       const phase = t * freq;
       
       // Legs — forward/back swing

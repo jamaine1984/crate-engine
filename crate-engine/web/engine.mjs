@@ -291,7 +291,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=126'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=127'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -9277,18 +9277,34 @@ function createSwimmingPool(opts) {
    [w/2, wallH + rimH/2, 0, rimW, rimH, d]].forEach(([x,y,z,sx,sy,sz])=>{
     const rim = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), rimMat); rim.position.set(x,y,z); g.add(rim);
   });
-  // Pool ladder (simple geometry)
+  // Pool ladders — INSIDE (descend into pool) + OUTSIDE (climb up to pool)
   const ladderMat = makeMat(0xcccccc, {rough:0.2, metal:0.8});
-  const lr = 0.03; // ladder rail radius
+  const lr = 0.035;
+  // Inside ladder (hangs into pool from rim) — front wall, offset right
+  const insideX = w/4; const insideZ = -d/2 + wallThick/2;
   [-1, 1].forEach(side => {
-    const rail = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, wallH+0.3), ladderMat);
-    rail.position.set(w/2 - 0.4 + side*0.25, wallH/2+0.15, -d/2 + 0.3); g.add(rail);
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, wallH + 0.4), ladderMat);
+    rail.position.set(insideX + side*0.2, wallH/2 + 0.1, insideZ + 0.15); g.add(rail);
   });
-  // 3 rungs
   for (let i = 0; i < 3; i++) {
-    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5), ladderMat);
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4), ladderMat);
     rung.rotation.z = Math.PI/2;
-    rung.position.set(w/2 - 0.4, 0.3 + i*0.35, -d/2 + 0.3); g.add(rung);
+    rung.position.set(insideX, 0.3 + i*0.35, insideZ + 0.15); g.add(rung);
+  }
+  // Outside ladder (leans against outer wall) — same X, but on outside of front wall
+  const outsideZ = -d/2 - wallThick/2 - 0.1;
+  const outerLadderH = wallH + 0.5; // taller to reach over the rim
+  [-1, 1].forEach(side => {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, outerLadderH), ladderMat);
+    // Lean slightly outward
+    rail.rotation.x = 0.15;
+    rail.position.set(insideX + side*0.2, outerLadderH/2 - 0.1, outsideZ - 0.1); g.add(rail);
+  });
+  for (let i = 0; i < 4; i++) {
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4), ladderMat);
+    rung.rotation.z = Math.PI/2;
+    rung.rotation.x = 0.15;
+    rung.position.set(insideX, 0.15 + i*0.3, outsideZ - 0.05 - i*0.04); g.add(rung);
   }
   // Register water zone for swimming detection
   g.userData.registerWaterZone = function() {
