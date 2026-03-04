@@ -815,8 +815,8 @@ class CharacterController {
       'king': { file: 'modular_men_king', animPrefix: '' },
       'punk': { file: 'modular_men_punk', animPrefix: '' },
       'knight': { file: 'single_knight_pack_knightcharacter', animPrefix: 'HumanArmature|' },
-      'soldier': { file: 'Soldier', animPrefix: 'mixamorig:', isMixamo: true },
-      'xbot': { file: 'Xbot', animPrefix: 'mixamorig:', isMixamo: true },
+      'soldier': { file: 'soldier_mixamo', animPrefix: 'mixamorig:', isMixamo: true },
+      'xbot': { file: 'xbot_mixamo', animPrefix: 'mixamorig:', isMixamo: true },
       'witch': { file: 'modular_women_witch', animPrefix: '' },
       'medieval': { file: 'modular_women_medieval', animPrefix: '' },
       'casual': { file: 'modular_men_casual', animPrefix: '' },
@@ -844,7 +844,7 @@ class CharacterController {
   async _loadSharedAnimations(charType) {
     // Load knight model just for its animations, apply to current character
     // Use Soldier.glb for shared animations — much higher quality Mixamo anims
-    const knightFile = 'models/Soldier.glb';
+    const knightFile = 'models/soldier_mixamo.glb';
     const loader = window._gltfLoader;
     if (!loader || !this.model) return;
     
