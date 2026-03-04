@@ -1025,7 +1025,7 @@ class CharacterController {
     });
   }
   
-  async loadCharacter(type = 'knight') {
+  async loadCharacter(type = 'soldier') {
     const config = this.characterModels[type];
     if (!config) return 'Unknown character: ' + type;
     
