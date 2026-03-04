@@ -1155,7 +1155,16 @@ class CharacterController {
             };
             name = map[name] || name;
             
-            this.animations[name] = this.mixer.clipAction(clip);
+            // Filter out position tracks that cause hopping (Body/Foot position offsets)
+            const filteredTracks = clip.tracks.filter(t => {
+              const prop = t.name.split('.').pop();
+              const bone = t.name.split('.').slice(0, -1).join('.');
+              // Only keep position tracks for Hips (root motion)
+              if (prop === 'position' && bone !== 'Hips') return false;
+              return true;
+            });
+            const filteredClip = new THREE.AnimationClip(clip.name, clip.duration, filteredTracks);
+            this.animations[name] = this.mixer.clipAction(filteredClip);
           });
           
           // Start idle

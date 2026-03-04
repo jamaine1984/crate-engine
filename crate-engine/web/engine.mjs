@@ -291,7 +291,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=125'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=126'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -9231,39 +9231,66 @@ function createTrashCan() {
 function createSwimmingPool(opts) {
   const o = opts || {}; const w = o.width || 8; const d = o.depth || 4;
   const g = new THREE.Group(); g.userData.name = 'Swimming Pool';
+  // ABOVE-GROUND pool — walls go UP from ground, water visible from any angle
+  const wallH = 1.2; // Wall height above ground
+  const waterH = wallH - 0.15; // Water surface just below rim
+  const wallThick = 0.15;
   const tileMat = makeMat(0x1a6680, {rough:0.15});
+  const outerMat = makeMat(0x8899aa, {rough:0.4}); // Outer wall color
   const deckMat = makeMat(0xccbbaa, {rough:0.6});
-  const waterMat = new THREE.MeshPhysicalMaterial({color:0x2299dd, roughness:0.0, transparent:true, opacity:0.65, side: THREE.DoubleSide});
-  // Raised deck around the pool (above ground)
-  const deckH = 0.4;
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(w+3, deckH, d+3), deckMat);
-  deck.position.y = deckH/2; deck.receiveShadow=true; g.add(deck);
-  // Pool basin — walls and bottom visible above ground level
-  const poolDepth = 1.8;
-  const bottom = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), tileMat);
-  bottom.position.y = deckH - poolDepth; g.add(bottom);
-  // Pool walls (inside the deck, forming the basin)
-  [[0, deckH - poolDepth/2, d/2, w, poolDepth, 0.12],
-   [0, deckH - poolDepth/2, -d/2, w, poolDepth, 0.12],
-   [w/2, deckH - poolDepth/2, 0, 0.12, poolDepth, d],
-   [-w/2, deckH - poolDepth/2, 0, 0.12, poolDepth, d]].forEach(([x,y,z,sx,sy,sz])=>{
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), tileMat); wall.position.set(x,y,z); g.add(wall);
+  const waterMat = new THREE.MeshPhysicalMaterial({color:0x2299dd, roughness:0.05, transparent:true, opacity:0.7, side: THREE.DoubleSide});
+  // Concrete deck/pad around pool
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(w+3, 0.15, d+3), deckMat);
+  pad.position.y = 0.075; pad.receiveShadow = true; g.add(pad);
+  // Pool walls — rise ABOVE ground
+  // Front wall
+  const fw = new THREE.Mesh(new THREE.BoxGeometry(w + wallThick*2, wallH, wallThick), outerMat);
+  fw.position.set(0, wallH/2, -d/2); fw.castShadow = true; g.add(fw);
+  // Back wall
+  const bw = new THREE.Mesh(new THREE.BoxGeometry(w + wallThick*2, wallH, wallThick), outerMat);
+  bw.position.set(0, wallH/2, d/2); bw.castShadow = true; g.add(bw);
+  // Left wall
+  const lw = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, d), outerMat);
+  lw.position.set(-w/2, wallH/2, 0); lw.castShadow = true; g.add(lw);
+  // Right wall  
+  const rw = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, d), outerMat);
+  rw.position.set(w/2, wallH/2, 0); rw.castShadow = true; g.add(rw);
+  // Inner tile lining (slightly smaller, different color)
+  [[0, wallH/2, -d/2+wallThick/2, w, wallH-0.05, 0.02],
+   [0, wallH/2, d/2-wallThick/2, w, wallH-0.05, 0.02],
+   [-w/2+wallThick/2, wallH/2, 0, 0.02, wallH-0.05, d-wallThick*2],
+   [w/2-wallThick/2, wallH/2, 0, 0.02, wallH-0.05, d-wallThick*2]].forEach(([x,y,z,sx,sy,sz])=>{
+    const tile = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), tileMat); tile.position.set(x,y,z); g.add(tile);
   });
-  // Water surface — sits inside the basin, clearly visible
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(w-0.2, d-0.2), waterMat);
-  water.rotation.x = -Math.PI/2; water.position.y = deckH - 0.15; water.name = 'poolWater'; g.add(water);
-  // White rim edges around the pool opening
-  const edgeMat = makeMat(0xeeeeee,{rough:0.3});
-  [[0, deckH + 0.05, d/2+0.05, w+0.2, 0.12, 0.2],
-   [0, deckH + 0.05, -(d/2+0.05), w+0.2, 0.12, 0.2],
-   [w/2+0.05, deckH + 0.05, 0, 0.2, 0.12, d+0.2],
-   [-(w/2+0.05), deckH + 0.05, 0, 0.2, 0.12, d+0.2]].forEach(([x,y,z,sx,sy,sz])=>{
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), edgeMat); edge.position.set(x,y,z); g.add(edge);
+  // Pool floor (at ground level, visible through water)
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(w - wallThick*2, 0.1, d - wallThick*2), tileMat);
+  floor.position.y = 0.2; g.add(floor);
+  // WATER SURFACE — clearly visible blue water inside the walls
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(w - wallThick*2 - 0.1, d - wallThick*2 - 0.1), waterMat);
+  water.rotation.x = -Math.PI/2; water.position.y = waterH; water.name = 'poolWater'; g.add(water);
+  // White rim/coping around top edge
+  const rimMat = makeMat(0xffffff, {rough:0.3});
+  const rimH = 0.08; const rimW = 0.25;
+  [[0, wallH + rimH/2, -d/2, w + rimW*2, rimH, rimW],
+   [0, wallH + rimH/2, d/2, w + rimW*2, rimH, rimW],
+   [-w/2, wallH + rimH/2, 0, rimW, rimH, d],
+   [w/2, wallH + rimH/2, 0, rimW, rimH, d]].forEach(([x,y,z,sx,sy,sz])=>{
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), rimMat); rim.position.set(x,y,z); g.add(rim);
   });
-    // Register water zone for swimming detection
-  g.userData.isPool = true;
-  g.userData.poolWidth = w;
-  g.userData.poolDepth = d;
+  // Pool ladder (simple geometry)
+  const ladderMat = makeMat(0xcccccc, {rough:0.2, metal:0.8});
+  const lr = 0.03; // ladder rail radius
+  [-1, 1].forEach(side => {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, wallH+0.3), ladderMat);
+    rail.position.set(w/2 - 0.4 + side*0.25, wallH/2+0.15, -d/2 + 0.3); g.add(rail);
+  });
+  // 3 rungs
+  for (let i = 0; i < 3; i++) {
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5), ladderMat);
+    rung.rotation.z = Math.PI/2;
+    rung.position.set(w/2 - 0.4, 0.3 + i*0.35, -d/2 + 0.3); g.add(rung);
+  }
+  // Register water zone for swimming detection
   g.userData.registerWaterZone = function() {
     const pos = new THREE.Vector3();
     g.getWorldPosition(pos);
