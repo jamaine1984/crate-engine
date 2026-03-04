@@ -45,27 +45,35 @@ function createAAASky() {
   if (skyMesh) scene.remove(skyMesh);
   skyMesh = new Sky();
   skyMesh.scale.setScalar(10000);
-  scene.add(skyMesh);
+  // Don't add skyMesh to scene — HDRI background (clouds) looks way better
+  // skyMesh is only used to generate envMap for PBR reflections
   sun = new THREE.Vector3();
   const uniforms = skyMesh.material.uniforms;
-  uniforms['turbidity'].value = 10;
-  uniforms['rayleigh'].value = 3;
+  uniforms['turbidity'].value = 4;
+  uniforms['rayleigh'].value = 2;
   uniforms['mieCoefficient'].value = 0.005;
-  uniforms['mieDirectionalG'].value = 0.7;
-  const phi = THREE.MathUtils.degToRad(90 - 2);
+  uniforms['mieDirectionalG'].value = 0.8;
+  // Higher sun = brighter, more daytime feel
+  const phi = THREE.MathUtils.degToRad(90 - 35);
   const theta = THREE.MathUtils.degToRad(180);
   sun.setFromSphericalCoords(1, phi, theta);
   uniforms['sunPosition'].value.copy(sun);
-  // Update environment map for PBR reflections
+  // Generate envMap from sky shader (for reflections only, NOT background)
   if (renderer) {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     pmremGenerator.compileEquirectangularShader();
-    const rt = pmremGenerator.fromScene(skyMesh);
-    if (scene.environment) scene.environment.dispose();
-    scene.environment = rt.texture;
+    // Temporarily add sky to a separate scene for envMap generation
+    const envScene = new THREE.Scene();
+    envScene.add(skyMesh.clone());
+    const rt = pmremGenerator.fromScene(envScene);
+    // Only set environment (reflections), NOT background — keep HDRI clouds
+    if (!scene.background) {
+      // Only set sky as background if no HDRI loaded yet
+      scene.environment = rt.texture;
+    }
     pmremGenerator.dispose();
   }
-  console.log('[CRATE] AAA Sky created');
+  console.log('[CRATE] AAA Sky envMap created (HDRI background preserved)');
 }
 
 function setSkyTime(elevation, azimuth) {
@@ -291,7 +299,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=127'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=128'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
