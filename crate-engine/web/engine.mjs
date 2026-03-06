@@ -24937,13 +24937,13 @@ window.buildQuarryWorld = buildQuarryWorld;
 
 
 // ============================================================
-// CITY WORLD — Downtown + Residential + AI Traffic
+// CITY WORLD v2 — Downtown + Residential + AI Traffic
 // ============================================================
 async function buildCityWorld() {
   try {
     showToast('🏙 Building City World...');
 
-    // ── FULL ENGINE CLEAR ─────────────────────────────────
+    // ── FULL CLEAR ────────────────────────────────────────
     for (let i = objects.length - 1; i >= 0; i--) { scene.remove(objects[i]); objects.splice(i, 1); }
     if (typeof currentGround !== 'undefined' && currentGround) {
       scene.remove(currentGround);
@@ -24951,491 +24951,487 @@ async function buildCityWorld() {
       if (currentGround.material) currentGround.material.dispose();
       currentGround = null; window._currentGround = null;
     }
-    if (typeof terrainMesh !== 'undefined' && terrainMesh) {
-      scene.remove(terrainMesh); terrainMesh = null; window._terrainMesh = null;
-    }
+    if (typeof terrainMesh !== 'undefined' && terrainMesh) { scene.remove(terrainMesh); terrainMesh = null; }
     clearDrivingCars();
     if (window._waterZones) window._waterZones.length = 0;
     window._lakeAnimators = [];
+    window._cityCarUpdate = null;
     scene.fog = null;
     const extras = [];
     scene.children.forEach(o => { if (!o.isLight && !o.isCamera) extras.push(o); });
     extras.forEach(o => scene.remove(o));
     if (window.npcController) window.npcController.npcs.length = 0;
 
-    // ── GRID LAYOUT ───────────────────────────────────────
-    const BLOCK  = 60;   // block size (plot of land)
-    const ROAD   = 14;   // road width
-    const STEP   = BLOCK + ROAD;  // 74 units per grid cell
-    const COLS   = 5;    // 5x5 city grid
+    // ── GRID CONFIG ───────────────────────────────────────
+    const BLOCK  = 64;   // plot width/depth
+    const ROAD   = 16;   // road width
+    const STEP   = BLOCK + ROAD;   // 80 per cell
+    const COLS   = 5;
     const HALF   = (COLS - 1) / 2; // 2
 
-    // Road center positions along each axis
-    const roadPos = [];
-    for (let i = 0; i <= COLS; i++) roadPos.push(-HALF * STEP - ROAD/2 + i * STEP);
-    // Block center positions
-    const blockPos = [];
-    for (let i = 0; i < COLS; i++) blockPos.push(roadPos[i] + ROAD/2 + BLOCK/2);
+    // Road centerline X/Z positions
+    const rp = [];
+    for (let i = 0; i <= COLS; i++) rp.push(-HALF * STEP - ROAD/2 + i * STEP);
+    // Block center X/Z positions (inside each cell, away from roads)
+    const bp = [];
+    for (let i = 0; i < COLS; i++) bp.push(rp[i] + ROAD/2 + BLOCK/2);
 
-    const CITY_SIZE = COLS * STEP + ROAD + 400; // ground extends well past city
-
-    // Zone classification: 0=downtown, 1=commercial, 2=residential
-    const getZone = (col, row) => {
-      const c = Math.abs(col - HALF), r = Math.abs(row - HALF);
-      if (c <= 1 && r <= 1) return 0; // downtown center
-      if (c <= 2 && r <= 2) return 1; // commercial mid
-      return 2; // residential outer
+    const zone = (c, r) => {
+      const dc = Math.abs(c - HALF), dr = Math.abs(r - HALF);
+      if (dc <= 1 && dr <= 1) return 'downtown';
+      if (dc <= 2 && dr <= 2) return 'commercial';
+      return 'residential';
     };
 
-    // ── GROUND ────────────────────────────────────────────
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x4a7040, roughness: 1.0 });
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY_SIZE, CITY_SIZE), groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    ground.receiveShadow = true;
-    ground.userData.isGround = true;
+    // ── GROUND ───────────────────────────────────────────
+    const GSIZE = COLS * STEP + ROAD + 500;
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(GSIZE, GSIZE),
+      new THREE.MeshStandardMaterial({ color: 0x4a7040, roughness: 1.0 })
+    );
+    ground.rotation.x = -Math.PI/2; ground.position.y = 0;
+    ground.receiveShadow = true; ground.userData.isGround = true;
     scene.add(ground);
     currentGround = ground; window._currentGround = ground;
 
-    // ── ROADS ─────────────────────────────────────────────
-    const roadMat   = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
-    const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x999988, roughness: 1.0 });
-    const lineMat   = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0 });
-    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 1.0 });
+    // ── ROAD SURFACE ─────────────────────────────────────
+    const roadMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.95 });
+    const swMat    = new THREE.MeshStandardMaterial({ color: 0x999888, roughness: 1.0 });
+    const lineMat  = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, emissive: 0x444444 });
+    const ylwMat   = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 1.0 });
 
-    function addRoad(x, z, w, d, isVertical) {
-      // Road surface
-      const road = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), roadMat);
-      road.position.set(x, 0.06, z);
-      road.receiveShadow = true;
-      scene.add(road);
+    const CITY_SPAN = COLS * STEP + ROAD;
 
-      // Center dividing line
-      const lw = isVertical ? 0.3 : d;
-      const ld = isVertical ? w : 0.3;
-      const line = new THREE.Mesh(new THREE.BoxGeometry(lw, 0.01, ld), yellowMat);
-      line.position.set(x, 0.14, z);
-      scene.add(line);
-
-      // Sidewalks on each side
-      const swW = 3.5, swH = 0.18;
-      const offsets = isVertical
-        ? [{ dx: -(w/2 + swW/2), dz: 0 }, { dx: w/2 + swW/2, dz: 0 }]
-        : [{ dx: 0, dz: -(d/2 + swW/2) }, { dx: 0, dz: d/2 + swW/2 }];
-      offsets.forEach(off => {
-        const sw = new THREE.Mesh(
-          new THREE.BoxGeometry(isVertical ? swW : w + swW*2, swH, isVertical ? d : swW),
-          sidewalkMat);
-        sw.position.set(x + off.dx, swH/2, z + off.dz);
-        sw.receiveShadow = true;
-        scene.add(sw);
+    // Horizontal roads (E-W, at each rp[j] Z)
+    rp.forEach(rz => {
+      const road = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.12, ROAD), roadMat);
+      road.position.set(0, 0.06, rz); road.receiveShadow = true; scene.add(road);
+      // Sidewalks N and S
+      [-1,1].forEach(side => {
+        const sw = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.2, 3.5), swMat);
+        sw.position.set(0, 0.1, rz + side * (ROAD/2 + 1.75)); scene.add(sw);
       });
-
-      // Dashed lane markings
-      const dashCount = Math.floor((isVertical ? w : d) / 8);
-      for (let i = 0; i < dashCount; i++) {
-        const dash = new THREE.Mesh(new THREE.BoxGeometry(
-          isVertical ? (w * 0.35) : 0.25,
-          0.01,
-          isVertical ? 0.25 : (d * 0.35)
-        ), lineMat);
-        dash.position.set(
-          x + (isVertical ? (i - (dashCount-1)/2) * 8 : 0),
-          0.13,
-          z + (isVertical ? 0 : (i - (dashCount-1)/2) * 8)
-        );
-        scene.add(dash);
+      // Yellow center line
+      const cl = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.02, 0.3), ylwMat);
+      cl.position.set(0, 0.14, rz); scene.add(cl);
+      // White lane dashes
+      for (let d = 0; d < 16; d++) {
+        const dash = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, 0.25), lineMat);
+        dash.position.set(-CITY_SPAN/2 + d * (CITY_SPAN/16) + CITY_SPAN/32, 0.14, rz + ROAD/4); scene.add(dash);
+        const dash2 = dash.clone(); dash2.position.z = rz - ROAD/4; scene.add(dash2);
       }
-    }
-
-    // Horizontal roads (running along X axis)
-    roadPos.forEach(rz => {
-      addRoad(0, rz, COLS * STEP + ROAD, ROAD, true);
     });
-    // Vertical roads (running along Z axis)
-    roadPos.forEach(rx => {
-      addRoad(rx, 0, ROAD, COLS * STEP + ROAD, false);
-    });
-    showToast('✅ Roads built — adding buildings...');
 
-    // ── INTERSECTION GROUND FILL (asphalt patches at crosses) ─
-    for (let i = 0; i <= COLS; i++) {
-      for (let j = 0; j <= COLS; j++) {
-        const ix = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.13, ROAD), roadMat);
-        ix.position.set(roadPos[i], 0.065, roadPos[j]);
-        scene.add(ix);
-        // Crosswalk stripes
-        for (let s = 0; s < 4; s++) {
-          const stripe = new THREE.Mesh(new THREE.BoxGeometry(ROAD * 0.8, 0.01, 1.2), lineMat);
-          stripe.position.set(roadPos[i], 0.14, roadPos[j] - ROAD/2*0.7 + s * 3.5);
+    // Vertical roads (N-S, at each rp[i] X)
+    rp.forEach(rx => {
+      const road = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.12, CITY_SPAN), roadMat);
+      road.position.set(rx, 0.06, 0); road.receiveShadow = true; scene.add(road);
+      [-1,1].forEach(side => {
+        const sw = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.2, CITY_SPAN), swMat);
+        sw.position.set(rx + side * (ROAD/2 + 1.75), 0.1, 0); scene.add(sw);
+      });
+      const cl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, CITY_SPAN), ylwMat);
+      cl.position.set(rx, 0.14, 0); scene.add(cl);
+    });
+
+    // Intersection asphalt patches + crosswalks
+    rp.forEach(rx => rp.forEach(rz => {
+      const ix = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.13, ROAD), roadMat);
+      ix.position.set(rx, 0.065, rz); scene.add(ix);
+      // 4 crosswalks (one per side of intersection)
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz]) => {
+        for (let s = 0; s < 3; s++) {
+          const stripe = new THREE.Mesh(new THREE.BoxGeometry(
+            dz !== 0 ? 0.9 : ROAD*0.7,
+            0.01,
+            dz !== 0 ? ROAD*0.7 : 0.9
+          ), lineMat);
+          stripe.position.set(
+            rx + dx*(ROAD/2+0.5) + (dz!==0 ? (s-1)*1.8 : 0),
+            0.14,
+            rz + dz*(ROAD/2+0.5) + (dx!==0 ? (s-1)*1.8 : 0)
+          );
           scene.add(stripe);
         }
-      }
+      });
+    }));
+
+    showToast('✅ Roads done — placing buildings...');
+
+    // ── BUILDINGS — STRICTLY INSIDE BLOCK BOUNDARIES ─────
+    // Max building footprint = BLOCK - 10 (5 unit margin from road on each side)
+    const MARGIN = 10; // keep buildings this far from road edge
+    const MAX_FOOTPRINT = BLOCK - MARGIN * 2; // 44 units max
+
+    const DT_MODELS   = ['kenney_city/building-skyscraper-a','kenney_city/building-skyscraper-b','kenney_city/building-skyscraper-c','kenney_city/building-skyscraper-d','kenney_city/building-skyscraper-e'];
+    const COMM_MODELS = ['kenney_city/building-a','kenney_city/building-b','kenney_city/building-c','kenney_city/building-d','kenney_city/building-e','kenney_city/building-f','kenney_city/building-g','kenney_city/building-h'];
+    const COMM2_MODELS= ['kenney_city/building-i','kenney_city/building-j','kenney_city/building-k','kenney_city/building-l','kenney_city/building-m','kenney_city/building-n'];
+
+    function placeBuilding(modelPath, bx, bz, targetH, maxFootprint, rotY) {
+      return new Promise(resolve => {
+        gltfLoader.load('models/' + modelPath + '.glb', (gltf) => {
+          const m = gltf.scene;
+          m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+          const box = new THREE.Box3().setFromObject(m);
+          const s3 = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(s3.x, s3.z, 0.01);
+          // Scale by HEIGHT target first
+          let sc = targetH / (s3.y || 1);
+          // Clamp so footprint doesn't exceed maxFootprint
+          const scaledFP = maxDim * sc;
+          if (scaledFP > maxFootprint) sc = maxFootprint / maxDim;
+          m.scale.setScalar(sc);
+          const b2 = new THREE.Box3().setFromObject(m);
+          m.position.set(bx, -b2.min.y, bz);
+          m.rotation.y = rotY || 0;
+          m.userData.isBuilding = true;
+          m.userData.canEnter = true;
+          m.userData.buildingId = modelPath;
+          scene.add(m); objects.push(m);
+          resolve(m);
+        }, null, () => resolve(null));
+      });
     }
 
-    // ── BUILDINGS ─────────────────────────────────────────
-    const DTOWN_BUILDINGS = [
-      'kenney_city/building-skyscraper-a','kenney_city/building-skyscraper-b',
-      'kenney_city/building-skyscraper-c','kenney_city/building-skyscraper-d',
-      'kenney_city/building-skyscraper-e','kenney_city/building-a',
-      'kenney_city/building-b','kenney_city/building-c',
-    ];
-    const COMM_BUILDINGS = [
-      'kenney_city/building-d','kenney_city/building-e','kenney_city/building-f',
-      'kenney_city/building-g','kenney_city/building-h','kenney_city/building-i',
-      'kenney_city/building-j','kenney_city/building-k','kenney_city/building-l',
-      'kenney_city/building-m','kenney_city/building-n','kenney_city/building-o',
-    ];
+    let delay = 0;
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < COLS; r++) {
+        const bx = bp[c], bz = bp[r];
+        const z = zone(c, r);
+        const rot = Math.floor(Math.random() * 4) * Math.PI/2;
 
-    let buildDelay = 0;
-    for (let col = 0; col < COLS; col++) {
-      for (let row = 0; row < COLS; row++) {
-        const bx = blockPos[col], bz = blockPos[row];
-        const zone = getZone(col, row);
-
-        if (zone === 0) {
-          // Downtown — tall buildings, 2x2 per block
-          const bList = DTOWN_BUILDINGS;
-          for (let b = 0; b < 2; b++) {
-            const alias = bList[(col * COLS + row + b * 3) % bList.length];
-            const ox = (b % 2 - 0.5) * 20, oz = (Math.floor(b/2) - 0) * 20;
-            setTimeout(() => {
-              gltfLoader.load('models/' + alias + '.glb', (gltf) => {
-                const m = gltf.scene;
-                m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-                const box = new THREE.Box3().setFromObject(m);
-                const h = box.getSize(new THREE.Vector3()).y;
-                const targetH = 45 + Math.random() * 40;
-                m.scale.setScalar(targetH / (h || 1));
-                const b2 = new THREE.Box3().setFromObject(m);
-                m.position.set(bx + ox, -b2.min.y, bz + oz);
-                m.rotation.y = Math.floor(Math.random() * 4) * Math.PI/2;
-                m.userData.isBuilding = true;
-                scene.add(m); objects.push(m);
-              }, null, () => {});
-            }, buildDelay);
-            buildDelay += 60;
-          }
-        } else if (zone === 1) {
-          // Commercial — medium buildings
-          const alias = COMM_BUILDINGS[(col * COLS + row) % COMM_BUILDINGS.length];
-          setTimeout(() => {
-            gltfLoader.load('models/' + alias + '.glb', (gltf) => {
-              const m = gltf.scene;
-              m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-              const box = new THREE.Box3().setFromObject(m);
-              const h = box.getSize(new THREE.Vector3()).y;
-              const targetH = 18 + Math.random() * 15;
-              m.scale.setScalar(targetH / (h || 1));
-              const b2 = new THREE.Box3().setFromObject(m);
-              m.position.set(bx, -b2.min.y, bz);
-              m.rotation.y = Math.floor(Math.random() * 4) * Math.PI/2;
-              m.userData.isBuilding = true;
-              scene.add(m); objects.push(m);
-            }, null, () => {});
-          }, buildDelay);
-          buildDelay += 60;
+        if (z === 'downtown') {
+          // 1 skyscraper per downtown block — centered, never touching road
+          const mdl = DT_MODELS[(c*COLS+r) % DT_MODELS.length];
+          setTimeout(() => placeBuilding(mdl, bx, bz, 55 + Math.random()*35, 50, rot), delay);
+          delay += 50;
+        } else if (z === 'commercial') {
+          const mdl = COMM_MODELS[(c*COLS+r) % COMM_MODELS.length];
+          setTimeout(() => placeBuilding(mdl, bx, bz, 20 + Math.random()*12, MAX_FOOTPRINT, rot), delay);
+          delay += 50;
         } else {
-          // Residential — modern house with yard, fence, pool
+          // Residential — house + yard
           setTimeout(() => {
-            // House
+            // House (front half of block)
             try {
-              const house = createModernHouse({ floors: Math.random() > 0.5 ? 2 : 1 });
-              house.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-              const hb = new THREE.Box3().setFromObject(house);
-              house.position.set(bx - 8, -hb.min.y, bz - 5);
-              house.rotation.y = Math.floor(Math.random() * 4) * Math.PI/2;
-              house.userData.isBuilding = true;
-              house.userData.isHouse = true;
-              scene.add(house); objects.push(house);
+              const h = createModernHouse({ floors: Math.random()>0.5?2:1 });
+              h.traverse(c => { if (c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });
+              const hb = new THREE.Box3().setFromObject(h);
+              // Place in front-left of block with margin
+              h.position.set(bx - 8, -hb.min.y, bz - 6);
+              h.userData.isBuilding = true; h.userData.canEnter = true; h.userData.isHouse = true;
+              scene.add(h); objects.push(h);
             } catch(e) {}
 
-            // Front lawn (green)
+            // Lawn
             const lawn = new THREE.Mesh(
-              new THREE.PlaneGeometry(BLOCK * 0.9, BLOCK * 0.9),
-              new THREE.MeshStandardMaterial({ color: 0x3d7a30, roughness: 1.0 })
+              new THREE.PlaneGeometry(BLOCK-2, BLOCK-2),
+              new THREE.MeshStandardMaterial({ color: 0x3d7530, roughness: 1.0 })
             );
-            lawn.rotation.x = -Math.PI/2;
-            lawn.position.set(bx, 0.05, bz);
-            lawn.receiveShadow = true;
-            scene.add(lawn);
+            lawn.rotation.x = -Math.PI/2; lawn.position.set(bx, 0.04, bz); scene.add(lawn);
 
-            // Fence around property (4 sides)
-            const fenceColor = 0xeae0d0;
-            const fenceMat = new THREE.MeshStandardMaterial({ color: fenceColor, roughness: 0.9 });
-            const FPOSTS = 8;
-            const hs = BLOCK * 0.45;
-            // Top, Bottom, Left, Right fence rails
-            [[0, -hs], [0, hs], [-hs, 0], [hs, 0]].forEach(([fx, fz], fi) => {
-              const isH = fi < 2;
-              const rail = new THREE.Mesh(
-                new THREE.BoxGeometry(isH ? BLOCK * 0.92 : 0.4, 1.2, isH ? 0.4 : BLOCK * 0.92),
-                fenceMat
-              );
-              rail.position.set(bx + fx, 1.0, bz + fz);
-              rail.castShadow = true;
-              scene.add(rail);
-              // Fence pickets
-              for (let p = 0; p < FPOSTS; p++) {
-                const picket = new THREE.Mesh(
-                  new THREE.BoxGeometry(isH ? 0.35 : BLOCK*0.9/FPOSTS*0.6, 1.4, isH ? BLOCK*0.9/FPOSTS*0.6 : 0.35),
-                  fenceMat
-                );
-                picket.position.set(
-                  bx + fx + (isH ? (p - (FPOSTS-1)/2) * (BLOCK*0.9/FPOSTS) : 0),
-                  0.8,
-                  bz + fz + (isH ? 0 : (p - (FPOSTS-1)/2) * (BLOCK*0.9/FPOSTS))
-                );
-                scene.add(picket);
-              }
+            // Fence (4 sides, with front gate gap)
+            const hs = (BLOCK-2)/2;
+            const fMat = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.9 });
+            // Side fences (no gap)
+            [-hs, hs].forEach(fx => {
+              const f = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.4, BLOCK-2), fMat);
+              f.position.set(bx+fx, 0.9, bz); scene.add(f);
+            });
+            // Back fence
+            const fb = new THREE.Mesh(new THREE.BoxGeometry(BLOCK-2, 1.4, 0.35), fMat);
+            fb.position.set(bx, 0.9, bz+hs); scene.add(fb);
+            // Front fence (two halves with gate gap)
+            [-1,1].forEach(side => {
+              const ff = new THREE.Mesh(new THREE.BoxGeometry(hs*0.7, 1.4, 0.35), fMat);
+              ff.position.set(bx + side*(hs*0.35 + 3), 0.9, bz-hs); scene.add(ff);
             });
 
-            // Swimming pool in backyard
-            const poolW = 10, poolD = 16, poolDepth = 0.8;
-            const poolX = bx + 12, poolZ = bz + 10;
+            // Pool (back yard)
+            const px = bx + 10, pz = bz + 18;
             const poolBorder = new THREE.Mesh(
-              new THREE.BoxGeometry(poolW + 1.5, 0.4, poolD + 1.5),
-              new THREE.MeshStandardMaterial({ color: 0xddd8cc, roughness: 0.8 })
+              new THREE.BoxGeometry(11, 0.4, 17),
+              new THREE.MeshStandardMaterial({ color: 0xddd8c8, roughness: 0.8 })
             );
-            poolBorder.position.set(poolX, 0.2, poolZ);
-            scene.add(poolBorder);
+            poolBorder.position.set(px, 0.2, pz); scene.add(poolBorder);
             const poolWater = new THREE.Mesh(
-              new THREE.BoxGeometry(poolW, poolDepth, poolD),
-              new THREE.MeshStandardMaterial({
-                color: 0x1a9ad4, transparent: true, opacity: 0.85,
-                roughness: 0.1, metalness: 0.1
-              })
+              new THREE.BoxGeometry(9.4, 0.5, 15.4),
+              new THREE.MeshStandardMaterial({ color: 0x1a9ad4, transparent:true, opacity:0.88, roughness:0.08 })
             );
-            poolWater.position.set(poolX, 0.15, poolZ);
-            poolWater.userData.isWater = true;
-            scene.add(poolWater);
+            poolWater.position.set(px, 0.25, pz); scene.add(poolWater);
+            // Pool ladder
+            const ladder = new THREE.Mesh(
+              new THREE.BoxGeometry(0.15, 1.5, 0.15),
+              new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness:0.8 })
+            );
+            ladder.position.set(px+4.5, 0.75, pz); scene.add(ladder);
 
-            // Driveway (short strip from road to house)
-            const driveway = new THREE.Mesh(
-              new THREE.PlaneGeometry(5, 12),
-              new THREE.MeshStandardMaterial({ color: 0x555550, roughness: 1.0 })
+            // Parked car in driveway
+            const driveX = bx - 22, driveZ = bz - hs + 6;
+            const parkedColors = [0x334488, 0xaa3322, 0x228844, 0xcccccc, 0x111111];
+            const parkedCar = new THREE.Group();
+            parkedCar.userData.isDrivable = true;
+            parkedCar.userData.isParked = true;
+            const pcBody = new THREE.Mesh(new THREE.BoxGeometry(2,1,4),
+              new THREE.MeshStandardMaterial({color: parkedColors[Math.floor(Math.random()*parkedColors.length)], roughness:0.3, metalness:0.6}));
+            pcBody.position.y = 0.7; pcBody.castShadow = true; parkedCar.add(pcBody);
+            const pcCabin = new THREE.Mesh(new THREE.BoxGeometry(1.7,0.7,2.2),
+              new THREE.MeshStandardMaterial({color: parkedColors[0], roughness:0.3, metalness:0.6}));
+            pcCabin.position.set(0,1.45,0.2); parkedCar.add(pcCabin);
+            const pcWMat = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
+            [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz])=>{
+              const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.18,10),pcWMat);
+              w.rotation.z=Math.PI/2; w.position.set(wx,wy,wz); parkedCar.add(w);
+            });
+            parkedCar.position.set(driveX, 0, driveZ);
+            parkedCar.rotation.y = Math.PI/2;
+            scene.add(parkedCar); objects.push(parkedCar);
+
+            // Driveway (concrete strip)
+            const dw = new THREE.Mesh(
+              new THREE.PlaneGeometry(6, BLOCK*0.4),
+              new THREE.MeshStandardMaterial({color:0x666655, roughness:1.0})
             );
-            driveway.rotation.x = -Math.PI/2;
-            driveway.position.set(bx - 20, 0.06, bz - BLOCK*0.42);
-            scene.add(driveway);
-          }, buildDelay);
-          buildDelay += 80;
+            dw.rotation.x=-Math.PI/2; dw.position.set(bx-22, 0.05, bz-hs/2); scene.add(dw);
+
+          }, delay);
+          delay += 80;
         }
       }
     }
-    showToast('✅ Buildings placed — adding street props...');
 
-    // ── STREET LIGHTS & STOP SIGNS ────────────────────────
-    // Place at every intersection
+    showToast('✅ Buildings placed — adding furniture & street props...');
+
+    // ── FURNITURE INSIDE RESIDENTIAL HOMES ─────────────────
     setTimeout(() => {
-      const lightPaths = [
-        'models/kenney_roads/light-square.glb',
-        'models/kenney_roads/light-curved.glb',
-        'models/kenney_roads/light-square-double.glb',
-      ];
-      for (let i = 0; i <= COLS; i++) {
-        for (let j = 0; j <= COLS; j++) {
-          const lx = roadPos[i], lz = roadPos[j];
-          const lPath = lightPaths[(i + j) % lightPaths.length];
-
-          // Street light
-          gltfLoader.load(lPath, (gltf) => {
-            const m = gltf.scene;
-            m.traverse(c => { if (c.isMesh) { c.castShadow = true; } });
-            const box = new THREE.Box3().setFromObject(m);
-            const h = box.getSize(new THREE.Vector3()).y;
-            m.scale.setScalar(6 / (h || 1));
-            const b2 = new THREE.Box3().setFromObject(m);
-            m.position.set(lx + ROAD/2 + 2, -b2.min.y, lz + ROAD/2 + 2);
-            m.userData.isStreetLight = true;
-            scene.add(m); objects.push(m);
-            // Point light at top
-            const pl = new THREE.PointLight(0xfff8e0, 0.8, 30);
-            pl.position.set(lx + ROAD/2 + 2, 7, lz + ROAD/2 + 2);
-            scene.add(pl);
-          }, null, () => {
-            // Fallback: simple lamp post
-            const post = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.15, 0.2, 7, 6),
-              new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.6 })
-            );
-            post.position.set(lx + ROAD/2 + 2.5, 3.5, lz + ROAD/2 + 2.5);
-            post.castShadow = true;
-            scene.add(post);
-            const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8),
-              new THREE.MeshStandardMaterial({ color: 0xfff8d0, emissive: 0xfff080, emissiveIntensity: 1 }));
-            lamp.position.set(lx + ROAD/2 + 2.5, 7.2, lz + ROAD/2 + 2.5);
-            scene.add(lamp);
+      for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r < COLS; r++) {
+          if (zone(c,r) !== 'residential') continue;
+          const hx = bp[c] - 8, hz = bp[r] - 6;
+          // Living room — couch, TV, coffee table
+          const furniture = [
+            { alias: 'sofa',         ox: -3, oz:  3, ry: 0 },
+            { alias: 'television',   ox:  5, oz:  3, ry: Math.PI },
+            { alias: 'coffee_table', ox:  1, oz:  3, ry: 0 },
+            { alias: 'armchair',     ox: -3, oz:  6, ry: Math.PI/2 },
+          ];
+          furniture.forEach(f => {
+            const key = GLB_MODELS[f.alias] || f.alias;
+            gltfLoader.load('models/' + key + '.glb', (gltf) => {
+              const m = gltf.scene;
+              m.traverse(c => { if (c.isMesh) c.castShadow = true; });
+              const box = new THREE.Box3().setFromObject(m);
+              const h = box.getSize(new THREE.Vector3()).y;
+              m.scale.setScalar(1.5 / (h || 1));
+              const b2 = new THREE.Box3().setFromObject(m);
+              m.position.set(hx + f.ox, -b2.min.y + 0.5, hz + f.oz);
+              m.rotation.y = f.ry;
+              m.userData.isFurniture = true;
+              scene.add(m); objects.push(m);
+            }, null, () => {
+              // Fallback box furniture
+              const colors = {sofa:0x4466aa, television:0x111111, coffee_table:0x885533, armchair:0x664422};
+              const dims = {sofa:[2.2,0.7,1],television:[1.2,0.8,0.1],coffee_table:[1.2,0.4,0.7],armchair:[1,0.7,0.9]};
+              const fb = new THREE.Mesh(
+                new THREE.BoxGeometry(...(dims[f.alias]||[1,0.8,1])),
+                new THREE.MeshStandardMaterial({color:colors[f.alias]||0x887744, roughness:0.8})
+              );
+              fb.position.set(hx+f.ox, 0.5, hz+f.oz);
+              fb.rotation.y = f.ry; scene.add(fb);
+            });
           });
-
-          // Stop sign at corner
-          const signPost = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.06, 0.06, 2.5, 6),
-            new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.5 })
-          );
-          signPost.position.set(lx - ROAD/2 - 1.5, 1.25, lz - ROAD/2 - 1.5);
-          scene.add(signPost);
-          const sign = new THREE.Mesh(
-            new THREE.OctahedronGeometry(0.6, 0),
-            new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.5 })
-          );
-          sign.position.set(lx - ROAD/2 - 1.5, 2.8, lz - ROAD/2 - 1.5);
-          sign.scale.y = 0.15; sign.rotation.y = Math.PI/8;
-          scene.add(sign);
         }
       }
-    }, buildDelay + 200);
+    }, delay + 200);
 
-    // ── AI CARS ON WAYPOINT ROUTES ─────────────────────────
+    // ── STREET LIGHTS & STOP SIGNS ────────────────────────
     setTimeout(() => {
-      showToast('🚗 Spawning traffic...');
-
-      // Build road waypoint routes from the grid
-      // Route 1: outer loop (clockwise)
-      const outerRp = roadPos[0]; const outerRpEnd = roadPos[COLS];
-      const innerRp0 = roadPos[1]; const innerRpEnd = roadPos[COLS-1];
-
-      const routes = [
-        // Outer clockwise loop
-        [[-roadPos[0],-roadPos[0]], [roadPos[COLS],-roadPos[0]], [roadPos[COLS],roadPos[COLS]], [-roadPos[0],roadPos[COLS]]],
-        // Inner loop (downtown ring)
-        [[roadPos[1],roadPos[1]], [roadPos[COLS-1],roadPos[1]], [roadPos[COLS-1],roadPos[COLS-1]], [roadPos[1],roadPos[COLS-1]]],
-        // Straight E-W on road 2
-        [[roadPos[0],roadPos[2]], [roadPos[COLS],roadPos[2]]],
-        // Straight N-S on road 2
-        [[roadPos[2],roadPos[0]], [roadPos[2],roadPos[COLS]]],
-        // Cross diagonal route
-        [[roadPos[0],roadPos[1]], [roadPos[1],roadPos[1]], [roadPos[1],roadPos[3]], [roadPos[3],roadPos[3]], [roadPos[3],roadPos[1]]],
-      ];
-
-      const carModels = [
-        'models/kenney_cars/sedan.glb', 'models/kenney_cars/taxi.glb',
-        'models/kenney_cars/police.glb','models/kenney_cars/suv.glb',
-        'models/kenney_cars/van.glb',   'models/kenney_cars/sedan-sports.glb',
-        'models/kenney_cars/hatchback-sports.glb', 'models/kenney_cars/delivery.glb',
-      ];
-      const carColors = [0x2244aa, 0xcc2222, 0x22aa44, 0xeeeeee, 0x111111, 0xaaaa22, 0x8844cc, 0xcc6622];
-
-      // Spawn 15 AI cars across all routes
-      for (let ci = 0; ci < 15; ci++) {
-        const route = routes[ci % routes.length];
-        const routeWaypoints = route.map(([wx, wz]) => new THREE.Vector3(wx, 0.3, wz));
-        const startIdx = Math.floor(Math.random() * route.length);
-        const speed = 10 + Math.random() * 14;
-        const carPath = carModels[ci % carModels.length];
-        const carColor = carColors[ci % carColors.length];
-
-        // Create car group (GLB or fallback box)
-        const carGroup = new THREE.Group();
-        carGroup.userData.isDrivingCar = true;
-        carGroup.userData.waypointRoute = routeWaypoints;
-        carGroup.userData.waypointIdx = startIdx;
-        carGroup.userData.speed = speed;
-
-        // Box car fallback (always visible while GLB loads)
-        const bodyMat = new THREE.MeshStandardMaterial({ color: carColor, roughness: 0.3, metalness: 0.6 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1.0, 4), bodyMat);
-        body.position.y = 0.7; body.castShadow = true; carGroup.add(body);
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 2.2), bodyMat);
-        cabin.position.set(0, 1.45, 0.2); carGroup.add(cabin);
-        const wMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
-        [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz]) => {
-          const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33,0.33,0.18,10), wMat);
-          w.rotation.z = Math.PI/2; w.position.set(wx,wy,wz); carGroup.add(w);
+      rp.forEach((lx, i) => rp.forEach((lz, j) => {
+        // Lamp post (each intersection corner)
+        [[1,1],[-1,1],[1,-1],[-1,-1]].forEach(([sx,sz], k) => {
+          if (k > 0) return; // just one per intersection
+          const post = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.12, 0.18, 8, 6),
+            new THREE.MeshStandardMaterial({color:0x555566, metalness:0.5, roughness:0.6})
+          );
+          post.position.set(lx + sx*(ROAD/2+2.5), 4, lz + sz*(ROAD/2+2.5));
+          post.castShadow = true; scene.add(post);
+          const head = new THREE.Mesh(new THREE.BoxGeometry(2.5,0.3,0.8),
+            new THREE.MeshStandardMaterial({color:0x333344, metalness:0.7}));
+          head.position.set(lx + sx*(ROAD/2+2.5) + sx*0.8, 8.1, lz + sz*(ROAD/2+2.5));
+          scene.add(head);
+          const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.35,8,6),
+            new THREE.MeshStandardMaterial({color:0xfffce0, emissive:0xffee88, emissiveIntensity:2}));
+          bulb.position.set(lx + sx*(ROAD/2+2.5) + sx*1.2, 8, lz + sz*(ROAD/2+2.5));
+          scene.add(bulb);
+          // Actual point light
+          const pl = new THREE.PointLight(0xfff8d0, 0.7, 28);
+          pl.position.set(lx + sx*(ROAD/2+2.5), 8, lz + sz*(ROAD/2+2.5));
+          scene.add(pl);
         });
 
-        const startWP = routeWaypoints[startIdx];
-        carGroup.position.copy(startWP);
-        scene.add(carGroup);
-        objects.push(carGroup);
+        // Traffic light pole
+        const tlPost = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.12,5,6),
+          new THREE.MeshStandardMaterial({color:0x444444, metalness:0.5}));
+        tlPost.position.set(lx + ROAD/2+2, 2.5, lz - ROAD/2-2);
+        scene.add(tlPost);
+        const tlBox = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.8,0.4),
+          new THREE.MeshStandardMaterial({color:0x222222}));
+        tlBox.position.set(lx + ROAD/2+2, 5.4, lz - ROAD/2-2);
+        scene.add(tlBox);
+        [[0xee2222,0],[0xeeee22,0.65],[0x22ee22,1.3]].forEach(([col,dy]) => {
+          const light = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,6),
+            new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity:dy===0?1.5:0.3}));
+          light.position.set(lx + ROAD/2+2, 6.2-dy, lz - ROAD/2-2);
+          scene.add(light);
+        });
 
-        // Also try to load the real GLB model
-        gltfLoader.load(carPath, (gltf) => {
-          // Replace box car body with GLB
-          const glbCar = gltf.scene;
-          const cb = new THREE.Box3().setFromObject(glbCar);
-          const cs = cb.getSize(new THREE.Vector3());
-          const targetLen = 4.5;
-          glbCar.scale.setScalar(targetLen / (cs.z || 1));
-          const cb2 = new THREE.Box3().setFromObject(glbCar);
-          glbCar.position.y = -cb2.min.y;
-          glbCar.traverse(c => { if (c.isMesh) { c.castShadow = true; } });
-          // Clear box parts, add GLB
-          while (carGroup.children.length) {
-            const child = carGroup.children[0];
-            carGroup.remove(child);
-          }
-          carGroup.add(glbCar);
+        // Stop sign (one per intersection)
+        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,3,6),
+          new THREE.MeshStandardMaterial({color:0x999999,metalness:0.4}));
+        sp.position.set(lx - ROAD/2-1.8, 1.5, lz - ROAD/2-1.8);
+        scene.add(sp);
+        const ss = new THREE.Mesh(new THREE.CylinderGeometry(0.65,0.65,0.08,8),
+          new THREE.MeshStandardMaterial({color:0xcc1111}));
+        ss.position.set(lx - ROAD/2-1.8, 3.1, lz - ROAD/2-1.8);
+        ss.rotation.y = Math.PI/8; scene.add(ss);
+      }));
+    }, delay + 300);
+
+    // ── AI CARS ON ROAD CENTERLINES ───────────────────────
+    setTimeout(() => {
+      showToast('🚗 Spawning traffic...');
+      window._cityCarUpdate = null;
+
+      // Routes defined EXACTLY on road centerlines (rp values)
+      const carRoutes = [
+        // Outer loop CW: top road → right road → bottom → left → back
+        [new THREE.Vector3(rp[0],0.3,rp[0]), new THREE.Vector3(rp[COLS],0.3,rp[0]),
+         new THREE.Vector3(rp[COLS],0.3,rp[COLS]), new THREE.Vector3(rp[0],0.3,rp[COLS])],
+        // Inner downtown loop CCW
+        [new THREE.Vector3(rp[1],0.3,rp[1]), new THREE.Vector3(rp[1],0.3,rp[COLS-1]),
+         new THREE.Vector3(rp[COLS-1],0.3,rp[COLS-1]), new THREE.Vector3(rp[COLS-1],0.3,rp[1])],
+        // E-W along rp[2] (center horizontal)
+        [new THREE.Vector3(rp[0],0.3,rp[2]), new THREE.Vector3(rp[COLS],0.3,rp[2]),
+         new THREE.Vector3(rp[COLS],0.3,rp[2]+ROAD*0.4), new THREE.Vector3(rp[0],0.3,rp[2]+ROAD*0.4)],
+        // N-S along rp[2] (center vertical)
+        [new THREE.Vector3(rp[2],0.3,rp[0]), new THREE.Vector3(rp[2],0.3,rp[COLS]),
+         new THREE.Vector3(rp[2]-ROAD*0.4,0.3,rp[COLS]), new THREE.Vector3(rp[2]-ROAD*0.4,0.3,rp[0])],
+        // Mix: corner route
+        [new THREE.Vector3(rp[1],0.3,rp[0]), new THREE.Vector3(rp[1],0.3,rp[2]),
+         new THREE.Vector3(rp[3],0.3,rp[2]), new THREE.Vector3(rp[3],0.3,rp[COLS])],
+        // Residential route
+        [new THREE.Vector3(rp[0],0.3,rp[1]), new THREE.Vector3(rp[1],0.3,rp[1]),
+         new THREE.Vector3(rp[1],0.3,rp[COLS-1]), new THREE.Vector3(rp[0],0.3,rp[COLS-1])],
+      ];
+
+      const carMeshes = [
+        'models/kenney_cars/sedan.glb','models/kenney_cars/taxi.glb',
+        'models/kenney_cars/police.glb','models/kenney_cars/suv.glb',
+        'models/kenney_cars/van.glb','models/kenney_cars/sedan-sports.glb',
+        'models/kenney_cars/hatchback-sports.glb','models/kenney_cars/delivery.glb',
+        'models/kenney_cars/ambulance.glb',
+      ];
+      const carCols = [0x2244cc,0xffcc00,0x112299,0x333333,0xffffff,0xcc3322,0x226644,0x884411,0xee3311];
+
+      const trafficCars = [];
+      for (let ci = 0; ci < 18; ci++) {
+        const route = carRoutes[ci % carRoutes.length];
+        const wp0 = route[Math.floor(Math.random() * route.length)].clone();
+        // Offset within lane (not center-line exactly)
+        const laneOffset = (Math.random() - 0.5) * 4;
+
+        const carGroup = new THREE.Group();
+        carGroup.userData.waypointRoute = route;
+        carGroup.userData.waypointIdx = Math.floor(Math.random() * route.length);
+        carGroup.userData.speed = 9 + Math.random() * 10;
+        carGroup.userData.laneOffset = laneOffset;
+        carGroup.userData.isTrafficCar = true;
+
+        // Placeholder box car
+        const cc = carCols[ci % carCols.length];
+        const bm = new THREE.MeshStandardMaterial({color:cc, roughness:0.3, metalness:0.6});
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2,1.0,4), bm);
+        body.position.y=0.7; body.castShadow=true; carGroup.add(body);
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7,0.7,2.2), bm);
+        cab.position.set(0,1.45,0.2); carGroup.add(cab);
+        const wm = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
+        [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz])=>{
+          const w=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.18,10),wm);
+          w.rotation.z=Math.PI/2; w.position.set(wx,wy,wz); carGroup.add(w);
+        });
+
+        carGroup.position.copy(wp0);
+        carGroup.position.x += laneOffset;
+        scene.add(carGroup); objects.push(carGroup);
+        trafficCars.push(carGroup);
+
+        // Load real GLB async
+        const path = carMeshes[ci % carMeshes.length];
+        gltfLoader.load(path, (gltf) => {
+          const glb = gltf.scene;
+          const cb = new THREE.Box3().setFromObject(glb);
+          glb.scale.setScalar(4.5 / Math.max(cb.getSize(new THREE.Vector3()).z, 0.1));
+          const cb2 = new THREE.Box3().setFromObject(glb);
+          glb.position.y = -cb2.min.y;
+          glb.traverse(c => { if (c.isMesh) c.castShadow=true; });
+          while (carGroup.children.length) carGroup.remove(carGroup.children[0]);
+          carGroup.add(glb);
         }, null, () => {});
       }
 
-      // Register waypoint car update in render loop
+      // Car update function — pure waypoint following on road centerlines
       window._cityCarUpdate = (dt) => {
-        scene.children.forEach(obj => {
-          if (!obj.userData || !obj.userData.waypointRoute) return;
-          const route = obj.userData.waypointRoute;
-          const idx = obj.userData.waypointIdx;
-          const target = route[idx];
-          if (!target) return;
-          const dx = target.x - obj.position.x;
-          const dz = target.z - obj.position.z;
+        trafficCars.forEach(car => {
+          const route = car.userData.waypointRoute;
+          const idx = car.userData.waypointIdx;
+          const target = route[idx].clone();
+          target.x += car.userData.laneOffset;
+
+          const dx = target.x - car.position.x;
+          const dz = target.z - car.position.z;
           const dist = Math.sqrt(dx*dx + dz*dz);
-          if (dist < 1.5) {
-            // Reached waypoint — advance to next
-            obj.userData.waypointIdx = (idx + 1) % route.length;
+
+          if (dist < 2) {
+            car.userData.waypointIdx = (idx + 1) % route.length;
           } else {
-            const spd = obj.userData.speed * dt;
-            obj.position.x += (dx / dist) * spd;
-            obj.position.z += (dz / dist) * spd;
-            obj.position.y = 0.3;
-            // Smooth turning toward target
-            const targetAngle = Math.atan2(dx, dz);
-            const current = obj.rotation.y;
-            let diff = targetAngle - current;
+            const spd = car.userData.speed * dt;
+            car.position.x += (dx/dist) * spd;
+            car.position.z += (dz/dist) * spd;
+            car.position.y = 0.3;
+            // Smooth turn
+            const ta = Math.atan2(dx, dz);
+            let diff = ta - car.rotation.y;
             while (diff > Math.PI) diff -= Math.PI*2;
             while (diff < -Math.PI) diff += Math.PI*2;
-            obj.rotation.y += diff * Math.min(1, dt * 5);
+            car.rotation.y += diff * Math.min(1, dt*6);
           }
         });
       };
 
-      // Hook into render loop
-      if (!window._cityCarHooked) {
-        window._cityCarHooked = true;
-        const origAnimate = renderer.onBeforeRender;
-        // Use clock delta via render loop — patch updateDrivingCars
-        const _prevUpdateDrivingCars = updateDrivingCars;
-        window._patchedUpdate = (dt) => {
-          if (window._cityCarUpdate) window._cityCarUpdate(dt);
-        };
-      }
+      showToast('✅ 18 traffic cars on 6 road routes');
+    }, delay + 400);
 
-      showToast('✅ Traffic spawned — 15 cars on ' + routes.length + ' routes');
-    }, buildDelay + 500);
-
-    // ── LIGHTING ─────────────────────────────────────────
+    // ── LIGHTING ────────────────────────────────────────
     const sun = new THREE.DirectionalLight(0xfff5e0, 2.8);
-    sun.position.set(200, 300, 100);
+    sun.position.set(200, 400, 100);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
-    sun.shadow.camera.left = -600; sun.shadow.camera.right = 600;
-    sun.shadow.camera.top = 600; sun.shadow.camera.bottom = -600;
-    sun.shadow.camera.far = 1500; sun.shadow.bias = -0.0003;
+    sun.shadow.mapSize.set(4096,4096);
+    sun.shadow.camera.left=-700; sun.shadow.camera.right=700;
+    sun.shadow.camera.top=700; sun.shadow.camera.bottom=-700;
+    sun.shadow.camera.far=2000; sun.shadow.bias=-0.0003;
     scene.add(sun);
-    scene.add(new THREE.AmbientLight(0xc8d8f0, 0.5));
+    scene.add(new THREE.AmbientLight(0xd0e8ff, 0.55));
     renderer.shadowMap.enabled = true;
 
-    scene.fog = new THREE.FogExp2(0xc8d8f0, 0.0008);
+    scene.fog = new THREE.FogExp2(0xc8d8f0, 0.0006);
     renderer.setClearColor(0x87ceeb, 1);
 
-    // ── CAMERA — downtown street level ───────────────────
-    if (window._cam) {
-      window._cam.position.set(0, 12, -80);
-      window._cam.lookAt(0, 8, 0);
-    }
-    if (window._ctrl) { window._ctrl.target.set(0,8,0); window._ctrl.update(); }
+    // ── CAMERA — downtown street view ────────────────────
+    if (window._cam) { window._cam.position.set(0,14,-90); window._cam.lookAt(0,10,0); }
+    if (window._ctrl) { window._ctrl.target.set(0,10,0); window._ctrl.update(); }
 
-    showToast('🏙 City World building... cars & buildings loading in!');
+    showToast('🏙 City loading — buildings & cars streaming in!');
   } catch(err) {
     console.error('[CITY]', err);
     showToast('❌ ' + err.message);
