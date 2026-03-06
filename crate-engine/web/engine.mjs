@@ -24663,317 +24663,313 @@ window.buildGerstnerLake = buildGerstnerLake;
 
 
 // ============================================================
-// AFRICAN SLATE QUARRY WORLD
+// AFRICAN SLATE QUARRY WORLD — v2 (flat ground, connected rocks)
 // ============================================================
 async function buildQuarryWorld() {
-  const _log = (m) => { console.log('[QUARRY]', m); try { showToast(m); } catch(e) {} };
   try {
-    _log('⛏ Building African Slate Quarry...');
+    showToast('⛏ Building African Slate Quarry...');
 
-    // Clear scene
+    // ── CLEAR SCENE ─────────────────────────────────────────
     const toRemove = [];
     scene.children.forEach(o => {
-      if ((o.type === 'Mesh' || o.type === 'Group' || o.isInstancedMesh) && !o.isLight) toRemove.push(o);
+      if ((o.isMesh || o.isGroup || o.isInstancedMesh) && !o.isLight) toRemove.push(o);
     });
     toRemove.forEach(o => scene.remove(o));
     objects.length = 0;
-    if (window.npcController) window.npcController.npcs.length = 0;
     window._lakeAnimators = [];
 
-    // ── PALETTE ─────────────────────────────────────────────
-    const C_FLOOR_ROCK  = 0x8b6240;  // reddish-brown African soil
-    const C_FLOOR_DIRT  = 0xa07040;  // lighter sandy dirt
-    const C_WALL_DARK   = 0x5c3d20;  // deep dark brown lower walls
-    const C_WALL_MID    = 0x7a5230;  // mid slate
-    const C_WALL_LIGHT  = 0xb08050;  // lighter slate layer
-    const C_SLATE_GRAY  = 0x6a5845;  // slate gray cap
-    const C_RIM_SOIL    = 0x8b7050;  // top rim soil
-    const C_STRATA_1    = 0x9e6e40;
-    const C_STRATA_2    = 0x724e28;
-    const C_STRATA_3    = 0xc09060;
+    // ── COLORS ──────────────────────────────────────────────
+    const C_FLOOR  = 0x7a5535;  // reddish-brown African dirt
+    const C_DIRT2  = 0x6b4a2a;  // darker dirt patches
+    const C_ROCK1  = 0x4a3520;  // dark base rock
+    const C_ROCK2  = 0x6b4e30;  // mid brown rock
+    const C_ROCK3  = 0x8a6040;  // lighter rock
+    const C_SLATE  = 0x4a4035;  // slate gray
+    const C_STRAT1 = 0x5c3d20;  // dark strata band
+    const C_STRAT2 = 0x9e7050;  // light strata band
 
-    // ── QUARRY FLOOR ────────────────────────────────────────
-    const floorR = 180;
-    const floorGeo = new THREE.CircleGeometry(floorR, 80);
-    const floorMat = new THREE.MeshStandardMaterial({ color: C_FLOOR_ROCK, roughness: 0.98 });
-    const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = 0;
-    floor.receiveShadow = true;
-    floor.userData.isGround = true;
-    scene.add(floor);
+    // ── FLAT GROUND PLANE ───────────────────────────────────
+    // ONE large flat plane — no hills, no curves
+    const GROUND_SIZE = 1200;
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE, 1, 1),
+      new THREE.MeshStandardMaterial({ color: C_FLOOR, roughness: 1.0, metalness: 0 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.receiveShadow = true;
+    ground.userData.isGround = true;
+    scene.add(ground);
 
-    // Floor patches — dirt variation
-    for (let i = 0; i < 120; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * floorR * 0.95;
+    // Dirt variation — rectangular patches directly on the flat ground
+    for (let i = 0; i < 180; i++) {
+      const px = (Math.random() - 0.5) * GROUND_SIZE * 0.9;
+      const pz = (Math.random() - 0.5) * GROUND_SIZE * 0.9;
       const patch = new THREE.Mesh(
-        new THREE.CircleGeometry(3 + Math.random() * 18, 8),
-        new THREE.MeshStandardMaterial({ color: [C_FLOOR_DIRT, C_WALL_MID, C_STRATA_3, C_FLOOR_ROCK][Math.floor(Math.random()*4)], roughness: 1.0 })
+        new THREE.PlaneGeometry(5 + Math.random() * 30, 5 + Math.random() * 25, 1, 1),
+        new THREE.MeshStandardMaterial({
+          color: [C_DIRT2, C_ROCK2, C_SLATE, C_FLOOR][Math.floor(Math.random() * 4)],
+          roughness: 1.0
+        })
       );
       patch.rotation.x = -Math.PI / 2;
-      patch.position.set(Math.cos(a)*r, 0.05, Math.sin(a)*r);
+      patch.rotation.z = Math.random() * Math.PI;
+      patch.position.set(px, 0.02, pz);
+      patch.receiveShadow = true;
       scene.add(patch);
     }
-    _log('  ✅ Quarry floor');
 
-    // ── STRATIFIED QUARRY WALLS ─────────────────────────────
-    // Build walls as stacked terraced rings going up
-    const wallLayers = [
-      { y: 0,   h: 8,  innerR: floorR,      outerR: floorR + 22,  color: C_WALL_DARK },
-      { y: 8,   h: 6,  innerR: floorR + 10, outerR: floorR + 38,  color: C_STRATA_2 },
-      { y: 14,  h: 10, innerR: floorR + 22, outerR: floorR + 58,  color: C_WALL_MID },
-      { y: 24,  h: 5,  innerR: floorR + 38, outerR: floorR + 72,  color: C_STRATA_1 },
-      { y: 29,  h: 12, innerR: floorR + 52, outerR: floorR + 95,  color: C_WALL_LIGHT },
-      { y: 41,  h: 4,  innerR: floorR + 72, outerR: floorR + 108, color: C_STRATA_3 },
-      { y: 45,  h: 8,  innerR: floorR + 88, outerR: floorR + 130, color: C_SLATE_GRAY },
-      { y: 53,  h: 6,  innerR: floorR + 108,outerR: floorR + 155, color: C_RIM_SOIL },
+    // ── QUARRY CLIFF WALLS ──────────────────────────────────
+    // Rectangular pit walls — tall, near-vertical, stratified
+    // Built from stacked BoxGeometry slabs, NOT rings
+    const PIT_W = 420;  // quarry width
+    const PIT_D = 380;  // quarry depth
+    const WALL_H = 80;  // cliff height
+    const WALL_T = 25;  // wall thickness
+
+    function buildCliffWall(x, z, width, height, rotY) {
+      const group = new THREE.Group();
+      // Stack stratified layers
+      const layers = [
+        { y: 0,  h: 12, c: C_ROCK1 },
+        { y: 12, h: 8,  c: C_STRAT1 },
+        { y: 20, h: 15, c: C_ROCK2 },
+        { y: 35, h: 5,  c: C_STRAT2 },
+        { y: 40, h: 18, c: C_ROCK3 },
+        { y: 58, h: 6,  c: C_SLATE },
+        { y: 64, h: 16, c: C_ROCK2 },
+      ];
+      layers.forEach(layer => {
+        // Break wall into irregular segments for natural look
+        const segCount = Math.ceil(width / 28);
+        for (let s = 0; s < segCount; s++) {
+          const sw = (width / segCount) + (Math.random() - 0.5) * 6;
+          const sh = layer.h + (Math.random() - 0.5) * 3;
+          const sx = -width / 2 + (s + 0.5) * (width / segCount) + (Math.random() - 0.5) * 4;
+          const seg = new THREE.Mesh(
+            new THREE.BoxGeometry(sw, sh, WALL_T + Math.random() * 8),
+            new THREE.MeshStandardMaterial({ color: layer.c, roughness: 1.0, flatShading: true })
+          );
+          seg.position.set(sx, layer.y + sh / 2, 0);
+          seg.rotation.y = (Math.random() - 0.5) * 0.08;
+          seg.castShadow = true;
+          seg.receiveShadow = true;
+          group.add(seg);
+        }
+      });
+
+      // Rocky overhang at top
+      const capGeo = new THREE.BoxGeometry(width + 20, 6, WALL_T + 30);
+      const cap = new THREE.Mesh(capGeo,
+        new THREE.MeshStandardMaterial({ color: C_ROCK3, roughness: 1.0 }));
+      cap.position.set(0, WALL_H + 3, 5);
+      cap.castShadow = true;
+      group.add(cap);
+
+      // Ground fill behind wall (extends the terrain up at the top)
+      const backFill = new THREE.Mesh(
+        new THREE.BoxGeometry(width + 20, WALL_H, 80),
+        new THREE.MeshStandardMaterial({ color: C_FLOOR, roughness: 1.0 })
+      );
+      backFill.position.set(0, WALL_H / 2, WALL_T / 2 + 40);
+      group.add(backFill);
+
+      group.position.set(x, 0, z);
+      group.rotation.y = rotY;
+      scene.add(group);
+      return group;
+    }
+
+    // Build 4 walls of the rectangular quarry pit
+    buildCliffWall(0,         -PIT_D/2, PIT_W + 60, WALL_H, 0);           // North wall
+    buildCliffWall(0,          PIT_D/2, PIT_W + 60, WALL_H, Math.PI);     // South wall
+    buildCliffWall(-PIT_W/2,  0,        PIT_D,       WALL_H, Math.PI/2);   // West wall
+    buildCliffWall( PIT_W/2,  0,        PIT_D,       WALL_H, -Math.PI/2);  // East wall
+
+    // Corner fill blocks
+    const cornerPositions = [
+      [-PIT_W/2, -PIT_D/2], [PIT_W/2, -PIT_D/2],
+      [-PIT_W/2,  PIT_D/2], [PIT_W/2,  PIT_D/2]
     ];
-
-    wallLayers.forEach(layer => {
-      // Ring top face (terrace ledge)
-      const ringGeo = new THREE.RingGeometry(layer.innerR, layer.outerR, 80);
-      const ringMat = new THREE.MeshStandardMaterial({ color: layer.color, roughness: 0.98, flatShading: false });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = layer.y;
-      ring.receiveShadow = true;
-      scene.add(ring);
-
-      // Vertical wall face using cylinder (open ring cylinder shape)
-      const wallH = layer.h;
-      const segs = 80;
-      for (let i = 0; i < segs; i++) {
-        const a1 = (i / segs) * Math.PI * 2;
-        const a2 = ((i + 1) / segs) * Math.PI * 2;
-        const r = layer.innerR;
-        const x1 = Math.cos(a1) * r, z1 = Math.sin(a1) * r;
-        const x2 = Math.cos(a2) * r, z2 = Math.sin(a2) * r;
-        const segW = Math.sqrt((x2-x1)**2 + (z2-z1)**2);
-        const wallSeg = new THREE.Mesh(
-          new THREE.BoxGeometry(segW + 0.1, wallH, 4),
-          new THREE.MeshStandardMaterial({ color: layer.color, roughness: 0.98, flatShading: true })
-        );
-        const mx = (x1+x2)/2, mz = (z1+z2)/2;
-        wallSeg.position.set(mx, layer.y - wallH/2, mz);
-        wallSeg.lookAt(mx + Math.cos((a1+a2)/2)*5, layer.y - wallH/2, mz + Math.sin((a1+a2)/2)*5);
-        wallSeg.castShadow = true;
-        wallSeg.receiveShadow = true;
-        scene.add(wallSeg);
-      }
+    cornerPositions.forEach(([cx, cz]) => {
+      const corner = new THREE.Mesh(
+        new THREE.BoxGeometry(80, WALL_H * 1.1, 80),
+        new THREE.MeshStandardMaterial({ color: C_ROCK2, roughness: 1.0 })
+      );
+      corner.position.set(cx, WALL_H / 2, cz);
+      corner.castShadow = true;
+      scene.add(corner);
     });
-    _log('  ✅ Stratified walls (8 layers)');
 
-    // ── GROUND BEYOND QUARRY RIM ────────────────────────────
-    const rimGround = new THREE.Mesh(
-      new THREE.RingGeometry(floorR + 155, 900, 64),
-      new THREE.MeshStandardMaterial({ color: C_RIM_SOIL, roughness: 0.98 })
-    );
-    rimGround.rotation.x = -Math.PI / 2;
-    rimGround.position.y = 59;
-    rimGround.receiveShadow = true;
-    scene.add(rimGround);
+    showToast('✅ Quarry walls built — loading rock formations...');
 
-    // ── QUARRY ASSETS — placed at LARGE SCALE ──────────────
-    _log('  📦 Loading quarry assets...');
-
+    // ── QUARRY ASSETS IN CLUSTERS ────────────────────────────
+    // Place rocks in tight CONNECTED clusters — 8 clusters of 5-8 rocks each
     const waitForAliases = (cb) => {
       if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
       setTimeout(() => waitForAliases(cb), 200);
     };
 
     waitForAliases((aliases) => {
-      // Get all quarry aliases
       const quarryItems = Object.entries(aliases)
-        .filter(([k]) => k.startsWith('quarry_') && /\d$/.test(k))
+        .filter(([k]) => k.startsWith('quarry_') && /\d+$/.test(k))
         .sort(([a],[b]) => a.localeCompare(b));
 
-      _log(`  Found ${quarryItems.length} quarry assets`);
+      if (!quarryItems.length) { showToast('⚠ No quarry aliases found'); return; }
 
-      quarryItems.forEach(([alias, relPath], i) => {
-        const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+      // Cluster positions — against walls and on the floor in formations
+      const clusterDefs = [
+        // Against north wall
+        { cx:  -80, cz: -PIT_D/2 + 35, count: 6, scaleMin: 12, scaleMax: 22 },
+        { cx:   60, cz: -PIT_D/2 + 40, count: 5, scaleMin: 10, scaleMax: 18 },
+        { cx:  150, cz: -PIT_D/2 + 35, count: 4, scaleMin: 8,  scaleMax: 16 },
+        // Against south wall
+        { cx: -100, cz:  PIT_D/2 - 40, count: 6, scaleMin: 10, scaleMax: 20 },
+        { cx:   80, cz:  PIT_D/2 - 35, count: 5, scaleMin: 12, scaleMax: 22 },
+        // Against east wall
+        { cx:  PIT_W/2 - 40, cz:  -50, count: 5, scaleMin: 10, scaleMax: 18 },
+        { cx:  PIT_W/2 - 35, cz:   80, count: 4, scaleMin: 8,  scaleMax: 15 },
+        // Against west wall
+        { cx: -PIT_W/2 + 40, cz:  -30, count: 5, scaleMin: 10, scaleMax: 20 },
+        { cx: -PIT_W/2 + 35, cz:   70, count: 4, scaleMin: 8,  scaleMax: 16 },
+        // Center floor formations (flat on the ground)
+        { cx:  -20, cz:   30, count: 8, scaleMin: 6, scaleMax: 14 },
+        { cx:  120, cz:  -60, count: 6, scaleMin: 7, scaleMax: 13 },
+        { cx: -150, cz:   80, count: 5, scaleMin: 8, scaleMax: 15 },
+        { cx:   40, cz:  130, count: 6, scaleMin: 6, scaleMax: 12 },
+        { cx: -100, cz: -100, count: 5, scaleMin: 7, scaleMax: 14 },
+      ];
 
-        // Place assets in 3 zones:
-        // Zone A: scattered on the quarry floor (large rocks)
-        // Zone B: embedded in the wall terraces
-        // Zone C: on the rim looking dramatic
-        const zone = i % 3;
-        let x, z, scaleOverride;
+      let assetIdx = 0;
+      let globalDelay = 0;
 
-        if (zone === 0) {
-          // Floor rocks — large, random positions across the quarry floor
-          const angle = (i / quarryItems.length) * Math.PI * 2 + Math.random() * 0.8;
-          const dist = 20 + Math.random() * (floorR - 30);
-          x = Math.cos(angle) * dist;
-          z = Math.sin(angle) * dist;
-          scaleOverride = 4 + Math.random() * 6; // LARGE: 4-10x scale
-        } else if (zone === 1) {
-          // Wall rocks — cluster on the terrace ledges
-          const wallLayer = wallLayers[Math.floor(Math.random() * (wallLayers.length - 1))];
-          const angle = Math.random() * Math.PI * 2;
-          const dist = wallLayer.innerR + 5 + Math.random() * (wallLayer.outerR - wallLayer.innerR - 10);
-          x = Math.cos(angle) * dist;
-          z = Math.sin(angle) * dist;
-          scaleOverride = 2 + Math.random() * 4;
-        } else {
-          // Rim rocks — outside the quarry on the top
-          const angle = (i / quarryItems.length) * Math.PI * 2;
-          const dist = floorR + 120 + Math.random() * 60;
-          x = Math.cos(angle) * dist;
-          z = Math.sin(angle) * dist;
-          scaleOverride = 5 + Math.random() * 8; // BIGGEST on rim
+      clusterDefs.forEach(cluster => {
+        for (let i = 0; i < cluster.count; i++) {
+          const [alias, relPath] = quarryItems[assetIdx % quarryItems.length];
+          assetIdx++;
+
+          const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+          const targetScale = cluster.scaleMin + Math.random() * (cluster.scaleMax - cluster.scaleMin);
+
+          // Pack rocks CLOSE together — offset from cluster center by 2-6 units
+          const offsetAngle = (i / cluster.count) * Math.PI * 2 + Math.random() * 0.8;
+          const offsetDist = 2 + Math.random() * 5; // tight clustering
+          const rx = cluster.cx + Math.cos(offsetAngle) * offsetDist;
+          const rz = cluster.cz + Math.sin(offsetAngle) * offsetDist;
+
+          setTimeout(() => {
+            gltfLoader.load(fullPath, (gltf) => {
+              const model = gltf.scene;
+              model.traverse(c => {
+                if (c.isMesh) {
+                  c.castShadow = true;
+                  c.receiveShadow = true;
+                }
+              });
+              const box = new THREE.Box3().setFromObject(model);
+              const size = box.getSize(new THREE.Vector3());
+              const maxDim = Math.max(size.x, size.y, size.z, 0.01);
+              const s = targetScale / maxDim;
+              model.scale.setScalar(s);
+              const finalBox = new THREE.Box3().setFromObject(model);
+              // Sit FLAT on the ground — y=0
+              model.position.set(rx, -finalBox.min.y * model.scale.x, rz);
+              model.rotation.y = Math.random() * Math.PI * 2;
+              model.userData.isPlaced = true;
+              scene.add(model);
+              objects.push(model);
+            }, null, () => {});
+          }, globalDelay);
+
+          globalDelay += 100;
         }
-
-        // Stagger load times slightly to not hammer the network
-        setTimeout(() => {
-          gltfLoader.load(fullPath, (gltf) => {
-            const model = gltf.scene;
-            model.traverse(c => {
-              if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
-            });
-            
-            const box = new THREE.Box3().setFromObject(model);
-            const size = box.getSize(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z, 0.01);
-            const s = scaleOverride / maxDim;
-            model.scale.setScalar(s);
-
-            // Determine Y position based on zone
-            const yOffset = zone === 0 ? 0 : zone === 1 
-              ? wallLayers[Math.floor(Math.random() * (wallLayers.length-1))].y + 0.5
-              : 59.5;
-
-            const finalBox = new THREE.Box3().setFromObject(model);
-            model.position.set(x, yOffset - finalBox.min.y * model.scale.x, z);
-            model.rotation.y = Math.random() * Math.PI * 2;
-            model.userData.isPlaced = true;
-            scene.add(model);
-            objects.push(model);
-          }, null, () => {});
-        }, i * 120);
       });
 
       setTimeout(() => {
-        showToast(`✅ African Slate Quarry built! ${quarryItems.length} rocks placed`);
-        // Build the mine cave inside the quarry wall
+        showToast('✅ African Slate Quarry ready! Building mine cave...');
         const caveInfo = buildMineInterior();
         window._quarryCaveInfo = caveInfo;
-        // Populate mine with Old Mine assets
         const waitMine = (cb) => {
           if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
           setTimeout(() => waitMine(cb), 200);
         };
         waitMine((al) => {
           populateMineAssets(caveInfo, al);
-          showToast(`⛏ Old Mine cave built inside the quarry — type "enter mine" to go there!`);
+          showToast('⛏ Mine cave built — type "enter mine" to explore!');
         });
-      }, quarryItems.length * 120 + 1000);
+      }, globalDelay + 500);
     });
 
-    // ── SPARSE DRY TREES ON RIM ─────────────────────────────
-    for (let i = 0; i < 35; i++) {
-      const a = (i / 35) * Math.PI * 2 + Math.random() * 0.5;
-      const r = floorR + 140 + Math.random() * 60;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      // Sparse dry African tree — thin trunk, small sparse canopy
-      const trunkH = 3 + Math.random() * 5;
-      const group = new THREE.Group();
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.12, 0.22, trunkH, 6),
-        new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 1.0 })
-      );
-      trunk.position.y = trunkH / 2;
-      group.add(trunk);
-      // Sparse branches (2-4 thin ones)
+    // ── SPARSE DRY TREES ON TOP OF WALLS ────────────────────
+    for (let i = 0; i < 40; i++) {
+      // Place trees ONLY on the flat ground ABOVE the quarry rim
+      const side = Math.floor(Math.random() * 4);
+      let tx, tz;
+      if (side === 0) { tx = (Math.random() - 0.5) * PIT_W; tz = -PIT_D/2 - 30 - Math.random() * 80; }
+      else if (side === 1) { tx = (Math.random() - 0.5) * PIT_W; tz =  PIT_D/2 + 30 + Math.random() * 80; }
+      else if (side === 2) { tx = -PIT_W/2 - 30 - Math.random() * 80; tz = (Math.random() - 0.5) * PIT_D; }
+      else { tx =  PIT_W/2 + 30 + Math.random() * 80; tz = (Math.random() - 0.5) * PIT_D; }
+
+      const trunkH = 4 + Math.random() * 5;
+      const tg = new THREE.Group();
+      tg.add(Object.assign(new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.25, trunkH, 5),
+        new THREE.MeshStandardMaterial({ color: 0x3d2510, roughness: 1.0 })
+      ), { position: new THREE.Vector3(0, trunkH/2, 0), castShadow: true }));
+
       const branches = 2 + Math.floor(Math.random() * 3);
       for (let b = 0; b < branches; b++) {
-        const ba = (b / branches) * Math.PI * 2 + Math.random();
-        const blen = 1.5 + Math.random() * 2.5;
-        const branch = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.04, 0.1, blen, 5),
-          new THREE.MeshStandardMaterial({ color: 0x3a2818, roughness: 1.0 })
+        const ba = (b / branches) * Math.PI * 2;
+        const blen = 1.5 + Math.random() * 2;
+        const leaf = new THREE.Mesh(
+          new THREE.SphereGeometry(0.6 + Math.random() * 0.5, 5, 3),
+          new THREE.MeshStandardMaterial({ color: 0x3a5515, roughness: 1.0, flatShading: true })
         );
-        branch.position.set(Math.cos(ba) * blen * 0.4, trunkH - 0.5, Math.sin(ba) * blen * 0.4);
-        branch.rotation.z = Math.PI / 4 * (Math.random() * 0.8 + 0.2);
-        branch.rotation.y = ba;
-        group.add(branch);
-        // Small leaf cluster
-        const leaves = new THREE.Mesh(
-          new THREE.SphereGeometry(0.5 + Math.random() * 0.8, 5, 4),
-          new THREE.MeshStandardMaterial({ color: 0x3d5a1a, roughness: 1.0, flatShading: true })
-        );
-        leaves.position.set(
-          Math.cos(ba) * blen * 0.85,
-          trunkH - 0.2 + Math.random(),
-          Math.sin(ba) * blen * 0.85
-        );
-        group.add(leaves);
+        leaf.position.set(Math.cos(ba) * blen, trunkH + Math.random(), Math.sin(ba) * blen);
+        leaf.castShadow = true;
+        tg.add(leaf);
       }
-      group.position.set(x, 59, z);
-      group.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-      scene.add(group);
-    }
-    _log('  ✅ Dry African trees on rim');
-
-    // ── SCATTERED FLOOR DEBRIS ──────────────────────────────
-    for (let i = 0; i < 200; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 5 + Math.random() * (floorR - 10);
-      const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(0.3 + Math.random() * 1.8, 0),
-        new THREE.MeshStandardMaterial({
-          color: [C_WALL_DARK, C_STRATA_2, C_WALL_MID, C_SLATE_GRAY, C_STRATA_1][Math.floor(Math.random()*5)],
-          roughness: 1.0, flatShading: true
-        })
-      );
-      rock.position.set(Math.cos(a)*r, 0.1, Math.sin(a)*r);
-      rock.rotation.set(Math.random()*3, Math.random()*6, Math.random()*3);
-      rock.castShadow = true;
-      rock.receiveShadow = true;
-      scene.add(rock);
+      tg.position.set(tx, WALL_H, tz);
+      scene.add(tg);
     }
 
-    // ── LIGHTING — harsh African sun ────────────────────────
+    // ── LIGHTING ─────────────────────────────────────────────
     const sun = scene.children.find(o => o.isDirectionalLight);
     if (sun) {
-      sun.color.setHex(0xffe8c0);
+      sun.color.setHex(0xffe0a0);
       sun.intensity = 3.5;
-      sun.position.set(200, 300, 100);
+      sun.position.set(150, 300, -80);
       sun.castShadow = true;
       if (sun.shadow) {
         sun.shadow.mapSize.set(4096, 4096);
-        sun.shadow.camera.left = -600;
-        sun.shadow.camera.right = 600;
-        sun.shadow.camera.top = 600;
-        sun.shadow.camera.bottom = -600;
-        sun.shadow.camera.far = 1200;
+        sun.shadow.camera.left = -700;
+        sun.shadow.camera.right = 700;
+        sun.shadow.camera.top = 700;
+        sun.shadow.camera.bottom = -700;
+        sun.shadow.camera.far = 1500;
         sun.shadow.bias = -0.0003;
       }
     }
     let amb = scene.children.find(o => o.isAmbientLight);
-    if (!amb) { amb = new THREE.AmbientLight(0xd4a87a, 0.35); scene.add(amb); }
-    else { amb.color.setHex(0xd4a87a); amb.intensity = 0.35; }
-    renderer.shadowMap.enabled = true;
+    if (!amb) { amb = new THREE.AmbientLight(0xc8a060, 0.3); scene.add(amb); }
+    else { amb.color.setHex(0xc8a060); amb.intensity = 0.3; }
 
-    // ── ATMOSPHERE — African dust haze ───────────────────────
-    scene.fog = new THREE.FogExp2(0xc8a878, 0.0018);
-    renderer.setClearColor(0x87a8cc, 1); // African sky blue
+    // African dust/haze atmosphere — warm tan fog
+    scene.fog = new THREE.FogExp2(0xb89860, 0.0012);
+    renderer.setClearColor(0x9ab0cc, 1);
 
-    // ── CAMERA — rim view looking down into quarry ───────────
-    const camAngle = Math.PI * 0.15;
-    window._cam.position.set(
-      Math.cos(camAngle) * (floorR + 80),
-      90,
-      Math.sin(camAngle) * (floorR + 80)
-    );
-    window._cam.lookAt(0, 15, 0);
-    if (window._ctrl) { window._ctrl.target.set(0, 15, 0); window._ctrl.update(); }
+    // ── CAMERA — ground level inside the quarry ───────────────
+    window._cam.position.set(-60, 12, -30);
+    window._cam.lookAt(100, 8, 60);
+    if (window._ctrl) {
+      window._ctrl.target.set(100, 8, 60);
+      window._ctrl.update();
+    }
 
-    _log('⛏ African Slate Quarry world ready!');
-
+    showToast('⛏ Quarry terrain done — rocks loading...');
   } catch(err) {
     console.error('[QUARRY ERROR]', err);
-    try { showToast('❌ ' + err.message); } catch(e) {}
+    showToast('❌ ' + err.message);
   }
 }
 window.buildQuarryWorld = buildQuarryWorld;
