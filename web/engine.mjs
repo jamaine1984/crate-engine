@@ -299,7 +299,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=135'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=136'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -25344,8 +25344,11 @@ async function buildCityWorld() {
         const carGroup = new THREE.Group();
         carGroup.userData.waypointRoute = route;
         carGroup.userData.waypointIdx = Math.floor(Math.random() * route.length);
-        carGroup.userData.speed = 9 + Math.random() * 10;
+        const baseSpd = 9 + Math.random() * 10;
+        carGroup.userData.speed = baseSpd;
+        carGroup.userData._baseSpeed = baseSpd;
         carGroup.userData.laneOffset = laneOffset;
+        carGroup.userData.laneOffsetZ = (Math.random() - 0.5) * 3;
         carGroup.userData.isTrafficCar = true;
 
         // Placeholder box car
@@ -25380,33 +25383,92 @@ async function buildCityWorld() {
         }, null, () => {});
       }
 
-      // Car update function — pure waypoint following on road centerlines
+      // Car update — waypoint following + collision/crash system
       window._cityCarUpdate = (dt) => {
-        trafficCars.forEach(car => {
+        for (let ci = 0; ci < trafficCars.length; ci++) {
+          const car = trafficCars[ci];
+          if (!car.userData.waypointRoute) continue;
+
           const route = car.userData.waypointRoute;
           const idx = car.userData.waypointIdx;
           const target = route[idx].clone();
           target.x += car.userData.laneOffset;
+          target.z += car.userData.laneOffsetZ || 0;
 
           const dx = target.x - car.position.x;
           const dz = target.z - car.position.z;
           const dist = Math.sqrt(dx*dx + dz*dz);
 
-          if (dist < 2) {
+          // Advance waypoint
+          if (dist < 2.5) {
             car.userData.waypointIdx = (idx + 1) % route.length;
-          } else {
+          }
+
+          // ── CAR-TO-CAR COLLISION ─────────────────────────────────────────
+          let blockedByOther = false;
+          for (let cj = 0; cj < trafficCars.length; cj++) {
+            if (ci === cj) continue;
+            const other = trafficCars[cj];
+            const ox = other.position.x - car.position.x;
+            const oz = other.position.z - car.position.z;
+            const sep = Math.sqrt(ox*ox + oz*oz);
+            if (sep < 4.5) {
+              // Close enough — check if other car is AHEAD (dot product with velocity direction)
+              const ta = Math.atan2(dx, dz);
+              const toOther = Math.atan2(ox, oz);
+              let angleDiff = toOther - ta;
+              while (angleDiff > Math.PI) angleDiff -= Math.PI*2;
+              while (angleDiff < -Math.PI) angleDiff += Math.PI*2;
+
+              if (Math.abs(angleDiff) < 1.2) {
+                // Car ahead — slow down / stop
+                blockedByOther = true;
+                car.userData.speed = Math.max(1, car.userData.speed * 0.8);
+              } else if (sep < 3.0 && Math.abs(angleDiff) > 1.8) {
+                // Side/rear hit — BOUNCE
+                const bounceX = -ox / sep * 3;
+                const bounceZ = -oz / sep * 3;
+                car.position.x += bounceX * dt;
+                car.position.z += bounceZ * dt;
+                // Recover speed after bounce
+                car.userData.speed = Math.min(car.userData._baseSpeed || 12, (car.userData.speed || 0) + dt * 5);
+                // Camera shake if near player
+                if (window.characterController) {
+                  const pd = car.position.distanceTo(window.characterController.position);
+                  if (pd < 25) { window._crashShake = 0.4; window._crashShakeTime = 0.6; }
+                }
+              }
+            }
+          }
+
+          // Speed recovery when not blocked
+          if (!blockedByOther) {
+            const base = car.userData._baseSpeed || 12;
+            car.userData.speed = Math.min(base, car.userData.speed + dt * 3);
+          }
+
+          // ── MOVE ──────────────────────────────────────────────────────────
+          if (dist > 0.5) {
             const spd = car.userData.speed * dt;
             car.position.x += (dx/dist) * spd;
             car.position.z += (dz/dist) * spd;
             car.position.y = 0.3;
-            // Smooth turn
+            // Smooth turn toward waypoint
             const ta = Math.atan2(dx, dz);
             let diff = ta - car.rotation.y;
             while (diff > Math.PI) diff -= Math.PI*2;
             while (diff < -Math.PI) diff += Math.PI*2;
-            car.rotation.y += diff * Math.min(1, dt*6);
+            car.rotation.y += diff * Math.min(1, dt * 7);
           }
-        });
+        }
+
+        // ── CRASH CAMERA SHAKE ────────────────────────────────────────────
+        if (window._crashShake > 0 && window._cam) {
+          window._crashShake -= dt;
+          const shake = window._crashShake * 0.3;
+          window._cam.position.x += (Math.random()-0.5) * shake;
+          window._cam.position.y += (Math.random()-0.5) * shake * 0.5;
+        }
       };
 
       showToast('✅ 18 traffic cars on 6 road routes');
