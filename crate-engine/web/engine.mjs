@@ -15529,6 +15529,64 @@ window.showFabGallery = showFabGallery;
 
 
 
+// === GLB DECOMPOSER — extract individual named pieces from a grouped GLB ===
+// Usage: decompose('street_props_full', 'Street Props') → registers all named children
+const _decomposedCatalogs = {};
+
+function decomposeGLB(glbPath, catalogName) {
+  if (_decomposedCatalogs[glbPath]) return; // already done
+  _decomposedCatalogs[glbPath] = true;
+  gltfLoader.load(glbPath, (gltf) => {
+    const scene = gltf.scene;
+    const pieces = [];
+    // Collect top-level named children
+    scene.children.forEach(child => {
+      if (!child.name || child.name === 'Scene') return;
+      const alias = (catalogName + '/' + child.name).toLowerCase().replace(/\s+/g, '_');
+      // Store as a factory function
+      _decomposedPieces[alias] = { source: glbPath, nodeName: child.name, scene: gltf.scene };
+      pieces.push({ alias, name: child.name });
+    });
+    console.log(`[Decompose] ${glbPath}: registered ${pieces.length} pieces`);
+    pieces.forEach(p => console.log(`  → add ${p.alias}`));
+    showToast(`✅ ${catalogName}: ${pieces.length} individual pieces ready`);
+  }, undefined, (err) => {
+    console.warn('[Decompose] Failed:', glbPath, err);
+  });
+}
+const _decomposedPieces = {};
+
+function placeDecomposedPiece(alias, x, z) {
+  const piece = _decomposedPieces[alias];
+  if (!piece) { showToast('❌ Piece not found: ' + alias); return; }
+  // Clone the specific named child from the source scene
+  const sourceChild = piece.scene.children.find(c => c.name === piece.nodeName);
+  if (!sourceChild) { showToast('❌ Node not found: ' + piece.nodeName); return; }
+  const clone = sourceChild.clone(true);
+  clone.name = alias;
+  clone.userData.alias = alias;
+  clone.userData.isPlaceable = true;
+  clone.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+  // Auto-ground
+  const box = new THREE.Box3().setFromObject(clone);
+  const height = box.max.y - box.min.y;
+  clone.position.set(x || 0, -box.min.y, z || 0);
+  scene.add(clone);
+  objects.push(clone);
+  return clone;
+}
+window.placeDecomposedPiece = placeDecomposedPiece;
+window.decomposeGLB = decomposeGLB;
+window._decomposedPieces = _decomposedPieces;
+
+// Auto-decompose the street props pack on load
+(function autoDecomposeStreetProps() {
+  setTimeout(() => {
+    decomposeGLB('models/fab/street_props_streeprops.glb', 'street_props');
+    decomposeGLB('models/fab/Street_Props_GLB_StreeProps.glb', 'street_props');
+  }, 2000); // wait for engine init
+})();
+
 // === FOREST LAKE WORLD ===
 window.buildForestLakeWorld = buildForestLakeWorld;
 
@@ -22460,8 +22518,30 @@ parseAndExecute = async function(rawCmd) {
     const fabName = lower.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_');
     const fabAliases = window._fabAliases || {};
     const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
-    if (modelPath) { loadGLBModel(fabName, modelPath, 0, 0, null, modelPath); addMsg('✅ Spawned: ' + fabName); }
-    else if (typeof addMsg === 'function') addMsg('❌ Not found: ' + fabName);
+    if (modelPath) {
+      const fullPath = modelPath.startsWith('http') || modelPath.startsWith('models/') ? modelPath : 'models/' + modelPath;
+      loadGLBModel(fabName, fabName, 0, 0, null, fullPath); showToast('✅ Spawned: ' + fabName);
+    } else if (window._decomposedPieces && window._decomposedPieces[fabName]) {
+      placeDecomposedPiece(fabName, 0, 0); showToast('✅ Placed piece: ' + fabName);
+    } else { showToast('❌ Not found: ' + fabName); }
+    return;
+  }
+  // Place individual street prop piece: "add street_props/bench" or "place cone" etc.
+  if (lower.startsWith('add street') || lower.startsWith('place street') || lower.includes('street_props/')) {
+    const pieceName = lower.replace(/^(add|place|spawn)\s+/, '').trim().replace(/\s+/g,'_');
+    const fullAlias = pieceName.startsWith('street_props/') ? pieceName : 'street_props/' + pieceName;
+    if (window._decomposedPieces && window._decomposedPieces[fullAlias]) {
+      placeDecomposedPiece(fullAlias, 0, 0);
+      showToast('✅ Placed: ' + fullAlias);
+    } else {
+      // Show available pieces
+      const available = Object.keys(window._decomposedPieces || {}).filter(k => k.startsWith('street_props/'));
+      if (available.length) {
+        showToast('Street props pieces: ' + available.map(k=>k.split('/')[1]).join(', '));
+      } else {
+        showToast('Street props still loading — try again in a few seconds');
+      }
+    }
     return;
   }
   
