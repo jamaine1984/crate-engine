@@ -1,0 +1,1316 @@
+[
+  {
+    "topic": "physics",
+    "fact": "Cannon-es uses gravity of 9.82 meters per second squared as the standard Earth gravity value",
+    "context": "Setting up a Cannon physics world with realistic gravity",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Cannon Box shape uses half-extents: a 1x1x1 Three.js BoxGeometry corresponds to a Cannon Box(0.5, 0.5, 0.5)",
+    "context": "Creating physics collision shapes that match visual geometry sizes",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Cannon physics body for a dynamic object uses mass of 1 for standard interactive rigid bodies",
+    "context": "Creating a cube body with mass=1 so it responds to gravity and collisions",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Physics world step uses clock.getDelta() to advance simulation by the elapsed time each frame",
+    "context": "Synchronizing Cannon physics world updates with Three.js render loop using world.step(delta)",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Two engines run simultaneously: Cannon for physics simulation and Three.js for 3D rendering; each frame you copy Cannon body positions/quaternions to Three.js mesh positions/quaternions",
+    "context": "Pattern for syncing physics engine state to visual representation: cubeMesh.position.copy(cubeBody.position), cubeMesh.quaternion.copy(cubeBody.quaternion)",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "cannon-es version 0.18 is the maintained fork of the original cannon.js physics library, installed via npm install cannon-es --save-dev",
+    "context": "cannon-es is a modern ES module fork of the unmaintained cannon.js, designed for use with Three.js",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI controller requires calling super::OnPossess(Pawn) as the first action in the OnPossess override to ensure downstream logic in the AI controller base class executes properly \u2014 skipping super calls causes weird behavior",
+    "context": "UE5 AI controller setup pattern: always call parent class OnPossess before custom logic to avoid broken behavior chains",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI controller uses OnPossess(APawn* Pawn) virtual void override to take control of a pawn, with a Cast to the specific NPC character class to validate the pawn type before executing AI logic",
+    "context": "Pattern: cast the possessed pawn to your NPC character base class and store as 'ControlledPawn' pointer (initialized to nullptr), only run AI logic if cast succeeds",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "NPC character class is derived from a base character class (TFCharacter), and the AI controller is a separate class that possesses and controls the NPC pawn \u2014 separation of character definition from AI behavior",
+    "context": "UE5 architecture pattern: NPCCharacter inherits from CharacterBase, AIControllerBase is a separate class that references the NPC via a private ControlledPawn pointer",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "NPC roaming requires a navigation mesh (nav mesh) that defines walkable areas \u2014 the nav mesh bounds volume covers the entire map including vertical space for multi-level navigation",
+    "context": "Unreal Engine 5 nav mesh bounds volume scaled to 15x15x15 to cover full map; same concept applies to any pathfinding system",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Roaming AI pattern: separate AI Controller (brain) from AI Character (body) \u2014 controller issues movement commands, character executes them",
+    "context": "AI Controller class assigned to character via AI Controller Class property; controller contains event graph with movement logic",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Simple roaming NPC behavior: on begin play trigger 'start roaming' custom event that picks a random navigable location from the nav mesh and moves the AI to it",
+    "context": "Random point selection constrained to nav mesh walkable area ensures NPC only targets reachable positions",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Nav mesh bounds volume needs extra vertical height to cover stairs and multi-floor areas \u2014 expand Z-axis beyond ground level",
+    "context": "Without sufficient height, AI cannot pathfind to upper floors or elevated areas",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Dialogue system uses a Queue (FIFO - first in first out) data structure to manage sentences, loading all sentences into the queue when dialogue starts and dequeuing them as the player reads through",
+    "context": "Unity C# dialogue system architecture using System.Collections queue of strings rather than arrays for sequential sentence display",
+    "source": "How to make a Dialogue System in Unity.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Dialogue data is stored in a separate non-MonoBehaviour class containing a public string array for sentences and a public string for NPC name, passed into a DialogueManager to start conversations",
+    "context": "Separation of dialogue data (Dialogue class) from dialogue logic (DialogueManager) allows reusable dialogue objects that show up in the Unity inspector",
+    "source": "How to make a Dialogue System in Unity.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Dialogue UI consists of a dialog box image, two text objects (NPC name + dialogue text), and a continue button, built with standard Unity UI tools",
+    "context": "Minimal UI setup for an NPC dialogue system with a separate trigger button for testing",
+    "source": "How to make a Dialogue System in Unity.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Gravity set to -9.82 in the Y direction for realistic physics simulation",
+    "context": "Cannon.js world initialization for vehicle physics",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Ground body uses type 'static' with geometric plane shape, rotated 90 degrees to be horizontal",
+    "context": "Cannon.js ground plane setup - without rotation the plane defaults to vertical",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Car body mass set to 5, positioned at (0, 6, 0) to spawn above ground",
+    "context": "Cannon.js rigid vehicle body setup - 6 units above ground so it falls into place",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Cannon.js RigidVehicle class handles vehicle creation including hinge constraints for wheel steering",
+    "context": "Built-in class that manages wheel attachment, constraints, and turning behavior automatically",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Wheels use sphere shape with angular dampening, offset downward to avoid intersection with car body",
+    "context": "Cannon.js vehicle wheel setup - each wheel is a separate body added via vehicle.addWheel()",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Cannon.js debugger creates green wireframe overlay on physics objects for visualization",
+    "context": "Debug tool that takes Three.js scene and physics world as inputs, updated each frame",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Animation loop updates both Cannon debugger and physics world each frame for sync",
+    "context": "Three.js + Cannon.js integration pattern - physics world must be stepped in the render loop",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "WebGL renders graphics at target 60fps using GPU-accelerated matrix multiplication/linear algebra",
+    "context": "Smooth rendering requires distributing calculations to GPU since CPU alone cannot handle the volume of linear algebra operations needed",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "3D rendering pipeline: vertices (x,y,z points) -> primitives (triangles) -> lighting/shadows -> rasterization (3D to 2D pixel projection)",
+    "context": "Core WebGL/OpenGL rendering pipeline stages for converting 3D geometry to 2D screen output",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Shaders are GPU functions that customize the rendering pipeline - vertex shaders process vertex data, fragment shaders calculate per-pixel color",
+    "context": "Written in OpenGL ES Shading Language (GLSL), shaders take vertex or fragment info and use GPU to calculate pixel render data",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "WebGL is based on OpenGL (established 1992) and runs inside HTML canvas element without external plugins",
+    "context": "Access via canvas.getContext('webgl') in JavaScript; provides hardware-accelerated GPU graphics in browser",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Three.js abstracts WebGL shader writing - allows 3D graphics without hand-writing GLSL shaders",
+    "context": "Libraries like Three.js and tools like Spline provide higher-level APIs over raw WebGL",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Forest vegetation requires models of different heights to simulate different layers of the forest canopy",
+    "context": "Unity terrain vegetation placement technique for realistic forests",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "For terrain vegetation, 5000-10000 tree models are used to cover a terrain surface",
+    "context": "Unity terrain tree density - author needed 10000 but demonstrated with 5000 models placed automatically",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Terrain texture layers stack with higher layers covering lower layers, each layer supports modifiers like height (max height, max falloff) and slope for placement control",
+    "context": "Procedural Terrain Painter tool in Unity uses layered textures with modifiers to auto-paint based on terrain properties",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Rock textures should be placed using a slope modifier to automatically appear on steep terrain slopes",
+    "context": "Procedural terrain painting technique - slope-based texture assignment for realistic rock placement",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Terrain grass uses 4 grass models mixed automatically via spine details tool with target density controlling frequency of each model",
+    "context": "Unity Terrain Tools package provides spine details for automatic grass placement with density-controlled mixing of multiple grass types",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Stamp-based terrain sculpting uses adjustable brush size and stamp height with 'stamp from current height' set to 1 for additive stamping",
+    "context": "Stamp It free package for Unity terrain - stamps predefined height profiles onto terrain for quick landscape creation",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Increasing splat map resolution and map resolution improves terrain texture detail quality",
+    "context": "Procedural Terrain Painter setup step - resolution settings affect texture painting fidelity on terrain",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "NPC crowd systems use Zone Graphs with Zone Shapes to define walkable areas, with lane profiles containing forward and backward lanes",
+    "context": "Unreal Engine 5.5 City Sample Crowds uses Zone Graph system where Zone Shapes define areas NPCs can walk, with lane profiles specifying directional lanes (forward/backward) for pedestrian flow",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "NPC crowd agents require MassAgent component with entity config containing: agent capsule collision sync, agent movement (mass-to-actor), and agent orientation align (mass-to-actor)",
+    "context": "Mass Entity system in UE5.5 requires specific component configuration for crowd NPCs - capsule collision uses actor-to-mass transform, while movement and orientation use mass-to-actor transforms",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Crowd NPC lane profile width set to 100 units for pedestrian paths",
+    "context": "Zone Graph lane profiles for pedestrian crowds use 100 unit width, controlling the walkable corridor size for NPC pathfinding",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Crowd NPCs use 2 lanes per path - one forward, one backward - for bidirectional pedestrian flow",
+    "context": "Lane profiles define 2 directional lanes allowing NPCs to walk in both directions along a path, simulating realistic sidewalk behavior",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Mass Entity crowd system uses MassCrowd plugin (MCrow) for large-scale NPC simulation",
+    "context": "UE5.5 uses the Mass Entity framework with a dedicated crowd plugin to handle large numbers of NPCs efficiently, separate from traditional AI controllers",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Crowd NPC characters need capsule collider positioning - mesh placed inside capsule with correct orientation",
+    "context": "When setting up crowd characters, the skeletal mesh must be positioned within the capsule component with correct facing direction for proper collision and movement",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Simple crowd NPCs can use a single looping forward walk animation as their base animation blueprint",
+    "context": "For basic crowd simulation, a single looping walk animation connected to the output pose is sufficient - complex state machines not required for background NPCs",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Terrain brush size of ~400 for coarse/large terrain features, ~200 for smaller detail passes",
+    "context": "Unity terrain height painting workflow using noise brush at different scales",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Grass detail distance set to 250 units to make grass visible from further away",
+    "context": "Unity terrain detail rendering - default detail distance is too low, needs to be increased for grass to be visible at distance",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Fog density of 0.0045 provides good distance obscuring while looking natural",
+    "context": "Fog hides grass/detail pop-in at distance and blends terrain into skybox",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Fog color sampled from low horizon of skybox creates cohesive sky-to-ground fade",
+    "context": "Color sampling trick: match fog color to skybox horizon color so fog blends seamlessly with sky",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Grass healthy color sampled from lighter parts of base terrain texture, dry color from darker parts",
+    "context": "Eyedropper sampling trick to keep grass colors cohesive with ground texture",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Mass place 15000 trees on terrain for dense forest coverage",
+    "context": "Unity Mass Place Trees feature for rapid tree population across entire terrain",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Fog used to hide LOD pop-in and grass detail distance cutoff",
+    "context": "Fog serves dual purpose: atmosphere and hiding rendering limitations where detail stops rendering",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI NPC conversation system requires ~28GB download for local inference, suggesting large language model running client-side",
+    "context": "Replica demo uses local AI models for real-time NPC conversation, not cloud-based",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI NPC voice response latency is variable and noticeable \u2014 sometimes 1-3 seconds delay between player speech and NPC reply",
+    "context": "Real-time speech-to-speech NPC interaction has perceptible lag that breaks immersion at times",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI NPCs maintain consistent personality traits across a conversation \u2014 a hostile NPC stays hostile, a dismissive one stays dismissive",
+    "context": "NPCs assigned personality/mood profiles that persist through multiple dialogue exchanges",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI NPCs can contextually respond to environment \u2014 acknowledging heat, traffic, city crowding \u2014 without scripted triggers",
+    "context": "NPCs reference world state like weather and traffic organically in free-form conversation",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Demo city has sidewalks wide enough for 2+ NPCs side by side, vehicle traffic on roads, and stairway geometry on sidewalks",
+    "context": "Urban layout includes pedestrian sidewalks, vehicle lanes, and vertical geometry transitions typical of city blocks",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "NPCs walk along sidewalks autonomously while holding props (coffee cup) and can be approached mid-walk for conversation",
+    "context": "Ambient NPC behavior includes pathfinding along sidewalks with contextual prop items, interruptible by player proximity",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Demo world has visible boundary walls ('Matrix wall') \u2014 hard invisible collision bounds at world edge",
+    "context": "Bounded demo area uses collision walls at map edges rather than infinite terrain",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Car can control angular velocity while in the air to perform flip tricks",
+    "context": "Canon.js physics engine allows modifying angular velocity of car body when airborne, enabling mid-air rotation control",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "React Three Fiber project with cannon.js physics is 4-5 files total for a complete race track with colliders",
+    "context": "Minimal file count for a physics-based car game: trees and signs as colliders, ramp for air physics, third-person camera",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Use Suspense component to wrap 3D asset loading in React Three Fiber",
+    "context": "React Suspense block handles async loading of 3D models and textures while scene initializes",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Environment component creates 3D background from an environment map texture file",
+    "context": "Three.js scene setup using @react-three/drei Environment component with downloaded HDR/texture map",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "OrbitControls component enables mouse-controlled camera with a Target property defining look-at point",
+    "context": "Camera control setup: perspective camera with configurable position, orbit controls with target point in 3D space",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Cannon.js used as physics engine for car racing with colliders on trees, signs, and ramps",
+    "context": "Scene elements (trees, signs) act as static colliders; ramp propels car into air for trick physics",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "All Three.js/R3F hooks must be used inside the Canvas component \u2014 scene logic goes in child components",
+    "context": "React Three Fiber architecture requirement: Canvas wraps all 3D content, separate Scene component holds game logic",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "cannon-es (fork of cannon.js) uses a World object equivalent to Three.js's Scene \u2014 two engines run simultaneously: cannon for physics simulation and Three.js for 3D rendering",
+    "context": "Setting up physics simulation alongside Three.js renderer requires creating parallel representations of objects in both engines",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Gravity is set via new CANNON.World() with gravity value 9.82 m/s\u00b2 (Earth gravity), and the world is stepped each frame using world.step(delta) where delta comes from a Three.js Clock",
+    "context": "The physics world must be updated every animation frame using the time delta to calculate object movement",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "CANNON.Box uses half-extents: a Three.js BoxGeometry(1,1,1) maps to new CANNON.Box(0.5, 0.5, 0.5), and the body is created with mass:1 then added to the world via world.addBody()",
+    "context": "Physics shapes must match visual geometry dimensions but use half-extents convention for box colliders",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Each frame, sync physics to visuals by copying: cubeMesh.position.set(cubeBody.position.x, cubeBody.position.y, cubeBody.position.z) and cubeMesh.quaternion.copy(cubeBody.quaternion)",
+    "context": "The cannon body position and rotation must be manually copied to the Three.js mesh every frame to keep visual and physics representations in sync",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Without a ground plane body in the physics world, rigid bodies with gravity will fall infinitely \u2014 a floor mesh visible in Three.js does not automatically create a physics collider",
+    "context": "The transcript demonstrates that objects fall through the visible floor because the physics world has no corresponding body for the ground plane",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "cannon-es is installed via 'npm install cannon-es --save-dev' (version 0.18.x) and is a maintained fork of the original abandoned cannon.js library",
+    "context": "The original cannon.js is no longer maintained; cannon-es is the recommended replacement for rigid body physics simulation",
+    "source": "-w3NGDpwOWU_Threejs TypeScript \uff1a Physics with Cannon.js.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI Controller constructor requires FObjectInitializer as a const reference parameter, matching the base AAIController constructor signature",
+    "context": "Setting up a custom AI controller class derived from AAIController in UE5 C++",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "OnPossess is a virtual void override taking an APawn* pointer, used as the entry point where the AI controller takes over a pawn",
+    "context": "Overriding OnPossess in a custom AI controller to initialize NPC control logic",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Super::OnPossess(InPawn) must be called first in the OnPossess override to ensure downstream logic in the base AAIController executes properly, preventing undefined behavior",
+    "context": "Lesson learned from past bugs where not calling Super on overrides caused weird behavior",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Store a private pointer to the NPC character class (ControlledPawn) initialized as nullptr, then assign it in OnPossess using Cast<ANPCCharacter>(InPawn) to verify the pawn type",
+    "context": "AI controller casts the possessed pawn to the specific NPC character class to access NPC-specific functionality",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "After successful cast in OnPossess, retrieve the behavior tree from the NPC using ControlledPawn->GetBehaviorTree() and store it as a const UBehaviorTree* pointer",
+    "context": "The NPC character owns its behavior tree reference, and the AI controller retrieves it during possession",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "The NPC character class is derived from a shared base character class (TFCharacter), allowing both player and NPC characters to share common functionality",
+    "context": "Architecture pattern where NPC character inherits from same base as player character in a survival game",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI controller header uses sections private/protected/public, includes the NPC character header for the cast, and the ControlledPawn pointer does not necessarily need a UPROPERTY macro",
+    "context": "Class organization pattern for UE5 AI controller with private NPC reference",
+    "source": "8_Mqf7876J0_UE5 C++ Survival Game EP 62 - Setting Up an AI Controller.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Nav Mesh Bounds Volume actor defines walkable area for AI navigation; toggle visibility with P key to see green overlay of navigable surfaces",
+    "context": "Required first step before any AI movement - covers floor areas and multi-level surfaces like stairs",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI Controller blueprint class serves as the 'brain' assigned to an AI character via the AI Controller Class property in the character's Details panel",
+    "context": "Separates AI logic (controller) from AI body (character), allowing reusable behavior patterns",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Roaming NPC uses Get Random Reachable Point in Navigable Radius node with the controlled pawn's location as origin to pick random destinations",
+    "context": "On Begin Play triggers a custom 'Start Roaming' event that queries the nav mesh for valid random positions",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Get Controlled Pawn node returns a Pawn object reference; pipe its return value through Get Actor Location to obtain XYZ world coordinates as the navigation origin",
+    "context": "The controlled pawn is the AI character body that the AI Controller is driving",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Nav Mesh Bounds Volume scale of 15x15x15 via Details panel creates a large navigable cube; height must cover vertical geometry like stairs for multi-floor navigation",
+    "context": "R key activates scale gizmo for manual resizing; volume must fully enclose all intended AI roaming areas",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI character created by duplicating BP_ThirdPersonCharacter and reassigning its AI Controller Class from default to a custom controller blueprint",
+    "context": "Third Person template provides a ready-made character with mesh and animations that can be repurposed as an NPC",
+    "source": "BqZyX1yf-Sg_Intro to AI in Unreal Engine 5\uff1a Creating a Roaming NPC with .txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "2D platformer uses trap collision detection where hitting any trap triggers player death and level restart",
+    "context": "Basic 2D platformer with walk, jump, collect items, and trap-based death/respawn loop",
+    "source": "Build a 2D Platformer Game in Unity \uff5c Unity Beginner Tutorial.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Moving platforms are used as timed obstacles that the player must wait for before proceeding",
+    "context": "Level design includes platforms that move away and return on a cycle",
+    "source": "Build a 2D Platformer Game in Unity \uff5c Unity Beginner Tutorial.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Collectible item system uses a UI counter in the top-left corner tracking collected cherry count per level",
+    "context": "Cherry pickups are tracked with an on-screen HUD counter",
+    "source": "Build a 2D Platformer Game in Unity \uff5c Unity Beginner Tutorial.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Level transition triggers load the next scene when the player reaches the end point of a level",
+    "context": "Completing a level automatically loads the next level scene in sequence",
+    "source": "Build a 2D Platformer Game in Unity \uff5c Unity Beginner Tutorial.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Unity 2D platformer uses C# scripts edited in Visual Studio Community IDE with Unity autocompletion support",
+    "context": "Microsoft Visual Studio Community is recommended for C# scripting due to Unity interoperability and code completion",
+    "source": "Build a 2D Platformer Game in Unity \uff5c Unity Beginner Tutorial.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Unity 6 terrain tiles are massive in scale \u2014 a single tile is large enough that a player cannot traverse it in a 10-20 minute play session, so developers should focus on one tile before expanding",
+    "context": "Terrain system scale guidance for level design in Unity 6 HDRP",
+    "source": "HXvC9pFHWvM_Complete Beginner's Guide to Unity's Terrain System.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Build out one terrain tile completely (layers, textures, topology) before adding neighboring tiles, because adding layers after creating multiple tiles requires manually adding layers to each tile separately",
+    "context": "Workflow order matters for Unity terrain system to avoid redundant per-tile layer configuration",
+    "source": "HXvC9pFHWvM_Complete Beginner's Guide to Unity's Terrain System.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Unity 6 HDRP template project includes built-in third and first person controllers; free alternatives from Unity Technologies are available on Asset Store by searching 'third person'",
+    "context": "Character controller setup for terrain-based projects in Unity 6",
+    "source": "HXvC9pFHWvM_Complete Beginner's Guide to Unity's Terrain System.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Terrain painting uses two primary controls: brush size and opacity, where opacity controls the influence level (strength) of the brush stroke on terrain height",
+    "context": "Unity terrain raise/lower tool parameters for sculpting topology",
+    "source": "HXvC9pFHWvM_Complete Beginner's Guide to Unity's Terrain System.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Unity Shader Graph package includes importable 'production ready shaders' samples containing pre-built textures, prefabs, and rock assets that can be used as terrain layers",
+    "context": "Shader Graph samples provide ready-made terrain texturing materials in Unity 6",
+    "source": "HXvC9pFHWvM_Complete Beginner's Guide to Unity's Terrain System.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "In Unity 6 HDRP, use File > New Scene > Basic Outdoors to get a scene with pre-built volumetric clouds and outdoor lighting setup",
+    "context": "Scene template shortcut for outdoor terrain environments with atmospheric effects",
+    "source": "HXvC9pFHWvM_Complete Beginner's Guide to Unity's Terrain System.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "A Queue<string> (FIFO collection from System.Collections namespace) is used to store dialogue sentences, allowing sequential display by loading sentences from the front of the queue as the player progresses through dialogue.",
+    "context": "Unity dialogue system stores NPC conversation sentences in a Queue rather than an array for ordered first-in-first-out processing.",
+    "source": "How to make a Dialogue System in Unity.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Dialogue data is stored in a separate non-MonoBehaviour class marked with [System.Serializable] attribute containing a public string[] sentences array and a public string name field, allowing it to appear in the Unity Inspector for editing.",
+    "context": "The Dialogue class is a serializable data container passed into the DialogueManager to start a new conversation.",
+    "source": "How to make a Dialogue System in Unity.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "The architecture uses three scripts: DialogueManager (processes queue and displays text on an empty GameObject), Dialogue (serializable data class with name + sentences), and DialogueTrigger (attached to NPC/interactable to initiate conversation).",
+    "context": "A three-class separation pattern for dialogue systems in Unity keeps data, triggering, and display logic decoupled.",
+    "source": "How to make a Dialogue System in Unity.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "The dialogue UI consists of a Canvas containing an Image (dialog box), two Text objects (NPC name and dialogue text), and a Continue button, all built with Unity's standard UI tools.",
+    "context": "Standard Unity UI hierarchy for an NPC dialogue box with name label, text content, and navigation button.",
+    "source": "How to make a Dialogue System in Unity.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "The Queue is initialized in Start() as 'sentences = new Queue<string>()' and kept as a private variable on the DialogueManager, with sentences enqueued when a new dialogue starts and dequeued as the player clicks continue.",
+    "context": "Queue initialization and access pattern for managing dialogue sentence progression in Unity.",
+    "source": "How to make a Dialogue System in Unity.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Cannon.js world gravity is set to -9.82 in the Y direction to simulate Earth gravity",
+    "context": "Setting up a Cannon.js physics world for a vehicle simulation in Three.js",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Ground body uses type 'static' with a geometric plane shape, rotated 90 degrees to be horizontal instead of vertical",
+    "context": "Creating the ground plane in Cannon.js physics world",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Cannon.js debugger takes the Three.js scene and physics world as arguments and creates green wireframe overlays on each physics object for visualization",
+    "context": "Using a debugger to visualize the physics world alongside the 3D scene",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Car body is created with mass=5 and positioned at (0,6,0) above ground, then wrapped in a Cannon.js RigidVehicle class that handles vehicle-specific physics",
+    "context": "Building a simple car using Cannon.js rigid vehicle framework",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Wheels are sphere shapes with 'wheel' material type, offset downward to avoid intersecting the car body, with angular dampening applied",
+    "context": "Adding wheels to a Cannon.js RigidVehicle",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "RigidVehicle.addWheel() internally adds hinge constraints so wheels turn correctly; requires wheel body, position, axis, and direction parameters",
+    "context": "The Cannon.js RigidVehicle class abstracts away constraint setup for vehicle wheels",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Animation loop must call update on both the Cannon.js debugger and the physics world every frame to keep physics and rendering in sync",
+    "context": "Main game loop structure for Three.js + Cannon.js integration",
+    "source": "RYWMKucBDiI_Three.js + Cannon.js Tutorial (part 2\u29f82) \uff5c Rigid Vehicle Phy.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Gaia world generation uses a 4-step pipeline: 1) create World Designer in Gaia Manager, 2) generate world (stamps terrain), 3) spawn biome (populates vegetation/objects), 4) create runtime (enables gameplay)",
+    "context": "Workflow for generating a fully populated island environment in Unity using Gaia terrain tool",
+    "source": "TR9ta_pJFAw_Create Your Game World with Just 4 Clicks.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Gaia separates terrain shape generation (stamp step) from biome population (spawn step), allowing terrain geometry and object placement to be independently configured",
+    "context": "The island terrain mesh is created first, then biome spawning adds trees, rocks, and other objects as a separate pass",
+    "source": "TR9ta_pJFAw_Create Your Game World with Just 4 Clicks.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Gaia uses a 'stamp' system to apply heightmap and sculpting data onto Unity terrain tiles, generating landmasses like islands from predefined or procedural templates",
+    "context": "The world generation step stamps an island shape onto the terrain before any object population occurs",
+    "source": "TR9ta_pJFAw_Create Your Game World with Just 4 Clicks.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "ConvAI NPCs in UE5 generate real-time dynamic dialogue responses to player questions using generative AI, with each NPC maintaining a distinct personality and emotional state (angry car owner, concerned worker, indifferent bystander)",
+    "context": "Demo shows multiple NPCs each responding differently to the same event based on their assigned role and disposition",
+    "source": "YyOZSTsVtR8_Unreal Engine 5 Generative AI Showcase\uff1a ConvAI game concept .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "ConvAI NPCs maintain contextual awareness of world events (tank hit by lightning, flipped into air) and reference them coherently in unscripted voice conversations with the player",
+    "context": "Multiple NPCs independently describe the same tank-lightning incident from different perspectives without scripted dialogue trees",
+    "source": "YyOZSTsVtR8_Unreal Engine 5 Generative AI Showcase\uff1a ConvAI game concept .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "NPCs are assigned occupational roles (construction crew supervisor, investigator, civilian driver) that constrain their dialogue priorities \u2014 e.g. construction NPC only cares about crew safety, car owner NPC fixates on vehicle damage",
+    "context": "Role-based personality systems shape NPC response focus even when asked the same open-ended questions",
+    "source": "YyOZSTsVtR8_Unreal Engine 5 Generative AI Showcase\uff1a ConvAI game concept .txt"
+  },
+  {
+    "topic": "city",
+    "fact": "The UE5 ConvAI demo features a drivable urban street environment with civilian vehicles, construction zones, and destructible/interactive elements like tanks subject to physics events",
+    "context": "City scene includes NPCs positioned contextually \u2014 workers near construction, drivers near damaged cars, investigators near incident",
+    "source": "YyOZSTsVtR8_Unreal Engine 5 Generative AI Showcase\uff1a ConvAI game concept .txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Physics simulation triggers narrative events: a tank asset is struck by lightning and flips into the air, colliding with a civilian car \u2014 these physics outcomes become the shared context for all NPC conversations",
+    "context": "Demonstrates coupling physics engine events to AI dialogue systems so NPCs can discuss emergent gameplay moments",
+    "source": "YyOZSTsVtR8_Unreal Engine 5 Generative AI Showcase\uff1a ConvAI game concept .txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Vehicle damage from physics events (tank flipping onto a car) persists in the world and NPCs reference the specific damage state \u2014 car owner NPC expresses anger about their damaged vehicle and refuses medical help",
+    "context": "Shows NPCs reacting to vehicle collision outcomes with emotionally consistent generative dialogue",
+    "source": "YyOZSTsVtR8_Unreal Engine 5 Generative AI Showcase\uff1a ConvAI game concept .txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Player initiates NPC conversations with natural speech input and NPCs respond with generated voice audio in real-time, supporting multi-turn dialogue (follow-up questions like 'are you okay' and 'do you want to go to the hospital')",
+    "context": "ConvAI system supports back-and-forth conversational flow rather than single-response interactions",
+    "source": "YyOZSTsVtR8_Unreal Engine 5 Generative AI Showcase\uff1a ConvAI game concept .txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Pseudo-random number generators use a seed value fed into a formula to produce a deterministic sequence of numbers; same seed always produces the same sequence. System time is commonly used as seed for unique results each run.",
+    "context": "Foundation of all procedural and random generation in games.",
+    "source": "dungeon_-POwgollFeY_How does procedural generation work\uff1f \uff5c Bitwise.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Binding of Isaac dungeon generation: start with default starting room, randomly select one of 4 sides to place next room, pick a random room from predefined layout collection, repeat until enough rooms placed, then place boss room, then optionally scatter random elements (chests, items, special objects) inside rooms.",
+    "context": "Example of random generation using predefined room layouts stitched together.",
+    "source": "dungeon_-POwgollFeY_How does procedural generation work\uff1f \uff5c Bitwise.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Random generation uses predefined elements (pre-designed rooms, objects) assembled in random configurations. Procedural generation creates entirely original content algorithmically. These are distinct approaches despite being used interchangeably.",
+    "context": "Definitions per Gamasutra distinguishing the two generation paradigms.",
+    "source": "dungeon_-POwgollFeY_How does procedural generation work\uff1f \uff5c Bitwise.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Random generation requires developers to create large amounts of predefined content (room layouts, object placements) beforehand to ensure variety. Procedural generation avoids this by algorithmically creating content at runtime.",
+    "context": "Trade-off between the two approaches for dungeon/world generation.",
+    "source": "dungeon_-POwgollFeY_How does procedural generation work\uff1f \uff5c Bitwise.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Procedural generation of worlds (Minecraft, Terraria style) relies on computer-generated noise functions rather than predefined room stitching, enabling creation of original terrain and content the developers never manually designed.",
+    "context": "Noise-based procedural generation as alternative to room-stitching for large worlds.",
+    "source": "dungeon_-POwgollFeY_How does procedural generation work\uff1f \uff5c Bitwise.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Destructible terrain uses a dictionary with tile coordinates as keys and tile health as values; when health reaches zero the tile is removed from the tilemap. A level manager script handles tile placement and damage requests from player controller and other damage sources.",
+    "context": "Core system for cave exploration roguelike with destructible environments built in Godot.",
+    "source": "dungeon_7zDHVeZxzXw_8 Months Of Developing A Cave Exploration Roguelik.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Base tile size is 8x8 pixels for a minimalist pixel art aesthetic, chosen specifically to reduce art production time and allow focus on technical systems.",
+    "context": "Deliberate design constraint for a procedurally generated cave roguelike.",
+    "source": "dungeon_7zDHVeZxzXw_8 Months Of Developing A Cave Exploration Roguelik.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Cave generation uses a modular noise-based system with 'World Gen Rules' (custom resource type) that define conditions, values, and thresholds. The level manager loops through world coordinates for every rule and applies them based on conditions, enabling different caves, formations, and biomes.",
+    "context": "Procedural generation architecture allowing varied underground environments.",
+    "source": "dungeon_7zDHVeZxzXw_8 Months Of Developing A Cave Exploration Roguelik.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Color palette shader takes each pixel's color and shifts it to the nearest color in a predefined palette (modified Dawnbringer 32 palette from lospec.com), creating banded lighting effects as lights dim and a crunchy retro look.",
+    "context": "Post-processing visual technique for underground cave atmosphere.",
+    "source": "dungeon_7zDHVeZxzXw_8 Months Of Developing A Cave Exploration Roguelik.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Game structure replaces conventional roguelike floors/levels/rooms with a single large procedurally generated cave system. Deeper levels spawn different features, tested via a debug teleport view.",
+    "context": "World structure design for vertical cave exploration roguelike.",
+    "source": "dungeon_7zDHVeZxzXw_8 Months Of Developing A Cave Exploration Roguelik.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Traversal items include bombs (area destruction + weapon), ropes (vertical traversal + weapon), and flares (light up dark areas, inspired by Deep Rock Galactic), all interacting with the destructible tile system.",
+    "context": "Player tools designed for dual-purpose traversal and combat in cave environments.",
+    "source": "dungeon_7zDHVeZxzXw_8 Months Of Developing A Cave Exploration Roguelik.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Room placement uses spawn-then-separate: spawn randomly sized prefab rooms, detect overlaps, push overlapping rooms apart based on center-of-mass direction. Repeat until all rooms are separated. If separation fails, re-run with different initial placements.",
+    "context": "3D dungeon generation system inspired by Lethal Company, built in Godot.",
+    "source": "dungeon_TPvxWIKHE6Q_Procedurally Generated 3D Dungeons.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Rooms are prefab-based with predefined doors marked as 'necessary' (green) or 'optional' (yellow). A pathfinding algorithm connects all doors between separated rooms via corridors.",
+    "context": "Door connectivity system ensures rooms link together after placement separation.",
+    "source": "dungeon_TPvxWIKHE6Q_Procedurally Generated 3D Dungeons.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Union-Find algorithm prevents isolated room islands: maintain sets/trees of connected nodes where each tree root is the lowest node value. When merging trees, update all nodes to the new lowest value. Continue connecting until all rooms share one set.",
+    "context": "Ensures full reachability across all rooms and floors in multi-level dungeons.",
+    "source": "dungeon_TPvxWIKHE6Q_Procedurally Generated 3D Dungeons.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Multi-floor connectivity uses stair rooms that span exactly 2 floors. Union-Find tracks which floors are connected, and stair rooms are added iteratively until all floors belong to one connected set.",
+    "context": "Vertical dungeon connectivity solved as a separate pass after room placement.",
+    "source": "dungeon_TPvxWIKHE6Q_Procedurally Generated 3D Dungeons.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "The 3D algorithm is a direct extension of a 2D prototype: same overlap-separation and pathfinding-based corridor connection, but rooms are placed in 3D space and corridors are 3D hallways.",
+    "context": "Development approach started with 2D proof-of-concept before extending to 3D.",
+    "source": "dungeon_TPvxWIKHE6Q_Procedurally Generated 3D Dungeons.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Algorithm order: (1) place random rooms, (2) separate overlapping rooms, (3) place stair rooms connecting floors via Union-Find, (4) connect same-floor rooms with pathfinding corridors via Union-Find until fully connected.",
+    "context": "Complete pipeline for procedural multi-level dungeon generation.",
+    "source": "dungeon_TPvxWIKHE6Q_Procedurally Generated 3D Dungeons.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Procedural generation requires constraints to prevent unplayable results \u2014 pure random output produces white noise (random blocks everywhere with no terrain contour). Constraints ensure consistent surface materials, terrain flow, and structural coherence.",
+    "context": "Analysis of why Minecraft worlds look coherent despite being algorithmically generated, contrasted with completely random block placement.",
+    "source": "dungeon__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Procedural generation design principle: balance enough variants to create unique/fun experiences while mitigating generation of unplayable configurations. Even a 1% chance of unplayability means 1 in 100 players gets a broken experience.",
+    "context": "Discussion of the fundamental tradeoff in proc-gen systems between variety and reliability.",
+    "source": "dungeon__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Spawn validation is critical: if a player spawns surrounded by impassable material (e.g., stone in Terraria) with no escape, the world is unplayable. Spawn point selection must verify traversability.",
+    "context": "Example of worst-case proc-gen failure where generated terrain traps the player at spawn.",
+    "source": "dungeon__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Brute-force voxel-based occlusion approximation can provide lighting for particle/voxel systems, but requires all geometry to stay within the voxel grid bounds \u2014 out-of-bounds procedural shapes get clipped, creating visual artifacts.",
+    "context": "Technical implementation detail from an iterated function system particle visualizer with voxel lighting.",
+    "source": "dungeon__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "dungeon",
+    "fact": "Iterated Function Systems (IFS) using randomly generated sets of affine transformations produce unpredictable shapes \u2014 bounding the output within a fixed grid is a key constraint problem when combining proc-gen geometry with grid-based rendering.",
+    "context": "Demonstration of how procedural shape generation must be constrained to fit within rendering infrastructure bounds.",
+    "source": "dungeon__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "WebGL rendering pipeline: vertices (x,y,z coordinates) \u2192 connected into triangles (primitives) \u2192 light source creates shadows/depth \u2192 rasterized from 3D vector to 2D pixel projection",
+    "context": "Core 3D rendering pipeline stages used by WebGL to display graphics in browser",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Shaders are functions that customize the rendering pipeline, written in OpenGL ES Shading Language (not JavaScript), processing vertex or fragment data on the GPU to calculate pixel render data",
+    "context": "Shaders handle per-vertex and per-fragment calculations on GPU for real-time rendering",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Rendering at 60fps requires massive linear algebra/matrix multiplication operations that exceed CPU capacity alone, requiring GPU distribution of calculations",
+    "context": "GPU parallel processing is necessary for smooth real-time 3D graphics and physics simulations",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "WebGL is based on OpenGL (established 1992), runs hardware-accelerated graphics on client GPU inside an HTML canvas element \u2014 initialized by getting canvas element then calling getWebGLContext()",
+    "context": "WebGL setup requires only an HTML canvas and its WebGL context to begin GPU-accelerated drawing",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "3D geometry is built from vertices connected into triangle primitives; rasterization converts these 3D triangles into 2D pixel projections for screen display",
+    "context": "Triangle-based mesh rendering is the fundamental building block for all 3D objects in WebGL",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Three.js and Spline are abstraction layers over WebGL that eliminate need to write raw shaders by hand for 3D web experiences",
+    "context": "Higher-level libraries simplify WebGL development for game and interactive 3D applications",
+    "source": "f-9LEoYYvE4_WebGL 3D Graphics Explained in 100 Seconds.txt"
+  },
+  {
+    "topic": "fps",
+    "fact": "Multiplayer Three.js app architecture: front-end creates player mesh, adds to local scene, then notifies backend; backend broadcasts new player parameters to all other connected front-ends so each client adds remote players to their own scene",
+    "context": "Basic client-server multiplayer pattern using Three.js scenes with per-client player instantiation",
+    "source": "fps_6QdkIOo-fe0_How to Create a Multiplayer Game with Three.js and.txt"
+  },
+  {
+    "topic": "fps",
+    "fact": "Player movement on front-end is handled locally using WASD or arrow keys before any network sync occurs; each client owns and controls only its own player object in the Three.js scene",
+    "context": "Client-authoritative movement pattern where input handling is done entirely on the front-end",
+    "source": "fps_6QdkIOo-fe0_How to Create a Multiplayer Game with Three.js and.txt"
+  },
+  {
+    "topic": "fps",
+    "fact": "Remote players are instantiated on each client by receiving parameter sets from the backend and calling the same constructor (e.g. new Hamburger with synced parameters) then adding the result to the local Three.js scene",
+    "context": "Multiplayer object replication pattern where player creation parameters are serialized and broadcast",
+    "source": "fps_6QdkIOo-fe0_How to Create a Multiplayer Game with Three.js and.txt"
+  },
+  {
+    "topic": "fps",
+    "fact": "Position the player's gun on screen so the player can see where they are shooting without needing separate crosshair UI \u2014 gun placement itself should indicate aim direction",
+    "context": "Gun positioning on screen should serve as a natural aiming reference, reducing UI dependency",
+    "source": "fps_A1fnV8e9Z1Y_How To Fail At First Person Shooter Games.txt"
+  },
+  {
+    "topic": "fps",
+    "fact": "Default FPS movement without game feel additions results in a flat glide forward feeling \u2014 camera bob, head bob, and movement sway are necessary to give the player the sensation of having legs",
+    "context": "The video satirically notes that without movement feel effects, the player feels like they're on a remote-controlled vacuum robot",
+    "source": "fps_A1fnV8e9Z1Y_How To Fail At First Person Shooter Games.txt"
+  },
+  {
+    "topic": "fps",
+    "fact": "FPS level design should utilize full 3D vertical space rather than flat 2D layouts \u2014 a skybox alone does not make a map three-dimensional if the playable geometry is flat",
+    "context": "Satirically warns against designing FPS maps as flat 2D planes that could be planned entirely on paper",
+    "source": "fps_A1fnV8e9Z1Y_How To Fail At First Person Shooter Games.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Four standard FPS weapon archetypes: normal gun (medium range balanced), sniper rifle (scoped long range), shotgun (close range spread), machine gun (high fire rate with spread) \u2014 each needs distinct effective ranges and spread patterns to feel differentiated",
+    "context": "The video identifies the four default weapon types and satirizes poor balancing where they all feel the same",
+    "source": "fps_A1fnV8e9Z1Y_How To Fail At First Person Shooter Games.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Machine gun spread pattern must be tuned carefully \u2014 too wide a spread cone makes bullets miss at any practical range, effectively hitting behind the player's intended target",
+    "context": "Exaggerated example of bad weapon balancing where spread is so wide bullets go in unintended directions",
+    "source": "fps_A1fnV8e9Z1Y_How To Fail At First Person Shooter Games.txt"
+  },
+  {
+    "topic": "fps",
+    "fact": "FPS UI should provide all necessary player information (health, ammo, minimap) \u2014 removing UI entirely in favor of 'immersion' removes critical gameplay feedback",
+    "context": "The video sarcastically suggests having no UI is bad, implying a well-designed HUD is essential for FPS gameplay",
+    "source": "fps_A1fnV8e9Z1Y_How To Fail At First Person Shooter Games.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Rapier physics engine integrated via @react-three/rapier; wrap Experience component in <Physics> component to enable physics simulation",
+    "context": "React Three Fiber game setup using Rapier as the physics engine",
+    "source": "fps_zwNF1-lsia8_How to Create a 3D game with React Three Fiber\uff1a Pa.txt"
+  },
+  {
+    "topic": "physics",
+    "fact": "Stage platform built as low-height cylinder using RigidBody with type='fixed' and explicit cylinder collider (colliders='force') so it blocks objects but doesn't move",
+    "context": "Creating a static game platform that participates in physics without being dynamic",
+    "source": "fps_zwNF1-lsia8_How to Create a 3D game with React Three Fiber\uff1a Pa.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "MeshReflectorMaterial from drei used to create reflective floor; fog added to blend background objects with the floor for depth effect",
+    "context": "Scene composition technique for polished visual appearance in React Three Fiber",
+    "source": "fps_zwNF1-lsia8_How to Create a 3D game with React Three Fiber\uff1a Pa.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "GLTF models loaded via useGLTF hook; gltfjsx CLI tool auto-generates React Three Fiber component code from .gltf model files",
+    "context": "Workflow for importing 3D models into R3F scenes",
+    "source": "fps_zwNF1-lsia8_How to Create a 3D game with React Three Fiber\uff1a Pa.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Text3D component from drei renders 3D text; requires facetype.json font generated from facetype.js; subset characters to reduce file size (20MB full Japanese font reduced to 87KB by including only needed characters)",
+    "context": "Optimizing 3D text rendering by generating font subsets for performance",
+    "source": "fps_zwNF1-lsia8_How to Create a 3D game with React Three Fiber\uff1a Pa.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Zustand used for game state management over React Context (causes re-renders) and Redux (too verbose); game level generator creates array of stages with increasing difficulty by adding more options per stage",
+    "context": "State management architecture choice for React Three Fiber game engine",
+    "source": "fps_zwNF1-lsia8_How to Create a 3D game with React Three Fiber\uff1a Pa.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Scene lighting uses ambientLight intensity=1 plus directionalLight for shadows; background color set on Canvas component",
+    "context": "Basic lighting setup for a 3D game scene in React Three Fiber",
+    "source": "fps_zwNF1-lsia8_How to Create a 3D game with React Three Fiber\uff1a Pa.txt"
+  },
+  {
+    "topic": "terrain",
+    "fact": "Stamp-based terrain sculpting uses a free Unity package called 'Stamp It' where you set stamp height, adjust brush size, and set 'stamp from current height' value to 1 to stack terrain stamps additively",
+    "context": "Rapid terrain shape creation using predefined height stamps rather than manual brush sculpting",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "terrain",
+    "fact": "Procedural Terrain Painter auto-textures terrain using layered rules: higher layers in the stack cover layers below, each layer supports modifiers like 'height' (with max height and max falloff) and 'slope' (to place rock textures on slopes), and multiple modifiers can be combined per layer",
+    "context": "Automated terrain texturing tool that assigns materials based on terrain geometry rather than manual painting",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Unity's built-in Water Surface River object is added via right-click, positioned at terrain center, raised to desired height, rotated and scaled to cover the area, with 'distance wind orientation' controlling river flow direction",
+    "context": "Adding river water to terrain using Unity's native water surface system",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "terrain",
+    "fact": "Mass tree placement uses Unity's 'MPL three' option to batch-place vegetation (e.g., 5000 or 10000 models at once) across the entire terrain surface, with tree height min/max controlling model size variation",
+    "context": "Efficient forest creation by bulk-placing tree models then selectively removing unwanted ones with Ctrl+click",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "terrain",
+    "fact": "Unity Terrain Tools package (installed via Window > Package Manager > Unity Registry) adds 'Spine Details' for grass placement that auto-mixes multiple grass models using 'Target Density' to control frequency of each model type",
+    "context": "Grass and small vegetation added using extended terrain tools with automatic model mixing",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "terrain",
+    "fact": "Terrain Tools brush mask filters (added via + button) include a 'Layer' filter that restricts detail painting to a specific texture layer with adjustable sharpness, enabling large-area detail placement constrained to specific terrain material zones",
+    "context": "Filter system ensures grass and details only appear on appropriate terrain surfaces like soil rather than rock",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "terrain",
+    "fact": "Realistic forests require vegetation of different heights to simulate natural forest layers (canopy, understory, ground cover), combining trees, smaller vegetation, and grass models",
+    "context": "Multi-layer vegetation principle for believable forest terrain composition",
+    "source": "g1e-fftV1gE_How To Create Beautiful Terrain Under 10 Mins In Unity \uff5c Tut.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "In-game phone UI built as UMG Widget Blueprint (WB_Phone) using canvas panels: CP_Phone for outer container, CP_Screen for the screen area, with phone image set to 407x792 pixels matching the 3D phone model dimensions",
+    "context": "Creating an interactive phone system overlay similar to GTA/Saints Row where players press a key to bring up a phone widget",
+    "source": "interior_-aRKoQZ7Ftk_Creating an In-Game Phone System for Unreal Engine.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Phone screen region defined by manually dragging canvas panel anchor points to match the screen portion of the phone image, then child elements use full-size anchors within that constrained CP_Screen canvas",
+    "context": "Technique for aligning UI elements to a specific region of a background image in UMG widget blueprints",
+    "source": "interior_-aRKoQZ7Ftk_Creating an In-Game Phone System for Unreal Engine.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Phone widget centering done via Ctrl+Alt+Shift click on center anchor preset to set pivot to middle, then canvas set to 'desired' size mode instead of 'fill screen' to match phone dimensions",
+    "context": "UMG layout technique for centering a fixed-size widget element on screen",
+    "source": "interior_-aRKoQZ7Ftk_Creating an In-Game Phone System for Unreal Engine.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Phone background wallpaper uses image tiling setting on the UMG Image widget to prevent squashing, combined with a background tint color (blue) for visual polish",
+    "context": "Technique to make a phone screen background look natural by using tiling instead of stretching a texture",
+    "source": "interior_-aRKoQZ7Ftk_Creating an In-Game Phone System for Unreal Engine.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Doors in hub areas are modeled as visual props that don't lead anywhere \u2014 hallways surrounding the player terminate into void, creating the illusion of a larger space while keeping the playable area minimal.",
+    "context": "FNAF Help Wanted's main hub pizzeria uses fake doors and dead-end hallways just out of the player's sight line.",
+    "source": "interior_BwwMNEB25Go_Everything Hidden in FNAF Help Wanted.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "A one-sided piece of geometry is placed directly behind the player's cart to create the illusion that track fades out of existence, hiding the fact that the track model extends far behind the player.",
+    "context": "The intro roller coaster ride uses a single-faced occluder plane to mask geometry the player shouldn't see behind them.",
+    "source": "interior_BwwMNEB25Go_Everything Hidden in FNAF Help Wanted.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Doorway transitions use pitch-black post-processing and a white sphere at the end of the passage; when the player reaches the sphere, the cart immediately stops and the scene cuts to the hub area.",
+    "context": "Room-to-room loading is masked by darkness inside door geometry with a trigger sphere that ends the transition cutscene.",
+    "source": "interior_BwwMNEB25Go_Everything Hidden in FNAF Help Wanted.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Billboards along the intro track are all pre-loaded and visible in the scene but only illuminate as the player passes by them, using lighting activation rather than spawn/load triggers.",
+    "context": "All billboard geometry exists from scene start; timed light activation creates the illusion of progressive reveal.",
+    "source": "interior_BwwMNEB25Go_Everything Hidden in FNAF Help Wanted.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "The prize crane mechanism teleports back to its original suspended position behind a back wall after leaving the player's sight, rather than animating a return path.",
+    "context": "The crane slides out through a door, drops a prize, exits through another door, then instantly teleports back to reset position.",
+    "source": "interior_BwwMNEB25Go_Everything Hidden in FNAF Help Wanted.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Room exteriors are covered in a default/placeholder texture since the player is never meant to see them; only interior-facing surfaces receive final art.",
+    "context": "The outside of the intro track room uses untextured default material, visible only when post-processing is disabled.",
+    "source": "interior_BwwMNEB25Go_Everything Hidden in FNAF Help Wanted.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Hidden objects placed out of bounds include a disc-shaped flashing light and an 'end Showtime' button positioned to the right of the stage area, used as developer control assets.",
+    "context": "Leftover developer debug objects exist outside the playable bounds for controlling show sequences.",
+    "source": "interior_BwwMNEB25Go_Everything Hidden in FNAF Help Wanted.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "A 360\u00b0 immersive room requires multiple projectors, computers, and projection mapping software to create seamless interior environments",
+    "context": "Equipment list for building an immersive projection room that simulates realistic virtual scenarios",
+    "source": "interior_xs28oaqf8YM_How to Create a 360\u00b0 Immersive Experience Room wit.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Remote debugging of a multi-projector immersive room setup can be completed within 30 minutes when using projection mapping software",
+    "context": "Timeline for calibrating and debugging a 360\u00b0 projection room installation",
+    "source": "interior_xs28oaqf8YM_How to Create a 360\u00b0 Immersive Experience Room wit.txt"
+  },
+  {
+    "topic": "interior",
+    "fact": "Adding sensors to an immersive projection room enables interaction with virtual content, allowing users to trigger and manipulate scene elements",
+    "context": "Sensor-based interactivity layer added on top of projected interior environments for scene simulation and interactive games",
+    "source": "interior_xs28oaqf8YM_How to Create a 360\u00b0 Immersive Experience Room wit.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Car movement and logic built iteratively in three.js with checkpoints and booster sections as core game mechanics",
+    "context": "3D browser racing game built with Blender and custom three.js 'Rave' engine in 2 weeks",
+    "source": "mk_UhoCpn9s_Building a 3D Browser Racing Game in Just 2 Weeks \u2013 Behind t.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Environment blocked out first in Blender focusing on track layout and feel before adding detail",
+    "context": "Workflow prioritized layout blockout in Blender then iterative refinement in three.js",
+    "source": "mk_UhoCpn9s_Building a 3D Browser Racing Game in Just 2 Weeks \u2013 Behind t.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Lights set up in Blender and baked into lightmaps for optimal web performance rather than using real-time lighting",
+    "context": "Lightmap baking used to reduce runtime cost for browser-based 3D racing game",
+    "source": "mk_UhoCpn9s_Building a 3D Browser Racing Game in Just 2 Weeks \u2013 Behind t.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Low-poly assets modeled and textured in Blender to add detail while keeping geometry count browser-friendly",
+    "context": "Asset pipeline used low-poly modeling with textures for a three.js web game",
+    "source": "mk_UhoCpn9s_Building a 3D Browser Racing Game in Just 2 Weeks \u2013 Behind t.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "Checkpoints and booster sections implemented as track mechanics to structure race progression and add speed variation",
+    "context": "Core racing mechanics iterated on until layout and feel were satisfactory",
+    "source": "mk_UhoCpn9s_Building a 3D Browser Racing Game in Just 2 Weeks \u2013 Behind t.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "City Sample Crowds in UE 5.5 requires enabling the MassAI (MCrow) plugin, then adding the City Sample Crowds content package (select 5.3 version as no 5.5-specific update exists)",
+    "context": "Setup pipeline for MetaHuman crowd NPCs in Unreal Engine 5.5",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "BP_CrowdCharacter blueprint must be reparented from SkeletalMeshActor to Character class, then all 5 SkeletonMeshComponent references must be replaced with the new mesh component",
+    "context": "Required blueprint reparenting step to make crowd characters function as proper characters with capsule collision",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "MassAgent component requires 3 entity config traits: AgentCapsuleCollisionSync (set to ActorToMass with ZSync transform deselected), AgentMovement (MassToActor), and AgentOrientationZ (MassToActor)",
+    "context": "Incorrect MassAgent sync direction settings cause MetaHumans to not animate or spawn in place",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "UE 5.5 introduces a new error in the GetSafeCopy function of BP_CrowdCharacter; fix by clicking MakeArray, deleting the empty array element, and recompiling",
+    "context": "Version-specific bug workaround when migrating City Sample Crowds to UE 5.5",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "ZoneGraph system uses ZoneShapes placed in levels with Lane Profiles containing forward and backward lanes (set width to 100); must enable Show > Developer > ZoneGraph in viewport to visualize shapes",
+    "context": "ZoneGraph defines walkable paths where crowd MetaHumans navigate in the city",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "ZoneShape Lane Profiles require custom tags (e.g., 'Peds') to be created and assigned, with the default tag deselected, to properly route crowd agents",
+    "context": "Tag-based lane filtering controls which crowd agent types use which navigation paths",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Skeletal mesh components must be moved one-by-one into the Mesh component hierarchy and positioned inside the capsule collider; moving all at once can crash the editor",
+    "context": "Stability workaround when restructuring the crowd character blueprint component hierarchy",
+    "source": "n4gjDyhTRcY_Unreal Engine 5.5 - How to Setup City Sample Crowds (Metahum.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Unity terrain detail distance must be increased (e.g., 250) to render grass/details visible from the player's position; default is too low for open worlds",
+    "context": "Grass painted on terrain was invisible at distance until detail distance was set to 250 in terrain settings",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Fog density of approximately 0.0045 with color sampled from the low horizon of the skybox creates a cohesive fade that hides terrain detail pop-in boundaries",
+    "context": "Fog obscures the distance where grass detail stops rendering, and color-matching it to the skybox horizon makes the transition seamless",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Unity Mass Place Trees feature can batch-place 15,000 trees across an entire terrain in one operation, but tree distance in terrain settings must be increased to render distant trees",
+    "context": "Only trees close to the player render by default; tree distance setting controls the rendering cutoff",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Terrain brush size of ~400 gives coarse landscape height passes, then reducing to ~200 adds finer terrain detail; use a brush with noise for natural-looking elevation",
+    "context": "Two-pass terrain sculpting with raise/lower terrain tool creates more natural height variation than a single pass",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "For grass detail textures, sample the healthy color from lighter parts of the base ground texture and the dry color from darker parts using the eyedropper to maintain color cohesion",
+    "context": "Color-matching grass detail to the underlying terrain texture prevents visual disconnect between ground and vegetation layers",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "A cohesive open world scene requires color-sampling consistency: skybox horizon color for fog, base texture colors for grass healthy/dry tints, and tree prefab materials matching the grass environment",
+    "context": "The tutorial emphasizes an eyedropper sampling technique across fog, grass, and trees to keep the entire scene visually unified",
+    "source": "nCDGjLRecrs_Build a beautiful 3D open world in 5 minutes \uff5c Unity.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Replica AI NPC demo requires a 28 GB download, runs via a local setup/install process, and processes voice input with variable response latency \u2014 sometimes noticeably longer than real-time conversational pace",
+    "context": "Demonstrates the storage and compute cost of running local AI-driven NPC dialogue systems",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI NPCs maintain per-character personality and emotional state: different NPCs respond with distinct attitudes (hostile, dismissive, helpful) and can escalate or de-escalate based on player tone and conversation history within a session",
+    "context": "Demonstrates persistent conversational context and personality differentiation across NPC instances",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "AI NPCs can process contextual environmental queries (e.g., weather, directions to landmarks like a park) and generate spatially-aware responses such as 'go straight down the street and take a left at the next corner'",
+    "context": "Shows NPCs have some awareness of the game world's spatial layout and environmental conditions",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "The demo city environment includes sidewalks, streets with vehicle traffic (including box trucks), stairs, and pedestrian NPCs walking routes \u2014 but has visible boundary limits referred to as 'the Matrix wall'",
+    "context": "City sandbox demo has finite world boundaries and standard urban scene elements",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "vehicles",
+    "fact": "The demo features AI-driven traffic with vehicles like box trucks navigating city streets, and NPCs contextually reference the traffic conditions (e.g., 'the traffic's ridiculous') when prompted",
+    "context": "Vehicles serve as ambient city simulation and NPCs can comment on traffic as environmental context",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "Voice-to-voice NPC interaction uses a pipeline of speech recognition \u2192 AI text generation \u2192 text-to-speech, with the latency gap visible between player speech ending and NPC audio response beginning",
+    "context": "Real-time voice NPC dialogue has a perceptible processing delay that varies per interaction",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "npc",
+    "fact": "The Unrecord game (police game) shares assets with the Replica demo (e.g., the same box truck model appears in both), indicating asset reuse across AI NPC tech demos and game prototypes",
+    "context": "Asset pipeline reuse between AI NPC demos and in-development game titles",
+    "source": "rMfCpUhvbVg_Talking to AI Smart NPC's! \uff5c This is the Future of Gaming.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Bullet movement uses rotation basis multiplied by speed constant (set to 40) in the process function to move projectiles forward along their local negative Z axis",
+    "context": "Physical bullet projectile system rather than hitscan, bullets are scene instances with their own movement logic",
+    "source": "shooting_6bbPHsB9TtI_Complete 3D Shooting Mechanics - Godot 4 FPS Tutor.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Shoot animation length is 0.1 seconds (a tenth of a second) with snapping set to 100, using 3 keyframes: original position, gun pulled back, return to original position \u2014 only the middle keyframe position changes",
+    "context": "AnimationPlayer node with Property track on the gun mesh position creates recoil effect",
+    "source": "shooting_6bbPHsB9TtI_Complete 3D Shooting Mechanics - Godot 4 FPS Tutor.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Fire rate control checks if shoot animation is NOT currently playing before allowing another shot \u2014 if animation finished or button just pressed, play shoot animation again",
+    "context": "Uses Input.is_action_pressed in physics_process with animation state as the rate limiter",
+    "source": "shooting_6bbPHsB9TtI_Complete 3D Shooting Mechanics - Godot 4 FPS Tutor.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Bullet mesh is a BoxMesh with X and Y dimensions set to 0.05, with emission color at strength 5 for a glowing projectile effect",
+    "context": "Bullet scene uses Node3D root with MeshInstance3D child and RayCast3D for collision detection",
+    "source": "shooting_6bbPHsB9TtI_Complete 3D Shooting Mechanics - Godot 4 FPS Tutor.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Gun barrel spawn point uses a RayCast3D with target_position set to negative Z (0, 0, -1) since negative Z is the forward direction in Godot's coordinate system",
+    "context": "RayCast3D is positioned at the gun barrel to define bullet spawn location and verify gun model orientation",
+    "source": "shooting_6bbPHsB9TtI_Complete 3D Shooting Mechanics - Godot 4 FPS Tutor.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Bullet collision detection uses a RayCast3D attached to the bullet with length slightly exceeding the mesh bounds, pointing in negative Z direction",
+    "context": "Each bullet projectile has its own raycast for detecting hits rather than using a single hitscan ray from the camera",
+    "source": "shooting_6bbPHsB9TtI_Complete 3D Shooting Mechanics - Godot 4 FPS Tutor.txt"
+  },
+  {
+    "topic": "fps",
+    "fact": "Gun is parented as child of the camera node, positioned using camera preview checkbox to see first-person view without running the game; shadow casting is disabled on gun mesh via cast_shadow setting in geometry section",
+    "context": "Standard FPS gun setup with visual tuning of metallic, specular, and roughness material properties",
+    "source": "shooting_6bbPHsB9TtI_Complete 3D Shooting Mechanics - Godot 4 FPS Tutor.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Hitscan bullets have zero travel time and hit whatever is at the crosshair center instantly when the trigger is pulled. Projectile bullets send a physical in-game object with real travel time requiring the player to lead shots on moving targets.",
+    "context": "The two fundamental bullet types used in FPS games with distinct gameplay implications.",
+    "source": "shooting_EpkvNUoxlxM_The Slightly Odd Way Bullets Work In FPS Games.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Bullets can originate from the center of the camera (between the eyes) or from the gun barrel. Camera-origin means the bullet naturally hits where the crosshair points. Games like Overwatch, Apex Legends, and CS:GO shoot from the camera/eyes.",
+    "context": "Bullet origin point is a core design decision affecting accuracy and visual fidelity.",
+    "source": "shooting_EpkvNUoxlxM_The Slightly Odd Way Bullets Work In FPS Games.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Camera-origin shooting enables 'head glitching' where players shoot from behind cover as long as their head is unobstructed. The fix is to move the camera down to about chest height so the view is obstructed when behind cover.",
+    "context": "A known exploit caused by placing the camera at the player model's eye height.",
+    "source": "shooting_EpkvNUoxlxM_The Slightly Odd Way Bullets Work In FPS Games.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "For camera-origin projectiles, a fake cosmetic bullet is fired from the gun barrel for visual effect while the real invisible projectile originates from the camera center. In Overwatch, projectiles near wall edges pass through visually but the real hitbox projectile never collides with the wall.",
+    "context": "Dual-bullet technique solves the visual mismatch of projectiles appearing to come from the player's face.",
+    "source": "shooting_EpkvNUoxlxM_The Slightly Odd Way Bullets Work In FPS Games.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Barrel-origin shooting (used by PUBG, Escape from Tarkov, TF2 Soldier's rocket launcher) causes bullets to hit slightly off-center from the crosshair unless the developer compensates. Players must offset aim when hip-firing and watch for walls blocking the barrel's line of fire.",
+    "context": "More realistic but introduces aiming complexity and occlusion issues near geometry.",
+    "source": "shooting_EpkvNUoxlxM_The Slightly Odd Way Bullets Work In FPS Games.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "With barrel-origin bullets, enemies who get between the player and the gun barrel tip cannot be hit even if the crosshair is on them, because guns have physical length. Games handle this by pulling the gun model back near objects or disabling shooting at very close range.",
+    "context": "Close-range edge case unique to barrel-origin bullet systems.",
+    "source": "shooting_EpkvNUoxlxM_The Slightly Odd Way Bullets Work In FPS Games.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "A hybrid bullet type exists where bullets are hitscan up to a certain distance and become projectiles beyond that threshold. Used in some Halo games and Insurgency: Sandstorm to give close-range weapons like SMGs immediacy while limiting long-range sniper effectiveness.",
+    "context": "Rare technique that combines both bullet types with a distance-based transition.",
+    "source": "shooting_EpkvNUoxlxM_The Slightly Odd Way Bullets Work In FPS Games.txt"
+  }
+]
