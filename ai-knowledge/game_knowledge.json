@@ -1312,5 +1312,1295 @@
     "fact": "A hybrid bullet type exists where bullets are hitscan up to a certain distance and become projectiles beyond that threshold. Used in some Halo games and Insurgency: Sandstorm to give close-range weapons like SMGs immediacy while limiting long-range sniper effectiveness.",
     "context": "Rare technique that combines both bullet types with a distance-based transition.",
     "source": "shooting_EpkvNUoxlxM_The Slightly Odd Way Bullets Work In FPS Games.txt"
+  },
+  {
+    "topic": "recoil",
+    "fact": "Prodeus uses per-shot screen shake (screen vibration on every gunshot) as a recoil-feel mechanic, giving visceral feedback without complex recoil patterns",
+    "context": "Described as core to the game's feel alongside fast movement and sprite-based enemies",
+    "source": "shooting_au7QcKPuuYE_The Best Boomer Shooters Are Amazing.txt"
+  },
+  {
+    "topic": "ammo",
+    "fact": "Ultrakill replaces traditional ammo/health pickups with a blood-as-fuel mechanic where killing enemies at close range refills health, encouraging aggressive play",
+    "context": "Tagline 'blood is fuel' defines the core loop of staying close to enemies to sustain health",
+    "source": "shooting_au7QcKPuuYE_The Best Boomer Shooters Are Amazing.txt"
+  },
+  {
+    "topic": "ammo",
+    "fact": "Prodeus horror mods use severely limited ammo pools combined with restricted lighting to shift the genre from action shooter to survival horror within the same engine",
+    "context": "Custom campaign found via built-in level editor demonstrated genre-shifting through ammo scarcity",
+    "source": "shooting_au7QcKPuuYE_The Best Boomer Shooters Are Amazing.txt"
+  },
+  {
+    "topic": "hitscan",
+    "fact": "Ultrakill features a fist-parry mechanic that reflects enemy bullets back, implying projectile-based (non-hitscan) bullets that can be intercepted and redirected mid-flight",
+    "context": "Described alongside coin trick-shot mechanic as part of Ultrakill's advanced combat system",
+    "source": "shooting_au7QcKPuuYE_The Best Boomer Shooters Are Amazing.txt"
+  },
+  {
+    "topic": "impact_force",
+    "fact": "Prodeus enemies use high-pressure blood-explosion death effects (described as 'blood pinatas') with gore that coats the player's gun model and environment walls",
+    "context": "Visual impact feedback is a core design pillar making kills feel powerful in boomer shooters",
+    "source": "shooting_au7QcKPuuYE_The Best Boomer Shooters Are Amazing.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Ultrakill implements a coin-toss trick-shot system where firing a bullet at a thrown coin redirects it toward enemies, combining projectile physics with precision timing",
+    "context": "Used as an example of innovative mechanics possible in indie boomer shooters vs AAA titles",
+    "source": "shooting_au7QcKPuuYE_The Best Boomer Shooters Are Amazing.txt"
+  },
+  {
+    "topic": "weapon_setup",
+    "fact": "To attach a weapon model in Unity FPS, drag the model inside the player hierarchy alongside the dummy weapon, then align its transform position to match the dummy weapon's position.",
+    "context": "Demonstrates the standard parenting workflow for first-person weapon placement.",
+    "source": "shooting_nbRQ_aiAwW8_FPS Full Game Tutorial \uff5c Unity \uff5c Part 6 - Weapon M.txt"
+  },
+  {
+    "topic": "weapon_setup",
+    "fact": "After importing a weapon prefab, right-click and select 'Prefab > Unpack Completely' to break the prefab link so individual parts can be freely modified.",
+    "context": "Unpacking is required before customizing imported weapon models.",
+    "source": "shooting_nbRQ_aiAwW8_FPS Full Game Tutorial \uff5c Unity \uff5c Part 6 - Weapon M.txt"
+  },
+  {
+    "topic": "weapon_setup",
+    "fact": "Weapon model scale often needs manual adjustment after import; e.g. a pistol prefab was scaled to 2x its default size to look correct in first-person view.",
+    "context": "Asset store models rarely ship at the exact scale needed for an FPS camera.",
+    "source": "shooting_nbRQ_aiAwW8_FPS Full Game Tutorial \uff5c Unity \uff5c Part 6 - Weapon M.txt"
+  },
+  {
+    "topic": "rendering",
+    "fact": "Pink/magenta materials on imported weapon models indicate a shader mismatch; fix by selecting all materials then using Edit > Rendering > Materials > Convert Selected Built-in Materials to URP.",
+    "context": "Common issue when importing Standard shader assets into a URP project.",
+    "source": "shooting_nbRQ_aiAwW8_FPS Full Game Tutorial \uff5c Unity \uff5c Part 6 - Weapon M.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Camera raycast aiming works by casting a ray from screen center, then faking the bullet trail from the gun barrel to the hit point; trails play fast enough that imperfect angles are unnoticeable",
+    "context": "Most common FPS/TPS aiming method used throughout the game dev industry",
+    "source": "shooting_x8ECpNWMmag_Accurate Aiming Options Discussed & Implemented \uff5c .txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Camera raycast method causes bullet trails to clip through walls near the gun because the ray originates from the camera while the trail renders from the gun barrel, creating a perspective mismatch",
+    "context": "Visual artifact is easily reproduced by standing close to a wall corner with the reticle aimed past it",
+    "source": "shooting_x8ECpNWMmag_Accurate Aiming Options Discussed & Implemented \uff5c .txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Third-person shooters exacerbate the camera-vs-gun offset problem because the camera is significantly farther from the gun than in first person, and objects can pass between camera and player causing backward shots",
+    "context": "Requires additional logic to prevent raycasting hits on objects between camera and player",
+    "source": "shooting_x8ECpNWMmag_Accurate Aiming Options Discussed & Implemented \uff5c .txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Barrel-origin shooting (raycast or projectile from gun muzzle) is the most realistic but makes crosshair placement difficult because gun model sway causes the aim point to shift constantly",
+    "context": "Crosshair would need to track the barrel's actual direction, which looks unnatural in games",
+    "source": "shooting_x8ECpNWMmag_Accurate Aiming Options Discussed & Implemented \uff5c .txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "A hybrid aiming method uses a camera raycast to find a world-space target point, then aims the gun barrel toward that point and fires the projectile from the gun, combining camera-based targeting with barrel-origin bullets",
+    "context": "Third approach that balances visual accuracy with realistic bullet origin",
+    "source": "shooting_x8ECpNWMmag_Accurate Aiming Options Discussed & Implemented \uff5c .txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Three standard aiming implementations: (1) camera raycast with faked bullet trail from gun, (2) direct barrel-origin raycast/projectile, (3) hybrid where gun aims at camera raycast hit point then fires from barrel",
+    "context": "Industry-wide approaches to solving the aiming problem in shooters",
+    "source": "shooting_x8ECpNWMmag_Accurate Aiming Options Discussed & Implemented \uff5c .txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Camera follow uses a CameraHolder empty object with child camera; a CamPos transform (Y=2.6) inside the player is tracked each Update via transform.position = camPos.position for direct position lock",
+    "context": "Simple camera follow without spring arm or lag \u2014 camera snaps to player position every frame",
+    "source": "tps_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Mouse look uses Input.GetAxisRaw MouseX/MouseY multiplied by sensitivity (100) and 0.01f; vertical rotation (X axis) is clamped to -90..90 degrees via Mathf.Clamp",
+    "context": "Standard FPS-style mouse look with separate X/Y sensitivity floats and vertical clamp to prevent over-rotation",
+    "source": "tps_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Orientation is a separate empty child object inside the player whose rotation is set to Quaternion.Euler(0, yRotation, 0); camera transform gets Quaternion.Euler(xRotation, yRotation, 0) \u2014 decoupling body yaw from camera pitch",
+    "context": "Splitting orientation from camera rotation prevents rigidbody from tilting and allows movement direction to follow horizontal look only",
+    "source": "tps_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Player movement direction is calculated as orientation.forward * yInput + orientation.right * xInput, then force is applied to Rigidbody in FixedUpdate with moveSpeed=10",
+    "context": "Using orientation transform for movement basis means player moves relative to camera facing direction",
+    "source": "tps_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Rigidbody is configured with Interpolate=Interpolate and CollisionDetection=ContinuousDynamic; rb.freezeRotation=true is set in Start to prevent physics-driven rotation",
+    "context": "Continuous dynamic collision detection prevents fast-moving player from tunneling through geometry; freeze rotation stops rigidbody from tipping over",
+    "source": "tps_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Cursor is locked and hidden at Start via Cursor.lockState=CursorLockMode.Locked and Cursor.visible=false",
+    "context": "Standard FPS cursor lock pattern to capture mouse input for camera rotation",
+    "source": "tps_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Right stick rotates camera up/down and around the character providing full orbit control in third person view",
+    "context": "Naughty Controller uses dual-stick input: right stick for camera orbit, left stick for movement",
+    "source": "tps_ED4MS0bM1OA_FREE Third Person Controller In Unity (Naughty Cha.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Left stick analog sensitivity controls locomotion blend: soft press triggers walk animation, full tilt triggers sprint animation",
+    "context": "Controller reads analog stick magnitude to blend between walk and sprint states",
+    "source": "tps_ED4MS0bM1OA_FREE Third Person Controller In Unity (Naughty Cha.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Ground detection uses raycasting to know when the character has hit the ground for ground checks and landing animations",
+    "context": "Raycasts determine grounded state to trigger fall-to-land animation transitions",
+    "source": "tps_ED4MS0bM1OA_FREE Third Person Controller In Unity (Naughty Cha.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Unity new Input System package required for simultaneous mouse/keyboard and controller support in third person controller",
+    "context": "Input System package must be installed from Unity Package Manager registry and editor restarted to swap input backends",
+    "source": "tps_ED4MS0bM1OA_FREE Third Person Controller In Unity (Naughty Cha.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Standard/built-in pipeline materials convert to URP via Window > Rendering > Render Pipeline Converter using upgrade materials then initialize and install",
+    "context": "Naughty Controller was built for standard pipeline so materials appear pink in URP until converted",
+    "source": "tps_ED4MS0bM1OA_FREE Third Person Controller In Unity (Naughty Cha.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Character materials use Universal Render Pipeline Lit shader with albedo base map, normal map, and metallic smoothness map slots",
+    "context": "Head material requires head albedo on base map and head metallic smoothness on metallic slot after shader swap to URP Lit",
+    "source": "tps_ED4MS0bM1OA_FREE Third Person Controller In Unity (Naughty Cha.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Unity Starter Assets Third Person Controller uses a CineMachine camera (player follow camera) for third person camera control, separate from the main camera",
+    "context": "The prefab includes main camera, player armature, and player follow camera as separate components that can be added individually or as a parent prefab",
+    "source": "tps_YzWixqYZL-o_Third Person Character Controller in Unity! (Mixam.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "The Starter Assets third person controller prefab must be unpacked completely (right-click > unpack prefab completely) before customization, and the scene's existing main camera must be removed first",
+    "context": "Having a duplicate main camera causes display conflicts; unpacking allows full editing of the prefab hierarchy",
+    "source": "tps_YzWixqYZL-o_Third Person Character Controller in Unity! (Mixam.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Unity third person controller supports WASD movement, sprint, jump with sound effects, and CineMachine-driven camera orbit control out of the box with zero additional scripting",
+    "context": "The prefab comes fully configured with input handling, animations, and audio as a rapid prototyping starter kit",
+    "source": "tps_YzWixqYZL-o_Third Person Character Controller in Unity! (Mixam.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "To retarget a Mixamo or third-party character mesh to Unity's third person controller, set the imported FBX model rig type to Humanoid and hit Apply, which maps the skeleton to Unity's humanoid avatar system",
+    "context": "Humanoid rig type enables automatic animation retargeting so any humanoid mesh can reuse the same animator controller and animations",
+    "source": "tps_YzWixqYZL-o_Third Person Character Controller in Unity! (Mixam.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "When swapping character meshes, the new mesh is placed inside the PlayerArmature > Root > Geometry hierarchy, and the transform must be reset (right-click transform > Reset) to align it to the correct position",
+    "context": "The animator controller on PlayerArmature references an avatar that must be updated from the old armature avatar to the new character's avatar",
+    "source": "tps_YzWixqYZL-o_Third Person Character Controller in Unity! (Mixam.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Mixamo FBX exports for Unity should use FBX for Unity format with the character kept in T-pose (original position) to ensure correct animation retargeting",
+    "context": "T-pose is the standard reference pose that Unity's humanoid rig system uses to map bones between different character skeletons",
+    "source": "tps_YzWixqYZL-o_Third Person Character Controller in Unity! (Mixam.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "In Unreal Engine, skeletal mesh components have 'Only Owner See' and 'Owner No See' boolean properties under Rendering > Advanced that control per-player mesh visibility in multiplayer.",
+    "context": "These flags let you show a first-person arms mesh only to the owning player and a third-person full-body mesh only to other players.",
+    "source": "tps_lbBCA0HmhFc_ACF Show First Person Mesh to Player, Third Person.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "For the first-person mesh: set 'Only Owner See' = true and 'Owner No See' = false. For the third-person mesh: set 'Only Owner See' = false and 'Owner No See' = true.",
+    "context": "This inverse configuration ensures the local player sees FPS arms while remote players see the full third-person body.",
+    "source": "tps_lbBCA0HmhFc_ACF Show First Person Mesh to Player, Third Person.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "With Owner No See enabled on the third-person mesh, the owning player cannot see their own third-person shadow or legs when looking down, confirming the mesh is fully hidden locally.",
+    "context": "This is expected behavior \u2014 shadow casting from the hidden mesh is also suppressed for the owner.",
+    "source": "tps_lbBCA0HmhFc_ACF Show First Person Mesh to Player, Third Person.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "In a Listen Server setup with two players, each player's pawn has both a first-person skeletal mesh (FPS arms/weapon) and a separate third-person skeletal mesh (full body) attached simultaneously.",
+    "context": "Both meshes exist on the actor at all times; visibility flags determine which one each client renders.",
+    "source": "tps_lbBCA0HmhFc_ACF Show First Person Mesh to Player, Third Person.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Using F8 (Eject/Possess) in editor reveals both the first-person and third-person meshes simultaneously since camera ownership rules no longer apply to the detached spectator view.",
+    "context": "This is a useful debug technique to verify both meshes are correctly positioned on the same pawn.",
+    "source": "tps_lbBCA0HmhFc_ACF Show First Person Mesh to Player, Third Person.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Cinemachine FreeLook camera uses follow and lookAt targets set to the player character to create an orbiting third person camera",
+    "context": "FreeLook camera assigned the Jammo character as both follow and lookAt target for third person view",
+    "source": "tps_t0bMqi3mhYQ_FREE EPIC Third Person Controller (Jammo Character.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "FreeLook camera X-axis speed controls horizontal orbit rate (default was high, reduced to 100 for smoother rotation) and Y-axis speed controls vertical look (reduced to 4 for smoother vertical panning)",
+    "context": "Lowering both axis speeds from defaults produces a much smoother camera orbit feel",
+    "source": "tps_t0bMqi3mhYQ_FREE EPIC Third Person Controller (Jammo Character.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Cinemachine FreeLook camera is preferred over vcam for third person because it provides full orbital mouse-driven rotation around the character on both X and Y axes",
+    "context": "Tutorial removed the vcam and kept only the FreeLook camera for the orbiting third person setup",
+    "source": "tps_t0bMqi3mhYQ_FREE EPIC Third Person Controller (Jammo Character.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Camera smoothing in third person is achieved by tuning X-axis and Y-axis speed values lower \u2014 reducing X-axis from default to ~100 and Y-axis to ~4 eliminates jerky rotation",
+    "context": "Demonstrated that default speeds were too fast and that lowering them gave a much more smooth look when rotating the camera",
+    "source": "tps_t0bMqi3mhYQ_FREE EPIC Third Person Controller (Jammo Character.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Third person character velocity can be adjusted independently from camera speed to control movement feel without affecting camera orbit behavior",
+    "context": "Character velocity was reduced to make movement slower while camera orbit settings remained separate",
+    "source": "tps_t0bMqi3mhYQ_FREE EPIC Third Person Controller (Jammo Character.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Use ForceMode.VelocityChange when adding force to a rigid body player controller \u2014 this ensures velocity changes are not affected by the rigid body's mass or the physics simulation step length",
+    "context": "Proper rigid body movement without breaking physics simulation",
+    "source": "tps_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Apply high drag only while the player is grounded and low drag while airborne \u2014 constant high drag causes floating/gliding when walking off edges",
+    "context": "Solving rigid body slipperiness requires a ground-state-dependent drag system",
+    "source": "tps_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Never directly set rigid body velocity every physics frame \u2014 it breaks the physics simulation; use AddForce instead as recommended by Unity documentation",
+    "context": "Setting velocity explicitly overrides the physics engine's own calculations each fixed update",
+    "source": "tps_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Ground checking with a single raycast is inaccurate \u2014 use a sphere cast or OnCollisionEnter, then verify the hit is actual ground by checking the slope angle (angle between player down vector and surface normal) against a threshold",
+    "context": "Raycasts falsely report airborne when the character stands on an edge",
+    "source": "tps_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "Wall collisions can falsely register as ground \u2014 fix by assigning ground objects to a dedicated physics layer or by comparing the slope angle between the player's down vector and the contact normal",
+    "context": "Edge case where wall contact triggers grounded state during sphere cast or collision callbacks",
+    "source": "tps_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "tps",
+    "fact": "For character controller + physics interaction, apply a force at each contact point in the direction of the surface normal on every rigid body the controller touches",
+    "context": "Hybrid approach allowing character controllers to push physics objects",
+    "source": "tps_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "cannon.js_vehicle_physics",
+    "fact": "Cannon.js physics engine combined with React Three Fiber enables car physics with angular velocity control while airborne, allowing flip tricks off ramps",
+    "context": "A race track demo uses cannon.js for vehicle colliders on trees, signs, and ramps with mid-air angular velocity manipulation",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "react_three_fiber_scene_setup",
+    "fact": "All Three.js scripts must be wrapped under the Canvas component because React Three Fiber hooks cannot be used outside of Canvas",
+    "context": "Canvas component from React Three Fiber does setup work behind the scenes to initialize the Three.js environment",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "3d_environment_map",
+    "fact": "A 3D scene background can be created using an environment map loaded via the Environment component, producing a blurred background that supports orbit controls",
+    "context": "The perspective camera uses orbit controls with a Target property defining the look-at point in 3D space",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "third_person_camera",
+    "fact": "A toggleable third-person camera view can be implemented alongside orbit controls for vehicle-based gameplay in React Three Fiber",
+    "context": "The race track demo features a third-person camera that follows the player-controlled car",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "physics_colliders",
+    "fact": "Scene elements like trees, signs, and ramps can act as physics colliders in cannon.js, enabling realistic collision responses for vehicles",
+    "context": "Static world objects serve dual purpose as visual decoration and physical collision boundaries on the race track",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "react_three_fiber_dependencies",
+    "fact": "Core dependency stack for a 3D physics game: three.js, @react-three/fiber, @react-three/drei (utility functions), and @react-three/cannon (physics) \u2014 pin exact versions for stability",
+    "context": "The 3D web game space moves quickly so matching exact library versions is critical for reproducibility",
+    "source": "wHw3Gh0IhNc_Car physics mini game with React Three Fiber and Three.js [ .txt"
+  },
+  {
+    "topic": "hitscan",
+    "fact": "Hitscan weapons perform instant ray checks from crosshair to target \u2014 if the crosshair is on the enemy at fire time, it registers a hit with zero travel time, making accuracy a pure aim check.",
+    "context": "Hitscan is contrasted with projectile weapons which require leading targets and have travel time.",
+    "source": "shooting_RJF7xQC6GrA_The Pitfalls and Techniques of Hitscan Guns.txt"
+  },
+  {
+    "topic": "hitscan_ai",
+    "fact": "AI bots with hitscan weapons can theoretically hit 100% of shots since there is no projectile to dodge \u2014 accuracy must be artificially limited by programming inaccuracy or the bot effectively becomes unavoidable damage-over-time.",
+    "context": "Without intentional miss chance, hitscan bots remove all player agency in avoiding damage.",
+    "source": "shooting_RJF7xQC6GrA_The Pitfalls and Techniques of Hitscan Guns.txt"
+  },
+  {
+    "topic": "hitscan_counterplay",
+    "fact": "Movement speed can serve as implicit hitscan counterplay \u2014 bots are typically programmed to be less accurate against faster-moving targets, letting games like Titanfall 2 use high-speed movement to simulate the dodge dynamics of projectile weapons.",
+    "context": "Fast movement creates a pseudo-projectile feel but lacks visual feedback since players cannot see missed hitscan rays.",
+    "source": "shooting_RJF7xQC6GrA_The Pitfalls and Techniques of Hitscan Guns.txt"
+  },
+  {
+    "topic": "bullet_spread",
+    "fact": "Counter-Strike adds depth to hitscan by requiring players to learn per-weapon spray patterns, control fire rate to allow aim reset, and stand still while shooting \u2014 turning accuracy into a technical skill layer on top of basic aim.",
+    "context": "Spray pattern mastery, fire-rate management, and movement timing transform simple hitscan into a high-skill-ceiling mechanic.",
+    "source": "shooting_RJF7xQC6GrA_The Pitfalls and Techniques of Hitscan Guns.txt"
+  },
+  {
+    "topic": "projectile_counterplay",
+    "fact": "Projectile weapons have inherent counterplay because shots are visible and have travel time \u2014 players can dodge by moving radically or increasing distance, which increases the lead prediction required by the shooter.",
+    "context": "Projectile difficulty scales non-linearly with range since both travel time and required prediction increase.",
+    "source": "shooting_RJF7xQC6GrA_The Pitfalls and Techniques of Hitscan Guns.txt"
+  },
+  {
+    "topic": "hitscan_design",
+    "fact": "FEAR makes hitscan work by having enemy soldiers vocally narrate their actions (flanking, grenading, etc.), turning cover-based hitscan counterplay from passive waiting into active tactical decision-making.",
+    "context": "Audio callouts combined with level design convert forced-cover moments into engaging combat loops despite hitscan's lack of visible dodgeable shots.",
+    "source": "shooting_RJF7xQC6GrA_The Pitfalls and Techniques of Hitscan Guns.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Hitscan shooting uses Physics.Raycast originating from the camera position in the forward direction; if nothing is hit, no action is taken",
+    "context": "Raycasting shoots an invisible ray from the camera forward, gathering hit info on collision or doing nothing on a miss",
+    "source": "shooting_THnivyG0Mvo_Shooting with Raycasts - Unity Tutorial.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "A gun script requires configurable public floats: damage (default 10) and range (default 100 units)",
+    "context": "Core gun parameters are exposed as public variables for tuning damage output and maximum effective distance",
+    "source": "shooting_THnivyG0Mvo_Shooting with Raycasts - Unity Tutorial.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Input.GetButtonDown('Fire1') maps to the left mouse button by default in Unity and is used to trigger the shoot function",
+    "context": "Unity's built-in input system provides a Fire1 binding that defaults to left mouse button for shooting",
+    "source": "shooting_THnivyG0Mvo_Shooting with Raycasts - Unity Tutorial.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "RaycastHit stores information about what the ray collided with, enabling damage application and impact effects",
+    "context": "A RaycastHit variable captures collision data so the system can respond with damage, muzzle flash, impact effects, and physics force",
+    "source": "shooting_THnivyG0Mvo_Shooting with Raycasts - Unity Tutorial.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Gun graphics should be parented to the main camera, and the camera's near clipping plane must be decreased to prevent the gun model from being clipped",
+    "context": "Attaching the gun as a child of the FPS camera and lowering the near clip plane ensures the weapon renders properly on screen",
+    "source": "shooting_THnivyG0Mvo_Shooting with Raycasts - Unity Tutorial.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Raycast hitscan guns can apply an impact force to physics objects on hit, in addition to damage and visual effects like muzzle flash and impact particles",
+    "context": "The gun script supports adding force to rigidbodies at the hit point, creating physical reactions to being shot",
+    "source": "shooting_THnivyG0Mvo_Shooting with Raycasts - Unity Tutorial.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Hitscan guns use Physics.Raycast instead of spawning a rigidbody bullet game object, determining hits instantly in one frame",
+    "context": "Core hitscan implementation: fire a raycast, check if it hits something, then visually represent the shot with a trail renderer",
+    "source": "shooting_cI3E7_f74MA_Hitscan Guns with Bullet Tracers \uff5c Raycast Shootin.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Hitscan bullet trails use a TrailRenderer that goes from the shot origin point to the raycast hit point, with an impact particle system spawned at the hit location",
+    "context": "Visual feedback for hitscan requires faking bullet travel since the raycast resolves instantly in a single frame",
+    "source": "shooting_cI3E7_f74MA_Hitscan Guns with Bullet Tracers \uff5c Raycast Shootin.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Hitscan shooting requires only 2 scripts: a Gun script (attached to the weapon game object) and a PlayerAction script (attached to the player capsule) that calls gun.shoot()",
+    "context": "Minimal architecture for hitscan guns using Unity's new Input System with Send Messages behavior",
+    "source": "shooting_cI3E7_f74MA_Hitscan Guns with Bullet Tracers \uff5c Raycast Shootin.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "Unity's new Input System uses Send Messages behavior to call an OnShoot method on all scripts attached to the game object with PlayerInput, triggered by a custom 'shoot' action bound to left mouse button",
+    "context": "Input binding setup: create a shoot action in the Input Action Asset, bind to left mouse button, mark as keyboard-and-mouse control scheme",
+    "source": "shooting_cI3E7_f74MA_Hitscan Guns with Bullet Tracers \uff5c Raycast Shootin.txt"
+  },
+  {
+    "topic": "shooting",
+    "fact": "The Gun reference in PlayerAction is a private serialized field ([SerializeField] private Gun gun) so it can be assigned in the Unity Inspector rather than hardcoded",
+    "context": "Standard Unity pattern for decoupling the input handler from the weapon logic while keeping inspector configurability",
+    "source": "shooting_cI3E7_f74MA_Hitscan Guns with Bullet Tracers \uff5c Raycast Shootin.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Camera follow is implemented by creating a 'camera holder' empty object, making the camera a child of it, then in Update setting transform.position = camPos.position where camPos is a transform reference point parented to the player at Y offset 2.6",
+    "context": "Simple first-person camera follow that snaps camera holder position to a child transform of the player every frame in Update",
+    "source": "camera_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "FPS",
+    "fact": "First-person mouse look uses two floats x and y, accumulating input via y += Input.GetAxisRaw('Mouse X') * sensX * 0.01f and x -= Input.GetAxisRaw('Mouse Y') * sensY * 0.01f, then clamping x with Mathf.Clamp(x, -90, 90)",
+    "context": "Standard FPS mouse look script attached to the camera with vertical rotation clamped to prevent over-rotation",
+    "source": "camera_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "FPS",
+    "fact": "Camera rotation is split: orientation.rotation = Quaternion.Euler(0, y, 0) for horizontal yaw on a separate orientation object, and transform.rotation = Quaternion.Euler(x, y, 0) for the camera itself combining pitch and yaw",
+    "context": "Separating yaw into an orientation transform allows movement direction to be decoupled from vertical camera look",
+    "source": "camera_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "FPS",
+    "fact": "Movement direction is calculated as Vector3 moveDirection = orientation.forward * yInput + orientation.right * xInput, then force is applied to the Rigidbody so movement aligns with camera yaw without pitch influence",
+    "context": "Using the orientation transform (yaw only) ensures the player moves along the horizontal plane regardless of where the camera looks vertically",
+    "source": "camera_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "FPS",
+    "fact": "Rigidbody is configured with Interpolate set to 'Interpolate' and Collision Detection set to 'Continuous Dynamic', with rb.freezeRotation = true in Start to prevent physics-driven rotations",
+    "context": "These Rigidbody settings prevent jitter on the camera-followed player and stop tunneling through colliders at high speed",
+    "source": "camera_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Camera follow target (camPos) is placed as a child of the player object at local position Y = 2.6, representing approximate eye height above the player capsule origin",
+    "context": "The camPos transform acts as the camera anchor point and inherits all player movement and rotation automatically as a child object",
+    "source": "camera_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "FPS",
+    "fact": "Mouse sensitivity values are set to approximately 100 for both X and Y axes, multiplied by 0.01f in code (effective multiplier 1.0), with cursor locked via Cursor.lockState = CursorLockMode.Locked and Cursor.visible = false",
+    "context": "Standard FPS cursor lock setup with sensitivity scaling built into the input processing formula",
+    "source": "camera_5_PIpMAuVLk_Make first person 3D player movement under 4 mins .txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Spring arm (camera boom) target arm length set to 200-250 units for third-person follow camera; socket offset Y = 35; target offset Z = 60",
+    "context": "Base camera boom settings for a third-person character camera in UE5",
+    "source": "camera_6T6qhmWFsks_How to create PERFECT Camera In UE5.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Custom event 'MoveCamera' takes two float inputs: TargetArmLength and SocketYOffset, with variables LastSocketY and LastArmLength storing current values before interpolation",
+    "context": "Blueprint event setup to smoothly transition camera position when player changes movement speed",
+    "source": "camera_6T6qhmWFsks_How to create PERFECT Camera In UE5.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Camera boom current values cached by reading GetSocketOffset.Y into LastSocketY and GetTargetArmLength into LastArmLength before any transition begins",
+    "context": "Snapshot current camera state so lerp can interpolate from old to new values",
+    "source": "camera_6T6qhmWFsks_How to create PERFECT Camera In UE5.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Timeline node 'CameraFloat' with length 1 second drives the interpolation; keyframes at (0, 0) and (0.7, 1) with first keyframe set to Auto tangent for smooth easing",
+    "context": "Timeline provides a 0-1 alpha curve over ~0.7s with smooth-start easing for camera transitions",
+    "source": "camera_6T6qhmWFsks_How to create PERFECT Camera In UE5.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Lerp node interpolates TargetArmLength: A = LastArmLength, B = target input value, Alpha = timeline float output; result fed into SetTargetArmLength on camera boom each tick (Update pin)",
+    "context": "Per-frame lerp on the timeline Update pin smoothly transitions arm length when sprinting or walking",
+    "source": "camera_6T6qhmWFsks_How to create PERFECT Camera In UE5.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Second lerp node interpolates SocketOffset.Y: A = LastSocketY, B = target SocketYOffset input, Alpha = same timeline float; result fed into SetSocketOffset split Y pin",
+    "context": "Socket offset Y is lerped in parallel with arm length so both camera distance and lateral offset transition together",
+    "source": "camera_6T6qhmWFsks_How to create PERFECT Camera In UE5.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Sprint triggers MoveCamera with extended arm length (e.g. 250) to pull camera further back; returning to walk resets to default values via StopCamera and ResetCamera custom events on timeline Stop/NewTime pins",
+    "context": "Camera dynamically zooms out when sprinting and returns to default on walk, using timeline stop and reset events",
+    "source": "camera_6T6qhmWFsks_How to create PERFECT Camera In UE5.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "Door interaction box collision dimensions: X scale 2.5, Y scale 1.75, Z scale 3.45 \u2014 sized to encompass both the player character and the door swing radius.",
+    "context": "Resident Evil-style door system in UE5 uses a box collision child of the door component to detect player overlap for interaction.",
+    "source": "camera_ARtaj0dAE20_How to make a Realistic Door System in Unreal Engi.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "Door system uses a scene component called 'door open location' as a child of the door mesh to define the target transform for open/partial-open states, separate from the collision volume.",
+    "context": "The scene component acts as a look/position target that the door interpolates toward during state transitions.",
+    "source": "camera_ARtaj0dAE20_How to make a Realistic Door System in Unreal Engi.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Resident Evil door transitions use a three-state enumeration cycle: Closed \u2192 Partially Open \u2192 Open, repeating in order, to control door animation and camera behavior during traversal.",
+    "context": "An enumeration blueprint (e_DoorStates) with three values drives the door state machine, replacing simple binary open/close with a more cinematic multi-stage transition.",
+    "source": "camera_ARtaj0dAE20_How to make a Realistic Door System in Unreal Engi.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Spring arm (camera boom) socket offset of X:0, Y:60, Z:60 with target arm length 120 creates a dead-space style over-the-shoulder third-person camera",
+    "context": "UE5 third-person starter project configuring the camera boom component for over-the-shoulder view",
+    "source": "camera_CQsBkWWM4Eo_UE5 Dead Space Style Over-The-Shoulder Camera Tuto.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Store the starting socket offset in a variable at BeginPlay so aim-to-unaim transitions can restore the original camera position instead of resetting to 0,0,0",
+    "context": "Without caching the original offset, transitioning back from aim mode centers the camera on the character incorrectly",
+    "source": "camera_CQsBkWWM4Eo_UE5 Dead Space Style Over-The-Shoulder Camera Tuto.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Set ViewPitchMax to 40 degrees via GetPlayerCameraManager to prevent extreme vertical camera rotation in third-person mode",
+    "context": "Unrestricted pitch allows the camera to look straight up/down which looks unnatural for over-the-shoulder cameras",
+    "source": "camera_CQsBkWWM4Eo_UE5 Dead Space Style Over-The-Shoulder Camera Tuto.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Camera boom socket offset X controls forward/back, Y controls left/right shoulder offset, Z controls height offset relative to the follow target",
+    "context": "UE5 spring arm socket offset coordinate system for positioning the camera relative to the character",
+    "source": "camera_CQsBkWWM4Eo_UE5 Dead Space Style Over-The-Shoulder Camera Tuto.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Over-the-shoulder aim mode transitions involve interpolating the socket offset from a wider TPS position to a tighter aim position, triggered by right mouse button input",
+    "context": "Dead Space style camera switches between normal follow and tighter aim mode with a reticle dot overlay",
+    "source": "camera_CQsBkWWM4Eo_UE5 Dead Space Style Over-The-Shoulder Camera Tuto.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Camera setup logic should be encapsulated in a dedicated function (e.g. SetUpCamera) called once from BeginPlay to cache initial spring arm values before any runtime transitions modify them",
+    "context": "Initialization pattern ensures original camera settings are preserved for state transitions between aim and default modes",
+    "source": "camera_CQsBkWWM4Eo_UE5 Dead Space Style Over-The-Shoulder Camera Tuto.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "For true first person in UE5, delete the spring arm component and parent the camera directly to the skeletal mesh component, then set the parent socket to 'head'",
+    "context": "Converting a third-person ACF character to true first person by attaching camera to the head bone instead of using a spring arm",
+    "source": "camera_OF74lmDoHh4_Ascent Combat Framework - True First Person Charac.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Camera transform for true first person on helmeted character: location offset (10, 20, 290) and rotation 90 degrees to align forward with character facing direction",
+    "context": "Specific values used to position the camera at the head socket so it looks through the character's eyes without clipping through the helmet",
+    "source": "camera_OF74lmDoHh4_Ascent Combat Framework - True First Person Charac.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Camera must be rotated 90 degrees on one axis after parenting to head socket to correct the default orientation so the view faces forward",
+    "context": "When attaching camera to a skeletal mesh socket the camera's default forward axis does not match the character's facing direction",
+    "source": "camera_OF74lmDoHh4_Ascent Combat Framework - True First Person Charac.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "For characters with large head geometry (helmets), push the camera location further forward from the head socket to prevent the mesh clipping into view",
+    "context": "Head-mounted camera on a helmeted character will show helmet geometry unless the camera is offset forward past the obstruction",
+    "source": "camera_OF74lmDoHh4_Ascent Combat Framework - True First Person Charac.txt"
+  },
+  {
+    "topic": "camera",
+    "fact": "Head-parented camera inherits all skeletal animation motion, causing significant wobble during combat animations designed for third person",
+    "context": "Third-person attack animations produce large head movement that translates directly to camera shake when camera is socket-attached to the head bone",
+    "source": "camera_OF74lmDoHh4_Ascent Combat Framework - True First Person Charac.txt"
+  },
+  {
+    "topic": "FPS TPS",
+    "fact": "Converting TPS to true FPS requires duplicating the entire player character blueprint hierarchy (base player, full player, final player) and reparenting each layer to maintain framework functionality",
+    "context": "ACF framework uses a 3-level BP inheritance chain that must be preserved when creating a first-person variant alongside the existing third-person setup",
+    "source": "camera_OF74lmDoHh4_Ascent Combat Framework - True First Person Charac.txt"
+  },
+  {
+    "topic": "FPS TPS",
+    "fact": "True first person (camera on head bone) lets the player see their full body when looking down, unlike viewport-only first person which hides the body",
+    "context": "Advantage of socket-attaching camera to the mesh head bone is full body visibility providing more immersive first-person experience",
+    "source": "camera_OF74lmDoHh4_Ascent Combat Framework - True First Person Charac.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "Use sphere cast instead of single raycast for ground checking \u2014 a raycast will falsely report the player is airborne when standing on an edge, while a sphere cast covers more area beneath the collider",
+    "context": "Sphere cast provides more accurate ground detection for character controllers than a simple raycast",
+    "source": "camera_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "Make the sphere cast radius slightly smaller than the character collider radius so it won't register wall contacts as ground contacts, though this can introduce other edge cases",
+    "context": "Prevents walls from being falsely detected as ground surfaces during sphere cast ground checks",
+    "source": "camera_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "Validate ground contacts by checking slope angle: compute the angle between the player's down vector and the surface normal vector, and only register as ground if the angle is below a threshold",
+    "context": "Prevents walls and steep surfaces from being incorrectly classified as walkable ground",
+    "source": "camera_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "For character controller physics interaction with rigidbodies, apply a force at each contact point in the direction of the surface normal for every contact the character controller makes",
+    "context": "Enables a kinematic character controller to push dynamic rigidbody objects on contact",
+    "source": "camera_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "Use ForceMode.VelocityChange when adding movement force to a rigidbody player controller \u2014 this makes velocity changes independent of rigidbody mass and physics timestep length",
+    "context": "Ensures consistent movement speed regardless of mass or fixed update rate",
+    "source": "camera_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "Apply high drag on a rigidbody controller only while grounded and set drag much lower when airborne \u2014 grounded-only high drag fixes slipperiness, while low air drag prevents floating/gliding when walking off edges",
+    "context": "Separate drag values for grounded vs airborne states produce natural movement feel",
+    "source": "camera_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "collision",
+    "fact": "On slopes, project the movement force vector to be parallel to the ground surface using the ground normal, and add an upward counter-force to counteract gravity \u2014 otherwise the player moves slower uphill, faster downhill, and slides when stationary",
+    "context": "Two separate slope fixes needed: anti-slide counter-gravity force and surface-parallel movement direction",
+    "source": "camera_z3dequX5g_E_How to make the Best Player Controller in Unity.txt"
+  },
+  {
+    "topic": "buoyancy",
+    "fact": "Buoyancy force is calculated as Vector3.up multiplied by floatingPower multiplied by the difference between water height and rigidbody Y position, so deeper submersion produces stronger upward force",
+    "context": "Core formula for making rigidbodies float on a water plane in Unity",
+    "source": "water_iasDPyC0QOg_Buoyancy with Unity Rigidbodies - Part 1 \u29f8 Planar .txt"
+  },
+  {
+    "topic": "buoyancy",
+    "fact": "ForceMode.Force is used when applying the upward buoyancy force to the rigidbody, which accounts for mass and applies force over time rather than as an impulse",
+    "context": "The force mode choice ensures heavier objects sink more and lighter objects float higher",
+    "source": "water_iasDPyC0QOg_Buoyancy with Unity Rigidbodies - Part 1 \u29f8 Planar .txt"
+  },
+  {
+    "topic": "buoyancy",
+    "fact": "Underwater drag values of 3 (linear) and 1 (angular) versus air drag values of 0 (linear) and 0.05 (angular) are used, switching between them based on whether the object is submerged",
+    "context": "Separate drag values for underwater vs above water simulate water resistance on rigidbodies",
+    "source": "water_iasDPyC0QOg_Buoyancy with Unity Rigidbodies - Part 1 \u29f8 Planar .txt"
+  },
+  {
+    "topic": "buoyancy",
+    "fact": "A waterHeight float defines the Y-level of the water plane, and the difference between waterHeight and the rigidbody's Y position determines submersion depth and force magnitude",
+    "context": "Simple planar water uses a single float for water level rather than mesh-based detection",
+    "source": "water_iasDPyC0QOg_Buoyancy with Unity Rigidbodies - Part 1 \u29f8 Planar .txt"
+  },
+  {
+    "topic": "buoyancy",
+    "fact": "The script uses RequireComponent(Rigidbody) attribute and runs buoyancy logic in FixedUpdate since it is physics-based, with a boolean tracking whether the object is currently underwater",
+    "context": "Physics calculations must run in FixedUpdate for consistent behavior across frame rates",
+    "source": "water_iasDPyC0QOg_Buoyancy with Unity Rigidbodies - Part 1 \u29f8 Planar .txt"
+  },
+  {
+    "topic": "buoyancy",
+    "fact": "The water surface is a plane with its collider removed, serving only as a visual reference while the waterHeight float handles the actual physics boundary",
+    "context": "The water plane is purely visual; buoyancy is computed mathematically against a height value, not via collision",
+    "source": "water_iasDPyC0QOg_Buoyancy with Unity Rigidbodies - Part 1 \u29f8 Planar .txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Water material controls normal map, scattering, color tints, reflections, foam settings, and SSS (subsurface scattering) tint to adjust overall water appearance",
+    "context": "Crest ocean system uses a single ocean underwater material with separate parameters for each visual property",
+    "source": "water_XYPacxkk5XQ_Best Water System EVER Created for Unity (Free Bui.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Foam generation is driven by shallow depth \u2014 shallower areas produce more foam, with adjustable foam strength that updates in real-time during rendering",
+    "context": "Crest uses a Sim Foam Settings component where shore/shallow depth controls foam density and strength",
+    "source": "water_XYPacxkk5XQ_Best Water System EVER Created for Unity (Free Bui.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Wave animation uses an FFT (Fast Fourier Transform) shape component on a separate game object to generate animated waves",
+    "context": "Crest separates wave generation into a dedicated Shape FFT component that feeds into the ocean renderer",
+    "source": "water_XYPacxkk5XQ_Best Water System EVER Created for Unity (Free Bui.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Water system requires linear color space (not gamma) set in Project Settings > Player > Other Settings for correct rendering",
+    "context": "Crest ocean renderer produces best results only when the project uses linear color space",
+    "source": "water_XYPacxkk5XQ_Best Water System EVER Created for Unity (Free Bui.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Ocean rendering uses a LOD system with underwater support, surface clipping, acoustic simulation, and scattering \u2014 all as modular add-on components",
+    "context": "Crest architecture is component-based: animated waves, foam, LOD, underwater, and clipping are separate scripts added to the ocean game object",
+    "source": "water_XYPacxkk5XQ_Best Water System EVER Created for Unity (Free Bui.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Water system supports physics interaction allowing objects to be affected by water buoyancy and wave forces",
+    "context": "Crest includes physics-driven water interaction so rigid bodies can float and respond to wave motion",
+    "source": "water_XYPacxkk5XQ_Best Water System EVER Created for Unity (Free Bui.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Gerstner waves combine multiple sine waves to create complex ocean surfaces; more waves increase computational cost proportionally.",
+    "context": "Chosen over FFT waves (too complex) and scrolling textures (outdated) as the primary wave generation method.",
+    "source": "water_yQyNNtDCiJI_Making an OCEAN for my EXPLORATION game - Devlog #.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Ocean mesh is a plane with LOD that gradually reduces detail from center outward; since waves are world-space, the mesh moves with the player to simulate an infinite ocean.",
+    "context": "The mesh was created in Blender with variable vertex density for performance optimization.",
+    "source": "water_yQyNNtDCiJI_Making an OCEAN for my EXPLORATION game - Devlog #.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Distant waves use scrolling normal map textures on a completely flat surface instead of Gerstner displacement, saving GPU cost since the player never gets close.",
+    "context": "A hybrid approach where only near-field waves use vertex displacement and far-field waves fake detail with normal maps.",
+    "source": "water_yQyNNtDCiJI_Making an OCEAN for my EXPLORATION game - Devlog #.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Ocean height data is rendered to a Render Target so any object in the world can cheaply sample wave height instead of recalculating Gerstner equations per-object; limitation is no rotation data is available.",
+    "context": "Used for lily pad deformation and buoy floating, though buoys suffer from the lack of rotation information.",
+    "source": "water_yQyNNtDCiJI_Making an OCEAN for my EXPLORATION game - Devlog #.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Surface foam is added during stormy weather by increasing wave height and sharpness, combined with Niagara particle splashes spawned on wave peaks via a scratch pad module that samples the wave render target and destroys particles on low waves.",
+    "context": "The wave system is integrated with a weather system to dynamically change ocean appearance and foam generation.",
+    "source": "water_yQyNNtDCiJI_Making an OCEAN for my EXPLORATION game - Devlog #.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Fake god rays are created in a fog material by stretching a noise texture in the light direction to brighten the fog, faded out over depth; volumetric shadow methods and shadow-casting planes were rejected due to visual artifacts.",
+    "context": "Light functions don't affect volumetric shadows, and invisible shadow-casting planes created unwanted shadow artifacts on other surfaces.",
+    "source": "water_yQyNNtDCiJI_Making an OCEAN for my EXPLORATION game - Devlog #.txt"
+  },
+  {
+    "topic": "water_volume_setup",
+    "fact": "ACF (Advanced Character Framework) uses a Physics Volume actor to define swimmable water areas. Place the volume to cover the water region and enable the 'Water Volume' flag so the framework auto-detects swim state.",
+    "context": "A Physics Volume with Water Volume enabled triggers automatic swim behavior when a character enters the volume bounds.",
+    "source": "water_DvR7wEELE1U_ACF - Swimming Physics Volume.txt"
+  },
+  {
+    "topic": "swim_trigger",
+    "fact": "Swimming is triggered by character overlap with the Physics Volume; exiting the volume immediately reverts the character to ground locomotion (walk/run blend space).",
+    "context": "The transition between swimming and walking is driven entirely by whether the character is inside or outside the water physics volume.",
+    "source": "water_DvR7wEELE1U_ACF - Swimming Physics Volume.txt"
+  },
+  {
+    "topic": "water_surface_alignment",
+    "fact": "The top face of the Physics Volume should be aligned with the water surface mesh so the swim-to-walk transition matches the visible waterline and avoids awkward blending near the shore.",
+    "context": "Proper vertical alignment of the volume top with the water surface prevents the character from swimming above water or walking underwater.",
+    "source": "water_DvR7wEELE1U_ACF - Swimming Physics Volume.txt"
+  },
+  {
+    "topic": "swim_blend_space",
+    "fact": "ACF uses a blend space for swim animations that activates automatically when the Water Volume flag is enabled on the physics volume \u2014 no additional animation blueprint wiring is required.",
+    "context": "The swim blend space is built into ACF and selected at runtime based on the water volume overlap state.",
+    "source": "water_DvR7wEELE1U_ACF - Swimming Physics Volume.txt"
+  },
+  {
+    "topic": "water_color_absorption",
+    "fact": "Water color is implemented via light absorption formula: absorption_coefficient = percentage of light absorbed, using formula where alpha is absorption coefficient, a is percentage absorbed, x is material thickness. The absorption value is subtracted from scene color rather than multiplied.",
+    "context": "Beer-Lambert style absorption model applied in Unity Shader Graph for realistic water coloring based on depth.",
+    "source": "water_S4RrVKBEaDw_Realistic Water Colour in ShaderGraph.txt"
+  },
+  {
+    "topic": "water_transparency",
+    "fact": "Water transparency uses the Scene Color node (screen color buffer before water plane renders) instead of alpha output. The shader must be marked as transparent to access pre-rendered screen content.",
+    "context": "URP Shader Graph technique where scene color provides what's already rendered behind the water surface.",
+    "source": "water_S4RrVKBEaDw_Realistic Water Colour in ShaderGraph.txt"
+  },
+  {
+    "topic": "water_depth_fade",
+    "fact": "Water color changes based on depth: deeper water absorbs more color. Depth is calculated from camera position using the Scene Depth node (camera depth buffer before object renders), determining how much water the viewer is looking through.",
+    "context": "Depth-based absorption replaces a static thickness value to create realistic shallow-to-deep water color transitions.",
+    "source": "water_S4RrVKBEaDw_Realistic Water Colour in ShaderGraph.txt"
+  },
+  {
+    "topic": "water_absorption_color_inversion",
+    "fact": "To select a desired water color instead of an absorption color, use one_minus(waterColor) to derive the absorption color. This inverts the target color so the absorption process yields the intended final water color.",
+    "context": "Artist-friendly workflow where you pick the end result color and the shader calculates which wavelengths to absorb.",
+    "source": "water_S4RrVKBEaDw_Realistic Water Colour in ShaderGraph.txt"
+  },
+  {
+    "topic": "water_shader_components",
+    "fact": "A complete water shader consists of: transparency, color absorption, caustics, reflectiveness, aeration (foam/bubbles), and aeration movement. Each can be implemented as separate modules.",
+    "context": "Overview of water shader feature breakdown for modular Shader Graph implementation in Unity URP.",
+    "source": "water_S4RrVKBEaDw_Realistic Water Colour in ShaderGraph.txt"
+  },
+  {
+    "topic": "water_absorption_formula",
+    "fact": "Absorption formula nodes: absorption_coefficient controls how far light travels through material before fully absorbed, varies per wavelength and material. Result is multiplied by absorption color to get percentage of color visible, then subtracted from scene color.",
+    "context": "Node-based implementation of physical absorption model converted from mathematical formula into Shader Graph groups or sub-graphs.",
+    "source": "water_S4RrVKBEaDw_Realistic Water Colour in ShaderGraph.txt"
+  },
+  {
+    "topic": "HDRP water setup",
+    "fact": "Unity HDRP water system requires version 16+ of HDRP package and Unity 2023.2+; water surfaces are added via hierarchy right-click > Water menu with options for ocean/sea/lake, pool, and river",
+    "context": "The water system must be explicitly enabled in the HDRP asset settings and requires a Water Rendering override added to the Sky and Fog volume with state set to enabled",
+    "source": "water_xH-9ZEX9n6A_I tried Unity's new HDRP Water System! The Most Re.txt"
+  },
+  {
+    "topic": "HDRP water rendering pipeline",
+    "fact": "Full water rendering requires enabling multiple pipeline features: water simulation, deformation, water foam, script interactions, surface decals, screen space reflections, and transparent screen reflections",
+    "context": "These settings are found in the Quality HDRP asset under the water section and must each be individually enabled for correct rendering",
+    "source": "water_xH-9ZEX9n6A_I tried Unity's new HDRP Water System! The Most Re.txt"
+  },
+  {
+    "topic": "HDRP water surface types",
+    "fact": "The HDRP water system provides distinct surface types: Ocean/Sea/Lake for large bodies, Pool for contained water, and River for flowing water, plus auxiliary tools including excluder, deformer, and foam generator",
+    "context": "Each surface type is a separate component added through the Water hierarchy menu with different simulation characteristics",
+    "source": "water_xH-9ZEX9n6A_I tried Unity's new HDRP Water System! The Most Re.txt"
+  },
+  {
+    "topic": "HDRP water visual features",
+    "fact": "The water system supports waves, ripples, foam, underwater caustics, refractions, reflections, and deformation simulation as built-in features",
+    "context": "These effects combine to create realistic cinematic water for both ocean surfaces and underwater environments",
+    "source": "water_xH-9ZEX9n6A_I tried Unity's new HDRP Water System! The Most Re.txt"
+  },
+  {
+    "topic": "HDRP water samples",
+    "fact": "Unity provides importable water sample scenes via Package Manager > HDRP > Samples > Water Samples, including an Island scene pre-configured with correct water rendering settings",
+    "context": "The sample scenes automatically configure deformation, foam, script interactions, decals, screen space reflections, and volumetric clouds",
+    "source": "water_xH-9ZEX9n6A_I tried Unity's new HDRP Water System! The Most Re.txt"
+  },
+  {
+    "topic": "HDRP water deformation",
+    "fact": "Water deformation is a separate render pipeline feature that must be enabled independently from base water rendering in the HDRP quality asset settings",
+    "context": "Deformation allows the water surface to be displaced by gameplay interactions and deformer objects placed in the scene",
+    "source": "water_xH-9ZEX9n6A_I tried Unity's new HDRP Water System! The Most Re.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Stylized Water for URP requires Unity 2019.3.9+ and supports buoyancy, waves, foam, refraction, planar reflections, and custom lighting",
+    "context": "Free Unity asset providing full stylized water pipeline for URP with mobile-friendly performance",
+    "source": "water_z24n9iYllxI_FREE Stylized WATER for URP (Unity Mobile Friendly.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Water depth rendering uses shallow color near objects and deep color at edges, with configurable horizon settings and shore edge blending",
+    "context": "Depth-based color gradient system controls visual appearance based on object proximity and water depth",
+    "source": "water_z24n9iYllxI_FREE Stylized WATER for URP (Unity Mobile Friendly.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Surface foam uses texture-based alpha cutoff, distortion amount, configurable scale, direction, and speed for both primary and secondary foam layers",
+    "context": "Dual-layer foam system with independent control over each layer's movement and appearance",
+    "source": "water_z24n9iYllxI_FREE Stylized WATER for URP (Unity Mobile Friendly.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Intersection effects detect world objects intersecting water and apply configurable direction, scale, and blending at contact points",
+    "context": "Object-water intersection rendering creates foam and visual effects where geometry meets the water surface",
+    "source": "water_z24n9iYllxI_FREE Stylized WATER for URP (Unity Mobile Friendly.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Asset includes specialized prefabs for beach cascading water, buoyancy floating objects, object interaction with planar reflections, and stylized game water",
+    "context": "Multiple demo scenes demonstrate different water configurations commonly needed in game development",
+    "source": "water_z24n9iYllxI_FREE Stylized WATER for URP (Unity Mobile Friendly.txt"
+  },
+  {
+    "topic": "water",
+    "fact": "Foam shadows can be enabled separately with configurable strength, intersection amount, and foam effect intensity",
+    "context": "Optional shadow rendering on foam adds depth and realism while keeping it performant as a toggle",
+    "source": "water_z24n9iYllxI_FREE Stylized WATER for URP (Unity Mobile Friendly.txt"
+  },
+  {
+    "topic": "proc-gen",
+    "fact": "Unconstrained random generation produces white-noise output \u2014 blocks everywhere with no terrain contour; constraints must enforce dirt-on-surface, no sky blocks, consistent terrain flow, and tree self-similarity to produce playable worlds.",
+    "context": "Minecraft world generation compared to pure random (white noise) to illustrate why constraints are mandatory.",
+    "source": "cave__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "proc-gen",
+    "fact": "Even with constraints, undesirable edge cases slip through \u2014 ranging from funny quirks to full unplayability (e.g., Terraria spawning a player surrounded by impassable stone). At 1% failure rate with millions of players, thousands get broken worlds.",
+    "context": "Explains why many studios move to artist-authored levels: procedural generation cannot guarantee 0% unplayable outcomes.",
+    "source": "cave__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "proc-gen",
+    "fact": "Procedural generation is not inherently random \u2014 results can be deterministic (same seed = same output). Randomness is opted into specifically to produce unpredictable variety; without that goal, manual authoring is preferred.",
+    "context": "Formal definition distinguishing algorithmic creation from artist-authored content.",
+    "source": "cave__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "proc-gen",
+    "fact": "The core engineering tradeoff: enough variance to keep gameplay unique and replayable vs. enough constraints to prevent unplayable degenerate cases. Tightening constraints reduces variety; loosening them increases failure rate.",
+    "context": "Described as 'taming chaos of RNGs' \u2014 a fundamental tension in all proc-gen systems.",
+    "source": "cave__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "proc-gen",
+    "fact": "High-fidelity games (e.g., God of War) still use procedural generation during development for element placement like foliage positions, but artists make the final design decisions \u2014 a hybrid approach that avoids runtime generation risks.",
+    "context": "Distinguishes dev-time procedural assist (artist-validated) from runtime generation (player-facing risk).",
+    "source": "cave__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "proc-gen",
+    "fact": "Iterated function systems (IFS) using randomly generated sets of affine transformations can drive particle system visualizations, producing attractor patterns useful for procedural effects and lighting.",
+    "context": "Mentioned as a technique used in the presenter's own project for procedural particle effects.",
+    "source": "cave__4DtmRcTbhk_The Problem With Procedural Generation.txt"
+  },
+  {
+    "topic": "environment_design",
+    "fact": "Complex dense environments like Elden Ring's Lindell Capital gate use a strategy of overwhelming scale with soaring towers and intricate filigree detail to convey power and royalty \u2014 the visual density is intentional design language, not random placement.",
+    "context": "Artist reverse-engineered FromSoftware's environmental storytelling approach by cataloging and studying each location before rebuilding in Unreal Engine.",
+    "source": "cave_aD-jccIFTbY_How I Built This Elden Ring Environment in Unreal .txt"
+  },
+  {
+    "topic": "environment_design",
+    "fact": "Every placement of rocks, broken churches, and cave entrances in Elden Ring is deliberately considered to weave storytelling into the environment geometry itself.",
+    "context": "FromSoftware's level design philosophy treats prop and formation placement as narrative tools rather than decorative filler.",
+    "source": "cave_aD-jccIFTbY_How I Built This Elden Ring Environment in Unreal .txt"
+  },
+  {
+    "topic": "workflow",
+    "fact": "Step 1 of environment recreation in Unreal Engine is gathering reference (images, videos, on-location photos, sketches) using a tool called PureRef to dissect the logic and visual structure before any 3D work begins.",
+    "context": "Reference gathering serves to reverse-engineer the construction strategy behind visually complex environments.",
+    "source": "cave_aD-jccIFTbY_How I Built This Elden Ring Environment in Unreal .txt"
+  },
+  {
+    "topic": "environment_design",
+    "fact": "Large-scale fantasy environments achieve depth and impact through layered visual complexity \u2014 dense intricate surface detail (filigree) combined with macro-scale architectural forms (towers, gates) creates the 'larger than life' effect.",
+    "context": "The Lindell Capital gate uses this dual-scale approach to communicate overwhelming grandeur to the player.",
+    "source": "cave_aD-jccIFTbY_How I Built This Elden Ring Environment in Unreal .txt"
+  },
+  {
+    "topic": "marching_cubes",
+    "fact": "8 corner points per cube, each with a noise value; values above 0 = air/open space, below 0 = rock/solid. 256 possible configurations but only 15 unique cases (rest are symmetries). Surfaces constructed from triangles by connecting edges in groups of 3.",
+    "context": "Core algorithm for generating terrain meshes from a 3D density field, published in 1987 for medical scan visualization but widely used in games.",
+    "source": "cave_vTMEdHcKgM4_Coding Adventure\uff1a Terraforming.txt"
+  },
+  {
+    "topic": "density_field",
+    "fact": "Terrain stored as a 3D texture of scalar values. Zero crossing defines the surface boundary. Negative values = inside solid, positive = open air. Slicing the 3D texture shows lighter regions (outside) and black regions (below surface) with a red boundary line at value 0.",
+    "context": "A 3D texture acts as the density field that marching cubes samples to construct the mesh.",
+    "source": "cave_vTMEdHcKgM4_Coding Adventure\uff1a Terraforming.txt"
+  },
+  {
+    "topic": "marching_cubes_gpu",
+    "fact": "Core algorithm written in HLSL to process many cubes in parallel on the GPU. Per cube: calculate 8 corner coordinates, look up their density values, determine which of 256 configurations applies via a precomputed triangle table, then find which edges the surface passes through and connect vertices in groups of 3 to form triangles.",
+    "context": "GPU parallelism is essential for real-time marching cubes performance.",
+    "source": "cave_vTMEdHcKgM4_Coding Adventure\uff1a Terraforming.txt"
+  },
+  {
+    "topic": "terraforming_caves",
+    "fact": "Single-heightmap planets cannot represent caves, tunnels, or overhangs because each point maps to only one height value. A volumetric density field (3D grid of air/rock values) solves this, enabling carving of arbitrary underground geometry.",
+    "context": "Motivation for switching from noise-displaced sphere meshes to a full voxel marching cubes approach.",
+    "source": "cave_vTMEdHcKgM4_Coding Adventure\uff1a Terraforming.txt"
+  },
+  {
+    "topic": "marching_cubes_lookup",
+    "fact": "A giant precomputed lookup table maps each of the 256 cube configurations to triangle edge connections. Two small arrays map each edge index to its two endpoint corner indices. Vertex placement along each edge defaults to the midpoint for simplicity.",
+    "context": "The lookup table is the bulk of the marching cubes code and avoids runtime geometric computation.",
+    "source": "cave_vTMEdHcKgM4_Coding Adventure\uff1a Terraforming.txt"
+  },
+  {
+    "topic": "planet_noise",
+    "fact": "Planet terrain generated by starting with a sphere, sampling a 3D noise function at each surface point, and displacing vertices inward/outward based on the noise value. Mixing and layering different noise functions with different equations produces varied terrain.",
+    "context": "Traditional approach before switching to volumetric marching cubes for cave support.",
+    "source": "cave_vTMEdHcKgM4_Coding Adventure\uff1a Terraforming.txt"
+  },
+  {
+    "topic": "underground_tunnel",
+    "fact": "Sewer tunnel used as connection path between two building basements; requires blocking out geometry for arch-shaped ceiling and snapping vertices to grid for proper alignment",
+    "context": "Artist blocks out an old sewer system tunnel connecting two buildings underground, using grid snapping for vertex placement",
+    "source": "cave_xg4rdhU-5Ag_Environment Art #14 - Creating a tunnel in the und.txt"
+  },
+  {
+    "topic": "environmental_storytelling",
+    "fact": "Sand pouring through drainage grates serves dual purpose: visual storytelling element showing surface proximity and gameplay mechanic providing player entry path into underground space",
+    "context": "Sand flowing in through drainage pads is used as both art detail and the mechanism for players to access the underground area",
+    "source": "cave_xg4rdhU-5Ag_Environment Art #14 - Creating a tunnel in the und.txt"
+  },
+  {
+    "topic": "lighting_underground",
+    "fact": "Underground spaces require blocking out additional light to sell the illusion of depth; too much ambient light leaking into basement/tunnel areas breaks the underground feel",
+    "context": "Artist notes needing to block out more light because too much is still getting into the underground boarded-up area",
+    "source": "cave_xg4rdhU-5Ag_Environment Art #14 - Creating a tunnel in the und.txt"
+  },
+  {
+    "topic": "modular_level_design",
+    "fact": "Plank boards placed over openings need careful overlap management to avoid z-fighting; thicker board geometry matches concept art and helps sell light occlusion at surface boundaries",
+    "context": "Manually placed planks over an opening required work to prevent overlapping, with board thickness affecting how much light bleeds through",
+    "source": "cave_xg4rdhU-5Ag_Environment Art #14 - Creating a tunnel in the und.txt"
+  },
+  {
+    "topic": "tunnel_geometry",
+    "fact": "Arch-shaped tunnel ceilings require additional subdivided geometry (more geo on the plane) to achieve smooth curved profiles; vertices must sit below the arch curve line to avoid clipping",
+    "context": "Artist adds more geometry to a plane to make the tunnel arch flow nicely, checking that edge vertices are lower than the ceiling arch",
+    "source": "cave_xg4rdhU-5Ag_Environment Art #14 - Creating a tunnel in the und.txt"
+  },
+  {
+    "topic": "depth_cue_sightlines",
+    "fact": "Partial visibility through bars/grates into adjacent spaces creates depth cues and player curiosity; the actual traversal path routes through a different building to reach the visible space",
+    "context": "Player can see through bars into the tunnel area but must find an alternate route through a building basement and cellar room to access it",
+    "source": "cave_xg4rdhU-5Ag_Environment Art #14 - Creating a tunnel in the und.txt"
+  },
+  {
+    "topic": "isometric_workflow",
+    "fact": "For isometric 3D levels, start with a 2D sketch/map before creating a 3D blockout (simple walls, floors, ceilings) in Blender using cube with inverted normals and Ctrl+R loop cuts to extrude walls and cut windows.",
+    "context": "Blockout-first approach ensures spatial layout is correct before adding detail to an isometric scene.",
+    "source": "cave_aiz29RsIDpA_How To Create A Gorgeous Isometric Game (In 7 Minu.txt"
+  },
+  {
+    "topic": "isometric_workflow",
+    "fact": "Blender .blend files can be imported directly into Unity without FBX export; Ctrl+S in Blender or Photoshop triggers a live update in Unity, enabling a non-destructive back-and-forth workflow.",
+    "context": "Eliminates export steps for isometric scene iteration between modeling and engine.",
+    "source": "cave_aiz29RsIDpA_How To Create A Gorgeous Isometric Game (In 7 Minu.txt"
+  },
+  {
+    "topic": "isometric_workflow",
+    "fact": "Adding small knife-tool cuts on top of simple boxy meshes makes low-poly stylized art look handmade and intentional, useful for isometric game assets that read well at camera distance.",
+    "context": "Surface detail trick for stylized isometric 3D art without increasing geometric complexity significantly.",
+    "source": "cave_aiz29RsIDpA_How To Create A Gorgeous Isometric Game (In 7 Minu.txt"
+  },
+  {
+    "topic": "isometric_workflow",
+    "fact": "Toon/cel shaders (e.g. Toony Colors Pro 2) strip specular, metallic, and normal map complexity, giving isometric scenes a flat stylized look that pairs well with simple geometry and solid color palettes.",
+    "context": "Shader choice directly affects the visual cohesion of low-poly isometric scenes.",
+    "source": "cave_aiz29RsIDpA_How To Create A Gorgeous Isometric Game (In 7 Minu.txt"
+  },
+  {
+    "topic": "isometric_workflow",
+    "fact": "Complex isometric scene objects decompose into primitive shapes: couches = squashed rectangles, tables = squashed cylinders, trees = stacked cones, characters = ovals \u2014 all colored via simple flat material assignments in Blender.",
+    "context": "Primitive-based modeling keeps poly counts low and reads clearly at isometric camera angles.",
+    "source": "cave_aiz29RsIDpA_How To Create A Gorgeous Isometric Game (In 7 Minu.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Road presets include lane configurations with sidewalk variants (e.g., 'two lane + sidewalks'); roads auto-align to landscape with configurable elevation offset and landscape layer masking (e.g., grass removal under roads).",
+    "context": "CDBL plugin provides preset-based road drawing with landscape integration and per-layer material masking.",
+    "source": "city_BqrHoxhSzDg_Create ENTIRE CITIES in MINUTES with this Unreal E.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Road drawing uses click-to-place nodes for straight segments; holding Shift creates curved segments; middle mouse wheel adjusts elevation in real-time to create bridges and overpasses.",
+    "context": "Interactive road tool supports curves and elevation changes via modifier keys during draw mode.",
+    "source": "city_BqrHoxhSzDg_Create ENTIRE CITIES in MINUTES with this Unreal E.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "City kits are swappable asset packs (e.g., 'Modern City', 'Miami Bass') added to a level with one click; custom kits can be created with user-provided meshes and styles.",
+    "context": "Kit system decouples city style from placement logic, enabling modular art pipeline.",
+    "source": "city_BqrHoxhSzDg_Create ENTIRE CITIES in MINUTES with this Unreal E.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Blocks (building zones) are generated using a 'from edges' tool that automatically detects valid buildable areas by analyzing road edge geometry.",
+    "context": "Block placement is derived from road network topology rather than manual definition.",
+    "source": "city_BqrHoxhSzDg_Create ENTIRE CITIES in MINUTES with this Unreal E.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Plugin operates as a custom Editor Mode (Selection Mode > City Builder) with dedicated widget tabs for General, Roads, and Blocks, plus a simplified game-style UI toggle in settings.",
+    "context": "CDBL integrates into Unreal's editor mode system with a City Skylines-inspired simplified UI option.",
+    "source": "city_BqrHoxhSzDg_Create ENTIRE CITIES in MINUTES with this Unreal E.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Building props use a struct called 'prop spline points' storing 5 local points that generate a spline path around the building perimeter for fence/edge placement.",
+    "context": "The procedural city generator uses spline points defined per building blueprint to control where perimeter props like fences spawn.",
+    "source": "city_W7XvIjL0c_c_Procedural City Generator 1.2.1 Buildings and Road.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Spline mesh props use two mesh variants: a 'complete mesh' (both sides, used for the last segment) and an 'incomplete mesh' (one side, used for all other segments), with configurable mesh width, tangent length for curvature, and begin/end scale.",
+    "context": "This dual-mesh approach ensures clean termination of repeating fence/wall elements along building perimeters.",
+    "source": "city_W7XvIjL0c_c_Procedural City Generator 1.2.1 Buildings and Road.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Spline mesh props have a configurable 'percent chance to spawn' (default 75% for fences), a tangent length controlling curvature, and support random material selection from a material list.",
+    "context": "Randomized spawn chance and materials add visual variety to procedurally generated building perimeters.",
+    "source": "city_W7XvIjL0c_c_Procedural City Generator 1.2.1 Buildings and Road.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Edge props are individually placed along the building perimeter spline with configurable prop spacing, collision bounds, scale range, rotation, random yaw, and two-tier spawn probability: a global chance (e.g. 20% for pine trees on a house) and per-instance chance (e.g. 100% for each tree if global passes).",
+    "context": "The two-tier probability system controls both whether a building type gets edge props at all and the density of individual prop instances.",
+    "source": "city_W7XvIjL0c_c_Procedural City Generator 1.2.1 Buildings and Road.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Road props support spline and edge prop types with specific 'curves and segment settings' unique to roads, and all prop configurations can be loaded from a data table.",
+    "context": "Data tables allow bulk configuration of prop parameters across the procedural city generator rather than per-instance setup.",
+    "source": "city_W7XvIjL0c_c_Procedural City Generator 1.2.1 Buildings and Road.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "City grid size is controlled by X size and Z size parameters; setting both to 5 with scale 25 creates a walkable city block, while 20x20 at scale 200 generates a full city-scale layout",
+    "context": "Oasis Builder Unity tool uses X/Z size params to define the procedural city footprint on a grid",
+    "source": "city_NRT_p3CghHs_Create Stunning Cities in Unity with Oasis Builder.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Vertex snapping (V key) is used to align building pieces and prefabs to each other precisely when manually editing the generated city",
+    "context": "Unity's vertex snap shortcut allows precise placement of modular city pieces after procedural generation",
+    "source": "city_NRT_p3CghHs_Create Stunning Cities in Unity with Oasis Builder.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Generated city buildings are composed of individually editable modular pieces (walls, doors, flags) that can be deleted or repositioned post-generation",
+    "context": "The procedural city output is not a single monolithic mesh but a hierarchy of selectable prefab parts",
+    "source": "city_NRT_p3CghHs_Create Stunning Cities in Unity with Oasis Builder.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "City builder prefab is placed at origin (0,0,0) with initial scale 1,1,1 then scaled up (e.g. 25) to match the terrain size",
+    "context": "Proper placement requires centering the generator at world origin and scaling to fit the ground plane",
+    "source": "city_NRT_p3CghHs_Create Stunning Cities in Unity with Oasis Builder.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Global volume prefab from postprocesses folder is added for depth/lighting; environment skybox color is customized via Window > Rendering > Lighting panel",
+    "context": "Post-processing and lighting setup is done before city generation to preview the environment correctly",
+    "source": "city_NRT_p3CghHs_Create Stunning Cities in Unity with Oasis Builder.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "The tool supports multiple building variations that are randomly selected during generation, providing visual variety across the city grid",
+    "context": "Procedural city generators cycle through prefab variations to avoid repetitive appearance in large layouts",
+    "source": "city_NRT_p3CghHs_Create Stunning Cities in Unity with Oasis Builder.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Road prefabs use a grid step of 38 units for discrete movement, ensuring no gaps form between road segments when snapping",
+    "context": "The suffix 38 in the road constructor folder name denotes the grid step size used for precise prefab alignment.",
+    "source": "city_rnYxZwX0S7I_Sci Fi City Constructor for Unity3d tutorial 001.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Road system height is set to 8.6 units and kept consistent across the entire road network",
+    "context": "The L-crossroads prefab height is set to 8.6 units as the standard elevation for all road segments.",
+    "source": "city_rnYxZwX0S7I_Sci Fi City Constructor for Unity3d tutorial 001.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Building block prefabs maintain constant pixel density, border geometry height, and window/floor sizes regardless of shape changes, allowing seamless assembly without UV adjustments",
+    "context": "Modular building prefabs can be combined without changing scale and the result looks seamless with consistent detail density.",
+    "source": "city_rnYxZwX0S7I_Sci Fi City Constructor for Unity3d tutorial 001.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Vertex snapping (V key) is used to precisely connect block prefabs to road edges by dragging outermost vertices together",
+    "context": "Gaps between roads are closed with block prefabs aligned using Unity's vertex snap tool for precise placement.",
+    "source": "city_rnYxZwX0S7I_Sci Fi City Constructor for Unity3d tutorial 001.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Two constructor systems are used: road constructor (Sci-Fi Road Constructor 38 inches folder) and city constructor (Sci-Fi City folder), each containing pre-configured prefabs",
+    "context": "The modular kit separates road and building construction into two distinct prefab-based systems.",
+    "source": "city_rnYxZwX0S7I_Sci Fi City Constructor for Unity3d tutorial 001.txt"
+  },
+  {
+    "topic": "city",
+    "fact": "Linear fog is used for optimization where camera clipping planes far distance and shadow distance match the fog range, and prefabs are marked static to avoid per-frame transforms at runtime",
+    "context": "Performance optimization techniques include fog-based culling alignment and static batching of placed prefabs.",
+    "source": "city_rnYxZwX0S7I_Sci Fi City Constructor for Unity3d tutorial 001.txt"
+  },
+  {
+    "topic": "subscene_streaming",
+    "fact": "Volume-based subscene loading uses two nested volumes: an outer 'preparation' volume for pre-loading scene data into memory, and an inner 'activation' volume that triggers the actual scene load. The activation volume must always be inside the preparation volume or the scene will not load.",
+    "context": "Two-phase load system where preparation handles memory pre-loading for performance before activation triggers the visible scene.",
+    "source": "gdc_8e5erZtxT18_Instant Subscenes 2.0 Update.txt"
+  },
+  {
+    "topic": "subscene_unloading",
+    "fact": "Unload volumes are separate red-box trigger zones placed at exits. By changing 'amount of volumes' and setting type from 'load volume' to 'unload volume', a dedicated unload trigger is created that removes the subscene when the player passes through it.",
+    "context": "Explicit unload volumes give designers precise control over when subscenes are removed from memory at exit points.",
+    "source": "gdc_8e5erZtxT18_Instant Subscenes 2.0 Update.txt"
+  },
+  {
+    "topic": "distance_based_loading",
+    "fact": "Distance-based subscene loading uses a radius from center: the subscene loads when the player enters the range and automatically unloads when the player exits the range. Unlike volume-based loading, there is no separate pre-loading phase, making it optimal only for smaller subscenes.",
+    "context": "Simpler alternative to volume-based loading that trades pre-loading capability for ease of setup on small scenes.",
+    "source": "gdc_8e5erZtxT18_Instant Subscenes 2.0 Update.txt"
+  },
+  {
+    "topic": "subscene_streaming",
+    "fact": "Volume-based loading is configured by setting 'subscene loading mode' to 'volume based' in map settings via the subscene cogwheel icon, then setting 'amount of volumes' to define how many load/unload trigger zones exist per subscene.",
+    "context": "Configuration workflow in Unity for setting up volume-based subscene streaming.",
+    "source": "gdc_8e5erZtxT18_Instant Subscenes 2.0 Update.txt"
+  },
+  {
+    "topic": "level_chunk_tooling",
+    "fact": "An eye icon toggle allows hiding subscene geometry so designers can clearly see and position load/unload volumes or distance-based loaders without visual obstruction from the scene content itself.",
+    "context": "Editor UX feature for precise placement of streaming trigger volumes.",
+    "source": "gdc_8e5erZtxT18_Instant Subscenes 2.0 Update.txt"
+  },
+  {
+    "topic": "subscene_streaming",
+    "fact": "Renaming a subscene automatically updates all associated load/unload volumes to reflect the new name, and renaming an entire map triggers a scene reload but preserves all volume configurations. No data is lost during rename operations.",
+    "context": "Robust rename propagation prevents broken references when reorganizing streaming subscenes.",
+    "source": "gdc_8e5erZtxT18_Instant Subscenes 2.0 Update.txt"
+  },
+  {
+    "topic": "uv_unwrap",
+    "fact": "Always apply scale (Ctrl+A > Scale) before unwrapping; unapplied scale skews UV proportions, distorting texture density across the mesh.",
+    "context": "Blender applies the object's transform scale to the UV layout if not applied first, causing non-uniform texel density.",
+    "source": "interior_XleO7DBm1Us_Blender 4.0\uff1a How to UV Unwrap Anything.txt"
+  },
+  {
+    "topic": "uv_unwrap",
+    "fact": "Use 'Project from View' (UV menu > 3D View > Project from View) as a clean-slate reset before marking seams, to eliminate inherited UV islands and seam artifacts from the modeling process.",
+    "context": "Modeling operations leave residual UV data that can corrupt the unwrap; projecting from view zeroes out that state.",
+    "source": "interior_XleO7DBm1Us_Blender 4.0\uff1a How to UV Unwrap Anything.txt"
+  },
+  {
+    "topic": "uv_seam_placement",
+    "fact": "UV seams should prioritize minimizing distortion over minimizing seam count; place seams at natural geometry breaks (like clothing stitches or material boundaries) rather than trying to reduce them.",
+    "context": "The outdated rule of 'minimize seams' leads to higher distortion; modern texturing tools and triplanar mapping can paint over visible seams.",
+    "source": "interior_XleO7DBm1Us_Blender 4.0\uff1a How to UV Unwrap Anything.txt"
+  },
+  {
+    "topic": "uv_unwrap",
+    "fact": "4-step UV workflow: (1) apply scale, (2) project UVs from view, (3) mark seams on edges using Edge mode (press 2) with Alt+Click for edge loops and Ctrl+Click for edge paths, (4) select all faces and unwrap.",
+    "context": "Standardized pipeline ensures clean, predictable UV islands suitable for texture atlasing and consistent texel density.",
+    "source": "interior_XleO7DBm1Us_Blender 4.0\uff1a How to UV Unwrap Anything.txt"
+  },
+  {
+    "topic": "uv_seam_placement",
+    "fact": "Triplanar mapping can blend across UV seams for procedural materials, reducing visible seam artifacts without manual texture painting, but should not replace proper unwrapping (avoid relying on cube projection alone).",
+    "context": "Useful for interior walls and floors using procedural textures where seam hiding is needed at material boundaries.",
+    "source": "interior_XleO7DBm1Us_Blender 4.0\uff1a How to UV Unwrap Anything.txt"
+  },
+  {
+    "topic": "uv_unwrap",
+    "fact": "Clean topology with proper edge flow enables Alt+Click loop selection and Ctrl+Click path selection for fast seam marking; poor topology breaks these selection tools and complicates unwrapping.",
+    "context": "For interior geometry like walls and floors, maintaining quad-based topology ensures edge loops align with natural seam locations at corners and material transitions.",
+    "source": "interior_XleO7DBm1Us_Blender 4.0\uff1a How to UV Unwrap Anything.txt"
+  },
+  {
+    "topic": "world_generation",
+    "fact": "Gaia world generation uses a 4-step pipeline: 1) Create World Designer in Gaia Manager, 2) Generate world (stamps island onto terrain), 3) Spawn biomes, 4) Create runtime \u2014 producing a fully populated island",
+    "context": "Gaia is a Unity terrain tool that automates terrain stamping, biome placement, and runtime setup in 4 clicks",
+    "source": "city_TR9ta_pJFAw_Create Your Game World with Just 4 Clicks.txt"
+  },
+  {
+    "topic": "terrain",
+    "fact": "Gaia stamps pre-generated island heightmaps directly onto Unity terrain, separating world shape generation from biome population",
+    "context": "The terrain stamping step creates the base landform before any vegetation or object spawning occurs",
+    "source": "city_TR9ta_pJFAw_Create Your Game World with Just 4 Clicks.txt"
+  },
+  {
+    "topic": "biome_placement",
+    "fact": "Biome spawning is a distinct automated step that populates terrain with vegetation, textures, and objects after the base terrain is stamped",
+    "context": "Gaia decouples terrain generation from biome population, allowing one-click biome spawning onto existing terrain",
+    "source": "city_TR9ta_pJFAw_Create Your Game World with Just 4 Clicks.txt"
+  },
+  {
+    "topic": "world_generation",
+    "fact": "Gaia uses a runtime creation step as the final phase, converting the designed world into a playable game-ready environment",
+    "context": "The runtime step finalizes the world so it can be used in-game with proper loading and rendering",
+    "source": "city_TR9ta_pJFAw_Create Your Game World with Just 4 Clicks.txt"
   }
 ]
