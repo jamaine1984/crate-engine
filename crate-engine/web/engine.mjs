@@ -18618,6 +18618,7 @@ function animate() {
   updateLightning(dt);
   updateNightLighting(t);
   // updateDrivingCars replaced by updateSmartTraffic
+  if (window._cityCarUpdate) window._cityCarUpdate(dt);
   if (snowParticles) {
     snowParticles.position.x = _wcam.x;
     snowParticles.position.z = _wcam.z;
@@ -22487,6 +22488,9 @@ parseAndExecute = async function(rawCmd) {
   if (lower === 'old mine world' || lower === 'show old mine' || lower === 'mine world') {
     buildPackShowcase('old_mine', 'Old Mine', 47); return;
   }
+  if (lower === 'city world' || lower === 'build city' || lower === 'city demo' || lower === 'new city') {
+    buildCityWorld(); return;
+  }
   if (lower === 'quarry world' || lower === 'african quarry' || lower === 'build quarry' || lower === 'slate quarry') {
     buildQuarryWorld(); return;
   }
@@ -24930,6 +24934,514 @@ async function buildQuarryWorld() {
 }
 window.buildQuarryWorld = buildQuarryWorld;
 
+
+
+// ============================================================
+// CITY WORLD — Downtown + Residential + AI Traffic
+// ============================================================
+async function buildCityWorld() {
+  try {
+    showToast('🏙 Building City World...');
+
+    // ── FULL ENGINE CLEAR ─────────────────────────────────
+    for (let i = objects.length - 1; i >= 0; i--) { scene.remove(objects[i]); objects.splice(i, 1); }
+    if (typeof currentGround !== 'undefined' && currentGround) {
+      scene.remove(currentGround);
+      if (currentGround.geometry) currentGround.geometry.dispose();
+      if (currentGround.material) currentGround.material.dispose();
+      currentGround = null; window._currentGround = null;
+    }
+    if (typeof terrainMesh !== 'undefined' && terrainMesh) {
+      scene.remove(terrainMesh); terrainMesh = null; window._terrainMesh = null;
+    }
+    clearDrivingCars();
+    if (window._waterZones) window._waterZones.length = 0;
+    window._lakeAnimators = [];
+    scene.fog = null;
+    const extras = [];
+    scene.children.forEach(o => { if (!o.isLight && !o.isCamera) extras.push(o); });
+    extras.forEach(o => scene.remove(o));
+    if (window.npcController) window.npcController.npcs.length = 0;
+
+    // ── GRID LAYOUT ───────────────────────────────────────
+    const BLOCK  = 60;   // block size (plot of land)
+    const ROAD   = 14;   // road width
+    const STEP   = BLOCK + ROAD;  // 74 units per grid cell
+    const COLS   = 5;    // 5x5 city grid
+    const HALF   = (COLS - 1) / 2; // 2
+
+    // Road center positions along each axis
+    const roadPos = [];
+    for (let i = 0; i <= COLS; i++) roadPos.push(-HALF * STEP - ROAD/2 + i * STEP);
+    // Block center positions
+    const blockPos = [];
+    for (let i = 0; i < COLS; i++) blockPos.push(roadPos[i] + ROAD/2 + BLOCK/2);
+
+    const CITY_SIZE = COLS * STEP + ROAD + 400; // ground extends well past city
+
+    // Zone classification: 0=downtown, 1=commercial, 2=residential
+    const getZone = (col, row) => {
+      const c = Math.abs(col - HALF), r = Math.abs(row - HALF);
+      if (c <= 1 && r <= 1) return 0; // downtown center
+      if (c <= 2 && r <= 2) return 1; // commercial mid
+      return 2; // residential outer
+    };
+
+    // ── GROUND ────────────────────────────────────────────
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x4a7040, roughness: 1.0 });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY_SIZE, CITY_SIZE), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.receiveShadow = true;
+    ground.userData.isGround = true;
+    scene.add(ground);
+    currentGround = ground; window._currentGround = ground;
+
+    // ── ROADS ─────────────────────────────────────────────
+    const roadMat   = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
+    const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x999988, roughness: 1.0 });
+    const lineMat   = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0 });
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 1.0 });
+
+    function addRoad(x, z, w, d, isVertical) {
+      // Road surface
+      const road = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), roadMat);
+      road.position.set(x, 0.06, z);
+      road.receiveShadow = true;
+      scene.add(road);
+
+      // Center dividing line
+      const lw = isVertical ? 0.3 : d;
+      const ld = isVertical ? w : 0.3;
+      const line = new THREE.Mesh(new THREE.BoxGeometry(lw, 0.01, ld), yellowMat);
+      line.position.set(x, 0.14, z);
+      scene.add(line);
+
+      // Sidewalks on each side
+      const swW = 3.5, swH = 0.18;
+      const offsets = isVertical
+        ? [{ dx: -(w/2 + swW/2), dz: 0 }, { dx: w/2 + swW/2, dz: 0 }]
+        : [{ dx: 0, dz: -(d/2 + swW/2) }, { dx: 0, dz: d/2 + swW/2 }];
+      offsets.forEach(off => {
+        const sw = new THREE.Mesh(
+          new THREE.BoxGeometry(isVertical ? swW : w + swW*2, swH, isVertical ? d : swW),
+          sidewalkMat);
+        sw.position.set(x + off.dx, swH/2, z + off.dz);
+        sw.receiveShadow = true;
+        scene.add(sw);
+      });
+
+      // Dashed lane markings
+      const dashCount = Math.floor((isVertical ? w : d) / 8);
+      for (let i = 0; i < dashCount; i++) {
+        const dash = new THREE.Mesh(new THREE.BoxGeometry(
+          isVertical ? (w * 0.35) : 0.25,
+          0.01,
+          isVertical ? 0.25 : (d * 0.35)
+        ), lineMat);
+        dash.position.set(
+          x + (isVertical ? (i - (dashCount-1)/2) * 8 : 0),
+          0.13,
+          z + (isVertical ? 0 : (i - (dashCount-1)/2) * 8)
+        );
+        scene.add(dash);
+      }
+    }
+
+    // Horizontal roads (running along X axis)
+    roadPos.forEach(rz => {
+      addRoad(0, rz, COLS * STEP + ROAD, ROAD, true);
+    });
+    // Vertical roads (running along Z axis)
+    roadPos.forEach(rx => {
+      addRoad(rx, 0, ROAD, COLS * STEP + ROAD, false);
+    });
+    showToast('✅ Roads built — adding buildings...');
+
+    // ── INTERSECTION GROUND FILL (asphalt patches at crosses) ─
+    for (let i = 0; i <= COLS; i++) {
+      for (let j = 0; j <= COLS; j++) {
+        const ix = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.13, ROAD), roadMat);
+        ix.position.set(roadPos[i], 0.065, roadPos[j]);
+        scene.add(ix);
+        // Crosswalk stripes
+        for (let s = 0; s < 4; s++) {
+          const stripe = new THREE.Mesh(new THREE.BoxGeometry(ROAD * 0.8, 0.01, 1.2), lineMat);
+          stripe.position.set(roadPos[i], 0.14, roadPos[j] - ROAD/2*0.7 + s * 3.5);
+          scene.add(stripe);
+        }
+      }
+    }
+
+    // ── BUILDINGS ─────────────────────────────────────────
+    const DTOWN_BUILDINGS = [
+      'kenney_city/building-skyscraper-a','kenney_city/building-skyscraper-b',
+      'kenney_city/building-skyscraper-c','kenney_city/building-skyscraper-d',
+      'kenney_city/building-skyscraper-e','kenney_city/building-a',
+      'kenney_city/building-b','kenney_city/building-c',
+    ];
+    const COMM_BUILDINGS = [
+      'kenney_city/building-d','kenney_city/building-e','kenney_city/building-f',
+      'kenney_city/building-g','kenney_city/building-h','kenney_city/building-i',
+      'kenney_city/building-j','kenney_city/building-k','kenney_city/building-l',
+      'kenney_city/building-m','kenney_city/building-n','kenney_city/building-o',
+    ];
+
+    let buildDelay = 0;
+    for (let col = 0; col < COLS; col++) {
+      for (let row = 0; row < COLS; row++) {
+        const bx = blockPos[col], bz = blockPos[row];
+        const zone = getZone(col, row);
+
+        if (zone === 0) {
+          // Downtown — tall buildings, 2x2 per block
+          const bList = DTOWN_BUILDINGS;
+          for (let b = 0; b < 2; b++) {
+            const alias = bList[(col * COLS + row + b * 3) % bList.length];
+            const ox = (b % 2 - 0.5) * 20, oz = (Math.floor(b/2) - 0) * 20;
+            setTimeout(() => {
+              gltfLoader.load('models/' + alias + '.glb', (gltf) => {
+                const m = gltf.scene;
+                m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+                const box = new THREE.Box3().setFromObject(m);
+                const h = box.getSize(new THREE.Vector3()).y;
+                const targetH = 45 + Math.random() * 40;
+                m.scale.setScalar(targetH / (h || 1));
+                const b2 = new THREE.Box3().setFromObject(m);
+                m.position.set(bx + ox, -b2.min.y, bz + oz);
+                m.rotation.y = Math.floor(Math.random() * 4) * Math.PI/2;
+                m.userData.isBuilding = true;
+                scene.add(m); objects.push(m);
+              }, null, () => {});
+            }, buildDelay);
+            buildDelay += 60;
+          }
+        } else if (zone === 1) {
+          // Commercial — medium buildings
+          const alias = COMM_BUILDINGS[(col * COLS + row) % COMM_BUILDINGS.length];
+          setTimeout(() => {
+            gltfLoader.load('models/' + alias + '.glb', (gltf) => {
+              const m = gltf.scene;
+              m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+              const box = new THREE.Box3().setFromObject(m);
+              const h = box.getSize(new THREE.Vector3()).y;
+              const targetH = 18 + Math.random() * 15;
+              m.scale.setScalar(targetH / (h || 1));
+              const b2 = new THREE.Box3().setFromObject(m);
+              m.position.set(bx, -b2.min.y, bz);
+              m.rotation.y = Math.floor(Math.random() * 4) * Math.PI/2;
+              m.userData.isBuilding = true;
+              scene.add(m); objects.push(m);
+            }, null, () => {});
+          }, buildDelay);
+          buildDelay += 60;
+        } else {
+          // Residential — modern house with yard, fence, pool
+          setTimeout(() => {
+            // House
+            try {
+              const house = createModernHouse({ floors: Math.random() > 0.5 ? 2 : 1 });
+              house.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+              const hb = new THREE.Box3().setFromObject(house);
+              house.position.set(bx - 8, -hb.min.y, bz - 5);
+              house.rotation.y = Math.floor(Math.random() * 4) * Math.PI/2;
+              house.userData.isBuilding = true;
+              house.userData.isHouse = true;
+              scene.add(house); objects.push(house);
+            } catch(e) {}
+
+            // Front lawn (green)
+            const lawn = new THREE.Mesh(
+              new THREE.PlaneGeometry(BLOCK * 0.9, BLOCK * 0.9),
+              new THREE.MeshStandardMaterial({ color: 0x3d7a30, roughness: 1.0 })
+            );
+            lawn.rotation.x = -Math.PI/2;
+            lawn.position.set(bx, 0.05, bz);
+            lawn.receiveShadow = true;
+            scene.add(lawn);
+
+            // Fence around property (4 sides)
+            const fenceColor = 0xeae0d0;
+            const fenceMat = new THREE.MeshStandardMaterial({ color: fenceColor, roughness: 0.9 });
+            const FPOSTS = 8;
+            const hs = BLOCK * 0.45;
+            // Top, Bottom, Left, Right fence rails
+            [[0, -hs], [0, hs], [-hs, 0], [hs, 0]].forEach(([fx, fz], fi) => {
+              const isH = fi < 2;
+              const rail = new THREE.Mesh(
+                new THREE.BoxGeometry(isH ? BLOCK * 0.92 : 0.4, 1.2, isH ? 0.4 : BLOCK * 0.92),
+                fenceMat
+              );
+              rail.position.set(bx + fx, 1.0, bz + fz);
+              rail.castShadow = true;
+              scene.add(rail);
+              // Fence pickets
+              for (let p = 0; p < FPOSTS; p++) {
+                const picket = new THREE.Mesh(
+                  new THREE.BoxGeometry(isH ? 0.35 : BLOCK*0.9/FPOSTS*0.6, 1.4, isH ? BLOCK*0.9/FPOSTS*0.6 : 0.35),
+                  fenceMat
+                );
+                picket.position.set(
+                  bx + fx + (isH ? (p - (FPOSTS-1)/2) * (BLOCK*0.9/FPOSTS) : 0),
+                  0.8,
+                  bz + fz + (isH ? 0 : (p - (FPOSTS-1)/2) * (BLOCK*0.9/FPOSTS))
+                );
+                scene.add(picket);
+              }
+            });
+
+            // Swimming pool in backyard
+            const poolW = 10, poolD = 16, poolDepth = 0.8;
+            const poolX = bx + 12, poolZ = bz + 10;
+            const poolBorder = new THREE.Mesh(
+              new THREE.BoxGeometry(poolW + 1.5, 0.4, poolD + 1.5),
+              new THREE.MeshStandardMaterial({ color: 0xddd8cc, roughness: 0.8 })
+            );
+            poolBorder.position.set(poolX, 0.2, poolZ);
+            scene.add(poolBorder);
+            const poolWater = new THREE.Mesh(
+              new THREE.BoxGeometry(poolW, poolDepth, poolD),
+              new THREE.MeshStandardMaterial({
+                color: 0x1a9ad4, transparent: true, opacity: 0.85,
+                roughness: 0.1, metalness: 0.1
+              })
+            );
+            poolWater.position.set(poolX, 0.15, poolZ);
+            poolWater.userData.isWater = true;
+            scene.add(poolWater);
+
+            // Driveway (short strip from road to house)
+            const driveway = new THREE.Mesh(
+              new THREE.PlaneGeometry(5, 12),
+              new THREE.MeshStandardMaterial({ color: 0x555550, roughness: 1.0 })
+            );
+            driveway.rotation.x = -Math.PI/2;
+            driveway.position.set(bx - 20, 0.06, bz - BLOCK*0.42);
+            scene.add(driveway);
+          }, buildDelay);
+          buildDelay += 80;
+        }
+      }
+    }
+    showToast('✅ Buildings placed — adding street props...');
+
+    // ── STREET LIGHTS & STOP SIGNS ────────────────────────
+    // Place at every intersection
+    setTimeout(() => {
+      const lightPaths = [
+        'models/kenney_roads/light-square.glb',
+        'models/kenney_roads/light-curved.glb',
+        'models/kenney_roads/light-square-double.glb',
+      ];
+      for (let i = 0; i <= COLS; i++) {
+        for (let j = 0; j <= COLS; j++) {
+          const lx = roadPos[i], lz = roadPos[j];
+          const lPath = lightPaths[(i + j) % lightPaths.length];
+
+          // Street light
+          gltfLoader.load(lPath, (gltf) => {
+            const m = gltf.scene;
+            m.traverse(c => { if (c.isMesh) { c.castShadow = true; } });
+            const box = new THREE.Box3().setFromObject(m);
+            const h = box.getSize(new THREE.Vector3()).y;
+            m.scale.setScalar(6 / (h || 1));
+            const b2 = new THREE.Box3().setFromObject(m);
+            m.position.set(lx + ROAD/2 + 2, -b2.min.y, lz + ROAD/2 + 2);
+            m.userData.isStreetLight = true;
+            scene.add(m); objects.push(m);
+            // Point light at top
+            const pl = new THREE.PointLight(0xfff8e0, 0.8, 30);
+            pl.position.set(lx + ROAD/2 + 2, 7, lz + ROAD/2 + 2);
+            scene.add(pl);
+          }, null, () => {
+            // Fallback: simple lamp post
+            const post = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.15, 0.2, 7, 6),
+              new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.6 })
+            );
+            post.position.set(lx + ROAD/2 + 2.5, 3.5, lz + ROAD/2 + 2.5);
+            post.castShadow = true;
+            scene.add(post);
+            const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8),
+              new THREE.MeshStandardMaterial({ color: 0xfff8d0, emissive: 0xfff080, emissiveIntensity: 1 }));
+            lamp.position.set(lx + ROAD/2 + 2.5, 7.2, lz + ROAD/2 + 2.5);
+            scene.add(lamp);
+          });
+
+          // Stop sign at corner
+          const signPost = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 2.5, 6),
+            new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.5 })
+          );
+          signPost.position.set(lx - ROAD/2 - 1.5, 1.25, lz - ROAD/2 - 1.5);
+          scene.add(signPost);
+          const sign = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.6, 0),
+            new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.5 })
+          );
+          sign.position.set(lx - ROAD/2 - 1.5, 2.8, lz - ROAD/2 - 1.5);
+          sign.scale.y = 0.15; sign.rotation.y = Math.PI/8;
+          scene.add(sign);
+        }
+      }
+    }, buildDelay + 200);
+
+    // ── AI CARS ON WAYPOINT ROUTES ─────────────────────────
+    setTimeout(() => {
+      showToast('🚗 Spawning traffic...');
+
+      // Build road waypoint routes from the grid
+      // Route 1: outer loop (clockwise)
+      const outerRp = roadPos[0]; const outerRpEnd = roadPos[COLS];
+      const innerRp0 = roadPos[1]; const innerRpEnd = roadPos[COLS-1];
+
+      const routes = [
+        // Outer clockwise loop
+        [[-roadPos[0],-roadPos[0]], [roadPos[COLS],-roadPos[0]], [roadPos[COLS],roadPos[COLS]], [-roadPos[0],roadPos[COLS]]],
+        // Inner loop (downtown ring)
+        [[roadPos[1],roadPos[1]], [roadPos[COLS-1],roadPos[1]], [roadPos[COLS-1],roadPos[COLS-1]], [roadPos[1],roadPos[COLS-1]]],
+        // Straight E-W on road 2
+        [[roadPos[0],roadPos[2]], [roadPos[COLS],roadPos[2]]],
+        // Straight N-S on road 2
+        [[roadPos[2],roadPos[0]], [roadPos[2],roadPos[COLS]]],
+        // Cross diagonal route
+        [[roadPos[0],roadPos[1]], [roadPos[1],roadPos[1]], [roadPos[1],roadPos[3]], [roadPos[3],roadPos[3]], [roadPos[3],roadPos[1]]],
+      ];
+
+      const carModels = [
+        'models/kenney_cars/sedan.glb', 'models/kenney_cars/taxi.glb',
+        'models/kenney_cars/police.glb','models/kenney_cars/suv.glb',
+        'models/kenney_cars/van.glb',   'models/kenney_cars/sedan-sports.glb',
+        'models/kenney_cars/hatchback-sports.glb', 'models/kenney_cars/delivery.glb',
+      ];
+      const carColors = [0x2244aa, 0xcc2222, 0x22aa44, 0xeeeeee, 0x111111, 0xaaaa22, 0x8844cc, 0xcc6622];
+
+      // Spawn 15 AI cars across all routes
+      for (let ci = 0; ci < 15; ci++) {
+        const route = routes[ci % routes.length];
+        const routeWaypoints = route.map(([wx, wz]) => new THREE.Vector3(wx, 0.3, wz));
+        const startIdx = Math.floor(Math.random() * route.length);
+        const speed = 10 + Math.random() * 14;
+        const carPath = carModels[ci % carModels.length];
+        const carColor = carColors[ci % carColors.length];
+
+        // Create car group (GLB or fallback box)
+        const carGroup = new THREE.Group();
+        carGroup.userData.isDrivingCar = true;
+        carGroup.userData.waypointRoute = routeWaypoints;
+        carGroup.userData.waypointIdx = startIdx;
+        carGroup.userData.speed = speed;
+
+        // Box car fallback (always visible while GLB loads)
+        const bodyMat = new THREE.MeshStandardMaterial({ color: carColor, roughness: 0.3, metalness: 0.6 });
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1.0, 4), bodyMat);
+        body.position.y = 0.7; body.castShadow = true; carGroup.add(body);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 2.2), bodyMat);
+        cabin.position.set(0, 1.45, 0.2); carGroup.add(cabin);
+        const wMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+        [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz]) => {
+          const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33,0.33,0.18,10), wMat);
+          w.rotation.z = Math.PI/2; w.position.set(wx,wy,wz); carGroup.add(w);
+        });
+
+        const startWP = routeWaypoints[startIdx];
+        carGroup.position.copy(startWP);
+        scene.add(carGroup);
+        objects.push(carGroup);
+
+        // Also try to load the real GLB model
+        gltfLoader.load(carPath, (gltf) => {
+          // Replace box car body with GLB
+          const glbCar = gltf.scene;
+          const cb = new THREE.Box3().setFromObject(glbCar);
+          const cs = cb.getSize(new THREE.Vector3());
+          const targetLen = 4.5;
+          glbCar.scale.setScalar(targetLen / (cs.z || 1));
+          const cb2 = new THREE.Box3().setFromObject(glbCar);
+          glbCar.position.y = -cb2.min.y;
+          glbCar.traverse(c => { if (c.isMesh) { c.castShadow = true; } });
+          // Clear box parts, add GLB
+          while (carGroup.children.length) {
+            const child = carGroup.children[0];
+            carGroup.remove(child);
+          }
+          carGroup.add(glbCar);
+        }, null, () => {});
+      }
+
+      // Register waypoint car update in render loop
+      window._cityCarUpdate = (dt) => {
+        scene.children.forEach(obj => {
+          if (!obj.userData || !obj.userData.waypointRoute) return;
+          const route = obj.userData.waypointRoute;
+          const idx = obj.userData.waypointIdx;
+          const target = route[idx];
+          if (!target) return;
+          const dx = target.x - obj.position.x;
+          const dz = target.z - obj.position.z;
+          const dist = Math.sqrt(dx*dx + dz*dz);
+          if (dist < 1.5) {
+            // Reached waypoint — advance to next
+            obj.userData.waypointIdx = (idx + 1) % route.length;
+          } else {
+            const spd = obj.userData.speed * dt;
+            obj.position.x += (dx / dist) * spd;
+            obj.position.z += (dz / dist) * spd;
+            obj.position.y = 0.3;
+            // Smooth turning toward target
+            const targetAngle = Math.atan2(dx, dz);
+            const current = obj.rotation.y;
+            let diff = targetAngle - current;
+            while (diff > Math.PI) diff -= Math.PI*2;
+            while (diff < -Math.PI) diff += Math.PI*2;
+            obj.rotation.y += diff * Math.min(1, dt * 5);
+          }
+        });
+      };
+
+      // Hook into render loop
+      if (!window._cityCarHooked) {
+        window._cityCarHooked = true;
+        const origAnimate = renderer.onBeforeRender;
+        // Use clock delta via render loop — patch updateDrivingCars
+        const _prevUpdateDrivingCars = updateDrivingCars;
+        window._patchedUpdate = (dt) => {
+          if (window._cityCarUpdate) window._cityCarUpdate(dt);
+        };
+      }
+
+      showToast('✅ Traffic spawned — 15 cars on ' + routes.length + ' routes');
+    }, buildDelay + 500);
+
+    // ── LIGHTING ─────────────────────────────────────────
+    const sun = new THREE.DirectionalLight(0xfff5e0, 2.8);
+    sun.position.set(200, 300, 100);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.camera.left = -600; sun.shadow.camera.right = 600;
+    sun.shadow.camera.top = 600; sun.shadow.camera.bottom = -600;
+    sun.shadow.camera.far = 1500; sun.shadow.bias = -0.0003;
+    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0xc8d8f0, 0.5));
+    renderer.shadowMap.enabled = true;
+
+    scene.fog = new THREE.FogExp2(0xc8d8f0, 0.0008);
+    renderer.setClearColor(0x87ceeb, 1);
+
+    // ── CAMERA — downtown street level ───────────────────
+    if (window._cam) {
+      window._cam.position.set(0, 12, -80);
+      window._cam.lookAt(0, 8, 0);
+    }
+    if (window._ctrl) { window._ctrl.target.set(0,8,0); window._ctrl.update(); }
+
+    showToast('🏙 City World building... cars & buildings loading in!');
+  } catch(err) {
+    console.error('[CITY]', err);
+    showToast('❌ ' + err.message);
+  }
+}
+window.buildCityWorld = buildCityWorld;
 
 // ============================================================
 // OLD MINE CAVE INTERIOR — inside the African Slate Quarry
