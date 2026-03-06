@@ -22469,6 +22469,21 @@ parseAndExecute = async function(rawCmd) {
 
   // === FOREST WORLD COMMAND ===
   // Pack showcase commands
+  if (lower === 'enter mine' || lower === 'go to mine' || lower === 'mine entrance') {
+    if (window._quarryCaveInfo) {
+      const { entryX, entryZ, entryAngle } = window._quarryCaveInfo;
+      const inward = entryAngle + Math.PI;
+      window._cam.position.set(
+        entryX + Math.cos(inward) * 8,
+        6,
+        entryZ + Math.sin(inward) * 8
+      );
+      window._cam.lookAt(entryX + Math.cos(inward) * 30, 4, entryZ + Math.sin(inward) * 30);
+      if (window._ctrl) { window._ctrl.target.copy(window._cam.position).addScaledVector(new THREE.Vector3(Math.cos(inward), -0.3, Math.sin(inward)), 20); window._ctrl.update(); }
+      showToast('⛏ You are at the mine entrance — go explore!');
+    } else { showToast('⚠ Build quarry world first: type "quarry world"'); }
+    return;
+  }
   if (lower === 'old mine world' || lower === 'show old mine' || lower === 'mine world') {
     buildPackShowcase('old_mine', 'Old Mine', 47); return;
   }
@@ -24838,7 +24853,21 @@ async function buildQuarryWorld() {
         }, i * 120);
       });
 
-      setTimeout(() => showToast(\`✅ African Slate Quarry built! \${quarryItems.length} rocks placed\`), quarryItems.length * 120 + 1000);
+      setTimeout(() => {
+        showToast(\`✅ African Slate Quarry built! \${quarryItems.length} rocks placed\`);
+        // Build the mine cave inside the quarry wall
+        const caveInfo = buildMineInterior();
+        window._quarryCaveInfo = caveInfo;
+        // Populate mine with Old Mine assets
+        const waitMine = (cb) => {
+          if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
+          setTimeout(() => waitMine(cb), 200);
+        };
+        waitMine((al) => {
+          populateMineAssets(caveInfo, al);
+          showToast(\`⛏ Old Mine cave built inside the quarry — type "enter mine" to go there!\`);
+        });
+      }, quarryItems.length * 120 + 1000);
     });
 
     // ── SPARSE DRY TREES ON RIM ─────────────────────────────
@@ -24948,6 +24977,291 @@ async function buildQuarryWorld() {
   }
 }
 window.buildQuarryWorld = buildQuarryWorld;
+
+
+// ============================================================
+// OLD MINE CAVE INTERIOR — inside the African Slate Quarry
+// ============================================================
+function buildMineInterior() {
+  const TUNNEL_W = 10;    // tunnel width
+  const TUNNEL_H = 8;     // tunnel height
+  const TUNNEL_L = 18;    // tunnel segment length
+  const WALL_C   = 0x2a1f14; // dark cave rock
+  const FLOOR_C  = 0x1e160e;
+  const CEIL_C   = 0x221a10;
+  const SUPPORT_C= 0x3d2810; // wood support beams
+
+  const caveMat    = new THREE.MeshStandardMaterial({ color: WALL_C, roughness: 1.0 });
+  const floorMat   = new THREE.MeshStandardMaterial({ color: FLOOR_C, roughness: 1.0 });
+  const ceilMat    = new THREE.MeshStandardMaterial({ color: CEIL_C, roughness: 1.0 });
+  const supportMat = new THREE.MeshStandardMaterial({ color: SUPPORT_C, roughness: 1.0 });
+
+  // Add a dim torch-like point light inside a tunnel segment
+  function addTorchLight(x, y, z, color=0xff8833, intensity=3, dist=18) {
+    const light = new THREE.PointLight(color, intensity, dist);
+    light.position.set(x, y, z);
+    light.castShadow = false;
+    scene.add(light);
+    // Torch visual (small glowing sphere)
+    const torch = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 6, 4),
+      new THREE.MeshStandardMaterial({ color: 0xffaa22, emissive: 0xff8800, emissiveIntensity: 3 })
+    );
+    torch.position.set(x, y - 0.4, z);
+    scene.add(torch);
+  }
+
+  // Build one tunnel segment (closed box with open ends)
+  function buildTunnelSeg(cx, cy, cz, length, angle, isChamber=false) {
+    const W = isChamber ? TUNNEL_W * 2.5 : TUNNEL_W;
+    const H = isChamber ? TUNNEL_H * 1.8 : TUNNEL_H;
+    const L = isChamber ? length * 1.5 : length;
+    const group = new THREE.Group();
+
+    // Floor
+    const floorSeg = new THREE.Mesh(new THREE.BoxGeometry(W, 0.6, L), floorMat.clone());
+    floorSeg.position.y = -H/2 + 0.3;
+    group.add(floorSeg);
+
+    // Ceiling with irregular bumps
+    const ceil = new THREE.Mesh(new THREE.BoxGeometry(W, 1.5, L), ceilMat.clone());
+    ceil.position.y = H/2 - 0.5;
+    group.add(ceil);
+
+    // Left wall
+    const wallL = new THREE.Mesh(new THREE.BoxGeometry(1.2, H, L), caveMat.clone());
+    wallL.position.x = -W/2 + 0.6;
+    group.add(wallL);
+
+    // Right wall
+    const wallR = new THREE.Mesh(new THREE.BoxGeometry(1.2, H, L), caveMat.clone());
+    wallR.position.x = W/2 - 0.6;
+    group.add(wallR);
+
+    // Back wall (closed end) — only for dead ends
+    if (!isChamber) {
+      const backWall = new THREE.Mesh(new THREE.BoxGeometry(W, H, 1.0), caveMat.clone());
+      backWall.position.z = L/2 - 0.5;
+      // Don't add back wall — tunnels connect
+    }
+
+    // Wood support beams every 5 units
+    const beamCount = Math.floor(L / 5);
+    for (let b = 0; b < beamCount; b++) {
+      const bz = -L/2 + 3 + b * 5;
+      // Left post
+      const postL = new THREE.Mesh(new THREE.BoxGeometry(0.4, H - 1, 0.4), supportMat);
+      postL.position.set(-W/2 + 1.8, 0, bz);
+      group.add(postL);
+      // Right post
+      const postR = new THREE.Mesh(new THREE.BoxGeometry(0.4, H - 1, 0.4), supportMat);
+      postR.position.set(W/2 - 1.8, 0, bz);
+      group.add(postR);
+      // Top crossbeam
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(W - 2.4, 0.5, 0.4), supportMat);
+      beam.position.set(0, H/2 - 1, bz);
+      group.add(beam);
+    }
+
+    // Torch lights
+    addTorchLight(cx + Math.cos(angle + Math.PI/2) * (W/2 - 2), cy + H/2 - 1.5,
+      cz + Math.sin(angle + Math.PI/2) * (L * 0.3));
+
+    group.position.set(cx, cy, cz);
+    group.rotation.y = angle;
+    group.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    scene.add(group);
+    return group;
+  }
+
+  // ── CAVE ENTRANCE ─────────────────────────────────────────
+  // Carved into the quarry wall at the base — dark opening
+  const ENTRY_ANGLE = Math.PI * 0.7; // where on the quarry wall the entrance is
+  const WALL_BASE_R = 178; // at the base of the quarry wall
+  const entryX = Math.cos(ENTRY_ANGLE) * WALL_BASE_R;
+  const entryZ = Math.sin(ENTRY_ANGLE) * WALL_BASE_R;
+
+  // Dark archway entrance
+  const archMat = new THREE.MeshStandardMaterial({ color: 0x0d0a07, roughness: 1.0 });
+  const archGroup = new THREE.Group();
+
+  // Frame the entrance with dark rock
+  const archTop = new THREE.Mesh(new THREE.BoxGeometry(TUNNEL_W + 4, 2, 3), archMat);
+  archTop.position.y = TUNNEL_H / 2 + 1;
+  archGroup.add(archTop);
+  const archLeft = new THREE.Mesh(new THREE.BoxGeometry(2, TUNNEL_H + 2, 3), archMat);
+  archLeft.position.set(-(TUNNEL_W/2 + 1), 0, 0);
+  archGroup.add(archLeft);
+  const archRight = new THREE.Mesh(new THREE.BoxGeometry(2, TUNNEL_H + 2, 3), archMat);
+  archRight.position.set(TUNNEL_W/2 + 1, 0, 0);
+  archGroup.add(archRight);
+
+  // Darkness fill (so the opening looks deep/dark)
+  const darkFill = new THREE.Mesh(
+    new THREE.BoxGeometry(TUNNEL_W, TUNNEL_H, 1),
+    new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1.0 })
+  );
+  darkFill.position.z = 1.5;
+  archGroup.add(darkFill);
+
+  archGroup.position.set(entryX, TUNNEL_H / 2, entryZ);
+  archGroup.rotation.y = ENTRY_ANGLE + Math.PI;
+  scene.add(archGroup);
+
+  // Sign above entrance
+  const signMat = new THREE.MeshStandardMaterial({ color: 0x5a3a18, roughness: 1.0 });
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(8, 1.5, 0.3), signMat);
+  sign.position.set(entryX, TUNNEL_H + 3, entryZ);
+  sign.rotation.y = ENTRY_ANGLE + Math.PI;
+  scene.add(sign);
+
+  // ── TUNNEL NETWORK ────────────────────────────────────────
+  // Main corridor going inward (toward quarry center, underground)
+  const tunnelDir = ENTRY_ANGLE + Math.PI; // inward direction
+  const UNDERGROUND_Y = -TUNNEL_H / 2; // flush with ground
+
+  // Main shaft goes straight in
+  for (let i = 0; i < 5; i++) {
+    buildTunnelSeg(
+      entryX + Math.cos(tunnelDir) * (TUNNEL_L * i + TUNNEL_L/2),
+      UNDERGROUND_Y,
+      entryZ + Math.sin(tunnelDir) * (TUNNEL_L * i + TUNNEL_L/2),
+      TUNNEL_L, tunnelDir
+    );
+  }
+
+  // Chamber 1 — main cavern after 5 segments
+  const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
+  const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
+  buildTunnelSeg(chamber1X, UNDERGROUND_Y - 2, chamber1Z, TUNNEL_L * 2, tunnelDir, true);
+
+  // Left branch from chamber
+  const leftAngle = tunnelDir - Math.PI / 2.5;
+  for (let i = 0; i < 3; i++) {
+    buildTunnelSeg(
+      chamber1X + Math.cos(leftAngle) * (TUNNEL_L * i + TUNNEL_L/2),
+      UNDERGROUND_Y - 2,
+      chamber1Z + Math.sin(leftAngle) * (TUNNEL_L * i + TUNNEL_L/2),
+      TUNNEL_L, leftAngle
+    );
+  }
+
+  // Right branch from chamber
+  const rightAngle = tunnelDir + Math.PI / 2.5;
+  for (let i = 0; i < 4; i++) {
+    buildTunnelSeg(
+      chamber1X + Math.cos(rightAngle) * (TUNNEL_L * i + TUNNEL_L/2),
+      UNDERGROUND_Y - 2,
+      chamber1Z + Math.sin(rightAngle) * (TUNNEL_L * i + TUNNEL_L/2),
+      TUNNEL_L, rightAngle
+    );
+  }
+
+  // Deep shaft — goes further down into the earth
+  const deepAngle = tunnelDir - Math.PI / 8;
+  for (let i = 0; i < 3; i++) {
+    buildTunnelSeg(
+      chamber1X + Math.cos(deepAngle) * (TUNNEL_L * (i + 2)),
+      UNDERGROUND_Y - 2 - i * 3,
+      chamber1Z + Math.sin(deepAngle) * (TUNNEL_L * (i + 2)),
+      TUNNEL_L, deepAngle
+    );
+  }
+
+  // Chamber 2 — deeper, bigger
+  const chamber2X = chamber1X + Math.cos(deepAngle) * (TUNNEL_L * 5.5);
+  const chamber2Z = chamber1Z + Math.sin(deepAngle) * (TUNNEL_L * 5.5);
+  buildTunnelSeg(chamber2X, UNDERGROUND_Y - 8, chamber2Z, TUNNEL_L * 2.5, deepAngle, true);
+
+  // Ambient light for the cave (dim, cool)
+  const caveAmb = new THREE.AmbientLight(0x221a0a, 0.15);
+  scene.add(caveAmb);
+
+  console.log('[MINE] Cave interior built — entry at:', entryX.toFixed(0), entryZ.toFixed(0));
+  return { entryX, entryZ, entryAngle: ENTRY_ANGLE };
+}
+
+// Place Old Mine assets inside the cave tunnels
+function populateMineAssets(caveInfo, aliases) {
+  const { entryX, entryZ, entryAngle } = caveInfo;
+  const tunnelDir = entryAngle + Math.PI;
+  const UNDERGROUND_Y = -4;
+  const TUNNEL_L = 18;
+
+  const mineItems = Object.entries(aliases)
+    .filter(([k]) => k.startsWith('old_mine_') && /\d$/.test(k))
+    .sort(([a],[b]) => a.localeCompare(b));
+
+  mineItems.forEach(([alias, relPath], i) => {
+    const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+    // Spread along the main corridor and branches
+    const seg = Math.floor(i / 3);
+    const side = (i % 3) - 1; // -1, 0, 1
+    const branchChoice = i % 5;
+    let bx, by, bz;
+    if (branchChoice < 2) {
+      // Main corridor
+      bx = entryX + Math.cos(tunnelDir) * (TUNNEL_L * (seg % 5) + 4);
+      bz = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * (seg % 5) + 4);
+      bx += Math.cos(tunnelDir + Math.PI/2) * side * 3;
+      bz += Math.sin(tunnelDir + Math.PI/2) * side * 3;
+      by = UNDERGROUND_Y;
+    } else if (branchChoice < 4) {
+      // Left branch
+      const la = tunnelDir - Math.PI / 2.5;
+      const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
+      const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
+      bx = chamber1X + Math.cos(la) * (TUNNEL_L * (seg % 3) + 4);
+      bz = chamber1Z + Math.sin(la) * (TUNNEL_L * (seg % 3) + 4);
+      bx += Math.cos(la + Math.PI/2) * side * 3;
+      bz += Math.sin(la + Math.PI/2) * side * 3;
+      by = UNDERGROUND_Y - 2;
+    } else {
+      // Right branch
+      const ra = tunnelDir + Math.PI / 2.5;
+      const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
+      const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
+      bx = chamber1X + Math.cos(ra) * (TUNNEL_L * (seg % 4) + 4);
+      bz = chamber1Z + Math.sin(ra) * (TUNNEL_L * (seg % 4) + 4);
+      bx += Math.cos(ra + Math.PI/2) * side * 2.5;
+      bz += Math.sin(ra + Math.PI/2) * side * 2.5;
+      by = UNDERGROUND_Y - 2;
+    }
+
+    setTimeout(() => {
+      gltfLoader.load(fullPath, (gltf) => {
+        const model = gltf.scene;
+        model.traverse(c => {
+          if (c.isMesh) {
+            c.castShadow = true;
+            c.receiveShadow = true;
+            // Darken materials slightly for underground feel
+            if (c.material) {
+              const mats = Array.isArray(c.material) ? c.material : [c.material];
+              mats.forEach(m => { if (m.color) m.color.multiplyScalar(0.65); });
+            }
+          }
+        });
+
+        // Scale mine assets to fit in tunnels — medium size
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 0.01);
+        const s = (1.5 + Math.random() * 2.0) / maxDim;
+        model.scale.setScalar(s);
+
+        const finalBox = new THREE.Box3().setFromObject(model);
+        model.position.set(bx, by - finalBox.min.y * model.scale.x, bz);
+        model.rotation.y = Math.random() * Math.PI * 2;
+        model.userData.isPlaced = true;
+        model.userData.isMineAsset = true;
+        scene.add(model);
+        objects.push(model);
+      }, null, () => {});
+    }, i * 150 + 2000); // stagger after quarry rocks load
+  });
+}
+
 
 // ============================================================
 // ASSET DECOMPOSITION — extract individual pieces from group GLBs
