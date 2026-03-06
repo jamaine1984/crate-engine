@@ -22468,6 +22468,17 @@ parseAndExecute = async function(rawCmd) {
   
 
   // === FOREST WORLD COMMAND ===
+  // Pack showcase commands
+  if (lower === 'old mine world' || lower === 'show old mine' || lower === 'mine world') {
+    buildPackShowcase('old_mine', 'Old Mine', 47); return;
+  }
+  if (lower === 'quarry world' || lower === 'show quarry' || lower === 'african quarry') {
+    buildPackShowcase('quarry', 'African Slate Quarry', 47); return;
+  }
+  if (lower === 'building world' || lower === 'unfinished building' || lower === 'show building') {
+    buildPackShowcase('building', 'Unfinished Building', 38); return;
+  }
+
   // Street props — place individual pieces: "add bus stop", "add street light", etc.
   const streetPieceTriggers = ['ad poster','power box','public phone box','bus stop',
     'street light','pole metal','bike parking','construction cone','water cannister',
@@ -24713,6 +24724,43 @@ function listGroupPieces(groupName) {
   return group.pieces;
 }
 window.listGroupPieces = listGroupPieces;
+
+
+// Build a ground-level showcase of all assets from a named pack
+async function buildPackShowcase(packPrefix, packName, count) {
+  try {
+    const aliases = window._fabAliases || {};
+    const waitForAliases = (cb) => {
+      if (window._fabAliases && Object.keys(window._fabAliases).length > 50) { cb(window._fabAliases); return; }
+      setTimeout(() => waitForAliases(cb), 200);
+    };
+    waitForAliases(async (aliases) => {
+      showToast(\`📦 Loading \${packName}...\`);
+      // Gather all aliases for this pack
+      const items = Object.entries(aliases)
+        .filter(([k]) => k.startsWith(packPrefix + '_') && /\d/.test(k))
+        .sort(([a],[b]) => a.localeCompare(b));
+
+      const COLS = 8;
+      const SPACING = 8;
+      const startX = -(Math.min(items.length, COLS) * SPACING) / 2;
+
+      items.forEach(([alias, relPath], i) => {
+        const col = i % COLS;
+        const row = Math.floor(i / COLS);
+        const x = startX + col * SPACING;
+        const z = row * SPACING;
+        const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+        const label = alias;
+        loadGLBModel(label, label, x, z, null, fullPath);
+      });
+      showToast(\`✅ \${packName}: \${items.length} assets placed in a grid\`);
+    });
+  } catch(e) {
+    showToast('❌ ' + e.message);
+  }
+}
+window.buildPackShowcase = buildPackShowcase;
 
 async function buildForestLakeWorld() {
   const _log = (m) => { console.log('[FOREST]', m); try { showToast(m); } catch(e) {} };
