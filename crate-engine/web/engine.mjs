@@ -22468,6 +22468,30 @@ parseAndExecute = async function(rawCmd) {
   
 
   // === FOREST WORLD COMMAND ===
+  // Street props — place individual pieces: "add bus stop", "add street light", etc.
+  const streetPieceTriggers = ['ad poster','power box','public phone box','bus stop',
+    'street light','pole metal','bike parking','construction cone','water cannister',
+    'road sign','road bumper','power pole','cement block','air conditioner',
+    'vending machine','trash bin','stop sign','barbwire fence','road stopper',
+    'traffic light','fire hydrant','newspaper stand','road block','wooden pallet',
+    'recycling bin','bike rack','construction asset'];
+  const matchedPiece = streetPieceTriggers.find(p => lower.includes(p));
+  if (matchedPiece || (lower.startsWith('add ') && window._groupedAssets['street_props']?.pieces.some(p => lower.includes(p.toLowerCase())))) {
+    const pieceName = matchedPiece || window._groupedAssets['street_props'].pieces.find(p => lower.includes(p.toLowerCase()));
+    if (pieceName) {
+      const px2 = window._cam ? window._cam.position.x + (Math.random()-0.5)*20 : 0;
+      const pz2 = window._cam ? window._cam.position.z + (Math.random()-0.5)*20 : 0;
+      loadGroupedAsset('street_props', pieceName, px2, pz2);
+      return;
+    }
+  }
+  // List street props pieces
+  if (lower === 'street props' || lower === 'list street props' || lower === 'street pieces') {
+    const pieces = listGroupPieces('street_props');
+    showToast('Street props: ' + pieces.slice(0,8).join(', ') + '... (' + pieces.length + ' total)');
+    return;
+  }
+
   if (lower === 'forest world' || lower === 'build forest' || lower === 'forest lake' || 
       lower === 'make forest' || lower === 'create forest' || lower === 'forest') {
     buildForestLakeWorld();
@@ -24606,6 +24630,89 @@ function buildGerstnerLake(radius, preset) {
   return mesh;
 }
 window.buildGerstnerLake = buildGerstnerLake;
+
+
+// ============================================================
+// ASSET DECOMPOSITION — extract individual pieces from group GLBs
+// ============================================================
+const _groupedAssets = {
+  'street_props': {
+    path: 'models/fab/street_props_streeprops.glb',
+    pieces: ['Ad poster','Pole','Power box','Public phone box','Bus stop',
+      'street light','Street light','Pole metal','Bike parking','Cone',
+      'Water Cannister','Construction asset','Road sign','fence',
+      'Road bumper','power pole','cement block','bike1','bike2',
+      'air conditioner','box1','box2','Curb','parking place','parking spots',
+      'bench','vending machine','Trash bin','Trash bin cover','Cannister',
+      'Stop sign','barbwire fence','Road stopper','Road Bunner',
+      'traffic light','Construction Cone','Fire hydrant','newspaper stand',
+      'Road block','trailer','Wooden pallet','Recycling bin']
+  }
+};
+
+// Cache loaded group GLB scenes
+const _groupCache = {};
+
+function loadGroupedAsset(groupName, pieceName, x, z, onDone) {
+  const group = _groupedAssets[groupName];
+  if (!group) { console.warn('Unknown group:', groupName); return; }
+
+  const place = (cachedScene) => {
+    // Find the named node
+    let target = null;
+    cachedScene.traverse(o => { 
+      if (o.name && o.name.toLowerCase() === pieceName.toLowerCase()) target = o; 
+    });
+    if (!target) {
+      // Fuzzy match
+      cachedScene.traverse(o => {
+        if (o.name && o.name.toLowerCase().includes(pieceName.toLowerCase().split(' ')[0])) {
+          if (!target) target = o;
+        }
+      });
+    }
+    if (!target) { showToast('⚠ Piece not found: ' + pieceName); return; }
+
+    const piece = target.clone(true);
+    piece.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    
+    // Center + place
+    const box = new THREE.Box3().setFromObject(piece);
+    const center = box.getCenter(new THREE.Vector3());
+    piece.position.set(x - center.x, -box.min.y, z - center.z);
+    piece.userData.isPlaced = true;
+    piece.userData.pieceOf = groupName;
+    piece.userData.pieceName = pieceName;
+    piece.name = pieceName;
+    scene.add(piece);
+    objects.push(piece);
+    showToast('✅ Placed: ' + pieceName);
+    if (onDone) onDone(piece);
+  };
+
+  if (_groupCache[groupName]) {
+    place(_groupCache[groupName]);
+    return;
+  }
+
+  // Load the group GLB once, cache it
+  showToast('Loading ' + groupName + '...');
+  gltfLoader.load(group.path, (gltf) => {
+    _groupCache[groupName] = gltf.scene;
+    place(gltf.scene);
+  }, null, (e) => showToast('❌ Failed to load ' + groupName));
+}
+
+window.loadGroupedAsset = loadGroupedAsset;
+window._groupedAssets = _groupedAssets;
+
+// List all pieces of a group asset
+function listGroupPieces(groupName) {
+  const group = _groupedAssets[groupName];
+  if (!group) return [];
+  return group.pieces;
+}
+window.listGroupPieces = listGroupPieces;
 
 async function buildForestLakeWorld() {
   const _log = (m) => { console.log('[FOREST]', m); try { showToast(m); } catch(e) {} };
