@@ -1045,12 +1045,11 @@ class CharacterController {
       loader.load('models/' + config.file + '.glb', (gltf) => {
         this.model = gltf.scene;
         
-        // Auto-scale to human height (~1.8 units)
+        // Auto-scale to human height using Y only (maxDim includes arms, shrinks model)
         const box = new THREE.Box3().setFromObject(this.model);
         const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const targetHeight = 1.8;
-        const autoScale = targetHeight / Math.max(maxDim, 0.001);
+        const playerHeight = Math.max(size.y, 0.1);
+        const autoScale = 1.75 / playerHeight;
         this.model.scale.setScalar(autoScale);
         
         // MODEL CONTAINER PATTERN (Sketchbook-inspired)
@@ -4175,14 +4174,15 @@ export class NPCController {
   async spawnNPC(type, x, z, behavior = 'wander') {
     // Quaternius animated character models — each has 11 built-in animations!
     // (Walk, Run, Idle, Jump, Punch, Death, SwordSlash, Clapping, Sitting, Standing, RunningJump)
+    // Quaternius smooth models only — these have clean bone rigs with 11 working anims
     const npcModelsMen = [
       'smooth_male_casual', 'smooth_male_longsleeve', 'smooth_male_shirt', 'smooth_male_suit',
-      'male_casual', 'male_longsleeve', 'male_shirt', 'male_suit', 'animated_human'
+      'male_casual', 'male_longsleeve', 'male_shirt', 'male_suit'
     ];
     const npcModelsWomen = [
       'smooth_female_casual', 'smooth_female_dress', 'smooth_female_tanktop', 'smooth_female_alternative',
       'female_casual', 'female_dress', 'female_tanktop', 'female_alternative',
-      'animated_woman_smooth', 'animated_woman'
+      'animated_woman_smooth'
     ];
     const allNpcModels = [...npcModelsMen, ...npcModelsWomen];
     
@@ -4201,8 +4201,9 @@ export class NPCController {
         // Auto-scale NPC to human height
         const npcBox = new THREE.Box3().setFromObject(model);
         const npcSize = npcBox.getSize(new THREE.Vector3());
-        const npcMaxDim = Math.max(npcSize.x, npcSize.y, npcSize.z);
-        model.scale.setScalar(1.8 / Math.max(npcMaxDim, 0.001));
+        // Scale by Y (height) only — NOT maxDim — T-posed arms inflate X and shrink the model
+        const npcHeight = Math.max(npcSize.y, 0.1);
+        model.scale.setScalar(1.75 / npcHeight);
         // Ground the model — calculate groundOffset once
         const npcBox2 = new THREE.Box3().setFromObject(model);
         const _npcGroundOffset = -npcBox2.min.y; // Distance from origin to feet
@@ -4314,11 +4315,10 @@ export class NPCController {
             };
             const std = QMAP[name] || (name.includes('walk') ? 'walk' : name.includes('idle') ? 'idle' : name.includes('run') ? 'run' : name.includes('jump') ? 'jump' : name.includes('death') || name.includes('die') ? 'death' : name.includes('punch') || name.includes('attack') || name.includes('slash') ? 'attack' : name.includes('sit') ? 'sit' : null);
             if (!std) return; // skip unused clips
-            // Filter position/scale tracks to prevent fold+float
-            const rotTracks = clip.tracks.filter(t => !t.name.endsWith('.position') && !t.name.endsWith('.scale'));
-            const fClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
+            // Quaternius animations are self-contained — play raw clips, no filtering
+            // (filtering position tracks was meant for Mixamo retarget, breaks native anims)
             if (!npc.animations[std]) {
-              npc.animations[std] = npc.mixer.clipAction(fClip);
+              npc.animations[std] = npc.mixer.clipAction(clip);
             }
           });
           // Start default animation
