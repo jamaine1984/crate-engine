@@ -24788,7 +24788,7 @@ async function buildQuarryWorld() {
         .filter(([k]) => k.startsWith('quarry_') && /\d$/.test(k))
         .sort(([a],[b]) => a.localeCompare(b));
 
-      _log(\`  Found \${quarryItems.length} quarry assets\`);
+      _log(`  Found ${quarryItems.length} quarry assets`);
 
       quarryItems.forEach(([alias, relPath], i) => {
         const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
@@ -24854,7 +24854,7 @@ async function buildQuarryWorld() {
       });
 
       setTimeout(() => {
-        showToast(\`✅ African Slate Quarry built! \${quarryItems.length} rocks placed\`);
+        showToast(`✅ African Slate Quarry built! ${quarryItems.length} rocks placed`);
         // Build the mine cave inside the quarry wall
         const caveInfo = buildMineInterior();
         window._quarryCaveInfo = caveInfo;
@@ -24865,7 +24865,7 @@ async function buildQuarryWorld() {
         };
         waitMine((al) => {
           populateMineAssets(caveInfo, al);
-          showToast(\`⛏ Old Mine cave built inside the quarry — type "enter mine" to go there!\`);
+          showToast(`⛏ Old Mine cave built inside the quarry — type "enter mine" to go there!`);
         });
       }, quarryItems.length * 120 + 1000);
     });
@@ -25355,7 +25355,7 @@ async function buildPackShowcase(packPrefix, packName, count) {
       setTimeout(() => waitForAliases(cb), 200);
     };
     waitForAliases(async (aliases) => {
-      showToast(\`📦 Loading \${packName}...\`);
+      showToast(`📦 Loading ${packName}...`);
       // Gather all aliases for this pack
       const items = Object.entries(aliases)
         .filter(([k]) => k.startsWith(packPrefix + '_') && /\d/.test(k))
@@ -25374,7 +25374,7 @@ async function buildPackShowcase(packPrefix, packName, count) {
         const label = alias;
         loadGLBModel(label, label, x, z, null, fullPath);
       });
-      showToast(\`✅ \${packName}: \${items.length} assets placed in a grid\`);
+      showToast(`✅ ${packName}: ${items.length} assets placed in a grid`);
     });
   } catch(e) {
     showToast('❌ ' + e.message);
