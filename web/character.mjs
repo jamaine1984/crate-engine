@@ -606,19 +606,20 @@ class CharacterStateMachine {
       [CharacterState.WALK]: 'walk',
       [CharacterState.RUN]: 'run',
       [CharacterState.JUMP]: 'jump',
-      [CharacterState.FALL]: 'jump',  // reuse jump anim for fall
-      [CharacterState.LAND]: 'idle',  // brief landing squat
+      [CharacterState.FALL]: 'jump',
+      [CharacterState.LAND]: 'idle',
       [CharacterState.ROLL]: 'roll',
       [CharacterState.ATTACK_1]: 'attack',
       [CharacterState.ATTACK_2]: 'attack',
-      [CharacterState.ATTACK_3]: 'swordAttackJump',
-      [CharacterState.HEAVY_ATTACK]: 'swordAttackJump',
-      [CharacterState.BLOCK]: 'block',
+      [CharacterState.ATTACK_3]: 'attack',
+      [CharacterState.HEAVY_ATTACK]: 'attack',
+      [CharacterState.BLOCK]: 'idle',
       [CharacterState.HIT]: 'hit',
       [CharacterState.DEATH]: 'death',
-      [CharacterState.SWIM]: 'walking', // placeholder
-      [CharacterState.AIM]: 'idle_swordRight',
-      [CharacterState.SHOOT]: 'idle_swordRight',
+      [CharacterState.SWIM]: 'walk',   // swim reuses walk anim (tilted)
+      [CharacterState.CLIMB]: 'walk',  // climb reuses walk
+      [CharacterState.AIM]: 'idle',
+      [CharacterState.SHOOT]: 'idle',
     };
     
     const animName = animMap[state];
@@ -737,8 +738,8 @@ class CharacterController {
     this.gravity = -20;
     
     // Settings
-    this.walkSpeed = 4;
-    this.runSpeed = 8;
+    this.walkSpeed = 5.5;
+    this.runSpeed = 11;
     this.sprintSpeed = 14;
     this.rollSpeed = 12;
     this.jumpForce = 8;
@@ -768,7 +769,7 @@ class CharacterController {
     this.cameraHeight = 2.0;
     this.cameraPitch = 0.2;
     this.cameraYaw = 0;
-    this.cameraSmoothness = 8;
+    this.cameraSmoothness = 5; // Lower = smoother camera
     // TPS over-the-shoulder
     this.shoulderOffset = 1.0; // Right shoulder offset (positive = right)
     this.shoulderSide = 1; // 1 = right, -1 = left (toggle with T key)
@@ -815,7 +816,8 @@ class CharacterController {
       'king': { file: 'modular_men_king', animPrefix: '' },
       'punk': { file: 'modular_men_punk', animPrefix: '' },
       'knight': { file: 'single_knight_pack_knightcharacter', animPrefix: 'HumanArmature|' },
-      'soldier': { file: 'soldier', animPrefix: '' },
+      'soldier': { file: 'npcs/smooth_male_casual', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'xbot': { file: 'xbot_mixamo', animPrefix: 'mixamorig:', isMixamo: true },
       'witch': { file: 'modular_women_witch', animPrefix: '' },
       'medieval': { file: 'modular_women_medieval', animPrefix: '' },
       'casual': { file: 'modular_men_casual', animPrefix: '' },
@@ -842,7 +844,8 @@ class CharacterController {
 
   async _loadSharedAnimations(charType) {
     // Load knight model just for its animations, apply to current character
-    const knightFile = 'models/single_knight_pack_knightcharacter.glb';
+    // Use Soldier.glb for shared animations — much higher quality Mixamo anims
+    const knightFile = 'models/soldier_mixamo.glb';
     const loader = window._gltfLoader;
     if (!loader || !this.model) return;
     
@@ -869,13 +872,16 @@ class CharacterController {
         const prefix = 'HumanArmature|';
         
         gltf.animations.forEach(clip => {
-          let name = clip.name.replace(prefix, '').toLowerCase();
+          let name = clip.name.replace(prefix, '').replace(/^HumanArmature\|/, '').toLowerCase();
           
           // Map to standard names
           const nameMap = {
+            // Soldier.glb animation names (capitalize first letter)
             'idle': 'idle', 'idle_neutral': 'idle',
-            'walking': 'walk', 'walk': 'walk',
+            'walk': 'walk', 'walking': 'walk',
             'run': 'run', 'running': 'run',
+            'tpose': null, // skip T-pose
+            // Knight animation names (fallback)
             'jump': 'jump', 'jump_full_short': 'jump',
             'roll': 'roll', 'roll_sword': 'roll', 'dodge': 'roll',
             'death': 'death', 'die': 'death',
@@ -885,6 +891,9 @@ class CharacterController {
             'swordattackjump': 'swordAttackJump',
             'hit': 'hit', 'gethit': 'hit', 'get_hit': 'hit',
             'block': 'block', 'shield_block': 'block',
+            // Xbot animations
+            'agree': 'agree', 'headshake': 'headshake', 'sad_pose': 'sad',
+            'sneak_pose': 'sneak',
           };
           const stdName = nameMap[name] || name;
           
@@ -904,17 +913,41 @@ class CharacterController {
             const boneName = dotIdx >= 0 ? newName.substring(0, dotIdx) : newName;
             const prop = dotIdx >= 0 ? newName.substring(dotIdx + 1) : '';
             
-            // FILTER: Skip position tracks for all bones except Hips
-            // Different skeleton proportions make position anims destructive (limb detachment)
-            if (prop === 'position' && boneName !== 'Hips') continue;
+            // FILTER: Skip ALL position tracks for shared animations
+            // Position data from knight skeleton causes folding/floating on other rigs
+            if (prop === 'position') continue;
             
             // FILTER: Skip scale tracks (rarely useful in retargeting)
             if (prop === 'scale') continue;
             
-            // Bone name mapping: knight → modular character differences
+            // Bone name mapping: Mixamo → KayKit character bones
             const boneMap = {
-              'Body': 'Root',           // Knight uses "Body" as root, modular uses "Root"  
-              'MiddleHandR': 'HandR',   // Knight hand naming
+              // Mixamo → KayKit mapping (Three.js strips 'mixamorig:' and dots)
+              'mixamorigHips': 'Hips',
+              'mixamorigSpine': 'Abdomen',
+              'mixamorigSpine1': 'Torso',
+              'mixamorigSpine2': 'Chest',
+              'mixamorigNeck': 'Neck',
+              'mixamorigHead': 'Head',
+              'mixamorigLeftShoulder': 'ShoulderL',
+              'mixamorigLeftArm': 'UpperArmL',
+              'mixamorigLeftForeArm': 'LowerArmL',
+              'mixamorigLeftHand': 'HandL',
+              'mixamorigRightShoulder': 'ShoulderR',
+              'mixamorigRightArm': 'UpperArmR',
+              'mixamorigRightForeArm': 'LowerArmR',
+              'mixamorigRightHand': 'HandR',
+              'mixamorigLeftUpLeg': 'UpperLegL',
+              'mixamorigLeftLeg': 'LowerLegL',
+              'mixamorigLeftFoot': 'FootL',
+              'mixamorigRightUpLeg': 'UpperLegR',
+              'mixamorigRightLeg': 'LowerLegR',
+              'mixamorigRightFoot': 'FootR',
+              'mixamorigLeftToeBase': 'FootL',
+              'mixamorigRightToeBase': 'FootR',
+              // Knight → KayKit (fallback)
+              'Body': 'Root',
+              'MiddleHandR': 'HandR',
               'MiddleHandL': 'HandL',
               'PalmR': 'HandR',
               'PalmL': 'HandL',
@@ -993,7 +1026,7 @@ class CharacterController {
     });
   }
   
-  async loadCharacter(type = 'knight') {
+  async loadCharacter(type = 'soldier') {
     const config = this.characterModels[type];
     if (!config) return 'Unknown character: ' + type;
     
@@ -1104,18 +1137,18 @@ class CharacterController {
               const n = node.name.toLowerCase();
               const isLeft = n.endsWith('l') || n.includes('.l') || n.includes('left');
               const isRight = n.endsWith('r') || n.includes('.r') || n.includes('right');
-              if (n.includes('hips') && !npc.bones.hips) npc.bones.hips = node;
-              else if ((n.includes('spine') || n.includes('abdomen') || n.includes('torso')) && !npc.bones.spine) npc.bones.spine = node;
-              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isLeft && !npc.bones.leftLeg) npc.bones.leftLeg = node;
-              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isRight && !npc.bones.rightLeg) npc.bones.rightLeg = node;
-              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isLeft && !npc.bones.leftKnee) npc.bones.leftKnee = node;
-              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isRight && !npc.bones.rightKnee) npc.bones.rightKnee = node;
-              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isLeft && !npc.bones.leftArm) npc.bones.leftArm = node;
-              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isRight && !npc.bones.rightArm) npc.bones.rightArm = node;
-              else if ((n.includes('lowerarm') || n.includes('forearm')) && isLeft && !npc.bones.leftForearm) npc.bones.leftForearm = node;
-              else if ((n.includes('lowerarm') || n.includes('forearm')) && isRight && !npc.bones.rightForearm) npc.bones.rightForearm = node;
-              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !n.includes('_end') && !npc.bones.head) npc.bones.head = node;
-              else if (n.includes('neck') && !npc.bones.neck) npc.bones.neck = node;
+              if (n.includes('hips') && !this.bones.hips) this.bones.hips = node;
+              else if ((n.includes('spine') || n.includes('abdomen') || n.includes('torso')) && !this.bones.spine) this.bones.spine = node;
+              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isLeft && !this.bones.leftLeg) this.bones.leftLeg = node;
+              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isRight && !this.bones.rightLeg) this.bones.rightLeg = node;
+              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isLeft && !this.bones.leftKnee) this.bones.leftKnee = node;
+              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isRight && !this.bones.rightKnee) this.bones.rightKnee = node;
+              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isLeft && !this.bones.leftArm) this.bones.leftArm = node;
+              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isRight && !this.bones.rightArm) this.bones.rightArm = node;
+              else if ((n.includes('lowerarm') || n.includes('forearm')) && isLeft && !this.bones.leftForearm) this.bones.leftForearm = node;
+              else if ((n.includes('lowerarm') || n.includes('forearm')) && isRight && !this.bones.rightForearm) this.bones.rightForearm = node;
+              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !n.includes('_end') && !this.bones.head) this.bones.head = node;
+              else if (n.includes('neck') && !this.bones.neck) this.bones.neck = node;
             }
           });
           console.log('Procedural bones found:', Object.keys(this.bones).join(', '));
@@ -1129,70 +1162,6 @@ class CharacterController {
         }
         
         // Setup animations — load from model or shared animation source
-        const hasAnims = gltf.animations.length > 0;
-        if (hasAnims) {
-          // Model has built-in animations (Quaternius characters)
-          npc.mixer = new THREE.AnimationMixer(model);
-          const prefix = 'HumanArmature|HumanArmature|';
-          for (const clip of gltf.animations) {
-            const rawName = clip.name.replace(prefix, '').toLowerCase();
-            let stdName = null;
-            if (rawName.includes('walk')) stdName = 'walk';
-            else if (rawName.includes('idle') || rawName.includes('standing')) stdName = 'idle';
-            else if (rawName.includes('run') && !rawName.includes('jump')) stdName = 'run';
-            else if (rawName.includes('punch')) stdName = 'punch';
-            else if (rawName.includes('death')) stdName = 'death';
-            else if (rawName.includes('jump') && !rawName.includes('running')) stdName = 'jump';
-            else if (rawName.includes('sword')) stdName = 'attack';
-            else if (rawName.includes('sit')) stdName = 'sit';
-            else if (rawName.includes('clap')) stdName = 'clap';
-            
-            if (stdName && !npc.animations[stdName]) {
-              const action = npc.mixer.clipAction(clip);
-              npc.animations[stdName] = action;
-            }
-          }
-          
-          // Play walk or idle
-          if (npc.animations.walk && npc.behavior === 'wander') {
-            npc.animations.walk.play();
-            npc.currentAnim = 'walk';
-          } else if (npc.animations.idle) {
-            npc.animations.idle.play();
-            npc.currentAnim = 'idle';
-          }
-          
-          npc.proceduralAnim = false;
-          console.log('[NPC] Built-in anims:', Object.keys(npc.animations).join(', '));
-        } else {
-          // Fallback: load Soldier animations
-          console.log('[NPC] No embedded anims, loading Soldier animations');
-          const _loader = window._gltfLoader || loader;
-          _loader.load('models/anim_idle.glb', (animGltf) => {
-            if (!animGltf.animations || animGltf.animations.length === 0) return;
-            npc.mixer = new THREE.AnimationMixer(model);
-            animGltf.animations.forEach(clip => {
-              const name = clip.name.toLowerCase();
-              if (name === 'tpose') return;
-              const rotTracks = clip.tracks.filter(t => t.name.endsWith('.quaternion'));
-              if (rotTracks.length > 0) {
-                const rotClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
-                const action = npc.mixer.clipAction(rotClip);
-                if (name === 'idle') npc.animations.idle = action;
-                else if (name === 'walk') npc.animations.walk = action;
-                else if (name === 'run') npc.animations.run = action;
-              }
-            });
-            if (npc.animations.walk && npc.behavior === 'wander') {
-              npc.animations.walk.play();
-              npc.currentAnim = 'walk';
-            } else if (npc.animations.idle) {
-              npc.animations.idle.play();
-              npc.currentAnim = 'idle';
-            }
-            npc.proceduralAnim = false;
-          }, null, (e) => console.warn('[NPC] Failed to load anims:', e));
-        }
         if (gltf.animations.length > 0) {
           this.mixer = new THREE.AnimationMixer(this.model);
           this.animations = {};
@@ -1201,29 +1170,178 @@ class CharacterController {
             let name = clip.name.replace(config.animPrefix, '').toLowerCase();
             // Map to standard names
             const map = {
+              // Standard
               'idle_neutral': 'idle', 'idle': 'idle', 'idle_sword': 'idle_sword',
               'idle_gun_pointing': 'idle_gun', 'idle_gun_shoot': 'idle_gun_shoot',
               'walking': 'walk', 'walk': 'walk',
               'run': 'run', 'run_back': 'run_back', 'run_left': 'run_left', 'run_right': 'run_right',
               'run_shoot': 'run_shoot',
-              'jump': 'jump',
+              'jump': 'jump', 'runningjump': 'jump_run',
               'roll': 'roll', 'roll_sword': 'roll',
               'death': 'death', 'die': 'death',
-              'sword_slash': 'attack', 'swordattackjump': 'jump_attack',
+              'sword_slash': 'attack', 'swordattackjump': 'attack',
               'run_swordattack': 'run_attack', 'run_swordright': 'run_attack',
               'gun_shoot': 'shoot',
-              'punch_left': 'punch_left', 'punch_right': 'punch_right',
+              'punch_left': 'attack', 'punch_right': 'attack', 'punch': 'attack',
               'kick_left': 'kick_left', 'kick_right': 'kick_right',
               'hitrecieve': 'hit', 'hitrecieve_2': 'hit2',
               'interact': 'interact', 'wave': 'wave',
+              'sitting': 'sit', 'sitidle': 'sit',
+              'standing': 'stand', 'clapping': 'wave',
+              // Quaternius man
+              'man_idle': 'idle', 'man_walk': 'walk', 'man_run': 'run',
+              'man_jump': 'jump', 'man_runningjump': 'jump_run',
+              'man_death': 'death', 'man_punch': 'attack', 'man_swordslash': 'attack',
+              'man_sitting': 'sit', 'man_standing': 'stand', 'man_clapping': 'wave',
+              // Quaternius female
+              'female_idle': 'idle', 'female_walking': 'walk', 'female_running': 'run',
+              'female_run': 'run', 'female_walk': 'walk',
+              'female_jump': 'jump', 'female_jump2': 'jump',
+              'female_death': 'death', 'female_punch': 'attack',
+              'female_sitting': 'sit', 'female_sitidle': 'sit', 'female_pickup': 'interact',
+              // animated_human / animated_woman variants
+              'armatureaction.001': 'walk', 'armatureaction.002': 'run',
+              'working': 'interact',
             };
             name = map[name] || name;
             
-            this.animations[name] = this.mixer.clipAction(clip);
+            // Filter out position tracks that cause hopping (Body/Foot position offsets)
+            const filteredTracks = clip.tracks.filter(t => {
+              const prop = t.name.split('.').pop();
+              const bone = t.name.split('.').slice(0, -1).join('.');
+              // Only keep position tracks for Hips (root motion)
+              if (prop === 'position' && bone !== 'Hips') return false;
+              return true;
+            });
+            const filteredClip = new THREE.AnimationClip(clip.name, clip.duration, filteredTracks);
+            this.animations[name] = this.mixer.clipAction(filteredClip);
           });
           
           // Start idle
           this.playAnimation('idle');
+          console.log('[Char] Loaded animations:', Object.keys(this.animations).join(', '));
+          
+          // === LOAD COMBAT ANIMATIONS FROM KNIGHT (retarget to Mixamo skeleton) ===
+          // Only for true Mixamo rigs — skip for Quaternius (already has combat anims)
+          if (config.isMixamo && !config.isQuaternarius && !this.animations['jump']) {
+            const combatFile = 'models/single_knight_pack_knightcharacter.glb';
+            loader.load(combatFile, (combatGltf) => {
+              // KayKit bone name → Mixamo bone name (as Three.js loads them)
+              // Three.js strips dots: Foot.L → FootL, and colons: mixamorig:Hips → mixamorigHips
+              const kayKitToMixamo = {
+                'Body': 'mixamorigHips',
+                'Hips': 'mixamorigHips',
+                'Abdomen': 'mixamorigSpine',
+                'Torso': 'mixamorigSpine1',
+                'Neck': 'mixamorigNeck',
+                'Head': 'mixamorigHead',
+                'ShoulderL': 'mixamorigLeftShoulder',
+                'UpperArmL': 'mixamorigLeftArm',
+                'LowerArmL': 'mixamorigLeftForeArm',
+                'PalmL': 'mixamorigLeftHand',
+                'MiddleHandL': 'mixamorigLeftHand',
+                'FingersL': 'mixamorigLeftHandIndex1',
+                'ShoulderR': 'mixamorigRightShoulder',
+                'UpperArmR': 'mixamorigRightArm',
+                'LowerArmR': 'mixamorigRightForeArm',
+                'PalmR': 'mixamorigRightHand',
+                'MiddleHandR': 'mixamorigRightHand',
+                'FingersR': 'mixamorigRightHandIndex1',
+                'UpperLegL': 'mixamorigLeftUpLeg',
+                'LowerLegL': 'mixamorigLeftLeg',
+                'FootL': 'mixamorigLeftFoot',
+                'UpperLegR': 'mixamorigRightUpLeg',
+                'LowerLegR': 'mixamorigRightLeg',
+                'FootR': 'mixamorigRightFoot',
+                'ThumbL': 'mixamorigLeftHandThumb1',
+                'Thumb2L': 'mixamorigLeftHandThumb2',
+                'ThumbR': 'mixamorigRightHandThumb1',
+                'Thumb2R': 'mixamorigRightHandThumb2',
+              };
+              
+              // Only load animations we DON'T already have
+              const combatAnims = ['Death', 'Jump', 'Roll', 'Roll_sword', 'swordAttackJump',
+                                   'Run_swordAttack', 'Run_swordRight', 'Idle_swordLeft', 'Idle_swordRight'];
+              const combatMap = {
+                'death': 'death', 'jump': 'jump', 'roll': 'roll', 'roll_sword': 'roll',
+                'swordattackjump': 'jump_attack', 'run_swordattack': 'run_attack',
+                'run_swordright': 'run_attack', 'idle_swordleft': 'idle_sword',
+                'idle_swordright': 'idle_sword', 'sword_slash': 'attack',
+              };
+              
+              let added = 0;
+              combatGltf.animations.forEach(clip => {
+                let rawName = clip.name.replace('HumanArmature|', '').toLowerCase();
+                let stdName = combatMap[rawName];
+                if (!stdName || this.animations[stdName]) return;
+                
+                // Retarget track bone names from KayKit → Mixamo
+                const retargetedTracks = [];
+                clip.tracks.forEach(track => {
+                  // Three.js track name format: BoneName.property
+                  const parts = track.name.split('.');
+                  const prop = parts.pop(); // 'quaternion', 'position', 'scale'
+                  const boneName = parts.join('.');
+                  
+                  // Skip position tracks (except hips) to prevent hopping
+                  if (prop === 'position' && boneName !== 'Body' && boneName !== 'Hips') return;
+                  
+                  const newBone = kayKitToMixamo[boneName];
+                  if (!newBone) return; // skip unmapped bones
+                  
+                  // Clone the track with new bone name
+                  const newTrackName = newBone + '.' + prop;
+                  const newTrack = new track.constructor(newTrackName, track.times, track.values);
+                  retargetedTracks.push(newTrack);
+                });
+                
+                if (retargetedTracks.length > 0) {
+                  const retargetedClip = new THREE.AnimationClip(stdName, clip.duration, retargetedTracks);
+                  this.animations[stdName] = this.mixer.clipAction(retargetedClip);
+                  added++;
+                }
+              });
+              
+              if (added > 0) {
+                console.log('[Char] Added ' + added + ' combat animations from Knight: ' + 
+                  Object.keys(this.animations).filter(k => combatMap[k] || ['death','jump','roll','attack','jump_attack','run_attack','idle_sword'].includes(k)).join(', '));
+              }
+            });
+          }
+          
+          // Embedded animations loaded — no procedural override needed
+        } else {
+          // No embedded animations — enable procedural animation
+          console.log('[Char] No embedded animations, enabling procedural animation');
+          this.proceduralAnim = true;
+          this.bones = {};
+          this.model.traverse(node => {
+            if (node.isBone || node.type === 'Bone') {
+              const n = node.name.toLowerCase();
+              const isLeft = n.endsWith('l') || n.includes('.l') || n.includes('left');
+              const isRight = n.endsWith('r') || n.includes('.r') || n.includes('right');
+              if (n.includes('hips') && !this.bones.hips) this.bones.hips = node;
+              else if ((n.includes('spine') || n.includes('abdomen') || n.includes('torso')) && !this.bones.spine) this.bones.spine = node;
+              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isLeft && !this.bones.leftLeg) this.bones.leftLeg = node;
+              else if ((n.includes('upperleg') || n.includes('upleg') || n.includes('thigh')) && isRight && !this.bones.rightLeg) this.bones.rightLeg = node;
+              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isLeft && !this.bones.leftKnee) this.bones.leftKnee = node;
+              else if ((n.includes('lowerleg') || n.includes('calf') || n.includes('shin')) && isRight && !this.bones.rightKnee) this.bones.rightKnee = node;
+              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isLeft && !this.bones.leftArm) this.bones.leftArm = node;
+              else if ((n.includes('upperarm') || (n.includes('arm') && !n.includes('lower') && !n.includes('fore'))) && isRight && !this.bones.rightArm) this.bones.rightArm = node;
+              else if ((n.includes('lowerarm') || n.includes('forearm')) && isLeft && !this.bones.leftForearm) this.bones.leftForearm = node;
+              else if ((n.includes('lowerarm') || n.includes('forearm')) && isRight && !this.bones.rightForearm) this.bones.rightForearm = node;
+              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !n.includes('_end') && !this.bones.head) this.bones.head = node;
+              else if (n.includes('neck') && !this.bones.neck) this.bones.neck = node;
+            }
+          });
+          console.log('[Char] Procedural bones found:', Object.keys(this.bones).join(', '));
+          // Save original bone rotations
+          Object.entries(this.bones).forEach(([key, bone]) => {
+            if (bone) {
+              bone.userData.origRot = { x: bone.rotation.x, y: bone.rotation.y, z: bone.rotation.z };
+              bone.userData.origPos = bone.position.clone();
+            }
+          });
         }
         
         // Find clear spawn point away from objects
@@ -2353,6 +2471,13 @@ class CharacterController {
     } else {
       (this.modelContainer || this.model).position.set(this.position.x, this.position.y + (this.modelContainer ? 0 : (this.groundOffset || 0)), this.position.z);
       this.model.rotation.y = this.rotation;
+      // Swim body tilt — lean forward in water
+      if (this.stateMachine && this.stateMachine.state === 'swim') {
+        this.model.rotation.x += (0.35 - this.model.rotation.x) * 0.1;
+      } else if (this.model.rotation.x !== 0) {
+        this.model.rotation.x *= 0.88; // smooth restore upright
+        if (Math.abs(this.model.rotation.x) < 0.005) this.model.rotation.x = 0;
+      }
     }
     
     // Animation state
@@ -2594,10 +2719,10 @@ class CharacterController {
     
     if (isMoving) {
       // ─── WALK / RUN CYCLE ───
-      const freq = isSprinting ? 12 : isRunningAnim ? 9 : 6;
-      const legAmp = isSprinting ? 0.9 : isRunningAnim ? 0.7 : 0.4;
-      const armAmp = isSprinting ? 0.9 : isRunningAnim ? 0.75 : 0.45;
-      const kneeAmp = isSprinting ? 1.1 : isRunningAnim ? 0.9 : 0.6;
+      const freq = isSprinting ? 10 : isRunningAnim ? 8 : 5;
+      const legAmp = isSprinting ? 0.55 : isRunningAnim ? 0.45 : 0.3;
+      const armAmp = isSprinting ? 0.5 : isRunningAnim ? 0.4 : 0.25;
+      const kneeAmp = isSprinting ? 0.65 : isRunningAnim ? 0.55 : 0.4;
       const phase = t * freq;
       
       // Legs — forward/back swing
@@ -4140,7 +4265,10 @@ export class NPCController {
             soldierGltf.animations.forEach(clip => {
               const name = clip.name.toLowerCase();
               if (name === 'tpose') return;
-              const action = npc.mixer.clipAction(clip);
+              // Filter position tracks — prevent folding/floating on different rigs
+              const rotTracks = clip.tracks.filter(t => !t.name.endsWith('.position') && !t.name.endsWith('.scale'));
+              const filteredClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
+              const action = npc.mixer.clipAction(filteredClip);
               if (name === 'idle') npc.animations.idle = action;
               else if (name === 'walk' || name === 'walking') npc.animations.walk = action;
               else if (name === 'run' || name === 'running') npc.animations.run = action;
@@ -4161,14 +4289,42 @@ export class NPCController {
         if (gltf.animations.length > 0) {
           npc.mixer = new THREE.AnimationMixer(model);
           gltf.animations.forEach(clip => {
-            let name = clip.name.toLowerCase();
-            if (name.includes('walk')) { npc.animations.walk = npc.mixer.clipAction(clip); }
-            else if (name.includes('idle') && !name.includes('sword')) { npc.animations.idle = npc.mixer.clipAction(clip); }
-            else if (name.includes('run')) { npc.animations.run = npc.mixer.clipAction(clip); }
-            else if (name.includes('attack') || name.includes('slash') || name.includes('sword') || name.includes('punch')) { npc.animations.attack = npc.mixer.clipAction(clip); }
+            // Strip Quaternius prefix: "HumanArmature|HumanArmature|Man_Walk" → "man_walk"
+            // Strip Armature prefix:  "Armature|Armature|Walking" → "walking"
+            let name = clip.name
+              .replace(/^[^|]+\|[^|]+\|/, '')  // strip "Prefix|Prefix|"
+              .replace(/^[^|]+\|/, '')           // strip "Prefix|"
+              .toLowerCase().replace(/\s+/g,'_');
+
+            // Normalize to standard keys
+            const QMAP = {
+              'man_idle':'idle','man_walk':'walk','man_run':'run','man_jump':'jump',
+              'man_runningjump':'jump_run','man_death':'death','man_punch':'attack',
+              'man_swordslash':'attack','man_sitting':'sit','man_standing':'stand',
+              'man_clapping':'wave',
+              'female_idle':'idle','female_walking':'walk','female_running':'run',
+              'female_run':'run','female_walk':'walk','female_jump':'jump',
+              'female_jump2':'jump','female_death':'death','female_punch':'attack',
+              'female_sitting':'sit','female_sitidle':'sit','female_pickup':'interact',
+              'idle':'idle','walking':'walk','walk':'walk','run':'run','running':'run',
+              'jump':'jump','jump2':'jump','death':'death','die':'death',
+              'punch':'attack','swordslash':'attack','sitting':'sit','sitidle':'sit',
+              'working':'interact','pickup':'interact',
+              'armatureaction.001':'walk','armatureaction.002':'run',
+            };
+            const std = QMAP[name] || (name.includes('walk') ? 'walk' : name.includes('idle') ? 'idle' : name.includes('run') ? 'run' : name.includes('jump') ? 'jump' : name.includes('death') || name.includes('die') ? 'death' : name.includes('punch') || name.includes('attack') || name.includes('slash') ? 'attack' : name.includes('sit') ? 'sit' : null);
+            if (!std) return; // skip unused clips
+            // Filter position/scale tracks to prevent fold+float
+            const rotTracks = clip.tracks.filter(t => !t.name.endsWith('.position') && !t.name.endsWith('.scale'));
+            const fClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
+            if (!npc.animations[std]) {
+              npc.animations[std] = npc.mixer.clipAction(fClip);
+            }
           });
-          if (npc.animations.idle) npc.animations.idle.play();
-          else if (npc.animations.walk) npc.animations.walk.play();
+          // Start default animation
+          const startAnim = npc.behavior === 'wander' ? (npc.animations.walk || npc.animations.idle) : npc.animations.idle || npc.animations.walk;
+          if (startAnim) { startAnim.reset().fadeIn(0.3).play(); npc.currentAnim = npc.animations.walk === startAnim ? 'walk' : 'idle'; }
+          console.log('[NPC] Loaded anims:', Object.keys(npc.animations).join(', '));
         }
         
         // Procedural animation fallback for models without embedded anims
@@ -4544,6 +4700,19 @@ export class NPCController {
       const aiState = npc.ai ? npc.ai.state : (npc.behavior === 'aggro' ? 'chase' : 'patrol');
       const playerPos = this.characterController ? this.characterController.position : new THREE.Vector3();
       const distToPlayer = npc.model.position.distanceTo(playerPos);
+
+      // ── SWIM detection ────────────────────────────────────────────────────
+      if (window._waterZones && window._waterZones.length > 0) {
+        const inWater = window._waterZones.some(w => {
+          if (!w || !w.position) return false;
+          const dx = npc.model.position.x - w.position.x;
+          const dz = npc.model.position.z - w.position.z;
+          const r = (w.userData && w.userData.radius) ? w.userData.radius : 15;
+          return (dx*dx + dz*dz) < r*r;
+        });
+        if (inWater && npc.currentAnim !== 'swim') _playAnim('swim');
+        else if (!inWater && npc.currentAnim === 'swim') _playAnim(npc.isMoving ? 'walk' : 'idle');
+      }
       
       // Helper: move NPC toward a target position
       const _moveToward = (target, speed) => {
@@ -4567,12 +4736,39 @@ export class NPCController {
         return true; // still moving
       };
       
-      // Helper: play NPC animation if not already playing
+      // Helper: play NPC animation with full state support
       const _playAnim = (name) => {
         if (npc.currentAnim === name) return;
-        Object.values(npc.animations).forEach(a => a && a.fadeOut(0.25));
-        if (npc.animations[name]) { npc.animations[name].reset().fadeIn(0.25).play(); }
         npc.currentAnim = name;
+        Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
+
+        if (name === 'swim') {
+          const a = npc.animations.walk || npc.animations.idle;
+          if (a) a.reset().setEffectiveTimeScale(0.6).fadeIn(0.4).play();
+          if (npc.model) npc.model.rotation.x = 0.45;
+          return;
+        }
+        if (name === 'drive' || name === 'sit') {
+          const a = npc.animations.sit || npc.animations.idle;
+          if (a) a.reset().fadeIn(0.3).play();
+          if (npc.model) npc.model.rotation.x = 0;
+          return;
+        }
+        if (name === 'climb') {
+          const a = npc.animations.walk || npc.animations.idle;
+          if (a) a.reset().setEffectiveTimeScale(0.5).fadeIn(0.3).play();
+          if (npc.model) npc.model.rotation.x = -0.25;
+          return;
+        }
+        if (name === 'open_door') {
+          const a = npc.animations.interact || npc.animations.attack;
+          if (a) { a.setLoop(THREE.LoopOnce, 1); a.reset().fadeIn(0.2).play(); }
+          return;
+        }
+        // Restore upright for all other states
+        if (npc.model) npc.model.rotation.x = 0;
+        const anim = npc.animations[name] || npc.animations.idle;
+        if (anim) anim.reset().fadeIn(0.3).play();
       };
       
       // Helper: pick random waypoint near home
