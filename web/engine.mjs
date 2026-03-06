@@ -45,27 +45,35 @@ function createAAASky() {
   if (skyMesh) scene.remove(skyMesh);
   skyMesh = new Sky();
   skyMesh.scale.setScalar(10000);
-  scene.add(skyMesh);
+  // Don't add skyMesh to scene — HDRI background (clouds) looks way better
+  // skyMesh is only used to generate envMap for PBR reflections
   sun = new THREE.Vector3();
   const uniforms = skyMesh.material.uniforms;
-  uniforms['turbidity'].value = 10;
-  uniforms['rayleigh'].value = 3;
+  uniforms['turbidity'].value = 4;
+  uniforms['rayleigh'].value = 2;
   uniforms['mieCoefficient'].value = 0.005;
-  uniforms['mieDirectionalG'].value = 0.7;
-  const phi = THREE.MathUtils.degToRad(90 - 2);
+  uniforms['mieDirectionalG'].value = 0.8;
+  // Higher sun = brighter, more daytime feel
+  const phi = THREE.MathUtils.degToRad(90 - 35);
   const theta = THREE.MathUtils.degToRad(180);
   sun.setFromSphericalCoords(1, phi, theta);
   uniforms['sunPosition'].value.copy(sun);
-  // Update environment map for PBR reflections
+  // Generate envMap from sky shader (for reflections only, NOT background)
   if (renderer) {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     pmremGenerator.compileEquirectangularShader();
-    const rt = pmremGenerator.fromScene(skyMesh);
-    if (scene.environment) scene.environment.dispose();
-    scene.environment = rt.texture;
+    // Temporarily add sky to a separate scene for envMap generation
+    const envScene = new THREE.Scene();
+    envScene.add(skyMesh.clone());
+    const rt = pmremGenerator.fromScene(envScene);
+    // Only set environment (reflections), NOT background — keep HDRI clouds
+    if (!scene.background) {
+      // Only set sky as background if no HDRI loaded yet
+      scene.environment = rt.texture;
+    }
     pmremGenerator.dispose();
   }
-  console.log('[CRATE] AAA Sky created');
+  console.log('[CRATE] AAA Sky envMap created (HDRI background preserved)');
 }
 
 function setSkyTime(elevation, azimuth) {
@@ -291,7 +299,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=122'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=135'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -826,7 +834,15 @@ let playMode = false;
 
 // === CHARACTER SELECT (restored from localStorage) ===
 let selectedCharacterType = null;
-try { selectedCharacterType = localStorage.getItem('crate_character'); } catch(e) {}
+try { 
+  selectedCharacterType = localStorage.getItem('crate_character'); 
+  // Reset if invalid/no-anim character was saved
+  const _noAnimChars = ['fab_civilian_f'];
+  if (!selectedCharacterType || _noAnimChars.includes(selectedCharacterType)) {
+    selectedCharacterType = 'adventurer';
+    localStorage.setItem('crate_character', 'adventurer');
+  }
+} catch(e) { selectedCharacterType = 'adventurer'; }
 
 let playAvatar = null;
 const playKeys = {};
@@ -909,7 +925,7 @@ function _showEditorUI() {
 
 function enterPlayMode() {
   startReplayRecording();
-  playMode = true;
+  playMode = true; window._playMode = true;
     if (window._mobileControls && window._mobileControls.show) window._mobileControls.show();
   _hideEditorUI();
   // Create or find avatar
@@ -942,7 +958,7 @@ function enterPlayMode() {
 
 function exitPlayMode() {
   stopReplayRecording();
-  playMode = false;
+  playMode = false; window._playMode = false;
   _showEditorUI();
   // Hide v215 HUD elements
   ['compass','crosshair','stamina-bar','interact-prompt','damage-vignette','underwater-fx','speed-lines','kill-feed'].forEach(id => {
@@ -952,6 +968,10 @@ function exitPlayMode() {
   cancelGrapple();
   if (_photoMode) window._togglePhotoMode();
   try { controls.enabled = true; } catch(e) {}
+  // Release pointer lock so editor selection works
+  if (document.pointerLockElement) {
+    try { document.exitPointerLock(); } catch(e) {}
+  }
   var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return '🎮 Play mode OFF — back to editor';
 }
 
@@ -1770,7 +1790,47 @@ const MODEL_SCALE_OVERRIDES = {
 window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
 
 const GLB_MODELS = {
-  
+
+  // ═══ COMMON WORD ALIASES (user-friendly names) ═══
+  'car':'hd_ferrari',
+  'sports_car':'kenney_cars/sedan-sports',
+  'sports car':'kenney_cars/sedan-sports',
+  'race_car':'kenney_cars/race',
+  'racecar':'kenney_cars/race',
+  'police_car':'kenney_cars/police',
+  'house':'buildings_pack_2_house1',
+  'tree':'nature_pack_commontree_1',
+  'bush':'nature_pack_bush_1',
+  'pine':'nature_pack_pinetree_1',
+  'palm':'nature_pack_palmtree_1',
+  'building':'kenney_city/building-a',
+  'skyscraper':'kenney_city/building-skyscraper-a',
+  'streetlamp':'lamp_post_modern',
+  'street_lamp':'lamp_post_modern',
+  'lamp_post':'lamp_post_modern',
+  'lamp':'kenney_fantasy/lantern',
+  'campfire':'campfire',
+  'barrel':'barrel_00',
+  'crate':'crate_00',
+  'sword':'medieval_weapons_pack_sword',
+  'shield':'medieval_weapons_pack_shield_round',
+  'bow':'crossbow_00',
+  'horse':'animals_pack_horse',
+  'wolf':'animals_pack_wolf',
+  'fox':'animals_pack_fox',
+  'cow':'animals_pack_cow',
+  'deer':'animals_pack_deer',
+  'dog':'animals_pack_husky',
+  'chair':'chair_00',
+  'table':'table_01',
+  'bench':'medieval_village_pack_bench_1',
+  'fence':'kenney_city/fence',
+  'road':'kenney_city/path-long',
+  'fountain':'fountain',
+  'cart':'kenney_fantasy/cart',
+  'helicopter':'helicopter',
+  'tank':'tank_pack_tank',
+
   // ═══ QUATERNIUS CREATURES (CC0, animated) ═══
   'zombie':'npcs/quat_zombie',
   'zombie_smooth':'npcs/quat_zombiesmooth',
@@ -3322,7 +3382,7 @@ const GLB_MODELS = {
   'candle':'modular_dungeon_pack_candle',
   'cannon':'platformer_game_pack_cannon',
   'cannonball':'platformer_game_pack_cannonball',
-  'car':'car',
+  'car':'kenney_cars/sedan',
   'carbon_fibre':'carbon_fibre',
   'cardinalfish':'cute_fish_pack_cardinalfish',
   'carpet':'modular_dungeon_pack_carpet',
@@ -6504,7 +6564,31 @@ const GLB_MODELS = {
   'woodentable_03':'ph_WoodenTable_03',
   'woodentable 03':'ph_WoodenTable_03',
   'yellow_onion':'ph_yellow_onion',
-  'yellow onion':'ph_yellow_onion'
+  'yellow onion':'ph_yellow_onion',
+  // === FAB ASSETS (Quixel Megascans + Fab.com) ===
+  'fire_hydrant': 'fab/fire_hydrant.glb',
+  'female_civilian': 'fab/female_civilian.glb',
+  'electrical_substation': 'fab/electrical_substation.glb',
+  'bench': 'fab/bench_bench.glb',
+  'graffiti_wall': 'fab/graffiti_wall_quincy_quarries_graffiti-2k.glb',
+  'city_ruins': 'fab/city_ruins_city_ruins_1.glb',
+  'traffic_light': 'fab/traffic_light_mm_semaforofree.glb',
+  'traffic_sign': 'fab/traffic_light_mm_semaforofree.glb',
+  'forklift': 'fab/forklift_tires2.glb',
+  'wooden_door': 'fab/wooden_door_tires2.glb',
+  'moroccan_building': 'fab/moroccan_urban_7ff168ccf736540a160792e6804da89a.glb',
+  'mailbox': 'fab/mailbox_mailbox.glb',
+  'street_props': 'fab/street_props_streeprops.glb',
+  'junkyard_prop_1': 'fab/junkyard_vb1lafx.glb',
+  'junkyard_prop_2': 'fab/junkyard_wcvodhd.glb',
+  'junkyard_prop_3': 'fab/junkyard_wdljaaqbw.glb',
+  'junkyard_prop_4': 'fab/junkyard_wdlmdexbw.glb',
+  'junkyard_prop_5': 'fab/junkyard_xkzhcih.glb',
+  'junkyard_prop_6': 'fab/junkyard_xiwcfassc.glb',
+  'junkyard_prop_7': 'fab/junkyard_vdjkbfmiw.glb',
+  'junkyard_prop_8': 'fab/junkyard_wcliee1.glb',
+  'junkyard_prop_9': 'fab/junkyard_wcljcaa.glb',
+  'junkyard_prop_10': 'fab/junkyard_xh2kbey.glb',
 };
 
 
@@ -6610,7 +6694,8 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
   const spread = objects.length * 3;
   if (x === undefined || x === null) x = (Math.random() - 0.5) * 10 + spread * 0.3;
   if (z === undefined || z === null) z = (Math.random() - 0.5) * 10;
-  
+
+  console.log('[loadGLBModel] Loading:', url, '(name:', name, 'glbFile:', glbFile, ')');
   gltfLoader.load(url, (gltf) => {
     const model = gltf.scene;
     // Play animations if present
@@ -6742,7 +6827,7 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     }
     
     // Apply model scale overrides
-    const modelScaleOvr = (window.MODEL_SCALE_OVERRIDES || {})[modelFile] || (window.MODEL_SCALE_OVERRIDES || {})[modelPath];
+    const modelScaleOvr = (window.MODEL_SCALE_OVERRIDES || {})[glbFile] || (window.MODEL_SCALE_OVERRIDES || {})[url];
     if (modelScaleOvr) model.scale.setScalar(modelScaleOvr);
 scene.add(model);
     objects.push(model);
@@ -6766,6 +6851,20 @@ scene.add(model);
   (error) => {
     console.warn('Failed to load ' + url + ':', error);
     if (statusEl) statusEl.textContent = '3D Ready';
+    // Show user-visible feedback and try fuzzy search fallback
+    const cleanName = (name || glbFile || '').replace(/_/g, ' ');
+    if (typeof searchModels === 'function') {
+      const results = searchModels(cleanName, 3);
+      if (results.length > 0 && results[0].path !== glbFile) {
+        // Auto-load best match
+        const best = results[0];
+        console.log('[loadGLBModel] 404 fallback: "' + glbFile + '" → "' + best.path + '"');
+        loadGLBModel(best.name, best.path || best.name, x, z, scaleOverride);
+        if (typeof showToast === 'function') showToast('Loading ' + best.name.replace(/_/g, ' ') + '...');
+        return;
+      }
+    }
+    if (typeof showToast === 'function') showToast('Model not found: ' + cleanName);
   });
 }
 
@@ -6868,7 +6967,7 @@ window._exitToEditor = function() {
 const PlayerAgent = {
   // Default player profile
   _defaults: {
-    walkSpeed: 5, sprintSpeed: 10, jumpForce: 8,
+    walkSpeed: 8, sprintSpeed: 14, jumpForce: 8,
     rollSpeed: 12, rollDistance: 3,
     maxHealth: 100, maxStamina: 100,
     staminaRegen: 20, healthRegen: 0,
@@ -7266,9 +7365,11 @@ window._cam = camera; window._ctrl = controls; window._scene = scene;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.target.set(0, 1, 0);
-controls.maxPolarAngle = Math.PI * 0.49;
-controls.minDistance = 2;
-controls.maxDistance = 200;
+controls.maxPolarAngle = Math.PI * 0.85; // Allow looking down steeply
+controls.minDistance = 0.5;
+controls.maxDistance = 5000;  // Fly anywhere
+controls.screenSpacePanning = true; // Pan in screen space (natural)
+controls.keyPanSpeed = 40;
 
 // === LIGHTING ===
 const ambientLight = new THREE.HemisphereLight(0x87ceeb, 0x362a1a, 0.6);
@@ -7302,7 +7403,10 @@ nearShadowLight.shadow.normalBias = 0.01;
 scene.add(nearShadowLight);
 
 // Update shadow cameras to follow player/camera
+let _shadowFrame = 0;
 function updateShadowCascades() {
+  _shadowFrame++;
+  if (_shadowFrame % 4 !== 0) return; // Only update every 4th frame to reduce jitter
   const camPos = camera.position;
   sunLight.shadow.camera.left = camPos.x - 60;
   sunLight.shadow.camera.right = camPos.x + 60;
@@ -7361,7 +7465,7 @@ let ssaoPass = null;
 let smaaPass = null;
 let bokehPass = null;
 let godRaysEnabled = false;
-let ppEnabled = true;
+let ppEnabled = false; // Performance: off by default, enable with 'graphics high'
 
 async function initPostProcessing() {
   if (!_ppModulesLoaded) { const ok = await loadPostProcessingModules(); if (!ok) return; }
@@ -7607,7 +7711,7 @@ function setGraphicsQuality(level) {
       ppEnabled = true;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.shadowMap.enabled = true;
-      if (ssaoPass) ssaoPass.enabled = true;
+      if (ssaoPass) ssaoPass.enabled = false; // SSAO off by default (type 'ssao on' to enable)
       if (bloomPass) { bloomPass.strength = 0.4; }
       return 'Graphics: HIGH — best quality';
     case 'ultra':
@@ -7980,54 +8084,7 @@ function createTree(variant) {
   return g;
 }
 
-function createPineTree() {
-  const g = new THREE.Group();
-  const h = 2.5 + Math.random()*2;
-  const trunkMat = makeMat(0x4a2a1a, {rough:0.95});
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.1,h,10), trunkMat);
-  trunk.position.y = h/2; trunk.castShadow = true; g.add(trunk);
-  // Snow or green variants
-  const isSnowy = Math.random() > 0.8;
-  const leafColor = isSnowy ? 0x1a4a2a : 0x1a5a2a + Math.floor(Math.random()*0x112211);
-  // 5-6 cone layers, getting smaller toward top
-  const layers = 5 + Math.floor(Math.random()*2);
-  for (let i = 0; i < layers; i++) {
-    const layerY = h * 0.3 + i * (h * 0.7 / layers);
-    const layerR = (0.9 - i * 0.12) * (0.8 + Math.random()*0.4);
-    const layerH = 0.8 + Math.random()*0.3;
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(layerR, layerH, 12), makeMat(leafColor + Math.floor(Math.random()*0x050505), {rough:0.88}));
-    cone.position.y = layerY; cone.castShadow = true; g.add(cone);
-  }
-  // Top spike
-  const topSpike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.3, 8), makeMat(leafColor));
-  topSpike.position.y = h + 0.15; g.add(topSpike);
-  return g;
-}
 
-function createBush() {
-  const g = new THREE.Group();
-  const bushColors = [0x2a6a3a, 0x337744, 0x2d5a35, 0x3a7a4a];
-  // Multiple overlapping spheres for lush look
-  for (let i = 0; i < 5 + Math.floor(Math.random()*4); i++) {
-    const r = 0.15 + Math.random()*0.25;
-    const c = bushColors[Math.floor(Math.random()*bushColors.length)];
-    const s = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), makeMat(c + Math.floor(Math.random()*0x111111), {rough:0.88}));
-    const angle = Math.random() * Math.PI * 2;
-    const dist = Math.random() * 0.3;
-    s.position.set(Math.cos(angle)*dist, r*0.6+Math.random()*0.15, Math.sin(angle)*dist);
-    s.scale.set(1+Math.random()*0.3, 0.7+Math.random()*0.4, 1+Math.random()*0.3);
-    s.castShadow = true; g.add(s);
-  }
-  // Small flowers occasionally
-  if (Math.random() > 0.5) {
-    for (let i=0;i<3;i++) {
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), makeMat([0xff6699,0xffff44,0xffffff][i%3]));
-      dot.position.set((Math.random()-0.5)*0.4, 0.3+Math.random()*0.2, (Math.random()-0.5)*0.4);
-      g.add(dot);
-    }
-  }
-  return g;
-}
 
 function createRock(big) {
   const g = new THREE.Group();
@@ -9169,26 +9226,82 @@ function createTrashCan() {
 function createSwimmingPool(opts) {
   const o = opts || {}; const w = o.width || 8; const d = o.depth || 4;
   const g = new THREE.Group(); g.userData.name = 'Swimming Pool';
-  const tileMat = makeMat(0x4488aa, {rough:0.15});
+  // ABOVE-GROUND pool — walls go UP from ground, water visible from any angle
+  const wallH = 1.2; // Wall height above ground
+  const waterH = wallH - 0.15; // Water surface just below rim
+  const wallThick = 0.15;
+  const tileMat = makeMat(0x1a6680, {rough:0.15});
+  const outerMat = makeMat(0x8899aa, {rough:0.4}); // Outer wall color
   const deckMat = makeMat(0xccbbaa, {rough:0.6});
-  const waterMat = new THREE.MeshPhysicalMaterial({color:0x2288cc, roughness:0.0, transparent:true, opacity:0.6});
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(w+2, 0.15, d+2), deckMat);
-  deck.position.y=0.075; deck.receiveShadow=true; g.add(deck);
-  const bottom = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), tileMat);
-  bottom.position.y=-1.5; g.add(bottom);
-  [[0,-0.75,d/2,w,1.5,0.1],[0,-0.75,-d/2,w,1.5,0.1],[w/2,-0.75,0,0.1,1.5,d],[-w/2,-0.75,0,0.1,1.5,d]].forEach(([x,y,z,sx,sy,sz])=>{
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), tileMat); wall.position.set(x,y,z); g.add(wall);
+  const waterMat = new THREE.MeshPhysicalMaterial({color:0x2299dd, roughness:0.05, transparent:true, opacity:0.7, side: THREE.DoubleSide});
+  // Concrete deck/pad around pool
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(w+3, 0.15, d+3), deckMat);
+  pad.position.y = 0.075; pad.receiveShadow = true; g.add(pad);
+  // Pool walls — rise ABOVE ground
+  // Front wall
+  const fw = new THREE.Mesh(new THREE.BoxGeometry(w + wallThick*2, wallH, wallThick), outerMat);
+  fw.position.set(0, wallH/2, -d/2); fw.castShadow = true; g.add(fw);
+  // Back wall
+  const bw = new THREE.Mesh(new THREE.BoxGeometry(w + wallThick*2, wallH, wallThick), outerMat);
+  bw.position.set(0, wallH/2, d/2); bw.castShadow = true; g.add(bw);
+  // Left wall
+  const lw = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, d), outerMat);
+  lw.position.set(-w/2, wallH/2, 0); lw.castShadow = true; g.add(lw);
+  // Right wall  
+  const rw = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, d), outerMat);
+  rw.position.set(w/2, wallH/2, 0); rw.castShadow = true; g.add(rw);
+  // Inner tile lining (slightly smaller, different color)
+  [[0, wallH/2, -d/2+wallThick/2, w, wallH-0.05, 0.02],
+   [0, wallH/2, d/2-wallThick/2, w, wallH-0.05, 0.02],
+   [-w/2+wallThick/2, wallH/2, 0, 0.02, wallH-0.05, d-wallThick*2],
+   [w/2-wallThick/2, wallH/2, 0, 0.02, wallH-0.05, d-wallThick*2]].forEach(([x,y,z,sx,sy,sz])=>{
+    const tile = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), tileMat); tile.position.set(x,y,z); g.add(tile);
   });
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(w-0.1, d-0.1), waterMat);
-  water.rotation.x=-Math.PI/2; water.position.y=-0.1; g.add(water);
-  const edgeMat = makeMat(0xdddddd,{rough:0.3});
-  [[0,0.1,d/2+0.05,w+0.2,0.15,0.15],[0,0.1,-(d/2+0.05),w+0.2,0.15,0.15],[w/2+0.05,0.1,0,0.15,0.15,d+0.2],[-(w/2+0.05),0.1,0,0.15,0.15,d+0.2]].forEach(([x,y,z,sx,sy,sz])=>{
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), edgeMat); edge.position.set(x,y,z); g.add(edge);
+  // Pool floor (at ground level, visible through water)
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(w - wallThick*2, 0.1, d - wallThick*2), tileMat);
+  floor.position.y = 0.2; g.add(floor);
+  // WATER SURFACE — clearly visible blue water inside the walls
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(w - wallThick*2 - 0.1, d - wallThick*2 - 0.1), waterMat);
+  water.rotation.x = -Math.PI/2; water.position.y = waterH; water.name = 'poolWater'; g.add(water);
+  // White rim/coping around top edge
+  const rimMat = makeMat(0xffffff, {rough:0.3});
+  const rimH = 0.08; const rimW = 0.25;
+  [[0, wallH + rimH/2, -d/2, w + rimW*2, rimH, rimW],
+   [0, wallH + rimH/2, d/2, w + rimW*2, rimH, rimW],
+   [-w/2, wallH + rimH/2, 0, rimW, rimH, d],
+   [w/2, wallH + rimH/2, 0, rimW, rimH, d]].forEach(([x,y,z,sx,sy,sz])=>{
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), rimMat); rim.position.set(x,y,z); g.add(rim);
   });
-    // Register water zone for swimming detection
-  g.userData.isPool = true;
-  g.userData.poolWidth = w;
-  g.userData.poolDepth = d;
+  // Pool ladders — INSIDE (descend into pool) + OUTSIDE (climb up to pool)
+  const ladderMat = makeMat(0xcccccc, {rough:0.2, metal:0.8});
+  const lr = 0.035;
+  // Inside ladder (hangs into pool from rim) — front wall, offset right
+  const insideX = w/4; const insideZ = -d/2 + wallThick/2;
+  [-1, 1].forEach(side => {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, wallH + 0.4), ladderMat);
+    rail.position.set(insideX + side*0.2, wallH/2 + 0.1, insideZ + 0.15); g.add(rail);
+  });
+  for (let i = 0; i < 3; i++) {
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4), ladderMat);
+    rung.rotation.z = Math.PI/2;
+    rung.position.set(insideX, 0.3 + i*0.35, insideZ + 0.15); g.add(rung);
+  }
+  // Outside ladder (leans against outer wall) — same X, but on outside of front wall
+  const outsideZ = -d/2 - wallThick/2 - 0.1;
+  const outerLadderH = wallH + 0.5; // taller to reach over the rim
+  [-1, 1].forEach(side => {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, outerLadderH), ladderMat);
+    // Lean slightly outward
+    rail.rotation.x = 0.15;
+    rail.position.set(insideX + side*0.2, outerLadderH/2 - 0.1, outsideZ - 0.1); g.add(rail);
+  });
+  for (let i = 0; i < 4; i++) {
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4), ladderMat);
+    rung.rotation.z = Math.PI/2;
+    rung.rotation.x = 0.15;
+    rung.position.set(insideX, 0.15 + i*0.3, outsideZ - 0.05 - i*0.04); g.add(rung);
+  }
+  // Register water zone for swimming detection
   g.userData.registerWaterZone = function() {
     const pos = new THREE.Vector3();
     g.getWorldPosition(pos);
@@ -10045,9 +10158,9 @@ const WATER_PRESETS = {
     foamIntensity: 0.25, specularPower: 120.0, fresnelPower: 3.5
   },
   calm: {
-    color: new THREE.Color(0x0077aa), deepColor: new THREE.Color(0x003355),
-    opacity: 0.85, waveA: [1.0, 0.2, 0.02, 16.0], waveB: [0.2, 1.0, 0.015, 12.0], waveC: [0.5, 0.5, 0.01, 20.0],
-    foamIntensity: 0.05, specularPower: 100.0, fresnelPower: 3.0
+    color: new THREE.Color(0x4dd8f0), deepColor: new THREE.Color(0x29a8cc),
+    opacity: 0.78, waveA: [1.0, 0.2, 0.012, 20.0], waveB: [0.2, 1.0, 0.008, 15.0], waveC: [0.5, 0.5, 0.004, 25.0],
+    foamIntensity: 0.03, specularPower: 140.0, fresnelPower: 2.8
   }
 };
 
@@ -10185,10 +10298,10 @@ function createGerstnerWaterMaterial(preset) {
         // Blend between water body and sky reflection via fresnel
         vec3 finalColor = mix(waterBody, skyReflection, fresnel * 0.35) + specular;
         
-        // Slight blue tint at distance
+        // Slight blue tint at distance (very subtle - don't darken the water)
         float dist = length(cameraPos - vWorldPos);
-        float fogFactor = 1.0 - exp(-dist * 0.003);
-        finalColor = mix(finalColor, vec3(0.15, 0.35, 0.6), fogFactor * 0.25);
+        float fogFactor = 1.0 - exp(-dist * 0.001);
+        finalColor = mix(finalColor, vec3(0.35, 0.60, 0.85), fogFactor * 0.08);
         
         gl_FragColor = vec4(finalColor, opacity + foam * 0.2);
       }
@@ -11312,7 +11425,7 @@ function showCategoryPicker() {
     
     ['characters', ...Object.keys(catalog)].forEach(cat => {
       const m = _CAT_META[cat] || { icon: '📦', color: '#888', label: cat };
-      const count = cat === 'characters' ? 19 : (catalog[cat]?.length || 0);
+      const count = cat === 'characters' ? CHARACTER_LIBRARY.length : (catalog[cat]?.length || 0);
       if (!count) return;
       const card = document.createElement('div');
       card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + m.color + '30;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s;';
@@ -11374,6 +11487,25 @@ function showAnimationGallery(targetName) {
 // === END INLINE ASSET GALLERY ===
 
 async function execSingle(cmd) {
+
+  // === FAB ASSET COMMANDS ===
+  if (cmd === 'fab' || cmd === 'fab assets' || cmd === 'show fab') {
+    showFabGallery();
+    return;
+  }
+  if (cmd.startsWith('add fab ') || cmd.startsWith('spawn fab ')) {
+    const fabName = cmd.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_').toLowerCase();
+    const fabAliases = window._fabAliases || {};
+    const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
+    if (modelPath) {
+      spawnGLB(modelPath, fabName);
+      if (typeof addMsg === 'function') addMsg('✅ ' + fabName + ' spawned');
+    } else {
+      addMsg('❌ Fab model not found: ' + fabName + '. Try: fab assets');
+    }
+    return;
+  }
+
   sceneHistory.push(cmd);
   const lower = cmd.toLowerCase().trim();
 
@@ -11426,11 +11558,25 @@ async function execSingle(cmd) {
     return '🏃 Slide: Press C while sprinting';
   }
 
+  // === WEATHER COMMANDS ===
+  if (lower === 'rain' || lower === 'make it rain' || lower === 'start rain') {
+    setWeather('rain'); return '🌧️ Rain started';
+  }
+  if (lower === 'snow' || lower === 'make it snow' || lower === 'start snow') {
+    setWeather('snow'); return '❄️ Snow started';
+  }
+  if (lower === 'storm' || lower === 'thunderstorm' || lower === 'thunder') {
+    setWeather('storm'); return '⛈️ Thunderstorm!';
+  }
+  if (lower === 'clear weather' || lower === 'stop rain' || lower === 'stop snow' || lower === 'weather off' || lower === 'weather clear') {
+    setWeather(null); scene.fog = null; return '☀️ Weather cleared';
+  }
 
   // === TIME OF DAY COMMANDS (v215) ===
-  if (lower.match(/^(?:set )?time\s+(morning|sunrise|dawn|day|noon|afternoon|evening|sunset|dusk|night|midnight)/)) {
+  const _timeMatch = lower.match(/^(?:set )?time\s+(morning|sunrise|dawn|day|noon|afternoon|evening|sunset|dusk|night|midnight)/);
+  if (_timeMatch) {
     const timeMap = { morning: 7, sunrise: 6, dawn: 5.5, day: 12, noon: 12, afternoon: 15, evening: 18, sunset: 19, dusk: 20, night: 22, midnight: 0 };
-    const t = lower.match(/(morning|sunrise|dawn|day|noon|afternoon|evening|sunset|dusk|night|midnight)/)[1];
+    const t = _timeMatch[1];
     _dayTime = timeMap[t] || 12;
     _dayNightCycle = true;
     if (typeof setSkyTime === 'function') {
@@ -11463,8 +11609,9 @@ async function execSingle(cmd) {
     scene.fog = null;
     return '☀️ Fog cleared';
   }
-  if (lower.match(/^fog\s+([\d.]+)/)) {
-    const density = parseFloat(lower.match(/fog\s+([\d.]+)/)[1]);
+  const _fogMatch = lower.match(/^fog\s+([\d.]+)/);
+  if (_fogMatch) {
+    const density = parseFloat(_fogMatch[1]);
     scene.fog = new THREE.FogExp2(0x888888, density);
     return '🌫️ Fog density: ' + density;
   }
@@ -11997,13 +12144,41 @@ function showGameHUD(preset) {
     return '🌍 Generated ' + biome + ' ' + type + '!';
   }
 
-  if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)\b/i)) {
-    const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted)/i);
+  if (lower.match(/^(generate|create|build|make)\s+(a\s+|an\s+|the\s+)?(map|level|world|scene|hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|urban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|farm|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted|underwater|reef|castle|siege|outpost|rpg|tropical)\b/i)) {
+    const mapMatch = lower.match(/(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|city|suburban|urban|village|dungeon|arena|battlefield|kingdom|island|forest|camp|farm|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|swamp|mountain|zen|western|ruins|volcano|floating|haunted|underwater|reef|castle|siege|outpost|rpg|tropical)/i);
     const mapType = mapMatch ? mapMatch[1].toLowerCase() : 'town';
     const mapTheme = lower.replace(/^(generate|create|build|make)\s+(a\s+)?/i, '').trim();
     showToast('🗺️ Generating ' + mapTheme + '...');
-    
-    // JSON Map Templates — structured layouts with positions
+
+    // Route matching map types to Phase 5 world compiler (14 templates)
+    const WORLD_COMPILER_MAP = {
+      city: 'CITY_MODERN', suburban: 'CITY_MODERN', urban: 'CITY_MODERN',
+      town: 'MEDIEVAL_VILLAGE', village: 'MEDIEVAL_VILLAGE', medieval: 'MEDIEVAL_VILLAGE', 'medieval siege': 'MEDIEVAL_VILLAGE',
+      zombie: 'ZOMBIELAND', graveyard: 'ZOMBIELAND',
+      space: 'SPACE_STATION', station: 'SPACE_STATION',
+      island: 'TROPICAL_ISLAND', 'tropical paradise': 'TROPICAL_ISLAND', jungle: 'TROPICAL_ISLAND', tropical: 'TROPICAL_ISLAND',
+      desert: 'DESERT_OUTPOST', outpost: 'DESERT_OUTPOST', volcano: 'DESERT_OUTPOST',
+      pirate: 'PIRATE_COVE', 'pirate cove': 'PIRATE_COVE',
+      haunted: 'HAUNTED_GRAVEYARD',
+      dungeon: 'DUNGEON_CRAWL',
+      cyberpunk: 'CYBERPUNK_CITY',
+      camp: 'FARM_COUNTRY', farm: 'FARM_COUNTRY',
+      kingdom: 'RPG_VILLAGE', rpg: 'RPG_VILLAGE',
+      ruins: 'CASTLE_SIEGE', castle: 'CASTLE_SIEGE', siege: 'CASTLE_SIEGE', frozen: 'CASTLE_SIEGE',
+      underwater: 'UNDERWATER_REEF', reef: 'UNDERWATER_REEF',
+    };
+    const worldTemplate = WORLD_COMPILER_MAP[mapType];
+    if (worldTemplate) {
+      try {
+        const { buildAndApply } = await import('./runtime/world-client.mjs');
+        await buildAndApply({ template: worldTemplate, size: 'medium' });
+        return '✅ Built ' + worldTemplate + ' world';
+      } catch(e) {
+        console.warn('[Generate] World compiler failed for ' + worldTemplate + ', falling back to legacy:', e.message);
+      }
+    }
+
+    // JSON Map Templates — structured layouts with positions (legacy fallback)
 
     // ═══════════════════════════════════════════════════════════════
     // GAME PRESETS — "make this a zombie game" auto-configures everything
@@ -12995,6 +13170,17 @@ function showGameHUD(preset) {
             console.log("[Traffic] Queued " + carIdx + " cars");
           }, 1000);
         }
+        // Spawn GPU instanced grass for any generated world
+        try {
+          if (window._grassSystem) { window._grassSystem.dispose(); window._grassSystem = null; }
+          import('./runtime/grass-system.mjs').then(({ createGrassForWorld }) => {
+            if (window._scene) {
+              const manifest = { spawn: { position: [0, 0, 0] }, world_size: [200, 200] };
+              window._grassSystem = createGrassForWorld(window._scene, manifest);
+              console.log('[Grass] Spawned ' + window._grassSystem.count + ' blades');
+            }
+          }).catch(e => console.warn('[Grass] Failed:', e.message));
+        } catch(e) {}
         return;
       }
       const cmd = commands[ci];
@@ -13093,13 +13279,15 @@ function showGameHUD(preset) {
   }
   
   // Reflection/wetness commands
-  if (lower.match(/^wet(ness)?\s+(\d+\.?\d*)/)) { setSceneWetness(parseFloat(lower.match(/(\d+\.?\d*)/)[1])); return addToLog('✓ Wetness set'); }
+  const _wetMatch = lower.match(/^wet(?:ness)?\s+(\d+\.?\d*)/);
+  if (_wetMatch) { setSceneWetness(parseFloat(_wetMatch[1])); return addToLog('✓ Wetness set'); }
   if (lower === 'wet' || lower === 'wet ground' || lower === 'puddles') { setSceneWetness(0.6); return addToLog('✓ Wet ground enabled'); }
   if (lower === 'dry' || lower === 'dry ground') { setSceneWetness(0); return addToLog('✓ Ground dried'); }
   
   // Particle commands
-  if (lower.match(/^particles?\s+(dust|fireflies|embers|fire|rain|snow|ash|spores|bubbles|leaves|petals|off|none|clear)/)) {
-    let pType = lower.match(/(dust|fireflies|embers|fire|rain|snow|ash|spores|bubbles|leaves|petals|off|none|clear)/)[1]; if (pType === 'fire') pType = 'embers'; if (pType === 'rain') { setWeather('rain'); return '✓ Rain'; } if (pType === 'clear') pType = 'off';
+  const _partMatch = lower.match(/^particles?\s+(dust|fireflies|embers|fire|rain|snow|ash|spores|bubbles|leaves|petals|off|none|clear)/);
+  if (_partMatch) {
+    let pType = _partMatch[1]; if (pType === 'fire') pType = 'embers'; if (pType === 'rain') { setWeather('rain'); return '✓ Rain'; } if (pType === 'clear') pType = 'off';
     if (pType === 'off' || pType === 'none') { if (ambientParticles) { scene.remove(ambientParticles); ambientParticles = null; } return addToLog('✓ Particles off'); }
     createAmbientParticles(pType);
     return addToLog('✓ Ambient particles: ' + pType);
@@ -13531,28 +13719,40 @@ function showGameHUD(preset) {
   // === PLAY WITH CHARACTER ===
   if ((lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo') && characterController) {
     var isDemoMode = lower === 'demo' || window._isAutoDemo;
-    // Auto-generate a starter world if scene is empty BEFORE entering play mode
-    if (!objects || objects.filter(o => o && o.userData && o.userData.name).length === 0) {
-      showToast('🏗️ Building world...');
-      try { await parseAndExecute('generate town'); } catch(e) { console.warn('Auto-world gen failed:', e); }
-      // Wait a moment for models to start loading
-      await new Promise(r => setTimeout(r, 2000));
-    }
     playMode = true;
     _hideEditorUI();
     try { controls.enabled = isDemoMode ? true : false; } catch(e) {}
     if (!characterController.model) {
       // Show character select if user hasn't chosen yet (skip for demo mode)
-      if (!isDemoMode && !selectedCharacterType) {
-        var chosen = await showCharacterGallery();
-        if (!chosen) { playMode = false; _showEditorUI(); return '↩ Character select cancelled'; }
-        if (!characterController.characterModels[chosen]) {
-          var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
-          if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
+      try {
+        if (!isDemoMode && !selectedCharacterType) {
+          var chosen = await showCharacterGallery();
+          if (!chosen) { playMode = false; _showEditorUI(); return '↩ Character select cancelled'; }
+          if (!characterController.characterModels[chosen]) {
+            var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
+            if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
+          }
+          await characterController.loadCharacter(chosen);
+        } else {
+          await characterController.loadCharacter(selectedCharacterType || 'knight');
         }
-        await characterController.loadCharacter(chosen);
-      } else {
-        await characterController.loadCharacter(selectedCharacterType || 'knight');
+      } catch (charErr) {
+        console.warn('[Play] Character load failed, using fallback:', charErr.message);
+        // Force fallback capsule if loadCharacter threw
+        if (!characterController.model) {
+          const capsuleGeo = new THREE.CapsuleGeometry(0.3, 1.2, 8, 16);
+          const capsuleMat = new THREE.MeshStandardMaterial({ color: 0x4488ff });
+          characterController.model = new THREE.Mesh(capsuleGeo, capsuleMat);
+          characterController.model.castShadow = true;
+          characterController.modelContainer = new THREE.Group();
+          characterController.modelContainer.add(characterController.model);
+          characterController.modelContainer.userData.isPlayer = true;
+          characterController.modelContainer.userData.name = 'player_fallback';
+          characterController.modelContainer.position.copy(characterController.position);
+          scene.add(characterController.modelContainer);
+          objects.push(characterController.modelContainer);
+          characterController.proceduralAnim = true;
+        }
       }
     }
     // Spawn at origin ON TOP of terrain
@@ -14228,7 +14428,11 @@ function showGameHUD(preset) {
     if (characterController) {
       // This shouldn't normally be reached, but just in case:
       if (!characterController.model) {
-        await characterController.loadCharacter('knight');
+        try {
+          await characterController.loadCharacter('knight');
+        } catch(e) {
+          console.warn('[Play] Fallback character load failed:', e.message);
+        }
       }
       playMode = true;
       _hideEditorUI();
@@ -14713,8 +14917,9 @@ function showGameHUD(preset) {
     createTerrain(cmd);
 
   // Ground type change
-  if (lower.match(/^ground\s+(grass|dirt|sand|snow|gravel|stone|mud|lava|water|wood|marble|metal|concrete|asphalt|gold|obsidian|crystal|ice|rock)$/)) {
-    const gType = lower.match(/^ground\s+(\w+)/)[1];
+  const _groundMatch = lower.match(/^ground\s+(grass|dirt|sand|snow|gravel|stone|mud|lava|water|wood|marble|metal|concrete|asphalt|gold|obsidian|crystal|ice|rock)$/);
+  if (_groundMatch) {
+    const gType = _groundMatch[1];
     if (currentGround) { scene.remove(currentGround); currentGround.geometry.dispose(); currentGround.material.dispose(); }
     currentGround = createGround(gType);
     currentGroundType = gType;
@@ -14834,22 +15039,87 @@ function showGameHUD(preset) {
   }
 
   // === GENERIC ADD <THING> HANDLER ===
-  // Catch-all for "add <name> [at X Z]" using GLB_MODELS lookup
+  // Catch-all for "add <name> [at X Z]" using GLB_MODELS lookup + fuzzy search
   {
-    const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.]+)\s+(-?[\d.]+))?$/);
+    
+  // === TREE VARIETY SYSTEM ===
+  // When adding 'tree', randomly pick from best available trees for visual variety
+  const TREE_VARIETIES = [
+    'nature_pack_commontree_1', 'nature_pack_commontree_2',
+    'nature_pack_commontree_autumn_1', 'nature_pack_commontree_autumn_2',
+    'nature_pack_birchtree_1', 'nature_pack_birchtree_2', 'nature_pack_birchtree_3', 'nature_pack_birchtree_4',
+    'nature_pack_pinetree_1', 'nature_pack_pinetree_2', 'nature_pack_pinetree_3',
+    'nature_pack_willow_1', 'nature_pack_willow_2',
+    'cherry_tree_00', 'cherry_tree_01', 'cherry_tree_02', 'cherry_tree_03',
+  ];
+  const PINE_VARIETIES = [
+    'nature_pack_pinetree_1', 'nature_pack_pinetree_2', 'nature_pack_pinetree_3',
+    'nature_pack_pinetree_snow_1', 'nature_pack_pinetree_snow_2', 'nature_pack_pinetree_snow_3',
+  ];
+  const PALM_VARIETIES = [
+    'crops_pack_palmtree_1', 'crops_pack_palmtree_2', 'crops_pack_palmtree_3', 'crops_pack_palmtree_4',
+  ];
+  
+  const treeAddMatch = lower.match(/^(?:add|place|put|create)\s+(?:a |an |the )?(?:(\d+)\s+)?(?:(tree|pine|palm|birch|willow|cherry)s?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+))?$/);
+  if (treeAddMatch) {
+    const count = treeAddMatch[1] ? Math.min(parseInt(treeAddMatch[1]), 50) : 1;
+    const treeType = treeAddMatch[2];
+    const bx = treeAddMatch[3] !== undefined ? parseFloat(treeAddMatch[3]) : null;
+    const bz = treeAddMatch[4] !== undefined ? parseFloat(treeAddMatch[4]) : null;
+    
+    let pool = TREE_VARIETIES;
+    if (treeType === 'pine') pool = PINE_VARIETIES;
+    else if (treeType === 'palm') pool = PALM_VARIETIES;
+    else if (treeType === 'birch') pool = TREE_VARIETIES.filter(t => t.includes('birch'));
+    else if (treeType === 'willow') pool = TREE_VARIETIES.filter(t => t.includes('willow'));
+    else if (treeType === 'cherry') pool = TREE_VARIETIES.filter(t => t.includes('cherry'));
+    
+    for (let i = 0; i < count; i++) {
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      const tx = bx !== null ? bx + (count > 1 ? (Math.random()-0.5)*30 : 0) : (Math.random()-0.5) * 40;
+      const tz = bz !== null ? bz + (count > 1 ? (Math.random()-0.5)*30 : 0) : (Math.random()-0.5) * 40;
+      loadGLBModel('tree_' + i, pick, tx, tz);
+    }
+    return '🌳 Added ' + count + ' ' + treeType + (count > 1 ? ' trees' : ' tree') + ' (mixed varieties)';
+  }
+
+  const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+))?$/);
     if (addGenMatch) {
-      const rawName = addGenMatch[1].trim().replace(/\s+/g, '_');
+      const rawInput = addGenMatch[1].trim();
+      const rawName = rawInput.replace(/\s+/g, '_');
       const ax = addGenMatch[2] !== undefined ? parseFloat(addGenMatch[2]) : (Math.random() - 0.5) * 20;
       const az = addGenMatch[3] !== undefined ? parseFloat(addGenMatch[3]) : (Math.random() - 0.5) * 20;
-      // Try GLB_MODELS alias map first, then direct name
-      const glb = GLB_MODELS[rawName] || GLB_MODELS[rawName.replace(/_/g, '')] || GLB_MODELS[addGenMatch[1].trim()] || null;
-      // Also try the modelMap (window._modelMap)
+
+      // 1. Try GLB_MODELS alias map (exact match)
+      const glb = GLB_MODELS[rawName] || GLB_MODELS[rawName.replace(/_/g, '-')] || GLB_MODELS[rawInput] || null;
+
+      // 2. Try window._modelMap
       const modelMap = window._modelMap || {};
-      const fromMap = modelMap[rawName] || modelMap[addGenMatch[1].trim()] || null;
-      const finalGlb = glb || fromMap || rawName;
-      // Check if file exists in models/ by trying to load
-      loadGLBModel(addGenMatch[1].trim(), finalGlb, ax, az);
-      return '✅ Adding ' + addGenMatch[1].trim() + '...';
+      const fromMap = modelMap[rawName] || modelMap[rawInput] || null;
+
+      // 3. If no direct match, use searchModels fuzzy search
+      let finalGlb = glb || fromMap || null;
+      let displayName = rawInput;
+
+      if (!finalGlb) {
+        // Try fuzzy search from model catalog
+        const searchResults = typeof searchModels === 'function' ? searchModels(rawInput, 5) : [];
+        if (searchResults.length > 0) {
+          // Pick best match — prefer name containing the search term
+          const best = searchResults[0];
+          finalGlb = best.path || best.name;
+          displayName = best.name.replace(/_/g, ' ');
+          console.log('[ADD] Fuzzy matched "' + rawInput + '" → "' + finalGlb + '" (score: ' + best.score + ')');
+        }
+      }
+
+      // 4. If still nothing, try the raw name as a direct model path
+      if (!finalGlb) {
+        finalGlb = rawName;
+      }
+
+      loadGLBModel(displayName, finalGlb, ax, az);
+      return '✅ Adding ' + displayName + '...';
     }
   }
 
@@ -15128,6 +15398,7 @@ function highlightSelected(obj) {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  if (playMode) return; // Don't select objects in play mode
   if (e.button !== 0) return;
   const rect = canvas.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -15171,27 +15442,348 @@ canvas.addEventListener('pointerup', () => {
   controls.enabled = true;
 });
 
+
+
+// Fix stuck WASM loading text
+setTimeout(() => {
+  const wasmEl = document.querySelector('[data-wasm-status]') || 
+    [...document.querySelectorAll('*')].find(el => el.textContent === 'WASM: loading...' && el.children.length === 0);
+  if (wasmEl) wasmEl.textContent = '✓ Ready';
+}, 5000);
+
+// === FAB GALLERY ===
+function showFabGallery() {
+  const aliases = window._fabAliases || {};
+  const names = Object.keys(aliases);
+  
+  // Remove existing
+  const existing = document.getElementById('fab-gallery-modal');
+  if (existing) { existing.remove(); return; }
+  
+  const modal = document.createElement('div');
+  modal.id = 'fab-gallery-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+  
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#111;border-radius:16px;padding:24px;max-width:860px;width:90%;max-height:85vh;display:flex;flex-direction:column;gap:12px';
+  
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;flex-shrink:0';
+  header.innerHTML = '<div><div style="font-size:20px;font-weight:700;color:#fff">⚡ Fab Assets</div><div style="font-size:12px;color:#666;margin-top:4px">' + names.length + ' photorealistic models — click to spawn</div></div>';
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = 'background:#222;border:none;color:#aaa;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px';
+  closeBtn.onclick = () => modal.remove();
+  header.appendChild(closeBtn);
+  
+  const search = document.createElement('input');
+  search.placeholder = '🔍 Search...';
+  search.style.cssText = 'padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px;outline:none;flex-shrink:0';
+  
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;overflow-y:auto;max-height:60vh';
+  
+  names.forEach(function(n) {
+    const card = document.createElement('div');
+    card.dataset.name = n;
+    card.style.cssText = 'background:#1a1a1a;border:1px solid #222;border-radius:10px;padding:12px;cursor:pointer;transition:all 0.15s;text-align:center';
+    card.innerHTML = '<div style="font-size:22px;margin-bottom:6px">🏗️</div><div style="font-size:11px;font-weight:600;color:#fff;word-break:break-all">' + n.replace(/_/g,' ') + '</div><div style="font-size:10px;color:#555;margin-top:3px">Fab</div>';
+    card.onmouseenter = function() { this.style.borderColor='#f59e0b'; this.style.background='#1e1a10'; };
+    card.onmouseleave = function() { this.style.borderColor='#222'; this.style.background='#1a1a1a'; };
+    card.onclick = function() {
+      modal.remove();
+      const p = window._fabAliases[n]; if(p) loadGLBModel(n, p, 0, 0, null, p); else parseAndExecute('add fab ' + n);
+    };
+    grid.appendChild(card);
+  });
+  
+  search.oninput = function() {
+    const q = this.value.toLowerCase();
+    grid.querySelectorAll('div[data-name]').forEach(function(card) {
+      card.style.display = card.dataset.name.includes(q) ? '' : 'none';
+    });
+  };
+  
+  box.appendChild(header);
+  box.appendChild(search);
+  box.appendChild(grid);
+  modal.appendChild(box);
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+  document.body.appendChild(modal);
+  search.focus();
+}
+window.showFabGallery = showFabGallery;
+
+// Load Fab aliases on startup
+(async function loadFabAliases() {
+  try {
+    const r = await fetch('/models/fab/fab_aliases.json');
+    if (!r.ok) return;
+    const data = await r.json();
+    window._fabAliases = data;
+    Object.assign(GLB_MODELS, data);
+    console.log('[Fab] Loaded', Object.keys(data).length, 'Fab assets');
+  } catch(e) { console.warn('[Fab] Could not load aliases'); }
+})();
+
+
+
+// === GLB DECOMPOSER — extract individual named pieces from a grouped GLB ===
+// Usage: decompose('street_props_full', 'Street Props') → registers all named children
+const _decomposedCatalogs = {};
+
+function decomposeGLB(glbPath, catalogName) {
+  if (_decomposedCatalogs[glbPath]) return; // already done
+  _decomposedCatalogs[glbPath] = true;
+  gltfLoader.load(glbPath, (gltf) => {
+    const scene = gltf.scene;
+    const pieces = [];
+    // Collect top-level named children
+    scene.children.forEach(child => {
+      if (!child.name || child.name === 'Scene') return;
+      const alias = (catalogName + '/' + child.name).toLowerCase().replace(/\s+/g, '_');
+      // Store as a factory function
+      _decomposedPieces[alias] = { source: glbPath, nodeName: child.name, scene: gltf.scene };
+      pieces.push({ alias, name: child.name });
+    });
+    console.log(`[Decompose] ${glbPath}: registered ${pieces.length} pieces`);
+    pieces.forEach(p => console.log(`  → add ${p.alias}`));
+    showToast(`✅ ${catalogName}: ${pieces.length} individual pieces ready`);
+  }, undefined, (err) => {
+    console.warn('[Decompose] Failed:', glbPath, err);
+  });
+}
+const _decomposedPieces = {};
+
+function placeDecomposedPiece(alias, x, z) {
+  const piece = _decomposedPieces[alias];
+  if (!piece) { showToast('❌ Piece not found: ' + alias); return; }
+  // Clone the specific named child from the source scene
+  const sourceChild = piece.scene.children.find(c => c.name === piece.nodeName);
+  if (!sourceChild) { showToast('❌ Node not found: ' + piece.nodeName); return; }
+  const clone = sourceChild.clone(true);
+  clone.name = alias;
+  clone.userData.alias = alias;
+  clone.userData.isPlaceable = true;
+  clone.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+  // Auto-ground
+  const box = new THREE.Box3().setFromObject(clone);
+  const height = box.max.y - box.min.y;
+  clone.position.set(x || 0, -box.min.y, z || 0);
+  scene.add(clone);
+  objects.push(clone);
+  return clone;
+}
+window.placeDecomposedPiece = placeDecomposedPiece;
+window.decomposeGLB = decomposeGLB;
+window._decomposedPieces = _decomposedPieces;
+
+// Auto-decompose the street props pack on load
+(function autoDecomposeStreetProps() {
+  setTimeout(() => {
+    decomposeGLB('models/fab/street_props_streeprops.glb', 'street_props');
+    decomposeGLB('models/fab/Street_Props_GLB_StreeProps.glb', 'street_props');
+  }, 2000); // wait for engine init
+})();
+
+// === FOREST LAKE WORLD ===
+window.buildForestLakeWorld = buildForestLakeWorld;
+
+
+// === FREE-FLY EDITOR CAMERA (WASD + Q/E + mouse) ===
+const _editorKeys = {};
+document.addEventListener('keydown', e => {
+  if (window._playMode) return; // only in edit mode
+  _editorKeys[e.code] = true;
+});
+document.addEventListener('keyup', e => { _editorKeys[e.code] = false; });
+
+function _updateEditorCamera(dt) {
+  if (window._playMode) return;
+  if (!controls || controls.enabled === false) return;
+
+  const speed = (_editorKeys['ShiftLeft'] || _editorKeys['ShiftRight']) ? 80 : 20;
+  const cam = camera || window._cam;
+  if (!cam) return;
+
+  // Get forward/right vectors from camera
+  const forward = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  cam.getWorldDirection(forward);
+  forward.y = 0; forward.normalize();
+  right.crossVectors(forward, up).negate();
+
+  let moved = false;
+  const move = new THREE.Vector3();
+
+  if (_editorKeys['KeyW'] || _editorKeys['ArrowUp'])    { move.add(forward); moved = true; }
+  if (_editorKeys['KeyS'] || _editorKeys['ArrowDown'])  { move.sub(forward); moved = true; }
+  if (_editorKeys['KeyA'] || _editorKeys['ArrowLeft'])  { move.sub(right); moved = true; }
+  if (_editorKeys['KeyD'] || _editorKeys['ArrowRight']) { move.add(right); moved = true; }
+  if (_editorKeys['KeyQ'] || _editorKeys['PageDown'])   { move.y -= 1; moved = true; }
+  if (_editorKeys['KeyE'] || _editorKeys['PageUp'])     { move.y += 1; moved = true; }
+
+  if (moved) {
+    move.normalize().multiplyScalar(speed * dt);
+    cam.position.add(move);
+    controls.target.add(move);
+  }
+}
+window._updateEditorCamera = _updateEditorCamera;
+
+
+// =====================================================
+// === GRASS SYSTEM — Instanced, dense, real blades ===
+// =====================================================
+function buildGrassField(opts = {}) {
+  const {
+    count = 40000,
+    radius = 260,
+    excludeRadius = 34,  // skip lake+shore
+    minY = 0,
+  } = opts;
+
+  // Single blade geometry — thin tapered quad
+  const SEGS = 4;
+  const bladeW = 0.07, bladeH = 0.75;
+  const verts = [], uvs = [], indices = [];
+
+  for (let i = 0; i <= SEGS; i++) {
+    const t = i / SEGS;
+    const w = bladeW * (1 - t * 0.85);
+    const h = bladeH * t;
+    const lean = Math.sin(t * 1.2) * 0.15;
+    verts.push(-w, h, lean,  w, h, lean);
+    uvs.push(0, t,  1, t);
+  }
+  for (let i = 0; i < SEGS; i++) {
+    const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+    indices.push(a, b, c,  b, d, c);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute('uv',       new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  // Gradient green material — lighter tips, darker base
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x3a8828,
+    roughness: 0.9,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+    alphaTest: 0.1,
+  });
+
+  const mesh = new THREE.InstancedMesh(geo, mat, count);
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  mesh.userData.isGrass = true;
+
+  const dummy = new THREE.Object3D();
+  const _colors = [
+    0x2d6618, 0x3a7d22, 0x48972c, 0x5aad38,
+    0x276020, 0x4a8c28, 0x3e7830, 0x62b840,
+  ];
+
+  let placed = 0;
+  let attempts = 0;
+  while (placed < count && attempts < count * 4) {
+    attempts++;
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * radius;
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    // Skip lake area
+    if (Math.sqrt(x*x + z*z) < excludeRadius) continue;
+
+    dummy.position.set(x, minY, z);
+    dummy.rotation.set(
+      (Math.random() - 0.5) * 0.25,   // slight lean
+      Math.random() * Math.PI * 2,     // random yaw
+      (Math.random() - 0.5) * 0.15
+    );
+    const s = 0.6 + Math.random() * 0.8;
+    dummy.scale.set(s, s * (0.8 + Math.random() * 0.5), s);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(placed, dummy.matrix);
+
+    // Vary color per instance
+    const col = new THREE.Color(_colors[placed % _colors.length]);
+    col.r += (Math.random() - 0.5) * 0.06;
+    col.g += (Math.random() - 0.5) * 0.08;
+    mesh.setColorAt(placed, col);
+    placed++;
+  }
+
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+  return mesh;
+}
+window.buildGrassField = buildGrassField;
+
 // === RENDER LOOP ===
 
 // === VISUAL CHARACTER GALLERY ===
 // Shows real 3D model previews rendered with Three.js mini-viewers
 const CHARACTER_LIBRARY = [
-  { id: 'adventurer', file: 'modular_men_adventurer', name: 'Adventurer', desc: 'Rugged explorer with gear', category: 'Hero' },
-  { id: 'swat', file: 'modular_men_swat', name: 'SWAT', desc: 'Tactical assault specialist', category: 'Hero' },
-  { id: 'king', file: 'modular_men_king', name: 'King', desc: 'Royal ruler with crown & cape', category: 'Hero' },
-  { id: 'punk', file: 'modular_men_punk', name: 'Punk', desc: 'Street fighter with attitude', category: 'Hero' },
-  { id: 'knight', file: 'single_knight_pack_knightcharacter', name: 'Knight', desc: 'Medieval armored warrior', category: 'Hero' },
-  { id: 'soldier', file: 'soldier', name: 'Soldier', desc: 'Modern combat specialist', category: 'Hero' },
-  { id: 'casual', file: 'modular_men_casual', name: 'Casual', desc: 'Everyday streetwear look', category: 'Hero' },
-  { id: 'farmer', file: 'modular_men_farmer', name: 'Farmer', desc: 'Hardworking rural character', category: 'Hero' },
-  { id: 'suit', file: 'modular_men_suit', name: 'Suit', desc: 'Sharp business attire', category: 'Hero' },
-  { id: 'worker', file: 'modular_men_worker', name: 'Worker', desc: 'Construction/industrial gear', category: 'Hero' },
-  { id: 'beach', file: 'modular_men_beach', name: 'Beach', desc: 'Tropical vacation vibes', category: 'Hero' },
-  { id: 'spacesuit', file: 'modular_men_spacesuit', name: 'Astronaut', desc: 'Space exploration suit', category: 'Hero' },
-  { id: 'witch', file: 'modular_women_witch', name: 'Witch', desc: 'Dark sorceress with magic staff', category: 'Hero' },
-  { id: 'medieval', file: 'modular_women_medieval', name: 'Medieval Woman', desc: 'Medieval heroine', category: 'Hero' },
-  { id: 'scifi', file: 'modular_women_scifi', name: 'Sci-Fi Woman', desc: 'Futuristic combat gear', category: 'Hero' },
-  { id: 'formal', file: 'modular_women_formal', name: 'Formal Woman', desc: 'Elegant formal attire', category: 'Hero' },
+  // === HEROES ===
+  { id: 'adventurer', file: 'modular_men_adventurer', name: 'Adventurer', desc: 'Rugged explorer', category: 'Hero', thumb: '🧭' },
+  { id: 'swat', file: 'modular_men_swat', name: 'SWAT', desc: 'Tactical specialist', category: 'Hero', thumb: '🪖' },
+  { id: 'king', file: 'modular_men_king', name: 'King', desc: 'Royal ruler', category: 'Hero', thumb: '👑' },
+  { id: 'punk', file: 'modular_men_punk', name: 'Punk', desc: 'Street fighter', category: 'Hero', thumb: '🤘' },
+  { id: 'knight', file: 'single_knight_pack_knightcharacter', name: 'Knight', desc: 'Armored warrior', category: 'Hero', thumb: '⚔️' },
+  { id: 'soldier', file: 'hd_char_soldier', name: 'Soldier', desc: 'Combat specialist', category: 'Hero', thumb: '🪖' },
+  { id: 'casual_m', file: 'modular_men_casual', name: 'Casual Male', desc: 'Everyday look', category: 'Hero', thumb: '👕' },
+  { id: 'casual_m2', file: 'modular_men_casual2', name: 'Casual Male 2', desc: 'Alternate casual', category: 'Hero', thumb: '👕' },
+  { id: 'farmer', file: 'modular_men_farmer', name: 'Farmer', desc: 'Rural worker', category: 'Hero', thumb: '🌾' },
+  { id: 'suit_m', file: 'modular_men_suit', name: 'Businessman', desc: 'Business attire', category: 'Hero', thumb: '💼' },
+  { id: 'worker', file: 'modular_men_worker', name: 'Worker', desc: 'Industrial gear', category: 'Hero', thumb: '🔨' },
+  { id: 'beach', file: 'modular_men_beach', name: 'Beach Dude', desc: 'Vacation vibes', category: 'Hero', thumb: '🏖️' },
+  { id: 'spacesuit', file: 'modular_men_spacesuit', name: 'Astronaut', desc: 'Space suit', category: 'Hero', thumb: '🚀' },
+  { id: 'witch', file: 'modular_women_witch', name: 'Witch', desc: 'Dark sorceress', category: 'Hero', thumb: '🧙‍♀️' },
+  { id: 'medieval_w', file: 'modular_women_medieval', name: 'Medieval Woman', desc: 'Medieval heroine', category: 'Hero', thumb: '🏹' },
+  { id: 'scifi_w', file: 'modular_women_scifi', name: 'Sci-Fi Woman', desc: 'Futuristic gear', category: 'Hero', thumb: '🔫' },
+  { id: 'formal_w', file: 'modular_women_formal', name: 'Formal Woman', desc: 'Elegant attire', category: 'Hero', thumb: '👗' },
+  { id: 'women_adventurer', file: 'modular_women_adventurer', name: 'Adventurer (F)', desc: 'Female explorer', category: 'Hero', thumb: '🧭' },
+  { id: 'women_casual', file: 'modular_women_casual', name: 'Casual (F)', desc: 'Everyday woman', category: 'Hero', thumb: '👕' },
+  { id: 'women_punk', file: 'modular_women_punk', name: 'Punk (F)', desc: 'Female street fighter', category: 'Hero', thumb: '🤘' },
+  { id: 'women_soldier', file: 'modular_women_soldier', name: 'Soldier (F)', desc: 'Female combat specialist', category: 'Hero', thumb: '🪖' },
+  { id: 'women_suit', file: 'modular_women_suit', name: 'Businesswoman', desc: 'Female business attire', category: 'Hero', thumb: '💼' },
+  { id: 'women_worker', file: 'modular_women_worker', name: 'Worker (F)', desc: 'Female industrial worker', category: 'Hero', thumb: '🔨' },
+  // === CIVILIANS / NPCs (Realistic) ===
+  { id: 'male_casual', file: 'npcs/male_casual', name: 'Male Casual', desc: 'Everyday civilian', category: 'NPC', thumb: '🧑', defaultAnim: 'Idle' },
+  { id: 'male_suit', file: 'npcs/male_suit', name: 'Male Suit', desc: 'Business person', category: 'NPC', thumb: '👔', defaultAnim: 'Idle' },
+  { id: 'male_shirt', file: 'npcs/male_shirt', name: 'Male Shirt', desc: 'Casual civilian', category: 'NPC', thumb: '👕', defaultAnim: 'Idle' },
+  { id: 'male_longsleeve', file: 'npcs/male_longsleeve', name: 'Male Longsleeve', desc: 'Casual civilian', category: 'NPC', thumb: '👕', defaultAnim: 'Idle' },
+  { id: 'female_casual', file: 'npcs/female_casual', name: 'Female Casual', desc: 'Casual woman', category: 'NPC', thumb: '👩', defaultAnim: 'Idle' },
+  { id: 'female_dress', file: 'npcs/female_dress', name: 'Female Dress', desc: 'Woman in dress', category: 'NPC', thumb: '👗', defaultAnim: 'Idle' },
+  { id: 'female_tanktop', file: 'npcs/female_tanktop', name: 'Female Tanktop', desc: 'Athletic woman', category: 'NPC', thumb: '🏃‍♀️', defaultAnim: 'Idle' },
+  { id: 'female_alt', file: 'npcs/female_alternative', name: 'Female Alt', desc: 'Alt-style woman', category: 'NPC', thumb: '🎸', defaultAnim: 'Idle' },
+  { id: 'animated_human', file: 'npcs/animated_human', name: 'Animated Human', desc: 'Rigged & animated', category: 'NPC', thumb: '🧑', defaultAnim: 'Walk' },
+  { id: 'animated_woman', file: 'npcs/animated_woman', name: 'Animated Woman', desc: 'Rigged & animated', category: 'NPC', thumb: '👩', defaultAnim: 'Walk' },
+  { id: 'animated_woman_s', file: 'npcs/animated_woman_smooth', name: 'Animated Woman 2', desc: 'Smooth rigged', category: 'NPC', thumb: '👩', defaultAnim: 'Walk' },
+  { id: 'smooth_male_casual', file: 'npcs/smooth_male_casual', name: 'Smooth Male Casual', desc: 'Smooth rig civilian', category: 'NPC', thumb: '🧑', defaultAnim: 'Idle' },
+  { id: 'smooth_male_suit', file: 'npcs/smooth_male_suit', name: 'Smooth Male Suit', desc: 'Smooth rig business', category: 'NPC', thumb: '👔', defaultAnim: 'Idle' },
+  { id: 'smooth_male_shirt', file: 'npcs/smooth_male_shirt', name: 'Smooth Male Shirt', desc: 'Smooth rig casual', category: 'NPC', thumb: '👕', defaultAnim: 'Idle' },
+  { id: 'smooth_male_ls', file: 'npcs/smooth_male_longsleeve', name: 'Smooth Male LS', desc: 'Smooth rig casual', category: 'NPC', thumb: '👕', defaultAnim: 'Idle' },
+  { id: 'smooth_female_casual', file: 'npcs/smooth_female_casual', name: 'Smooth Female Casual', desc: 'Smooth rig woman', category: 'NPC', thumb: '👩', defaultAnim: 'Idle' },
+  { id: 'smooth_female_dress', file: 'npcs/smooth_female_dress', name: 'Smooth Female Dress', desc: 'Smooth rig dress', category: 'NPC', thumb: '👗', defaultAnim: 'Idle' },
+  { id: 'smooth_female_tank', file: 'npcs/smooth_female_tanktop', name: 'Smooth Female Tank', desc: 'Smooth rig athletic', category: 'NPC', thumb: '🏃‍♀️', defaultAnim: 'Idle' },
+  { id: 'smooth_female_alt', file: 'npcs/smooth_female_alternative', name: 'Smooth Female Alt', desc: 'Smooth rig alt', category: 'NPC', thumb: '🎸', defaultAnim: 'Idle' },
+  // NOTE: fab_civilian spawned via 'spawn photorealistic woman' — no animations, use as scene prop
+  // === ENEMIES ===
+  { id: 'zombie', file: 'npcs/quat_zombie', name: 'Zombie', desc: 'Undead walker', category: 'Enemy', thumb: '🧟', defaultAnim: 'Walk' },
+  { id: 'zombie_smooth', file: 'npcs/quat_zombiesmooth', name: 'Zombie (Smooth)', desc: 'Fast zombie', category: 'Enemy', thumb: '🧟', defaultAnim: 'Walk' },
+  { id: 'skeleton', file: 'npcs/quat_skeleton', name: 'Skeleton', desc: 'Bone warrior', category: 'Enemy', thumb: '💀', defaultAnim: 'Idle' },
+  { id: 'dragon', file: 'npcs/quat_dragon', name: 'Dragon', desc: 'Fire-breathing beast', category: 'Enemy', thumb: '🐉', defaultAnim: 'Idle' },
+  { id: 'slime', file: 'npcs/quat_slime', name: 'Slime', desc: 'Gelatinous blob', category: 'Enemy', thumb: '🫧', defaultAnim: 'Idle' },
+  { id: 'bat', file: 'npcs/quat_bat', name: 'Bat', desc: 'Flying creature', category: 'Enemy', thumb: '🦇', defaultAnim: 'Idle' },
+  { id: 'robot', file: 'npcs/quat_robot', name: 'Robot', desc: 'Mechanical enemy', category: 'Enemy', thumb: '🤖', defaultAnim: 'Idle' },
 ];
 
 function showCharacterGallery(onSelect) {
@@ -15214,7 +15806,7 @@ function showCharacterGallery(onSelect) {
     const tabs = document.createElement('div');
     tabs.style.cssText = 'display:flex;gap:10px;margin-bottom:20px;flex-shrink:0;';
     let currentFilter = 'All';
-    ['All', 'Hero', 'Enemy'].forEach(cat => {
+    ['All', 'Hero', 'NPC', 'Enemy'].forEach(cat => {
       const tab = document.createElement('button');
       tab.textContent = cat;
       tab.style.cssText = 'padding:8px 20px;border:1px solid #444;border-radius:20px;background:' + (cat === 'All' ? '#ffd700' : 'transparent') + ';color:' + (cat === 'All' ? '#000' : '#aaa') + ';cursor:pointer;font-family:monospace;font-size:13px;transition:all 0.2s;';
@@ -15296,7 +15888,8 @@ function showCharacterGallery(onSelect) {
 
         // Category badge
         const badge = document.createElement('span');
-        badge.style.cssText = 'position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:10px;font-size:10px;background:' + (ch.category === 'Hero' ? 'rgba(34,197,94,0.2);color:#22c55e' : 'rgba(239,68,68,0.2);color:#ef4444') + ';';
+        const badgeColor = ch.category === 'Hero' ? 'rgba(34,197,94,0.2);color:#22c55e' : ch.category === 'NPC' ? 'rgba(59,130,246,0.25);color:#60a5fa' : 'rgba(239,68,68,0.2);color:#ef4444';
+        badge.style.cssText = 'position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:10px;font-size:10px;background:' + badgeColor + ';';
         badge.textContent = ch.category;
         card.appendChild(badge);
 
@@ -15589,16 +16182,6 @@ function isVehicle(obj) {
   if (VEHICLE_NAMES.test(n)) return 'ground';
   if (BOAT_NAMES.test(n)) return 'water';
   if (AIRCRAFT_NAMES.test(n)) return 'air';
-  
-  // v218 city objects
-  if (/^add (parking\s*lot|parking)/i.test(raw)) { var o = createParkingLot(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added parking lot"; }
-  if (/^add gas\s*station/i.test(raw)) { var o = createGasStation(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added gas station"; }
-  if (/^add sidewalk/i.test(raw)) { var o = createSidewalk(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added sidewalk"; }
-  if (/^add (bridge|overpass)/i.test(raw)) { var o = createBridge(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added bridge"; }
-  if (/^add street\s*lamp/i.test(raw)) { var o = createStreetLamp(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added street lamp"; }
-  if (/^add dumpster/i.test(raw)) { var o = createDumpster(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added dumpster"; }
-  if (/^add bench/i.test(raw)) { var o = createBench(); o.position.set(px||0, 0, pz||0); scene.add(o); objects.push(o); return "Added bench"; }
-
   return null;
 }
 
@@ -17200,8 +17783,8 @@ function updateClouds(dt) {
   }
 }
 
-// Auto-create clouds on load
-setTimeout(() => { if (!_cloudGroup) createClouds(); }, 2000);
+// Low-poly clouds disabled — procedural AAA sky is better
+// To re-enable: createClouds(); or use settings panel
 
 
 // === ENHANCED VEHICLE HUD (v217) ===
@@ -17986,9 +18569,11 @@ function animate() {
   updateInteractionPrompt();
   updateCompass();
   updateClouds(dt);
+  if (window._grassSystem) window._grassSystem.update(dt);
   updateCoordDisplay(); recordReplayFrame();
   updateHighlight();
   if (!playMode) controls.update();
+  if (window._updateEditorCamera) window._updateEditorCamera(dt);
   if (window._updateShadowCascades) window._updateShadowCascades();
   updateAmbientParticles(clock.getDelta() || 0.016, camera.position);
   if (activeVehicle) { updateVehicle(dt); updateVehiclePrompt(); if (activeVehicle) updateVehicleHUD(activeVehicle);
@@ -18033,6 +18618,7 @@ function animate() {
   updateLightning(dt);
   updateNightLighting(t);
   // updateDrivingCars replaced by updateSmartTraffic
+  if (window._cityCarUpdate) window._cityCarUpdate(dt);
   if (snowParticles) {
     snowParticles.position.x = _wcam.x;
     snowParticles.position.z = _wcam.z;
@@ -18216,8 +18802,8 @@ function animate() {
     }
     if (window._gamepad) window._gamepad.update();
     if (window._updateLOD) window._updateLOD(camera.position);
-    characterController.update(dt);
-    if (npcController) {
+    if (characterController) characterController.update(dt);
+    if (npcController && characterController) {
       // Zone-based aggro — NPCs only engage when player enters their zone
       const playerPos = characterController.position;
       const aggroRange = 18; // Distance to trigger aggro
@@ -18225,7 +18811,7 @@ function animate() {
       let currentAttackers = 0;
       
       for (const npc of npcController.npcs) {
-        if (npc.isDead) continue;
+        if (npc.isDead || !npc.model) continue;
         const distToPlayer = npc.model.position.distanceTo(playerPos);
         
         // Zone guard behavior — only aggro when player enters zone
@@ -19045,6 +19631,119 @@ window._runCommand = async function(cmd) {
 
 window._engineReady = true;
 if (window._hideLoader) window._hideLoader();
+
+// === COMMAND PALETTE DROPDOWN ===
+(function initCommandPalette() {
+  const menu = document.getElementById('cmd-dropdown-menu');
+  if (!menu) return;
+  const COMMAND_PALETTE = {
+    'Build World': [
+      { label: 'Modern City', cmd: 'generate city' },
+      { label: 'Medieval Town', cmd: 'generate town' },
+      { label: 'Suburban', cmd: 'generate suburban' },
+      { label: 'Tropical Island', cmd: 'generate island' },
+      { label: 'Desert', cmd: 'generate desert' },
+      { label: 'Space Station', cmd: 'generate space' },
+      { label: 'Dungeon', cmd: 'generate dungeon' },
+      { label: 'Pirate Cove', cmd: 'generate pirate' },
+      { label: 'Cyberpunk City', cmd: 'generate cyberpunk' },
+      { label: 'Haunted', cmd: 'generate haunted' },
+      { label: 'Jungle', cmd: 'generate jungle' },
+      { label: 'Kingdom', cmd: 'generate kingdom' },
+      { label: 'Arena', cmd: 'generate arena' },
+      { label: 'Zen Garden', cmd: 'generate zen' },
+      { label: 'Volcano', cmd: 'generate volcano' },
+      { label: 'Western', cmd: 'generate western' },
+    ],
+    'Add Objects': [
+      { label: 'Car', cmd: 'add sedan', glb: 'kenney_cars/sedan' },
+      { label: 'Truck', cmd: 'add truck', glb: 'truck' },
+      { label: 'Police Car', cmd: 'add police', glb: 'kenney_cars/police' },
+      { label: 'House', cmd: 'add house', glb: 'buildings_pack_2_house1' },
+      { label: 'Building', cmd: 'add building', glb: 'buildings_pack_2_building1_large' },
+      { label: 'Tree', cmd: 'add tree', glb: 'simple_nature_pack_tree1' },
+      { label: 'Rock', cmd: 'add rock', glb: 'simple_nature_pack_rock1' },
+      { label: 'Barrel', cmd: 'add barrel', glb: 'barrel_00' },
+      { label: 'Fence', cmd: 'add fence', glb: 'fence' },
+      { label: 'NPC', cmd: 'add npc' },
+      { label: 'Horse', cmd: 'add horse', glb: 'animals_pack_horse' },
+      { label: 'Campfire', cmd: 'add campfire', glb: 'campfire' },
+      { label: 'Browse Library...', cmd: 'browse all' },
+    ],
+    'Environment': [
+      { label: 'Rain', cmd: 'rain' },
+      { label: 'Snow', cmd: 'snow' },
+      { label: 'Storm', cmd: 'storm' },
+      { label: 'Clear Weather', cmd: 'clear weather' },
+      { label: 'Fog On', cmd: 'fog on' },
+      { label: 'Fog Off', cmd: 'fog off' },
+      { label: 'Time: Morning', cmd: 'time morning' },
+      { label: 'Time: Noon', cmd: 'time noon' },
+      { label: 'Time: Night', cmd: 'time night' },
+      { label: 'Ocean', cmd: 'add ocean' },
+      { label: 'Terrain: Mountains', cmd: 'terrain mountains' },
+    ],
+    'Play Mode': [
+      { label: 'Play', cmd: 'play' },
+      { label: 'Edit Mode', cmd: 'edit' },
+      { label: 'Characters...', cmd: 'characters' },
+      { label: 'Spawn NPCs', cmd: 'populate' },
+      { label: 'Toggle Camera', cmd: 'toggle camera' },
+    ],
+    'Graphics': [
+      { label: 'Low', cmd: 'graphics low' },
+      { label: 'Medium', cmd: 'graphics medium' },
+      { label: 'High', cmd: 'graphics high' },
+      { label: 'Ultra', cmd: 'graphics ultra' },
+    ],
+    'Utility': [
+      { label: 'Save', cmd: 'save' },
+      { label: 'Load', cmd: 'load' },
+      { label: 'Clear Scene', cmd: 'clear' },
+      { label: 'Screenshot', cmd: 'screenshot' },
+      { label: 'Undo', cmd: 'undo' },
+      { label: 'Help', cmd: 'help' },
+    ],
+  };
+  let html = '';
+  for (const [category, items] of Object.entries(COMMAND_PALETTE)) {
+    html += `<div style="padding:4px 12px;color:#888;font-size:0.55rem;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px;">${category}</div>`;
+    for (const item of items) {
+      html += `<div class="cmd-item" data-cmd="${item.cmd}" style="padding:5px 16px;color:#ddd;cursor:pointer;transition:background 0.15s;" onmouseenter="this.style.background='#2a2a2a'" onmouseleave="this.style.background='none'">${item.label}</div>`;
+    }
+  }
+  // Build a glb lookup map for direct-load items
+  const _paletteGlbMap = {};
+  for (const items of Object.values(COMMAND_PALETTE)) {
+    for (const item of items) {
+      if (item.glb) _paletteGlbMap[item.cmd] = { glb: item.glb, label: item.label };
+    }
+  }
+  menu.innerHTML = html;
+  menu.addEventListener('click', (e) => {
+    const item = e.target.closest('.cmd-item');
+    if (!item) return;
+    const cmd = item.dataset.cmd;
+    menu.style.display = 'none';
+    // If this item has a known GLB path, load it directly (bypass command pipeline)
+    const directLoad = _paletteGlbMap[cmd];
+    if (directLoad) {
+      const rx = (Math.random() - 0.5) * 20;
+      const rz = (Math.random() - 0.5) * 20;
+      console.log('[CmdPalette] Direct loading:', directLoad.glb, 'at', rx, rz);
+      loadGLBModel(directLoad.label, directLoad.glb, rx, rz);
+      if (typeof showToast === 'function') showToast('Adding ' + directLoad.label + '...');
+      return;
+    }
+    if (window._parseAndExecute) window._parseAndExecute(cmd);
+  });
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#cmd-menu-btn') && !e.target.closest('#cmd-dropdown-menu')) {
+      menu.style.display = 'none';
+    }
+  });
+})();
 
 // Force canvas resize to fill viewport
 setTimeout(() => {
@@ -20861,7 +21560,7 @@ function exportAsHTML() {
 var STRIPE_LINKS = { pro: 'https://buy.stripe.com/3cI9AV4Sv6TY15Q1aMffy00', premium: 'https://buy.stripe.com/6oUfZjfx96TY29U4mYffy01' };
 
 function isProUser() {
-  return localStorage.getItem('crate_pro') === 'true';
+  return true; // All features free during beta — no paywalls
 }
 
 function setProStatus(val) {
@@ -21692,6 +22391,216 @@ window._loadSuggestedModel = function(modelFile) {
 const _origParseAndExecute = parseAndExecute;
 parseAndExecute = async function(rawCmd) {
   const lower = rawCmd.toLowerCase().trim();
+  
+
+  // === DIRECT GALLERY ROUTING — nouns always open gallery, no NL interpretation ===
+  const _directGalleryMap = {
+    // Characters/NPCs
+    'npc': 'characters', 'npcs': 'characters', 'character': 'characters', 'characters': 'characters',
+    'player': 'characters', 'players': 'characters', 'person': 'characters', 'people': 'characters',
+    'human': 'characters', 'humans': 'characters', 'civilian': 'characters', 'civilians': 'characters',
+    // Vehicles
+    'car': 'vehicles', 'cars': 'vehicles', 'truck': 'vehicles', 'trucks': 'vehicles',
+    'vehicle': 'vehicles', 'vehicles': 'vehicles', 'bus': 'vehicles', 'taxi': 'vehicles',
+    'ambulance': 'vehicles', 'police car': 'vehicles', 'van': 'vehicles', 'jeep': 'vehicles',
+    // Weapons
+    'weapon': 'weapons', 'weapons': 'weapons', 'sword': 'weapons', 'gun': 'weapons',
+    'rifle': 'weapons', 'axe': 'weapons', 'bow': 'weapons', 'staff': 'weapons',
+    // Buildings/Structures
+    'building': 'buildings', 'buildings': 'buildings', 'house': 'buildings', 'houses': 'buildings',
+    'structure': 'buildings', 'structures': 'buildings',
+    // Nature
+    'tree': 'trees & plants', 'trees': 'trees & plants', 'plant': 'trees & plants',
+    'plants': 'trees & plants', 'bush': 'trees & plants',
+    // Props
+    'prop': 'props', 'props': 'props', 'rock': 'rocks & minerals', 'rocks': 'rocks & minerals',
+    'stone': 'rocks & minerals', 'furniture': 'furniture', 'chair': 'furniture', 'table': 'furniture',
+    // Lights
+    'light': 'props', 'lights': 'props', 'street light': 'props', 'lamp': 'props',
+    'lantern': 'props', 'torch': 'props',
+    // Animals
+    'animal': 'animals', 'animals': 'animals', 'monster': 'animals', 'creature': 'animals',
+    // Library shortcut
+    'library': null, 'models': null, 'assets': null, 'browse': null,
+    // Fab
+    'fab': null, 'fab assets': null,
+  };
+  const _directCat = _directGalleryMap[lower];
+  if (_directCat !== undefined) {
+    if (_directCat === null) {
+      // Open main library
+      execSingle('models');
+    } else {
+      execSingle(_directCat);
+    }
+    return;
+  }
+
+  
+  // === PERFORMANCE PRESETS ===
+  if (lower === 'graphics high' || lower === 'quality high' || lower === 'graphics ultra') {
+    if (bloomPass) bloomPass.enabled = true;
+    if (ssaoPass) ssaoPass.enabled = true;
+    ppEnabled = true;
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    addMsg('🎨 Graphics: HIGH — bloom + SSAO + shadows enabled');
+    return;
+  }
+  if (lower === 'graphics medium' || lower === 'quality medium') {
+    if (bloomPass) bloomPass.enabled = true;
+    if (ssaoPass) ssaoPass.enabled = false;
+    ppEnabled = true;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.shadowMap.enabled = true;
+    addMsg('🎨 Graphics: MEDIUM — bloom on, SSAO off');
+    return;
+  }
+  if (lower === 'graphics low' || lower === 'quality low' || lower === 'performance mode' || lower === 'fast mode') {
+    if (bloomPass) bloomPass.enabled = false;
+    if (ssaoPass) ssaoPass.enabled = false;
+    ppEnabled = false;
+    renderer.setPixelRatio(1);
+    renderer.shadowMap.enabled = false;
+    addMsg('⚡ Graphics: LOW — all effects off, max performance');
+    return;
+  }
+
+  
+
+  // === FOREST WORLD COMMAND ===
+  // Pack showcase commands
+  if (lower === 'enter mine' || lower === 'go to mine' || lower === 'mine entrance') {
+    if (window._quarryCaveInfo) {
+      const { entryX, entryZ, entryAngle } = window._quarryCaveInfo;
+      const inward = entryAngle + Math.PI;
+      window._cam.position.set(
+        entryX + Math.cos(inward) * 8,
+        6,
+        entryZ + Math.sin(inward) * 8
+      );
+      window._cam.lookAt(entryX + Math.cos(inward) * 30, 4, entryZ + Math.sin(inward) * 30);
+      if (window._ctrl) { window._ctrl.target.copy(window._cam.position).addScaledVector(new THREE.Vector3(Math.cos(inward), -0.3, Math.sin(inward)), 20); window._ctrl.update(); }
+      showToast('⛏ You are at the mine entrance — go explore!');
+    } else { showToast('⚠ Build quarry world first: type "quarry world"'); }
+    return;
+  }
+  if (lower === 'old mine world' || lower === 'show old mine' || lower === 'mine world') {
+    buildPackShowcase('old_mine', 'Old Mine', 47); return;
+  }
+  if (lower === 'city world' || lower === 'build city' || lower === 'city demo' || lower === 'new city') {
+    buildCityWorld(); return;
+  }
+  if (lower === 'quarry world' || lower === 'african quarry' || lower === 'build quarry' || lower === 'slate quarry') {
+    buildQuarryWorld(); return;
+  }
+  if (lower === 'quarry grid' || lower === 'show quarry') {
+    buildPackShowcase('quarry', 'African Slate Quarry', 47); return;
+  }
+  if (lower === 'building world' || lower === 'unfinished building' || lower === 'show building') {
+    buildPackShowcase('building', 'Unfinished Building', 38); return;
+  }
+
+  // Street props — place individual pieces: "add bus stop", "add street light", etc.
+  const streetPieceTriggers = ['ad poster','power box','public phone box','bus stop',
+    'street light','pole metal','bike parking','construction cone','water cannister',
+    'road sign','road bumper','power pole','cement block','air conditioner',
+    'vending machine','trash bin','stop sign','barbwire fence','road stopper',
+    'traffic light','fire hydrant','newspaper stand','road block','wooden pallet',
+    'recycling bin','bike rack','construction asset'];
+  const matchedPiece = streetPieceTriggers.find(p => lower.includes(p));
+  if (matchedPiece || (lower.startsWith('add ') && window._groupedAssets['street_props']?.pieces.some(p => lower.includes(p.toLowerCase())))) {
+    const pieceName = matchedPiece || window._groupedAssets['street_props'].pieces.find(p => lower.includes(p.toLowerCase()));
+    if (pieceName) {
+      const px2 = window._cam ? window._cam.position.x + (Math.random()-0.5)*20 : 0;
+      const pz2 = window._cam ? window._cam.position.z + (Math.random()-0.5)*20 : 0;
+      loadGroupedAsset('street_props', pieceName, px2, pz2);
+      return;
+    }
+  }
+  // List street props pieces
+  if (lower === 'street props' || lower === 'list street props' || lower === 'street pieces') {
+    const pieces = listGroupPieces('street_props');
+    showToast('Street props: ' + pieces.slice(0,8).join(', ') + '... (' + pieces.length + ' total)');
+    return;
+  }
+
+  if (lower === 'forest world' || lower === 'build forest' || lower === 'forest lake' || 
+      lower === 'make forest' || lower === 'create forest' || lower === 'forest') {
+    buildForestLakeWorld();
+    return;
+  }
+
+    // === CLEAR WORLD / NEW WORLD ===
+  if (lower === 'clear world' || lower === 'new world' || lower === 'reset world' || lower === 'clear scene') {
+    // Remove all user-placed objects, keep terrain + lights
+    const toRemove = [];
+    scene.traverse(obj => {
+      if (obj.userData && (obj.userData.userPlaced || obj.userData.npc || obj.userData.isGLB)) {
+        toRemove.push(obj);
+      }
+    });
+    // Remove top-level objects that aren't essential
+    scene.children.slice().forEach(obj => {
+      const name = (obj.name || '').toLowerCase();
+      const type = obj.type || '';
+      if (type === 'Mesh' || type === 'Group' || type === 'Object3D') {
+        const isEssential = name.includes('terrain') || name.includes('ground') || 
+                            name.includes('sky') || name.includes('light') ||
+                            name.includes('particle') || name.includes('water') ||
+                            obj.isLight;
+        if (!isEssential && obj !== playerObj) {
+          scene.remove(obj);
+        }
+      }
+    });
+    if (window.npcController) window.npcController.npcs.length = 0;
+    addMsg('🌍 World cleared — blank slate ready');
+    return;
+  }
+
+
+  // Spawn photorealistic woman as prop NPC
+  if (lower.includes('photorealistic woman') || lower.includes('realistic woman') || lower === 'fab woman' || lower === 'spawn photorealistic') {
+    loadGLBModel('photorealistic_woman', 'fab/female_civilian.glb', 0, 0, null, 'fab/female_civilian.glb');
+    if (typeof addMsg === 'function') addMsg('✅ Spawned photorealistic woman');
+    return;
+  }
+
+    // === FAB COMMANDS — intercept before NL processing ===
+  if (lower === 'fab' || lower === 'fab assets' || lower === 'show fab' || lower === 'browse fab') {
+    showFabGallery(); return;
+  }
+  if (lower.startsWith('add fab ') || lower.startsWith('spawn fab ')) {
+    const fabName = lower.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_');
+    const fabAliases = window._fabAliases || {};
+    const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
+    if (modelPath) {
+      const fullPath = modelPath.startsWith('http') || modelPath.startsWith('models/') ? modelPath : 'models/' + modelPath;
+      loadGLBModel(fabName, fabName, 0, 0, null, fullPath); showToast('✅ Spawned: ' + fabName);
+    } else if (window._decomposedPieces && window._decomposedPieces[fabName]) {
+      placeDecomposedPiece(fabName, 0, 0); showToast('✅ Placed piece: ' + fabName);
+    } else { showToast('❌ Not found: ' + fabName); }
+    return;
+  }
+  // Place individual street prop piece: "add street_props/bench" or "place cone" etc.
+  if (lower.startsWith('add street') || lower.startsWith('place street') || lower.includes('street_props/')) {
+    const pieceName = lower.replace(/^(add|place|spawn)\s+/, '').trim().replace(/\s+/g,'_');
+    const fullAlias = pieceName.startsWith('street_props/') ? pieceName : 'street_props/' + pieceName;
+    if (window._decomposedPieces && window._decomposedPieces[fullAlias]) {
+      placeDecomposedPiece(fullAlias, 0, 0);
+      showToast('✅ Placed: ' + fullAlias);
+    } else {
+      // Show available pieces
+      const available = Object.keys(window._decomposedPieces || {}).filter(k => k.startsWith('street_props/'));
+      if (available.length) {
+        showToast('Street props pieces: ' + available.map(k=>k.split('/')[1]).join(', '));
+      } else {
+        showToast('Street props still loading — try again in a few seconds');
+      }
+    }
+    return;
+  }
   
   // Detect "need", "want", "show me", "find", "browse", "search", "library" queries
   // Skip AI agent for gallery categories — let the gallery system handle these
@@ -22603,7 +23512,7 @@ function showSettings() {
   const quality = saved.quality || 'high';
   const shadows = saved.shadows !== false;
   const fog = saved.fog !== false;
-  const clouds = saved.clouds !== false;
+  const clouds = saved.clouds === true;
   const music = saved.music !== false;
   const sfx = saved.sfx !== false;
   const sensitivity = saved.sensitivity || 1;
@@ -22749,30 +23658,15 @@ window.showSettings = showSettings;
   toolbar.style.cssText = 'position:fixed;bottom:42px;left:50%;transform:translateX(-50%);z-index:9997;display:flex;flex-direction:row;gap:4px;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);padding:6px 10px;border-radius:12px;border:1px solid #252525;max-width:80vw;overflow-x:auto;';
   
   const cats = [
-    { cmd: 'play', icon: '▶️', tip: 'Play', color: '#22c55e', isPlay: true },
+    { cmd: 'play', icon: '▶️', tip: 'Play / Stop', color: '#22c55e', isPlay: true },
     { cmd: 'edit', icon: '⏹️', tip: 'Stop', color: '#ef4444', isStop: true },
     { cmd: '_sep1', icon: '|', tip: '', isSep: true },
     { action: 'save', icon: '💾', tip: 'Save', color: '#4ade80' },
     { action: 'load', icon: '📂', tip: 'Load', color: '#60a5fa' },
     { action: 'share', icon: '🔗', tip: 'Share', color: '#ff6b35' },
     { action: 'export_html', icon: '📦', tip: 'Export', color: '#c084fc' },
-    { cmd: 'terrain', icon: '🏔️', tip: 'Terrain', color: '#6b8e23' },
-    { action: 'unity', icon: '🎮', tip: 'Unity', color: '#4ade80' },
-    { action: 'unreal', icon: '🕹️', tip: 'Unreal', color: '#3b82f6' },
     { cmd: '_sep2', icon: '|', tip: '', isSep: true },
-    { cmd: 'characters', icon: '🧑', tip: 'Characters', color: '#ffd700' },
-    { cmd: 'weapons', icon: '⚔️', tip: 'Weapons', color: '#ef4444' },
-    { cmd: 'buildings', icon: '🏠', tip: 'Buildings', color: '#8b5cf6' },
-    { cmd: 'trees', icon: '🌳', tip: 'Trees', color: '#16a34a' },
-    { cmd: 'animals', icon: '🐾', tip: 'Animals', color: '#22c55e' },
-    { cmd: 'vehicles', icon: '🚗', tip: 'Vehicles', color: '#3b82f6' },
-    { cmd: 'rocks', icon: '🪨', tip: 'Rocks', color: '#78716c' },
-    { cmd: 'furniture', icon: '🪑', tip: 'Furniture', color: '#d97706' },
-    { cmd: 'food', icon: '🍖', tip: 'Items', color: '#f59e0b' },
-    { cmd: 'dungeon', icon: '💀', tip: 'Dungeon', color: '#6b21a8' },
-    { cmd: 'scifi', icon: '🚀', tip: 'Sci-Fi', color: '#06b6d4' },
-    { cmd: 'animations', icon: '🎬', tip: 'Animate', color: '#ec4899' },
-    { cmd: 'library', icon: '📂', tip: 'All Assets', color: '#ffd700' },
+    { cmd: 'library', icon: '🗂️', tip: 'All Assets', color: '#ffd700' },
     { cmd: 'scripts', icon: '🧠', tip: 'Custom Scripts', color: '#7c5cff' },
   ];
   
@@ -23090,7 +23984,9 @@ async function startGeneration() {
       
       // Poll preview
       let previewTask;
+      let _pollCount1 = 0;
       while (true) {
+        if (++_pollCount1 > 100) throw new Error('Generation timed out after 5 minutes');
         await new Promise(r => setTimeout(r, 3000));
         const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
         previewTask = await pollResp.json();
@@ -23112,7 +24008,9 @@ async function startGeneration() {
         const refineData = await refineResp.json();
         taskId = refineData.result;
         
+        let _pollCount2 = 0;
         while (true) {
+          if (++_pollCount2 > 100) throw new Error('Refine timed out after 5 minutes');
           await new Promise(r => setTimeout(r, 3000));
           const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
           const refineTask = await pollResp.json();
@@ -23150,7 +24048,9 @@ async function startGeneration() {
       
       // Poll until done
       let imgTask;
+      let _pollCount3 = 0;
       while (true) {
+        if (++_pollCount3 > 100) throw new Error('Image-to-3D timed out after 5 minutes');
         await new Promise(r => setTimeout(r, 3000));
         const pollResp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
         imgTask = await pollResp.json();
@@ -23459,3 +24359,1737 @@ console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
 window._waterZones = [];
 function registerWaterZone(box3) { window._waterZones.push(box3); }
 function clearWaterZones() { window._waterZones.length = 0; }
+
+// =====================================================
+// === PROCEDURAL NATURE SYSTEM ========================
+// === Pine, Oak, Birch, Bush, Grass, Ground ===========
+// =====================================================
+
+// Ground material with grass colors
+function _makeGroundMat() {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x3a7d2c, roughness: 0.95, metalness: 0.0
+  });
+  return mat;
+}
+
+// Leaf cluster (shared geometry for performance)
+const _leafGeo = new THREE.SphereGeometry(1, 7, 5);
+
+function _makeLeafMat(color) {
+  return new THREE.MeshStandardMaterial({
+    color, roughness: 0.9, metalness: 0.0,
+    flatShading: true
+  });
+}
+
+// Trunk geometry
+function _makeTrunk(h, rBot, rTop) {
+  return new THREE.CylinderGeometry(rTop, rBot, h, 6, 1);
+}
+
+// === PINE TREE ===
+function createPineTree(opts = {}) {
+  const { x=0, z=0, height=8, scale=1 } = opts;
+  const g = new THREE.Group();
+  g.userData.isProcTree = true;
+
+  const h = height * scale;
+  // Trunk
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 1, flatShading: true });
+  const trunk = new THREE.Mesh(_makeTrunk(h * 0.35, 0.13 * scale, 0.07 * scale), trunkMat);
+  trunk.position.y = h * 0.175;
+  trunk.castShadow = true;
+  g.add(trunk);
+
+  // Layered cone foliage
+  const darkGreen = new THREE.MeshStandardMaterial({ color: 0x1a5c2e, roughness: 0.9, flatShading: true });
+  const midGreen  = new THREE.MeshStandardMaterial({ color: 0x2d7a40, roughness: 0.9, flatShading: true });
+  const lightGreen= new THREE.MeshStandardMaterial({ color: 0x3a9455, roughness: 0.9, flatShading: true });
+
+  const layers = [
+    { y: h * 0.28, r: 1.9 * scale, lh: h * 0.42, mat: darkGreen },
+    { y: h * 0.52, r: 1.45* scale, lh: h * 0.36, mat: midGreen  },
+    { y: h * 0.72, r: 1.05* scale, lh: h * 0.30, mat: midGreen  },
+    { y: h * 0.87, r: 0.60* scale, lh: h * 0.24, mat: lightGreen},
+  ];
+  layers.forEach(l => {
+    const coneGeo = new THREE.ConeGeometry(l.r, l.lh, 7, 1);
+    const cone = new THREE.Mesh(coneGeo, l.mat);
+    cone.position.y = l.y;
+    cone.castShadow = true;
+    g.add(cone);
+  });
+
+  g.position.set(x, 0, z);
+  // Slight random rotation & scale variation
+  g.rotation.y = Math.random() * Math.PI * 2;
+  const sv = 0.85 + Math.random() * 0.35;
+  g.scale.setScalar(sv);
+  return g;
+}
+
+// === OAK TREE ===
+function createOakTree(opts = {}) {
+  const { x=0, z=0, height=7, scale=1 } = opts;
+  const g = new THREE.Group();
+  g.userData.isProcTree = true;
+
+  const h = height * scale;
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2e12, roughness: 1, flatShading: true });
+
+  // Trunk with slight lean
+  const trunk = new THREE.Mesh(_makeTrunk(h * 0.45, 0.18 * scale, 0.10 * scale), trunkMat);
+  trunk.position.y = h * 0.225;
+  trunk.castShadow = true;
+  g.add(trunk);
+
+  // Branch stubs
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + Math.random() * 0.8;
+    const branch = new THREE.Mesh(_makeTrunk(h * 0.22, 0.06 * scale, 0.03 * scale), trunkMat);
+    branch.position.set(Math.cos(a) * h * 0.12, h * 0.36, Math.sin(a) * h * 0.12);
+    branch.rotation.z = Math.cos(a) * 0.45;
+    branch.rotation.x = Math.sin(a) * 0.45;
+    g.add(branch);
+  }
+
+  // Main canopy — multiple overlapping spheres for volume
+  const leafColors = [0x2d6e30, 0x3a8c3e, 0x4aad4e, 0x255c28, 0x5abf5e];
+  const clusters = [
+    { ox:0,    oy:0,    oz:0,    r:1.9 },
+    { ox:0.8,  oy:0.4,  oz:0.5,  r:1.4 },
+    { ox:-0.9, oy:0.2,  oz:-0.4, r:1.3 },
+    { ox:0.3,  oy:0.7,  oz:-0.8, r:1.2 },
+    { ox:-0.5, oy:-0.3, oz:0.7,  r:1.1 },
+    { ox:0,    oy:1.1,  oz:0,    r:0.9 },
+  ];
+  clusters.forEach((c, i) => {
+    const leafMat = _makeLeafMat(leafColors[i % leafColors.length]);
+    const leaf = new THREE.Mesh(_leafGeo, leafMat);
+    leaf.scale.setScalar(c.r * scale);
+    leaf.position.set(c.ox * scale + h * 0.08, h * 0.6 + c.oy * scale, c.oz * scale);
+    leaf.castShadow = true;
+    g.add(leaf);
+  });
+
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  const sv = 0.8 + Math.random() * 0.45;
+  g.scale.setScalar(sv);
+  return g;
+}
+
+// === BIRCH TREE ===
+function createBirchTree(opts = {}) {
+  const { x=0, z=0, height=9, scale=1 } = opts;
+  const g = new THREE.Group();
+  g.userData.isProcTree = true;
+
+  const h = height * scale;
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0xe8e0d0, roughness: 0.8, flatShading: true
+  });
+
+  const trunk = new THREE.Mesh(_makeTrunk(h * 0.65, 0.10 * scale, 0.07 * scale), trunkMat);
+  trunk.position.y = h * 0.325;
+  trunk.castShadow = true;
+  g.add(trunk);
+
+  // Wispy leaf clusters
+  const birchLeafColors = [0x8ab84a, 0xa0d060, 0x70a030, 0xc8e878];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const r = (0.3 + Math.random() * 0.7) * scale;
+    const leafMat = _makeLeafMat(birchLeafColors[i % birchLeafColors.length]);
+    const leaf = new THREE.Mesh(_leafGeo, leafMat);
+    leaf.scale.set(r * 1.1, r * 0.7, r);
+    const py = h * (0.55 + Math.random() * 0.35);
+    leaf.position.set(Math.cos(a) * h * 0.15, py, Math.sin(a) * h * 0.15);
+    leaf.castShadow = true;
+    g.add(leaf);
+  }
+
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  g.scale.setScalar(0.8 + Math.random() * 0.4);
+  return g;
+}
+
+// === BUSH ===
+function createBush(opts = {}) {
+  const { x=0, z=0, scale=1 } = opts;
+  const g = new THREE.Group();
+  g.userData.isProcTree = true;
+
+  const bushColors = [0x2d6e30, 0x3a8c3e, 0x255c28, 0x4aad4e, 0x1e5226];
+  const count = 3 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + Math.random();
+    const r = (0.3 + Math.random() * 0.5) * scale;
+    const mat = _makeLeafMat(bushColors[i % bushColors.length]);
+    const bush = new THREE.Mesh(_leafGeo, mat);
+    const px = Math.cos(a) * r * 0.6;
+    const pz = Math.sin(a) * r * 0.6;
+    bush.scale.set(r * 0.9, r * 0.65, r * 0.9);
+    bush.position.set(px, r * 0.55, pz);
+    bush.castShadow = true;
+    g.add(bush);
+  }
+
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  g.scale.setScalar(0.6 + Math.random() * 0.8);
+  return g;
+}
+
+// === GRASS TUFT ===
+function createGrassTuft(x, z) {
+  const g = new THREE.Group();
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a8c28, roughness: 1, side: THREE.DoubleSide, flatShading: true });
+  for (let i = 0; i < 5; i++) {
+    const bladeGeo = new THREE.PlaneGeometry(0.08, 0.3 + Math.random() * 0.2);
+    const blade = new THREE.Mesh(bladeGeo, grassMat);
+    blade.position.set((Math.random()-0.5)*0.2, 0.15, (Math.random()-0.5)*0.2);
+    blade.rotation.y = Math.random() * Math.PI;
+    blade.rotation.x = (Math.random()-0.5) * 0.4;
+    g.add(blade);
+  }
+  g.position.set(x, 0, z);
+  return g;
+}
+
+// Expose to window
+window.createPineTree = createPineTree;
+window.createOakTree = createOakTree;
+window.createBirchTree = createBirchTree;
+window.createBush = createBush;
+window.createGrassTuft = createGrassTuft;
+
+// =====================================================
+
+// =====================================================
+// === FOREST WORLD v2 — Procedural + Gerstner Water ===
+// =====================================================
+
+// Gerstner Wave Water Shader
+const GERSTNER_VERT = `
+uniform float uTime;
+uniform float uWaveHeight;
+varying vec2 vUv;
+varying vec3 vWorldPos;
+varying vec3 vNormal2;
+
+vec3 gerstner(vec3 pos, vec2 dir, float steepness, float wavelength, float speed) {
+  float k = 2.0 * 3.14159 / wavelength;
+  float c = sqrt(9.8 / k) * speed;
+  float f = k * (dot(dir, pos.xz) - c * uTime);
+  float a = steepness / k;
+  return vec3(
+    dir.x * a * cos(f),
+    a * sin(f),
+    dir.y * a * cos(f)
+  );
+}
+
+void main() {
+  vUv = uv;
+  vec3 pos = position;
+  vec3 g1 = gerstner(pos, normalize(vec2(1.0, 0.8)), 0.06, 22.0, 0.9);
+  vec3 g2 = gerstner(pos, normalize(vec2(-0.6, 1.0)), 0.04, 14.0, 1.1);
+  vec3 g3 = gerstner(pos, normalize(vec2(0.3, -0.7)), 0.03,  9.0, 1.3);
+  pos += (g1 + g2 + g3) * uWaveHeight;
+  vWorldPos = pos;
+  // Approximate normal
+  vec3 bitangent = vec3(1.0, g1.y + g2.y + g3.y, 0.0);
+  vec3 tangent   = vec3(0.0, g1.y + g2.y + g3.y, 1.0);
+  vNormal2 = normalize(cross(tangent, bitangent));
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}`;
+
+const GERSTNER_FRAG = `
+uniform float uTime;
+uniform vec3 uDeepColor;
+uniform vec3 uShallowColor;
+varying vec2 vUv;
+varying vec3 vWorldPos;
+varying vec3 vNormal2;
+
+void main() {
+  // Depth gradient from center
+  float dist = length(vUv - 0.5) * 2.0;
+  vec3 waterCol = mix(uDeepColor, uShallowColor, dist * dist);
+  
+  // Fresnel specular
+  vec3 viewDir = normalize(cameraPosition - vWorldPos);
+  float fresnel = pow(1.0 - max(dot(vNormal2, viewDir), 0.0), 3.0);
+  vec3 specular = vec3(1.0) * fresnel * 0.6;
+  
+  // Foam at edges
+  float foam = smoothstep(0.85, 1.0, dist);
+  waterCol = mix(waterCol, vec3(0.95, 0.98, 1.0), foam * 0.5);
+  
+  // Animated ripple lines
+  float ripple = sin(vUv.x * 40.0 + uTime * 2.0) * sin(vUv.y * 35.0 - uTime * 1.5) * 0.04;
+  waterCol += vec3(ripple * 0.5);
+  
+  gl_FragColor = vec4(waterCol + specular, 0.88);
+}`;
+
+function buildGerstnerLake(radius, preset) {
+  // Use the WATER_PRESETS system for consistent, good-looking water
+  const presetName = preset || 'calm';
+  const segs = 128;
+  const geo = new THREE.PlaneGeometry(radius * 2, radius * 2, segs, segs);
+  // Clip to circle by masking vertices outside radius
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getY(i); // PlaneGeometry uses Y as Z before rotation
+    if (Math.sqrt(x*x + z*z) > radius) {
+      pos.setXYZ(i, 0, 0, 0); // collapse outside verts to center (hidden under shore ring)
+    }
+  }
+  geo.attributes.position.needsUpdate = true;
+  // Use the existing preset material system — calm is clear, low-wave, beautiful
+  const mat = createGerstnerWaterMaterial(presetName);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.08;
+  mesh.userData.isWater = true;
+  mesh.userData.isLake = true;
+  mesh.userData.isGerstnerWater = true;
+  mesh.userData.isAnimatedWater = true;
+  mesh.userData.waterPreset = presetName;
+  return mesh;
+}
+window.buildGerstnerLake = buildGerstnerLake;
+
+
+
+// ============================================================
+// AFRICAN SLATE QUARRY WORLD — v3 (proper engine clear)
+// ============================================================
+async function buildQuarryWorld() {
+  try {
+    showToast('⛏ Building African Slate Quarry...');
+
+    // ── PROPER ENGINE CLEAR ───────────────────────────────
+    // 1. Remove all user-placed objects
+    for (let i = objects.length - 1; i >= 0; i--) {
+      scene.remove(objects[i]); objects.splice(i, 1);
+    }
+    // 2. Remove engine ground plane (replace with ours)
+    if (typeof currentGround !== 'undefined' && currentGround) {
+      scene.remove(currentGround);
+      if (currentGround.geometry) currentGround.geometry.dispose();
+      if (currentGround.material) currentGround.material.dispose();
+      currentGround = null;
+      window._currentGround = null;
+    }
+    // 3. Remove existing terrain mesh
+    if (typeof terrainMesh !== 'undefined' && terrainMesh) {
+      scene.remove(terrainMesh);
+      terrainMesh.geometry.dispose(); terrainMesh.material.dispose();
+      terrainMesh = null;
+      window._terrainMesh = null;
+    }
+    // 4. Kill water zones
+    if (window._waterZones) window._waterZones.length = 0;
+    window._lakeAnimators = [];
+    // 5. Clear fog/scene decorations
+    scene.fog = null;
+
+    // Remove ANY remaining meshes/groups not caught above
+    const extras = [];
+    scene.children.forEach(o => {
+      if (!o.isLight && !o.isCamera && !(o instanceof THREE.AxesHelper) && !(o instanceof THREE.GridHelper)) {
+        extras.push(o);
+      }
+    });
+    extras.forEach(o => scene.remove(o));
+    sceneHistory.length = 0;
+
+    // ── COLORS ───────────────────────────────────────────
+    const C_FLOOR  = 0x7a5535;
+    const C_DIRT2  = 0x5c3d22;
+    const C_ROCK1  = 0x3a2510;
+    const C_ROCK2  = 0x5c3d22;
+    const C_ROCK3  = 0x7a5535;
+    const C_SLATE  = 0x3d342a;
+    const C_STRAT1 = 0x4a3018;
+    const C_STRAT2 = 0x8a6040;
+    const C_STRAT3 = 0x6b4a28;
+
+    // ── SINGLE FLAT GROUND ───────────────────────────────
+    // ONE PlaneGeometry — no overlap, no z-fighting
+    const GROUND_SIZE = 1400;
+    const groundMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
+      new THREE.MeshStandardMaterial({ color: C_FLOOR, roughness: 1.0 })
+    );
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.position.y = 0;
+    groundMesh.receiveShadow = true;
+    groundMesh.userData.isGround = true;
+    scene.add(groundMesh);
+    // Register as engine ground so future 'clear' removes it correctly
+    currentGround = groundMesh;
+    window._currentGround = groundMesh;
+
+    // ── QUARRY CLIFF WALLS ────────────────────────────────
+    const PIT_W = 440;
+    const PIT_D = 400;
+    const WALL_H = 90;
+    const WALL_T = 30;
+
+    function buildCliffWall(cx, cz, wallWidth, rotY) {
+      const group = new THREE.Group();
+      const strata = [
+        { yBot: 0,  h: 14, c: C_ROCK1 },
+        { yBot: 14, h: 7,  c: C_STRAT1 },
+        { yBot: 21, h: 18, c: C_ROCK2 },
+        { yBot: 39, h: 5,  c: C_STRAT2 },
+        { yBot: 44, h: 20, c: C_STRAT3 },
+        { yBot: 64, h: 6,  c: C_SLATE },
+        { yBot: 70, h: 20, c: C_ROCK3 },
+      ];
+      strata.forEach(s => {
+        const seg = new THREE.Mesh(
+          new THREE.BoxGeometry(wallWidth, s.h, WALL_T),
+          new THREE.MeshStandardMaterial({ color: s.c, roughness: 1.0, flatShading: true })
+        );
+        seg.position.y = s.yBot + s.h / 2;
+        seg.castShadow = true; seg.receiveShadow = true;
+        group.add(seg);
+        // Rock debris ledge at each strata break
+        if (s.yBot > 0) {
+          const ledge = new THREE.Mesh(
+            new THREE.BoxGeometry(wallWidth + 8, 2, WALL_T + 12),
+            new THREE.MeshStandardMaterial({ color: s.c, roughness: 1.0 })
+          );
+          ledge.position.set(0, s.yBot + 1, 4);
+          ledge.castShadow = true;
+          group.add(ledge);
+        }
+      });
+      // Cap (ground above wall)
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(wallWidth + 20, 12, WALL_T + 60),
+        new THREE.MeshStandardMaterial({ color: C_FLOOR, roughness: 1.0 })
+      );
+      cap.position.set(0, WALL_H + 6, WALL_T / 2 + 30);
+      group.add(cap);
+      group.position.set(cx, 0, cz);
+      group.rotation.y = rotY;
+      scene.add(group);
+    }
+
+    buildCliffWall(0,        -PIT_D/2, PIT_W + 60, 0);
+    buildCliffWall(0,         PIT_D/2, PIT_W + 60, Math.PI);
+    buildCliffWall(-PIT_W/2, 0,        PIT_D,       Math.PI/2);
+    buildCliffWall( PIT_W/2, 0,        PIT_D,      -Math.PI/2);
+
+    // Corner fills
+    [[-PIT_W/2,-PIT_D/2],[PIT_W/2,-PIT_D/2],[-PIT_W/2,PIT_D/2],[PIT_W/2,PIT_D/2]].forEach(([cx,cz]) => {
+      const c = new THREE.Mesh(
+        new THREE.BoxGeometry(70, WALL_H + 10, 70),
+        new THREE.MeshStandardMaterial({ color: C_ROCK2, roughness: 1.0 })
+      );
+      c.position.set(cx, WALL_H/2, cz);
+      c.castShadow = true; scene.add(c);
+    });
+
+    // ── LIGHTING ────────────────────────────────────────
+    // Add fresh lights (scene was fully cleared)
+    const sun = new THREE.DirectionalLight(0xffe0a0, 3.5);
+    sun.position.set(200, 350, -100);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.camera.left = -800; sun.shadow.camera.right = 800;
+    sun.shadow.camera.top  =  800; sun.shadow.camera.bottom = -800;
+    sun.shadow.camera.far  = 2000; sun.shadow.bias = -0.0003;
+    scene.add(sun);
+    const amb = new THREE.AmbientLight(0xb88850, 0.35);
+    scene.add(amb);
+    renderer.shadowMap.enabled = true;
+
+    // Warm African dust haze
+    scene.fog = new THREE.FogExp2(0xc0945a, 0.0010);
+    renderer.setClearColor(0x8aa8cc, 1);
+
+    // ── QUARRY ASSET CLUSTERS ────────────────────────────
+    showToast('✅ Walls built — loading rocks...');
+
+    const waitForAliases = (cb) => {
+      if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
+      setTimeout(() => waitForAliases(cb), 200);
+    };
+
+    waitForAliases((aliases) => {
+      const items = Object.entries(aliases)
+        .filter(([k]) => k.startsWith('quarry_') && /\d+$/.test(k))
+        .sort(([a],[b]) => a.localeCompare(b));
+
+      if (!items.length) { showToast('⚠ No quarry assets found'); return; }
+
+      // 14 clusters — against walls and on the floor
+      const clusters = [
+        { cx:  -60, cz: -PIT_D/2+40, n:6, sMin:14, sMax:24 },
+        { cx:   80, cz: -PIT_D/2+38, n:5, sMin:12, sMax:20 },
+        { cx:  180, cz: -PIT_D/2+42, n:4, sMin:10, sMax:18 },
+        { cx: -160, cz: -PIT_D/2+36, n:4, sMin:12, sMax:22 },
+        { cx: -100, cz:  PIT_D/2-42, n:6, sMin:14, sMax:24 },
+        { cx:   60, cz:  PIT_D/2-38, n:5, sMin:12, sMax:20 },
+        { cx:  170, cz:  PIT_D/2-40, n:4, sMin:10, sMax:18 },
+        { cx:  PIT_W/2-42, cz:  -60, n:5, sMin:12, sMax:22 },
+        { cx:  PIT_W/2-38, cz:   80, n:4, sMin:10, sMax:18 },
+        { cx: -PIT_W/2+42, cz:  -40, n:5, sMin:12, sMax:20 },
+        { cx: -PIT_W/2+38, cz:   80, n:4, sMin:10, sMax:18 },
+        { cx:    0, cz:   40, n:7, sMin:8, sMax:16 },
+        { cx:  120, cz:  -80, n:5, sMin:8, sMax:14 },
+        { cx: -140, cz:   90, n:5, sMin:8, sMax:14 },
+      ];
+
+      let idx = 0, delay = 0;
+      clusters.forEach(cl => {
+        for (let i = 0; i < cl.n; i++) {
+          const [, relPath] = items[idx % items.length]; idx++;
+          const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+          const tScale = cl.sMin + Math.random() * (cl.sMax - cl.sMin);
+          const ang = (i / cl.n) * Math.PI * 2 + Math.random();
+          const dist = 1.5 + Math.random() * 4; // tight cluster
+          const rx = cl.cx + Math.cos(ang) * dist;
+          const rz = cl.cz + Math.sin(ang) * dist;
+          setTimeout(() => {
+            gltfLoader.load(fullPath, (gltf) => {
+              const m = gltf.scene;
+              m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+              const box = new THREE.Box3().setFromObject(m);
+              const dim = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).y, box.getSize(new THREE.Vector3()).z, 0.01);
+              m.scale.setScalar(tScale / dim);
+              const b2 = new THREE.Box3().setFromObject(m);
+              m.position.set(rx, -b2.min.y, rz); // sit on y=0
+              m.rotation.y = Math.random() * Math.PI * 2;
+              m.userData.isPlaced = true;
+              scene.add(m); objects.push(m);
+            }, null, () => {});
+          }, delay);
+          delay += 80;
+        }
+      });
+
+      setTimeout(() => {
+        showToast('✅ Quarry complete! Building mine cave...');
+        const caveInfo = buildMineInterior();
+        window._quarryCaveInfo = caveInfo;
+        const waitMine = (cb) => {
+          if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
+          setTimeout(() => waitMine(cb), 200);
+        };
+        waitMine((al) => { populateMineAssets(caveInfo, al); showToast('⛏ Mine cave ready — "enter mine" to explore!'); });
+      }, delay + 400);
+    });
+
+    // ── SPARSE TREES ON RIM ─────────────────────────────
+    for (let i = 0; i < 40; i++) {
+      const side = i % 4;
+      let tx, tz;
+      const spread = 80;
+      if (side===0) { tx=(Math.random()-0.5)*PIT_W; tz=-PIT_D/2-20-Math.random()*spread; }
+      else if (side===1) { tx=(Math.random()-0.5)*PIT_W; tz= PIT_D/2+20+Math.random()*spread; }
+      else if (side===2) { tx=-PIT_W/2-20-Math.random()*spread; tz=(Math.random()-0.5)*PIT_D; }
+      else              { tx= PIT_W/2+20+Math.random()*spread; tz=(Math.random()-0.5)*PIT_D; }
+      const h = 3 + Math.random() * 5;
+      const tg = new THREE.Group();
+      tg.add(Object.assign(
+        new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.22,h,5),
+          new THREE.MeshStandardMaterial({color:0x3d2510,roughness:1.0})),
+        {position:new THREE.Vector3(0,h/2,0)}
+      ));
+      for (let b = 0; b < 3; b++) {
+        const ba = (b/3)*Math.PI*2;
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.5+Math.random()*0.5,5,3),
+          new THREE.MeshStandardMaterial({color:0x3a5515,roughness:1.0,flatShading:true}));
+        leaf.position.set(Math.cos(ba)*(1.2+Math.random()), h+Math.random()*0.5, Math.sin(ba)*(1.2+Math.random()));
+        tg.add(leaf);
+      }
+      tg.position.set(tx, WALL_H, tz);
+      scene.add(tg);
+    }
+
+    // ── CAMERA — ground level ────────────────────────────
+    if (window._cam) {
+      window._cam.position.set(-80, 10, -20);
+      window._cam.lookAt(80, 8, 60);
+    }
+    if (window._ctrl) {
+      window._ctrl.target.set(80, 8, 60);
+      window._ctrl.update();
+    }
+
+  } catch(err) {
+    console.error('[QUARRY]', err);
+    showToast('❌ ' + err.message);
+  }
+}
+window.buildQuarryWorld = buildQuarryWorld;
+
+
+
+// ============================================================
+// CITY WORLD v2 — Downtown + Residential + AI Traffic
+// ============================================================
+async function buildCityWorld() {
+  try {
+    showToast('🏙 Building City World...');
+
+    // ── FULL CLEAR ────────────────────────────────────────
+    for (let i = objects.length - 1; i >= 0; i--) { scene.remove(objects[i]); objects.splice(i, 1); }
+    if (typeof currentGround !== 'undefined' && currentGround) {
+      scene.remove(currentGround);
+      if (currentGround.geometry) currentGround.geometry.dispose();
+      if (currentGround.material) currentGround.material.dispose();
+      currentGround = null; window._currentGround = null;
+    }
+    if (typeof terrainMesh !== 'undefined' && terrainMesh) { scene.remove(terrainMesh); terrainMesh = null; }
+    clearDrivingCars();
+    if (window._waterZones) window._waterZones.length = 0;
+    window._lakeAnimators = [];
+    window._cityCarUpdate = null;
+    scene.fog = null;
+    const extras = [];
+    scene.children.forEach(o => { if (!o.isLight && !o.isCamera) extras.push(o); });
+    extras.forEach(o => scene.remove(o));
+    if (window.npcController) window.npcController.npcs.length = 0;
+
+    // ── GRID CONFIG ───────────────────────────────────────
+    const BLOCK  = 64;   // plot width/depth
+    const ROAD   = 16;   // road width
+    const STEP   = BLOCK + ROAD;   // 80 per cell
+    const COLS   = 5;
+    const HALF   = (COLS - 1) / 2; // 2
+
+    // Road centerline X/Z positions
+    const rp = [];
+    for (let i = 0; i <= COLS; i++) rp.push(-HALF * STEP - ROAD/2 + i * STEP);
+    // Block center X/Z positions (inside each cell, away from roads)
+    const bp = [];
+    for (let i = 0; i < COLS; i++) bp.push(rp[i] + ROAD/2 + BLOCK/2);
+
+    const zone = (c, r) => {
+      const dc = Math.abs(c - HALF), dr = Math.abs(r - HALF);
+      if (dc <= 1 && dr <= 1) return 'downtown';
+      if (dc <= 2 && dr <= 2) return 'commercial';
+      return 'residential';
+    };
+
+    // ── GROUND ───────────────────────────────────────────
+    const GSIZE = COLS * STEP + ROAD + 500;
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(GSIZE, GSIZE),
+      new THREE.MeshStandardMaterial({ color: 0x4a7040, roughness: 1.0 })
+    );
+    ground.rotation.x = -Math.PI/2; ground.position.y = 0;
+    ground.receiveShadow = true; ground.userData.isGround = true;
+    scene.add(ground);
+    currentGround = ground; window._currentGround = ground;
+
+    // ── ROAD SURFACE ─────────────────────────────────────
+    const roadMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.95 });
+    const swMat    = new THREE.MeshStandardMaterial({ color: 0x999888, roughness: 1.0 });
+    const lineMat  = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, emissive: 0x444444 });
+    const ylwMat   = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 1.0 });
+
+    const CITY_SPAN = COLS * STEP + ROAD;
+
+    // Horizontal roads (E-W, at each rp[j] Z)
+    rp.forEach(rz => {
+      const road = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.12, ROAD), roadMat);
+      road.position.set(0, 0.06, rz); road.receiveShadow = true; scene.add(road);
+      // Sidewalks N and S
+      [-1,1].forEach(side => {
+        const sw = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.2, 3.5), swMat);
+        sw.position.set(0, 0.1, rz + side * (ROAD/2 + 1.75)); scene.add(sw);
+      });
+      // Yellow center line
+      const cl = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.02, 0.3), ylwMat);
+      cl.position.set(0, 0.14, rz); scene.add(cl);
+      // White lane dashes
+      for (let d = 0; d < 16; d++) {
+        const dash = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, 0.25), lineMat);
+        dash.position.set(-CITY_SPAN/2 + d * (CITY_SPAN/16) + CITY_SPAN/32, 0.14, rz + ROAD/4); scene.add(dash);
+        const dash2 = dash.clone(); dash2.position.z = rz - ROAD/4; scene.add(dash2);
+      }
+    });
+
+    // Vertical roads (N-S, at each rp[i] X)
+    rp.forEach(rx => {
+      const road = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.12, CITY_SPAN), roadMat);
+      road.position.set(rx, 0.06, 0); road.receiveShadow = true; scene.add(road);
+      [-1,1].forEach(side => {
+        const sw = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.2, CITY_SPAN), swMat);
+        sw.position.set(rx + side * (ROAD/2 + 1.75), 0.1, 0); scene.add(sw);
+      });
+      const cl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, CITY_SPAN), ylwMat);
+      cl.position.set(rx, 0.14, 0); scene.add(cl);
+    });
+
+    // Intersection asphalt patches + crosswalks
+    rp.forEach(rx => rp.forEach(rz => {
+      const ix = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.13, ROAD), roadMat);
+      ix.position.set(rx, 0.065, rz); scene.add(ix);
+      // 4 crosswalks (one per side of intersection)
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz]) => {
+        for (let s = 0; s < 3; s++) {
+          const stripe = new THREE.Mesh(new THREE.BoxGeometry(
+            dz !== 0 ? 0.9 : ROAD*0.7,
+            0.01,
+            dz !== 0 ? ROAD*0.7 : 0.9
+          ), lineMat);
+          stripe.position.set(
+            rx + dx*(ROAD/2+0.5) + (dz!==0 ? (s-1)*1.8 : 0),
+            0.14,
+            rz + dz*(ROAD/2+0.5) + (dx!==0 ? (s-1)*1.8 : 0)
+          );
+          scene.add(stripe);
+        }
+      });
+    }));
+
+    showToast('✅ Roads done — placing buildings...');
+
+    // ── BUILDINGS — STRICTLY INSIDE BLOCK BOUNDARIES ─────
+    // Max building footprint = BLOCK - 10 (5 unit margin from road on each side)
+    const MARGIN = 10; // keep buildings this far from road edge
+    const MAX_FOOTPRINT = BLOCK - MARGIN * 2; // 44 units max
+
+    const DT_MODELS   = ['kenney_city/building-skyscraper-a','kenney_city/building-skyscraper-b','kenney_city/building-skyscraper-c','kenney_city/building-skyscraper-d','kenney_city/building-skyscraper-e'];
+    const COMM_MODELS = ['kenney_city/building-a','kenney_city/building-b','kenney_city/building-c','kenney_city/building-d','kenney_city/building-e','kenney_city/building-f','kenney_city/building-g','kenney_city/building-h'];
+    const COMM2_MODELS= ['kenney_city/building-i','kenney_city/building-j','kenney_city/building-k','kenney_city/building-l','kenney_city/building-m','kenney_city/building-n'];
+
+    function placeBuilding(modelPath, bx, bz, targetH, maxFootprint, rotY) {
+      return new Promise(resolve => {
+        gltfLoader.load('models/' + modelPath + '.glb', (gltf) => {
+          const m = gltf.scene;
+          m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+          const box = new THREE.Box3().setFromObject(m);
+          const s3 = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(s3.x, s3.z, 0.01);
+          // Scale by HEIGHT target first
+          let sc = targetH / (s3.y || 1);
+          // Clamp so footprint doesn't exceed maxFootprint
+          const scaledFP = maxDim * sc;
+          if (scaledFP > maxFootprint) sc = maxFootprint / maxDim;
+          m.scale.setScalar(sc);
+          const b2 = new THREE.Box3().setFromObject(m);
+          m.position.set(bx, -b2.min.y, bz);
+          m.rotation.y = rotY || 0;
+          m.userData.isBuilding = true;
+          m.userData.canEnter = true;
+          m.userData.buildingId = modelPath;
+          scene.add(m); objects.push(m);
+          resolve(m);
+        }, null, () => resolve(null));
+      });
+    }
+
+    let delay = 0;
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < COLS; r++) {
+        const bx = bp[c], bz = bp[r];
+        const z = zone(c, r);
+        const rot = Math.floor(Math.random() * 4) * Math.PI/2;
+
+        if (z === 'downtown') {
+          // 1 skyscraper per downtown block — centered, never touching road
+          const mdl = DT_MODELS[(c*COLS+r) % DT_MODELS.length];
+          setTimeout(() => placeBuilding(mdl, bx, bz, 55 + Math.random()*35, 50, rot), delay);
+          delay += 50;
+        } else if (z === 'commercial') {
+          const mdl = COMM_MODELS[(c*COLS+r) % COMM_MODELS.length];
+          setTimeout(() => placeBuilding(mdl, bx, bz, 20 + Math.random()*12, MAX_FOOTPRINT, rot), delay);
+          delay += 50;
+        } else {
+          // Residential — house + yard
+          setTimeout(() => {
+            // House (front half of block)
+            try {
+              const h = createModernHouse({ floors: Math.random()>0.5?2:1 });
+              h.traverse(c => { if (c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });
+              const hb = new THREE.Box3().setFromObject(h);
+              // Place in front-left of block with margin
+              h.position.set(bx - 8, -hb.min.y, bz - 6);
+              h.userData.isBuilding = true; h.userData.canEnter = true; h.userData.isHouse = true;
+              scene.add(h); objects.push(h);
+            } catch(e) {}
+
+            // Lawn
+            const lawn = new THREE.Mesh(
+              new THREE.PlaneGeometry(BLOCK-2, BLOCK-2),
+              new THREE.MeshStandardMaterial({ color: 0x3d7530, roughness: 1.0 })
+            );
+            lawn.rotation.x = -Math.PI/2; lawn.position.set(bx, 0.04, bz); scene.add(lawn);
+
+            // Fence (4 sides, with front gate gap)
+            const hs = (BLOCK-2)/2;
+            const fMat = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.9 });
+            // Side fences (no gap)
+            [-hs, hs].forEach(fx => {
+              const f = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.4, BLOCK-2), fMat);
+              f.position.set(bx+fx, 0.9, bz); scene.add(f);
+            });
+            // Back fence
+            const fb = new THREE.Mesh(new THREE.BoxGeometry(BLOCK-2, 1.4, 0.35), fMat);
+            fb.position.set(bx, 0.9, bz+hs); scene.add(fb);
+            // Front fence (two halves with gate gap)
+            [-1,1].forEach(side => {
+              const ff = new THREE.Mesh(new THREE.BoxGeometry(hs*0.7, 1.4, 0.35), fMat);
+              ff.position.set(bx + side*(hs*0.35 + 3), 0.9, bz-hs); scene.add(ff);
+            });
+
+            // Pool (back yard)
+            const px = bx + 10, pz = bz + 18;
+            const poolBorder = new THREE.Mesh(
+              new THREE.BoxGeometry(11, 0.4, 17),
+              new THREE.MeshStandardMaterial({ color: 0xddd8c8, roughness: 0.8 })
+            );
+            poolBorder.position.set(px, 0.2, pz); scene.add(poolBorder);
+            const poolWater = new THREE.Mesh(
+              new THREE.BoxGeometry(9.4, 0.5, 15.4),
+              new THREE.MeshStandardMaterial({ color: 0x1a9ad4, transparent:true, opacity:0.88, roughness:0.08 })
+            );
+            poolWater.position.set(px, 0.25, pz); scene.add(poolWater);
+            // Pool ladder
+            const ladder = new THREE.Mesh(
+              new THREE.BoxGeometry(0.15, 1.5, 0.15),
+              new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness:0.8 })
+            );
+            ladder.position.set(px+4.5, 0.75, pz); scene.add(ladder);
+
+            // Parked car in driveway
+            const driveX = bx - 22, driveZ = bz - hs + 6;
+            const parkedColors = [0x334488, 0xaa3322, 0x228844, 0xcccccc, 0x111111];
+            const parkedCar = new THREE.Group();
+            parkedCar.userData.isDrivable = true;
+            parkedCar.userData.isParked = true;
+            const pcBody = new THREE.Mesh(new THREE.BoxGeometry(2,1,4),
+              new THREE.MeshStandardMaterial({color: parkedColors[Math.floor(Math.random()*parkedColors.length)], roughness:0.3, metalness:0.6}));
+            pcBody.position.y = 0.7; pcBody.castShadow = true; parkedCar.add(pcBody);
+            const pcCabin = new THREE.Mesh(new THREE.BoxGeometry(1.7,0.7,2.2),
+              new THREE.MeshStandardMaterial({color: parkedColors[0], roughness:0.3, metalness:0.6}));
+            pcCabin.position.set(0,1.45,0.2); parkedCar.add(pcCabin);
+            const pcWMat = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
+            [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz])=>{
+              const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.18,10),pcWMat);
+              w.rotation.z=Math.PI/2; w.position.set(wx,wy,wz); parkedCar.add(w);
+            });
+            parkedCar.position.set(driveX, 0, driveZ);
+            parkedCar.rotation.y = Math.PI/2;
+            scene.add(parkedCar); objects.push(parkedCar);
+
+            // Driveway (concrete strip)
+            const dw = new THREE.Mesh(
+              new THREE.PlaneGeometry(6, BLOCK*0.4),
+              new THREE.MeshStandardMaterial({color:0x666655, roughness:1.0})
+            );
+            dw.rotation.x=-Math.PI/2; dw.position.set(bx-22, 0.05, bz-hs/2); scene.add(dw);
+
+          }, delay);
+          delay += 80;
+        }
+      }
+    }
+
+    showToast('✅ Buildings placed — adding furniture & street props...');
+
+    // ── FURNITURE INSIDE RESIDENTIAL HOMES ─────────────────
+    setTimeout(() => {
+      for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r < COLS; r++) {
+          if (zone(c,r) !== 'residential') continue;
+          const hx = bp[c] - 8, hz = bp[r] - 6;
+          // Living room — couch, TV, coffee table
+          const furniture = [
+            { alias: 'sofa',         ox: -3, oz:  3, ry: 0 },
+            { alias: 'television',   ox:  5, oz:  3, ry: Math.PI },
+            { alias: 'coffee_table', ox:  1, oz:  3, ry: 0 },
+            { alias: 'armchair',     ox: -3, oz:  6, ry: Math.PI/2 },
+          ];
+          furniture.forEach(f => {
+            const key = GLB_MODELS[f.alias] || f.alias;
+            gltfLoader.load('models/' + key + '.glb', (gltf) => {
+              const m = gltf.scene;
+              m.traverse(c => { if (c.isMesh) c.castShadow = true; });
+              const box = new THREE.Box3().setFromObject(m);
+              const h = box.getSize(new THREE.Vector3()).y;
+              m.scale.setScalar(1.5 / (h || 1));
+              const b2 = new THREE.Box3().setFromObject(m);
+              m.position.set(hx + f.ox, -b2.min.y + 0.5, hz + f.oz);
+              m.rotation.y = f.ry;
+              m.userData.isFurniture = true;
+              scene.add(m); objects.push(m);
+            }, null, () => {
+              // Fallback box furniture
+              const colors = {sofa:0x4466aa, television:0x111111, coffee_table:0x885533, armchair:0x664422};
+              const dims = {sofa:[2.2,0.7,1],television:[1.2,0.8,0.1],coffee_table:[1.2,0.4,0.7],armchair:[1,0.7,0.9]};
+              const fb = new THREE.Mesh(
+                new THREE.BoxGeometry(...(dims[f.alias]||[1,0.8,1])),
+                new THREE.MeshStandardMaterial({color:colors[f.alias]||0x887744, roughness:0.8})
+              );
+              fb.position.set(hx+f.ox, 0.5, hz+f.oz);
+              fb.rotation.y = f.ry; scene.add(fb);
+            });
+          });
+        }
+      }
+    }, delay + 200);
+
+    // ── STREET LIGHTS & STOP SIGNS ────────────────────────
+    setTimeout(() => {
+      rp.forEach((lx, i) => rp.forEach((lz, j) => {
+        // Lamp post (each intersection corner)
+        [[1,1],[-1,1],[1,-1],[-1,-1]].forEach(([sx,sz], k) => {
+          if (k > 0) return; // just one per intersection
+          const post = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.12, 0.18, 8, 6),
+            new THREE.MeshStandardMaterial({color:0x555566, metalness:0.5, roughness:0.6})
+          );
+          post.position.set(lx + sx*(ROAD/2+2.5), 4, lz + sz*(ROAD/2+2.5));
+          post.castShadow = true; scene.add(post);
+          const head = new THREE.Mesh(new THREE.BoxGeometry(2.5,0.3,0.8),
+            new THREE.MeshStandardMaterial({color:0x333344, metalness:0.7}));
+          head.position.set(lx + sx*(ROAD/2+2.5) + sx*0.8, 8.1, lz + sz*(ROAD/2+2.5));
+          scene.add(head);
+          const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.35,8,6),
+            new THREE.MeshStandardMaterial({color:0xfffce0, emissive:0xffee88, emissiveIntensity:2}));
+          bulb.position.set(lx + sx*(ROAD/2+2.5) + sx*1.2, 8, lz + sz*(ROAD/2+2.5));
+          scene.add(bulb);
+          // Actual point light
+          const pl = new THREE.PointLight(0xfff8d0, 0.7, 28);
+          pl.position.set(lx + sx*(ROAD/2+2.5), 8, lz + sz*(ROAD/2+2.5));
+          scene.add(pl);
+        });
+
+        // Traffic light pole
+        const tlPost = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.12,5,6),
+          new THREE.MeshStandardMaterial({color:0x444444, metalness:0.5}));
+        tlPost.position.set(lx + ROAD/2+2, 2.5, lz - ROAD/2-2);
+        scene.add(tlPost);
+        const tlBox = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.8,0.4),
+          new THREE.MeshStandardMaterial({color:0x222222}));
+        tlBox.position.set(lx + ROAD/2+2, 5.4, lz - ROAD/2-2);
+        scene.add(tlBox);
+        [[0xee2222,0],[0xeeee22,0.65],[0x22ee22,1.3]].forEach(([col,dy]) => {
+          const light = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,6),
+            new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity:dy===0?1.5:0.3}));
+          light.position.set(lx + ROAD/2+2, 6.2-dy, lz - ROAD/2-2);
+          scene.add(light);
+        });
+
+        // Stop sign (one per intersection)
+        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,3,6),
+          new THREE.MeshStandardMaterial({color:0x999999,metalness:0.4}));
+        sp.position.set(lx - ROAD/2-1.8, 1.5, lz - ROAD/2-1.8);
+        scene.add(sp);
+        const ss = new THREE.Mesh(new THREE.CylinderGeometry(0.65,0.65,0.08,8),
+          new THREE.MeshStandardMaterial({color:0xcc1111}));
+        ss.position.set(lx - ROAD/2-1.8, 3.1, lz - ROAD/2-1.8);
+        ss.rotation.y = Math.PI/8; scene.add(ss);
+      }));
+    }, delay + 300);
+
+    // ── AI CARS ON ROAD CENTERLINES ───────────────────────
+    setTimeout(() => {
+      showToast('🚗 Spawning traffic...');
+      window._cityCarUpdate = null;
+
+      // Routes defined EXACTLY on road centerlines (rp values)
+      const carRoutes = [
+        // Outer loop CW: top road → right road → bottom → left → back
+        [new THREE.Vector3(rp[0],0.3,rp[0]), new THREE.Vector3(rp[COLS],0.3,rp[0]),
+         new THREE.Vector3(rp[COLS],0.3,rp[COLS]), new THREE.Vector3(rp[0],0.3,rp[COLS])],
+        // Inner downtown loop CCW
+        [new THREE.Vector3(rp[1],0.3,rp[1]), new THREE.Vector3(rp[1],0.3,rp[COLS-1]),
+         new THREE.Vector3(rp[COLS-1],0.3,rp[COLS-1]), new THREE.Vector3(rp[COLS-1],0.3,rp[1])],
+        // E-W along rp[2] (center horizontal)
+        [new THREE.Vector3(rp[0],0.3,rp[2]), new THREE.Vector3(rp[COLS],0.3,rp[2]),
+         new THREE.Vector3(rp[COLS],0.3,rp[2]+ROAD*0.4), new THREE.Vector3(rp[0],0.3,rp[2]+ROAD*0.4)],
+        // N-S along rp[2] (center vertical)
+        [new THREE.Vector3(rp[2],0.3,rp[0]), new THREE.Vector3(rp[2],0.3,rp[COLS]),
+         new THREE.Vector3(rp[2]-ROAD*0.4,0.3,rp[COLS]), new THREE.Vector3(rp[2]-ROAD*0.4,0.3,rp[0])],
+        // Mix: corner route
+        [new THREE.Vector3(rp[1],0.3,rp[0]), new THREE.Vector3(rp[1],0.3,rp[2]),
+         new THREE.Vector3(rp[3],0.3,rp[2]), new THREE.Vector3(rp[3],0.3,rp[COLS])],
+        // Residential route
+        [new THREE.Vector3(rp[0],0.3,rp[1]), new THREE.Vector3(rp[1],0.3,rp[1]),
+         new THREE.Vector3(rp[1],0.3,rp[COLS-1]), new THREE.Vector3(rp[0],0.3,rp[COLS-1])],
+      ];
+
+      const carMeshes = [
+        'models/kenney_cars/sedan.glb','models/kenney_cars/taxi.glb',
+        'models/kenney_cars/police.glb','models/kenney_cars/suv.glb',
+        'models/kenney_cars/van.glb','models/kenney_cars/sedan-sports.glb',
+        'models/kenney_cars/hatchback-sports.glb','models/kenney_cars/delivery.glb',
+        'models/kenney_cars/ambulance.glb',
+      ];
+      const carCols = [0x2244cc,0xffcc00,0x112299,0x333333,0xffffff,0xcc3322,0x226644,0x884411,0xee3311];
+
+      const trafficCars = [];
+      for (let ci = 0; ci < 18; ci++) {
+        const route = carRoutes[ci % carRoutes.length];
+        const wp0 = route[Math.floor(Math.random() * route.length)].clone();
+        // Offset within lane (not center-line exactly)
+        const laneOffset = (Math.random() - 0.5) * 4;
+
+        const carGroup = new THREE.Group();
+        carGroup.userData.waypointRoute = route;
+        carGroup.userData.waypointIdx = Math.floor(Math.random() * route.length);
+        carGroup.userData.speed = 9 + Math.random() * 10;
+        carGroup.userData.laneOffset = laneOffset;
+        carGroup.userData.isTrafficCar = true;
+
+        // Placeholder box car
+        const cc = carCols[ci % carCols.length];
+        const bm = new THREE.MeshStandardMaterial({color:cc, roughness:0.3, metalness:0.6});
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2,1.0,4), bm);
+        body.position.y=0.7; body.castShadow=true; carGroup.add(body);
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7,0.7,2.2), bm);
+        cab.position.set(0,1.45,0.2); carGroup.add(cab);
+        const wm = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
+        [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz])=>{
+          const w=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.18,10),wm);
+          w.rotation.z=Math.PI/2; w.position.set(wx,wy,wz); carGroup.add(w);
+        });
+
+        carGroup.position.copy(wp0);
+        carGroup.position.x += laneOffset;
+        scene.add(carGroup); objects.push(carGroup);
+        trafficCars.push(carGroup);
+
+        // Load real GLB async
+        const path = carMeshes[ci % carMeshes.length];
+        gltfLoader.load(path, (gltf) => {
+          const glb = gltf.scene;
+          const cb = new THREE.Box3().setFromObject(glb);
+          glb.scale.setScalar(4.5 / Math.max(cb.getSize(new THREE.Vector3()).z, 0.1));
+          const cb2 = new THREE.Box3().setFromObject(glb);
+          glb.position.y = -cb2.min.y;
+          glb.traverse(c => { if (c.isMesh) c.castShadow=true; });
+          while (carGroup.children.length) carGroup.remove(carGroup.children[0]);
+          carGroup.add(glb);
+        }, null, () => {});
+      }
+
+      // Car update function — pure waypoint following on road centerlines
+      window._cityCarUpdate = (dt) => {
+        trafficCars.forEach(car => {
+          const route = car.userData.waypointRoute;
+          const idx = car.userData.waypointIdx;
+          const target = route[idx].clone();
+          target.x += car.userData.laneOffset;
+
+          const dx = target.x - car.position.x;
+          const dz = target.z - car.position.z;
+          const dist = Math.sqrt(dx*dx + dz*dz);
+
+          if (dist < 2) {
+            car.userData.waypointIdx = (idx + 1) % route.length;
+          } else {
+            const spd = car.userData.speed * dt;
+            car.position.x += (dx/dist) * spd;
+            car.position.z += (dz/dist) * spd;
+            car.position.y = 0.3;
+            // Smooth turn
+            const ta = Math.atan2(dx, dz);
+            let diff = ta - car.rotation.y;
+            while (diff > Math.PI) diff -= Math.PI*2;
+            while (diff < -Math.PI) diff += Math.PI*2;
+            car.rotation.y += diff * Math.min(1, dt*6);
+          }
+        });
+      };
+
+      showToast('✅ 18 traffic cars on 6 road routes');
+    }, delay + 400);
+
+    // ── LIGHTING ────────────────────────────────────────
+    const sun = new THREE.DirectionalLight(0xfff5e0, 2.8);
+    sun.position.set(200, 400, 100);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(4096,4096);
+    sun.shadow.camera.left=-700; sun.shadow.camera.right=700;
+    sun.shadow.camera.top=700; sun.shadow.camera.bottom=-700;
+    sun.shadow.camera.far=2000; sun.shadow.bias=-0.0003;
+    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0xd0e8ff, 0.55));
+    renderer.shadowMap.enabled = true;
+
+    scene.fog = new THREE.FogExp2(0xc8d8f0, 0.0006);
+    renderer.setClearColor(0x87ceeb, 1);
+
+    // ── CAMERA — downtown street view ────────────────────
+    if (window._cam) { window._cam.position.set(0,14,-90); window._cam.lookAt(0,10,0); }
+    if (window._ctrl) { window._ctrl.target.set(0,10,0); window._ctrl.update(); }
+
+    showToast('🏙 City loading — buildings & cars streaming in!');
+  } catch(err) {
+    console.error('[CITY]', err);
+    showToast('❌ ' + err.message);
+  }
+}
+window.buildCityWorld = buildCityWorld;
+
+// ============================================================
+// OLD MINE CAVE INTERIOR — inside the African Slate Quarry
+// ============================================================
+function buildMineInterior() {
+  const TUNNEL_W = 10;    // tunnel width
+  const TUNNEL_H = 8;     // tunnel height
+  const TUNNEL_L = 18;    // tunnel segment length
+  const WALL_C   = 0x2a1f14; // dark cave rock
+  const FLOOR_C  = 0x1e160e;
+  const CEIL_C   = 0x221a10;
+  const SUPPORT_C= 0x3d2810; // wood support beams
+
+  const caveMat    = new THREE.MeshStandardMaterial({ color: WALL_C, roughness: 1.0 });
+  const floorMat   = new THREE.MeshStandardMaterial({ color: FLOOR_C, roughness: 1.0 });
+  const ceilMat    = new THREE.MeshStandardMaterial({ color: CEIL_C, roughness: 1.0 });
+  const supportMat = new THREE.MeshStandardMaterial({ color: SUPPORT_C, roughness: 1.0 });
+
+  // Add a dim torch-like point light inside a tunnel segment
+  function addTorchLight(x, y, z, color=0xff8833, intensity=3, dist=18) {
+    const light = new THREE.PointLight(color, intensity, dist);
+    light.position.set(x, y, z);
+    light.castShadow = false;
+    scene.add(light);
+    // Torch visual (small glowing sphere)
+    const torch = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 6, 4),
+      new THREE.MeshStandardMaterial({ color: 0xffaa22, emissive: 0xff8800, emissiveIntensity: 3 })
+    );
+    torch.position.set(x, y - 0.4, z);
+    scene.add(torch);
+  }
+
+  // Build one tunnel segment (closed box with open ends)
+  function buildTunnelSeg(cx, cy, cz, length, angle, isChamber=false) {
+    const W = isChamber ? TUNNEL_W * 2.5 : TUNNEL_W;
+    const H = isChamber ? TUNNEL_H * 1.8 : TUNNEL_H;
+    const L = isChamber ? length * 1.5 : length;
+    const group = new THREE.Group();
+
+    // Floor
+    const floorSeg = new THREE.Mesh(new THREE.BoxGeometry(W, 0.6, L), floorMat.clone());
+    floorSeg.position.y = -H/2 + 0.3;
+    group.add(floorSeg);
+
+    // Ceiling with irregular bumps
+    const ceil = new THREE.Mesh(new THREE.BoxGeometry(W, 1.5, L), ceilMat.clone());
+    ceil.position.y = H/2 - 0.5;
+    group.add(ceil);
+
+    // Left wall
+    const wallL = new THREE.Mesh(new THREE.BoxGeometry(1.2, H, L), caveMat.clone());
+    wallL.position.x = -W/2 + 0.6;
+    group.add(wallL);
+
+    // Right wall
+    const wallR = new THREE.Mesh(new THREE.BoxGeometry(1.2, H, L), caveMat.clone());
+    wallR.position.x = W/2 - 0.6;
+    group.add(wallR);
+
+    // Back wall (closed end) — only for dead ends
+    if (!isChamber) {
+      const backWall = new THREE.Mesh(new THREE.BoxGeometry(W, H, 1.0), caveMat.clone());
+      backWall.position.z = L/2 - 0.5;
+      // Don't add back wall — tunnels connect
+    }
+
+    // Wood support beams every 5 units
+    const beamCount = Math.floor(L / 5);
+    for (let b = 0; b < beamCount; b++) {
+      const bz = -L/2 + 3 + b * 5;
+      // Left post
+      const postL = new THREE.Mesh(new THREE.BoxGeometry(0.4, H - 1, 0.4), supportMat);
+      postL.position.set(-W/2 + 1.8, 0, bz);
+      group.add(postL);
+      // Right post
+      const postR = new THREE.Mesh(new THREE.BoxGeometry(0.4, H - 1, 0.4), supportMat);
+      postR.position.set(W/2 - 1.8, 0, bz);
+      group.add(postR);
+      // Top crossbeam
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(W - 2.4, 0.5, 0.4), supportMat);
+      beam.position.set(0, H/2 - 1, bz);
+      group.add(beam);
+    }
+
+    // Torch lights
+    addTorchLight(cx + Math.cos(angle + Math.PI/2) * (W/2 - 2), cy + H/2 - 1.5,
+      cz + Math.sin(angle + Math.PI/2) * (L * 0.3));
+
+    group.position.set(cx, cy, cz);
+    group.rotation.y = angle;
+    group.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    scene.add(group);
+    return group;
+  }
+
+  // ── CAVE ENTRANCE ─────────────────────────────────────────
+  // Carved into the quarry wall at the base — dark opening
+  const ENTRY_ANGLE = Math.PI * 0.7; // where on the quarry wall the entrance is
+  const WALL_BASE_R = 178; // at the base of the quarry wall
+  const entryX = Math.cos(ENTRY_ANGLE) * WALL_BASE_R;
+  const entryZ = Math.sin(ENTRY_ANGLE) * WALL_BASE_R;
+
+  // Dark archway entrance
+  const archMat = new THREE.MeshStandardMaterial({ color: 0x0d0a07, roughness: 1.0 });
+  const archGroup = new THREE.Group();
+
+  // Frame the entrance with dark rock
+  const archTop = new THREE.Mesh(new THREE.BoxGeometry(TUNNEL_W + 4, 2, 3), archMat);
+  archTop.position.y = TUNNEL_H / 2 + 1;
+  archGroup.add(archTop);
+  const archLeft = new THREE.Mesh(new THREE.BoxGeometry(2, TUNNEL_H + 2, 3), archMat);
+  archLeft.position.set(-(TUNNEL_W/2 + 1), 0, 0);
+  archGroup.add(archLeft);
+  const archRight = new THREE.Mesh(new THREE.BoxGeometry(2, TUNNEL_H + 2, 3), archMat);
+  archRight.position.set(TUNNEL_W/2 + 1, 0, 0);
+  archGroup.add(archRight);
+
+  // Darkness fill (so the opening looks deep/dark)
+  const darkFill = new THREE.Mesh(
+    new THREE.BoxGeometry(TUNNEL_W, TUNNEL_H, 1),
+    new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1.0 })
+  );
+  darkFill.position.z = 1.5;
+  archGroup.add(darkFill);
+
+  archGroup.position.set(entryX, TUNNEL_H / 2, entryZ);
+  archGroup.rotation.y = ENTRY_ANGLE + Math.PI;
+  scene.add(archGroup);
+
+  // Sign above entrance
+  const signMat = new THREE.MeshStandardMaterial({ color: 0x5a3a18, roughness: 1.0 });
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(8, 1.5, 0.3), signMat);
+  sign.position.set(entryX, TUNNEL_H + 3, entryZ);
+  sign.rotation.y = ENTRY_ANGLE + Math.PI;
+  scene.add(sign);
+
+  // ── TUNNEL NETWORK ────────────────────────────────────────
+  // Main corridor going inward (toward quarry center, underground)
+  const tunnelDir = ENTRY_ANGLE + Math.PI; // inward direction
+  const UNDERGROUND_Y = -TUNNEL_H / 2; // flush with ground
+
+  // Main shaft goes straight in
+  for (let i = 0; i < 5; i++) {
+    buildTunnelSeg(
+      entryX + Math.cos(tunnelDir) * (TUNNEL_L * i + TUNNEL_L/2),
+      UNDERGROUND_Y,
+      entryZ + Math.sin(tunnelDir) * (TUNNEL_L * i + TUNNEL_L/2),
+      TUNNEL_L, tunnelDir
+    );
+  }
+
+  // Chamber 1 — main cavern after 5 segments
+  const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
+  const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
+  buildTunnelSeg(chamber1X, UNDERGROUND_Y - 2, chamber1Z, TUNNEL_L * 2, tunnelDir, true);
+
+  // Left branch from chamber
+  const leftAngle = tunnelDir - Math.PI / 2.5;
+  for (let i = 0; i < 3; i++) {
+    buildTunnelSeg(
+      chamber1X + Math.cos(leftAngle) * (TUNNEL_L * i + TUNNEL_L/2),
+      UNDERGROUND_Y - 2,
+      chamber1Z + Math.sin(leftAngle) * (TUNNEL_L * i + TUNNEL_L/2),
+      TUNNEL_L, leftAngle
+    );
+  }
+
+  // Right branch from chamber
+  const rightAngle = tunnelDir + Math.PI / 2.5;
+  for (let i = 0; i < 4; i++) {
+    buildTunnelSeg(
+      chamber1X + Math.cos(rightAngle) * (TUNNEL_L * i + TUNNEL_L/2),
+      UNDERGROUND_Y - 2,
+      chamber1Z + Math.sin(rightAngle) * (TUNNEL_L * i + TUNNEL_L/2),
+      TUNNEL_L, rightAngle
+    );
+  }
+
+  // Deep shaft — goes further down into the earth
+  const deepAngle = tunnelDir - Math.PI / 8;
+  for (let i = 0; i < 3; i++) {
+    buildTunnelSeg(
+      chamber1X + Math.cos(deepAngle) * (TUNNEL_L * (i + 2)),
+      UNDERGROUND_Y - 2 - i * 3,
+      chamber1Z + Math.sin(deepAngle) * (TUNNEL_L * (i + 2)),
+      TUNNEL_L, deepAngle
+    );
+  }
+
+  // Chamber 2 — deeper, bigger
+  const chamber2X = chamber1X + Math.cos(deepAngle) * (TUNNEL_L * 5.5);
+  const chamber2Z = chamber1Z + Math.sin(deepAngle) * (TUNNEL_L * 5.5);
+  buildTunnelSeg(chamber2X, UNDERGROUND_Y - 8, chamber2Z, TUNNEL_L * 2.5, deepAngle, true);
+
+  // Ambient light for the cave (dim, cool)
+  const caveAmb = new THREE.AmbientLight(0x221a0a, 0.15);
+  scene.add(caveAmb);
+
+  console.log('[MINE] Cave interior built — entry at:', entryX.toFixed(0), entryZ.toFixed(0));
+  return { entryX, entryZ, entryAngle: ENTRY_ANGLE };
+}
+
+// Place Old Mine assets inside the cave tunnels
+function populateMineAssets(caveInfo, aliases) {
+  const { entryX, entryZ, entryAngle } = caveInfo;
+  const tunnelDir = entryAngle + Math.PI;
+  const UNDERGROUND_Y = -4;
+  const TUNNEL_L = 18;
+
+  const mineItems = Object.entries(aliases)
+    .filter(([k]) => k.startsWith('old_mine_') && /\d$/.test(k))
+    .sort(([a],[b]) => a.localeCompare(b));
+
+  mineItems.forEach(([alias, relPath], i) => {
+    const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+    // Spread along the main corridor and branches
+    const seg = Math.floor(i / 3);
+    const side = (i % 3) - 1; // -1, 0, 1
+    const branchChoice = i % 5;
+    let bx, by, bz;
+    if (branchChoice < 2) {
+      // Main corridor
+      bx = entryX + Math.cos(tunnelDir) * (TUNNEL_L * (seg % 5) + 4);
+      bz = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * (seg % 5) + 4);
+      bx += Math.cos(tunnelDir + Math.PI/2) * side * 3;
+      bz += Math.sin(tunnelDir + Math.PI/2) * side * 3;
+      by = UNDERGROUND_Y;
+    } else if (branchChoice < 4) {
+      // Left branch
+      const la = tunnelDir - Math.PI / 2.5;
+      const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
+      const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
+      bx = chamber1X + Math.cos(la) * (TUNNEL_L * (seg % 3) + 4);
+      bz = chamber1Z + Math.sin(la) * (TUNNEL_L * (seg % 3) + 4);
+      bx += Math.cos(la + Math.PI/2) * side * 3;
+      bz += Math.sin(la + Math.PI/2) * side * 3;
+      by = UNDERGROUND_Y - 2;
+    } else {
+      // Right branch
+      const ra = tunnelDir + Math.PI / 2.5;
+      const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
+      const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
+      bx = chamber1X + Math.cos(ra) * (TUNNEL_L * (seg % 4) + 4);
+      bz = chamber1Z + Math.sin(ra) * (TUNNEL_L * (seg % 4) + 4);
+      bx += Math.cos(ra + Math.PI/2) * side * 2.5;
+      bz += Math.sin(ra + Math.PI/2) * side * 2.5;
+      by = UNDERGROUND_Y - 2;
+    }
+
+    setTimeout(() => {
+      gltfLoader.load(fullPath, (gltf) => {
+        const model = gltf.scene;
+        model.traverse(c => {
+          if (c.isMesh) {
+            c.castShadow = true;
+            c.receiveShadow = true;
+            // Darken materials slightly for underground feel
+            if (c.material) {
+              const mats = Array.isArray(c.material) ? c.material : [c.material];
+              mats.forEach(m => { if (m.color) m.color.multiplyScalar(0.65); });
+            }
+          }
+        });
+
+        // Scale mine assets to fit in tunnels — medium size
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 0.01);
+        const s = (1.5 + Math.random() * 2.0) / maxDim;
+        model.scale.setScalar(s);
+
+        const finalBox = new THREE.Box3().setFromObject(model);
+        model.position.set(bx, by - finalBox.min.y * model.scale.x, bz);
+        model.rotation.y = Math.random() * Math.PI * 2;
+        model.userData.isPlaced = true;
+        model.userData.isMineAsset = true;
+        scene.add(model);
+        objects.push(model);
+      }, null, () => {});
+    }, i * 150 + 2000); // stagger after quarry rocks load
+  });
+}
+
+
+// ============================================================
+// ASSET DECOMPOSITION — extract individual pieces from group GLBs
+// ============================================================
+const _groupedAssets = {
+  'street_props': {
+    path: 'models/fab/street_props_streeprops.glb',
+    pieces: ['Ad poster','Pole','Power box','Public phone box','Bus stop',
+      'street light','Street light','Pole metal','Bike parking','Cone',
+      'Water Cannister','Construction asset','Road sign','fence',
+      'Road bumper','power pole','cement block','bike1','bike2',
+      'air conditioner','box1','box2','Curb','parking place','parking spots',
+      'bench','vending machine','Trash bin','Trash bin cover','Cannister',
+      'Stop sign','barbwire fence','Road stopper','Road Bunner',
+      'traffic light','Construction Cone','Fire hydrant','newspaper stand',
+      'Road block','trailer','Wooden pallet','Recycling bin']
+  }
+};
+
+// Cache loaded group GLB scenes
+const _groupCache = {};
+
+function loadGroupedAsset(groupName, pieceName, x, z, onDone) {
+  const group = _groupedAssets[groupName];
+  if (!group) { console.warn('Unknown group:', groupName); return; }
+
+  const place = (cachedScene) => {
+    // Find the named node
+    let target = null;
+    cachedScene.traverse(o => { 
+      if (o.name && o.name.toLowerCase() === pieceName.toLowerCase()) target = o; 
+    });
+    if (!target) {
+      // Fuzzy match
+      cachedScene.traverse(o => {
+        if (o.name && o.name.toLowerCase().includes(pieceName.toLowerCase().split(' ')[0])) {
+          if (!target) target = o;
+        }
+      });
+    }
+    if (!target) { showToast('⚠ Piece not found: ' + pieceName); return; }
+
+    const piece = target.clone(true);
+    piece.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    
+    // Center + place
+    const box = new THREE.Box3().setFromObject(piece);
+    const center = box.getCenter(new THREE.Vector3());
+    piece.position.set(x - center.x, -box.min.y, z - center.z);
+    piece.userData.isPlaced = true;
+    piece.userData.pieceOf = groupName;
+    piece.userData.pieceName = pieceName;
+    piece.name = pieceName;
+    scene.add(piece);
+    objects.push(piece);
+    showToast('✅ Placed: ' + pieceName);
+    if (onDone) onDone(piece);
+  };
+
+  if (_groupCache[groupName]) {
+    place(_groupCache[groupName]);
+    return;
+  }
+
+  // Load the group GLB once, cache it
+  showToast('Loading ' + groupName + '...');
+  gltfLoader.load(group.path, (gltf) => {
+    _groupCache[groupName] = gltf.scene;
+    place(gltf.scene);
+  }, null, (e) => showToast('❌ Failed to load ' + groupName));
+}
+
+window.loadGroupedAsset = loadGroupedAsset;
+window._groupedAssets = _groupedAssets;
+
+// List all pieces of a group asset
+function listGroupPieces(groupName) {
+  const group = _groupedAssets[groupName];
+  if (!group) return [];
+  return group.pieces;
+}
+window.listGroupPieces = listGroupPieces;
+
+
+// Build a ground-level showcase of all assets from a named pack
+async function buildPackShowcase(packPrefix, packName, count) {
+  try {
+    const aliases = window._fabAliases || {};
+    const waitForAliases = (cb) => {
+      if (window._fabAliases && Object.keys(window._fabAliases).length > 50) { cb(window._fabAliases); return; }
+      setTimeout(() => waitForAliases(cb), 200);
+    };
+    waitForAliases(async (aliases) => {
+      showToast(`📦 Loading ${packName}...`);
+      // Gather all aliases for this pack
+      const items = Object.entries(aliases)
+        .filter(([k]) => k.startsWith(packPrefix + '_') && /\d/.test(k))
+        .sort(([a],[b]) => a.localeCompare(b));
+
+      const COLS = 8;
+      const SPACING = 8;
+      const startX = -(Math.min(items.length, COLS) * SPACING) / 2;
+
+      items.forEach(([alias, relPath], i) => {
+        const col = i % COLS;
+        const row = Math.floor(i / COLS);
+        const x = startX + col * SPACING;
+        const z = row * SPACING;
+        const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+        const label = alias;
+        loadGLBModel(label, label, x, z, null, fullPath);
+      });
+      showToast(`✅ ${packName}: ${items.length} assets placed in a grid`);
+    });
+  } catch(e) {
+    showToast('❌ ' + e.message);
+  }
+}
+window.buildPackShowcase = buildPackShowcase;
+
+async function buildForestLakeWorld() {
+  const _log = (m) => { console.log('[FOREST]', m); try { showToast(m); } catch(e) {} };
+  try {
+    _log('🌲 Building world...');
+
+    // Clear scene
+    const toRemove = [];
+    scene.children.forEach(o => {
+      if ((o.type === 'Mesh' || o.type === 'Group' || o.isInstancedMesh) && !o.isLight) toRemove.push(o);
+    });
+    toRemove.forEach(o => scene.remove(o));
+    objects.length = 0;
+    if (window.npcController) window.npcController.npcs.length = 0;
+    window._lakeAnimators = [];
+
+    // Ground
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 0.95 });
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(500, 64), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    ground.userData.isGround = true;
+    scene.add(ground);
+
+    // Ground patches
+    const patchColors = [0x2d6618, 0x4a8c28, 0x3a7d2c, 0x5a9e38, 0x285520];
+    for (let i = 0; i < 80; i++) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 460;
+      const p = new THREE.Mesh(new THREE.CircleGeometry(3 + Math.random() * 12, 7),
+        new THREE.MeshStandardMaterial({ color: patchColors[i % patchColors.length] }));
+      p.rotation.x = -Math.PI / 2;
+      p.position.set(Math.cos(a)*r, 0.01, Math.sin(a)*r);
+      scene.add(p);
+    }
+
+    // BIG LAKE — r=90 for boats + swimming
+    const lakeR = 90;
+    const lake = buildGerstnerLake(lakeR, 'calm');
+    scene.add(lake);
+
+    // Sandy shore
+    const shore = new THREE.Mesh(
+      new THREE.RingGeometry(lakeR, lakeR + 7, 80),
+      new THREE.MeshStandardMaterial({ color: 0xd4b483, roughness: 0.95 })
+    );
+    shore.rotation.x = -Math.PI / 2;
+    shore.position.y = 0.02;
+    scene.add(shore);
+    _log('  ✅ Gerstner lake placed (r=90)');
+
+    // Shoreline rocks
+    for (let i = 0; i < 50; i++) {
+      const a = (i/50)*Math.PI*2 + Math.random()*0.4;
+      const r = lakeR + 1 + Math.random() * 5;
+      const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(0.4 + Math.random()*1.2, 0),
+        new THREE.MeshStandardMaterial({ color: [0x8a7a6a,0x9a8a7a,0x6a6058,0xb0a090][i%4], roughness: 0.95, flatShading: true })
+      );
+      rock.position.set(Math.cos(a)*r, 0.15, Math.sin(a)*r);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true;
+      scene.add(rock);
+    }
+
+    // ============================================
+    // FAB ASSET SHOWCASE — ring around the lake
+    // ============================================
+    _log('  📦 Placing Fab assets...');
+    const FAB_SHOWCASE = [
+      // === RING 1 (r=110): Junkyard Fab pack ===
+      { alias: 'junkyard_1',  ring: 1, angle: 0 },
+      { alias: 'junkyard_2',  ring: 1, angle: 0.63 },
+      { alias: 'junkyard_3',  ring: 1, angle: 1.26 },
+      { alias: 'junkyard_4',  ring: 1, angle: 1.88 },
+      { alias: 'junkyard_5',  ring: 1, angle: 2.51 },
+      { alias: 'junkyard_6',  ring: 1, angle: 3.14 },
+      { alias: 'junkyard_7',  ring: 1, angle: 3.77 },
+      { alias: 'junkyard_8',  ring: 1, angle: 4.40 },
+      { alias: 'junkyard_9',  ring: 1, angle: 5.03 },
+      { alias: 'junkyard_10', ring: 1, angle: 5.65 },
+      // === RING 2 (r=145): Saloon Fab pack ===
+      { alias: 'saloon_1',  ring: 2, angle: 0 },
+      { alias: 'saloon_2',  ring: 2, angle: 0.7 },
+      { alias: 'saloon_3',  ring: 2, angle: 1.4 },
+      { alias: 'saloon_4',  ring: 2, angle: 2.1 },
+      { alias: 'saloon_5',  ring: 2, angle: 2.8 },
+      { alias: 'saloon_6',  ring: 2, angle: 3.5 },
+      { alias: 'saloon_7',  ring: 2, angle: 4.2 },
+      { alias: 'saloon_8',  ring: 2, angle: 4.9 },
+      { alias: 'saloon_9',  ring: 2, angle: 5.6 },
+      // === RING 3 (r=185): Street Fab props ===
+      { alias: 'street_props',         ring: 3, angle: 0.2 },
+      { alias: 'fire_hydrant',          ring: 3, angle: 0.9 },
+      { alias: 'bench',                 ring: 3, angle: 1.6 },
+      { alias: 'forklift',              ring: 3, angle: 2.3 },
+      { alias: 'mailbox',               ring: 3, angle: 3.0 },
+      { alias: 'wooden_door',           ring: 3, angle: 3.7 },
+      { alias: 'trash_can',             ring: 3, angle: 4.4 },
+      { alias: 'graffiti_wall_1k',      ring: 3, angle: 5.1 },
+      { alias: 'electrical_substation', ring: 3, angle: 5.8 },
+      { alias: 'trash_dumpster',        ring: 3, angle: 1.3 },
+      { alias: 'female_civilian',       ring: 3, angle: 2.0 },
+      { alias: 'manhole_cover',         ring: 3, angle: 2.7 },
+      // === RING 4 (r=230): Kenney Cars ===
+      { alias: 'kenney_cars/sedan',       ring: 4, angle: 0 },
+      { alias: 'kenney_cars/taxi',        ring: 4, angle: 0.52 },
+      { alias: 'kenney_cars/police',      ring: 4, angle: 1.05 },
+      { alias: 'kenney_cars/ambulance',   ring: 4, angle: 1.57 },
+      { alias: 'kenney_cars/firetruck',   ring: 4, angle: 2.09 },
+      { alias: 'kenney_cars/van',         ring: 4, angle: 2.62 },
+      { alias: 'kenney_cars/truck',       ring: 4, angle: 3.14 },
+      { alias: 'kenney_cars/race',        ring: 4, angle: 3.67 },
+      { alias: 'kenney_cars/suv',         ring: 4, angle: 4.19 },
+      { alias: 'kenney_cars/garbage-truck', ring: 4, angle: 4.71 },
+      { alias: 'kenney_cars/hatchback-sports', ring: 4, angle: 5.24 },
+      { alias: 'kenney_cars/delivery',    ring: 4, angle: 5.76 },
+      // === RING 5 (r=280): Kenney City buildings ===
+      { alias: 'kenney_city/building-a',  ring: 5, angle: 0 },
+      { alias: 'kenney_city/building-b',  ring: 5, angle: 0.63 },
+      { alias: 'kenney_city/building-c',  ring: 5, angle: 1.26 },
+      { alias: 'kenney_city/building-d',  ring: 5, angle: 1.88 },
+      { alias: 'kenney_city/building-e',  ring: 5, angle: 2.51 },
+      { alias: 'kenney_city/building-f',  ring: 5, angle: 3.14 },
+      { alias: 'kenney_city/road-straight', ring: 5, angle: 3.77 },
+      { alias: 'kenney_city/road-corner',   ring: 5, angle: 4.40 },
+      // === RING 6 (r=340): Kenney Fantasy ===
+      { alias: 'kenney_fantasy/banner-green',   ring: 6, angle: 0 },
+      { alias: 'kenney_fantasy/tower-round-top', ring: 6, angle: 0.78 },
+      { alias: 'kenney_fantasy/wall-corner',     ring: 6, angle: 1.57 },
+      { alias: 'kenney_fantasy/gate-open',       ring: 6, angle: 2.36 },
+      { alias: 'kenney_fantasy/tree-fantasy',    ring: 6, angle: 3.14 },
+      { alias: 'kenney_fantasy/chest-closed',    ring: 6, angle: 3.93 },
+      { alias: 'kenney_fantasy/well',            ring: 6, angle: 4.71 },
+      { alias: 'kenney_fantasy/catapult',        ring: 6, angle: 5.50 },
+      // === RING 7 (r=400): Kenney Pirate + Graveyard + Medieval ===
+      { alias: 'kenney_pirate/boat-row-large',   ring: 7, angle: 0 },
+      { alias: 'kenney_pirate/barrel',           ring: 7, angle: 0.63 },
+      { alias: 'kenney_pirate/cannon',           ring: 7, angle: 1.26 },
+      { alias: 'kenney_medieval/barrels',        ring: 7, angle: 1.88 },
+      { alias: 'kenney_medieval/fence-round',    ring: 7, angle: 2.51 },
+      { alias: 'kenney_graveyard/altar-stone',   ring: 7, angle: 3.14 },
+      { alias: 'kenney_graveyard/bench-damaged', ring: 7, angle: 3.77 },
+      { alias: 'kenney_weapons/blaster-a',       ring: 7, angle: 4.40 },
+      { alias: 'kenney_dungeon/barrel',          ring: 7, angle: 5.03 },
+      { alias: 'kenney_props/ball-blue',         ring: 7, angle: 5.65 },
+    ];
+
+    const ringRadii = [lakeR + 20, lakeR + 55, lakeR + 95, lakeR + 140, lakeR + 190, lakeR + 250, lakeR + 310];
+    // Wait for fab aliases to be available (they load async on startup)
+    const waitForAliases = (cb, retries = 20) => {
+      if (window._fabAliases && Object.keys(window._fabAliases).length > 0) { cb(window._fabAliases); return; }
+      if (retries <= 0) { console.warn('[FOREST] fab aliases never loaded'); cb({}); return; }
+      setTimeout(() => waitForAliases(cb, retries - 1), 150);
+    };
+
+    waitForAliases((aliases) => {
+      FAB_SHOWCASE.forEach(item => {
+        // Resolve path: check fab aliases, then GLB_MODELS map, then try direct
+        let fullPath = null;
+        const rawAlias = aliases[item.alias];
+        if (rawAlias) {
+          // Fab alias like 'fab/fire_hydrant.glb' → 'models/fab/fire_hydrant.glb'
+          fullPath = rawAlias.startsWith('http') || rawAlias.startsWith('models/') 
+            ? rawAlias : 'models/' + rawAlias;
+        } else {
+          // GLB_MODELS entries are keys like 'kenney_cars/sedan' → 'models/kenney_cars/sedan.glb'
+          const glbKey = GLB_MODELS[item.alias];
+          if (glbKey) {
+            const cleanKey = glbKey.endsWith('.glb') ? glbKey.slice(0,-4) : glbKey;
+            fullPath = 'models/' + cleanKey + '.glb';
+          } else {
+            // Direct path: 'kenney_cars/sedan' → 'models/kenney_cars/sedan.glb'
+            fullPath = 'models/' + item.alias + '.glb';
+          }
+        }
+        const r = ringRadii[item.ring - 1] || ringRadii[0];
+        const x = Math.cos(item.angle) * r;
+        const z = Math.sin(item.angle) * r;
+        const label = item.alias.split('/').pop();
+        loadGLBModel(label, label, x, z, null, fullPath);
+      });
+      _log('  ✅ Fab assets placed (' + Object.keys(aliases).length + ' aliases loaded)');
+    });
+    _log('  ✅ Fab assets placed');
+
+    // Forest — pushed out to ring lakeR+100+ so it frames the showcase area
+    const TYPES = ['pine','pine','pine','oak','oak','birch'];
+    let planted = 0;
+
+    for (let i = 0; i < 300; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = lakeR + 110 + Math.random() * 200;
+      const x = Math.cos(a)*r, z = Math.sin(a)*r;
+      const h = 8 + Math.random() * 12;
+      const t = TYPES[Math.floor(Math.random()*TYPES.length)];
+      const tree = t==='pine' ? createPineTree({x,z,height:h}) : t==='oak' ? createOakTree({x,z,height:h}) : createBirchTree({x,z,height:h});
+      tree.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      scene.add(tree);
+      planted++;
+    }
+
+    // Bushes between showcase rings
+    for (let i = 0; i < 80; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = lakeR + 12 + Math.random() * 95;
+      const x = Math.cos(a)*r + (Math.random()-0.5)*8;
+      const z = Math.sin(a)*r + (Math.random()-0.5)*8;
+      if (Math.sqrt(x*x+z*z) < lakeR+8) continue;
+      scene.add(createBush({ x, z, scale: 0.4 + Math.random() * 1.0 }));
+    }
+    _log('  ✅ ' + planted + ' trees + bushes placed');
+
+    // Instanced grass
+    const grassMesh = buildGrassField({ count: 40000, radius: 460, excludeRadius: lakeR + 8 });
+    scene.add(grassMesh);
+    _log('  ✅ Grass placed');
+
+    // Atmosphere
+    scene.fog = new THREE.FogExp2(0x99c8aa, 0.004);
+    renderer.setClearColor(0x85b8e0, 1);
+
+    // Lighting
+    const sun = scene.children.find(o => o.isDirectionalLight);
+    if (sun) {
+      sun.color.setHex(0xfff0c0); sun.intensity = 2.2;
+      sun.position.set(100, 160, 80);
+      sun.castShadow = true;
+      if (sun.shadow) {
+        sun.shadow.mapSize.width = 2048; sun.shadow.mapSize.height = 2048;
+        sun.shadow.camera.left = -300; sun.shadow.camera.right = 300;
+        sun.shadow.camera.top = 300; sun.shadow.camera.bottom = -300;
+        sun.shadow.camera.far = 800; sun.shadow.bias = -0.0003;
+      }
+    }
+    let amb = scene.children.find(o => o.isAmbientLight);
+    if (!amb) { amb = new THREE.AmbientLight(0xc8dcc8, 0.5); scene.add(amb); }
+    else { amb.color.setHex(0xc8dcc8); amb.intensity = 0.5; }
+    renderer.shadowMap.enabled = true;
+
+    // Camera — wide view of the lake
+    window._cam.position.set(0, 180, 280);
+    window._cam.lookAt(0, 0, 0);
+    if (window._ctrl) { window._ctrl.target.set(0, 0, 0); window._ctrl.update(); }
+
+    _log('🌲 World ready! Fab assets loading around the lake...');
+
+  } catch(err) {
+    console.error('[FOREST ERROR]', err.stack || err);
+    try { showToast('❌ ' + err.message); } catch(e) {}
+  }
+}
+window.buildForestLakeWorld = buildForestLakeWorld;
