@@ -10158,9 +10158,9 @@ const WATER_PRESETS = {
     foamIntensity: 0.25, specularPower: 120.0, fresnelPower: 3.5
   },
   calm: {
-    color: new THREE.Color(0x29b6d4), deepColor: new THREE.Color(0x0077a0),
-    opacity: 0.80, waveA: [1.0, 0.2, 0.015, 18.0], waveB: [0.2, 1.0, 0.01, 14.0], waveC: [0.5, 0.5, 0.006, 22.0],
-    foamIntensity: 0.04, specularPower: 120.0, fresnelPower: 3.5
+    color: new THREE.Color(0x4dd8f0), deepColor: new THREE.Color(0x29a8cc),
+    opacity: 0.78, waveA: [1.0, 0.2, 0.012, 20.0], waveB: [0.2, 1.0, 0.008, 15.0], waveC: [0.5, 0.5, 0.004, 25.0],
+    foamIntensity: 0.03, specularPower: 140.0, fresnelPower: 2.8
   }
 };
 
@@ -10298,10 +10298,10 @@ function createGerstnerWaterMaterial(preset) {
         // Blend between water body and sky reflection via fresnel
         vec3 finalColor = mix(waterBody, skyReflection, fresnel * 0.35) + specular;
         
-        // Slight blue tint at distance
+        // Slight blue tint at distance (very subtle - don't darken the water)
         float dist = length(cameraPos - vWorldPos);
-        float fogFactor = 1.0 - exp(-dist * 0.003);
-        finalColor = mix(finalColor, vec3(0.15, 0.35, 0.6), fogFactor * 0.25);
+        float fogFactor = 1.0 - exp(-dist * 0.001);
+        finalColor = mix(finalColor, vec3(0.35, 0.60, 0.85), fogFactor * 0.08);
         
         gl_FragColor = vec4(finalColor, opacity + foam * 0.2);
       }
@@ -24595,7 +24595,7 @@ async function buildForestLakeWorld() {
     // ============================================
     _log('  📦 Placing Fab assets...');
     const FAB_SHOWCASE = [
-      // Junkyard props — inner ring tight around lake
+      // === RING 1 (r=110): Junkyard Fab pack ===
       { alias: 'junkyard_1',  ring: 1, angle: 0 },
       { alias: 'junkyard_2',  ring: 1, angle: 0.63 },
       { alias: 'junkyard_3',  ring: 1, angle: 1.26 },
@@ -24606,7 +24606,7 @@ async function buildForestLakeWorld() {
       { alias: 'junkyard_8',  ring: 1, angle: 4.40 },
       { alias: 'junkyard_9',  ring: 1, angle: 5.03 },
       { alias: 'junkyard_10', ring: 1, angle: 5.65 },
-      // Saloon buildings — mid ring
+      // === RING 2 (r=145): Saloon Fab pack ===
       { alias: 'saloon_1',  ring: 2, angle: 0 },
       { alias: 'saloon_2',  ring: 2, angle: 0.7 },
       { alias: 'saloon_3',  ring: 2, angle: 1.4 },
@@ -24616,31 +24616,98 @@ async function buildForestLakeWorld() {
       { alias: 'saloon_7',  ring: 2, angle: 4.2 },
       { alias: 'saloon_8',  ring: 2, angle: 4.9 },
       { alias: 'saloon_9',  ring: 2, angle: 5.6 },
-      // Street props — outer ring
-      { alias: 'street_props',       ring: 3, angle: 0.2 },
-      { alias: 'fire_hydrant',        ring: 3, angle: 0.9 },
-      { alias: 'bench',               ring: 3, angle: 1.6 },
-      { alias: 'forklift',            ring: 3, angle: 2.3 },
-      { alias: 'mailbox',             ring: 3, angle: 3.0 },
-      { alias: 'wooden_door',         ring: 3, angle: 3.7 },
-      { alias: 'trash_can',           ring: 3, angle: 4.4 },
-      { alias: 'graffiti_wall_1k',    ring: 3, angle: 5.1 },
+      // === RING 3 (r=185): Street Fab props ===
+      { alias: 'street_props',         ring: 3, angle: 0.2 },
+      { alias: 'fire_hydrant',          ring: 3, angle: 0.9 },
+      { alias: 'bench',                 ring: 3, angle: 1.6 },
+      { alias: 'forklift',              ring: 3, angle: 2.3 },
+      { alias: 'mailbox',               ring: 3, angle: 3.0 },
+      { alias: 'wooden_door',           ring: 3, angle: 3.7 },
+      { alias: 'trash_can',             ring: 3, angle: 4.4 },
+      { alias: 'graffiti_wall_1k',      ring: 3, angle: 5.1 },
       { alias: 'electrical_substation', ring: 3, angle: 5.8 },
-      { alias: 'trash_dumpster',      ring: 3, angle: 0.6 },
-      { alias: 'female_civilian',     ring: 3, angle: 1.3 },
-      { alias: 'manhole_cover',       ring: 3, angle: 2.0 },
+      { alias: 'trash_dumpster',        ring: 3, angle: 1.3 },
+      { alias: 'female_civilian',       ring: 3, angle: 2.0 },
+      { alias: 'manhole_cover',         ring: 3, angle: 2.7 },
+      // === RING 4 (r=230): Kenney Cars ===
+      { alias: 'kenney_cars/sedan',       ring: 4, angle: 0 },
+      { alias: 'kenney_cars/taxi',        ring: 4, angle: 0.52 },
+      { alias: 'kenney_cars/police',      ring: 4, angle: 1.05 },
+      { alias: 'kenney_cars/ambulance',   ring: 4, angle: 1.57 },
+      { alias: 'kenney_cars/firetruck',   ring: 4, angle: 2.09 },
+      { alias: 'kenney_cars/van',         ring: 4, angle: 2.62 },
+      { alias: 'kenney_cars/truck',       ring: 4, angle: 3.14 },
+      { alias: 'kenney_cars/race',        ring: 4, angle: 3.67 },
+      { alias: 'kenney_cars/suv',         ring: 4, angle: 4.19 },
+      { alias: 'kenney_cars/garbage-truck', ring: 4, angle: 4.71 },
+      { alias: 'kenney_cars/hatchback-sports', ring: 4, angle: 5.24 },
+      { alias: 'kenney_cars/delivery',    ring: 4, angle: 5.76 },
+      // === RING 5 (r=280): Kenney City buildings ===
+      { alias: 'kenney_city/building-a',  ring: 5, angle: 0 },
+      { alias: 'kenney_city/building-b',  ring: 5, angle: 0.63 },
+      { alias: 'kenney_city/building-c',  ring: 5, angle: 1.26 },
+      { alias: 'kenney_city/building-d',  ring: 5, angle: 1.88 },
+      { alias: 'kenney_city/building-e',  ring: 5, angle: 2.51 },
+      { alias: 'kenney_city/building-f',  ring: 5, angle: 3.14 },
+      { alias: 'kenney_city/road-straight', ring: 5, angle: 3.77 },
+      { alias: 'kenney_city/road-corner',   ring: 5, angle: 4.40 },
+      // === RING 6 (r=340): Kenney Fantasy ===
+      { alias: 'kenney_fantasy/banner-green',   ring: 6, angle: 0 },
+      { alias: 'kenney_fantasy/tower-round-top', ring: 6, angle: 0.78 },
+      { alias: 'kenney_fantasy/wall-corner',     ring: 6, angle: 1.57 },
+      { alias: 'kenney_fantasy/gate-open',       ring: 6, angle: 2.36 },
+      { alias: 'kenney_fantasy/tree-fantasy',    ring: 6, angle: 3.14 },
+      { alias: 'kenney_fantasy/chest-closed',    ring: 6, angle: 3.93 },
+      { alias: 'kenney_fantasy/well',            ring: 6, angle: 4.71 },
+      { alias: 'kenney_fantasy/catapult',        ring: 6, angle: 5.50 },
+      // === RING 7 (r=400): Kenney Pirate + Graveyard + Medieval ===
+      { alias: 'kenney_pirate/boat-row-large',   ring: 7, angle: 0 },
+      { alias: 'kenney_pirate/barrel',           ring: 7, angle: 0.63 },
+      { alias: 'kenney_pirate/cannon',           ring: 7, angle: 1.26 },
+      { alias: 'kenney_medieval/barrels',        ring: 7, angle: 1.88 },
+      { alias: 'kenney_medieval/fence-round',    ring: 7, angle: 2.51 },
+      { alias: 'kenney_graveyard/altar-stone',   ring: 7, angle: 3.14 },
+      { alias: 'kenney_graveyard/bench-damaged', ring: 7, angle: 3.77 },
+      { alias: 'kenney_weapons/blaster-a',       ring: 7, angle: 4.40 },
+      { alias: 'kenney_dungeon/barrel',          ring: 7, angle: 5.03 },
+      { alias: 'kenney_props/ball-blue',         ring: 7, angle: 5.65 },
     ];
 
-    const ringRadii = [lakeR + 20, lakeR + 55, lakeR + 85];
-    const aliases = window._fabAliases || {};
+    const ringRadii = [lakeR + 20, lakeR + 55, lakeR + 95, lakeR + 140, lakeR + 190, lakeR + 250, lakeR + 310];
+    // Wait for fab aliases to be available (they load async on startup)
+    const waitForAliases = (cb, retries = 20) => {
+      if (window._fabAliases && Object.keys(window._fabAliases).length > 0) { cb(window._fabAliases); return; }
+      if (retries <= 0) { console.warn('[FOREST] fab aliases never loaded'); cb({}); return; }
+      setTimeout(() => waitForAliases(cb, retries - 1), 150);
+    };
 
-    FAB_SHOWCASE.forEach(item => {
-      const modelPath = aliases[item.alias];
-      if (!modelPath) return;
-      const r = ringRadii[item.ring - 1] || ringRadii[0];
-      const x = Math.cos(item.angle) * r;
-      const z = Math.sin(item.angle) * r;
-      loadGLBModel(item.alias, modelPath, x, z, null, modelPath);
+    waitForAliases((aliases) => {
+      FAB_SHOWCASE.forEach(item => {
+        // Resolve path: check fab aliases, then GLB_MODELS map, then try direct
+        let fullPath = null;
+        const rawAlias = aliases[item.alias];
+        if (rawAlias) {
+          // Fab alias like 'fab/fire_hydrant.glb' → 'models/fab/fire_hydrant.glb'
+          fullPath = rawAlias.startsWith('http') || rawAlias.startsWith('models/') 
+            ? rawAlias : 'models/' + rawAlias;
+        } else {
+          // GLB_MODELS entries are keys like 'kenney_cars/sedan' → 'models/kenney_cars/sedan.glb'
+          const glbKey = GLB_MODELS[item.alias];
+          if (glbKey) {
+            const cleanKey = glbKey.endsWith('.glb') ? glbKey.slice(0,-4) : glbKey;
+            fullPath = 'models/' + cleanKey + '.glb';
+          } else {
+            // Direct path: 'kenney_cars/sedan' → 'models/kenney_cars/sedan.glb'
+            fullPath = 'models/' + item.alias + '.glb';
+          }
+        }
+        const r = ringRadii[item.ring - 1] || ringRadii[0];
+        const x = Math.cos(item.angle) * r;
+        const z = Math.sin(item.angle) * r;
+        const label = item.alias.split('/').pop();
+        loadGLBModel(label, label, x, z, null, fullPath);
+      });
+      _log('  ✅ Fab assets placed (' + Object.keys(aliases).length + ' aliases loaded)');
     });
     _log('  ✅ Fab assets placed');
 
