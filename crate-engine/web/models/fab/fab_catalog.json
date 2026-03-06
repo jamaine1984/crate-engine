@@ -1,0 +1,353 @@
+[
+  {
+    "name": "fire_hydrant",
+    "file": "fab/fire_hydrant.glb",
+    "size": 128940,
+    "tags": [
+      "fab",
+      "prop"
+    ]
+  },
+  {
+    "name": "female_civilian",
+    "file": "fab/female_civilian.glb",
+    "size": 379264,
+    "tags": [
+      "fab",
+      "prop"
+    ]
+  },
+  {
+    "name": "electrical_substation",
+    "file": "fab/electrical_substation.glb",
+    "size": 106528,
+    "tags": [
+      "fab",
+      "prop"
+    ]
+  },
+  {
+    "name": "junkyard/vb1lafx",
+    "file": "fab/junkyard_vb1lafx.glb",
+    "size": 190016,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/wcvodhd",
+    "file": "fab/junkyard_wcvodhd.glb",
+    "size": 101052,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/wdljaaqbw",
+    "file": "fab/junkyard_wdljaaqbw.glb",
+    "size": 84840,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/wdlmdexbw",
+    "file": "fab/junkyard_wdlmdexbw.glb",
+    "size": 76120,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/xkzhcih",
+    "file": "fab/junkyard_xkzhcih.glb",
+    "size": 982428,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/xiwcfassc",
+    "file": "fab/junkyard_xiwcfassc.glb",
+    "size": 300848,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/vdjkbfmiw",
+    "file": "fab/junkyard_vdjkbfmiw.glb",
+    "size": 239476,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/wcliee1",
+    "file": "fab/junkyard_wcliee1.glb",
+    "size": 50016,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/wcljcaa",
+    "file": "fab/junkyard_wcljcaa.glb",
+    "size": 65252,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "junkyard/xh2kbey",
+    "file": "fab/junkyard_xh2kbey.glb",
+    "size": 843184,
+    "tags": [
+      "fab",
+      "junkyard"
+    ]
+  },
+  {
+    "name": "saloon/udlmcdhqx",
+    "file": "fab/saloon_udlmcdhqx.glb",
+    "size": 210952,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/vi5hbjgga",
+    "file": "fab/saloon_vi5hbjgga.glb",
+    "size": 222196,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/vjjsace",
+    "file": "fab/saloon_vjjsace.glb",
+    "size": 85132,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/vmgjfabdw",
+    "file": "fab/saloon_vmgjfabdw.glb",
+    "size": 319680,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/wb5udaydw",
+    "file": "fab/saloon_wb5udaydw.glb",
+    "size": 106828,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/wboweczdw",
+    "file": "fab/saloon_wboweczdw.glb",
+    "size": 13112,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/wc0jdfldw",
+    "file": "fab/saloon_wc0jdfldw.glb",
+    "size": 275672,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/tmgmfeefa",
+    "file": "fab/saloon_tmgmfeefa.glb",
+    "size": 157452,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/udehcidiw",
+    "file": "fab/saloon_udehcidiw.glb",
+    "size": 77192,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "saloon/uc2ichvqx",
+    "file": "fab/saloon_uc2ichvqx.glb",
+    "size": 196924,
+    "tags": [
+      "fab",
+      "saloon"
+    ]
+  },
+  {
+    "name": "bench/bench",
+    "file": "fab/bench_bench.glb",
+    "size": 19112,
+    "tags": [
+      "fab",
+      "bench"
+    ]
+  },
+  {
+    "name": "brick_wall_damaged/tires2",
+    "file": "fab/brick_wall_damaged_tires2.glb",
+    "size": 590760,
+    "tags": [
+      "fab",
+      "brick_wall_damaged"
+    ]
+  },
+  {
+    "name": "city_ruins/city_ruins_1",
+    "file": "fab/city_ruins_city_ruins_1.glb",
+    "size": 9605540,
+    "tags": [
+      "fab",
+      "city_ruins"
+    ]
+  },
+  {
+    "name": "graffiti_wall/quincy_quarries_graffiti-1k",
+    "file": "fab/graffiti_wall_quincy_quarries_graffiti-1k.glb",
+    "size": 3506564,
+    "tags": [
+      "fab",
+      "graffiti_wall"
+    ]
+  },
+  {
+    "name": "graffiti_wall/quincy_quarries_graffiti-2k",
+    "file": "fab/graffiti_wall_quincy_quarries_graffiti-2k.glb",
+    "size": 8831228,
+    "tags": [
+      "fab",
+      "graffiti_wall"
+    ]
+  },
+  {
+    "name": "mailbox/mailbox",
+    "file": "fab/mailbox_mailbox.glb",
+    "size": 22492,
+    "tags": [
+      "fab",
+      "mailbox"
+    ]
+  },
+  {
+    "name": "manhole/tires2",
+    "file": "fab/manhole_tires2.glb",
+    "size": 1012528,
+    "tags": [
+      "fab",
+      "manhole"
+    ]
+  },
+  {
+    "name": "moroccan_urban/7ff168ccf736540a160792e6804da89a",
+    "file": "fab/moroccan_urban_7ff168ccf736540a160792e6804da89a.glb",
+    "size": 81207688,
+    "tags": [
+      "fab",
+      "moroccan_urban"
+    ]
+  },
+  {
+    "name": "forklift/tires2",
+    "file": "fab/forklift_tires2.glb",
+    "size": 2241536,
+    "tags": [
+      "fab",
+      "forklift"
+    ]
+  },
+  {
+    "name": "street_props/streeprops",
+    "file": "fab/street_props_streeprops.glb",
+    "size": 2571292,
+    "tags": [
+      "fab",
+      "street_props"
+    ]
+  },
+  {
+    "name": "traffic_light/mm_semaforofree",
+    "file": "fab/traffic_light_mm_semaforofree.glb",
+    "size": 43389304,
+    "tags": [
+      "fab",
+      "traffic_light"
+    ]
+  },
+  {
+    "name": "trash_can/trashcan_lowpoly",
+    "file": "fab/trash_can_trashcan_lowpoly.glb",
+    "size": 58268,
+    "tags": [
+      "fab",
+      "trash_can"
+    ]
+  },
+  {
+    "name": "trash_can2/trashcan",
+    "file": "fab/trash_can2_trashcan.glb",
+    "size": 1184296,
+    "tags": [
+      "fab",
+      "trash_can2"
+    ]
+  },
+  {
+    "name": "wooden_door/tires2",
+    "file": "fab/wooden_door_tires2.glb",
+    "size": 1996904,
+    "tags": [
+      "fab",
+      "wooden_door"
+    ]
+  },
+  {
+    "name": "city_ruins2/city_ruins_1",
+    "file": "fab/city_ruins2_city_ruins_1.glb",
+    "size": 9605540,
+    "tags": [
+      "fab",
+      "city_ruins2"
+    ]
+  },
+  {
+    "name": "brick_wall2/tires2",
+    "file": "fab/brick_wall2_tires2.glb",
+    "size": 590760,
+    "tags": [
+      "fab",
+      "brick_wall2"
+    ]
+  }
+]

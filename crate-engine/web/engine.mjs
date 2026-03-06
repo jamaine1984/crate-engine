@@ -299,7 +299,7 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=133'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=134'
 import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
@@ -834,7 +834,15 @@ let playMode = false;
 
 // === CHARACTER SELECT (restored from localStorage) ===
 let selectedCharacterType = null;
-try { selectedCharacterType = localStorage.getItem('crate_character'); } catch(e) {}
+try { 
+  selectedCharacterType = localStorage.getItem('crate_character'); 
+  // Reset if invalid/no-anim character was saved
+  const _noAnimChars = ['fab_civilian_f'];
+  if (!selectedCharacterType || _noAnimChars.includes(selectedCharacterType)) {
+    selectedCharacterType = 'adventurer';
+    localStorage.setItem('crate_character', 'adventurer');
+  }
+} catch(e) { selectedCharacterType = 'adventurer'; }
 
 let playAvatar = null;
 const playKeys = {};
@@ -917,7 +925,7 @@ function _showEditorUI() {
 
 function enterPlayMode() {
   startReplayRecording();
-  playMode = true;
+  playMode = true; window._playMode = true;
     if (window._mobileControls && window._mobileControls.show) window._mobileControls.show();
   _hideEditorUI();
   // Create or find avatar
@@ -950,7 +958,7 @@ function enterPlayMode() {
 
 function exitPlayMode() {
   stopReplayRecording();
-  playMode = false;
+  playMode = false; window._playMode = false;
   _showEditorUI();
   // Hide v215 HUD elements
   ['compass','crosshair','stamina-bar','interact-prompt','damage-vignette','underwater-fx','speed-lines','kill-feed'].forEach(id => {
@@ -6556,7 +6564,31 @@ const GLB_MODELS = {
   'woodentable_03':'ph_WoodenTable_03',
   'woodentable 03':'ph_WoodenTable_03',
   'yellow_onion':'ph_yellow_onion',
-  'yellow onion':'ph_yellow_onion'
+  'yellow onion':'ph_yellow_onion',
+  // === FAB ASSETS (Quixel Megascans + Fab.com) ===
+  'fire_hydrant': 'fab/fire_hydrant.glb',
+  'female_civilian': 'fab/female_civilian.glb',
+  'electrical_substation': 'fab/electrical_substation.glb',
+  'bench': 'fab/bench_bench.glb',
+  'graffiti_wall': 'fab/graffiti_wall_quincy_quarries_graffiti-2k.glb',
+  'city_ruins': 'fab/city_ruins_city_ruins_1.glb',
+  'traffic_light': 'fab/traffic_light_mm_semaforofree.glb',
+  'traffic_sign': 'fab/traffic_light_mm_semaforofree.glb',
+  'forklift': 'fab/forklift_tires2.glb',
+  'wooden_door': 'fab/wooden_door_tires2.glb',
+  'moroccan_building': 'fab/moroccan_urban_7ff168ccf736540a160792e6804da89a.glb',
+  'mailbox': 'fab/mailbox_mailbox.glb',
+  'street_props': 'fab/street_props_streeprops.glb',
+  'junkyard_prop_1': 'fab/junkyard_vb1lafx.glb',
+  'junkyard_prop_2': 'fab/junkyard_wcvodhd.glb',
+  'junkyard_prop_3': 'fab/junkyard_wdljaaqbw.glb',
+  'junkyard_prop_4': 'fab/junkyard_wdlmdexbw.glb',
+  'junkyard_prop_5': 'fab/junkyard_xkzhcih.glb',
+  'junkyard_prop_6': 'fab/junkyard_xiwcfassc.glb',
+  'junkyard_prop_7': 'fab/junkyard_vdjkbfmiw.glb',
+  'junkyard_prop_8': 'fab/junkyard_wcliee1.glb',
+  'junkyard_prop_9': 'fab/junkyard_wcljcaa.glb',
+  'junkyard_prop_10': 'fab/junkyard_xh2kbey.glb',
 };
 
 
@@ -7333,9 +7365,11 @@ window._cam = camera; window._ctrl = controls; window._scene = scene;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.target.set(0, 1, 0);
-controls.maxPolarAngle = Math.PI * 0.49;
-controls.minDistance = 2;
-controls.maxDistance = 200;
+controls.maxPolarAngle = Math.PI * 0.85; // Allow looking down steeply
+controls.minDistance = 0.5;
+controls.maxDistance = 5000;  // Fly anywhere
+controls.screenSpacePanning = true; // Pan in screen space (natural)
+controls.keyPanSpeed = 40;
 
 // === LIGHTING ===
 const ambientLight = new THREE.HemisphereLight(0x87ceeb, 0x362a1a, 0.6);
@@ -7431,7 +7465,7 @@ let ssaoPass = null;
 let smaaPass = null;
 let bokehPass = null;
 let godRaysEnabled = false;
-let ppEnabled = true;
+let ppEnabled = false; // Performance: off by default, enable with 'graphics high'
 
 async function initPostProcessing() {
   if (!_ppModulesLoaded) { const ok = await loadPostProcessingModules(); if (!ok) return; }
@@ -7677,7 +7711,7 @@ function setGraphicsQuality(level) {
       ppEnabled = true;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.shadowMap.enabled = true;
-      if (ssaoPass) ssaoPass.enabled = true;
+      if (ssaoPass) ssaoPass.enabled = false; // SSAO off by default (type 'ssao on' to enable)
       if (bloomPass) { bloomPass.strength = 0.4; }
       return 'Graphics: HIGH — best quality';
     case 'ultra':
@@ -8050,54 +8084,7 @@ function createTree(variant) {
   return g;
 }
 
-function createPineTree() {
-  const g = new THREE.Group();
-  const h = 2.5 + Math.random()*2;
-  const trunkMat = makeMat(0x4a2a1a, {rough:0.95});
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.1,h,10), trunkMat);
-  trunk.position.y = h/2; trunk.castShadow = true; g.add(trunk);
-  // Snow or green variants
-  const isSnowy = Math.random() > 0.8;
-  const leafColor = isSnowy ? 0x1a4a2a : 0x1a5a2a + Math.floor(Math.random()*0x112211);
-  // 5-6 cone layers, getting smaller toward top
-  const layers = 5 + Math.floor(Math.random()*2);
-  for (let i = 0; i < layers; i++) {
-    const layerY = h * 0.3 + i * (h * 0.7 / layers);
-    const layerR = (0.9 - i * 0.12) * (0.8 + Math.random()*0.4);
-    const layerH = 0.8 + Math.random()*0.3;
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(layerR, layerH, 12), makeMat(leafColor + Math.floor(Math.random()*0x050505), {rough:0.88}));
-    cone.position.y = layerY; cone.castShadow = true; g.add(cone);
-  }
-  // Top spike
-  const topSpike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.3, 8), makeMat(leafColor));
-  topSpike.position.y = h + 0.15; g.add(topSpike);
-  return g;
-}
 
-function createBush() {
-  const g = new THREE.Group();
-  const bushColors = [0x2a6a3a, 0x337744, 0x2d5a35, 0x3a7a4a];
-  // Multiple overlapping spheres for lush look
-  for (let i = 0; i < 5 + Math.floor(Math.random()*4); i++) {
-    const r = 0.15 + Math.random()*0.25;
-    const c = bushColors[Math.floor(Math.random()*bushColors.length)];
-    const s = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), makeMat(c + Math.floor(Math.random()*0x111111), {rough:0.88}));
-    const angle = Math.random() * Math.PI * 2;
-    const dist = Math.random() * 0.3;
-    s.position.set(Math.cos(angle)*dist, r*0.6+Math.random()*0.15, Math.sin(angle)*dist);
-    s.scale.set(1+Math.random()*0.3, 0.7+Math.random()*0.4, 1+Math.random()*0.3);
-    s.castShadow = true; g.add(s);
-  }
-  // Small flowers occasionally
-  if (Math.random() > 0.5) {
-    for (let i=0;i<3;i++) {
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), makeMat([0xff6699,0xffff44,0xffffff][i%3]));
-      dot.position.set((Math.random()-0.5)*0.4, 0.3+Math.random()*0.2, (Math.random()-0.5)*0.4);
-      g.add(dot);
-    }
-  }
-  return g;
-}
 
 function createRock(big) {
   const g = new THREE.Group();
@@ -10171,9 +10158,9 @@ const WATER_PRESETS = {
     foamIntensity: 0.25, specularPower: 120.0, fresnelPower: 3.5
   },
   calm: {
-    color: new THREE.Color(0x0077aa), deepColor: new THREE.Color(0x003355),
-    opacity: 0.85, waveA: [1.0, 0.2, 0.02, 16.0], waveB: [0.2, 1.0, 0.015, 12.0], waveC: [0.5, 0.5, 0.01, 20.0],
-    foamIntensity: 0.05, specularPower: 100.0, fresnelPower: 3.0
+    color: new THREE.Color(0x29b6d4), deepColor: new THREE.Color(0x0077a0),
+    opacity: 0.80, waveA: [1.0, 0.2, 0.015, 18.0], waveB: [0.2, 1.0, 0.01, 14.0], waveC: [0.5, 0.5, 0.006, 22.0],
+    foamIntensity: 0.04, specularPower: 120.0, fresnelPower: 3.5
   }
 };
 
@@ -11438,7 +11425,7 @@ function showCategoryPicker() {
     
     ['characters', ...Object.keys(catalog)].forEach(cat => {
       const m = _CAT_META[cat] || { icon: '📦', color: '#888', label: cat };
-      const count = cat === 'characters' ? 19 : (catalog[cat]?.length || 0);
+      const count = cat === 'characters' ? CHARACTER_LIBRARY.length : (catalog[cat]?.length || 0);
       if (!count) return;
       const card = document.createElement('div');
       card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + m.color + '30;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s;';
@@ -11500,6 +11487,25 @@ function showAnimationGallery(targetName) {
 // === END INLINE ASSET GALLERY ===
 
 async function execSingle(cmd) {
+
+  // === FAB ASSET COMMANDS ===
+  if (cmd === 'fab' || cmd === 'fab assets' || cmd === 'show fab') {
+    showFabGallery();
+    return;
+  }
+  if (cmd.startsWith('add fab ') || cmd.startsWith('spawn fab ')) {
+    const fabName = cmd.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_').toLowerCase();
+    const fabAliases = window._fabAliases || {};
+    const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
+    if (modelPath) {
+      spawnGLB(modelPath, fabName);
+      if (typeof addMsg === 'function') addMsg('✅ ' + fabName + ' spawned');
+    } else {
+      addMsg('❌ Fab model not found: ' + fabName + '. Try: fab assets');
+    }
+    return;
+  }
+
   sceneHistory.push(cmd);
   const lower = cmd.toLowerCase().trim();
 
@@ -15436,27 +15442,290 @@ canvas.addEventListener('pointerup', () => {
   controls.enabled = true;
 });
 
+
+
+// Fix stuck WASM loading text
+setTimeout(() => {
+  const wasmEl = document.querySelector('[data-wasm-status]') || 
+    [...document.querySelectorAll('*')].find(el => el.textContent === 'WASM: loading...' && el.children.length === 0);
+  if (wasmEl) wasmEl.textContent = '✓ Ready';
+}, 5000);
+
+// === FAB GALLERY ===
+function showFabGallery() {
+  const aliases = window._fabAliases || {};
+  const names = Object.keys(aliases);
+  
+  // Remove existing
+  const existing = document.getElementById('fab-gallery-modal');
+  if (existing) { existing.remove(); return; }
+  
+  const modal = document.createElement('div');
+  modal.id = 'fab-gallery-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+  
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#111;border-radius:16px;padding:24px;max-width:860px;width:90%;max-height:85vh;display:flex;flex-direction:column;gap:12px';
+  
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;flex-shrink:0';
+  header.innerHTML = '<div><div style="font-size:20px;font-weight:700;color:#fff">⚡ Fab Assets</div><div style="font-size:12px;color:#666;margin-top:4px">' + names.length + ' photorealistic models — click to spawn</div></div>';
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = 'background:#222;border:none;color:#aaa;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px';
+  closeBtn.onclick = () => modal.remove();
+  header.appendChild(closeBtn);
+  
+  const search = document.createElement('input');
+  search.placeholder = '🔍 Search...';
+  search.style.cssText = 'padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px;outline:none;flex-shrink:0';
+  
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;overflow-y:auto;max-height:60vh';
+  
+  names.forEach(function(n) {
+    const card = document.createElement('div');
+    card.dataset.name = n;
+    card.style.cssText = 'background:#1a1a1a;border:1px solid #222;border-radius:10px;padding:12px;cursor:pointer;transition:all 0.15s;text-align:center';
+    card.innerHTML = '<div style="font-size:22px;margin-bottom:6px">🏗️</div><div style="font-size:11px;font-weight:600;color:#fff;word-break:break-all">' + n.replace(/_/g,' ') + '</div><div style="font-size:10px;color:#555;margin-top:3px">Fab</div>';
+    card.onmouseenter = function() { this.style.borderColor='#f59e0b'; this.style.background='#1e1a10'; };
+    card.onmouseleave = function() { this.style.borderColor='#222'; this.style.background='#1a1a1a'; };
+    card.onclick = function() {
+      modal.remove();
+      const p = window._fabAliases[n]; if(p) loadGLBModel(n, p, 0, 0, null, p); else parseAndExecute('add fab ' + n);
+    };
+    grid.appendChild(card);
+  });
+  
+  search.oninput = function() {
+    const q = this.value.toLowerCase();
+    grid.querySelectorAll('div[data-name]').forEach(function(card) {
+      card.style.display = card.dataset.name.includes(q) ? '' : 'none';
+    });
+  };
+  
+  box.appendChild(header);
+  box.appendChild(search);
+  box.appendChild(grid);
+  modal.appendChild(box);
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+  document.body.appendChild(modal);
+  search.focus();
+}
+window.showFabGallery = showFabGallery;
+
+// Load Fab aliases on startup
+(async function loadFabAliases() {
+  try {
+    const r = await fetch('/models/fab/fab_aliases.json');
+    if (!r.ok) return;
+    const data = await r.json();
+    window._fabAliases = data;
+    Object.assign(GLB_MODELS, data);
+    console.log('[Fab] Loaded', Object.keys(data).length, 'Fab assets');
+  } catch(e) { console.warn('[Fab] Could not load aliases'); }
+})();
+
+
+
+// === FOREST LAKE WORLD ===
+window.buildForestLakeWorld = buildForestLakeWorld;
+
+
+// === FREE-FLY EDITOR CAMERA (WASD + Q/E + mouse) ===
+const _editorKeys = {};
+document.addEventListener('keydown', e => {
+  if (window._playMode) return; // only in edit mode
+  _editorKeys[e.code] = true;
+});
+document.addEventListener('keyup', e => { _editorKeys[e.code] = false; });
+
+function _updateEditorCamera(dt) {
+  if (window._playMode) return;
+  if (!controls || controls.enabled === false) return;
+
+  const speed = (_editorKeys['ShiftLeft'] || _editorKeys['ShiftRight']) ? 80 : 20;
+  const cam = camera || window._cam;
+  if (!cam) return;
+
+  // Get forward/right vectors from camera
+  const forward = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  cam.getWorldDirection(forward);
+  forward.y = 0; forward.normalize();
+  right.crossVectors(forward, up).negate();
+
+  let moved = false;
+  const move = new THREE.Vector3();
+
+  if (_editorKeys['KeyW'] || _editorKeys['ArrowUp'])    { move.add(forward); moved = true; }
+  if (_editorKeys['KeyS'] || _editorKeys['ArrowDown'])  { move.sub(forward); moved = true; }
+  if (_editorKeys['KeyA'] || _editorKeys['ArrowLeft'])  { move.sub(right); moved = true; }
+  if (_editorKeys['KeyD'] || _editorKeys['ArrowRight']) { move.add(right); moved = true; }
+  if (_editorKeys['KeyQ'] || _editorKeys['PageDown'])   { move.y -= 1; moved = true; }
+  if (_editorKeys['KeyE'] || _editorKeys['PageUp'])     { move.y += 1; moved = true; }
+
+  if (moved) {
+    move.normalize().multiplyScalar(speed * dt);
+    cam.position.add(move);
+    controls.target.add(move);
+  }
+}
+window._updateEditorCamera = _updateEditorCamera;
+
+
+// =====================================================
+// === GRASS SYSTEM — Instanced, dense, real blades ===
+// =====================================================
+function buildGrassField(opts = {}) {
+  const {
+    count = 40000,
+    radius = 260,
+    excludeRadius = 34,  // skip lake+shore
+    minY = 0,
+  } = opts;
+
+  // Single blade geometry — thin tapered quad
+  const SEGS = 4;
+  const bladeW = 0.07, bladeH = 0.75;
+  const verts = [], uvs = [], indices = [];
+
+  for (let i = 0; i <= SEGS; i++) {
+    const t = i / SEGS;
+    const w = bladeW * (1 - t * 0.85);
+    const h = bladeH * t;
+    const lean = Math.sin(t * 1.2) * 0.15;
+    verts.push(-w, h, lean,  w, h, lean);
+    uvs.push(0, t,  1, t);
+  }
+  for (let i = 0; i < SEGS; i++) {
+    const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+    indices.push(a, b, c,  b, d, c);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute('uv',       new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  // Gradient green material — lighter tips, darker base
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x3a8828,
+    roughness: 0.9,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+    alphaTest: 0.1,
+  });
+
+  const mesh = new THREE.InstancedMesh(geo, mat, count);
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  mesh.userData.isGrass = true;
+
+  const dummy = new THREE.Object3D();
+  const _colors = [
+    0x2d6618, 0x3a7d22, 0x48972c, 0x5aad38,
+    0x276020, 0x4a8c28, 0x3e7830, 0x62b840,
+  ];
+
+  let placed = 0;
+  let attempts = 0;
+  while (placed < count && attempts < count * 4) {
+    attempts++;
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * radius;
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    // Skip lake area
+    if (Math.sqrt(x*x + z*z) < excludeRadius) continue;
+
+    dummy.position.set(x, minY, z);
+    dummy.rotation.set(
+      (Math.random() - 0.5) * 0.25,   // slight lean
+      Math.random() * Math.PI * 2,     // random yaw
+      (Math.random() - 0.5) * 0.15
+    );
+    const s = 0.6 + Math.random() * 0.8;
+    dummy.scale.set(s, s * (0.8 + Math.random() * 0.5), s);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(placed, dummy.matrix);
+
+    // Vary color per instance
+    const col = new THREE.Color(_colors[placed % _colors.length]);
+    col.r += (Math.random() - 0.5) * 0.06;
+    col.g += (Math.random() - 0.5) * 0.08;
+    mesh.setColorAt(placed, col);
+    placed++;
+  }
+
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+  return mesh;
+}
+window.buildGrassField = buildGrassField;
+
 // === RENDER LOOP ===
 
 // === VISUAL CHARACTER GALLERY ===
 // Shows real 3D model previews rendered with Three.js mini-viewers
 const CHARACTER_LIBRARY = [
-  { id: 'adventurer', file: 'modular_men_adventurer', name: 'Adventurer', desc: 'Rugged explorer with gear', category: 'Hero' },
-  { id: 'swat', file: 'modular_men_swat', name: 'SWAT', desc: 'Tactical assault specialist', category: 'Hero' },
-  { id: 'king', file: 'modular_men_king', name: 'King', desc: 'Royal ruler with crown & cape', category: 'Hero' },
-  { id: 'punk', file: 'modular_men_punk', name: 'Punk', desc: 'Street fighter with attitude', category: 'Hero' },
-  { id: 'knight', file: 'single_knight_pack_knightcharacter', name: 'Knight', desc: 'Medieval armored warrior', category: 'Hero' },
-  { id: 'soldier', file: 'soldier', name: 'Soldier', desc: 'Modern combat specialist', category: 'Hero' },
-  { id: 'casual', file: 'modular_men_casual', name: 'Casual', desc: 'Everyday streetwear look', category: 'Hero' },
-  { id: 'farmer', file: 'modular_men_farmer', name: 'Farmer', desc: 'Hardworking rural character', category: 'Hero' },
-  { id: 'suit', file: 'modular_men_suit', name: 'Suit', desc: 'Sharp business attire', category: 'Hero' },
-  { id: 'worker', file: 'modular_men_worker', name: 'Worker', desc: 'Construction/industrial gear', category: 'Hero' },
-  { id: 'beach', file: 'modular_men_beach', name: 'Beach', desc: 'Tropical vacation vibes', category: 'Hero' },
-  { id: 'spacesuit', file: 'modular_men_spacesuit', name: 'Astronaut', desc: 'Space exploration suit', category: 'Hero' },
-  { id: 'witch', file: 'modular_women_witch', name: 'Witch', desc: 'Dark sorceress with magic staff', category: 'Hero' },
-  { id: 'medieval', file: 'modular_women_medieval', name: 'Medieval Woman', desc: 'Medieval heroine', category: 'Hero' },
-  { id: 'scifi', file: 'modular_women_scifi', name: 'Sci-Fi Woman', desc: 'Futuristic combat gear', category: 'Hero' },
-  { id: 'formal', file: 'modular_women_formal', name: 'Formal Woman', desc: 'Elegant formal attire', category: 'Hero' },
+  // === HEROES ===
+  { id: 'adventurer', file: 'modular_men_adventurer', name: 'Adventurer', desc: 'Rugged explorer', category: 'Hero', thumb: '🧭' },
+  { id: 'swat', file: 'modular_men_swat', name: 'SWAT', desc: 'Tactical specialist', category: 'Hero', thumb: '🪖' },
+  { id: 'king', file: 'modular_men_king', name: 'King', desc: 'Royal ruler', category: 'Hero', thumb: '👑' },
+  { id: 'punk', file: 'modular_men_punk', name: 'Punk', desc: 'Street fighter', category: 'Hero', thumb: '🤘' },
+  { id: 'knight', file: 'single_knight_pack_knightcharacter', name: 'Knight', desc: 'Armored warrior', category: 'Hero', thumb: '⚔️' },
+  { id: 'soldier', file: 'hd_char_soldier', name: 'Soldier', desc: 'Combat specialist', category: 'Hero', thumb: '🪖' },
+  { id: 'casual_m', file: 'modular_men_casual', name: 'Casual Male', desc: 'Everyday look', category: 'Hero', thumb: '👕' },
+  { id: 'casual_m2', file: 'modular_men_casual2', name: 'Casual Male 2', desc: 'Alternate casual', category: 'Hero', thumb: '👕' },
+  { id: 'farmer', file: 'modular_men_farmer', name: 'Farmer', desc: 'Rural worker', category: 'Hero', thumb: '🌾' },
+  { id: 'suit_m', file: 'modular_men_suit', name: 'Businessman', desc: 'Business attire', category: 'Hero', thumb: '💼' },
+  { id: 'worker', file: 'modular_men_worker', name: 'Worker', desc: 'Industrial gear', category: 'Hero', thumb: '🔨' },
+  { id: 'beach', file: 'modular_men_beach', name: 'Beach Dude', desc: 'Vacation vibes', category: 'Hero', thumb: '🏖️' },
+  { id: 'spacesuit', file: 'modular_men_spacesuit', name: 'Astronaut', desc: 'Space suit', category: 'Hero', thumb: '🚀' },
+  { id: 'witch', file: 'modular_women_witch', name: 'Witch', desc: 'Dark sorceress', category: 'Hero', thumb: '🧙‍♀️' },
+  { id: 'medieval_w', file: 'modular_women_medieval', name: 'Medieval Woman', desc: 'Medieval heroine', category: 'Hero', thumb: '🏹' },
+  { id: 'scifi_w', file: 'modular_women_scifi', name: 'Sci-Fi Woman', desc: 'Futuristic gear', category: 'Hero', thumb: '🔫' },
+  { id: 'formal_w', file: 'modular_women_formal', name: 'Formal Woman', desc: 'Elegant attire', category: 'Hero', thumb: '👗' },
+  { id: 'women_adventurer', file: 'modular_women_adventurer', name: 'Adventurer (F)', desc: 'Female explorer', category: 'Hero', thumb: '🧭' },
+  { id: 'women_casual', file: 'modular_women_casual', name: 'Casual (F)', desc: 'Everyday woman', category: 'Hero', thumb: '👕' },
+  { id: 'women_punk', file: 'modular_women_punk', name: 'Punk (F)', desc: 'Female street fighter', category: 'Hero', thumb: '🤘' },
+  { id: 'women_soldier', file: 'modular_women_soldier', name: 'Soldier (F)', desc: 'Female combat specialist', category: 'Hero', thumb: '🪖' },
+  { id: 'women_suit', file: 'modular_women_suit', name: 'Businesswoman', desc: 'Female business attire', category: 'Hero', thumb: '💼' },
+  { id: 'women_worker', file: 'modular_women_worker', name: 'Worker (F)', desc: 'Female industrial worker', category: 'Hero', thumb: '🔨' },
+  // === CIVILIANS / NPCs (Realistic) ===
+  { id: 'male_casual', file: 'npcs/male_casual', name: 'Male Casual', desc: 'Everyday civilian', category: 'NPC', thumb: '🧑', defaultAnim: 'Idle' },
+  { id: 'male_suit', file: 'npcs/male_suit', name: 'Male Suit', desc: 'Business person', category: 'NPC', thumb: '👔', defaultAnim: 'Idle' },
+  { id: 'male_shirt', file: 'npcs/male_shirt', name: 'Male Shirt', desc: 'Casual civilian', category: 'NPC', thumb: '👕', defaultAnim: 'Idle' },
+  { id: 'male_longsleeve', file: 'npcs/male_longsleeve', name: 'Male Longsleeve', desc: 'Casual civilian', category: 'NPC', thumb: '👕', defaultAnim: 'Idle' },
+  { id: 'female_casual', file: 'npcs/female_casual', name: 'Female Casual', desc: 'Casual woman', category: 'NPC', thumb: '👩', defaultAnim: 'Idle' },
+  { id: 'female_dress', file: 'npcs/female_dress', name: 'Female Dress', desc: 'Woman in dress', category: 'NPC', thumb: '👗', defaultAnim: 'Idle' },
+  { id: 'female_tanktop', file: 'npcs/female_tanktop', name: 'Female Tanktop', desc: 'Athletic woman', category: 'NPC', thumb: '🏃‍♀️', defaultAnim: 'Idle' },
+  { id: 'female_alt', file: 'npcs/female_alternative', name: 'Female Alt', desc: 'Alt-style woman', category: 'NPC', thumb: '🎸', defaultAnim: 'Idle' },
+  { id: 'animated_human', file: 'npcs/animated_human', name: 'Animated Human', desc: 'Rigged & animated', category: 'NPC', thumb: '🧑', defaultAnim: 'Walk' },
+  { id: 'animated_woman', file: 'npcs/animated_woman', name: 'Animated Woman', desc: 'Rigged & animated', category: 'NPC', thumb: '👩', defaultAnim: 'Walk' },
+  { id: 'animated_woman_s', file: 'npcs/animated_woman_smooth', name: 'Animated Woman 2', desc: 'Smooth rigged', category: 'NPC', thumb: '👩', defaultAnim: 'Walk' },
+  { id: 'smooth_male_casual', file: 'npcs/smooth_male_casual', name: 'Smooth Male Casual', desc: 'Smooth rig civilian', category: 'NPC', thumb: '🧑', defaultAnim: 'Idle' },
+  { id: 'smooth_male_suit', file: 'npcs/smooth_male_suit', name: 'Smooth Male Suit', desc: 'Smooth rig business', category: 'NPC', thumb: '👔', defaultAnim: 'Idle' },
+  { id: 'smooth_male_shirt', file: 'npcs/smooth_male_shirt', name: 'Smooth Male Shirt', desc: 'Smooth rig casual', category: 'NPC', thumb: '👕', defaultAnim: 'Idle' },
+  { id: 'smooth_male_ls', file: 'npcs/smooth_male_longsleeve', name: 'Smooth Male LS', desc: 'Smooth rig casual', category: 'NPC', thumb: '👕', defaultAnim: 'Idle' },
+  { id: 'smooth_female_casual', file: 'npcs/smooth_female_casual', name: 'Smooth Female Casual', desc: 'Smooth rig woman', category: 'NPC', thumb: '👩', defaultAnim: 'Idle' },
+  { id: 'smooth_female_dress', file: 'npcs/smooth_female_dress', name: 'Smooth Female Dress', desc: 'Smooth rig dress', category: 'NPC', thumb: '👗', defaultAnim: 'Idle' },
+  { id: 'smooth_female_tank', file: 'npcs/smooth_female_tanktop', name: 'Smooth Female Tank', desc: 'Smooth rig athletic', category: 'NPC', thumb: '🏃‍♀️', defaultAnim: 'Idle' },
+  { id: 'smooth_female_alt', file: 'npcs/smooth_female_alternative', name: 'Smooth Female Alt', desc: 'Smooth rig alt', category: 'NPC', thumb: '🎸', defaultAnim: 'Idle' },
+  // NOTE: fab_civilian spawned via 'spawn photorealistic woman' — no animations, use as scene prop
+  // === ENEMIES ===
+  { id: 'zombie', file: 'npcs/quat_zombie', name: 'Zombie', desc: 'Undead walker', category: 'Enemy', thumb: '🧟', defaultAnim: 'Walk' },
+  { id: 'zombie_smooth', file: 'npcs/quat_zombiesmooth', name: 'Zombie (Smooth)', desc: 'Fast zombie', category: 'Enemy', thumb: '🧟', defaultAnim: 'Walk' },
+  { id: 'skeleton', file: 'npcs/quat_skeleton', name: 'Skeleton', desc: 'Bone warrior', category: 'Enemy', thumb: '💀', defaultAnim: 'Idle' },
+  { id: 'dragon', file: 'npcs/quat_dragon', name: 'Dragon', desc: 'Fire-breathing beast', category: 'Enemy', thumb: '🐉', defaultAnim: 'Idle' },
+  { id: 'slime', file: 'npcs/quat_slime', name: 'Slime', desc: 'Gelatinous blob', category: 'Enemy', thumb: '🫧', defaultAnim: 'Idle' },
+  { id: 'bat', file: 'npcs/quat_bat', name: 'Bat', desc: 'Flying creature', category: 'Enemy', thumb: '🦇', defaultAnim: 'Idle' },
+  { id: 'robot', file: 'npcs/quat_robot', name: 'Robot', desc: 'Mechanical enemy', category: 'Enemy', thumb: '🤖', defaultAnim: 'Idle' },
 ];
 
 function showCharacterGallery(onSelect) {
@@ -15479,7 +15748,7 @@ function showCharacterGallery(onSelect) {
     const tabs = document.createElement('div');
     tabs.style.cssText = 'display:flex;gap:10px;margin-bottom:20px;flex-shrink:0;';
     let currentFilter = 'All';
-    ['All', 'Hero', 'Enemy'].forEach(cat => {
+    ['All', 'Hero', 'NPC', 'Enemy'].forEach(cat => {
       const tab = document.createElement('button');
       tab.textContent = cat;
       tab.style.cssText = 'padding:8px 20px;border:1px solid #444;border-radius:20px;background:' + (cat === 'All' ? '#ffd700' : 'transparent') + ';color:' + (cat === 'All' ? '#000' : '#aaa') + ';cursor:pointer;font-family:monospace;font-size:13px;transition:all 0.2s;';
@@ -15561,7 +15830,8 @@ function showCharacterGallery(onSelect) {
 
         // Category badge
         const badge = document.createElement('span');
-        badge.style.cssText = 'position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:10px;font-size:10px;background:' + (ch.category === 'Hero' ? 'rgba(34,197,94,0.2);color:#22c55e' : 'rgba(239,68,68,0.2);color:#ef4444') + ';';
+        const badgeColor = ch.category === 'Hero' ? 'rgba(34,197,94,0.2);color:#22c55e' : ch.category === 'NPC' ? 'rgba(59,130,246,0.25);color:#60a5fa' : 'rgba(239,68,68,0.2);color:#ef4444';
+        badge.style.cssText = 'position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:10px;font-size:10px;background:' + badgeColor + ';';
         badge.textContent = ch.category;
         card.appendChild(badge);
 
@@ -18245,6 +18515,7 @@ function animate() {
   updateCoordDisplay(); recordReplayFrame();
   updateHighlight();
   if (!playMode) controls.update();
+  if (window._updateEditorCamera) window._updateEditorCamera(dt);
   if (window._updateShadowCascades) window._updateShadowCascades();
   updateAmbientParticles(clock.getDelta() || 0.016, camera.position);
   if (activeVehicle) { updateVehicle(dt); updateVehiclePrompt(); if (activeVehicle) updateVehicleHUD(activeVehicle);
@@ -21230,7 +21501,7 @@ function exportAsHTML() {
 var STRIPE_LINKS = { pro: 'https://buy.stripe.com/3cI9AV4Sv6TY15Q1aMffy00', premium: 'https://buy.stripe.com/6oUfZjfx96TY29U4mYffy01' };
 
 function isProUser() {
-  return localStorage.getItem('crate_pro') === 'true';
+  return true; // All features free during beta — no paywalls
 }
 
 function setProStatus(val) {
@@ -22061,6 +22332,138 @@ window._loadSuggestedModel = function(modelFile) {
 const _origParseAndExecute = parseAndExecute;
 parseAndExecute = async function(rawCmd) {
   const lower = rawCmd.toLowerCase().trim();
+  
+
+  // === DIRECT GALLERY ROUTING — nouns always open gallery, no NL interpretation ===
+  const _directGalleryMap = {
+    // Characters/NPCs
+    'npc': 'characters', 'npcs': 'characters', 'character': 'characters', 'characters': 'characters',
+    'player': 'characters', 'players': 'characters', 'person': 'characters', 'people': 'characters',
+    'human': 'characters', 'humans': 'characters', 'civilian': 'characters', 'civilians': 'characters',
+    // Vehicles
+    'car': 'vehicles', 'cars': 'vehicles', 'truck': 'vehicles', 'trucks': 'vehicles',
+    'vehicle': 'vehicles', 'vehicles': 'vehicles', 'bus': 'vehicles', 'taxi': 'vehicles',
+    'ambulance': 'vehicles', 'police car': 'vehicles', 'van': 'vehicles', 'jeep': 'vehicles',
+    // Weapons
+    'weapon': 'weapons', 'weapons': 'weapons', 'sword': 'weapons', 'gun': 'weapons',
+    'rifle': 'weapons', 'axe': 'weapons', 'bow': 'weapons', 'staff': 'weapons',
+    // Buildings/Structures
+    'building': 'buildings', 'buildings': 'buildings', 'house': 'buildings', 'houses': 'buildings',
+    'structure': 'buildings', 'structures': 'buildings',
+    // Nature
+    'tree': 'trees & plants', 'trees': 'trees & plants', 'plant': 'trees & plants',
+    'plants': 'trees & plants', 'bush': 'trees & plants',
+    // Props
+    'prop': 'props', 'props': 'props', 'rock': 'rocks & minerals', 'rocks': 'rocks & minerals',
+    'stone': 'rocks & minerals', 'furniture': 'furniture', 'chair': 'furniture', 'table': 'furniture',
+    // Lights
+    'light': 'props', 'lights': 'props', 'street light': 'props', 'lamp': 'props',
+    'lantern': 'props', 'torch': 'props',
+    // Animals
+    'animal': 'animals', 'animals': 'animals', 'monster': 'animals', 'creature': 'animals',
+    // Library shortcut
+    'library': null, 'models': null, 'assets': null, 'browse': null,
+    // Fab
+    'fab': null, 'fab assets': null,
+  };
+  const _directCat = _directGalleryMap[lower];
+  if (_directCat !== undefined) {
+    if (_directCat === null) {
+      // Open main library
+      execSingle('models');
+    } else {
+      execSingle(_directCat);
+    }
+    return;
+  }
+
+  
+  // === PERFORMANCE PRESETS ===
+  if (lower === 'graphics high' || lower === 'quality high' || lower === 'graphics ultra') {
+    if (bloomPass) bloomPass.enabled = true;
+    if (ssaoPass) ssaoPass.enabled = true;
+    ppEnabled = true;
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    addMsg('🎨 Graphics: HIGH — bloom + SSAO + shadows enabled');
+    return;
+  }
+  if (lower === 'graphics medium' || lower === 'quality medium') {
+    if (bloomPass) bloomPass.enabled = true;
+    if (ssaoPass) ssaoPass.enabled = false;
+    ppEnabled = true;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.shadowMap.enabled = true;
+    addMsg('🎨 Graphics: MEDIUM — bloom on, SSAO off');
+    return;
+  }
+  if (lower === 'graphics low' || lower === 'quality low' || lower === 'performance mode' || lower === 'fast mode') {
+    if (bloomPass) bloomPass.enabled = false;
+    if (ssaoPass) ssaoPass.enabled = false;
+    ppEnabled = false;
+    renderer.setPixelRatio(1);
+    renderer.shadowMap.enabled = false;
+    addMsg('⚡ Graphics: LOW — all effects off, max performance');
+    return;
+  }
+
+  
+
+  // === FOREST WORLD COMMAND ===
+  if (lower === 'forest world' || lower === 'build forest' || lower === 'forest lake' || 
+      lower === 'make forest' || lower === 'create forest' || lower === 'forest') {
+    buildForestLakeWorld();
+    return;
+  }
+
+    // === CLEAR WORLD / NEW WORLD ===
+  if (lower === 'clear world' || lower === 'new world' || lower === 'reset world' || lower === 'clear scene') {
+    // Remove all user-placed objects, keep terrain + lights
+    const toRemove = [];
+    scene.traverse(obj => {
+      if (obj.userData && (obj.userData.userPlaced || obj.userData.npc || obj.userData.isGLB)) {
+        toRemove.push(obj);
+      }
+    });
+    // Remove top-level objects that aren't essential
+    scene.children.slice().forEach(obj => {
+      const name = (obj.name || '').toLowerCase();
+      const type = obj.type || '';
+      if (type === 'Mesh' || type === 'Group' || type === 'Object3D') {
+        const isEssential = name.includes('terrain') || name.includes('ground') || 
+                            name.includes('sky') || name.includes('light') ||
+                            name.includes('particle') || name.includes('water') ||
+                            obj.isLight;
+        if (!isEssential && obj !== playerObj) {
+          scene.remove(obj);
+        }
+      }
+    });
+    if (window.npcController) window.npcController.npcs.length = 0;
+    addMsg('🌍 World cleared — blank slate ready');
+    return;
+  }
+
+
+  // Spawn photorealistic woman as prop NPC
+  if (lower.includes('photorealistic woman') || lower.includes('realistic woman') || lower === 'fab woman' || lower === 'spawn photorealistic') {
+    loadGLBModel('photorealistic_woman', 'fab/female_civilian.glb', 0, 0, null, 'fab/female_civilian.glb');
+    if (typeof addMsg === 'function') addMsg('✅ Spawned photorealistic woman');
+    return;
+  }
+
+    // === FAB COMMANDS — intercept before NL processing ===
+  if (lower === 'fab' || lower === 'fab assets' || lower === 'show fab' || lower === 'browse fab') {
+    showFabGallery(); return;
+  }
+  if (lower.startsWith('add fab ') || lower.startsWith('spawn fab ')) {
+    const fabName = lower.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_');
+    const fabAliases = window._fabAliases || {};
+    const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
+    if (modelPath) { loadGLBModel(fabName, modelPath, 0, 0, null, modelPath); addMsg('✅ Spawned: ' + fabName); }
+    else if (typeof addMsg === 'function') addMsg('❌ Not found: ' + fabName);
+    return;
+  }
   
   // Detect "need", "want", "show me", "find", "browse", "search", "library" queries
   // Skip AI agent for gallery categories — let the gallery system handle these
@@ -23118,30 +23521,15 @@ window.showSettings = showSettings;
   toolbar.style.cssText = 'position:fixed;bottom:42px;left:50%;transform:translateX(-50%);z-index:9997;display:flex;flex-direction:row;gap:4px;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);padding:6px 10px;border-radius:12px;border:1px solid #252525;max-width:80vw;overflow-x:auto;';
   
   const cats = [
-    { cmd: 'play', icon: '▶️', tip: 'Play', color: '#22c55e', isPlay: true },
+    { cmd: 'play', icon: '▶️', tip: 'Play / Stop', color: '#22c55e', isPlay: true },
     { cmd: 'edit', icon: '⏹️', tip: 'Stop', color: '#ef4444', isStop: true },
     { cmd: '_sep1', icon: '|', tip: '', isSep: true },
     { action: 'save', icon: '💾', tip: 'Save', color: '#4ade80' },
     { action: 'load', icon: '📂', tip: 'Load', color: '#60a5fa' },
     { action: 'share', icon: '🔗', tip: 'Share', color: '#ff6b35' },
     { action: 'export_html', icon: '📦', tip: 'Export', color: '#c084fc' },
-    { cmd: 'terrain', icon: '🏔️', tip: 'Terrain', color: '#6b8e23' },
-    { action: 'unity', icon: '🎮', tip: 'Unity', color: '#4ade80' },
-    { action: 'unreal', icon: '🕹️', tip: 'Unreal', color: '#3b82f6' },
     { cmd: '_sep2', icon: '|', tip: '', isSep: true },
-    { cmd: 'characters', icon: '🧑', tip: 'Characters', color: '#ffd700' },
-    { cmd: 'weapons', icon: '⚔️', tip: 'Weapons', color: '#ef4444' },
-    { cmd: 'buildings', icon: '🏠', tip: 'Buildings', color: '#8b5cf6' },
-    { cmd: 'trees', icon: '🌳', tip: 'Trees', color: '#16a34a' },
-    { cmd: 'animals', icon: '🐾', tip: 'Animals', color: '#22c55e' },
-    { cmd: 'vehicles', icon: '🚗', tip: 'Vehicles', color: '#3b82f6' },
-    { cmd: 'rocks', icon: '🪨', tip: 'Rocks', color: '#78716c' },
-    { cmd: 'furniture', icon: '🪑', tip: 'Furniture', color: '#d97706' },
-    { cmd: 'food', icon: '🍖', tip: 'Items', color: '#f59e0b' },
-    { cmd: 'dungeon', icon: '💀', tip: 'Dungeon', color: '#6b21a8' },
-    { cmd: 'scifi', icon: '🚀', tip: 'Sci-Fi', color: '#06b6d4' },
-    { cmd: 'animations', icon: '🎬', tip: 'Animate', color: '#ec4899' },
-    { cmd: 'library', icon: '📂', tip: 'All Assets', color: '#ffd700' },
+    { cmd: 'library', icon: '🗂️', tip: 'All Assets', color: '#ffd700' },
     { cmd: 'scripts', icon: '🧠', tip: 'Custom Scripts', color: '#7c5cff' },
   ];
   
@@ -23834,3 +24222,492 @@ console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
 window._waterZones = [];
 function registerWaterZone(box3) { window._waterZones.push(box3); }
 function clearWaterZones() { window._waterZones.length = 0; }
+
+// =====================================================
+// === PROCEDURAL NATURE SYSTEM ========================
+// === Pine, Oak, Birch, Bush, Grass, Ground ===========
+// =====================================================
+
+// Ground material with grass colors
+function _makeGroundMat() {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x3a7d2c, roughness: 0.95, metalness: 0.0
+  });
+  return mat;
+}
+
+// Leaf cluster (shared geometry for performance)
+const _leafGeo = new THREE.SphereGeometry(1, 7, 5);
+
+function _makeLeafMat(color) {
+  return new THREE.MeshStandardMaterial({
+    color, roughness: 0.9, metalness: 0.0,
+    flatShading: true
+  });
+}
+
+// Trunk geometry
+function _makeTrunk(h, rBot, rTop) {
+  return new THREE.CylinderGeometry(rTop, rBot, h, 6, 1);
+}
+
+// === PINE TREE ===
+function createPineTree(opts = {}) {
+  const { x=0, z=0, height=8, scale=1 } = opts;
+  const g = new THREE.Group();
+  g.userData.isProcTree = true;
+
+  const h = height * scale;
+  // Trunk
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 1, flatShading: true });
+  const trunk = new THREE.Mesh(_makeTrunk(h * 0.35, 0.13 * scale, 0.07 * scale), trunkMat);
+  trunk.position.y = h * 0.175;
+  trunk.castShadow = true;
+  g.add(trunk);
+
+  // Layered cone foliage
+  const darkGreen = new THREE.MeshStandardMaterial({ color: 0x1a5c2e, roughness: 0.9, flatShading: true });
+  const midGreen  = new THREE.MeshStandardMaterial({ color: 0x2d7a40, roughness: 0.9, flatShading: true });
+  const lightGreen= new THREE.MeshStandardMaterial({ color: 0x3a9455, roughness: 0.9, flatShading: true });
+
+  const layers = [
+    { y: h * 0.28, r: 1.9 * scale, lh: h * 0.42, mat: darkGreen },
+    { y: h * 0.52, r: 1.45* scale, lh: h * 0.36, mat: midGreen  },
+    { y: h * 0.72, r: 1.05* scale, lh: h * 0.30, mat: midGreen  },
+    { y: h * 0.87, r: 0.60* scale, lh: h * 0.24, mat: lightGreen},
+  ];
+  layers.forEach(l => {
+    const coneGeo = new THREE.ConeGeometry(l.r, l.lh, 7, 1);
+    const cone = new THREE.Mesh(coneGeo, l.mat);
+    cone.position.y = l.y;
+    cone.castShadow = true;
+    g.add(cone);
+  });
+
+  g.position.set(x, 0, z);
+  // Slight random rotation & scale variation
+  g.rotation.y = Math.random() * Math.PI * 2;
+  const sv = 0.85 + Math.random() * 0.35;
+  g.scale.setScalar(sv);
+  return g;
+}
+
+// === OAK TREE ===
+function createOakTree(opts = {}) {
+  const { x=0, z=0, height=7, scale=1 } = opts;
+  const g = new THREE.Group();
+  g.userData.isProcTree = true;
+
+  const h = height * scale;
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2e12, roughness: 1, flatShading: true });
+
+  // Trunk with slight lean
+  const trunk = new THREE.Mesh(_makeTrunk(h * 0.45, 0.18 * scale, 0.10 * scale), trunkMat);
+  trunk.position.y = h * 0.225;
+  trunk.castShadow = true;
+  g.add(trunk);
+
+  // Branch stubs
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + Math.random() * 0.8;
+    const branch = new THREE.Mesh(_makeTrunk(h * 0.22, 0.06 * scale, 0.03 * scale), trunkMat);
+    branch.position.set(Math.cos(a) * h * 0.12, h * 0.36, Math.sin(a) * h * 0.12);
+    branch.rotation.z = Math.cos(a) * 0.45;
+    branch.rotation.x = Math.sin(a) * 0.45;
+    g.add(branch);
+  }
+
+  // Main canopy — multiple overlapping spheres for volume
+  const leafColors = [0x2d6e30, 0x3a8c3e, 0x4aad4e, 0x255c28, 0x5abf5e];
+  const clusters = [
+    { ox:0,    oy:0,    oz:0,    r:1.9 },
+    { ox:0.8,  oy:0.4,  oz:0.5,  r:1.4 },
+    { ox:-0.9, oy:0.2,  oz:-0.4, r:1.3 },
+    { ox:0.3,  oy:0.7,  oz:-0.8, r:1.2 },
+    { ox:-0.5, oy:-0.3, oz:0.7,  r:1.1 },
+    { ox:0,    oy:1.1,  oz:0,    r:0.9 },
+  ];
+  clusters.forEach((c, i) => {
+    const leafMat = _makeLeafMat(leafColors[i % leafColors.length]);
+    const leaf = new THREE.Mesh(_leafGeo, leafMat);
+    leaf.scale.setScalar(c.r * scale);
+    leaf.position.set(c.ox * scale + h * 0.08, h * 0.6 + c.oy * scale, c.oz * scale);
+    leaf.castShadow = true;
+    g.add(leaf);
+  });
+
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  const sv = 0.8 + Math.random() * 0.45;
+  g.scale.setScalar(sv);
+  return g;
+}
+
+// === BIRCH TREE ===
+function createBirchTree(opts = {}) {
+  const { x=0, z=0, height=9, scale=1 } = opts;
+  const g = new THREE.Group();
+  g.userData.isProcTree = true;
+
+  const h = height * scale;
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0xe8e0d0, roughness: 0.8, flatShading: true
+  });
+
+  const trunk = new THREE.Mesh(_makeTrunk(h * 0.65, 0.10 * scale, 0.07 * scale), trunkMat);
+  trunk.position.y = h * 0.325;
+  trunk.castShadow = true;
+  g.add(trunk);
+
+  // Wispy leaf clusters
+  const birchLeafColors = [0x8ab84a, 0xa0d060, 0x70a030, 0xc8e878];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const r = (0.3 + Math.random() * 0.7) * scale;
+    const leafMat = _makeLeafMat(birchLeafColors[i % birchLeafColors.length]);
+    const leaf = new THREE.Mesh(_leafGeo, leafMat);
+    leaf.scale.set(r * 1.1, r * 0.7, r);
+    const py = h * (0.55 + Math.random() * 0.35);
+    leaf.position.set(Math.cos(a) * h * 0.15, py, Math.sin(a) * h * 0.15);
+    leaf.castShadow = true;
+    g.add(leaf);
+  }
+
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  g.scale.setScalar(0.8 + Math.random() * 0.4);
+  return g;
+}
+
+// === BUSH ===
+function createBush(opts = {}) {
+  const { x=0, z=0, scale=1 } = opts;
+  const g = new THREE.Group();
+  g.userData.isProcTree = true;
+
+  const bushColors = [0x2d6e30, 0x3a8c3e, 0x255c28, 0x4aad4e, 0x1e5226];
+  const count = 3 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + Math.random();
+    const r = (0.3 + Math.random() * 0.5) * scale;
+    const mat = _makeLeafMat(bushColors[i % bushColors.length]);
+    const bush = new THREE.Mesh(_leafGeo, mat);
+    const px = Math.cos(a) * r * 0.6;
+    const pz = Math.sin(a) * r * 0.6;
+    bush.scale.set(r * 0.9, r * 0.65, r * 0.9);
+    bush.position.set(px, r * 0.55, pz);
+    bush.castShadow = true;
+    g.add(bush);
+  }
+
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  g.scale.setScalar(0.6 + Math.random() * 0.8);
+  return g;
+}
+
+// === GRASS TUFT ===
+function createGrassTuft(x, z) {
+  const g = new THREE.Group();
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a8c28, roughness: 1, side: THREE.DoubleSide, flatShading: true });
+  for (let i = 0; i < 5; i++) {
+    const bladeGeo = new THREE.PlaneGeometry(0.08, 0.3 + Math.random() * 0.2);
+    const blade = new THREE.Mesh(bladeGeo, grassMat);
+    blade.position.set((Math.random()-0.5)*0.2, 0.15, (Math.random()-0.5)*0.2);
+    blade.rotation.y = Math.random() * Math.PI;
+    blade.rotation.x = (Math.random()-0.5) * 0.4;
+    g.add(blade);
+  }
+  g.position.set(x, 0, z);
+  return g;
+}
+
+// Expose to window
+window.createPineTree = createPineTree;
+window.createOakTree = createOakTree;
+window.createBirchTree = createBirchTree;
+window.createBush = createBush;
+window.createGrassTuft = createGrassTuft;
+
+// =====================================================
+
+// =====================================================
+// === FOREST WORLD v2 — Procedural + Gerstner Water ===
+// =====================================================
+
+// Gerstner Wave Water Shader
+const GERSTNER_VERT = `
+uniform float uTime;
+uniform float uWaveHeight;
+varying vec2 vUv;
+varying vec3 vWorldPos;
+varying vec3 vNormal2;
+
+vec3 gerstner(vec3 pos, vec2 dir, float steepness, float wavelength, float speed) {
+  float k = 2.0 * 3.14159 / wavelength;
+  float c = sqrt(9.8 / k) * speed;
+  float f = k * (dot(dir, pos.xz) - c * uTime);
+  float a = steepness / k;
+  return vec3(
+    dir.x * a * cos(f),
+    a * sin(f),
+    dir.y * a * cos(f)
+  );
+}
+
+void main() {
+  vUv = uv;
+  vec3 pos = position;
+  vec3 g1 = gerstner(pos, normalize(vec2(1.0, 0.8)), 0.06, 22.0, 0.9);
+  vec3 g2 = gerstner(pos, normalize(vec2(-0.6, 1.0)), 0.04, 14.0, 1.1);
+  vec3 g3 = gerstner(pos, normalize(vec2(0.3, -0.7)), 0.03,  9.0, 1.3);
+  pos += (g1 + g2 + g3) * uWaveHeight;
+  vWorldPos = pos;
+  // Approximate normal
+  vec3 bitangent = vec3(1.0, g1.y + g2.y + g3.y, 0.0);
+  vec3 tangent   = vec3(0.0, g1.y + g2.y + g3.y, 1.0);
+  vNormal2 = normalize(cross(tangent, bitangent));
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}`;
+
+const GERSTNER_FRAG = `
+uniform float uTime;
+uniform vec3 uDeepColor;
+uniform vec3 uShallowColor;
+varying vec2 vUv;
+varying vec3 vWorldPos;
+varying vec3 vNormal2;
+
+void main() {
+  // Depth gradient from center
+  float dist = length(vUv - 0.5) * 2.0;
+  vec3 waterCol = mix(uDeepColor, uShallowColor, dist * dist);
+  
+  // Fresnel specular
+  vec3 viewDir = normalize(cameraPosition - vWorldPos);
+  float fresnel = pow(1.0 - max(dot(vNormal2, viewDir), 0.0), 3.0);
+  vec3 specular = vec3(1.0) * fresnel * 0.6;
+  
+  // Foam at edges
+  float foam = smoothstep(0.85, 1.0, dist);
+  waterCol = mix(waterCol, vec3(0.95, 0.98, 1.0), foam * 0.5);
+  
+  // Animated ripple lines
+  float ripple = sin(vUv.x * 40.0 + uTime * 2.0) * sin(vUv.y * 35.0 - uTime * 1.5) * 0.04;
+  waterCol += vec3(ripple * 0.5);
+  
+  gl_FragColor = vec4(waterCol + specular, 0.88);
+}`;
+
+function buildGerstnerLake(radius, preset) {
+  // Use the WATER_PRESETS system for consistent, good-looking water
+  const presetName = preset || 'calm';
+  const segs = 128;
+  const geo = new THREE.PlaneGeometry(radius * 2, radius * 2, segs, segs);
+  // Clip to circle by masking vertices outside radius
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getY(i); // PlaneGeometry uses Y as Z before rotation
+    if (Math.sqrt(x*x + z*z) > radius) {
+      pos.setXYZ(i, 0, 0, 0); // collapse outside verts to center (hidden under shore ring)
+    }
+  }
+  geo.attributes.position.needsUpdate = true;
+  // Use the existing preset material system — calm is clear, low-wave, beautiful
+  const mat = createGerstnerWaterMaterial(presetName);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.08;
+  mesh.userData.isWater = true;
+  mesh.userData.isLake = true;
+  mesh.userData.isGerstnerWater = true;
+  mesh.userData.isAnimatedWater = true;
+  mesh.userData.waterPreset = presetName;
+  return mesh;
+}
+window.buildGerstnerLake = buildGerstnerLake;
+
+async function buildForestLakeWorld() {
+  const _log = (m) => { console.log('[FOREST]', m); try { showToast(m); } catch(e) {} };
+  try {
+    _log('🌲 Building world...');
+
+    // Clear scene
+    const toRemove = [];
+    scene.children.forEach(o => {
+      if ((o.type === 'Mesh' || o.type === 'Group' || o.isInstancedMesh) && !o.isLight) toRemove.push(o);
+    });
+    toRemove.forEach(o => scene.remove(o));
+    objects.length = 0;
+    if (window.npcController) window.npcController.npcs.length = 0;
+    window._lakeAnimators = [];
+
+    // Ground
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 0.95 });
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(500, 64), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    ground.userData.isGround = true;
+    scene.add(ground);
+
+    // Ground patches
+    const patchColors = [0x2d6618, 0x4a8c28, 0x3a7d2c, 0x5a9e38, 0x285520];
+    for (let i = 0; i < 80; i++) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 460;
+      const p = new THREE.Mesh(new THREE.CircleGeometry(3 + Math.random() * 12, 7),
+        new THREE.MeshStandardMaterial({ color: patchColors[i % patchColors.length] }));
+      p.rotation.x = -Math.PI / 2;
+      p.position.set(Math.cos(a)*r, 0.01, Math.sin(a)*r);
+      scene.add(p);
+    }
+
+    // BIG LAKE — r=90 for boats + swimming
+    const lakeR = 90;
+    const lake = buildGerstnerLake(lakeR, 'calm');
+    scene.add(lake);
+
+    // Sandy shore
+    const shore = new THREE.Mesh(
+      new THREE.RingGeometry(lakeR, lakeR + 7, 80),
+      new THREE.MeshStandardMaterial({ color: 0xd4b483, roughness: 0.95 })
+    );
+    shore.rotation.x = -Math.PI / 2;
+    shore.position.y = 0.02;
+    scene.add(shore);
+    _log('  ✅ Gerstner lake placed (r=90)');
+
+    // Shoreline rocks
+    for (let i = 0; i < 50; i++) {
+      const a = (i/50)*Math.PI*2 + Math.random()*0.4;
+      const r = lakeR + 1 + Math.random() * 5;
+      const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(0.4 + Math.random()*1.2, 0),
+        new THREE.MeshStandardMaterial({ color: [0x8a7a6a,0x9a8a7a,0x6a6058,0xb0a090][i%4], roughness: 0.95, flatShading: true })
+      );
+      rock.position.set(Math.cos(a)*r, 0.15, Math.sin(a)*r);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true;
+      scene.add(rock);
+    }
+
+    // ============================================
+    // FAB ASSET SHOWCASE — ring around the lake
+    // ============================================
+    _log('  📦 Placing Fab assets...');
+    const FAB_SHOWCASE = [
+      // Junkyard props — inner ring tight around lake
+      { alias: 'junkyard_1',  ring: 1, angle: 0 },
+      { alias: 'junkyard_2',  ring: 1, angle: 0.63 },
+      { alias: 'junkyard_3',  ring: 1, angle: 1.26 },
+      { alias: 'junkyard_4',  ring: 1, angle: 1.88 },
+      { alias: 'junkyard_5',  ring: 1, angle: 2.51 },
+      { alias: 'junkyard_6',  ring: 1, angle: 3.14 },
+      { alias: 'junkyard_7',  ring: 1, angle: 3.77 },
+      { alias: 'junkyard_8',  ring: 1, angle: 4.40 },
+      { alias: 'junkyard_9',  ring: 1, angle: 5.03 },
+      { alias: 'junkyard_10', ring: 1, angle: 5.65 },
+      // Saloon buildings — mid ring
+      { alias: 'saloon_1',  ring: 2, angle: 0 },
+      { alias: 'saloon_2',  ring: 2, angle: 0.7 },
+      { alias: 'saloon_3',  ring: 2, angle: 1.4 },
+      { alias: 'saloon_4',  ring: 2, angle: 2.1 },
+      { alias: 'saloon_5',  ring: 2, angle: 2.8 },
+      { alias: 'saloon_6',  ring: 2, angle: 3.5 },
+      { alias: 'saloon_7',  ring: 2, angle: 4.2 },
+      { alias: 'saloon_8',  ring: 2, angle: 4.9 },
+      { alias: 'saloon_9',  ring: 2, angle: 5.6 },
+      // Street props — outer ring
+      { alias: 'street_props',       ring: 3, angle: 0.2 },
+      { alias: 'fire_hydrant',        ring: 3, angle: 0.9 },
+      { alias: 'bench',               ring: 3, angle: 1.6 },
+      { alias: 'forklift',            ring: 3, angle: 2.3 },
+      { alias: 'mailbox',             ring: 3, angle: 3.0 },
+      { alias: 'wooden_door',         ring: 3, angle: 3.7 },
+      { alias: 'trash_can',           ring: 3, angle: 4.4 },
+      { alias: 'graffiti_wall_1k',    ring: 3, angle: 5.1 },
+      { alias: 'electrical_substation', ring: 3, angle: 5.8 },
+      { alias: 'trash_dumpster',      ring: 3, angle: 0.6 },
+      { alias: 'female_civilian',     ring: 3, angle: 1.3 },
+      { alias: 'manhole_cover',       ring: 3, angle: 2.0 },
+    ];
+
+    const ringRadii = [lakeR + 20, lakeR + 55, lakeR + 85];
+    const aliases = window._fabAliases || {};
+
+    FAB_SHOWCASE.forEach(item => {
+      const modelPath = aliases[item.alias];
+      if (!modelPath) return;
+      const r = ringRadii[item.ring - 1] || ringRadii[0];
+      const x = Math.cos(item.angle) * r;
+      const z = Math.sin(item.angle) * r;
+      loadGLBModel(item.alias, modelPath, x, z, null, modelPath);
+    });
+    _log('  ✅ Fab assets placed');
+
+    // Forest — pushed out to ring lakeR+100+ so it frames the showcase area
+    const TYPES = ['pine','pine','pine','oak','oak','birch'];
+    let planted = 0;
+
+    for (let i = 0; i < 300; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = lakeR + 110 + Math.random() * 200;
+      const x = Math.cos(a)*r, z = Math.sin(a)*r;
+      const h = 8 + Math.random() * 12;
+      const t = TYPES[Math.floor(Math.random()*TYPES.length)];
+      const tree = t==='pine' ? createPineTree({x,z,height:h}) : t==='oak' ? createOakTree({x,z,height:h}) : createBirchTree({x,z,height:h});
+      tree.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      scene.add(tree);
+      planted++;
+    }
+
+    // Bushes between showcase rings
+    for (let i = 0; i < 80; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = lakeR + 12 + Math.random() * 95;
+      const x = Math.cos(a)*r + (Math.random()-0.5)*8;
+      const z = Math.sin(a)*r + (Math.random()-0.5)*8;
+      if (Math.sqrt(x*x+z*z) < lakeR+8) continue;
+      scene.add(createBush({ x, z, scale: 0.4 + Math.random() * 1.0 }));
+    }
+    _log('  ✅ ' + planted + ' trees + bushes placed');
+
+    // Instanced grass
+    const grassMesh = buildGrassField({ count: 40000, radius: 460, excludeRadius: lakeR + 8 });
+    scene.add(grassMesh);
+    _log('  ✅ Grass placed');
+
+    // Atmosphere
+    scene.fog = new THREE.FogExp2(0x99c8aa, 0.004);
+    renderer.setClearColor(0x85b8e0, 1);
+
+    // Lighting
+    const sun = scene.children.find(o => o.isDirectionalLight);
+    if (sun) {
+      sun.color.setHex(0xfff0c0); sun.intensity = 2.2;
+      sun.position.set(100, 160, 80);
+      sun.castShadow = true;
+      if (sun.shadow) {
+        sun.shadow.mapSize.width = 2048; sun.shadow.mapSize.height = 2048;
+        sun.shadow.camera.left = -300; sun.shadow.camera.right = 300;
+        sun.shadow.camera.top = 300; sun.shadow.camera.bottom = -300;
+        sun.shadow.camera.far = 800; sun.shadow.bias = -0.0003;
+      }
+    }
+    let amb = scene.children.find(o => o.isAmbientLight);
+    if (!amb) { amb = new THREE.AmbientLight(0xc8dcc8, 0.5); scene.add(amb); }
+    else { amb.color.setHex(0xc8dcc8); amb.intensity = 0.5; }
+    renderer.shadowMap.enabled = true;
+
+    // Camera — wide view of the lake
+    window._cam.position.set(0, 180, 280);
+    window._cam.lookAt(0, 0, 0);
+    if (window._ctrl) { window._ctrl.target.set(0, 0, 0); window._ctrl.update(); }
+
+    _log('🌲 World ready! Fab assets loading around the lake...');
+
+  } catch(err) {
+    console.error('[FOREST ERROR]', err.stack || err);
+    try { showToast('❌ ' + err.message); } catch(e) {}
+  }
+}
+window.buildForestLakeWorld = buildForestLakeWorld;

@@ -24679,5 +24679,865 @@
       "pirate"
     ],
     "path": "kenney_pirate/palm-detailed-bend"
-  }
+  },
+  "props": [
+    {
+      "name": "Fire Hydrant",
+      "file": "fab/fire_hydrant.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Mailbox",
+      "file": "fab/mailbox_mailbox.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Manhole Cover",
+      "file": "fab/Manhole_Cover_tires2.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Trash Can",
+      "file": "fab/trash_can_trashcan_lowpoly.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Trash Dumpster",
+      "file": "fab/Trash_Can_Garbage_trashcan.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Street Props",
+      "file": "fab/street_props_streeprops.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Street Props Full",
+      "file": "fab/Street_Props_GLB_StreeProps.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Graffiti Wall 1K",
+      "file": "fab/graffiti_wall_quincy_quarries_graffiti-1k.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Brick Wall",
+      "file": "fab/brick_wall_damaged_tires2.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Bench",
+      "file": "fab/bench_bench.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Wooden Door",
+      "file": "fab/wooden_door_tires2.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Electrical Substation",
+      "file": "fab/electrical_substation.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Forklift",
+      "file": "fab/forklift_tires2.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 1",
+      "file": "fab/junkyard_mid_tewscfuda.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 2",
+      "file": "fab/junkyard_mid_ui1maewga.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 3",
+      "file": "fab/junkyard_mid_vb1lafx.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 4",
+      "file": "fab/junkyard_mid_vdjkbfmiw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 5",
+      "file": "fab/junkyard_mid_vj2meecs_lod2.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 6",
+      "file": "fab/junkyard_mid_wcliee1.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 7",
+      "file": "fab/junkyard_mid_wcljcaa.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 8",
+      "file": "fab/junkyard_mid_wcvoaje.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 9",
+      "file": "fab/junkyard_mid_wcvodhd.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 10",
+      "file": "fab/junkyard_mid_wcvoefi.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 11",
+      "file": "fab/junkyard_mid_wdljaaqbw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 12",
+      "file": "fab/junkyard_mid_wdlmdexbw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 13",
+      "file": "fab/junkyard_mid_wdlmdgebw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 14",
+      "file": "fab/junkyard_mid_xdcgdbrh.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 15",
+      "file": "fab/junkyard_mid_xdcgdgbh.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 16",
+      "file": "fab/junkyard_mid_xf3pcdc.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 17",
+      "file": "fab/junkyard_mid_xh2kbey.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 18",
+      "file": "fab/junkyard_mid_xiwcfassc.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 19",
+      "file": "fab/junkyard_mid_xkzhcih.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 20",
+      "file": "fab/junkyard_mid_xkzlae1.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "junk",
+        "props"
+      ]
+    }
+  ],
+  "vehicles": [
+    {
+      "name": "Forklift",
+      "file": "fab/forklift_tires2.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "vehicles"
+      ]
+    }
+  ],
+  "characters": [
+    {
+      "name": "Female Civilian",
+      "file": "fab/female_civilian.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "characters"
+      ]
+    }
+  ],
+  "buildings": [
+    {
+      "name": "Saloon 1",
+      "file": "fab/saloon_interior_mid_tl3ifacfa.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 2",
+      "file": "fab/saloon_interior_mid_tmgmfeefa.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 3",
+      "file": "fab/saloon_interior_mid_tmgpcg2fa.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 4",
+      "file": "fab/saloon_interior_mid_uc2ichvqx.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 5",
+      "file": "fab/saloon_interior_mid_udehcidiw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 6",
+      "file": "fab/saloon_interior_mid_udlmcdhqx.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 7",
+      "file": "fab/saloon_interior_mid_ue3rackdw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 8",
+      "file": "fab/saloon_interior_mid_ufzjadyga.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 9",
+      "file": "fab/saloon_interior_mid_ukipagtbw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 10",
+      "file": "fab/saloon_interior_mid_ukmjfdkbw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 11",
+      "file": "fab/saloon_interior_mid_ukphdffaw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 12",
+      "file": "fab/saloon_interior_mid_vi5hbjgga.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 13",
+      "file": "fab/saloon_interior_mid_vjjsace.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 14",
+      "file": "fab/saloon_interior_mid_vmgjfabdw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 15",
+      "file": "fab/saloon_interior_mid_vmgwbbhdw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 16",
+      "file": "fab/saloon_interior_mid_vmhmaardw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 17",
+      "file": "fab/saloon_interior_mid_vmklfccga.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 18",
+      "file": "fab/saloon_interior_mid_wb5udaydw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 19",
+      "file": "fab/saloon_interior_mid_wboweczdw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    },
+    {
+      "name": "Saloon 20",
+      "file": "fab/saloon_interior_mid_wc0jdfldw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "buildings"
+      ]
+    }
+  ],
+  "junk": [
+    {
+      "name": "Junkyard 1",
+      "file": "fab/junkyard_mid_tewscfuda.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 2",
+      "file": "fab/junkyard_mid_ui1maewga.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 3",
+      "file": "fab/junkyard_mid_vb1lafx.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 4",
+      "file": "fab/junkyard_mid_vdjkbfmiw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 5",
+      "file": "fab/junkyard_mid_vj2meecs_lod2.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 6",
+      "file": "fab/junkyard_mid_wcliee1.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 7",
+      "file": "fab/junkyard_mid_wcljcaa.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 8",
+      "file": "fab/junkyard_mid_wcvoaje.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 9",
+      "file": "fab/junkyard_mid_wcvodhd.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 10",
+      "file": "fab/junkyard_mid_wcvoefi.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 11",
+      "file": "fab/junkyard_mid_wdljaaqbw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 12",
+      "file": "fab/junkyard_mid_wdlmdexbw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 13",
+      "file": "fab/junkyard_mid_wdlmdgebw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 14",
+      "file": "fab/junkyard_mid_xdcgdbrh.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 15",
+      "file": "fab/junkyard_mid_xdcgdgbh.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 16",
+      "file": "fab/junkyard_mid_xf3pcdc.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 17",
+      "file": "fab/junkyard_mid_xh2kbey.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 18",
+      "file": "fab/junkyard_mid_xiwcfassc.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 19",
+      "file": "fab/junkyard_mid_xkzhcih.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard 20",
+      "file": "fab/junkyard_mid_xkzlae1.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 1",
+      "file": "fab/junkyard_vb1lafx.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 2",
+      "file": "fab/junkyard_wcvodhd.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 3",
+      "file": "fab/junkyard_wdljaaqbw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 4",
+      "file": "fab/junkyard_wdlmdexbw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 5",
+      "file": "fab/junkyard_xkzhcih.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 6",
+      "file": "fab/junkyard_xiwcfassc.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 7",
+      "file": "fab/junkyard_vdjkbfmiw.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 8",
+      "file": "fab/junkyard_wcliee1.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 9",
+      "file": "fab/junkyard_wcljcaa.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    },
+    {
+      "name": "Junkyard Prop 10",
+      "file": "fab/junkyard_xh2kbey.glb",
+      "source": "fab",
+      "tags": [
+        "fab",
+        "realistic",
+        "junk"
+      ]
+    }
+  ]
 }
