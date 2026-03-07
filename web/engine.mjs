@@ -11868,9 +11868,81 @@ function addSpotLight(x, y, z, targetX, targetY, targetZ, color) {
 
 // === NLP COMMAND PARSER ===
 // Bridge: expose for command bus (Engine 2.0)
+
+// ── USER MODEL IMPORT FUNCTIONS ───────────────────────────────────────────────
+async function loadUserModel(url, alias) {
+  try {
+    showNotification('Loading model...');
+    return new Promise((resolve) => {
+      gltfLoader.load(url,
+        (gltf) => {
+          const model = gltf.scene;
+          model.position.set(px || 0, 0, pz || 0);
+          model.scale.setScalar(1);
+          scene.add(model);
+          window._lastImportedModel = url;
+          GLB_MODELS[alias] = url;
+          if (alias !== 'imported_model') GLB_MODELS['my_model'] = url;
+          showNotification('Model imported! Use "place my model" to add more copies.');
+          resolve('Custom model loaded successfully');
+        },
+        (progress) => {},
+        (err) => resolve('Failed to load model: ' + err.message)
+      );
+    });
+  } catch(e) {
+    return 'Import error: ' + e.message;
+  }
+}
+
+function openModelFilePicker() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.glb,.gltf';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    loadUserModel(url, 'my_model');
+    showNotification('Loading ' + file.name + '...');
+  };
+  input.click();
+  return 'File picker opened - select your GLB/GLTF file';
+}
+// ── END USER MODEL IMPORT FUNCTIONS ──────────────────────────────────────────
+
 async function parseAndExecute(rawCmd) {
   // Skip NL rewrite for gallery keywords — let gallery commands handle directly
   const _galBypass = /^(?:show |browse |open |pick |choose |select )?(characters?|weapons?|swords?|axes?|guns?|buildings?|houses?|vehicles?|cars?|animals?|trees?|plants?|rocks?|stones?|furniture|tables?|chairs?|food|items?|potions?|dungeon|sci-?fi|space|nature|survival|animations?|library|asset library|browse all|all assets|all models|model library|browse$)$/i;
+
+  // ── USER MODEL IMPORT SYSTEM ──────────────────────────────────────────────
+  if (/^import model (.+)/i.test(cmd)) {
+    const url = cmd.match(/^import model (.+)/i)[1].trim();
+    return loadUserModel(url, 'imported_model');
+  }
+  if (/^load model from (.+)/i.test(cmd)) {
+    const url = cmd.match(/^load model from (.+)/i)[1].trim();
+    return loadUserModel(url, 'imported_model');
+  }
+  if (/^import my model$/i.test(cmd) || /^load my model$/i.test(cmd)) {
+    return openModelFilePicker();
+  }
+  if (/^use my model as (.+)/i.test(cmd)) {
+    const alias = cmd.match(/^use my model as (.+)/i)[1].trim();
+    if (window._lastImportedModel) {
+      GLB_MODELS[alias] = window._lastImportedModel;
+      return `Model registered as "${alias}" - use "add ${alias}" to place it`;
+    }
+    return 'No model imported yet. Use "import model [URL]" first.';
+  }
+  if (/^place (my model|imported model|my imported model)$/i.test(cmd)) {
+    if (window._lastImportedModel) {
+      return execSingle(`add ${window._lastImportedModel}`);
+    }
+    return 'No model imported yet. Use "import model [URL]" first.';
+  }
+  // ── END USER MODEL IMPORT ─────────────────────────────────────────────────
+
   if (_galBypass.test(rawCmd.toLowerCase().trim())) {
     console.log('[GALLERY] Bypassing NL for gallery command:', rawCmd);
     const parts = rawCmd.split(/\s+(?:and|with|plus|,|\+)\s+/i).map(s => s.trim()).filter(Boolean);
