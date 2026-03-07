@@ -46,7 +46,7 @@ function queryKB(input, topN = 8) {
 
   const scored = KB.map(chunk => {
     let score = 0;
-    const fact = chunk.f.toLowerCase();
+    const fact = chunk.text.toLowerCase();
     const topic = chunk.t.toLowerCase();
     words.forEach(w => { if (fact.includes(w)) score += 2; });
     for (const [t, triggers] of Object.entries(TOPIC_TRIGGERS)) {
@@ -62,7 +62,7 @@ function queryKB(input, topN = 8) {
     .filter(c => c.score > 0)
     .sort((a,b) => b.score - a.score)
     .slice(0, topN)
-    .map(c => `[${c.t}] ${c.f}`);
+    .map(c => `[${c.t}] ${c.text}`);
 }
 
 // ── SYSTEM PROMPT ────────────────────────────────────────────────────────────
@@ -198,6 +198,66 @@ export default {
     if (url.pathname === '/query-knowledge' && request.method === 'POST') {
       const { q } = await request.json();
       return new Response(JSON.stringify({ query: q, results: queryKB(q || '', 10) }), { headers: CORS });
+    }
+
+    // ── VISION ANALYZE — analyze game screenshot frames ──────────────────
+    if (url.pathname === '/vision-analyze' && request.method === 'POST') {
+      const { imageBase64, mimeType, game, aspect } = await request.json();
+      const apiKey = env.OPENROUTER_API_KEY;
+      if (!apiKey) return new Response(JSON.stringify({ error: 'no api key' }), { headers: CORS });
+      
+      const prompt = `You are a game design analyst. Analyze this ${game || 'game'} screenshot and extract concrete measurements and design patterns.
+
+Focus on: ${aspect || 'building scale, road width, lighting color, atmosphere, player scale, distances'}
+
+Return ONLY valid JSON like:
+{
+  "game": "${game || 'unknown'}",
+  "aspect": "${aspect || 'general'}",
+  "observations": [
+    "building height appears ~X player heights tall",
+    "road is approximately X lanes wide",
+    "lighting color temperature: warm/cool, hex estimate",
+    "fog density: none/light/heavy, starts at ~X units",
+    "art style: realistic/stylized/cartoon/lowpoly",
+    "key design patterns observed"
+  ],
+  "measurements": {
+    "buildingHeightPlayers": 0,
+    "roadWidthLanes": 0,
+    "lightingTemp": "neutral",
+    "fogDensity": "none",
+    "artStyle": "realistic",
+    "drawDistance": "medium"
+  }
+}`;
+
+      try {
+        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'google/gemini-2.0-flash-001',
+            max_tokens: 600,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: 'data:' + (mimeType||'image/jpeg') + ';base64,' + imageBase64 } },
+                { type: 'text', text: prompt }
+              ]
+            }]
+          })
+        });
+        const data = await resp.json();
+        const raw = data.choices?.[0]?.message?.content || '';
+        if (!raw) return new Response(JSON.stringify({ ok: true, analysis: {}, debug: { status: resp.status, data } }), { headers: CORS });
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        let parsed = {};
+        try { parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw }; } catch(pe) { parsed = { raw }; }
+        return new Response(JSON.stringify({ ok: true, analysis: parsed }), { headers: CORS });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: e.message }), { headers: CORS });
+      }
     }
 
     if (request.method !== 'POST') return new Response('POST only', { status: 405 });
