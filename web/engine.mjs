@@ -22488,6 +22488,9 @@ parseAndExecute = async function(rawCmd) {
   if (lower === 'old mine world' || lower === 'show old mine' || lower === 'mine world') {
     buildPackShowcase('old_mine', 'Old Mine', 47); return;
   }
+  if (lower === 'city 2' || lower === 'new city 2' || lower === 'city world 2' || lower === 'build city 2' || lower === 'second city') {
+    buildCityWorld2(); return;
+  }
   if (lower === 'city world' || lower === 'build city' || lower === 'city demo' || lower === 'new city') {
     buildCityWorld(); return;
   }
@@ -26155,3 +26158,449 @@ async function buildForestLakeWorld() {
   }
 }
 window.buildForestLakeWorld = buildForestLakeWorld;
+
+// ════════════════════════════════════════════════════════════════════════════
+// CITY WORLD 2 — Advanced procedural city with zones, parks, pools, NPCs
+// Command: "city 2" / "city world 2" / "second city"
+// ════════════════════════════════════════════════════════════════════════════
+async function buildCityWorld2() {
+  try {
+    showToast('🏙️ Building City World 2...');
+
+    // ── FULL CLEAR ────────────────────────────────────────────────────────
+    for (let i = objects.length - 1; i >= 0; i--) { scene.remove(objects[i]); objects.splice(i, 1); }
+    if (typeof currentGround !== 'undefined' && currentGround) {
+      scene.remove(currentGround);
+      if (currentGround.geometry) currentGround.geometry.dispose();
+      if (currentGround.material) currentGround.material.dispose();
+      currentGround = null; window._currentGround = null;
+    }
+    if (typeof terrainMesh !== 'undefined' && terrainMesh) { scene.remove(terrainMesh); terrainMesh = null; }
+    clearDrivingCars();
+    if (window._waterZones) window._waterZones.length = 0;
+    window._lakeAnimators = [];
+    window._cityCarUpdate = null;
+    scene.fog = null;
+    const extras = [];
+    scene.children.forEach(o => { if (!o.isLight && !o.isCamera) extras.push(o); });
+    extras.forEach(o => scene.remove(o));
+    if (window.npcController) window.npcController.npcs.length = 0;
+
+    // ── GRID CONFIG ───────────────────────────────────────────────────────
+    const BLOCK = 60;    // block width/depth
+    const ROAD  = 18;    // wider roads
+    const STEP  = BLOCK + ROAD;   // 78 per cell
+    const COLS  = 7;               // 7x7 grid — bigger city
+    const HALF  = (COLS - 1) / 2; // 3
+
+    // Road centerline positions
+    const rp = [];
+    for (let i = 0; i <= COLS; i++) rp.push(-HALF * STEP - ROAD/2 + i * STEP);
+    // Block center positions
+    const bp = [];
+    for (let i = 0; i < COLS; i++) bp.push(rp[i] + ROAD/2 + BLOCK/2);
+
+    // Zone function — returns zone name based on block coords
+    const zone = (c, r) => {
+      const dc = Math.abs(c - HALF), dr = Math.abs(r - HALF);
+      if (dc === 0 && dr === 0) return 'park';        // center = park/plaza
+      if (dc <= 1 && dr <= 1)   return 'downtown';    // 3x3 inner = skyscrapers
+      if (dc <= 2 && dr <= 2)   return 'commercial';  // 5x5 ring = commercial
+      return 'residential';                            // outer = houses
+    };
+
+    // ── LIGHTING ─────────────────────────────────────────────────────────
+    scene.fog = new THREE.FogExp2(0x0a0f1a, 0.004);
+    const sun = new THREE.DirectionalLight(0xffd580, 1.8);
+    sun.position.set(120, 200, 80); sun.castShadow = true;
+    sun.shadow.mapSize.width = 4096; sun.shadow.mapSize.height = 4096;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 1200;
+    sun.shadow.camera.left = -600; sun.shadow.camera.right = 600;
+    sun.shadow.camera.top = 600; sun.shadow.camera.bottom = -600;
+    scene.add(sun);
+    const amb = new THREE.AmbientLight(0x2040a0, 0.7); scene.add(amb);
+    const hemi = new THREE.HemisphereLight(0x90b0ff, 0x224022, 0.6); scene.add(hemi);
+
+    // Sky color — dusk vibe
+    renderer.setClearColor(0x1a2540, 1);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // ── GROUND ───────────────────────────────────────────────────────────
+    const GSIZE = COLS * STEP + ROAD + 600;
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(GSIZE, GSIZE),
+      new THREE.MeshStandardMaterial({ color: 0x3d5c30, roughness: 1.0 })
+    );
+    ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+    ground.userData.isGround = true;
+    scene.add(ground); currentGround = ground; window._currentGround = ground;
+
+    // ── ROAD MATERIALS ────────────────────────────────────────────────────
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x1e1e1e, roughness: 0.95 });
+    const swMat   = new THREE.MeshStandardMaterial({ color: 0x8a8878, roughness: 1.0 });
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, emissive: new THREE.Color(0x333333) });
+    const ylwMat  = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 1.0 });
+    const CITY_SPAN = COLS * STEP + ROAD;
+
+    // E-W roads
+    rp.forEach(rz => {
+      const road = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.12, ROAD), roadMat);
+      road.position.set(0, 0.06, rz); road.receiveShadow = true; scene.add(road);
+      [-1,1].forEach(s => {
+        const sw = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.2, 3.5), swMat);
+        sw.position.set(0, 0.1, rz + s*(ROAD/2+1.75)); scene.add(sw);
+      });
+      const cl = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.02, 0.25), ylwMat);
+      cl.position.set(0, 0.14, rz); scene.add(cl);
+      // Lane dashes
+      for (let d = 0; d < 20; d++) {
+        const dash = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, 0.22), lineMat);
+        dash.position.set(-CITY_SPAN/2 + d*(CITY_SPAN/20)+CITY_SPAN/40, 0.14, rz+ROAD/4); scene.add(dash);
+        const d2 = dash.clone(); d2.position.z = rz-ROAD/4; scene.add(d2);
+      }
+    });
+    // N-S roads
+    rp.forEach(rx => {
+      const road = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.12, CITY_SPAN), roadMat);
+      road.position.set(rx, 0.06, 0); road.receiveShadow = true; scene.add(road);
+      [-1,1].forEach(s => {
+        const sw = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.2, CITY_SPAN), swMat);
+        sw.position.set(rx + s*(ROAD/2+1.75), 0.1, 0); scene.add(sw);
+      });
+      const cl = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.02, CITY_SPAN), ylwMat);
+      cl.position.set(rx, 0.14, 0); scene.add(cl);
+    });
+    // Intersection patches + crosswalks
+    rp.forEach(rx => rp.forEach(rz => {
+      const ix = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.13, ROAD), roadMat);
+      ix.position.set(rx, 0.065, rz); scene.add(ix);
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz]) => {
+        for (let s = 0; s < 4; s++) {
+          const stripe = new THREE.Mesh(new THREE.BoxGeometry(
+            dz !== 0 ? 0.85 : ROAD*0.65, 0.01, dz !== 0 ? ROAD*0.65 : 0.85), lineMat);
+          stripe.position.set(
+            rx + dx*(ROAD/2+0.4) + (dz!==0?(s-1.5)*1.7:0), 0.14,
+            rz + dz*(ROAD/2+0.4) + (dx!==0?(s-1.5)*1.7:0));
+          scene.add(stripe);
+        }
+      });
+    }));
+
+    showToast('🚦 Roads done — adding intersections & lights...');
+    await new Promise(r => setTimeout(r, 50));
+
+    // ── STREET LIGHTS at every intersection corner ──────────────────────
+    const poleM  = new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.8, roughness: 0.3 });
+    const lightM = new THREE.MeshStandardMaterial({ color: 0xffffaa, emissive: new THREE.Color(0xffffaa), emissiveIntensity: 2 });
+    rp.forEach(rx => rp.forEach(rz => {
+      [[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([sx,sz]) => {
+        const px = rx + sx*(ROAD/2+2.5), pz = rz + sz*(ROAD/2+2.5);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 9, 6), poleM);
+        pole.position.set(px, 4.5, pz); pole.castShadow = true; scene.add(pole);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 0.2), poleM);
+        arm.position.set(px - sx*1.5, 9.2, pz); scene.add(arm);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), lightM);
+        bulb.position.set(px - sx*2.5, 9.0, pz); scene.add(bulb);
+        const pl = new THREE.PointLight(0xffffcc, 0.8, 22); 
+        pl.position.set(px - sx*2.5, 8.5, pz); scene.add(pl);
+      });
+    }));
+
+    // ── TRAFFIC LIGHTS at every intersection ────────────────────────────
+    const tlPoleM = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.6 });
+    const tlBoxM  = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const redM    = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: new THREE.Color(0xff0000), emissiveIntensity: 1.5 });
+    const ylM2    = new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: new THREE.Color(0xff8800), emissiveIntensity: 0.5 });
+    const grnM    = new THREE.MeshStandardMaterial({ color: 0x00cc44, emissive: new THREE.Color(0x00aa33), emissiveIntensity: 0.5 });
+
+    const tls = []; // store for animation
+    rp.forEach(rx => rp.forEach(rz => {
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz],fi) => {
+        const ox = rx + dx*(ROAD/2+1.5), oz = rz + dz*(ROAD/2+1.5);
+        const tlpole = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.15,7,6), tlPoleM);
+        tlpole.position.set(ox, 3.5, oz); scene.add(tlpole);
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.2, 0.5), tlBoxM);
+        box.position.set(ox, 8, oz); box.rotation.y = Math.atan2(dx,dz); scene.add(box);
+        const r = new THREE.Mesh(new THREE.SphereGeometry(0.28,8,6), redM.clone());
+        const y = new THREE.Mesh(new THREE.SphereGeometry(0.28,8,6), ylM2.clone());
+        const g = new THREE.Mesh(new THREE.SphereGeometry(0.28,8,6), grnM.clone());
+        [r,y,g].forEach((l,li) => {
+          l.position.set(ox, 8.7 - li*0.7, oz + (dz!==0?0.3:0) + (dx!==0?0.3:0));
+          scene.add(l);
+        });
+        tls.push({ r, y, g, phase: fi % 2 }); // alternate phase
+      });
+    }));
+    // Animate traffic lights
+    window._tlAnimator = (t) => {
+      tls.forEach(tl => {
+        const cycle = ((t * 0.4 + tl.phase * Math.PI) % (Math.PI*2));
+        const isGreen = cycle < Math.PI;
+        tl.r.material.emissiveIntensity = isGreen ? 0.1 : 1.8;
+        tl.g.material.emissiveIntensity = isGreen ? 1.8 : 0.1;
+        tl.y.material.emissiveIntensity = (cycle > Math.PI*0.8 && cycle < Math.PI*1.1) ? 1.5 : 0.1;
+      });
+    };
+
+    showToast('🏢 Placing buildings...');
+    await new Promise(r => setTimeout(r, 50));
+
+    // ── BUILDINGS ────────────────────────────────────────────────────────
+    const MARGIN = 8;
+    const MAX_FP = BLOCK - MARGIN*2;
+
+    const DT_MODELS   = ['kenney_city/building-skyscraper-a','kenney_city/building-skyscraper-b','kenney_city/building-skyscraper-c','kenney_city/building-skyscraper-d','kenney_city/building-skyscraper-e'];
+    const COMM_MODELS = ['kenney_city/building-a','kenney_city/building-b','kenney_city/building-c','kenney_city/building-d','kenney_city/building-e','kenney_city/building-f','kenney_city/building-g','kenney_city/building-h','kenney_city/building-i','kenney_city/building-j'];
+    const COMM2_MODELS = ['kenney_city/building-k','kenney_city/building-l','kenney_city/building-m','kenney_city/building-n','kenney_city/building-o','kenney_city/building-p'];
+    const TYPE_MODELS = ['kenney_city/building-type-a','kenney_city/building-type-b','kenney_city/building-type-c','kenney_city/building-type-d'];
+
+    function placeBuilding(modelPath, bx, bz, targetH, maxFP, rotY) {
+      return new Promise(res => {
+        gltfLoader.load('models/'+modelPath+'.glb', gltf => {
+          const m = gltf.scene;
+          m.traverse(c=>{ if(c.isMesh){c.castShadow=true;c.receiveShadow=true;} });
+          const box = new THREE.Box3().setFromObject(m);
+          const s3 = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(s3.x, s3.z, 0.01);
+          let sc = targetH / (s3.y||1);
+          if (maxDim*sc > maxFP) sc = maxFP / maxDim;
+          m.scale.setScalar(sc);
+          const b2 = new THREE.Box3().setFromObject(m);
+          m.position.set(bx, -b2.min.y, bz);
+          m.rotation.y = rotY||0;
+          m.userData.isBuilding = true; m.userData.canEnter = true;
+          scene.add(m); objects.push(m); res(m);
+        }, null, ()=>res(null));
+      });
+    }
+
+    const buildingPromises = [];
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < COLS; r++) {
+        const bx = bp[c], bz = bp[r];
+        const z = zone(c, r);
+        const rotY = (Math.floor(Math.random()*4)) * Math.PI/2;
+
+        if (z === 'park') {
+          // Central plaza — will be built separately below
+          continue;
+        } else if (z === 'downtown') {
+          const mdl = DT_MODELS[Math.floor(Math.random()*DT_MODELS.length)];
+          const h = 80 + Math.random()*120; // 80-200 unit skyscrapers
+          buildingPromises.push(placeBuilding(mdl, bx, bz, h, MAX_FP, rotY));
+        } else if (z === 'commercial') {
+          const pool = [...COMM_MODELS,...COMM2_MODELS,...TYPE_MODELS];
+          const mdl = pool[Math.floor(Math.random()*pool.length)];
+          const h = 20 + Math.random()*40; // 20-60 unit commercial
+          buildingPromises.push(placeBuilding(mdl, bx, bz, h, MAX_FP, rotY));
+        } else {
+          // Residential — modern houses
+          buildingPromises.push(new Promise(res => {
+            try {
+              const houseGrp = createModernHouse({ floors: Math.random() > 0.5 ? 2 : 1 });
+              const sc2 = 2.5;
+              houseGrp.scale.setScalar(sc2);
+              houseGrp.position.set(bx, 0, bz);
+              houseGrp.rotation.y = rotY;
+              houseGrp.userData.isBuilding = true; houseGrp.userData.canEnter = true;
+              scene.add(houseGrp); objects.push(houseGrp);
+              // Backyard fence
+              const fenceM = new THREE.MeshStandardMaterial({ color: 0xddccaa, roughness: 0.9 });
+              const fenceOff = 12;
+              [[0,1],[0,-1],[1,0],[-1,0]].forEach(([fx,fz]) => {
+                const fence = new THREE.Mesh(new THREE.BoxGeometry(
+                  fz!==0?25:0.4, 1.8, fz!==0?0.4:25), fenceM);
+                fence.position.set(bx+fx*fenceOff, 0.9, bz+fz*fenceOff);
+                scene.add(fence);
+              });
+              // Backyard pool (50% chance)
+              if (Math.random() > 0.5) {
+                const poolGrp = new THREE.Group();
+                const poolRim = new THREE.Mesh(new THREE.BoxGeometry(8,0.5,6), new THREE.MeshStandardMaterial({color:0xe0d8c8,roughness:0.8}));
+                poolRim.position.set(0,0.25,0);
+                const poolWater = new THREE.Mesh(new THREE.BoxGeometry(7,0.3,5), new THREE.MeshStandardMaterial({color:0x29a8cc,roughness:0.1,metalness:0.3,transparent:true,opacity:0.85}));
+                poolWater.position.set(0,0.45,0);
+                poolGrp.add(poolRim,poolWater);
+                poolGrp.position.set(bx+8*Math.sign(bx||1), 0, bz+8*Math.sign(bz||1));
+                scene.add(poolGrp);
+                // Register as water zone for swimming
+                if (!window._waterZones) window._waterZones = [];
+                window._waterZones.push({ mesh: poolWater, surfaceY: 0.75 });
+              }
+              res(houseGrp);
+            } catch(e){ res(null); }
+          }));
+        }
+      }
+    }
+
+    // ── CENTRAL PARK / PLAZA ────────────────────────────────────────────
+    const parkCX = bp[HALF], parkCZ = bp[HALF];
+    // Green grass base
+    const parkBase = new THREE.Mesh(new THREE.BoxGeometry(BLOCK-4, 0.15, BLOCK-4),
+      new THREE.MeshStandardMaterial({color:0x3a6b25, roughness:1}));
+    parkBase.position.set(parkCX, 0.07, parkCZ); scene.add(parkBase);
+    // Central fountain
+    const fountainBase = new THREE.Mesh(new THREE.CylinderGeometry(5,6,0.8,16),
+      new THREE.MeshStandardMaterial({color:0xc8c0b0,roughness:0.7}));
+    fountainBase.position.set(parkCX, 0.4, parkCZ); scene.add(fountainBase);
+    const fountainWater = new THREE.Mesh(new THREE.CylinderGeometry(4,4,0.3,16),
+      new THREE.MeshStandardMaterial({color:0x4dd8f0,transparent:true,opacity:0.8,roughness:0.1}));
+    fountainWater.position.set(parkCX, 0.95, parkCZ); scene.add(fountainWater);
+    const fountainPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.6,3,8),
+      new THREE.MeshStandardMaterial({color:0xc8c0b0,roughness:0.7}));
+    fountainPillar.position.set(parkCX, 1.5, parkCZ); scene.add(fountainPillar);
+    // Park benches
+    [[6,0],[-6,0],[0,6],[0,-6]].forEach(([ox,oz]) => {
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(2.5,0.3,0.8),
+        new THREE.MeshStandardMaterial({color:0x8B5E3C,roughness:0.9}));
+      bench.position.set(parkCX+ox, 0.5, parkCZ+oz); scene.add(bench);
+    });
+    // Park trees
+    for (let t = 0; t < 12; t++) {
+      const ang = (t/12)*Math.PI*2;
+      const tr = 18 + Math.random()*4;
+      const treeG = new THREE.Group();
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.4,3,6),
+        new THREE.MeshStandardMaterial({color:0x5c3d1a}));
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(2.5+Math.random(),7,6),
+        new THREE.MeshStandardMaterial({color:0x2d7a1f+Math.floor(Math.random()*0x101010)}));
+      trunk.position.y=1.5; crown.position.y=4.5; treeG.add(trunk,crown);
+      treeG.position.set(parkCX+Math.cos(ang)*tr, 0, parkCZ+Math.sin(ang)*tr);
+      scene.add(treeG);
+    }
+
+    // ── STREET TREES along sidewalks ────────────────────────────────────
+    const treeMat = new THREE.MeshStandardMaterial({color:0x2d6e1a,roughness:0.9});
+    const trunkMat2 = new THREE.MeshStandardMaterial({color:0x5c3d1a,roughness:1});
+    function plantSTree(x,z) {
+      const tg = new THREE.Group();
+      const tr2 = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.3,2.5,5),trunkMat2);
+      tr2.position.y=1.25; tr2.castShadow=true;
+      const cr2 = new THREE.Mesh(new THREE.SphereGeometry(1.8,6,5),treeMat);
+      cr2.position.y=3.5; cr2.castShadow=true;
+      tg.add(tr2,cr2); tg.position.set(x,0,z); scene.add(tg);
+    }
+    // Trees every 20 units along each road
+    for (let i = 0; i < COLS; i++) {
+      rp.forEach(rz => {
+        plantSTree(bp[i] - 12, rz + ROAD/2 + 5.5);
+        plantSTree(bp[i] + 12, rz + ROAD/2 + 5.5);
+        plantSTree(bp[i] - 12, rz - ROAD/2 - 5.5);
+        plantSTree(bp[i] + 12, rz - ROAD/2 - 5.5);
+      });
+    }
+
+    showToast('🚗 Adding traffic & pedestrians...');
+    await new Promise(r => setTimeout(r, 100));
+    await Promise.allSettled(buildingPromises);
+    showToast('✅ Buildings placed — spawning traffic...');
+    await new Promise(r => setTimeout(r, 50));
+
+    // ── CAR TRAFFIC — waypoints along road grid ──────────────────────────
+    const CAR_MODELS = [
+      'kenney_cars/sedan','kenney_cars/taxi','kenney_cars/suv',
+      'kenney_cars/police','kenney_cars/hatchback-sports',
+      'kenney_cars/van','kenney_cars/sedan-sports'
+    ];
+    const LANE_OFF = ROAD/4; // cars stay in their lane
+
+    // Build a route: one full rectangle around each road ring
+    const rings = [];
+    for (let ring = 1; ring <= Math.floor(COLS/2)+1; ring++) {
+      if (ring >= rp.length) break;
+      const ri = ring - 1, ro = COLS - ring;
+      if (ri >= rp.length || ro >= rp.length) continue;
+      rings.push([
+        [rp[ri]-LANE_OFF, rp[ri]-LANE_OFF],
+        [rp[ro]+LANE_OFF, rp[ri]-LANE_OFF],
+        [rp[ro]+LANE_OFF, rp[ro]+LANE_OFF],
+        [rp[ri]-LANE_OFF, rp[ro]+LANE_OFF],
+      ]);
+    }
+    // Add straight up/down routes along center roads
+    rp.forEach((rx,ri) => {
+      rings.push([
+        [rx-LANE_OFF, -COLS*STEP/2],
+        [rx-LANE_OFF,  COLS*STEP/2],
+        [rx+LANE_OFF,  COLS*STEP/2],
+        [rx+LANE_OFF, -COLS*STEP/2],
+      ]);
+    });
+
+    let carCount = 0;
+    for (const ring of rings) {
+      const numCars = 2 + Math.floor(Math.random()*3);
+      for (let ci = 0; ci < numCars; ci++) {
+        const modelFile = CAR_MODELS[Math.floor(Math.random()*CAR_MODELS.length)];
+        await new Promise(res => {
+          gltfLoader.load('models/' + modelFile + '.glb', gltf => {
+            const car = gltf.scene;
+            car.traverse(c=>{ if(c.isMesh){c.castShadow=true;c.receiveShadow=true;} });
+            const box = new THREE.Box3().setFromObject(car);
+            const sz = box.getSize(new THREE.Vector3());
+            car.scale.setScalar(3.5/Math.max(sz.x,sz.z));
+            const b2 = new THREE.Box3().setFromObject(car);
+            car.position.set(ring[0][0], -b2.min.y+0.05, ring[0][1]);
+            scene.add(car); objects.push(car);
+            // Stagger start position along route
+            const startWp = Math.floor((ci/numCars)*ring.length);
+            car.userData.waypointRoute = ring.map(([x,z])=>new THREE.Vector3(x,0,z));
+            car.userData.waypointIdx = startWp;
+            car.userData.speed = 6 + Math.random()*8;
+            car.userData._baseSpeed = car.userData.speed;
+            car.userData.laneOffset = (Math.random()-0.5)*2;
+            car.userData.isCity2Car = true;
+            if (!window._drivingCars) window._drivingCars = [];
+            window._drivingCars.push(car);
+            carCount++;
+            res();
+          }, null, ()=>res());
+        });
+      }
+    }
+
+    // ── NPCs on sidewalks ────────────────────────────────────────────────
+    if (window.npcController) {
+      const npcSpawns = [];
+      // Place NPCs on sidewalks throughout city
+      rp.forEach(rz => {
+        for (let c = 0; c < COLS; c++) {
+          npcSpawns.push([bp[c], rz + ROAD/2 + 3.5]);
+          npcSpawns.push([bp[c], rz - ROAD/2 - 3.5]);
+        }
+      });
+      // Spawn 16 NPCs spread across city (every 3rd sidewalk spot)
+      let spawned = 0;
+      for (let i = 0; i < npcSpawns.length && spawned < 16; i += 3) {
+        const [nx, nz] = npcSpawns[i];
+        const type = Math.random() > 0.5 ? 'man' : 'woman';
+        await window.npcController.spawnNPC(type, nx + (Math.random()-0.5)*5, nz + (Math.random()-0.5)*3, 'wander');
+        spawned++;
+        await new Promise(r=>setTimeout(r,40));
+      }
+    }
+
+    // ── HOOK TRAFFIC LIGHTS INTO RENDER LOOP ────────────────────────────
+    const origAnimate = window._onAnimateHook;
+    window._onAnimateHook = (t) => {
+      if (origAnimate) origAnimate(t);
+      if (window._tlAnimator) window._tlAnimator(t);
+    };
+
+    // ── CAMERA ───────────────────────────────────────────────────────────
+    const totalSpan = COLS * STEP + ROAD;
+    window._cam.position.set(totalSpan*0.7, totalSpan*0.55, totalSpan*0.7);
+    window._cam.lookAt(0, 0, 0);
+    if (window._ctrl) { window._ctrl.target.set(0,0,0); window._ctrl.update(); }
+
+    showToast(`🏙️ City World 2 complete! ${carCount} cars, 16 NPCs, ${COLS*COLS} blocks`);
+    _log(`City 2: 7×7 grid, downtown core, commercial ring, residential + pools`);
+
+  } catch(err) {
+    console.error('[CITY2 ERROR]', err.stack||err);
+    showToast('❌ City 2 error: ' + err.message);
+  }
+}
+window.buildCityWorld2 = buildCityWorld2;
