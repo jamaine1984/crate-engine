@@ -24955,7 +24955,7 @@ async function buildCityWorld() {
       currentGround = null; window._currentGround = null;
     }
     if (typeof terrainMesh !== 'undefined' && terrainMesh) { scene.remove(terrainMesh); terrainMesh = null; }
-    clearDrivingCars();
+    if (window._drivingCars) window._drivingCars.length = 0;
     if (window._waterZones) window._waterZones.length = 0;
     window._lakeAnimators = [];
     window._cityCarUpdate = null;
@@ -26176,7 +26176,7 @@ async function buildCityWorld2() {
       currentGround = null; window._currentGround = null;
     }
     if (typeof terrainMesh !== 'undefined' && terrainMesh) { scene.remove(terrainMesh); terrainMesh = null; }
-    clearDrivingCars();
+    if (window._drivingCars) window._drivingCars.length = 0;
     if (window._waterZones) window._waterZones.length = 0;
     window._lakeAnimators = [];
     window._cityCarUpdate = null;
@@ -26210,7 +26210,10 @@ async function buildCityWorld2() {
     };
 
     // ── LIGHTING ─────────────────────────────────────────────────────────
-    scene.fog = new THREE.FogExp2(0x1a2848, 0.0012);
+    scene.fog = null; // no fog — city is large, camera must be far back to see it
+    scene.background = new THREE.Color(0x87ceeb); // solid sky blue — remove HDRI sphere
+    scene.environment = null;                       // kill HDRI reflections — buildings visible
+    scene.environment = null; // clear HDRI environment reflections
     const sun = new THREE.DirectionalLight(0xffd580, 1.8);
     sun.position.set(120, 200, 80); sun.castShadow = true;
     sun.shadow.mapSize.width = 4096; sun.shadow.mapSize.height = 4096;
@@ -26591,22 +26594,15 @@ async function buildCityWorld2() {
 
     // ── CAMERA ───────────────────────────────────────────────────────────
     const totalSpan = COLS * STEP + ROAD;
-    // Use autoFrameScene pattern — same vars as rest of engine (camera/controls closures)
-    await new Promise(r => setTimeout(r, 500)); // let buildings finish rendering
-    if (typeof autoFrameScene === 'function') {
-      autoFrameScene();
-    } else {
-      // Fallback: compute city center and frame manually
-      const cityMidX = (bp[0] + bp[COLS-1]) / 2;
-      const cityMidZ = (bp[0] + bp[COLS-1]) / 2;
-      const dist = totalSpan * 0.75;
-      camera.position.set(cityMidX + dist*0.7, dist*0.5, cityMidZ + dist*0.7);
-      controls.target.set(cityMidX, 0, cityMidZ);
-      if (!playMode) controls.update();
-    }
+    // Street-level camera at city center — same pattern as buildCityWorld (works reliably)
+    // City center = (30, 0, 30). Position looking down a main street.
+    await new Promise(r => setTimeout(r, 300));
+    if (window._ctrl) { window._ctrl.minDistance = 1; window._ctrl.maxDistance = 9999; }
+    if (window._cam) { window._cam.position.set(30, 900, 700); }
+    if (window._ctrl) { window._ctrl.target.set(30, 0, 30); window._ctrl.update(); }
 
     showToast(`🏙️ City World 2 complete! ${carCount} cars, 16 NPCs, ${COLS*COLS} blocks`);
-    _log(`City 2: 7×7 grid, downtown core, commercial ring, residential + pools`);
+    console.log('City 2: 7x7 grid, downtown core, commercial ring, residential + pools');
 
   } catch(err) {
     console.error('[CITY2 ERROR]', err.stack||err);
