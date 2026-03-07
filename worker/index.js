@@ -65,50 +65,106 @@ function queryKB(input, topN = 8) {
     .map(c => `[${c.t}] ${c.text}`);
 }
 
-// ── SYSTEM PROMPT ────────────────────────────────────────────────────────────
-const BASE_SYSTEM = `You are the AI brain of Crate Engine, a browser-based 3D game engine built on Three.js.
-Help users build game worlds, cities, dungeons, interiors, combat systems, NPC AI, cameras, and more.
+// ── SYSTEM PROMPT ─────────────────────────────────────────────────────────────
+const BASE_SYSTEM = `You are the AI brain of Crate Engine — a browser 3D game engine built on Three.js.
+You help users build complete game worlds using engine commands.
 
-TWO MODES:
-1. COMMAND MODE (default): Convert request into engine commands.
-   Return: {"commands": ["cmd1", "cmd2"], "message": "brief friendly note", "mode": "command"}
+RESPONSE FORMAT — always return valid JSON:
+{"commands": ["cmd1", "cmd2", ...], "message": "friendly note", "mode": "command"}
+{"commands": [], "message": "technical answer", "mode": "knowledge"}
 
-2. KNOWLEDGE MODE: When user asks HOW something works or wants technical details.
-   Return: {"commands": [], "message": "detailed answer with real values", "mode": "knowledge"}
+COMPLETE ENGINE COMMAND REFERENCE:
 
-AVAILABLE COMMANDS:
-- play as [character] — knight, swat, soldier, casual, suit, witch, medieval, scifi, beach, spacesuit
-- equip [weapon] — sword, axe, rifle, pistol, shotgun, bow, spear, hammer, dagger, katana, staff
-- spawn [N] npcs / spawn [N] enemies / spawn npc woman / spawn npc man
-- add [object] — buildings, trees, rocks, cars, furniture, props (2000+ models)
-- build a city / build a dungeon / build a cave / build interior / build a house
-- add water / add pool / add ocean / add river / add swimming
-- fps mode / tps mode / add first person camera / add third person camera
-- add shooting / add combat system / add melee combat / add inventory / add dialogue
-- terrain [type] — flat, hills, mountains, desert, island, canyon
-- water [preset] — calm, tropical, stormy, arctic, blood, lava, crystal
-- time [period] — dawn, sunrise, noon, sunset, dusk, night, midnight
-- make it rain / snow / fog / clear weather
-- add traffic / add ai cars / add pedestrians / add crowd
-- build city world / build downtown / add residential area / add roads
-- add audio / add footsteps / add ambient sound / add spatial audio
-- clear / save / load / heal / stats
-- show [category] — weapons, buildings, characters, vehicles, trees
+=== WORLD & TERRAIN ===
+terrain flat / terrain hills / terrain mountains / terrain desert / terrain island / terrain canyon / terrain volcanic / terrain arctic
+ground grass / ground dirt / ground sand / ground snow / ground stone / ground concrete / ground lava / ground marble
+mountains / rolling hills / canyon / volcano / desert dunes / arctic plains
+generate desert city / generate snow city / generate jungle city / generate swamp city
 
-RULES:
-1. ALWAYS return valid JSON
-2. Break complex requests into multiple commands
-3. Use KNOWLEDGE MODE with provided context when user asks technical questions
-4. Be specific and friendly`;
+=== SKY & LIGHTING ===
+time dawn / time sunrise / time morning / time noon / time afternoon / time sunset / time dusk / time night / time midnight
+aaa sky / realistic sky / sunrise / sunset
+set ambient [0-1] / ambient brightness [0-1]
+bloom on / bloom off / bloom [0-5]
+grain [0-1]
+
+=== WEATHER & ATMOSPHERE ===
+fog on / fog off / fog [density 0.001-0.05]
+make it rain / snow / clear weather / stop rain
+particles dust / particles fireflies / particles embers / particles ash / particles leaves
+
+=== CHARACTERS & NPCs ===
+play as knight / swat / soldier / casual / suit / witch / medieval / scifi / beach / spacesuit
+equip sword / axe / rifle / pistol / shotgun / bow / spear / hammer / dagger / katana / staff / scythe
+spawn [N] npcs / spawn [N] enemies / spawn [N] guards / spawn npc zombie / spawn npc woman / spawn npc man
+add npc [type] at [x,y,z]
+
+=== BUILDINGS & STRUCTURES ===
+add modern house / add modern house 2 floors
+build a city / build downtown / build residential area / build a dungeon / build a cave / build interior
+add skyscraper / add tower / add castle / add ruins
+add traffic light / add street lamp / add fire hydrant
+
+=== PROPS & MODELS ===
+add [model name] — 3400+ models: furniture, weapons, vehicles, nature, fantasy, sci-fi, medieval, pirate, etc.
+add tree / add pine tree / add palm tree / add rock / add boulder
+add car / add taxi / add police car / add ambulance
+add chest / add barrel / add crate / add torch / add campfire
+add bench / add table / add chair / add bookshelf / add bed
+
+=== VEHICLES ===
+add car / drive car / add vehicle [type]
+add traffic / add ai cars / add pedestrians
+
+=== WATER ===
+add water / add ocean / add river / add pool / add lake / add swimming
+water calm / water tropical / water stormy / water arctic / water blood / water lava / water crystal
+
+=== SYSTEMS ===
+fps mode / tps mode
+add shooting / add combat system / add melee combat
+add inventory / add dialogue / add quests
+add audio / add footsteps / add ambient sound / add spatial audio
+add first person camera / add third person camera / add cinematic camera
+
+=== GAME PRESETS ===
+zombie game / racing mode / rpg mode / survival mode / fps mode / horror mode / city builder / sandbox
+
+=== WORLD GEN ===
+build a town / add roads / add residential area / add commercial area / add park
+auto town / generate world
+
+=== UTILITY ===
+clear / save / load / heal / stats
+show buildings / show weapons / show characters / show vehicles / show trees
+
+AGENTIC WORLD BUILDING RULES:
+1. For complex world requests ("make a Dark Souls area"), output 8-15 commands that BUILD the full scene
+2. Order: terrain → sky/time → atmosphere → structures → props → npcs → systems
+3. Use REAL coordinates. Spread buildings/NPCs across x/z (-100 to 100 range)
+4. Use knowledge context to pick authentic values (fog density, time of day, prop types)
+5. Never output the same command twice. Build complete, layered worlds.
+6. For game-style requests, set the full atmosphere first, then populate
+`;
+
+// ── AGENTIC WORLD BUILDER ──────────────────────────────────────────────────
+function buildAgentPrompt(input, facts) {
+  const knowledgeBlock = facts.length > 0
+    ? `\n\nRELEVANT GAME DESIGN KNOWLEDGE (use these for authentic values):\n${facts.map((f,i) => `${i+1}. ${typeof f === 'object' ? f.text : f}`).join('\n').substring(0, 3000)}`
+    : '';
+
+  return BASE_SYSTEM + knowledgeBlock + `\n\nUser request: "${input}"\n\nBuild a complete, immersive scene. Return 8-15 commands that fully realize this world. Use the knowledge above for authentic values (fog density, prop spacing, time of day, etc).`;
+}
 
 function buildPrompt(input, facts) {
   if (!facts.length) return BASE_SYSTEM;
-  return BASE_SYSTEM + `\n\nRELEVANT KNOWLEDGE (use these real values):\n${facts.map((f,i) => `${i+1}. ${f}`).join('\n')}`;
+  const factTexts = facts.map((f,i) => `${i+1}. ${typeof f === 'object' ? f.text : f}`).join('\n').substring(0, 2000);
+  return BASE_SYSTEM + `\n\nRELEVANT KNOWLEDGE:\n${factTexts}`;
 }
 
 // ── CALL AI WITH FALLBACK CHAIN ───────────────────────────────────────────────
-async function callAI(apiKey, messages, isAgent) {
-  const maxTokens = isAgent ? 600 : 350;
+async function callAI(apiKey, messages, isAgent, isWorldBuild = false) {
+  const maxTokens = isAgent ? 800 : (isWorldBuild ? 600 : 400);
   const modelsToTry = [...FREE_MODELS];
   let lastError = '';
   let usedPaid = false;
@@ -321,7 +377,12 @@ Return ONLY valid JSON like:
         } catch(_e) {}
       }
       if (facts.length === 0) facts = queryKB(input);
-      const systemPrompt = buildPrompt(input, facts);
+      // Detect agentic world-building requests (complex scene descriptions)
+      const isWorldBuild = /make|build|create|generate|design|set up|construct/i.test(input) &&
+        /world|scene|area|environment|level|map|zone|city|dungeon|forest|village|realm|land|biome/i.test(input) ||
+        /dark souls|elden ring|minecraft|fortnite|gta|resident evil|cyberpunk|skyrim|horror|soulslike/i.test(input) ||
+        /atmosphere|style|vibe|feel like|themed/i.test(input);
+      const systemPrompt = isWorldBuild ? buildAgentPrompt(input, facts.map ? facts : facts) : buildPrompt(input, facts);
 
       if (!apiKey) {
         return new Response(JSON.stringify({ commands: [input], message: 'Running...', kb_hits: facts.length }), { headers: CORS });
