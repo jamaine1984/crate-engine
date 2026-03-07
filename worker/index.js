@@ -1,31 +1,45 @@
-// Crate Engine AI Worker — RAG-powered (943 knowledge chunks)
+// Crate Engine AI Worker — RAG + Model Fallback Chain
+// Free tier first, paid fallback (gpt-4o-mini) only when all free models rate-limited
 import { KB } from './kb.js';
 
-// ── KEYWORD SEARCH ───────────────────────────────────────────────────────────
+// ── MODEL FALLBACK CHAIN ─────────────────────────────────────────────────────
+// Tries each in order — skips on 429 rate limit, falls to next
+const FREE_MODELS = [
+  'google/gemini-2.0-flash-exp:free',           // Primary — fastest
+  'google/gemini-2.0-flash-thinking-exp:free',  // Backup 1 — smarter
+  'meta-llama/llama-3.1-8b-instruct:free',      // Backup 2 — reliable
+  'qwen/qwen-2.5-7b-instruct:free',             // Backup 3 — good at instructions
+  'google/gemma-2-9b-it:free',                  // Backup 4
+  'mistralai/mistral-7b-instruct:free',         // Backup 5 — lightweight
+];
+
+const PAID_FALLBACK = 'openai/gpt-4o-mini'; // ~$0.15/1M tokens — last resort only
+
+// ── RAG KEYWORD SEARCH ───────────────────────────────────────────────────────
 function queryKB(input, topN = 8) {
   const q = input.toLowerCase();
   const words = q.split(/\W+/).filter(w => w.length > 3);
 
   const TOPIC_TRIGGERS = {
     fps:         ['first person','fps','mouselook','pointer lock'],
-    tps:         ['third person','tps','over shoulder','behind player'],
+    tps:         ['third person','tps','over shoulder'],
     shooting:    ['shoot','gun','bullet','raycast','hitscan','fire','aim','ammo','reload'],
     water:       ['water','swim','ocean','river','lake','buoyancy','float','wave','underwater','pool'],
-    dungeon:     ['dungeon','cave','underground','tunnel','mine','corridor','cellar'],
+    dungeon:     ['dungeon','cave','underground','tunnel','mine','corridor'],
     interior:    ['interior','inside','building','house','room','door','enter','exit'],
     city:        ['city','town','street','road','block','skyscraper','urban','traffic','grid'],
-    npc:         ['npc','crowd','pedestrian','character','citizen','person','people','ai npc'],
-    combat:      ['fight','combat','attack','sword','melee','parry','dodge','hit','damage','health'],
+    npc:         ['npc','crowd','pedestrian','character','citizen','person'],
+    combat:      ['fight','combat','attack','sword','melee','parry','dodge','damage','health'],
     animation:   ['animation','blend','state machine','ik','foot','root motion','locomotion'],
-    audio:       ['sound','audio','music','footstep','reverb','ambient','sfx','3d sound'],
+    audio:       ['sound','audio','music','footstep','reverb','ambient','sfx'],
     networking:  ['multiplayer','network','lag','prediction','rollback','sync','server','client'],
-    performance: ['performance','fps','optimize','culling','lod','batching','instancing','gpu'],
-    lighting:    ['light','shadow','bloom','ambient','global illumination','gi','baked'],
-    particles:   ['particle','vfx','explosion','fire','smoke','spark','effect','burst'],
+    performance: ['performance','optimize','culling','lod','batching','instancing','gpu'],
+    lighting:    ['light','shadow','bloom','ambient','global illumination','baked'],
+    particles:   ['particle','vfx','explosion','fire','smoke','spark','effect'],
     inventory:   ['inventory','item','pickup','equip','slot','drag','drop','backpack'],
-    dialogue:    ['dialogue','conversation','npc talk','quest','branch','choice','response'],
+    dialogue:    ['dialogue','conversation','npc talk','quest','branch','choice'],
     procedural:  ['procedural','noise','perlin','biome','terrain','heightmap','generate'],
-    physics:     ['physics','gravity','mass','collision','rigid','bounce','force','velocity'],
+    physics:     ['physics','gravity','mass','collision','rigid','bounce','force'],
     vehicles:    ['car','vehicle','drive','truck','wheel','suspension','steering'],
     threejs:     ['three.js','threejs','webgl','shader','mesh','geometry','material'],
   };
@@ -53,7 +67,7 @@ function queryKB(input, topN = 8) {
 
 // ── SYSTEM PROMPT ────────────────────────────────────────────────────────────
 const BASE_SYSTEM = `You are the AI brain of Crate Engine, a browser-based 3D game engine built on Three.js.
-You help users build game worlds, cities, dungeons, interiors, combat systems, NPC AI, and more.
+Help users build game worlds, cities, dungeons, interiors, combat systems, NPC AI, cameras, and more.
 
 TWO MODES:
 1. COMMAND MODE (default): Convert request into engine commands.
@@ -68,32 +82,95 @@ AVAILABLE COMMANDS:
 - spawn [N] npcs / spawn [N] enemies / spawn npc woman / spawn npc man
 - add [object] — buildings, trees, rocks, cars, furniture, props (2000+ models)
 - build a city / build a dungeon / build a cave / build interior / build a house
-- add water / add pool / add ocean / add river
+- add water / add pool / add ocean / add river / add swimming
 - fps mode / tps mode / add first person camera / add third person camera
-- add shooting / add combat system / add melee combat
-- add swimming / add buoyancy / water physics
-- add audio / add footsteps / add ambient sound
-- add inventory / add dialogue system
+- add shooting / add combat system / add melee combat / add inventory / add dialogue
 - terrain [type] — flat, hills, mountains, desert, island, canyon
 - water [preset] — calm, tropical, stormy, arctic, blood, lava, crystal
 - time [period] — dawn, sunrise, noon, sunset, dusk, night, midnight
 - make it rain / snow / fog / clear weather
 - add traffic / add ai cars / add pedestrians / add crowd
 - build city world / build downtown / add residential area / add roads
+- add audio / add footsteps / add ambient sound / add spatial audio
 - clear / save / load / heal / stats
 - show [category] — weapons, buildings, characters, vehicles, trees
 
 RULES:
 1. ALWAYS return valid JSON
 2. Break complex requests into multiple commands
-3. Use KNOWLEDGE MODE with provided context facts when user asks technical questions
-4. Be specific and friendly in message field`;
+3. Use KNOWLEDGE MODE with provided context when user asks technical questions
+4. Be specific and friendly`;
 
 function buildPrompt(input, facts) {
   if (!facts.length) return BASE_SYSTEM;
-  return BASE_SYSTEM + `\n\nRELEVANT KNOWLEDGE (use these real values in your response):\n${facts.map((f,i) => `${i+1}. ${f}`).join('\n')}`;
+  return BASE_SYSTEM + `\n\nRELEVANT KNOWLEDGE (use these real values):\n${facts.map((f,i) => `${i+1}. ${f}`).join('\n')}`;
 }
 
+// ── CALL AI WITH FALLBACK CHAIN ───────────────────────────────────────────────
+async function callAI(apiKey, messages, isAgent) {
+  const maxTokens = isAgent ? 600 : 350;
+  const modelsToTry = [...FREE_MODELS];
+  let lastError = '';
+  let usedPaid = false;
+
+  for (const model of modelsToTry) {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiKey,
+          'HTTP-Referer': 'https://crateshipgames.com',
+          'X-Title': 'Crate Engine AI',
+        },
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
+      });
+
+      if (res.status === 429) {
+        lastError = `${model} rate limited`;
+        console.warn(`[AI] ${model} rate limited, trying next...`);
+        continue; // try next model
+      }
+
+      if (!res.ok) {
+        lastError = `${model} error ${res.status}`;
+        continue;
+      }
+
+      const data = await res.json();
+      const text = data.choices?.[0]?.message?.content || '';
+      if (text) return { text, model, paid: false };
+
+    } catch (e) {
+      lastError = e.message;
+      continue;
+    }
+  }
+
+  // All free models exhausted — try paid gpt-4o-mini
+  console.warn('[AI] All free models rate limited, falling back to gpt-4o-mini (paid)');
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+        'HTTP-Referer': 'https://crateshipgames.com',
+        'X-Title': 'Crate Engine AI',
+      },
+      body: JSON.stringify({ model: PAID_FALLBACK, max_tokens: maxTokens, messages }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const text = data.choices?.[0]?.message?.content || '';
+      if (text) return { text, model: PAID_FALLBACK, paid: true };
+    }
+  } catch(e) {}
+
+  return null; // everything failed
+}
+
+// ── CORS ─────────────────────────────────────────────────────────────────────
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
@@ -101,20 +178,23 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-// ── HANDLER ──────────────────────────────────────────────────────────────────
+// ── MAIN HANDLER ─────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
     const url = new URL(request.url);
 
-    // Stats
     if (url.pathname === '/stats') {
-      const topics = [...new Set(KB.map(c => c.t))].sort();
-      return new Response(JSON.stringify({ status: 'ok', kb_chunks: KB.length, topics }), { headers: CORS });
+      return new Response(JSON.stringify({
+        status: 'ok',
+        kb_chunks: KB.length,
+        free_models: FREE_MODELS.length,
+        paid_fallback: PAID_FALLBACK,
+        topics: [...new Set(KB.map(c => c.t))].sort(),
+      }), { headers: CORS });
     }
 
-    // Direct KB query
     if (url.pathname === '/query-knowledge' && request.method === 'POST') {
       const { q } = await request.json();
       return new Response(JSON.stringify({ query: q, results: queryKB(q || '', 10) }), { headers: CORS });
@@ -137,37 +217,32 @@ export default {
         return new Response(JSON.stringify({ commands: [input], message: 'Running...', kb_hits: facts.length }), { headers: CORS });
       }
 
-      const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + apiKey,
-          'HTTP-Referer': 'https://crateshipgames.com',
-          'X-Title': 'Crate Engine AI',
-        },
-        body: JSON.stringify({
-          model: isAgent ? 'google/gemini-2.0-flash-thinking-exp:free' : 'google/gemini-2.0-flash-exp:free',
-          max_tokens: isAgent ? 600 : 350,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: input }
-          ]
-        })
-      });
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: input },
+      ];
 
-      if (!aiRes.ok) {
+      const result = await callAI(apiKey, messages, isAgent);
+
+      if (!result) {
         return new Response(JSON.stringify({ commands: [input], message: 'Running...', kb_hits: facts.length }), { headers: CORS });
       }
 
-      const data = await aiRes.json();
-      const text = data.choices?.[0]?.message?.content || '{}';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         parsed.kb_hits = facts.length;
+        parsed.model_used = result.model;
+        parsed.used_paid = result.paid;
         return new Response(JSON.stringify(parsed), { headers: CORS });
       }
-      return new Response(JSON.stringify({ commands: [input], message: text.slice(0, 300), kb_hits: facts.length }), { headers: CORS });
+
+      return new Response(JSON.stringify({
+        commands: [input],
+        message: result.text.slice(0, 300),
+        kb_hits: facts.length,
+        model_used: result.model,
+      }), { headers: CORS });
 
     } catch (err) {
       return new Response(JSON.stringify({ commands: [], message: 'Error: ' + err.message }), { status: 500, headers: CORS });
