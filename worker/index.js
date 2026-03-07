@@ -160,6 +160,148 @@ auto town / generate world
 clear / save / load / heal / stats
 show buildings / show weapons / show characters / show vehicles / show trees
 
+
+=== COMPLETE GAME SYSTEMS — AI KNOWS ALL OF THESE ===
+
+--- INVENTORY & ITEMS ---
+add inventory / open inventory / inventory grid [4x4]
+add item [name] to inventory / add [weapon] to inventory
+inventory hotbar / show backpack / add loot system
+equip [item] / unequip / drop item / use item
+add crafting / add crafting table / add crafting menu
+add shop / add vendor / add buy menu / add sell menu
+add health potion / add stamina item / add armor item
+
+--- NPC DIALOGUE SYSTEM ---
+add npc dialogue / enable dialogue system
+npc say [text] / npc [name] say [text]
+add quest giver npc / add shopkeeper npc / add guard npc / add merchant npc
+dialogue tree [name] / add dialogue option [text]
+npc [name] has quest [quest name]
+add friendly npc / add hostile npc / add neutral npc
+npc talk range [meters] / interact with npc
+add npc voice / npc speak [line]
+spawn npc [type] at [x,y,z] with name [name]
+add conversation [npc] / add cutscene dialogue
+
+--- MENUS & UI SCREENS ---
+add main menu / show main menu / title screen
+add pause menu / show pause menu (Esc to open)
+add settings menu / add options menu
+add game over screen / add death screen / add respawn screen
+add victory screen / add win screen / add level complete screen
+add loading screen / add splash screen
+add credits screen / add about screen
+add HUD / hide HUD / toggle HUD
+add crosshair / hide crosshair / crosshair [dot/cross/circle]
+add minimap / hide minimap / minimap size [small/large]
+add compass / add radar
+add health bar / add stamina bar / add ammo counter
+add kill counter / add score display / add timer / add wave counter
+add xp bar / add level indicator / add money display
+add status effects display / add buff icons
+
+--- WIN & LOSE CONDITIONS ---
+add win condition / set win condition
+win if kill [N] enemies / win if collect [N] items / win if reach [location]
+win if survive [N] seconds / win if score [N] points
+add lose condition / lose if health reaches 0
+lose if time runs out / add timer countdown [seconds]
+add checkpoint / add respawn point / auto save
+add lives system / set lives [N]
+add score system / add high score / add leaderboard
+
+--- AUDIO & MUSIC ---
+add background music / play music [style: epic/calm/horror/action/ambient]
+add ambient sound / stop music / fade music out
+add footstep sounds / footsteps on/off
+add combat sounds / add explosion sounds / add weapon sounds
+add spatial audio / audio range [meters]
+add rain sound / add wind sound / add crowd sound
+add voice line [text] / add subtitle [text]
+mute / unmute / volume [0-1]
+
+--- CUTSCENES & CINEMATICS ---
+add cutscene / start cutscene / end cutscene
+cinematic mode / letterbox on/off
+camera pan to [x,y,z] in [seconds]
+camera orbit / camera fly through
+add intro cutscene / add outro cutscene
+add slow motion / slow motion [0.1-1.0] / normal speed
+freeze frame / add black fade / add white fade
+
+--- QUESTS & PROGRESSION ---
+add quest / add quest [name]
+quest objective: kill [N] [enemy type]
+quest objective: collect [N] [item]
+quest objective: reach [location]
+quest reward: [item] / quest reward: [XP amount]
+complete quest / fail quest / abandon quest
+add skill tree / add abilities / add power up
+add experience system / add leveling / gain xp [amount]
+add achievement / unlock achievement [name]
+
+--- SAVE & LOAD ---
+save game / load game / new game
+add checkpoint / add save point
+auto save on / auto save off
+export world / share world
+
+--- POLISH COMMANDS ---
+VISUAL QUALITY:
+graphics low / graphics medium / graphics high / graphics ultra
+anti-aliasing on / anti-aliasing off / fxaa / smaa
+ssao on / ssao off (ambient occlusion)
+shadow quality low/medium/high/ultra
+lod on / lod off (level of detail)
+performance mode / quality mode
+
+POST-PROCESSING:
+bloom on / bloom off / bloom [0-5]
+vignette [0-1] (edge darkening)
+chromatic aberration [0-0.01] (lens distortion)
+grain [0-1] (film grain)
+depth of field on / dof off / dof focus [distance]
+motion blur on / motion blur off
+color grade cinematic / color grade warm / color grade cool / color grade horror / color grade noir / color grade vivid
+contrast [0.5-2.0] / saturation [0-2] / brightness [0-2]
+sharpness [0-1]
+
+ATMOSPHERE POLISH:
+fog [density] / fog color [hex]
+ambient brightness [0-2]
+sun intensity [0-5] / sun color [hex]
+shadow softness [0-5]
+particles dust / particles fireflies / particles embers / particles ash / particles leaves / particles snow / particles rain
+add god rays / disable god rays
+add lens flare / disable lens flare
+
+--- MULTIPLAYER ---
+multiplayer / join [room] / host game / create room
+add multiplayer / sync players / add netcode
+chat [message] / broadcast [message]
+
+--- PERFORMANCE & OPTIMIZATION ---
+performance mode (disables expensive effects)
+quality preset low/medium/high/ultra
+limit fps [30/60/120/unlimited]
+show stats / hide stats / fps counter on
+clear cache / optimize scene / reduce draw calls
+
+=== WHAT A COMPLETE GAME NEEDS (AI CHECKLIST) ===
+A complete game requires:
+1. WORLD — terrain, sky, lighting, atmosphere
+2. PLAYER — character, controls, camera mode (fps/tps)
+3. COMBAT — weapons, enemies, health system
+4. PROGRESSION — quests, inventory, leveling, saves
+5. UI — HUD, inventory screen, pause menu, main menu
+6. AUDIO — music, ambient, SFX
+7. STORY — NPC dialogue, cutscenes, objectives
+8. POLISH — post-processing, performance tuning, game over/win screens
+9. FEEL — screen shake, hit effects, particles, slow-mo moments
+
+When building complete games, output commands that cover ALL 9 categories.
+
 AGENTIC WORLD BUILDING RULES:
 1. For complex world requests output 8-15 commands that BUILD the full scene
 2. Order: terrain -> sky/time -> fog/atmosphere -> structures -> props -> npcs -> systems
