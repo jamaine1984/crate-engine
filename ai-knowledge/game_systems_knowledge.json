@@ -1,0 +1,818 @@
+[
+  {
+    "topic": "quest_system",
+    "fact": "Quest givers should display an icon overhead (!, ?, \u2605) visible from 20-30 units away. Color coding: yellow=available, gray=not yet available (level requirement), green=in progress, white=completed.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "quest_system",
+    "fact": "Quest objectives use a step-based structure: fetch X items, reach location, defeat Y enemies, talk to NPC, escort target, defend point, collect loot from specific enemy type.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "quest_system",
+    "fact": "Quest journals track: quest name, description, current step, reward preview (XP, gold, item). Good UX shows active step highlighted, completed steps crossed out.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "quest_system",
+    "fact": "Breadcrumb waypoints: a glowing trail or compass marker always points toward current objective. Players should never have to open a map just to find the quest objective.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "quest_system",
+    "fact": "Side quests vs main quests: main story quests use distinct color (gold/orange), side quests use different color (blue/white). Players can see at a glance what's story-critical.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "quest_system",
+    "fact": "Quest rewards should appear as an animated chest-open or overlay popup showing items flying toward the HUD slots. Sound: fanfare + item pickup sounds layered.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "quest_system",
+    "fact": "Branching quests: player choices affect outcome. Store choice flags in a quest state object. Multiple endings require different NPC dialogue trees and different final rewards.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "quest_system",
+    "fact": "Quest timers for timed missions: show a countdown bar on HUD during time-sensitive quests. Flash red when under 25% time remaining. Play a warning sound at 30 seconds.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "quest_system",
+    "fact": "Nearby quest tracking: show a small indicator when the player enters a zone where a quest objective exists, even if not currently tracked.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "NPC dialogue triggers when player is within 3-5 units and presses interact key (E/F/triangle). Show a floating 'Press E to talk' prompt that fades in as player approaches.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "Dialogue UI: show speaker portrait (left or right), speaker name, dialogue text with typewriter effect at 40-60 chars/sec. Player response options appear below after text completes.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "NPC conversation cameras: cut to a close-up shot of the NPC's face during dialogue. Use a slow dolly-in for important story moments. Return to gameplay camera on dialogue end.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "Response option system: show 2-4 responses the player can choose. Label options by tone: [Aggressive], [Friendly], [Question], [Leave]. Affects NPC relationship score.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "NPC relationship system: track relationship score per NPC (-100 to +100). High relationship unlocks unique dialogue, quests, discounts at merchants, or romance options.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "Idle NPC behavior: NPCs not in dialogue should wander a small area, look at the player when nearby, perform ambient animations (cleaning, reading, sharpening sword).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "Merchant NPCs open a shop UI on dialogue end. Shop has categories: weapons, armor, consumables, misc. Highlight affordable items in white, unaffordable in gray.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "Quest-giving dialogue: NPC explains the problem, player accepts or declines. On accept: quest added to journal, NPC says goodbye line, quest marker appears on map.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "Voiced vs text dialogue: if using text only, animate the NPC mouth or use body language (nodding, gesturing) to imply they're speaking. Silence feels wrong.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dialogue_npc",
+    "fact": "NPC memory: NPCs should remember past interactions. If player completed their quest, they say 'Thanks for your help!' not the same intro line.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Inventory grid: items occupy 1x1 to 3x3 slots. Show item icon, quantity (stack count bottom-right), rarity color border (gray=common, green=uncommon, blue=rare, purple=epic, orange=legendary).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Inventory capacity: weight-based or slot-based. Weight: each item has kg value, player has max carry weight shown as bar. Slot: fixed grid (like Resident Evil 4 attache case).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Item tooltip on hover: show item name, type, stats comparison (+/- vs equipped), description, sell value, weight. Use green for better than equipped, red for worse.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Quick slot bar (hotbar): 8-10 slots on bottom of screen. Player drags items from inventory to hotbar. Press 1-8 or D-pad to use. Show cooldown overlay on slot when used.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Equipment slots: head, chest, legs, feet, hands, ring (x2), necklace, weapon (main hand), offhand/shield. Show mannequin or character silhouette with slots highlighted.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Loot pickup: auto-pickup for small items when player walks over them. Large items require interact. Show a loot bag icon when enemy dies with items inside.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Inventory sorting: sort by type, by rarity, by value, or manually. Drag-and-drop to rearrange. Right-click for context menu: equip, drop, sell, split stack, examine.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Item stacking: consumables and materials stack up to 99 or 999. Weapons and armor are unique (do not stack). Show stack count as number overlay on item icon.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Trash/drop system: drag item to a trash slot or press delete key. Show confirmation popup for rare+ items: 'Drop [Epic Sword]? Yes / No'. Prevent accidental loss.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "inventory_system",
+    "fact": "Chest and container looting: open container shows a split-screen: left=container contents, right=player inventory. 'Take All' button at top. Individual items can be dragged over.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "Save slots: show 3-10 save slots as cards with: screenshot thumbnail, character name, level, location name, playtime, date saved. Most recent save is highlighted.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "Autosave: trigger on: entering new area, after major quest milestone, every 5-10 minutes. Show a small save icon (floppy disk or cloud) in corner for 2 seconds when autosave triggers.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "Checkpoint saves (soulslike): save points are physical objects in the world (bonfires, statues, benches). Player must manually rest/activate. All enemies respawn on rest.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "Save data structure: store player position (x,y,z), rotation, current HP/stamina, inventory array, equipped items, quest states object, NPC relationship scores, discovered areas map, playtime.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "Quick save / quick load: F5 to quick save, F9 to quick load. Show 'SAVED' text in corner on quick save. Quick load shows a 1-second black flash then continues.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "Load screen: show a world/location image as background, loading bar at bottom, rotating game logo, and a gameplay tip that changes every few seconds.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "Save corruption prevention: write to a temp file first, verify integrity, then rename to final save file. Keep one backup save. Show error if save fails with retry option.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "Cloud saves: sync to cloud automatically when game exits. Show cloud sync status in save menu. Allow choosing between local and cloud version if they conflict.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "save_load_system",
+    "fact": "New game vs continue: main menu shows 'Continue' (last save) prominently if a save exists. 'New Game' prompts difficulty selection and character customization.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "Main menu structure: [Continue / Load Game] [New Game] [Multiplayer] [Settings] [Credits] [Quit]. Most common action (Continue) is always at top.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "Main menu background: animated scene from the game world (camera slowly panning through a forest, city street, dungeon corridor). Show the game's atmosphere immediately.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "Main menu audio: ambient game music plays (dramatic, calm, or action depending on game tone). Fade in on menu load. Music loops seamlessly.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "New game flow: difficulty selection \u2192 character name/appearance \u2192 optional backstory/class choice \u2192 brief intro cinematic \u2192 world load.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "Settings menu sections: Graphics (resolution, quality, vsync, FOV), Audio (master/music/SFX/voice volume), Controls (key rebinding, sensitivity, invert Y), Accessibility (colorblind mode, subtitles, text size).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "Pause menu (in-game): ESC opens overlay with [Resume] [Save Game] [Load Game] [Settings] [Main Menu]. Blur the game world behind the pause menu. Resume instantly on click.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "Death screen: show a dramatic death animation, then fade to a red-tinted screen. Options: [Respawn at Checkpoint] [Load Last Save] [Main Menu]. Show how player died.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "Game over vs death: death = respawn at nearby checkpoint. Game over = mission failed, restart mission. Distinguish clearly with different UI and messaging.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "main_menu",
+    "fact": "Character creation: sliders for facial features, body type, skin tone (full spectrum), hair style/color, starting outfit. Preview character in 3D rotating view.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Core HUD elements: health bar (top-left), stamina/energy bar (below health), minimap (top-right), hotbar (bottom-center), crosshair (center), objective text (top-center).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Health bar design: red fill, shows current/max HP as number, animate damage as red flash then drain. Low health (<25%): pulse red, add heartbeat sound, vignette around screen edges.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Stamina bar: yellow or green, depletes on sprint/dodge/attack, regens after brief delay. Show depletion flash when empty. Hide bar when full to reduce clutter.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Minimap: circular, shows player (center, rotating arrow), nearby enemies (red dots), quest waypoints (colored markers), discovered POIs (icons). Click to open full map.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Damage numbers: floating text appears at hit location showing damage dealt. Color-code: white=normal, yellow=critical, purple=poison, blue=frost, red=fire. Scale number by damage amount.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Notification feed (top-right or bottom-left): short text notifications stack up and fade out. 'Quest Updated', 'Item Acquired', 'Achievement Unlocked', 'Level Up'. Each lasts 3-4 seconds.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Compass bar: horizontal bar across top showing cardinal directions and quest markers as colored icons. More intuitive than minimap for open-world navigation.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Contextual prompts: when near an interactable object, show 'Press E to [action]' near the object. Fade in on approach, fade out on leaving. Don't clutter at all times.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "hud_system",
+    "fact": "Boss health bar: appears at bottom of screen when boss is engaged. Shows boss name, phase indicator (e.g. 'Phase 2'), health bar that drains dramatically.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "crafting_system",
+    "fact": "Crafting UI: show a 3x3 or 4x4 grid of ingredient slots, arrow pointing right, result item slot. Place ingredients to see what gets crafted. Match recipe exactly.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "crafting_system",
+    "fact": "Recipe discovery: auto-unlock recipes when player acquires all needed materials for first time. Recipe book stores all discovered recipes with ingredients listed.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "crafting_system",
+    "fact": "Upgrade crafting: take existing weapon/armor, add upgrade materials, increase +1 to +10. Show stat improvement preview before confirming. Cost increases with each upgrade level.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "crafting_system",
+    "fact": "Workbench vs inventory crafting: simple recipes craftable anywhere (bandages from cloth). Complex recipes need a workbench, forge, or alchemy table. Mark required station on recipe.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "crafting_system",
+    "fact": "Material gathering: ores from rocks (mining animation), wood from trees (chopping animation), herbs from glowing plants (picking animation). Each has a short interact animation.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "crafting_system",
+    "fact": "Crafting feedback: show crafting animation on workbench (hammering, mixing, stitching). On completion: item flies to inventory slot with sparkle effect and sound.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "skill_tree",
+    "fact": "Skill tree layout: radial (branching from center) or linear (left to right) or constellation style. Each node is a skill icon, connected by lines. Locked nodes are darkened.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "skill_tree",
+    "fact": "XP and leveling: kill enemies for XP, complete quests for larger XP chunks. Fill XP bar \u2192 level up \u2192 flash/fanfare \u2192 gain skill points to spend in tree.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "skill_tree",
+    "fact": "Skill types: passive (permanent stat boosts), active (new abilities mapped to buttons), combo (modify existing moves with new properties).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "skill_tree",
+    "fact": "Skill prerequisites: must unlock parent skill before child is available. Show the connection lines and indicate what's needed. Highlight the path to desired skill.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "skill_tree",
+    "fact": "Attribute points: STR (carry weight, melee damage), DEX (attack speed, crit chance), VIT (max HP), INT (spell power, crafting quality), AGI (movement speed, dodge distance).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "skill_tree",
+    "fact": "Respec system: allow resetting skill points for a cost (gold or rare item). Players should be able to experiment without permanent mistakes.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "map_system",
+    "fact": "World map: opens with M key. Shows full world with fog of war (unexplored=dark). Discovered areas reveal terrain, roads, settlements. Fast travel points shown as icons.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "map_system",
+    "fact": "Map markers: player can place custom markers (right-click on map). Built-in markers: quests (\u2605), shops (bag icon), dungeons (skull), save points (campfire), bosses (crown).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "map_system",
+    "fact": "Zone map vs world map: world map for overall navigation, zone map for detailed interior layout (dungeon floor plan, city district). Toggle with zoom or separate key.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "map_system",
+    "fact": "Points of Interest (POIs): shown as icons on map when discovered. Types: ruins, cave, camp, viewpoint, shrine, merchant. Undiscovered POIs have ? marks until found.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "map_system",
+    "fact": "Minimap vs full map: minimap always visible in corner (small, rotates with player). Full map pauses game and shows everything. Both update in real-time as player explores.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "map_system",
+    "fact": "Fast travel: click discovered fast travel point on map \u2192 black screen transition \u2192 appear at destination. Only available when not in combat or danger.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "audio_system",
+    "fact": "Dynamic music system: music changes based on situation. Exploration = ambient/calm. Combat starts = music transitions to action layer. Combat ends = music fades back to calm over 5-10 seconds.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "audio_system",
+    "fact": "Spatial audio: sounds have 3D position. Enemies heard from direction they're in. Water sounds louder when closer. Use audio reverb zones: caves echo, outdoors dry, indoors slight reverb.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "audio_system",
+    "fact": "Footstep variety: different sounds for different surfaces: grass (soft swish), stone (hard click), wood (hollow thud), sand (muffled crunch), metal (ring). Vary pitch randomly \u00b110% to avoid repetition.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "audio_system",
+    "fact": "UI sounds: every button click, menu open/close, item pickup, notification, level up has a distinct sound. Keep UI sounds subtle (lower volume than gameplay sounds).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "audio_system",
+    "fact": "Enemy audio cues: enemies make sounds for: detected player (alert sound), attacking (grunt/swing), taking damage (pain sound), dying (death sound). Player uses these as feedback.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "audio_system",
+    "fact": "Ambient soundscapes: forest = birds + wind + leaves. City = crowd murmur + distant music + carts. Cave = drips + echo + subtle wind. Layer 2-4 ambient tracks per environment.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "camera_system",
+    "fact": "Third-person camera: follows player from behind and slightly above (shoulder or overhead). Smooth follow with slight lag. Adjust height when in cover or indoors.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "camera_system",
+    "fact": "Camera collision: camera should not clip through walls or terrain. Push camera toward player when obstructed. Show player silhouette through walls when camera is blocked.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "camera_system",
+    "fact": "Lock-on system: press button to lock camera onto nearest enemy. Camera centers on enemy. Strafe around locked target. Release to return to free camera. Useful for boss fights.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "camera_system",
+    "fact": "Camera shake: apply screen shake on: heavy impacts, explosions, landing from height, taking heavy damage. Short duration (0.2-0.5s), decreasing intensity. Don't overdo it.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "camera_system",
+    "fact": "FOV settings: let players set FOV (60-110 degrees). Wider FOV for PC (100+). Narrow FOV for cinematic or console. Dynamic FOV: increase slightly during sprint for speed sensation.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "camera_system",
+    "fact": "Cinematic cameras: for cutscenes and story moments, take control of camera. Use dramatic angles, slow zooms, reaction shots of NPCs. Return to gameplay camera smoothly.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "combat_feedback",
+    "fact": "Hit detection feedback: successful hit shows: impact particle effect at hit location, screen flash (brief white or red), damage number, hit sound, enemy reaction animation (flinch).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "combat_feedback",
+    "fact": "Block and parry: block reduces damage (50-80%), parry at perfect timing negates all damage and staggers enemy. Parry: bright flash effect, loud metal clang sound, brief slow-motion moment.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "combat_feedback",
+    "fact": "Dodge roll: brief invincibility frames during roll (8-16 frames). Show afterimage trail during dodge. Stamina cost per dodge. Can dodge through enemy attacks.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "combat_feedback",
+    "fact": "Status effects visual: burning = fire particles on body. Poisoned = green tint + dripping particles. Frozen = ice crystal overlay. Stunned = stars circling head. Each has unique color.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "combat_feedback",
+    "fact": "Enemy death: enemies have death animations (fall backward, crumple, explode). Physics-based ragdoll after animation. Drop loot bag visible immediately. Despawn after 30-60 seconds.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "combat_feedback",
+    "fact": "Combo system: string light attacks + heavy attacks for combos. Show combo counter HUD element. Each combo has a distinct animation sequence. Final hit has extra impact effect.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "economy_system",
+    "fact": "Currency types: bronze/silver/gold tiered (100 bronze = 1 silver, 100 silver = 1 gold). Show wallet in HUD during shop. Animate coins when spending/earning.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "economy_system",
+    "fact": "Shop restock: merchant inventory refreshes daily (in-game time) or after completing quests. Some rare items have limited stock (1-3) and don't restock. Creates urgency.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "economy_system",
+    "fact": "Buy/sell interface: left side = merchant stock, right side = player inventory. Price shown per item. 'Sell All Junk' button for items tagged as trash. Bargaining skill reduces prices.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "economy_system",
+    "fact": "Item pricing logic: vendors buy items at 30-50% of value. Players sell for less than they buy. Rare items worth more but harder to sell. Fences buy stolen goods at 20% value.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "economy_system",
+    "fact": "Loot economy balance: common enemies drop 1-10 coins. Bosses drop 100-500 coins + rare items. Quest rewards = 200-1000 coins. Prices scale with game progression zone.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "tutorial_system",
+    "fact": "Contextual tutorials: teach mechanics exactly when they first appear. First time near an enemy: 'Press [attack] to attack'. First time on low health: 'Use a healing item with [hotkey]'.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "tutorial_system",
+    "fact": "Tutorial popups: small overlay in corner (not fullscreen). Shows keybind icon + brief instruction. Auto-dismiss after 5 seconds or when player performs the action.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "tutorial_system",
+    "fact": "Tutorial skip: let experienced players skip all tutorials at new game start. Remember this preference. Never re-show a tutorial the player has completed.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "tutorial_system",
+    "fact": "Tutorial dungeon/area: optional starting area that teaches all basic mechanics in a safe environment. Gate it behind a choice: 'I need help' or 'I know how to play'.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "tutorial_system",
+    "fact": "Visual highlighting: during tutorials, highlight the relevant UI element or world object with a golden glow or arrow pointing to it. Removes once player interacts.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "achievement_system",
+    "fact": "Achievement types: story milestones (unmissable, bronze), side activities (optional, silver), mastery challenges (grind, gold/platinum). Show total completion percentage.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "achievement_system",
+    "fact": "Achievement popup: appear in corner (top-right). Show achievement icon, name, and description. Brief fanfare sound. Disappears after 4-5 seconds. Can stack if multiple unlock at once.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "achievement_system",
+    "fact": "Achievement menu: grid of achievement cards. Locked = silhouette + ???. Unlocked = full icon + unlock date. Progress achievements show bar (e.g. 'Kill 100/500 enemies').",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "achievement_system",
+    "fact": "Secret achievements: shown as ??? in menu until unlocked. Rewards curiosity. After unlocking, full description reveals retroactively.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "multiplayer_lobby",
+    "fact": "Lobby screen: shows all connected players with their: character avatar, name, level, ready status checkmark. Host has crown icon. Character load screen visible to all players.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "multiplayer_lobby",
+    "fact": "Matchmaking flow: Quick Match \u2192 searching spinner with player count \u2192 found lobby \u2192 waiting for players \u2192 countdown timer \u2192 game start.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "multiplayer_lobby",
+    "fact": "Lobby chat: text chat panel in lobby. Players type messages. Emote buttons for quick reactions. Mute individual players. Report player option.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "multiplayer_lobby",
+    "fact": "Session code: host generates a 6-character code. Friends enter code to join directly (skip matchmaking). Show code prominently in lobby UI.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "multiplayer_lobby",
+    "fact": "In-game HUD for multiplayer: show all players' health bars (small) in corner. Player nameplates float above characters. Scoreboard accessible via Tab key.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "multiplayer_lobby",
+    "fact": "Drop-in/drop-out co-op: host can enable co-op mid-game. Joining players spawn at host location. If player drops, game continues without them. Enemies scale by player count.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "animation_system",
+    "fact": "Locomotion blend tree: idle \u2192 walk \u2192 run \u2192 sprint all blend smoothly based on movement speed. Blend time: 0.1-0.2 seconds. Strafe animations for left/right movement.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "animation_system",
+    "fact": "Root motion vs in-place: root motion = animation moves character position (more realistic). In-place = code moves character, animation plays in place (more controllable).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "animation_system",
+    "fact": "IK (Inverse Kinematics): feet plant on uneven terrain (foot IK). Hands grip weapon realistically (hand IK). Eyes look at player or points of interest (look-at IK).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "animation_system",
+    "fact": "Ragdoll death: on death, switch from death animation to physics ragdoll. Ragdoll takes velocity from last hit direction. Character tumbles naturally. Prop ragdolls for barrels, boxes.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "animation_system",
+    "fact": "Facial animations: use blend shapes for facial expressions. Angry, happy, sad, surprised, neutral. Trigger during dialogue or combat reactions. NPCs look alive, not robotic.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "animation_system",
+    "fact": "Weapon animations: each weapon type has unique attack animations. Sword: slash sets. Bow: draw-hold-release. Magic: casting pose with particle buildup. Gun: recoil + reload.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "physics_interactions",
+    "fact": "Destructible objects: wooden crates, barrels, fences, glass windows shatter when hit. Use pre-fractured meshes that break into pieces. Physics on pieces for 2-3 seconds then despawn.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "physics_interactions",
+    "fact": "Pushable objects: heavy boxes or carts can be pushed by player. Use physics joints and mass. Player push animation plays. Object slides along ground with friction sound.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "physics_interactions",
+    "fact": "Water physics: player wades when water depth is knee-height (slowed movement). Swims when deeper. Submerging triggers underwater audio filter (muffled). Breath meter if underwater too long.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "physics_interactions",
+    "fact": "Climbing and ledge grab: when player approaches a ledge at correct height and speed, auto-grab. Pull-up animation plays. Can hang and shimmy left/right. Drop when pressing down.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "physics_interactions",
+    "fact": "Throwable items: player can pick up (F) small physics objects and throw (LMB). Object follows projectile arc. Deals damage on hit to enemies. Breaks on impact with hard surfaces.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "lighting_design",
+    "fact": "Time of day cycle: 24-hour cycle (compressed to 15-30 real minutes). Dawn: golden low-angle light from east. Noon: harsh overhead light, short shadows. Dusk: orange-red sky. Night: dark, moon/stars, artificial lights glow.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "lighting_design",
+    "fact": "Interior lighting: candles and torches flicker (randomize intensity \u00b110% every frame). Windows cast shaft-of-light beams. Dungeons: sparse torchlight leaves deep shadows. Creates atmosphere and tension.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "lighting_design",
+    "fact": "Weather effects: rain = particles falling + ground splash particles + wet material on surfaces + fog increase + ambient sound. Snow = white particles + accumulation on surfaces + footprints.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "lighting_design",
+    "fact": "Fog of war in top-down games: black overlay on unexplored areas. Explored but not visible = dark gray overlay. Currently visible = full color. Units have sight radius that reveals around them.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "lighting_design",
+    "fact": "Danger zones: red tint on screen edges when in combat or danger. Dark vignette for horror/stealth sections. Green tint briefly after healing. Blue tint in cold areas.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "lighting_design",
+    "fact": "Industrial/horror aesthetic (Ill-style): flickering fluorescent lights, pools of oil reflecting light, steam venting from pipes, oppressive concrete walls, single exposed bulb lighting in small rooms, darkness beyond 15 units.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dungeon_design",
+    "fact": "Dungeon entrance: always marked with a distinctive visual (stone archway, cave mouth, iron door, grate). Nearby text prompt or signpost tells player what lies within (dungeon name, suggested level).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dungeon_design",
+    "fact": "Dungeon rooms: procedural or hand-crafted. Key room types: combat arena, puzzle room, trap corridor, treasure room, boss chamber, safe room (no enemies, save point).",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dungeon_design",
+    "fact": "Dungeon lighting: torches every 8-10 units along corridors. Boss rooms often have dramatic overhead lighting (skylight shaft or magical light source). Dead ends are darker than main paths.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dungeon_design",
+    "fact": "Dungeon navigation: leave subtle breadcrumbs so players don't get completely lost: vines growing toward exits, airflow indicating outside, sound of water showing level transitions.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dungeon_design",
+    "fact": "Trap systems: pressure plates (step triggers), tripwires (walking triggers), proximity triggers (approach triggers). Visual telegraphing: plates are slightly different color, wires glint in light.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dungeon_design",
+    "fact": "Dungeon verticality: use multiple levels connected by stairs, ladders, drop-down ledges, elevators. Falling damage applies beyond 5 units drop height. Roll on landing reduces damage.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  },
+  {
+    "topic": "dungeon_design",
+    "fact": "Boss room design: large circular or square arena with clear boundaries. Environmental hazards (lava pit edges, crushers). Multiple exits from the boss fight once defeated.",
+    "context": "game_systems",
+    "source": "expert_generated"
+  }
+]
