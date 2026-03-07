@@ -20685,7 +20685,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // AI Agent integration
-import { CrateAgent } from './ai-agent.mjs?v=4';
+import { CrateAgent } from './ai-agent.mjs?v=5';
 import { matchIntent, initVoice, startListening, stopListening, isListening, getStats } from './voice-commands.mjs';
 const agent = new CrateAgent((cmd) => {
   parseAndExecute(cmd);
