@@ -77,7 +77,7 @@ COMPLETE ENGINE COMMAND REFERENCE:
 
 === WORLD & TERRAIN ===
 terrain flat / terrain hills / terrain mountains / terrain desert / terrain island / terrain canyon / terrain volcanic / terrain arctic
-ground grass / ground dirt / ground sand / ground snow / ground stone / ground concrete / ground lava / ground marble
+ground grass / ground dirt / ground sand / ground snow / ground stone / ground concrete / ground lava
 mountains / rolling hills / canyon / volcano / desert dunes / arctic plains
 generate desert city / generate snow city / generate jungle city / generate swamp city
 
@@ -105,19 +105,41 @@ build a city / build downtown / build residential area / build a dungeon / build
 add skyscraper / add tower / add castle / add ruins
 add traffic light / add street lamp / add fire hydrant
 
-=== PROPS & MODELS ===
-add [model name] — 3400+ models: furniture, weapons, vehicles, nature, fantasy, sci-fi, medieval, pirate, etc.
-add tree / add pine tree / add palm tree / add rock / add boulder
-add car / add taxi / add police car / add ambulance
-add chest / add barrel / add crate / add torch / add campfire
-add bench / add table / add chair / add bookshelf / add bed
+=== PROPS & MODELS (857 Unity + 3400 base models available) ===
+add [model name] — use any alias below or unity_ prefix names
+
+SMART MODEL ALIASES BY SCENE TYPE:
+- FLOODED/POST-APOC: add unity_villa1_ext_b, add unity_bld_bridge_a, add unity_church1_mid_a, add unity_barn2_mid_a, add unity_lo_prop_car_a, add zombie
+- TOON CITY: add toon_apartment, add toon_city_hall, add helicopter, add toon_park, add toon_ambulance, add unity_cb_apartment_h
+- SPACE/SCI-FI: add space_fighter, add spaceship, add unity_capitalship_shield, add unity_spacefighter_wing, add space_rifle
+- MEDIEVAL/FANTASY: add knight_character, add dark_knight, add unity_pt_pine_tree_03_green, add unity_pt_wooden_bridge_02, add unity_sword5_3
+- FPS WEAPONS: add unity_akm, add unity_revolver, add unity_crossbow, add pistol, add medieval_sword_fps
+- NATURE/FOLIAGE: add infini_twist_tree, add fern, add infini_mushrooms, add unity_pt_ore_rock_01
+- VEHICLES: add touring_race_car, add unity_lo_prop_car_a, add toon_ambulance
+- HORROR: add zombie, add unity_villa1_ext_b, add unity_church1_mid_a + fog heavy + time midnight
+- NPC ANIMATIONS: add unity_humanm_combatidle01, add unity_humanf_straferun01_forwardright
+
+NATURAL LANGUAGE MODEL MATCHING:
+spaceship/spacecraft = space_fighter | race car = touring_race_car | knight = knight_character
+zombie = zombie | pistol/handgun = pistol | shotgun = unity_fp_doublebarlshotgun
+rifle/ak47 = unity_akm | fern = infini_fern | mushroom = infini_mushrooms
+helicopter = helicopter | apartment = toon_apartment | church = unity_church1_mid_a
+barn = unity_barn2_mid_a | bridge = unity_bld_bridge_a | villa = unity_villa1_ext_b
+
+=== USER CUSTOM MODEL IMPORT ===
+import model [URL] - loads any GLB from a public URL
+import my model - opens file picker for local GLB upload
+load model from [URL] - alias for import model
+use my model as [name] - registers uploaded model with custom alias  
+place my model - places last imported model in scene
+When user mentions "my model", "custom model", "my own 3D file" - use import commands
 
 === VEHICLES ===
 add car / drive car / add vehicle [type]
 add traffic / add ai cars / add pedestrians
 
 === WATER ===
-add water / add ocean / add river / add pool / add lake / add swimming
+add water / add ocean / add river / add pool / add lake
 water calm / water tropical / water stormy / water arctic / water blood / water lava / water crystal
 
 === SYSTEMS ===
@@ -139,14 +161,15 @@ clear / save / load / heal / stats
 show buildings / show weapons / show characters / show vehicles / show trees
 
 AGENTIC WORLD BUILDING RULES:
-1. For complex world requests ("make a Dark Souls area"), output 8-15 commands that BUILD the full scene
-2. Order: terrain → sky/time → atmosphere → structures → props → npcs → systems
+1. For complex world requests output 8-15 commands that BUILD the full scene
+2. Order: terrain -> sky/time -> fog/atmosphere -> structures -> props -> npcs -> systems
 3. Use REAL coordinates. Spread buildings/NPCs across x/z (-100 to 100 range)
-4. Use knowledge context to pick authentic values (fog density, time of day, prop types)
-5. Never output the same command twice. Build complete, layered worlds.
-6. For game-style requests, set the full atmosphere first, then populate
+4. Match model aesthetic to scene: toon models for cartoon worlds, flooded models for destroyed look, space kit for sci-fi
+5. Use knowledge context to pick authentic values (fog density, time of day, prop types)
+6. Never output the same command twice. Build complete, layered worlds.
+7. For game-style requests, set the full atmosphere first, then populate
+8. Open natural language: if user asks for anything specific (a fern, a spaceship, an AK47) - use the exact matching model
 `;
-
 // ── AGENTIC WORLD BUILDER ──────────────────────────────────────────────────
 function buildAgentPrompt(input, facts) {
   const knowledgeBlock = facts.length > 0
