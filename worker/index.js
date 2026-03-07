@@ -258,6 +258,59 @@ const CORS = {
 };
 
 // ── MAIN HANDLER ─────────────────────────────────────────────────────────────
+
+// ── CLARIFYING QUESTION SYSTEM ───────────────────────────────────────────────
+function needsClarification(input) {
+  const ambiguous = [
+    { test: /build.*city|create.*city|make.*city/i, q: "city_style", ask: "What style city? Reply: toon (colorful/low-poly) or realistic (detailed buildings)" },
+    { test: /build.*world|create.*world|make.*world/i, q: "world_style", ask: "What style? Reply: modern, medieval, sci-fi, fantasy, horror, post-apocalyptic, or toon" },
+    { test: /add.*building|place.*building/i, q: "building_style", ask: "What style building? Reply: modern, toon, medieval, flooded, or sci-fi" },
+    { test: /add.*character|spawn.*character|add.*person/i, q: "char_style", ask: "What kind? Reply: knight, zombie, soldier, civilian, or describe them" },
+  ];
+  for (const rule of ambiguous) {
+    if (rule.test.test(input)) return rule.ask;
+  }
+  return null;
+}
+
+// ── SMART ITEM SELECTION ─────────────────────────────────────────────────────
+function resolveSmartModel(input) {
+  const lower = input.toLowerCase();
+  // Vehicles
+  if (/race car|racing car|touring car/.test(lower)) return 'touring_race_car';
+  if (/spaceship|space ship|space craft|spacecraft/.test(lower)) return 'space_fighter';
+  if (/helicopter/.test(lower)) return 'helicopter';
+  if (/ambulance/.test(lower)) return 'toon_ambulance';
+  // Weapons
+  if (/ak47|akm|assault rifle/.test(lower)) return 'unity_akm';
+  if (/shotgun|double barrel/.test(lower)) return 'unity_fp_doublebarlshotgun';
+  if (/sniper|hunting rifle/.test(lower)) return 'unity_fp_huntingrifle';
+  if (/revolver/.test(lower)) return 'unity_revolver';
+  if (/crossbow/.test(lower)) return 'unity_crossbow';
+  if (/pistol|handgun|9mm/.test(lower)) return 'pistol';
+  // Characters
+  if (/zombie/.test(lower)) return 'zombie';
+  if (/knight/.test(lower)) return 'knight_character';
+  if (/dark knight/.test(lower)) return 'dark_knight';
+  // Buildings - style aware
+  if (/toon.*building|cartoon.*building/.test(lower)) return 'toon_apartment';
+  if (/flooded.*building|destroyed.*building/.test(lower)) return 'unity_villa1_ext_b';
+  if (/church/.test(lower)) return 'unity_church1_mid_a';
+  if (/barn/.test(lower)) return 'unity_barn2_mid_a';
+  if (/bridge/.test(lower)) return 'unity_bld_bridge_a';
+  if (/villa/.test(lower)) return 'unity_villa2_ext_a';
+  // Nature
+  if (/fern/.test(lower)) return 'infini_fern';
+  if (/mushroom/.test(lower)) return 'infini_mushrooms';
+  if (/pine tree/.test(lower)) return 'unity_pt_pine_tree_03_green';
+  if (/twisted.*tree|twist.*pine/.test(lower)) return 'infini_twist_tree';
+  // Space parts
+  if (/capital ship/.test(lower)) return 'unity_capitalship_shield';
+  if (/space.*gun|space.*rifle/.test(lower)) return 'space_rifle';
+  return null;
+}
+// ── END SMART SELECTION ───────────────────────────────────────────────────────
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -401,6 +454,29 @@ Return ONLY valid JSON like:
       }
       if (facts.length === 0) facts = queryKB(input);
       // Detect agentic world-building requests (complex scene descriptions)
+      // Check if we need to clarify style before building
+      const clarifyMsg = needsClarification(input);
+      if (clarifyMsg && !input.includes('toon') && !input.includes('realistic') && !input.includes('modern') && !input.includes('low poly') && !input.includes('medieval') && !input.includes('sci-fi') && !input.includes('fantasy') && !input.includes('horror') && !input.includes('zombie') && !input.includes('space')) {
+        // Only ask once - if they already specified a style, skip
+        // For single item adds, skip clarification (only for world builds)
+        const isBigBuild = /build.*world|create.*world|make.*world|build.*city|create.*city|make.*city/.test(input);
+        if (isBigBuild) {
+          return new Response(JSON.stringify({
+            ok: true,
+            commands: [],
+            message: clarifyMsg,
+            mode: "clarify"
+          }), { headers: corsHeaders });
+        }
+      }
+
+      // Smart single-item model resolution
+      const smartModel = resolveSmartModel(input);
+      if (smartModel && /^(add|place|spawn|put)\s+/i.test(input) && !input.includes(' a ') === false) {
+        // Let AI handle it but hint the model
+        const enhancedInput = input + ` (use model: ${smartModel})`;
+      }
+
       const isWorldBuild = /make|build|create|generate|design|set up|construct/i.test(input) &&
         /world|scene|area|environment|level|map|zone|city|dungeon|forest|village|realm|land|biome/i.test(input) ||
         /dark souls|elden ring|minecraft|fortnite|gta|resident evil|cyberpunk|skyrim|horror|soulslike/i.test(input) ||
