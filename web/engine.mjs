@@ -1036,7 +1036,8 @@ setTimeout(() => {
 
 window.addEventListener('keydown', e => {
   if (typeof dialogueSystem !== 'undefined' && e.key === ' ' && dialogueSystem && dialogueSystem.active) { dialogueSystem.advance(); e.preventDefault(); return; }
-  if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) { showCommandPage(); return; }
+    if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
   if ((e.key === 'Tab' || e.key === 'i') && playMode && typeof characterController !== 'undefined' && characterController && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
     characterController.toggleInventoryPanel();
@@ -11965,6 +11966,275 @@ function addSpotLight(x, y, z, targetX, targetY, targetZ, color) {
 // === NLP COMMAND PARSER ===
 // Bridge: expose for command bus (Engine 2.0)
 
+
+// ══════════════════════════════════════════════════════
+// COMPREHENSIVE COMMAND REFERENCE PAGE
+// ══════════════════════════════════════════════════════
+function showCommandPage() {
+  const existing = document.getElementById('cmd-page-modal');
+  if (existing) { existing.remove(); return; }
+
+  const categories = [
+    { icon: '🌍', name: 'World & Terrain', cmds: [
+      'terrain flat / hills / mountains / desert / island / canyon / volcanic / arctic',
+      'ground grass / dirt / sand / snow / stone / concrete / asphalt / lava / mud / forest',
+      'ground rock / marble / metal / wood / ice / obsidian / crystal / gravel',
+      'I want a desert land / grass land / snowy world / forest land / volcanic land / swamp land',
+      'mountains / rolling hills / canyon / volcano / desert dunes / arctic plains',
+      'generate desert city / snow city / jungle city / swamp city',
+      'generate world / auto town / build a town',
+    ]},
+    { icon: '🌅', name: 'Sky & Lighting', cmds: [
+      'time dawn / sunrise / morning / noon / afternoon / sunset / dusk / night / midnight',
+      'aaa sky / realistic sky / sunrise / sunset sky',
+      'set ambient [0-1] / ambient brightness [0-1]',
+      'sun intensity [0-5] / sun color [hex] / shadow softness [0-5]',
+      'bloom on/off / bloom [0-5] / grain [0-1]',
+      'add god rays / disable god rays / add lens flare',
+    ]},
+    { icon: '🌦️', name: 'Weather & Atmosphere', cmds: [
+      'fog on/off / fog [0.001-0.05]',
+      'make it rain / stop rain / heavy rain / drizzle',
+      'make it snow / stop snow / blizzard',
+      'clear weather / storm',
+      'particles dust / fireflies / embers / ash / leaves / snow / spores',
+    ]},
+    { icon: '🏔️', name: 'Water', cmds: [
+      'add water / add ocean / add river / add pool / add lake / add swimming',
+      'water calm / tropical / stormy / arctic / blood / lava / crystal',
+    ]},
+    { icon: '🧑', name: 'Characters', cmds: [
+      'play as knight / swat / soldier / casual / suit / witch / medieval / scifi / beach / spacesuit',
+      'equip sword / axe / rifle / pistol / shotgun / bow / spear / hammer / dagger / katana / staff',
+      'spawn [N] npcs / spawn [N] enemies / spawn [N] guards',
+      'spawn npc zombie / woman / man / knight / soldier',
+      'add npc [type] at [x,y,z] / npc say [text]',
+      'add quest giver npc / add shopkeeper npc / add merchant npc',
+      'npc [name] has quest [name] / add npc dialogue',
+    ]},
+    { icon: '🏗️', name: 'Buildings & Structures', cmds: [
+      'add modern house / add modern house 2 floors',
+      'build a city / build downtown / build residential area',
+      'build a dungeon / build a cave / build interior',
+      'add skyscraper / add tower / add castle / add ruins',
+      'add traffic light / add street lamp / add fire hydrant',
+      'add road / add roads / add park / add commercial area',
+    ]},
+    { icon: '📦', name: 'Models & Props (857 Unity + 3400 base)', cmds: [
+      '── FLOODED/POST-APOC ──',
+      'add unity_villa1_ext_b / add unity_villa2_ext_a / add unity_church1_mid_a / add unity_barn2_mid_a',
+      'add unity_bld_bridge_a / add unity_lo_prop_car_a / add unity_lo_prop_boat_a',
+      '── TOON CITY ──',
+      'add toon_apartment / add toon_city_hall / add helicopter / add toon_park / add toon_ambulance',
+      '── SPACE/SCI-FI ──',
+      'add space_fighter / add spaceship / add unity_capitalship_shield / add space_rifle',
+      '── MEDIEVAL/FANTASY ──',
+      'add knight_character / add dark_knight / add zombie / add unity_sword5_3 / add unity_shield_evo_02_v1',
+      'add unity_pt_pine_tree_03_green / add unity_pt_wooden_bridge_02 / add unity_pt_ore_rock_01',
+      '── FPS WEAPONS ──',
+      'add unity_akm / add unity_revolver / add unity_crossbow / add pistol / add medieval_sword_fps',
+      'add unity_fp_doublebarlshotgun / add unity_fp_huntingrifle / add unity_fp_arms_akm',
+      '── NATURE ──',
+      'add infini_twist_tree / add fern / add infini_mushrooms / add infini_fern / add infini_lily',
+      '── VEHICLES ──',
+      'add touring_race_car / add toon_ambulance / add unity_lo_prop_car_a',
+      '── BASE MODELS (3400+) ──',
+      'add tree / add pine / add palm / add rock / add boulder / add bench / add chair / add table',
+      'add car / add taxi / add police car / add ambulance / add truck / add bus',
+      'add chest / add barrel / add crate / add torch / add campfire',
+    ]},
+    { icon: '🚗', name: 'Vehicles', cmds: [
+      'add car / add vehicle [type] / drive car / enter vehicle / exit vehicle',
+      'add traffic / add ai cars / add pedestrians',
+      'add touring_race_car / add toon_ambulance',
+    ]},
+    { icon: '⚔️', name: 'Combat & Systems', cmds: [
+      'add shooting / add combat system / add melee combat',
+      'add health system / set health [100] / heal / add respawn',
+      'add damage system / add enemy ai / set enemy aggro range [20]',
+      'add knockback / add stagger / add death animation',
+      'zombie game / racing mode / rpg mode / survival mode / fps mode / horror mode',
+    ]},
+    { icon: '🎒', name: 'Inventory & Items', cmds: [
+      'add inventory / open inventory / inventory grid 4x4',
+      'add item [name] to inventory / equip [item] / drop item / use item',
+      'inventory hotbar / show backpack / add loot system',
+      'add health potion / add armor item / add stamina item',
+      'add crafting / add shop / add vendor / add buy menu',
+    ]},
+    { icon: '💬', name: 'Dialogue & Quests', cmds: [
+      'npc say [text] / npc [name] say [text]',
+      'add quest / add quest [name]',
+      'quest objective: kill [N] [type] / collect [N] [item] / reach [location]',
+      'quest reward: [item] / complete quest / fail quest',
+      'add dialogue tree / add dialogue option [text]',
+      'add skill tree / add experience system / add leveling',
+      'gain xp [amount] / unlock achievement [name]',
+    ]},
+    { icon: '📺', name: 'HUD & Menus', cmds: [
+      'add HUD / hide HUD / toggle HUD',
+      'add health bar / add stamina bar / add ammo counter / add minimap / add compass',
+      'add kill counter / add score display / add timer / add wave counter / add xp bar',
+      'add main menu / add pause menu / add settings menu',
+      'add game over screen / add victory screen / add loading screen',
+      'add crosshair / hide crosshair / crosshair dot/cross/circle',
+    ]},
+    { icon: '🎬', name: 'Cutscenes & Cinematics', cmds: [
+      'add cutscene / start cutscene / end cutscene',
+      'cinematic mode / letterbox on/off',
+      'camera pan to [x,y,z] in [seconds] / camera orbit / camera fly through',
+      'add intro cutscene / add outro cutscene',
+      'add slow motion / slow motion [0.1-1.0] / normal speed',
+      'freeze frame / add black fade / add white fade',
+    ]},
+    { icon: '🏆', name: 'Win/Lose Conditions', cmds: [
+      'add win condition / win if kill [N] enemies / win if collect [N] items',
+      'win if reach [location] / win if survive [N] seconds / win if score [N] points',
+      'add lose condition / lose if health 0 / add timer countdown [seconds]',
+      'add checkpoint / add respawn point / add lives system / set lives [N]',
+      'add score system / add high score',
+    ]},
+    { icon: '🔊', name: 'Audio', cmds: [
+      'add background music / play music epic/calm/horror/action/ambient',
+      'add ambient sound / stop music / fade music out',
+      'add footstep sounds / add combat sounds / add explosion sounds',
+      'add spatial audio / audio range [meters]',
+      'add rain sound / add wind sound / add crowd sound',
+      'mute / unmute / volume [0-1]',
+    ]},
+    { icon: '✨', name: 'Polish & Post-Processing', cmds: [
+      '── VISUAL EFFECTS ──',
+      'bloom on/off / bloom [0-5]',
+      'vignette [0-1] (edge darkening)',
+      'chromatic aberration [0-0.01]',
+      'grain [0-1] (film grain)',
+      'depth of field on/off / dof focus [distance]',
+      'motion blur on/off',
+      'ssao on/off (ambient occlusion)',
+      '── COLOR GRADING ──',
+      'color grade cinematic / warm / cool / horror / noir / vivid / neutral',
+      'contrast [0.5-2.0] / saturation [0-2] / brightness [0-2]',
+      '── QUALITY ──',
+      'graphics low / medium / high / ultra',
+      'anti-aliasing on/off / fxaa / smaa',
+      'shadow quality low/medium/high/ultra',
+      'performance mode / quality mode / lod on/off',
+      'add god rays / add lens flare',
+    ]},
+    { icon: '🎮', name: 'Game Presets', cmds: [
+      'zombie game — survival horror with waves',
+      'racing mode — race track, cars, timer',
+      'rpg mode — fantasy world, quests, inventory',
+      'survival mode — hunger, inventory, crafting',
+      'fps mode — shooter with weapons, enemies',
+      'horror mode — dark, fog, jump scares',
+      'city builder mode — construction mechanics',
+      'sandbox mode — free creative mode',
+    ]},
+    { icon: '📷', name: 'Camera', cmds: [
+      'fps mode / tps mode',
+      'add first person camera / add third person camera / add cinematic camera',
+      'camera distance [meters] / camera height [meters]',
+      'camera shake on/off / screen shake [intensity]',
+      'zoom in / zoom out / fov [60-120]',
+    ]},
+    { icon: '🌐', name: 'Multiplayer', cmds: [
+      'multiplayer / join [room] / host game / create room',
+      'chat [message] / broadcast [message]',
+      'sync players / add netcode',
+      'wss://crate-engine-mp.fly.dev (default server)',
+    ]},
+    { icon: '📥', name: 'Import & Save', cmds: [
+      'import model [URL] — load any GLB from web',
+      'import my model — open file picker for local GLB',
+      'use my model as [name] — register with alias',
+      'place my model / place imported model',
+      'save / load / clear / new game',
+      'auto save / add checkpoint / export world',
+    ]},
+    { icon: '🔧', name: 'Utility', cmds: [
+      'clear / reset / help / commands',
+      'stats / show stats / fps counter on',
+      'show buildings / show weapons / show characters / show vehicles / show trees',
+      'heal / respawn / teleport [x,y,z]',
+      'performance mode / optimize scene',
+      'inspect — click any object to select & edit',
+      'clone — duplicate selected object',
+      'delete — remove selected object',
+    ]},
+  ];
+
+  const modal = document.createElement('div');
+  modal.id = 'cmd-page-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99999;display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,sans-serif;overflow:hidden;backdrop-filter:blur(4px)';
+
+  const header = `
+    <div style="padding:16px 20px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <div style="font-size:1.5rem">⌨️</div>
+      <div style="flex:1">
+        <div style="font-size:1.1rem;font-weight:700;color:#fff">Command Reference</div>
+        <div style="font-size:0.7rem;color:#555">All ${categories.reduce((s,c)=>s+c.cmds.length,0)}+ commands — click any command to run it</div>
+      </div>
+      <input id="cmd-search" placeholder="Search commands..." style="background:#111;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.82rem;width:200px;outline:none" oninput="window._filterCmds(this.value)">
+      <button onclick="document.getElementById('cmd-page-modal').remove()" style="background:none;border:1px solid #333;color:#888;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:0.85rem" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">✕ Close</button>
+    </div>`;
+
+  let bodyHtml = '<div id="cmd-body" style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;align-content:start">';
+  
+  for (const cat of categories) {
+    bodyHtml += `<div class="cmd-cat" style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden">`;
+    bodyHtml += `<div style="padding:10px 14px;background:rgba(255,107,53,0.06);border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:8px">`;
+    bodyHtml += `<span style="font-size:1rem">${cat.icon}</span><span style="font-weight:700;color:#ff6b35;font-size:0.82rem;text-transform:uppercase;letter-spacing:1px">${cat.name}</span>`;
+    bodyHtml += `</div><div style="padding:10px">`;
+    for (const cmd of cat.cmds) {
+      if (cmd.startsWith('──') || cmd.startsWith('─')) {
+        bodyHtml += `<div class="cmd-divider" style="color:#444;font-size:0.65rem;margin:6px 0 4px;letter-spacing:2px">${cmd}</div>`;
+      } else {
+        const parts = cmd.split('/').map(p => p.trim());
+        const firstCmd = parts[0].split(' ')[0] === parts[0].split(' ')[0] ? parts[0] : cmd;
+        bodyHtml += `<div class="cmd-line" data-cmd="${cmd.replace(/"/g,"&quot;")}" style="padding:3px 6px;margin:1px 0;border-radius:5px;cursor:pointer;font-size:0.72rem;color:#aaa;transition:all 0.15s;line-height:1.5" onmouseenter="this.style.background='rgba(255,107,53,0.1)';this.style.color='#ff6b35'" onmouseleave="this.style.background='transparent';this.style.color='#aaa'" onclick="window._runCmdFromPage('${cmd.replace(/'/g,"\'").split(' /')[0].trim()}')">${cmd}</div>`;
+      }
+    }
+    bodyHtml += `</div></div>`;
+  }
+  bodyHtml += '</div>';
+
+  modal.innerHTML = header + bodyHtml;
+  document.body.appendChild(modal);
+
+  // Search filter
+  window._filterCmds = (q) => {
+    const lines = modal.querySelectorAll('.cmd-line');
+    const cats = modal.querySelectorAll('.cmd-cat');
+    q = q.toLowerCase();
+    cats.forEach(cat => {
+      const lines2 = cat.querySelectorAll('.cmd-line');
+      let hasMatch = false;
+      lines2.forEach(l => {
+        const match = !q || l.textContent.toLowerCase().includes(q);
+        l.style.display = match ? '' : 'none';
+        if (match) hasMatch = true;
+      });
+      cat.style.display = hasMatch || !q ? '' : 'none';
+    });
+  };
+
+  window._runCmdFromPage = (cmd) => {
+    // Extract just the first command variant
+    const bare = cmd.split('/')[0].replace(/\[.*?\]/g, '1').trim();
+    parseAndExecute(bare);
+    showToast('Running: ' + bare);
+  };
+
+  // Focus search
+  setTimeout(() => document.getElementById('cmd-search')?.focus(), 100);
+}
+
+window.showCommandPage = showCommandPage;
+// ══════════════════════════════════════════════════════
+// END COMMAND REFERENCE PAGE
+// ══════════════════════════════════════════════════════
+
 // ── USER MODEL IMPORT FUNCTIONS ───────────────────────────────────────────────
 async function loadUserModel(url, alias) {
   try {
@@ -12103,6 +12373,107 @@ async function parseAndExecute(rawCmd) {
     return `Ground texture set to ${gType}`;
   }
   // ── END NATURAL LANGUAGE TERRAIN ─────────────────────────────────────────
+
+  // ── POLISH COMMANDS ───────────────────────────────────────────────────────
+  if (/^dof (on|off)$/i.test(cmd) || /^depth of field (on|off)$/i.test(cmd)) {
+    const on = /on/i.test(cmd);
+    if (on && BokehPass && !bokehPass) {
+      bokehPass = new BokehPass(scene, camera, { focus: 20, aperture: 0.001, maxblur: 0.015 });
+      if (composer) composer.addPass(bokehPass);
+    }
+    if (bokehPass) bokehPass.enabled = on;
+    return `Depth of field ${on ? 'enabled' : 'disabled'}`;
+  }
+  if (/^dof focus (\d+\.?\d*)$/i.test(cmd)) {
+    const dist = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (bokehPass) bokehPass.uniforms['focus'].value = dist;
+    return `DOF focus set to ${dist}`;
+  }
+  if (/^motion blur (on|off)$/i.test(cmd)) {
+    const on = /on/i.test(cmd);
+    if (window._colorPass) window._colorPass.uniforms.chromaticAberration.value = on ? 0.002 : 0;
+    return `Motion blur ${on ? 'on' : 'off'}`;
+  }
+  if (/^chromatic aberration ([\d.]+)$/i.test(cmd) || /^chroma ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.chromaticAberration.value = Math.min(val, 0.02);
+    return `Chromatic aberration: ${val}`;
+  }
+  if (/^contrast ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.contrast.value = val;
+    return `Contrast: ${val}`;
+  }
+  if (/^saturation ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.saturation.value = val;
+    return `Saturation: ${val}`;
+  }
+  if (/^brightness ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.brightness.value = val;
+    return `Brightness: ${val}`;
+  }
+  if (/^color grade (cinematic|warm|cool|horror|noir|vivid|neutral|default)$/i.test(cmd)) {
+    const style = cmd.split(' ').pop().toLowerCase();
+    const grades = {
+      cinematic: { contrast: 1.15, saturation: 0.9, brightness: 0.95, vignette: 0.5 },
+      warm:      { contrast: 1.05, saturation: 1.2, brightness: 1.05, vignette: 0.2 },
+      cool:      { contrast: 1.08, saturation: 0.85, brightness: 0.98, vignette: 0.25 },
+      horror:    { contrast: 1.3,  saturation: 0.4, brightness: 0.75, vignette: 0.7 },
+      noir:      { contrast: 1.4,  saturation: 0.0, brightness: 0.85, vignette: 0.6 },
+      vivid:     { contrast: 1.1,  saturation: 1.5, brightness: 1.05, vignette: 0.15 },
+      neutral:   { contrast: 1.0,  saturation: 1.0, brightness: 1.0,  vignette: 0.2 },
+      default:   { contrast: 1.08, saturation: 1.12, brightness: 1.02, vignette: 0.35 },
+    };
+    const g = grades[style] || grades.default;
+    if (window._colorPass) {
+      window._colorPass.uniforms.contrast.value = g.contrast;
+      window._colorPass.uniforms.saturation.value = g.saturation;
+      window._colorPass.uniforms.brightness.value = g.brightness;
+      window._colorPass.uniforms.vignetteStrength.value = g.vignette;
+    }
+    return `Color grade: ${style}`;
+  }
+  if (/^commands?$|^help commands?$|^command (page|list|reference|browser)$/i.test(cmd)) {
+    showCommandPage();
+    return 'Command reference opened';
+  }
+
+  if (/^(what.*next|polish.*guide|finish.*game|game.*done|ship.*game|publish.*game|export.*game)$/i.test(cmd)) {
+    return `🏁 **GAME POLISH CHECKLIST** — Here\'s what to do after your world is built:
+
+**VISUAL POLISH:**
+• color grade cinematic — cinematic look
+• bloom 1.5 — soft glow on lights
+• vignette 0.4 — edge darkening
+• ssao on — contact shadows
+• shadow quality ultra
+
+**ATMOSPHERE:**
+• Adjust fog density for your scene
+• Set the perfect time of day
+• Add ambient particles (fireflies, dust, embers)
+• Add god rays for sunlight
+
+**GAME FEEL:**
+• Add win condition — what does the player work toward?
+• Add main menu — first thing players see
+• Add game over screen — what happens on death?
+• Add background music — sets the tone
+• Add checkpoint — so players don\'t lose progress
+
+**PERFORMANCE:**
+• performance mode — if targeting mobile/low-end
+• lod on — reduces polygon count at distance
+• limit fps 60 — consistent frame rate
+
+**SHARE:**
+• Your game runs at: https://crateshipgames.com
+• Share the URL — anyone can play instantly, no install`;
+  }
+  // ── END POLISH COMMANDS ───────────────────────────────────────────────────
+
 
   if (_galBypass.test(rawCmd.toLowerCase().trim())) {
     console.log('[GALLERY] Bypassing NL for gallery command:', rawCmd);
