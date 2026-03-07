@@ -26214,18 +26214,18 @@ async function buildCityWorld2() {
     scene.background = new THREE.Color(0x87ceeb); // solid sky blue — remove HDRI sphere
     scene.environment = null;                       // kill HDRI reflections — buildings visible
     scene.environment = null; // clear HDRI environment reflections
-    const sun = new THREE.DirectionalLight(0xffd580, 1.8);
+    const sun = new THREE.DirectionalLight(0xfff5e0, 4.0);
     sun.position.set(120, 200, 80); sun.castShadow = true;
     sun.shadow.mapSize.width = 4096; sun.shadow.mapSize.height = 4096;
     sun.shadow.camera.near = 1; sun.shadow.camera.far = 1200;
     sun.shadow.camera.left = -600; sun.shadow.camera.right = 600;
     sun.shadow.camera.top = 600; sun.shadow.camera.bottom = -600;
     scene.add(sun);
-    const amb = new THREE.AmbientLight(0x2040a0, 0.7); scene.add(amb);
-    const hemi = new THREE.HemisphereLight(0x90b0ff, 0x224022, 0.6); scene.add(hemi);
+    const amb = new THREE.AmbientLight(0xffffff, 1.4); scene.add(amb);
+    const hemi = new THREE.HemisphereLight(0xb0ccff, 0x335522, 0.8); scene.add(hemi);
 
-    // Sky color — dusk vibe
-    renderer.setClearColor(0x3a5080, 1);
+    // Sky color — bright day
+    renderer.setClearColor(0x87ceeb, 1);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -26305,8 +26305,8 @@ async function buildCityWorld2() {
         arm.position.set(px - sx*1.5, 9.2, pz); scene.add(arm);
         const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), lightM);
         bulb.position.set(px - sx*2.5, 9.0, pz); scene.add(bulb);
-        const pl = new THREE.PointLight(0xffffcc, 0.8, 22); 
-        pl.position.set(px - sx*2.5, 8.5, pz); scene.add(pl);
+        // NO PointLight per lamp — 256 lights blows shader uniform limit (1024 max)
+        // Visual glow comes from emissive bulb material only
       });
     }));
 
