@@ -6,6 +6,31 @@ GDC talks, and open-source game projects — so it generates better cities, NPC
 behavior, physics, and world-building automatically.
 
 ## Status
+
+## Current Status (Updated 2026-03-06)
+
+### ✅ Phase 1 — COMPLETE
+- [x] Video transcript mining: 177 transcripts processed, 943 knowledge chunks
+- [x] RAG worker live: keyword search, 6-model free fallback chain + gpt-4o-mini paid last resort
+- [x] Worker deployed: https://crate-engine-ai.koikes2021.workers.dev
+- [x] Both typed command path AND AI agent button use RAG
+- [ ] Vision model analysis — NOT YET DONE (frame extraction from game videos)
+- [ ] Code extraction from GitHub — NOT YET DONE
+
+### 🟡 Phase 2 (Tier 1 Remaining)
+Priority when returning to AI training:
+1. Vision model analysis — grab GTA/Watch Dogs/Cyberpunk clips, extract frames every 0.5s,
+   run Gemini Vision to extract: block sizes, car speeds, pedestrian density, building ratios
+2. Code extraction — scrape Unreal City Sample + Unity DOTS city GitHub repos for
+   physics configs, NPC behavior values, traffic constants
+3. Upgrade RAG from keyword search to Cloudflare Vectorize (true semantic search)
+4. Behavior cloning from video (GTA traffic patterns → engine presets)
+Target: 1200-1500 total chunks with real-world measured values
+
+### 🔮 Phase 3 (Tier 3 — months)
+- Fine-tune 7B model (Llama/Mistral) on game dev corpus
+- Video-to-3D physics extraction (depth_pro, optical flow, sam2)
+
 - [x] Phase 0: Plan created (2026-03-06)
 - [ ] Phase 1: Knowledge base from video transcripts (IN PROGRESS)
 - [ ] Phase 2: Frame extraction + vision model analysis
