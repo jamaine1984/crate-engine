@@ -1,0 +1,122 @@
+[
+  {
+    "topic": "unity_models_flooded_grounds",
+    "fact": "Flooded Grounds pack: 341 modular building pieces \u2014 villas (Villa1, Villa2), churches (Church1), barns (Barn1, Barn2), industrial buildings (IndBuilding1, IndBuilding2), cabins, bridges (BLD_Bridge_A, BLD_Bridge_B), fences (Struct_Fence1, Struct_Fence2), docking structures, a car (lo_Prop_Car_A), boat (lo_Prop_Boat_A), props (bed, chair, table, vase, paintings). All flood/post-apocalyptic themed with wet/damaged look. Use 'unity_villa1_ext_b', 'unity_bld_bridge_a', 'unity_lo_prop_car_a' etc.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_toon_city_pack",
+    "fact": "Toon City Pack: 130 low-poly city models \u2014 apartments (cb-apartment-A through H), commercial buildings (concert hall, office, shop), government buildings (city hall, police station), industrial (nuclear power plant, warehouse, factory), infrastructure (park, cemetery, baseball field, parking lot, clock tower), roads (roundabout, junction, linear), props (ATM, mailbox, hot-dog stand, wired fence, helicopter, ambulance, bus, fire truck). Bright cartoon style. Use 'toon_apartment', 'toon_city_hall', 'helicopter', 'toon_park'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_human_melee_animations_free",
+    "fact": "Human Melee Animations FREE: 102 character animation GLBs \u2014 male and female variants of: run (forward/backward/left/right), strafe, combat idle, attack (1H left/right, polearm), weapon hold (1H, 2H), jump. Named HumanM@ and HumanF@ prefix. Use for NPC or player character animation. Call 'unity_humanm_combatidle01', 'unity_humanf_straferun01_forwardright'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_hq_fps_weapons_20",
+    "fact": "HQ FPS Weapons 2.0: 75 first-person weapon GLBs \u2014 AKM assault rifle, Hunting Rifle, M1A rifle, Double Barrel Shotgun, Revolver, Flare Gun, F1 Grenade, Molotov Cocktail, Crossbow, Combat Knife, Baseball Bat, Syringe, Flashlight, plus matching FP_Arms for each weapon. High-quality realistic models. Use 'unity_akm', 'unity_revolver', 'unity_fp_arms_akm', 'unity_crossbow'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_space_combat_kit",
+    "fact": "Space Combat Kit: 91 sci-fi space models \u2014 SpaceFighter (fuselage, wings, engine, exhaust, full ship), Capital Ship (hull pieces, shield dome), modular weapon kit (body/cap/tip/orifice/foot/plate/cover pieces in triangular/rectangular/square/octagon/cylinder shapes), Rifle, Explosion debris meshes, Crate, FlybyParticleMesh. Use to build space scenes, sci-fi combat, space stations. Call 'space_fighter', 'spaceship', 'space_rifle', 'unity_capitalship_shield'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_infini_grass",
+    "fact": "Infini GRASS GPU Vegetation: 28 nature/foliage GLBs \u2014 Twist Pine tree, fern, lily, vines, grass blades, mushroom cluster, small rocks (LOD0/LOD1), cabin fence, flowers, moss plant, terrain patch. Designed for dense natural environments. Use 'infini_twist_tree', 'fern', 'infini_mushrooms', 'infini_fern'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_lowpoly_environment_-_nature_free_-_low_poly_medieval_fantasy_series",
+    "fact": "Lowpoly Medieval Fantasy Nature: 30 low-poly models \u2014 pine trees (green/dead/cut/stump variants), fruit trees (apples/pears/plums variants), shrubs (green/dead), wooden bridges (2 types), modular wood fences and gate, ore rock, Caesar mushroom, poppy flower, grass patches. Perfect for fantasy/RPG worlds. Use 'unity_pt_pine_tree_03_green', 'unity_pt_wooden_bridge_02', 'unity_pt_ore_rock_01'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_free_-_stylized_weapons",
+    "fact": "FREE Stylized Weapons: 20 fantasy weapon GLBs \u2014 5 sword variants (Sword1_3 through Sword5_3), 3 shield variants (SHIELD_EVO_01-03), staffs (STAFF_05_V1), axes, and more. Stylized/cartoon fantasy aesthetic. Use 'unity_sword5_3', 'unity_shield_evo_02_v1'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_touring_race_car_pack_demo",
+    "fact": "Touring Race Car Demo: Race car (Chev - full touring car body), Tires (separate wheel mesh), Floor (car floor/underside). Realistic racing vehicle for racing game modes. Use 'touring_race_car', 'unity_race_car'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_modular_fantasy_knight_character",
+    "fact": "Modular Fantasy Knight: 19 character part GLBs \u2014 Helmet, Boots, Body_01/02, Gauntlet, Legs, Pauldron, and more modular armor pieces. Can be mixed and matched to customize knight appearance. Use 'unity_helmet', 'unity_boots', 'unity_body_02'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_weapon_nz_pt-9m_pistol",
+    "fact": "NZ PT-9M Pistol: 7 detailed pistol GLBs \u2014 full pistol (low and high poly), bullet, separate pistol case, pistol components. High detail modern firearm. Use 'pistol', 'pistol_9mm', 'unity_pt_9m_pistol_9mm_bullet_low_sep'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_fps_medieval_weapons_-_free_starter_pack",
+    "fact": "FPS Medieval Weapons Starter: sword (sword_1) and axe (axe_4) in first-person view style. For medieval combat games. Use 'medieval_sword_fps', 'medieval_axe_fps'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_knight_with_sword",
+    "fact": "Knight with Sword: Full knight character mesh (Knight.glb) with detailed armor and rigged for animation, plus Sword prop (Sword.glb). Classic fantasy RPG knight. Use 'unity_knight', 'knight_character'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "unity_models_free_zombie_male_aab",
+    "fact": "Zombie Male: Full zombie character mesh (ZombieMale_AAB.glb) rigged and ready for animation, plus separate body parts version (ZombieMale_AAB_BodyParts.glb) for dismemberment effects. Use 'zombie', 'zombie_male'.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "ai_model_selection",
+    "fact": "When a user asks to build a scene, pick the most visually appropriate GLB model. For flooded/post-apocalyptic scenes use Flooded_Grounds models (unity_villa1_ext_b, unity_bld_bridge_a, unity_church1_mid_a). For cartoon cities use Toon_City_Pack (toon_apartment, toon_city_hall, helicopter). For space scenes use Space_Combat_Kit (space_fighter, capital_ship pieces). For dark fantasy use Knight_with_Sword + medieval weapons. Always prefer named aliases over raw unity_ prefixed names when available.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "ai_model_selection",
+    "fact": "Model alias priority: user-friendly aliases come first (zombie, helicopter, space_fighter, pistol, touring_race_car, toon_apartment, knight_character). Fall back to unity_ prefixed names for specific parts. For environment building: flooded scenes = unity_villa2_ext_a + unity_bld_bridge_a + unity_barn2_mid_a. Toon cities = toon_apartment + toon_city_hall + toon_park + helicopter. Space = space_fighter + unity_capitalship_shield.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "ai_model_selection",
+    "fact": "Natural language model matching: if user says 'spaceship' \u2192 space_fighter. 'zombie' \u2192 zombie. 'race car' or 'racecar' \u2192 touring_race_car. 'knight' \u2192 knight_character or unity_knight. 'pistol' or 'handgun' \u2192 pistol_9mm. 'shotgun' \u2192 unity_fp_doublebarlshotgun. 'rifle' \u2192 unity_akm or unity_fp_huntingrifle. 'fern' \u2192 infini_fern. 'mushroom' \u2192 infini_mushrooms. 'helicopter' \u2192 toon_helicopter.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "ai_model_selection",
+    "fact": "For world-building prompts, layer models logically: terrain first, then large structures (villas, apartments, church), then medium props (fences, bridges, docks), then small details (mailbox, ATM, flower box, vase). Space worlds: terrain=flat/dark, add capital ship hull, space fighters, weapon emplacements. Flooded worlds: add villas + barns + bridge + docking structures + boat + flooded ground texture.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "user_import_system",
+    "fact": "Users can import their own 3D models (GLB/GLTF format) into the engine using the import command. The engine supports drag-and-drop or URL-based model loading. Imported models are stored temporarily in the session and can be placed like any other model.",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  },
+  {
+    "topic": "user_import_system",
+    "fact": "Custom model import commands: 'import model from [URL]' loads a GLB from any public URL. 'load my model' opens a file picker dialog. 'place my model at [location]' positions the last imported model. Users can import characters, props, vehicles, buildings from any source (Sketchfab, their own files, etc.).",
+    "context": "unity_models",
+    "source": "unity_asset_store"
+  }
+]
