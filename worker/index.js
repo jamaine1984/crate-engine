@@ -260,6 +260,39 @@ Return ONLY valid JSON like:
       }
     }
 
+
+    // === /embed — generate text embedding ===
+    if (url.pathname === '/embed' && request.method === 'POST') {
+      const { text } = await request.json();
+      if (!text) return new Response(JSON.stringify({ ok: false, error: 'no text' }), { headers: CORS });
+      const embResp = await fetch('https://openrouter.ai/api/v1/embeddings', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'openai/text-embedding-3-small', input: text.substring(0, 8192) })
+      });
+      const embData = await embResp.json();
+      const embedding = embData?.data?.[0]?.embedding;
+      if (!embedding) return new Response(JSON.stringify({ ok: false, error: embData }), { headers: CORS });
+      return new Response(JSON.stringify({ ok: true, embedding }), { headers: CORS });
+    }
+
+    // === /vector-search — semantic search via Vectorize ===
+    if (url.pathname === '/vector-search' && request.method === 'POST') {
+      const { q, topK = 8 } = await request.json();
+      if (!q) return new Response(JSON.stringify({ ok: false, error: 'no query' }), { headers: CORS });
+      if (!env.VECTORIZE) return new Response(JSON.stringify({ ok: false, error: 'vectorize not bound' }), { headers: CORS });
+      const embResp2 = await fetch('https://openrouter.ai/api/v1/embeddings', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'openai/text-embedding-3-small', input: q.substring(0, 8192) })
+      });
+      const embData2 = await embResp2.json();
+      const queryVec = embData2?.data?.[0]?.embedding;
+      if (!queryVec) return new Response(JSON.stringify({ ok: false, error: 'embed failed' }), { headers: CORS });
+      const vResults = await env.VECTORIZE.query(queryVec, { topK, returnMetadata: 'all' });
+      return new Response(JSON.stringify({ ok: true, results: vResults.matches }), { headers: CORS });
+    }
+
     if (request.method !== 'POST') return new Response('POST only', { status: 405 });
 
     try {
@@ -270,7 +303,24 @@ Return ONLY valid JSON like:
 
       if (!input) return new Response(JSON.stringify({ commands: [], message: 'What would you like to build?' }), { headers: CORS });
 
-      const facts = queryKB(input);
+      // Vector search (semantic) → keyword fallback
+      let facts = [];
+      if (env.VECTORIZE) {
+        try {
+          const _embR = await fetch('https://openrouter.ai/api/v1/embeddings', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'openai/text-embedding-3-small', input: input.substring(0, 8192) })
+          });
+          const _embD = await _embR.json();
+          const _qVec = _embD?.data?.[0]?.embedding;
+          if (_qVec) {
+            const _vRes = await env.VECTORIZE.query(_qVec, { topK: 10, returnMetadata: 'all' });
+            facts = (_vRes.matches || []).filter(m => m.score > 0.35).map(m => ({ t: m.metadata?.topic || '', text: m.metadata?.text || '' }));
+          }
+        } catch(_e) {}
+      }
+      if (facts.length === 0) facts = queryKB(input);
       const systemPrompt = buildPrompt(input, facts);
 
       if (!apiKey) {
