@@ -4,3 +4,7 @@ compatibility_date = "2024-01-01"
 
 [vars]
 # OPENROUTER_API_KEY set via wrangler secret
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "crate-engine-kb"
