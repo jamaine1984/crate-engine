@@ -26293,22 +26293,23 @@ async function buildCityWorld2() {
     showToast('🚦 Roads done — adding intersections & lights...');
     await new Promise(r => setTimeout(r, 50));
 
-    // ── STREET LIGHTS at every intersection corner ──────────────────────
-    const poleM  = new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.8, roughness: 0.3 });
-    const lightM = new THREE.MeshStandardMaterial({ color: 0xffffaa, emissive: new THREE.Color(0xffffaa), emissiveIntensity: 2 });
-    rp.forEach(rx => rp.forEach(rz => {
-      [[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([sx,sz]) => {
-        const px = rx + sx*(ROAD/2+2.5), pz = rz + sz*(ROAD/2+2.5);
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 9, 6), poleM);
-        pole.position.set(px, 4.5, pz); pole.castShadow = true; scene.add(pole);
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 0.2), poleM);
-        arm.position.set(px - sx*1.5, 9.2, pz); scene.add(arm);
-        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), lightM);
-        bulb.position.set(px - sx*2.5, 9.0, pz); scene.add(bulb);
-        // NO PointLight per lamp — 256 lights blows shader uniform limit (1024 max)
-        // Visual glow comes from emissive bulb material only
-      });
-    }));
+    // ── STREET LIGHTS — 1 per alternate intersection, on sidewalk ─────────
+    // Use block-midpoint placement so lamps are clearly on sidewalk, not road
+    const poleM  = new THREE.MeshStandardMaterial({ color: 0x444455, metalness: 0.9, roughness: 0.2 });
+    const lightM = new THREE.MeshStandardMaterial({ color: 0xfffde0, emissive: new THREE.Color(0xfffcc0), emissiveIntensity: 3 });
+    // Place 1 lamp per block face (midpoint of each block edge, sidewalk side)
+    for (let ci = 0; ci < COLS; ci++) {
+      for (let rj = 0; rj <= COLS; rj++) {  // along each E-W road
+        if ((ci + rj) % 2 !== 0) continue;  // checkerboard — half the lamps
+        const lx = bp[ci], lz = rp[rj] + ROAD/2 + 3.5; // sidewalk = 3.5 past road edge
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 8, 6), poleM);
+        pole.position.set(lx, 4, lz); scene.add(pole);
+        const arm  = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 3.5), poleM);
+        arm.position.set(lx, 8.2, lz - 1.5); scene.add(arm);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6), lightM);
+        bulb.position.set(lx, 8.1, lz - 3); scene.add(bulb);
+      }
+    }
 
     // ── TRAFFIC LIGHTS at every intersection ────────────────────────────
     const tlPoleM = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.6 });
@@ -26318,21 +26319,24 @@ async function buildCityWorld2() {
     const grnM    = new THREE.MeshStandardMaterial({ color: 0x00cc44, emissive: new THREE.Color(0x00aa33), emissiveIntensity: 0.5 });
 
     const tls = []; // store for animation
-    rp.forEach(rx => rp.forEach(rz => {
+    // Only place traffic lights at INTERIOR intersections (skip outermost ring)
+    rp.forEach((rx,ri) => rp.forEach((rz,rj) => {
+      if (ri === 0 || ri === rp.length-1 || rj === 0 || rj === rp.length-1) return;
+      if ((ri+rj) % 2 !== 0) return; // checkerboard — half of interior only
       [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz],fi) => {
-        const ox = rx + dx*(ROAD/2+1.5), oz = rz + dz*(ROAD/2+1.5);
+        const ox = rx + dx*(ROAD/2+1.2), oz = rz + dz*(ROAD/2+1.2);
         const tlpole = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.15,7,6), tlPoleM);
         tlpole.position.set(ox, 3.5, oz); scene.add(tlpole);
-        const box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.2, 0.5), tlBoxM);
-        box.position.set(ox, 8, oz); box.rotation.y = Math.atan2(dx,dz); scene.add(box);
-        const r = new THREE.Mesh(new THREE.SphereGeometry(0.28,8,6), redM.clone());
-        const y = new THREE.Mesh(new THREE.SphereGeometry(0.28,8,6), ylM2.clone());
-        const g = new THREE.Mesh(new THREE.SphereGeometry(0.28,8,6), grnM.clone());
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.0, 0.4), tlBoxM);
+        box.position.set(ox, 7.5, oz); box.rotation.y = Math.atan2(dx,dz); scene.add(box);
+        const r = new THREE.Mesh(new THREE.SphereGeometry(0.26,8,6), redM.clone());
+        const y = new THREE.Mesh(new THREE.SphereGeometry(0.26,8,6), ylM2.clone());
+        const g = new THREE.Mesh(new THREE.SphereGeometry(0.26,8,6), grnM.clone());
         [r,y,g].forEach((l,li) => {
-          l.position.set(ox, 8.7 - li*0.7, oz + (dz!==0?0.3:0) + (dx!==0?0.3:0));
+          l.position.set(ox, 8.2 - li*0.65, oz + (dz!==0?0.25:0) + (dx!==0?0.25:0));
           scene.add(l);
         });
-        tls.push({ r, y, g, phase: fi % 2 }); // alternate phase
+        tls.push({ r, y, g, phase: fi % 2 });
       });
     }));
     // Animate traffic lights
@@ -26358,11 +26362,44 @@ async function buildCityWorld2() {
     const COMM2_MODELS = ['kenney_city/building-k','kenney_city/building-l','kenney_city/building-m','kenney_city/building-n','kenney_city/building-o','kenney_city/building-p'];
     const TYPE_MODELS = ['kenney_city/building-type-a','kenney_city/building-type-b','kenney_city/building-type-c','kenney_city/building-type-d'];
 
-    function placeBuilding(modelPath, bx, bz, targetH, maxFP, rotY) {
+    // Architectural color palettes for each zone
+    const GLASS_COLORS   = [0x3a6186,0x1a4a6e,0x2a5a7e,0x35708a,0x1e3a5f]; // steel/glass blues
+    const BRICK_COLORS   = [0x8b5e3c,0x7a4a3a,0x9a6a4a,0x6a5040,0xa07060]; // brick tones
+    const CONCRETE_COLORS= [0x7a7a8a,0x6a6a7a,0x8a8a9a,0x696970,0x858590]; // concrete grays
+    let _bldgIdx = 0;
+
+    function placeBuilding(modelPath, bx, bz, targetH, maxFP, rotY, zoneType) {
       return new Promise(res => {
         gltfLoader.load('models/'+modelPath+'.glb', gltf => {
           const m = gltf.scene;
-          m.traverse(c=>{ if(c.isMesh){c.castShadow=true;c.receiveShadow=true;} });
+          // Apply realistic architectural colors based on zone
+          const isDowntown = zoneType === 'downtown';
+          const palette = isDowntown ? GLASS_COLORS : (zoneType === 'commercial' ? CONCRETE_COLORS : BRICK_COLORS);
+          const baseColor = palette[_bldgIdx++ % palette.length];
+          const accentColor = isDowntown ? 0x111122 : 0x555560;
+          m.traverse(c=>{ 
+            if(c.isMesh){
+              c.castShadow=true; c.receiveShadow=true;
+              // Replace cartoony colormap with architectural material
+              const isWindow = c.material && c.material.name && 
+                (c.material.name.includes('glass')||c.material.name.includes('Glass')||c.material.name.includes('window'));
+              if (isWindow || isDowntown) {
+                c.material = new THREE.MeshStandardMaterial({
+                  color: isDowntown ? 0x4a7ab5 : baseColor,
+                  roughness: isDowntown ? 0.05 : 0.3,
+                  metalness: isDowntown ? 0.9 : 0.1,
+                  envMapIntensity: 0
+                });
+              } else {
+                c.material = new THREE.MeshStandardMaterial({
+                  color: baseColor,
+                  roughness: 0.75,
+                  metalness: 0.05,
+                  envMapIntensity: 0
+                });
+              }
+            }
+          });
           const box = new THREE.Box3().setFromObject(m);
           const s3 = box.getSize(new THREE.Vector3());
           const maxDim = Math.max(s3.x, s3.z, 0.01);
@@ -26391,12 +26428,12 @@ async function buildCityWorld2() {
         } else if (z === 'downtown') {
           const mdl = DT_MODELS[Math.floor(Math.random()*DT_MODELS.length)];
           const h = 80 + Math.random()*120; // 80-200 unit skyscrapers
-          buildingPromises.push(placeBuilding(mdl, bx, bz, h, MAX_FP, rotY));
+          buildingPromises.push(placeBuilding(mdl, bx, bz, h, MAX_FP, rotY, 'downtown'));
         } else if (z === 'commercial') {
           const pool = [...COMM_MODELS,...COMM2_MODELS,...TYPE_MODELS];
           const mdl = pool[Math.floor(Math.random()*pool.length)];
           const h = 20 + Math.random()*40; // 20-60 unit commercial
-          buildingPromises.push(placeBuilding(mdl, bx, bz, h, MAX_FP, rotY));
+          buildingPromises.push(placeBuilding(mdl, bx, bz, h, MAX_FP, rotY, 'commercial'));
         } else {
           // Residential — modern houses
           buildingPromises.push(new Promise(res => {
@@ -26598,8 +26635,10 @@ async function buildCityWorld2() {
     // City center = (30, 0, 30). Position looking down a main street.
     await new Promise(r => setTimeout(r, 300));
     if (window._ctrl) { window._ctrl.minDistance = 1; window._ctrl.maxDistance = 9999; }
-    if (window._cam) { window._cam.position.set(30, 900, 700); }
-    if (window._ctrl) { window._ctrl.target.set(30, 0, 30); window._ctrl.update(); }
+    // Diagonal street-level view: camera at 45° angle, close enough to see detail
+    const camX = 30 + 280, camZ = 30 + 380;
+    if (window._cam) { window._cam.position.set(camX, 220, camZ); }
+    if (window._ctrl) { window._ctrl.target.set(30, 10, 30); window._ctrl.update(); }
 
     showToast(`🏙️ City World 2 complete! ${carCount} cars, 16 NPCs, ${COLS*COLS} blocks`);
     console.log('City 2: 7x7 grid, downtown core, commercial ring, residential + pools');
