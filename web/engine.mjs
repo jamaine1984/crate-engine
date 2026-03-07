@@ -8724,6 +8724,101 @@ function createGround(type) {
 }
 
 let currentGround = createGround('grass');
+
+// ══════════════════════════════════════════════════════
+// TEXTURE PACK SYSTEM — Real ground textures from CDN
+// Uses AmbientCG CC0 textures (no auth, free, public domain)
+// ══════════════════════════════════════════════════════
+const TEXTURE_PACKS = {
+  grass:    { color: '#ambientcg/Grass001',    hex: 0x3a7a3a, repeat: 40, roughness: 0.95 },
+  sand:     { color: '#ambientcg/Sand001',     hex: 0xc4a96a, repeat: 50, roughness: 1.0 },
+  desert:   { color: '#ambientcg/Ground036',   hex: 0xb8924a, repeat: 40, roughness: 1.0 },
+  snow:     { color: '#ambientcg/Snow006',     hex: 0xd8dce8, repeat: 40, roughness: 0.7 },
+  dirt:     { color: '#ambientcg/Ground025',   hex: 0x6b4a2a, repeat: 40, roughness: 0.98 },
+  stone:    { color: '#ambientcg/Rock022',     hex: 0x666666, repeat: 30, roughness: 0.9 },
+  rock:     { color: '#ambientcg/Rock035',     hex: 0x555555, repeat: 30, roughness: 0.95 },
+  mud:      { color: '#ambientcg/Ground037',   hex: 0x4a3a2a, repeat: 35, roughness: 1.0 },
+  gravel:   { color: '#ambientcg/Gravel015',   hex: 0x888888, repeat: 50, roughness: 0.9 },
+  concrete: { color: '#ambientcg/Concrete034', hex: 0x999999, repeat: 20, roughness: 0.85 },
+  asphalt:  { color: '#ambientcg/Asphalt012',  hex: 0x333333, repeat: 15, roughness: 0.85 },
+  lava:     { color: null,                     hex: 0xcc3300, repeat: 10, roughness: 0.6 },
+  ice:      { color: '#ambientcg/Ice002',      hex: 0xaaddff, repeat: 30, roughness: 0.1,  metalness: 0.1 },
+  marble:   { color: '#ambientcg/Marble006',   hex: 0xddddcc, repeat: 20, roughness: 0.3,  metalness: 0.05 },
+  wood:     { color: '#ambientcg/WoodFloor041',hex: 0x7a5530, repeat: 20, roughness: 0.8 },
+  metal:    { color: '#ambientcg/Metal032',    hex: 0x888899, repeat: 15, roughness: 0.4,  metalness: 0.7 },
+  forest:   { color: '#ambientcg/Moss001',     hex: 0x2a5a2a, repeat: 40, roughness: 0.98 },
+  swamp:    { color: null,                     hex: 0x3a4a2a, repeat: 35, roughness: 1.0 },
+  gold:     { color: null,                     hex: 0xccaa22, repeat: 10, roughness: 0.3,  metalness: 0.8 },
+  obsidian: { color: null,                     hex: 0x111115, repeat: 10, roughness: 0.1,  metalness: 0.3 },
+  crystal:  { color: null,                     hex: 0x8899cc, repeat: 10, roughness: 0.05, metalness: 0.2 },
+  water:    { color: null,                     hex: 0x2266aa, repeat: 20, roughness: 0.1,  metalness: 0.1 },
+};
+
+// AmbientCG texture URLs (CC0 - public domain)
+const AMBIENTCG_BASE = 'https://ambientcg.com/get?file=';
+const TEXTURE_URLS = {
+  grass:    'Grass001_1K-JPG_Color.jpg',
+  sand:     'Sand001_1K-JPG_Color.jpg',
+  desert:   'Ground036_1K-JPG_Color.jpg',
+  snow:     'Snow006_1K-JPG_Color.jpg',
+  dirt:     'Ground025_1K-JPG_Color.jpg',
+  stone:    'Rock022_1K-JPG_Color.jpg',
+  rock:     'Rock035_1K-JPG_Color.jpg',
+  mud:      'Ground037_1K-JPG_Color.jpg',
+  gravel:   'Gravel015_1K-JPG_Color.jpg',
+  concrete: 'Concrete034_1K-JPG_Color.jpg',
+  asphalt:  'Asphalt012_1K-JPG_Color.jpg',
+  ice:      'Ice002_1K-JPG_Color.jpg',
+  marble:   'Marble006_1K-JPG_Color.jpg',
+  wood:     'WoodFloor041_1K-JPG_Color.jpg',
+  metal:    'Metal032_1K-JPG_Color.jpg',
+  forest:   'Moss001_1K-JPG_Color.jpg',
+};
+
+const _texCache = {};
+const _texLoader = new THREE.TextureLoader();
+
+async function loadGroundTexture(type) {
+  if (_texCache[type]) return _texCache[type];
+  const filename = TEXTURE_URLS[type];
+  if (!filename) return null;
+  return new Promise((resolve) => {
+    _texLoader.load(
+      AMBIENTCG_BASE + filename,
+      (tex) => {
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        const pack = TEXTURE_PACKS[type] || {};
+        tex.repeat.set(pack.repeat || 40, pack.repeat || 40);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        _texCache[type] = tex;
+        resolve(tex);
+      },
+      undefined,
+      () => resolve(null) // graceful fallback on error
+    );
+  });
+}
+
+async function applyGroundTexture(mesh, type) {
+  const pack = TEXTURE_PACKS[type] || TEXTURE_PACKS.grass;
+  const tex = await loadGroundTexture(type);
+  if (tex) {
+    mesh.material.map = tex;
+    mesh.material.vertexColors = false;
+    mesh.material.color.set(0xffffff);
+  } else {
+    // Fallback to vertex colors
+    mesh.material.map = null;
+    mesh.material.vertexColors = true;
+  }
+  mesh.material.roughness = pack.roughness ?? 0.9;
+  mesh.material.metalness = pack.metalness ?? 0;
+  mesh.material.needsUpdate = true;
+}
+// ══════════════════════════════════════════════════════
+// END TEXTURE PACK SYSTEM
+// ══════════════════════════════════════════════════════
+
 let groundSize = 300; // current ground plane size
 scene.add(currentGround);
 
@@ -8798,6 +8893,7 @@ function expandGround(newSize) {
   groundSize = newSize;
   scene.add(currentGround);
   console.log('[CrateEngine] Ground expanded to ' + newSize + 'x' + newSize);
+  applyGroundTexture(currentGround, gType);
   return newSize;
 }
 
@@ -11942,6 +12038,71 @@ async function parseAndExecute(rawCmd) {
     return 'No model imported yet. Use "import model [URL]" first.';
   }
   // ── END USER MODEL IMPORT ─────────────────────────────────────────────────
+
+  // ── NATURAL LANGUAGE TERRAIN COMMANDS ────────────────────────────────────
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(desert|sandy) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain desert');
+    await parseAndExecute('ground sand');
+    await parseAndExecute('time noon');
+    await parseAndExecute('fog off');
+    return 'Desert land created — sandy terrain, harsh noon sun';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(grass|green|lush) (land|terrain|world|ground|area|meadow)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground grass');
+    await parseAndExecute('time afternoon');
+    return 'Grassy land created — rolling green hills';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(snow|snowy|arctic|winter|frozen) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain arctic');
+    await parseAndExecute('ground snow');
+    await parseAndExecute('time morning');
+    await parseAndExecute('make it snow');
+    return 'Snowy land created — arctic terrain with snowfall';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(forest|woodland|jungle|tropical) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground forest');
+    await parseAndExecute('time morning');
+    await parseAndExecute('fog 0.008');
+    return 'Forest land created — wooded hills with morning mist';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(volcanic|lava|hellscape|infernal) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain volcanic');
+    await parseAndExecute('ground lava');
+    await parseAndExecute('time night');
+    await parseAndExecute('particles embers');
+    return 'Volcanic land created — lava ground, ember particles, night sky';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(stone|rocky|mountain|mountainous) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain mountains');
+    await parseAndExecute('ground rock');
+    await parseAndExecute('time noon');
+    return 'Mountain land created — rocky terrain with stone ground';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(swamp|muddy|dark forest|bayou) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground mud');
+    await parseAndExecute('time dusk');
+    await parseAndExecute('fog 0.015');
+    await parseAndExecute('particles fireflies');
+    return 'Swamp land created — murky, foggy with fireflies';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(dirt|earthy|wasteland) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground dirt');
+    await parseAndExecute('time afternoon');
+    return 'Wasteland created — dry dirt ground, barren hills';
+  }
+  if (/^ground (forest|swamp|desert|all grass|all sand|all snow)$/i.test(cmd)) {
+    const t = cmd.match(/^ground (.+)$/i)[1].toLowerCase();
+    const map = {'forest':'forest','swamp':'mud','all grass':'grass','all sand':'sand','all snow':'snow','desert':'sand'};
+    const gType = map[t] || t;
+    currentGroundType = gType;
+    setTimeout(() => applyGroundTexture(currentGround, gType), 100);
+    return `Ground texture set to ${gType}`;
+  }
+  // ── END NATURAL LANGUAGE TERRAIN ─────────────────────────────────────────
 
   if (_galBypass.test(rawCmd.toLowerCase().trim())) {
     console.log('[GALLERY] Bypassing NL for gallery command:', rawCmd);
@@ -15835,7 +15996,7 @@ function showGameHUD(preset) {
     const gType = _groundMatch[1];
     if (currentGround) { scene.remove(currentGround); currentGround.geometry.dispose(); currentGround.material.dispose(); }
     currentGround = createGround(gType);
-    currentGroundType = gType;
+    currentGroundType = gType; setTimeout(() => applyGroundTexture(currentGround, gType), 100);
     scene.add(currentGround);
     return addToLog('✓ Ground: ' + gType);
   }
