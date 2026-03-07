@@ -26210,7 +26210,7 @@ async function buildCityWorld2() {
     };
 
     // ── LIGHTING ─────────────────────────────────────────────────────────
-    scene.fog = new THREE.FogExp2(0x0a0f1a, 0.004);
+    scene.fog = new THREE.FogExp2(0x1a2848, 0.0012);
     const sun = new THREE.DirectionalLight(0xffd580, 1.8);
     sun.position.set(120, 200, 80); sun.castShadow = true;
     sun.shadow.mapSize.width = 4096; sun.shadow.mapSize.height = 4096;
@@ -26222,7 +26222,7 @@ async function buildCityWorld2() {
     const hemi = new THREE.HemisphereLight(0x90b0ff, 0x224022, 0.6); scene.add(hemi);
 
     // Sky color — dusk vibe
-    renderer.setClearColor(0x1a2540, 1);
+    renderer.setClearColor(0x3a5080, 1);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -26591,9 +26591,19 @@ async function buildCityWorld2() {
 
     // ── CAMERA ───────────────────────────────────────────────────────────
     const totalSpan = COLS * STEP + ROAD;
-    window._cam.position.set(totalSpan*0.7, totalSpan*0.55, totalSpan*0.7);
-    window._cam.lookAt(0, 0, 0);
-    if (window._ctrl) { window._ctrl.target.set(0,0,0); window._ctrl.update(); }
+    // Use autoFrameScene pattern — same vars as rest of engine (camera/controls closures)
+    await new Promise(r => setTimeout(r, 500)); // let buildings finish rendering
+    if (typeof autoFrameScene === 'function') {
+      autoFrameScene();
+    } else {
+      // Fallback: compute city center and frame manually
+      const cityMidX = (bp[0] + bp[COLS-1]) / 2;
+      const cityMidZ = (bp[0] + bp[COLS-1]) / 2;
+      const dist = totalSpan * 0.75;
+      camera.position.set(cityMidX + dist*0.7, dist*0.5, cityMidZ + dist*0.7);
+      controls.target.set(cityMidX, 0, cityMidZ);
+      if (!playMode) controls.update();
+    }
 
     showToast(`🏙️ City World 2 complete! ${carCount} cars, 16 NPCs, ${COLS*COLS} blocks`);
     _log(`City 2: 7×7 grid, downtown core, commercial ring, residential + pools`);
