@@ -1,0 +1,98 @@
+[
+  {
+    "topic": "horror_game_architecture",
+    "fact": "Horror Multiplayer Game Template (Redicion Studio, 1.67GB) shows a complete real game structure: 10 scenes (main menu, lobby, gameplay levels), 526 C# scripts, 179 prefabs, 131 FBX models, 139 animations, 79 WAV audio files. Full production game pipeline in one package.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "horror_game_flow",
+    "fact": "Horror game flow: MainMenu scene \u2192 Lobby (multiplayer matchmaking) \u2192 GameplayScene (survival horror) \u2192 GameOver/Win screen. Player starts unarmed, finds weapons (chainsaw, hatchet), survives enemy waves, escapes or eliminates killer. Multiplayer: one player is killer, rest are survivors.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "horror_game_models",
+    "fact": "Horror Multiplayer FBX models: PioneerSW80 (police car), StrettLight (street light), ChainsawHandle, Killer_Menu_Animation character, Jump_InAir animation, PullOut_ManInCar (cinematic), run animations, Tree02 (environment). OBJ models: HouseModel02 (wall + roof = 2 pieces), CRAVATE (necktie prop), Hatchet (weapon), medi (medical kit). Use unity_pioneersw80, unity_housemodel02wallroof, unity_hatchet, unity_chainsawhandle.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "horror_game_setup_commands",
+    "fact": "To build a horror game like Horror Multiplayer Template: (1) terrain flat, ground dirt, time night (2) fog 0.02 (3) color grade horror (4) add unity_housemodel02wallroof at multiple positions (5) spawn 4 npcs as survivors + 1 as killer (6) add unity_chainsawhandle weapon (7) add background music horror (8) add win condition survive 120 seconds (9) add game over screen (10) add main menu. This creates a functional horror survival game loop.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "horror_multiplayer_architecture",
+    "fact": "Horror Multiplayer Template uses Photon PUN2 for networking. Key systems: PlayerSpawner (spawns player at lobby), GameManager (tracks alive players, killer assignment), JumpScare trigger zones (colliders that play sounds + camera shake), ItemPickup system, DoorInteract (open/close), HideSpot (player enters locker/under bed), FlashlightSystem, KillerAI with NavMesh pathfinding.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "horror_atmosphere_design",
+    "fact": "Horror atmosphere recipe from Horror Multiplayer Template: (1) time night + fog heavy (density 0.025-0.04) (2) color grade horror (desaturated, high contrast) (3) vignette 0.65 (4) grain 0.05 (5) ambient brightness 0.05 (very dark) (6) particles embers or dust (7) background music horror (8) chromatic aberration 0.003 for tension moments (9) screen shake on jump scares (10) dim point lights inside buildings only \u2014 creates claustrophobic fear.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "horror_jump_scare_setup",
+    "fact": "Jump scare system: place trigger zone near doors, corners, dark areas. When player enters: play stinger audio + camera shake + quick vignette flash + spawn enemy nearby. Engine commands: add screen shake, particles embers, spawn npc zombie at [x,y,z]. NPC with fast chase AI creates genuine threat.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "horror_weapon_models",
+    "fact": "Horror Multiplayer weapons include: Chainsaw (ChainsawHandle.fbx) \u2014 primary killer weapon, melee, close range. Hatchet (Hatchet.obj) \u2014 throwable, survival tool. Medical Kit (medi.obj) \u2014 health restore item. Use as: unity_chainsawhandle (alias: chainsaw), unity_hatchet (alias: hatchet), unity_medi (alias: medkit).",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "urban_traffic_architecture",
+    "fact": "Urban Traffic System Full Pack (AGLOBEX, 1.69GB) is a complete city traffic simulation: 355 FBX models, 267 prefabs, 14 scenes, 52 C# scripts. Includes pedestrians (30+ characters: casual men/women/children, business, nude, sitting), vehicles (cars, trucks, buses), road infrastructure, traffic signals, animations (idle, walk, sit, talk, clap). This is a full city life simulator.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "urban_traffic_pedestrian_models",
+    "fact": "Urban Traffic System pedestrians: casual01_m through casual23_m (23 casual male variants), female variants, child_boy, child_girl, business characters, nude08_m variants. Animations per character: idle, walk, sit_idle (sitidle), girl_talk1, ClapHands (for children). All rigged for animation. Use as unity_casual01_m, unity_casual23_m, unity_child_boy, unity_sitidle for sitting NPCs.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "urban_traffic_vehicle_models",
+    "fact": "Urban Traffic System vehicles: Truck_2 (semi truck), cars, buses, emergency vehicles. Prefabs include full vehicle AI (follow lanes, stop at lights, signal). 355 FBX total includes vehicle bodies, interiors, wheels, road props. Key aliases: unity_truck_2 (alias: traffic_truck), unity_casual01_m (alias: pedestrian), unity_child_boy (alias: traffic_child).",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "urban_traffic_setup_commands",
+    "fact": "To build a living city with Urban Traffic System: (1) terrain flat, ground asphalt/concrete (2) build a city / generate city (3) add traffic (spawns AI cars) (4) add pedestrians (spawns walking NPCs) (5) add unity_truck_2 at various positions (6) add traffic light at intersections (7) add street lamp every 20 units (8) add unity_casual01_m at sidewalks (9) time noon, realistic sky. The engine AI should spawn traffic_truck, pedestrian, traffic_child models at realistic positions.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "urban_traffic_scene_design",
+    "fact": "Urban Traffic scene recipe: 14 included Unity scenes show different city setups. Key insight: mix vehicle density (not just cars \u2014 trucks, buses, motorcycles), add pedestrian clusters at intersections (3-5 people), have idle pedestrians (sitidle) on benches, walking pedestrians on sidewalks. Day scenes: noon lighting, clear fog, vivid color grade. Night scenes: street lamps on, fog 0.008, warm point lights in windows.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "urban_traffic_road_system",
+    "fact": "Urban Traffic System road infrastructure (FBX): road segments, intersections, sidewalks, curbs, crosswalks, traffic barriers, bus stops, pedestrian bridges. Combined with Kajaman's Roads (4 GLBs: long road segments, alley piece) gives engine realistic road building capability. Use: add kajaman_road for long straight roads, add unity_truck_2 on roads, add unity_casual01_m on sidewalks.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "building_real_game_from_template",
+    "fact": "The Horror Multiplayer and Urban Traffic packs prove Crate Engine can build REAL games: Horror = enemy AI + multiplayer lobby + jump scares + inventory + game over screens. Urban = living city AI + traffic + pedestrian crowds. A complete game built in Crate Engine should have: (1) world (2) player (3) enemies or NPCs with AI (4) objective/win condition (5) main menu (6) audio (7) polish. The engine has ALL of these systems.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  },
+  {
+    "topic": "ai_game_building_checklist",
+    "fact": "When AI builds a complete game world, always include ALL layers: WORLD (terrain+sky+fog+atmosphere), PLAYER (character+camera+controls), THREATS (npcs+enemies+AI), OBJECTIVES (quests+win condition+timer), UI (hud+inventory+menus), AUDIO (music+ambient+SFX), FEEL (particles+screen shake+color grade). Never build just terrain \u2014 always populate, always set objectives, always add atmosphere.",
+    "context": "game_architecture",
+    "source": "expert_analysis"
+  }
+]
