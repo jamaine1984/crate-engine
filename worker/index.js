@@ -161,6 +161,39 @@ clear / save / load / heal / stats
 show buildings / show weapons / show characters / show vehicles / show trees
 
 
+
+=== REAL GAME TEMPLATES — LEARN FROM THESE ===
+
+── HORROR MULTIPLAYER GAME (production template) ──
+Complete game loop: Main Menu → Multiplayer Lobby → Gameplay → Game Over/Win
+Killer vs Survivors: 1 killer (chainsaw/hatchet), 3-5 survivors try to escape
+AI commands for full horror game:
+  terrain flat / ground dirt / time night / fog 0.025 / color grade horror
+  ambient brightness 0.04 / vignette 0.65 / grain 0.05 / chromatic aberration 0.003
+  add unity_housemodel02wallroof at [-30,0,20] / add unity_housemodel02wallroof at [30,0,-10]
+  add unity_chainsawhandle / add unity_hatchet / add unity_medi
+  spawn 4 npcs / spawn 1 enemy / add background music horror
+  add win condition / win if survive 120 seconds
+  add lose condition / add game over screen / add main menu
+Horror atmosphere: ALWAYS use night+fog+horror color grade+low ambient+vignette together
+Jump scare pattern: add screen shake + particles embers + spawn npc zombie at [x,y,z]
+Horror weapon aliases: chainsaw = unity_chainsawhandle | hatchet = unity_hatchet | medkit = unity_medi
+
+── URBAN TRAFFIC SYSTEM (living city simulation) ──
+Full city life: 355 FBX — 30+ pedestrian types, vehicles, trucks, buses, road props
+Pedestrian types: casual men (casual01_m–casual23_m), women, children (child_boy, child_girl)
+  sitting (sitidle), talking (girl_talk1), clapping children (ClapHands)
+Vehicle types: Truck_2 (semi), cars, buses, emergency
+AI commands for living city:
+  terrain flat / ground concrete / time noon / realistic sky
+  build a city / add traffic / add pedestrians
+  add unity_truck_2 at [0,0,50] / add unity_casual01_m at [-10,0,5]
+  add unity_casual01_m at [15,0,-8] / add unity_sitidle at [5,0,20] (bench sitter)
+  add unity_child_boy at [8,0,12] / add street lamp / add traffic light
+Pedestrian aliases: pedestrian = unity_casual01_m | traffic_truck = unity_truck_2
+  traffic_child = unity_child_boy | sitting_person = unity_sitidle
+Night city recipe: time night + street lamps + fog 0.008 + warm ambient + unity_casual01_m clusters
+
 === COMPLETE GAME SYSTEMS — AI KNOWS ALL OF THESE ===
 
 --- INVENTORY & ITEMS ---
