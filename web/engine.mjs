@@ -12843,6 +12843,522 @@ function openModelFilePicker() {
 }
 // ── END USER MODEL IMPORT FUNCTIONS ──────────────────────────────────────────
 
+
+// ══════════════════════════════════════════════════════
+// WORLD SAVE / EXPORT / LOAD SYSTEM
+// ══════════════════════════════════════════════════════
+const WORLD_VERSION = 2;
+
+function captureWorldState() {
+  const state = {
+    version: WORLD_VERSION,
+    timestamp: Date.now(),
+    name: window._worldName || 'My World',
+    terrain: { type: currentGroundType || 'grass', heightmap: null },
+    sky: { time: window._currentTimeOfDay || 'afternoon' },
+    fog: { enabled: scene.fog !== null, density: scene.fog?.density || 0 },
+    objects: [],
+    npcs: [],
+    audio: { music: window._currentMusic || null },
+    postfx: {
+      bloom: bloomPass?.strength || 0.3,
+      vignette: window._colorPass?.uniforms.vignetteStrength?.value || 0.35,
+      grain: window._colorPass?.uniforms.filmGrain?.value || 0.03,
+    }
+  };
+
+  // Capture all placed objects
+  for (const obj of objects) {
+    if (!obj || !obj.userData) continue;
+    const entry = {
+      name: obj.userData.name || 'Object',
+      glb: obj.userData.glbPath || null,
+      primitive: obj.userData.primitive || null,
+      pos: { x: +obj.position.x.toFixed(2), y: +obj.position.y.toFixed(2), z: +obj.position.z.toFixed(2) },
+      rot: { y: +(obj.rotation.y * 180 / Math.PI).toFixed(1) },
+      scale: +obj.scale.x.toFixed(3),
+      color: obj.userData.color || null,
+    };
+    if (obj.userData.isNPC) state.npcs.push(entry);
+    else state.objects.push(entry);
+  }
+  return state;
+}
+
+async function saveWorld(name) {
+  window._worldName = name || window._worldName || 'My World';
+  const state = captureWorldState();
+  const json = JSON.stringify(state, null, 2);
+  // Save to localStorage
+  try {
+    localStorage.setItem('crate_world_' + state.name, json);
+    localStorage.setItem('crate_world_last', json);
+  } catch(e) {}
+  // Also trigger download
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (state.name || 'world') + '.crate.json';
+  a.click(); URL.revokeObjectURL(url);
+  showToast('🌍 World saved: ' + state.name + ' (' + state.objects.length + ' objects)');
+  return 'World saved as ' + state.name + '.crate.json';
+}
+
+async function loadWorldFromJSON(json) {
+  let state;
+  try { state = typeof json === 'string' ? JSON.parse(json) : json; }
+  catch(e) { return 'Invalid world file: ' + e.message; }
+
+  showToast('Loading world: ' + (state.name || 'unknown') + '...');
+
+  // Apply terrain
+  if (state.terrain?.type) {
+    currentGroundType = state.terrain.type;
+    await applyGroundTexture(currentGround, currentGroundType);
+  }
+
+  // Apply sky
+  if (state.sky?.time) await parseAndExecute('time ' + state.sky.time);
+
+  // Apply fog
+  if (state.fog?.enabled) {
+    scene.fog = new THREE.FogExp2(0x8899aa, state.fog.density || 0.01);
+  } else { scene.fog = null; }
+
+  // Restore post-fx
+  if (state.postfx && window._colorPass) {
+    if (state.postfx.bloom !== undefined && bloomPass) bloomPass.strength = state.postfx.bloom;
+    if (state.postfx.vignette !== undefined) window._colorPass.uniforms.vignetteStrength.value = state.postfx.vignette;
+    if (state.postfx.grain !== undefined) window._colorPass.uniforms.filmGrain.value = state.postfx.grain;
+  }
+
+  // Restore objects
+  let placed = 0;
+  for (const entry of [...(state.objects||[]), ...(state.npcs||[])]) {
+    try {
+      if (entry.glb) {
+        await new Promise((resolve) => {
+          gltfLoader.load(entry.glb, (gltf) => {
+            const m = gltf.scene;
+            m.position.set(entry.pos.x, entry.pos.y, entry.pos.z);
+            m.rotation.y = (entry.rot?.y || 0) * Math.PI / 180;
+            m.scale.setScalar(entry.scale || 1);
+            m.userData = { name: entry.name, glbPath: entry.glb, isGLB: true };
+            scene.add(m); objects.push(m); placed++;
+            resolve();
+          }, undefined, resolve);
+        });
+      }
+    } catch(e) {}
+  }
+
+  window._worldName = state.name;
+  showToast('🌍 World loaded: ' + placed + ' objects restored');
+  return 'World loaded: ' + state.name;
+}
+
+function openWorldFilePicker() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json,.crate.json';
+  inp.onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const text = await file.text();
+    loadWorldFromJSON(text);
+  };
+  inp.click();
+  return 'File picker opened — select your .crate.json world file';
+}
+
+window.saveWorld = saveWorld;
+window.loadWorldFromJSON = loadWorldFromJSON;
+// ══════════════════════════════════════════════════════
+// END WORLD SAVE / EXPORT / LOAD
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// AUDIO SYSTEM — Horror SFX + Music + Ambient
+// ══════════════════════════════════════════════════════
+const HORROR_AUDIO = {
+  // Music
+  menu_music:       'audio/horror/menumusic01.wav',
+  event_music:      'audio/horror/eventmusic01.wav',
+  horror_music:     'audio/horror/eventmusic01.wav',
+  // Ambient / atmosphere
+  heartbeat:        'audio/horror/heartbeat.wav',
+  vision_ambient:   'audio/horror/visionsound1.wav',
+  street_light_hum: 'audio/horror/streetlightsoundloop.wav',
+  police_siren:     'audio/horror/policesiren.wav',
+  // Killer / hunter
+  chainsaw_idle:    'audio/horror/chainsawidle.wav',
+  chainsaw_attack:  'audio/horror/chainsawattack.wav',
+  chainsaw_on:      'audio/horror/chainsawturnon.wav',
+  hunter_chase:     'audio/horror/hunter01chase01loop.wav',
+  hunter_vision:    'audio/horror/huntersvisionsound.wav',
+  // Footsteps
+  footstep_1:       'audio/horror/player_footstep_01.wav',
+  footstep_land:    'audio/horror/player_land.wav',
+  // Props
+  door_open:        'audio/horror/dooropen.wav',
+  door_close:       'audio/horror/closecardoor.wav',
+  door_unlock:      'audio/horror/doorunlockingsoundloop.wav',
+  flashlight_on:    'audio/horror/flashlightturnonsound.wav',
+  flashlight_off:   'audio/horror/flashlightturnoffsound.wav',
+  light_on:         'audio/horror/lightturnonsound.wav',
+  light_off:        'audio/horror/lightturnoffsound.wav',
+  match_start:      'audio/horror/matchstartsound.wav',
+  street_break:     'audio/horror/streetlightbreaksound.wav',
+  // Combat
+  sword_swing:      'audio/horror/swordswing01.wav',
+  sword_hit_flesh:  'audio/horror/swordfleshhit01.wav',
+  sword_equip:      'audio/horror/swordequip01.wav',
+  knife_hit:        'audio/horror/knifecharacterhit.wav',
+  shotgun:          'audio/horror/shotgunsound.wav',
+  // Vehicles
+  car_start:        'audio/horror/carturnonsound.wav',
+  car_accel:        'audio/horror/accelerationhigh.wav',
+  car_skid:         'audio/horror/skid.wav',
+  firecracker:      'audio/horror/firecrackersound.wav',
+};
+
+const _audioCtx = { ctx: null, nodes: {}, music: null };
+
+function getAudioCtx() {
+  if (!_audioCtx.ctx) _audioCtx.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx.ctx;
+}
+
+async function playSound(key, loop=false, volume=1.0) {
+  const src = HORROR_AUDIO[key];
+  if (!src) return false;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const resp = await fetch(src);
+    const buf = await ctx.decodeAudioData(await resp.arrayBuffer());
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buf;
+    source.loop = loop;
+    gain.gain.value = volume;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(0);
+    if (loop) _audioCtx.nodes[key] = { source, gain };
+    return true;
+  } catch(e) { return false; }
+}
+
+function stopSound(key) {
+  const node = _audioCtx.nodes[key];
+  if (node) { try { node.source.stop(); } catch(e) {} delete _audioCtx.nodes[key]; }
+}
+
+function stopAllSounds() {
+  Object.keys(_audioCtx.nodes).forEach(stopSound);
+  if (_audioCtx.ctx) { _audioCtx.ctx.close(); _audioCtx.ctx = null; }
+}
+
+window._playHorrorSound = playSound;
+window._stopSound = stopSound;
+window._stopAllSounds = stopAllSounds;
+window._HORROR_AUDIO = HORROR_AUDIO;
+// ══════════════════════════════════════════════════════
+// END AUDIO SYSTEM
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// NPC DIALOGUE EDITOR — Visual Conversation Tree Builder
+// ══════════════════════════════════════════════════════
+const _dialogueTrees = {};   // name -> { nodes: [], start: 'node_0' }
+let   _activeDialogue = null;
+
+function showDialogueEditor(npcName) {
+  const existing = document.getElementById('dialogue-editor-modal');
+  if (existing) { existing.remove(); return; }
+
+  const treeName = npcName || 'NPC_1';
+  if (!_dialogueTrees[treeName]) {
+    _dialogueTrees[treeName] = {
+      nodes: [
+        { id: 'node_0', text: 'Hello traveler, what do you seek?', options: [
+          { text: 'Tell me about this place', next: 'node_1' },
+          { text: 'I need supplies', next: 'node_2' },
+          { text: 'Goodbye', next: null }
+        ]},
+        { id: 'node_1', text: 'This is a dangerous land. Beware the creatures at night.', options: [
+          { text: 'Thank you for the warning', next: null },
+          { text: 'What creatures?', next: null }
+        ]},
+        { id: 'node_2', text: 'I have potions and weapons for sale.', options: [
+          { text: 'Show me your wares', next: null },
+          { text: 'Never mind', next: null }
+        ]}
+      ],
+      start: 'node_0'
+    };
+  }
+
+  const tree = _dialogueTrees[treeName];
+
+  const modal = document.createElement('div');
+  modal.id = 'dialogue-editor-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99998;display:flex;flex-direction:column;font-family:-apple-system,sans-serif;overflow:hidden';
+
+  function renderEditor() {
+    const nodeList = tree.nodes.map((node, ni) => `
+      <div style="background:#0d0d0d;border:1px solid ${node.id===tree.start?'#ff6b35':'#222'};border-radius:10px;padding:12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="color:#555;font-size:0.7rem;font-family:monospace">${node.id}</span>
+          ${node.id===tree.start?'<span style="background:#ff6b35;color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">START</span>':''}
+          <button onclick="window._dlgSetStart('${node.id}')" style="margin-left:auto;background:#111;border:1px solid #333;color:#888;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.65rem">Set Start</button>
+          <button onclick="window._dlgDeleteNode(${ni})" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.65rem">Delete</button>
+        </div>
+        <textarea id="node-text-${ni}" style="width:100%;background:#111;border:1px solid #333;border-radius:6px;padding:8px;color:#fff;font-size:0.82rem;resize:vertical;min-height:60px;box-sizing:border-box" onchange="window._dlgUpdateText(${ni},this.value)">${node.text}</textarea>
+        <div style="margin-top:8px">
+          <div style="color:#555;font-size:0.65rem;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Response Options</div>
+          ${node.options.map((opt,oi)=>`
+            <div style="display:flex;gap:6px;margin-bottom:4px;align-items:center">
+              <input value="${opt.text}" onchange="window._dlgUpdateOpt(${ni},${oi},'text',this.value)" style="flex:1;background:#111;border:1px solid #333;border-radius:4px;padding:5px 8px;color:#ccc;font-size:0.75rem">
+              <select onchange="window._dlgUpdateOpt(${ni},${oi},'next',this.value||null)" style="background:#111;border:1px solid #333;border-radius:4px;padding:5px;color:#ccc;font-size:0.75rem">
+                <option value="">→ End</option>
+                ${tree.nodes.map(n=>`<option value="${n.id}" ${opt.next===n.id?'selected':''}>${n.id}</option>`).join('')}
+              </select>
+              <button onclick="window._dlgDeleteOpt(${ni},${oi})" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem">✕</button>
+            </div>`).join('')}
+          <button onclick="window._dlgAddOpt(${ni})" style="background:#111;border:1px solid #4ade80;color:#4ade80;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.7rem;margin-top:2px">+ Add Option</button>
+        </div>
+      </div>`).join('');
+
+    modal.innerHTML = `
+      <div style="padding:14px 18px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <span style="font-size:1.2rem">💬</span>
+        <div style="flex:1">
+          <div style="font-weight:700;color:#fff">Dialogue Editor — <span style="color:#ff6b35">${treeName}</span></div>
+          <div style="font-size:0.65rem;color:#555">${tree.nodes.length} nodes • Click node to preview</div>
+        </div>
+        <button onclick="window._dlgPreview()" style="background:#1a1a2e;border:1px solid #4ade80;color:#4ade80;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.8rem">▶ Preview</button>
+        <button onclick="window._dlgExport('${treeName}')" style="background:#1a1a2e;border:1px solid #ff6b35;color:#ff6b35;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.8rem">💾 Save</button>
+        <button onclick="document.getElementById('dialogue-editor-modal').remove()" style="background:none;border:1px solid #333;color:#888;padding:6px 12px;border-radius:8px;cursor:pointer">✕</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start">
+        <div>
+          <div style="color:#ff6b35;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Dialogue Nodes</div>
+          ${nodeList}
+          <button onclick="window._dlgAddNode()" style="width:100%;padding:10px;background:#111;border:2px dashed #333;border-radius:8px;color:#555;cursor:pointer;font-size:0.8rem;margin-top:4px" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#555'">+ Add Node</button>
+        </div>
+        <div>
+          <div style="color:#4ade80;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Flow Preview</div>
+          <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:10px;padding:12px;font-size:0.75rem;color:#888;font-family:monospace;white-space:pre-wrap">${
+            tree.nodes.map(n=>`[${n.id}] "${n.text.substring(0,40)}..."
+${n.options.map(o=>`  → "${o.text}" → ${o.next||'END'}`).join('
+')}`).join('
+
+')
+          }</div>
+          <div style="margin-top:12px;color:#555;font-size:0.7rem">Commands:</div>
+          <div style="font-family:monospace;font-size:0.7rem;color:#888;background:#0d0d0d;padding:8px;border-radius:6px;margin-top:4px">
+npc ${treeName} say Hello traveler<br>
+add npc dialogue<br>
+show dialogue ${treeName}<br>
+attach dialogue ${treeName} to [npc name]
+          </div>
+        </div>
+      </div>`;
+
+    // Wire handlers
+    window._dlgAddNode = () => {
+      const id = 'node_' + tree.nodes.length;
+      tree.nodes.push({ id, text: 'New dialogue node', options: [{ text: 'Continue', next: null }] });
+      renderEditor();
+    };
+    window._dlgDeleteNode = (i) => { tree.nodes.splice(i,1); renderEditor(); };
+    window._dlgSetStart = (id) => { tree.start = id; renderEditor(); };
+    window._dlgUpdateText = (i, v) => { tree.nodes[i].text = v; };
+    window._dlgAddOpt = (ni) => { tree.nodes[ni].options.push({text:'New option',next:null}); renderEditor(); };
+    window._dlgDeleteOpt = (ni,oi) => { tree.nodes[ni].options.splice(oi,1); renderEditor(); };
+    window._dlgUpdateOpt = (ni,oi,k,v) => { tree.nodes[ni].options[oi][k] = v||null; };
+    window._dlgPreview = () => showDialoguePreview(treeName);
+    window._dlgExport = (name) => {
+      const json = JSON.stringify(_dialogueTrees[name], null, 2);
+      localStorage.setItem('crate_dialogue_' + name, json);
+      showToast('💬 Dialogue "' + name + '" saved');
+    };
+  }
+
+  document.body.appendChild(modal);
+  renderEditor();
+}
+
+function showDialoguePreview(treeName) {
+  const tree = _dialogueTrees[treeName];
+  if (!tree) return;
+  let currentNode = tree.nodes.find(n=>n.id===tree.start) || tree.nodes[0];
+  if (!currentNode) return;
+
+  const overlay = document.getElementById('dlg-preview-overlay') || (() => {
+    const el = document.createElement('div');
+    el.id = 'dlg-preview-overlay';
+    el.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);width:500px;max-width:92vw;background:rgba(10,10,10,0.95);border:1px solid #333;border-radius:14px;z-index:100000;padding:20px;font-family:-apple-system,sans-serif;backdrop-filter:blur(10px)';
+    document.body.appendChild(el);
+    return el;
+  })();
+
+  function render(node) {
+    overlay.innerHTML = `
+      <div style="color:#888;font-size:0.65rem;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">💬 ${treeName}</div>
+      <div style="color:#fff;font-size:0.95rem;line-height:1.5;margin-bottom:14px">${node.text}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${node.options.map((opt,i)=>`
+          <button onclick="window._dlgPickOpt(${i})" style="text-align:left;padding:8px 14px;background:#111;border:1px solid #333;border-radius:8px;color:#ccc;cursor:pointer;font-size:0.82rem;transition:all 0.15s" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#ccc'">
+            [${i+1}] ${opt.text}
+          </button>`).join('')}
+      </div>
+      <button onclick="document.getElementById('dlg-preview-overlay').remove()" style="margin-top:10px;background:none;border:none;color:#444;cursor:pointer;font-size:0.75rem">Close preview</button>`;
+
+    window._dlgPickOpt = (i) => {
+      const next = node.options[i]?.next;
+      if (!next) { overlay.remove(); return; }
+      const nextNode = tree.nodes.find(n=>n.id===next);
+      if (nextNode) render(nextNode); else overlay.remove();
+    };
+  }
+  render(currentNode);
+}
+
+window.showDialogueEditor = showDialogueEditor;
+window._dialogueTrees = _dialogueTrees;
+// ══════════════════════════════════════════════════════
+// END NPC DIALOGUE EDITOR
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// TERRAIN PAINT UI — Click to paint texture zones
+// ══════════════════════════════════════════════════════
+let _terrainPaintMode = false;
+let _terrainPaintType = 'grass';
+let _terrainPaintRadius = 15;
+const _paintedZones = [];
+
+const PAINT_COLORS = {
+  grass:    0x3a7a3a,
+  sand:     0xc4a96a,
+  desert:   0xb8924a,
+  snow:     0xd8dce8,
+  dirt:     0x6b4a2a,
+  stone:    0x666666,
+  rock:     0x555555,
+  mud:      0x4a3a2a,
+  lava:     0xcc3300,
+  forest:   0x2a5a2a,
+  concrete: 0x999999,
+  asphalt:  0x333333,
+  ice:      0xaaddff,
+};
+
+function showTerrainPaintUI() {
+  const existing = document.getElementById('terrain-paint-ui');
+  if (existing) { existing.remove(); _terrainPaintMode = false; return; }
+
+  const panel = document.createElement('div');
+  panel.id = 'terrain-paint-ui';
+  panel.style.cssText = 'position:fixed;top:60px;left:20px;z-index:300;width:220px;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden;font-family:-apple-system,sans-serif';
+
+  const texTypes = ['grass','sand','desert','snow','dirt','stone','rock','mud','lava','forest','concrete','asphalt','ice'];
+
+  panel.innerHTML = `
+    <div style="padding:10px 12px;background:rgba(255,107,53,0.08);border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:8px">
+      <span>🖌️</span>
+      <div style="flex:1;font-weight:700;color:#ff6b35;font-size:0.8rem">Terrain Painter</div>
+      <button onclick="document.getElementById('terrain-paint-ui').remove();window._terrainPaintMode=false" style="background:none;border:none;color:#555;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:10px">
+      <div style="color:#555;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Texture</div>
+      <div id="paint-texture-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px">
+        ${texTypes.map(t=>`
+          <div onclick="window._setPaintType('${t}')" id="paint-btn-${t}" style="aspect-ratio:1;border-radius:6px;cursor:pointer;border:2px solid ${t===_terrainPaintType?'#ff6b35':'transparent'};background:${('#' + PAINT_COLORS[t]?.toString(16).padStart(6,'0'))||'#333'};position:relative;transition:all 0.15s" title="${t}">
+            <span style="position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:0.45rem;color:rgba(255,255,255,0.8)">${t}</span>
+          </div>`).join('')}
+      </div>
+      <div style="color:#555;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Brush Radius: <span id="paint-radius-val">${_terrainPaintRadius}</span></div>
+      <input type="range" min="2" max="50" value="${_terrainPaintRadius}" id="paint-radius" oninput="window._setPaintRadius(+this.value)" style="width:100%;accent-color:#ff6b35;margin-bottom:10px">
+      <button onclick="window._terrainPaintMode=!window._terrainPaintMode;this.style.background=window._terrainPaintMode?'rgba(255,107,53,0.2)':'#111';this.style.color=window._terrainPaintMode?'#ff6b35':'#888';this.textContent=window._terrainPaintMode?'🖌️ Painting...':'🖌️ Start Painting'" 
+        style="width:100%;padding:8px;background:#111;border:1px solid #333;border-radius:8px;color:#888;cursor:pointer;font-size:0.8rem;margin-bottom:6px">🖌️ Start Painting</button>
+      <button onclick="window._clearPaintZones()" style="width:100%;padding:6px;background:#111;border:1px solid #ef4444;border-radius:8px;color:#ef4444;cursor:pointer;font-size:0.75rem">Clear All Zones</button>
+      <div style="color:#555;font-size:0.65rem;margin-top:8px">Click terrain to paint • Painted zones show colored circles</div>
+    </div>`;
+
+  document.body.appendChild(panel);
+  _terrainPaintMode = false;
+
+  window._setPaintType = (t) => {
+    _terrainPaintType = t;
+    document.querySelectorAll('[id^="paint-btn-"]').forEach(el => el.style.borderColor='transparent');
+    const btn = document.getElementById('paint-btn-' + t);
+    if (btn) btn.style.borderColor = '#ff6b35';
+  };
+  window._setPaintRadius = (r) => {
+    _terrainPaintRadius = r;
+    const el = document.getElementById('paint-radius-val');
+    if (el) el.textContent = r;
+  };
+  window._clearPaintZones = () => {
+    _paintedZones.forEach(z => scene.remove(z));
+    _paintedZones.length = 0;
+    showToast('Paint zones cleared');
+  };
+
+  // Paint on canvas click when in paint mode
+  window._terrainPaintMode = false;
+  if (!window._paintClickHandler) {
+    window._paintClickHandler = (e) => {
+      if (!window._terrainPaintMode) return;
+      const rc = new THREE.Raycaster();
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      rc.setFromCamera(mouse, camera);
+      const hits = rc.intersectObject(currentGround);
+      if (hits.length > 0) {
+        const pt = hits[0].point;
+        // Spawn a paint zone disc
+        const geo = new THREE.CircleGeometry(_terrainPaintRadius, 32);
+        const col = new THREE.Color(PAINT_COLORS[_terrainPaintType] || 0x3a7a3a);
+        const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55, depthWrite: false });
+        const disc = new THREE.Mesh(geo, mat);
+        disc.rotation.x = -Math.PI/2;
+        disc.position.set(pt.x, 0.05, pt.z);
+        disc.userData = { isPaintZone: true, paintType: _terrainPaintType };
+        scene.add(disc);
+        _paintedZones.push(disc);
+        // Also queue texture load for this zone (visual feedback)
+        loadGroundTexture(_terrainPaintType).then(tex => {
+          if (tex) {
+            const tTex = tex.clone();
+            tTex.wrapS = tTex.wrapT = THREE.RepeatWrapping;
+            tTex.repeat.set(4, 4);
+            mat.map = tTex;
+            mat.color.set(0xffffff);
+            mat.needsUpdate = true;
+          }
+        });
+        showToast('Painted ' + _terrainPaintType + ' zone at (' + pt.x.toFixed(0) + ',' + pt.z.toFixed(0) + ')');
+      }
+    };
+    renderer.domElement.addEventListener('click', window._paintClickHandler);
+  }
+}
+
+window.showTerrainPaintUI = showTerrainPaintUI;
+window._terrainPaintMode = false;
+// ══════════════════════════════════════════════════════
+// END TERRAIN PAINT UI
+// ══════════════════════════════════════════════════════
+
 async function parseAndExecute(rawCmd) {
   // Skip NL rewrite for gallery keywords — let gallery commands handle directly
   const _galBypass = /^(?:show |browse |open |pick |choose |select )?(characters?|weapons?|swords?|axes?|guns?|buildings?|houses?|vehicles?|cars?|animals?|trees?|plants?|rocks?|stones?|furniture|tables?|chairs?|food|items?|potions?|dungeon|sci-?fi|space|nature|survival|animations?|library|asset library|browse all|all assets|all models|model library|browse$)$/i;
@@ -13039,6 +13555,103 @@ async function parseAndExecute(rawCmd) {
 • Share the URL — anyone can play instantly, no install`;
   }
   // ── END POLISH COMMANDS ───────────────────────────────────────────────────
+
+  // ── WORLD SAVE / LOAD ────────────────────────────────────────────────────
+  if (/^save world$/i.test(cmd) || /^save game$/i.test(cmd)) {
+    return await saveWorld(window._worldName || 'My World');
+  }
+  if (/^save world (.+)$/i.test(cmd) || /^save as (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:save world|save as) (.+)/i)[1].trim();
+    return await saveWorld(name);
+  }
+  if (/^load world$/i.test(cmd) || /^load game$/i.test(cmd) || /^open world$/i.test(cmd)) {
+    return openWorldFilePicker();
+  }
+  if (/^export world$/i.test(cmd)) {
+    return await saveWorld(window._worldName || 'My World');
+  }
+  if (/^world name (.+)$/i.test(cmd)) {
+    window._worldName = cmd.match(/world name (.+)/i)[1].trim();
+    return 'World named: ' + window._worldName;
+  }
+
+  // ── AUDIO COMMANDS ────────────────────────────────────────────────────────
+  if (/^play (chainsaw|chainsaw_idle|chainsaw idle)$/i.test(cmd)) {
+    await playSound('chainsaw_idle', true, 0.6);
+    return 'Chainsaw sound playing (looping)';
+  }
+  if (/^play heartbeat$/i.test(cmd)) {
+    await playSound('heartbeat', true, 0.5);
+    return 'Heartbeat sound playing';
+  }
+  if (/^play (horror music|horror_music|scary music)$/i.test(cmd)) {
+    await playSound('event_music', true, 0.4);
+    return 'Horror music playing';
+  }
+  if (/^play (menu music|menumusic)$/i.test(cmd)) {
+    await playSound('menu_music', true, 0.4);
+    return 'Menu music playing';
+  }
+  if (/^play (police siren|siren)$/i.test(cmd)) {
+    await playSound('police_siren', false, 0.7);
+    return 'Police siren playing';
+  }
+  if (/^play (door open|dooropen)$/i.test(cmd)) {
+    await playSound('door_open', false, 0.8);
+    return 'Door opening sound';
+  }
+  if (/^play hunter$/i.test(cmd)) {
+    await playSound('hunter_chase', true, 0.5);
+    return 'Hunter chase music playing';
+  }
+  if (/^play (sword|sword swing)$/i.test(cmd)) {
+    await playSound('sword_swing', false, 0.9);
+    return 'Sword swing sound';
+  }
+  if (/^play (shotgun|gunshot)$/i.test(cmd)) {
+    await playSound('shotgun', false, 0.9);
+    return 'Shotgun sound';
+  }
+  if (/^stop (music|audio|sound|all sounds?)$/i.test(cmd)) {
+    stopAllSounds();
+    return 'All sounds stopped';
+  }
+  if (/^play sound (.+)$/i.test(cmd)) {
+    const key = cmd.match(/play sound (.+)/i)[1].trim().replace(/ /g,'_');
+    const ok = await playSound(key, false, 0.8);
+    return ok ? `Playing: ${key}` : `Sound not found: ${key}. Available: ${Object.keys(HORROR_AUDIO).join(', ')}`;
+  }
+  if (/^list (sounds?|audio)$/i.test(cmd)) {
+    return 'Available sounds: ' + Object.keys(HORROR_AUDIO).join(', ');
+  }
+
+  // ── DIALOGUE EDITOR ───────────────────────────────────────────────────────
+  if (/^(dialogue editor|npc editor|open dialogue)$/i.test(cmd)) {
+    showDialogueEditor('NPC_1');
+    return 'Dialogue editor opened';
+  }
+  if (/^dialogue editor (.+)$/i.test(cmd) || /^edit dialogue (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:dialogue editor|edit dialogue) (.+)/i)[1].trim();
+    showDialogueEditor(name);
+    return 'Dialogue editor opened for ' + name;
+  }
+  if (/^show dialogue (.+)$/i.test(cmd) || /^preview dialogue (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:show|preview) dialogue (.+)/i)[1].trim();
+    showDialoguePreview(name);
+    return 'Dialogue preview: ' + name;
+  }
+
+  // ── TERRAIN PAINTER ───────────────────────────────────────────────────────
+  if (/^(terrain paint|paint terrain|terrain painter|open painter)$/i.test(cmd)) {
+    showTerrainPaintUI();
+    return 'Terrain painter opened — click ground to paint texture zones';
+  }
+  if (/^paint (mode|brush)$/i.test(cmd)) {
+    showTerrainPaintUI();
+    return 'Terrain painter opened';
+  }
+  // ── END NEW COMMANDS ──────────────────────────────────────────────────────
+
 
 
   if (_galBypass.test(rawCmd.toLowerCase().trim())) {
