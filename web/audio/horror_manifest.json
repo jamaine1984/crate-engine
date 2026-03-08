@@ -1,0 +1,496 @@
+{
+  "horror_audio": [
+    {
+      "name": "chainsawidle",
+      "file": "chainsawidle.wav",
+      "size_kb": 799,
+      "path": "audio/horror/chainsawidle.wav"
+    },
+    {
+      "name": "heartbeat",
+      "file": "heartbeat.wav",
+      "size_kb": 221,
+      "path": "audio/horror/heartbeat.wav"
+    },
+    {
+      "name": "carturnonsuccessful",
+      "file": "carturnonsuccessful.wav",
+      "size_kb": 335,
+      "path": "audio/horror/carturnonsuccessful.wav"
+    },
+    {
+      "name": "swordswing04",
+      "file": "swordswing04.wav",
+      "size_kb": 126,
+      "path": "audio/horror/swordswing04.wav"
+    },
+    {
+      "name": "swordswing06",
+      "file": "swordswing06.wav",
+      "size_kb": 103,
+      "path": "audio/horror/swordswing06.wav"
+    },
+    {
+      "name": "knifemetalhit03",
+      "file": "knifemetalhit03.wav",
+      "size_kb": 172,
+      "path": "audio/horror/knifemetalhit03.wav"
+    },
+    {
+      "name": "hunter01chase03loop",
+      "file": "hunter01chase03loop.wav",
+      "size_kb": 3600,
+      "path": "audio/horror/hunter01chase03loop.wav"
+    },
+    {
+      "name": "player_footstep_05",
+      "file": "player_footstep_05.wav",
+      "size_kb": 46,
+      "path": "audio/horror/player_footstep_05.wav"
+    },
+    {
+      "name": "player_footstep_03",
+      "file": "player_footstep_03.wav",
+      "size_kb": 42,
+      "path": "audio/horror/player_footstep_03.wav"
+    },
+    {
+      "name": "visionsound2",
+      "file": "visionsound2.wav",
+      "size_kb": 516,
+      "path": "audio/horror/visionsound2.wav"
+    },
+    {
+      "name": "player_footstep_04",
+      "file": "player_footstep_04.wav",
+      "size_kb": 46,
+      "path": "audio/horror/player_footstep_04.wav"
+    },
+    {
+      "name": "policesiren",
+      "file": "policesiren.wav",
+      "size_kb": 4360,
+      "path": "audio/horror/policesiren.wav"
+    },
+    {
+      "name": "hunter01chase01loop",
+      "file": "hunter01chase01loop.wav",
+      "size_kb": 900,
+      "path": "audio/horror/hunter01chase01loop.wav"
+    },
+    {
+      "name": "skid",
+      "file": "skid.wav",
+      "size_kb": 328,
+      "path": "audio/horror/skid.wav"
+    },
+    {
+      "name": "swordswing02",
+      "file": "swordswing02.wav",
+      "size_kb": 63,
+      "path": "audio/horror/swordswing02.wav"
+    },
+    {
+      "name": "decelerationlow",
+      "file": "decelerationlow.wav",
+      "size_kb": 129,
+      "path": "audio/horror/decelerationlow.wav"
+    },
+    {
+      "name": "player_footstep_09",
+      "file": "player_footstep_09.wav",
+      "size_kb": 48,
+      "path": "audio/horror/player_footstep_09.wav"
+    },
+    {
+      "name": "chainsawturnon",
+      "file": "chainsawturnon.wav",
+      "size_kb": 31,
+      "path": "audio/horror/chainsawturnon.wav"
+    },
+    {
+      "name": "player_footstep_06",
+      "file": "player_footstep_06.wav",
+      "size_kb": 43,
+      "path": "audio/horror/player_footstep_06.wav"
+    },
+    {
+      "name": "firecrackerfusesound",
+      "file": "firecrackerfusesound.wav",
+      "size_kb": 100,
+      "path": "audio/horror/firecrackerfusesound.wav"
+    },
+    {
+      "name": "swordfleshhit03",
+      "file": "swordfleshhit03.wav",
+      "size_kb": 51,
+      "path": "audio/horror/swordfleshhit03.wav"
+    },
+    {
+      "name": "accelerationlow",
+      "file": "accelerationlow.wav",
+      "size_kb": 129,
+      "path": "audio/horror/accelerationlow.wav"
+    },
+    {
+      "name": "opencardoor",
+      "file": "opencardoor.mp3",
+      "size_kb": 13,
+      "path": "audio/horror/opencardoor.mp3"
+    },
+    {
+      "name": "knifewoodhit01",
+      "file": "knifewoodhit01.wav",
+      "size_kb": 63,
+      "path": "audio/horror/knifewoodhit01.wav"
+    },
+    {
+      "name": "closecardoor",
+      "file": "closecardoor.mp3",
+      "size_kb": 4,
+      "path": "audio/horror/closecardoor.mp3"
+    },
+    {
+      "name": "radiostationswitch",
+      "file": "radiostationswitch.wav",
+      "size_kb": 163,
+      "path": "audio/horror/radiostationswitch.wav"
+    },
+    {
+      "name": "knifewoodhit02",
+      "file": "knifewoodhit02.wav",
+      "size_kb": 63,
+      "path": "audio/horror/knifewoodhit02.wav"
+    },
+    {
+      "name": "swordequip01",
+      "file": "swordequip01.wav",
+      "size_kb": 117,
+      "path": "audio/horror/swordequip01.wav"
+    },
+    {
+      "name": "huntersvisionsound",
+      "file": "huntersvisionsound.wav",
+      "size_kb": 2271,
+      "path": "audio/horror/huntersvisionsound.wav"
+    },
+    {
+      "name": "decelerationhigh",
+      "file": "decelerationhigh.wav",
+      "size_kb": 35,
+      "path": "audio/horror/decelerationhigh.wav"
+    },
+    {
+      "name": "dooropen",
+      "file": "dooropen.wav",
+      "size_kb": 91,
+      "path": "audio/horror/dooropen.wav"
+    },
+    {
+      "name": "chainsawattack",
+      "file": "chainsawattack.wav",
+      "size_kb": 482,
+      "path": "audio/horror/chainsawattack.wav"
+    },
+    {
+      "name": "chainsawaimidle",
+      "file": "chainsawaimidle.wav",
+      "size_kb": 1963,
+      "path": "audio/horror/chainsawaimidle.wav"
+    },
+    {
+      "name": "player_footstep_08",
+      "file": "player_footstep_08.wav",
+      "size_kb": 45,
+      "path": "audio/horror/player_footstep_08.wav"
+    },
+    {
+      "name": "accelerationhigh",
+      "file": "accelerationhigh.wav",
+      "size_kb": 35,
+      "path": "audio/horror/accelerationhigh.wav"
+    },
+    {
+      "name": "knifewoodhit03",
+      "file": "knifewoodhit03.wav",
+      "size_kb": 54,
+      "path": "audio/horror/knifewoodhit03.wav"
+    },
+    {
+      "name": "doorunlockingsoundloop",
+      "file": "doorunlockingsoundloop.wav",
+      "size_kb": 1146,
+      "path": "audio/horror/doorunlockingsoundloop.wav"
+    },
+    {
+      "name": "swordfleshhit01",
+      "file": "swordfleshhit01.wav",
+      "size_kb": 120,
+      "path": "audio/horror/swordfleshhit01.wav"
+    },
+    {
+      "name": "firecrackersound",
+      "file": "firecrackersound.wav",
+      "size_kb": 775,
+      "path": "audio/horror/firecrackersound.wav"
+    },
+    {
+      "name": "lightturnoffsound",
+      "file": "lightturnoffsound.wav",
+      "size_kb": 37,
+      "path": "audio/horror/lightturnoffsound.wav"
+    },
+    {
+      "name": "player_footstep_01",
+      "file": "player_footstep_01.wav",
+      "size_kb": 37,
+      "path": "audio/horror/player_footstep_01.wav"
+    },
+    {
+      "name": "hunter01chase01",
+      "file": "hunter01chase01.wav",
+      "size_kb": 900,
+      "path": "audio/horror/hunter01chase01.wav"
+    },
+    {
+      "name": "knifemetalhit02",
+      "file": "knifemetalhit02.wav",
+      "size_kb": 175,
+      "path": "audio/horror/knifemetalhit02.wav"
+    },
+    {
+      "name": "doorunlockingsoundend",
+      "file": "doorunlockingsoundend.wav",
+      "size_kb": 114,
+      "path": "audio/horror/doorunlockingsoundend.wav"
+    },
+    {
+      "name": "flashlightturnoffsound",
+      "file": "flashlightturnoffsound.wav",
+      "size_kb": 74,
+      "path": "audio/horror/flashlightturnoffsound.wav"
+    },
+    {
+      "name": "swordfleshhit02",
+      "file": "swordfleshhit02.wav",
+      "size_kb": 112,
+      "path": "audio/horror/swordfleshhit02.wav"
+    },
+    {
+      "name": "streetlightbreaksound",
+      "file": "streetlightbreaksound.wav",
+      "size_kb": 859,
+      "path": "audio/horror/streetlightbreaksound.wav"
+    },
+    {
+      "name": "swordequip02",
+      "file": "swordequip02.wav",
+      "size_kb": 175,
+      "path": "audio/horror/swordequip02.wav"
+    },
+    {
+      "name": "player_footstep_02",
+      "file": "player_footstep_02.wav",
+      "size_kb": 38,
+      "path": "audio/horror/player_footstep_02.wav"
+    },
+    {
+      "name": "hunter01chase02loop",
+      "file": "hunter01chase02loop.wav",
+      "size_kb": 3600,
+      "path": "audio/horror/hunter01chase02loop.wav"
+    },
+    {
+      "name": "chainsawaimidle",
+      "file": "chainsawaimidle.wav",
+      "size_kb": 1966,
+      "path": "audio/horror/chainsawaimidle.wav"
+    },
+    {
+      "name": "swordswing01",
+      "file": "swordswing01.wav",
+      "size_kb": 37,
+      "path": "audio/horror/swordswing01.wav"
+    },
+    {
+      "name": "swordgroundhit01",
+      "file": "swordgroundhit01.wav",
+      "size_kb": 106,
+      "path": "audio/horror/swordgroundhit01.wav"
+    },
+    {
+      "name": "opencardoor",
+      "file": "opencardoor.wav",
+      "size_kb": 135,
+      "path": "audio/horror/opencardoor.wav"
+    },
+    {
+      "name": "player_footstep_10",
+      "file": "player_footstep_10.wav",
+      "size_kb": 45,
+      "path": "audio/horror/player_footstep_10.wav"
+    },
+    {
+      "name": "chainsawattack",
+      "file": "chainsawattack.wav",
+      "size_kb": 482,
+      "path": "audio/horror/chainsawattack.wav"
+    },
+    {
+      "name": "knifecharacterhit",
+      "file": "knifecharacterhit.wav",
+      "size_kb": 100,
+      "path": "audio/horror/knifecharacterhit.wav"
+    },
+    {
+      "name": "matchendsound",
+      "file": "matchendsound.wav",
+      "size_kb": 1257,
+      "path": "audio/horror/matchendsound.wav"
+    },
+    {
+      "name": "eventmusic01",
+      "file": "eventmusic01.wav",
+      "size_kb": 2566,
+      "path": "audio/horror/eventmusic01.wav"
+    },
+    {
+      "name": "menumusic01",
+      "file": "menumusic01.wav",
+      "size_kb": 7500,
+      "path": "audio/horror/menumusic01.wav"
+    },
+    {
+      "name": "carturnonsound",
+      "file": "carturnonsound.wav",
+      "size_kb": 709,
+      "path": "audio/horror/carturnonsound.wav"
+    },
+    {
+      "name": "swordmetalhit01",
+      "file": "swordmetalhit01.wav",
+      "size_kb": 218,
+      "path": "audio/horror/swordmetalhit01.wav"
+    },
+    {
+      "name": "matchstartsound",
+      "file": "matchstartsound.wav",
+      "size_kb": 723,
+      "path": "audio/horror/matchstartsound.wav"
+    },
+    {
+      "name": "visionsound1",
+      "file": "visionsound1.wav",
+      "size_kb": 341,
+      "path": "audio/horror/visionsound1.wav"
+    },
+    {
+      "name": "chainsawturnon",
+      "file": "chainsawturnon.wav",
+      "size_kb": 31,
+      "path": "audio/horror/chainsawturnon.wav"
+    },
+    {
+      "name": "swordwoodhit01",
+      "file": "swordwoodhit01.wav",
+      "size_kb": 149,
+      "path": "audio/horror/swordwoodhit01.wav"
+    },
+    {
+      "name": "policesiren",
+      "file": "policesiren.mp3",
+      "size_kb": 395,
+      "path": "audio/horror/policesiren.mp3"
+    },
+    {
+      "name": "visionsound3",
+      "file": "visionsound3.wav",
+      "size_kb": 364,
+      "path": "audio/horror/visionsound3.wav"
+    },
+    {
+      "name": "swordwoodhit02",
+      "file": "swordwoodhit02.wav",
+      "size_kb": 126,
+      "path": "audio/horror/swordwoodhit02.wav"
+    },
+    {
+      "name": "knifemetalhit01",
+      "file": "knifemetalhit01.wav",
+      "size_kb": 172,
+      "path": "audio/horror/knifemetalhit01.wav"
+    },
+    {
+      "name": "flashlightturnonsound",
+      "file": "flashlightturnonsound.wav",
+      "size_kb": 68,
+      "path": "audio/horror/flashlightturnonsound.wav"
+    },
+    {
+      "name": "swordswing03",
+      "file": "swordswing03.wav",
+      "size_kb": 112,
+      "path": "audio/horror/swordswing03.wav"
+    },
+    {
+      "name": "swordswing05",
+      "file": "swordswing05.wav",
+      "size_kb": 166,
+      "path": "audio/horror/swordswing05.wav"
+    },
+    {
+      "name": "shotgunsound",
+      "file": "shotgunsound.wav",
+      "size_kb": 252,
+      "path": "audio/horror/shotgunsound.wav"
+    },
+    {
+      "name": "player_footstep_07",
+      "file": "player_footstep_07.wav",
+      "size_kb": 41,
+      "path": "audio/horror/player_footstep_07.wav"
+    },
+    {
+      "name": "streetlightsoundloop",
+      "file": "streetlightsoundloop.wav",
+      "size_kb": 7294,
+      "path": "audio/horror/streetlightsoundloop.wav"
+    },
+    {
+      "name": "knifewoodhit05",
+      "file": "knifewoodhit05.wav",
+      "size_kb": 51,
+      "path": "audio/horror/knifewoodhit05.wav"
+    },
+    {
+      "name": "closecardoor",
+      "file": "closecardoor.wav",
+      "size_kb": 40,
+      "path": "audio/horror/closecardoor.wav"
+    },
+    {
+      "name": "lightturnonsound",
+      "file": "lightturnonsound.wav",
+      "size_kb": 43,
+      "path": "audio/horror/lightturnonsound.wav"
+    },
+    {
+      "name": "chainsawidle",
+      "file": "chainsawidle.wav",
+      "size_kb": 801,
+      "path": "audio/horror/chainsawidle.wav"
+    },
+    {
+      "name": "knifewoodhit04",
+      "file": "knifewoodhit04.wav",
+      "size_kb": 60,
+      "path": "audio/horror/knifewoodhit04.wav"
+    },
+    {
+      "name": "player_land",
+      "file": "player_land.wav",
+      "size_kb": 35,
+      "path": "audio/horror/player_land.wav"
+    }
+  ]
+}
