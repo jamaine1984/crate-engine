@@ -130,3 +130,106 @@ web/
 5. **Update this file** when you're done — the other agent depends on it
 6. **Don't overwrite the other agent's work** — check git log first
 7. **Deploy from `main` only** — merge your branch first
+
+---
+
+## Deploy Knowledge (Complete Guide)
+
+### Current Setup: Direct Upload via Wrangler
+```bash
+cd ~/.openclaw/workspace/crate-engine
+npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true --branch=main
+```
+**Problem:** Cloudflare's content-addressed asset store skips files with matching chunk hashes. If the file content hasn't changed byte-for-byte, it says "0 files uploaded (already uploaded)" and the deploy appears to succeed but serves stale code. This is why cache-busting `?v=XXX` on imports is critical.
+
+### Fix: Connect GitHub → Cloudflare Pages (NOT DONE YET)
+This must be done in the **Cloudflare Dashboard** — wrangler CLI cannot do this.
+
+1. Login: **dash.cloudflare.com** (account: `Koikes2021@gmail.com`)
+2. Navigate: **Pages → crateship-games → Settings → Builds & Deployments**
+3. Click **"Connect to Git"**
+4. Select repo: `jamaine1984/crate-engine`
+5. Branch: `main`
+6. Configuration:
+   - Framework preset: **None**
+   - Build command: **(leave empty)** — static site, no build step
+   - Build output directory: **`web/`**
+   - Root directory: **`/`** (the repo root, NOT `crate-engine/`)
+7. Save → triggers first build
+
+Once connected, every `git push origin main` auto-deploys. No more wrangler, no more cache hash fights.
+
+### Cloudflare Account Details
+- **Account ID:** `6573d98c25150fd7b4602e56a0926767`
+- **Pages project:** `crateship-games`
+- **Custom domain:** `crateshipgames.com`
+- **Production branch:** `main`
+- **Preview branches:** Any non-main branch gets a preview URL like `https://<hash>.crateship-games.pages.dev`
+
+### Wrangler Auth
+Wrangler is already authenticated via `npx wrangler whoami`. If auth expires:
+```bash
+npx wrangler login
+```
+
+### Cache Busting (CRITICAL)
+Cloudflare CDN + browser caching is aggressive. When editing files:
+
+1. **character.mjs** — bump `?v=XXX` in engine.mjs:
+   ```js
+   import { CharacterController, ... } from './character.mjs?v=134'
+   //                                                        ^^^^^ bump this
+   ```
+
+2. **engine.mjs** — bump `?v=XXX` in play.html:
+   ```html
+   <script type="module" src="engine.mjs?v=900DEPLOY"></script>
+   <!--                                  ^^^^^^^^^^^ bump this -->
+   ```
+
+3. **Other .mjs files** — check their import lines in engine.mjs, bump similarly
+
+4. **After deploy** — always verify with curl:
+   ```bash
+   curl -s "https://crateshipgames.com/engine.mjs?v=NEW" | head -3
+   ```
+
+### Deploy Verification Checklist
+After any deploy, confirm:
+```bash
+# 1. Check deploy URL serves new code
+curl -s "https://<hash>.crateship-games.pages.dev/play" | grep "engine.mjs"
+
+# 2. Check engine loads
+curl -s "https://<hash>.crateship-games.pages.dev/engine.mjs" | head -3
+
+# 3. Check character module loads  
+curl -s "https://<hash>.crateship-games.pages.dev/character.mjs" | head -3
+
+# 4. Open in browser and check console for errors
+# Look for: MIME type errors, 404s, module load failures
+```
+
+### Nuclear Option: If Deploy Is Completely Stuck
+```bash
+# Delete and recreate (WARNING: removes custom domain mapping temporarily)
+npx wrangler pages project delete crateship-games
+npx wrangler pages project create crateship-games --production-branch=main
+npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true --branch=main
+# Then re-add custom domain in Cloudflare dashboard
+```
+
+### Git Workflow for Deploy
+```bash
+# 1. Make changes
+# 2. Bump version strings (see Cache Busting above)
+# 3. Test locally or via preview deploy
+# 4. Commit and push
+git add web/
+git commit -m "description of changes"
+git push origin main
+# 5. If GitHub→Cloudflare connected: auto-deploys
+# 6. If not connected: manual deploy
+npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true --branch=main
+# 7. Verify (see checklist above)
+```
