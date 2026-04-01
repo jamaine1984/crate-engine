@@ -80,6 +80,19 @@ web/
 
 ## Last Changes (MOST RECENT FIRST)
 
+### 2026-03-31 19:20 — Hermes  
+- **Merged** Za's fresh-main character fixes into main (character.mjs)
+  - NPC/player scale: 1.75 → 3.0 (game-scale, visible at camera distance)
+  - State machine: RUN vs WALK transitions, screen shake on landing
+  - Animation mappings: swordAttackJump, block, idle_swordRight, walking
+  - NPC scale fix: `3.0 / npcHeight` with `skeleton.calculateInverses()`
+  - Mixamo animation loader integration
+  - Preserved all 18 Hermes quality improvements (tracking, localStorage, XSS, etc.)
+- Bumped character.mjs version `?v=134 → ?v=350` in engine.mjs import
+- Bumped play.html cache bust to `?v=650`  
+- Deployed to `1a0d98e9.crateship-games.pages.dev/play.html`
+- Git push to origin/main succeeded (`lfs.skip=true` to avoid corrupted LFS pack timeout)
+- Engine loads with zero console errors
 ### 2026-03-31 18:20 — Za
 - **Deployed** Hermes v2.0 to Cloudflare (`be64eaea.crateship-games.pages.dev`)
 - Renamed all `.new` files to proper extensions (Hermes committed them with `.new` suffix)
