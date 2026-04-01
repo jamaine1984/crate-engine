@@ -568,12 +568,8 @@ class CharacterStateMachine {
     
     switch (this.currentState) {
       case CharacterState.LAND:
-        if (this.stateTime > 0.15) {
-          this.transition(c.isMoving ? CharacterState.RUN : CharacterState.IDLE);
-        }
-        // Landing camera dip
-        if (this.stateTime < 0.05 && window._screenShake) {
-          window._screenShake.trigger(1.5, 0.15);
+        if (this.stateTime > 0.1) {
+          this.transition(c.isMoving ? CharacterState.WALK : CharacterState.IDLE);
         }
         break;
       case CharacterState.FALL:
@@ -592,6 +588,7 @@ class CharacterStateMachine {
       case CharacterState.IDLE:
       case CharacterState.WALK:
       case CharacterState.RUN:
+        // Only trigger fall for REAL drops — not tiny ground variations
         if (!c.isGrounded && c.jumpVelocity < -5 && this.stateTime > 0.3) {
           this.transition(CharacterState.FALL);
         }
@@ -606,19 +603,20 @@ class CharacterStateMachine {
       [CharacterState.WALK]: 'walk',
       [CharacterState.RUN]: 'run',
       [CharacterState.JUMP]: 'jump',
-      [CharacterState.FALL]: 'jump',  // reuse jump anim for fall
-      [CharacterState.LAND]: 'idle',  // brief landing squat
+      [CharacterState.FALL]: 'jump',
+      [CharacterState.LAND]: 'idle',
       [CharacterState.ROLL]: 'roll',
       [CharacterState.ATTACK_1]: 'attack',
       [CharacterState.ATTACK_2]: 'attack',
-      [CharacterState.ATTACK_3]: 'swordAttackJump',
-      [CharacterState.HEAVY_ATTACK]: 'swordAttackJump',
-      [CharacterState.BLOCK]: 'block',
+      [CharacterState.ATTACK_3]: 'attack',
+      [CharacterState.HEAVY_ATTACK]: 'attack',
+      [CharacterState.BLOCK]: 'idle',
       [CharacterState.HIT]: 'hit',
       [CharacterState.DEATH]: 'death',
-      [CharacterState.SWIM]: 'walking', // placeholder
-      [CharacterState.AIM]: 'idle_swordRight',
-      [CharacterState.SHOOT]: 'idle_swordRight',
+      [CharacterState.SWIM]: 'walk',   // swim reuses walk anim (tilted)
+      [CharacterState.CLIMB]: 'walk',  // climb reuses walk
+      [CharacterState.AIM]: 'idle',
+      [CharacterState.SHOOT]: 'idle',
     };
     
     const animName = animMap[state];
@@ -699,6 +697,27 @@ const _screenShake = {
   }
 };
 window._screenShake = _screenShake;
+
+// Animation frame tracking for cleanup
+let _animFrameIds = [];
+function trackFrame(id) { _animFrameIds.push(id); return id; }
+function cancelAllFrames() { _animFrameIds.forEach(id => cancelAnimationFrame(id)); _animFrameIds = []; }
+// Event listener tracking for cleanup
+let _eventListeners = [];
+function trackListener(target, type, handler, opts) {
+  target.addEventListener(type, handler, opts);
+  _eventListeners.push({target, type, handler, opts});
+  return {target, type, handler, opts};
+}
+function removeAllListeners() {
+  _eventListeners.forEach(({target, type, handler, opts}) => {
+    target.removeEventListener(type, handler, opts);
+  });
+  _eventListeners = [];
+}
+// Expose cleanup
+window._cleanupCharacter = () => { cancelAllFrames(); removeAllListeners(); console.log('[Character] Cleaned up'); };
+
 
 class CharacterController {
   constructor(scene, camera, objects) {
@@ -848,6 +867,67 @@ class CharacterController {
   async _loadSharedAnimations(charType) {
     // Load knight model just for its animations, apply to current character
     // Use Soldier.glb for shared animations — much higher quality Mixamo anims
+    // Load Mixamo animations from separate files for key actions
+    const MIXAMO_ANIMS = {
+      'idle': 'models/anim_idle.glb',
+      'run': 'models/mixamo_anims/Running_Forward.glb',
+      'sprint': 'models/mixamo_anims/Sprinting_Forward.glb',
+      'sneak': 'models/mixamo_anims/Sneaking_Forward.glb',
+      'shoot_pistol': 'models/mixamo_anims/Running_With_A_Pistol.glb',
+      'shoot_rifle': 'models/mixamo_anims/Running_With_Rifle_Down.glb',
+      'aim_pistol': 'models/mixamo_anims/Running_With_Aimed_Pistol.glb',
+      'jump': 'models/mixamo_anims/Running_Jump_And_Landing.glb',
+      'sit_vehicle': 'models/mixamo_anims/Sitting_In_Vehicle_Ducking_Down.glb',
+      'climb': 'models/mixamo_anims/Sprint_To_Wall_Climb_To_Crouch_Idle.glb',
+      'run_stairs': 'models/mixamo_anims/Running_Up_Stairs.glb',
+      'slide': 'models/mixamo_anims/Sliding.glb',
+      'death': 'models/mixamo_anims/Slip_And_Fall_Backwards.glb',
+      'hit_front': 'models/mixamo_anims/Small_Hit_Reaction_From_The_Front.glb',
+      'hit_back': 'models/mixamo_anims/Small_Hit_Reaction_From_The_Back.glb',
+      'crouch': 'models/mixamo_anims/Sneaking.glb',
+    };
+
+    // Load each animation file and add to mixer
+    if (this.mixer && this.model) {
+      const animLoader = window._gltfLoader || new GLTFLoader();
+      for (const [animName, animPath] of Object.entries(MIXAMO_ANIMS)) {
+        try {
+          const gltf = await new Promise((resolve, reject) => {
+            animLoader.load(animPath, resolve, undefined, reject);
+          });
+          if (gltf.animations && gltf.animations.length > 0) {
+            const clip = gltf.animations[0];
+            // Retarget: strip 'mixamorig:' prefix if model uses different naming
+            const tracks = clip.tracks.filter(t => !t.name.includes('.position') || t.name.includes('Hips'));
+            const filteredClip = new THREE.AnimationClip(animName, clip.duration, tracks);
+            this.animations[animName] = this.mixer.clipAction(filteredClip);
+            console.log('[Char] Loaded anim:', animName);
+          }
+        } catch(e) {
+          // Silent fail — animation file might not exist
+        }
+      }
+      console.log('[Char] Total animations loaded:', Object.keys(this.animations).length);
+    }
+
+    // Fallback: map missing animations to closest match
+    if (!this.animations['walk'] && this.animations['run']) {
+      this.animations['walk'] = this.animations['run'];
+      console.log('[Char] walk fallback → run');
+    }
+    if (!this.animations['sprint'] && this.animations['run']) {
+      this.animations['sprint'] = this.animations['run'];
+    }
+    if (!this.animations['swim'] && this.animations['walk']) {
+      this.animations['swim'] = this.animations['walk'];
+      console.log('[Char] swim fallback → walk');
+    }
+    if (!this.animations['climb'] && this.animations['walk']) {
+      this.animations['climb'] = this.animations['walk'];
+    }
+    
+    console.log('[Char] Available animations:', Object.keys(this.animations).join(', '));
+
     const knightFile = 'models/soldier_mixamo.glb';
     const loader = window._gltfLoader;
     if (!loader || !this.model) return;
@@ -1048,22 +1128,67 @@ class CharacterController {
       loader.load('models/' + config.file + '.glb', (gltf) => {
         this.model = gltf.scene;
         
-        // Auto-scale to human height (~1.8 units)
+        // Fix Mixamo rotation — models exported facing wrong axis
+        if (config.isMixamo) {
+          this.model.rotation.x = -Math.PI / 2; // Stand upright
+          this.model.updateMatrixWorld(true);
+        }
+        
+        // Auto-scale to human height
         const box = new THREE.Box3().setFromObject(this.model);
         const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const targetHeight = 1.8;
-        const autoScale = targetHeight / Math.max(maxDim, 0.001);
+        // For Mixamo models rotated, the "height" is now Z axis
+        const playerHeight = config.isMixamo ? Math.max(size.z, 0.1) : Math.max(size.y, 0.1);
+        const autoScale = 3.0 / playerHeight; // Game-scale human (3 units tall)
         this.model.scale.setScalar(autoScale);
         
-        // Rebind skeleton after scale — prevents T-pose
-        this.model.updateMatrixWorld(true);
-        this.model.traverse(ch => { if (ch.isSkinnedMesh && ch.skeleton) ch.skeleton.pose(); });
+        // Fix Mixamo model orientation
+        if (config.isMixamo) {
+          // soldier_mixamo.glb exports laying on its back — rotate to stand up
+          // The model's skeleton root is rotated, so we fix the container
+          this.model.rotation.set(0, 0, 0);
+          // Check: traverse to find the armature/skeleton root and check its rotation
+          let armature = null;
+          this.model.traverse(n => { 
+            if (!armature && (n.name === 'Armature' || n.name === 'mixamorig:Hips' || n.type === 'Bone') && n.parent === this.model) {
+              armature = n;
+            }
+          });
+          if (armature) {
+            // Mixamo armatures are often rotated -PI/2 on X — the model faces -Z instead of up
+            // Check if the armature itself has a rotation
+            console.log('[Char] Armature rotation:', armature.rotation.x.toFixed(2), armature.rotation.y.toFixed(2), armature.rotation.z.toFixed(2));
+            if (Math.abs(armature.rotation.x + Math.PI/2) < 0.1) {
+              // Armature is rotated -PI/2 on X = model is laying down
+              // Fix: rotate the entire model group
+              this.model.rotation.x = Math.PI / 2;
+              console.log('[Char] Mixamo rotation fix: rotated model PI/2 on X');
+            }
+          }
+          // Fallback: if model bounding box shows it's flat, force rotate
+          const testBox = new THREE.Box3().setFromObject(this.model);
+          const testSize = testBox.getSize(new THREE.Vector3());
+          console.log('[Char] Model dimensions:', testSize.x.toFixed(2), testSize.y.toFixed(2), testSize.z.toFixed(2));
+          if (testSize.y < testSize.z * 0.5) {
+            // Model is flat (Y much smaller than Z) — it's laying down
+            this.model.rotation.x = -Math.PI / 2;
+            console.log('[Char] Force rotation fix: model was flat');
+          }
+        }
         
-        // MODEL CONTAINER PATTERN
+        // Recalculate skeleton bind matrices after scale change
+        // NOTE: Do NOT call skeleton.pose() — it resets to rest pose (flat/T-pose)
+        // calculateInverses() updates bind matrices from current bone transforms
+        this.model.updateMatrixWorld(true);
+        this.model.traverse(child => {
+          if (child.isSkinnedMesh && child.skeleton) child.skeleton.calculateInverses();
+        });
+        
+        // MODEL CONTAINER PATTERN (Sketchbook-inspired)
+        // Container sits at feet level, model offset inside so feet = y=0 of container
         const box2 = new THREE.Box3().setFromObject(this.model);
         this.groundOffset = -box2.min.y;
-        this.model.position.set(0, this.groundOffset, 0); // offset inside container
+        this.model.position.set(0, this.groundOffset, 0);
         
         // Create container group
         if (this.modelContainer) {
@@ -1074,7 +1199,6 @@ class CharacterController {
         this.modelContainer = new THREE.Group();
         this.modelContainer.add(this.model);
         
-        // Blob shadow removed — real shadow maps handle this now
         this.modelContainer.userData.groundOffset = this.groundOffset;
         this.modelContainer.userData.isPlayer = true;
         this.modelContainer.userData.name = 'player_' + type;
@@ -1176,21 +1300,48 @@ class CharacterController {
             let name = clip.name.replace(config.animPrefix, '').toLowerCase();
             // Map to standard names
             const map = {
+              // Standard
               'idle_neutral': 'idle', 'idle': 'idle', 'idle_sword': 'idle_sword',
               'idle_gun_pointing': 'idle_gun', 'idle_gun_shoot': 'idle_gun_shoot',
               'walking': 'walk', 'walk': 'walk',
               'run': 'run', 'run_back': 'run_back', 'run_left': 'run_left', 'run_right': 'run_right',
               'run_shoot': 'run_shoot',
-              'jump': 'jump',
+              'jump': 'jump', 'runningjump': 'jump_run',
               'roll': 'roll', 'roll_sword': 'roll',
               'death': 'death', 'die': 'death',
-              'sword_slash': 'attack', 'swordattackjump': 'jump_attack',
+              'sword_slash': 'attack', 'swordattackjump': 'attack',
               'run_swordattack': 'run_attack', 'run_swordright': 'run_attack',
               'gun_shoot': 'shoot',
-              'punch_left': 'punch_left', 'punch_right': 'punch_right',
+              'punch_left': 'attack', 'punch_right': 'attack', 'punch': 'attack',
               'kick_left': 'kick_left', 'kick_right': 'kick_right',
               'hitrecieve': 'hit', 'hitrecieve_2': 'hit2',
               'interact': 'interact', 'wave': 'wave',
+              // Mixamo names (from soldier_mixamo.glb)
+              'character_idle_0': 'idle', 'character_walk_1': 'walk', 'character_run_0': 'run',
+              // Quaternarius NPC names  
+              'human armature|idle': 'idle', 'human armature|walk': 'walk',
+              'human armature|run': 'run', 'human armature|jump': 'jump',
+              'armature|armature|idle': 'idle', 'armature|armature|walking': 'walk',
+              'armature|armature|running': 'run', 'armature|armature|jump': 'jump',
+              // Case variations
+              'running': 'run', 'walking': 'walk', 'sprinting': 'sprint',
+              'sneaking': 'sneak', 'climbing': 'climb', 'swimming': 'swim',
+              'sitting': 'sit', 'sitidle': 'sit',
+              'standing': 'stand', 'clapping': 'wave',
+              // Quaternius man
+              'man_idle': 'idle', 'man_walk': 'walk', 'man_run': 'run',
+              'man_jump': 'jump', 'man_runningjump': 'jump_run',
+              'man_death': 'death', 'man_punch': 'attack', 'man_swordslash': 'attack',
+              'man_sitting': 'sit', 'man_standing': 'stand', 'man_clapping': 'wave',
+              // Quaternius female
+              'female_idle': 'idle', 'female_walking': 'walk', 'female_running': 'run',
+              'female_run': 'run', 'female_walk': 'walk',
+              'female_jump': 'jump', 'female_jump2': 'jump',
+              'female_death': 'death', 'female_punch': 'attack',
+              'female_sitting': 'sit', 'female_sitidle': 'sit', 'female_pickup': 'interact',
+              // animated_human / animated_woman variants
+              'armatureaction.001': 'walk', 'armatureaction.002': 'run',
+              'working': 'interact',
             };
             name = map[name] || name;
             
@@ -1211,7 +1362,8 @@ class CharacterController {
           console.log('[Char] Loaded animations:', Object.keys(this.animations).join(', '));
           
           // === LOAD COMBAT ANIMATIONS FROM KNIGHT (retarget to Mixamo skeleton) ===
-          if (config.isMixamo && !this.animations['jump']) {
+          // Only for true Mixamo rigs — skip for Quaternius (already has combat anims)
+          if (config.isMixamo && !config.isQuaternarius && !this.animations['jump']) {
             const combatFile = 'models/single_knight_pack_knightcharacter.glb';
             loader.load(combatFile, (combatGltf) => {
               // KayKit bone name → Mixamo bone name (as Three.js loads them)
@@ -1371,15 +1523,23 @@ class CharacterController {
   }
 
     playAnimation(name, once = false) {
-    if (!this.animations[name]) return;
+    if (!this.animations[name]) { console.log('[Char] Missing anim:', name); return; }
     if (this.currentAnim === name && !once) return;
     
-    // Fade out current
     const current = this.animations[this.currentAnim];
     const next = this.animations[name];
     
-    if (current) current.fadeOut(0.2);
-    next.reset().fadeIn(0.2);
+    // Smooth crossfade — longer blend for locomotion transitions
+    const isLocoTransition = ['idle','walk','run'].includes(name) && ['idle','walk','run'].includes(this.currentAnim);
+    const fadeTime = isLocoTransition ? 0.3 : 0.15;
+    
+    if (current) current.fadeOut(fadeTime);
+    
+    // Only reset if animation isn't already running (prevents skip/stutter)
+    if (!next.isRunning()) {
+      next.reset();
+    }
+    next.fadeIn(fadeTime);
     if (once) {
       next.setLoop(THREE.LoopOnce, 1);
       next.clampWhenFinished = true;
@@ -1692,9 +1852,9 @@ class CharacterController {
           return;
         }
         bullet.position.copy(muzzle.clone().add(dir.clone().multiplyScalar(dist)));
-        requestAnimationFrame(animBullet);
+        trackFrame(requestAnimationFrame(animBullet));
       };
-      requestAnimationFrame(animBullet);
+      trackFrame(requestAnimationFrame(animBullet));
     }
     
     // Muzzle flash — brief bright light
@@ -1786,6 +1946,7 @@ class CharacterController {
       this._applyTwoHandedIK();
     }
     if (this.proceduralAnim) this._updateProceduralAnim(dt);
+    if (this._cameraOnlyMode) return; // No character movement in camera-only mode
     if (this.inVehicle) return this._updateInVehicle(dt);
     
     // Movement input
@@ -1982,11 +2143,18 @@ class CharacterController {
       this.stateMachine.transition(CharacterState.JUMP);
     }
     
+    // Skip physics if camera-only mode
+    if (this._cameraOnlyMode) return;
+    
     // === PHYSICS: Octree capsule (preferred) or legacy raycast fallback ===
     if (this.collider && this.collider.world.built) {
-      // Octree handles gravity + collision — sync only XZ from character movement
-      // Y is owned by the collider (gravity + floor detection)
-      // (post-physics section below handles the full update)
+      // Octree handles gravity + collision
+      if (this.position.y < -1) { 
+        this.position.y = 0.5; 
+        this.isGrounded = true;
+        this.jumpVelocity = 0;
+        if (this.collider.teleport) this.collider.teleport(this.position.x, 0.5, this.position.z);
+      }
     } else {
       // Legacy raycast ground check
       if (!this.isGrounded) {
@@ -1994,10 +2162,11 @@ class CharacterController {
         if (!this._wasFalling && this.jumpVelocity < -2) { this._wasFalling = true; this._fallStartY = this.position.y; }
         this.position.y += this.jumpVelocity * dt;
         const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
-        if (this.position.y <= groundY) {
-          this.position.y = groundY;
+        if (this.position.y <= groundY || this.position.y < -1) {
+          this.position.y = Math.max(groundY, 0);
           this.isGrounded = true;
           this.jumpVelocity = 0;
+          this._groundCheckTimer = 0; // Reset ground check
           if (this._wasFalling && this._fallStartY !== undefined) {
             const fallDist = this._fallStartY - this.position.y;
             if (fallDist > 5 && window._screenShake) window._screenShake.trigger(Math.min(fallDist * 0.3, 3), 0.15);
@@ -2006,21 +2175,28 @@ class CharacterController {
           this._wasFalling = false;
         }
       } else {
-        const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
-        if (Math.abs(this.position.y - groundY) < 1.5) {
-          const _dy = groundY - this.position.y;
-          if (Math.abs(_dy) < 0.5) {
-            this.position.y += _dy * (_dy > 0 ? 0.25 : 0.35);
-          } else if (_dy > 0) {
-            if (_dy < 0.4) this.position.y += _dy * 0.5;
-            else { this.isGrounded = false; this.jumpVelocity = 0; }
+        // Grounded — check ground periodically, but DON'T unground from small variations
+        this._groundCheckTimer = (this._groundCheckTimer || 0) + 1;
+        if (this._groundCheckTimer >= 15) {
+          this._groundCheckTimer = 0;
+          const groundY = _getGroundY(this.position.x, this.position.z, this.position.y);
+          if (groundY !== undefined) {
+            const _dy = groundY - this.position.y;
+            if (_dy < -4) {
+              // Fallen off a REAL edge (4+ units drop) — start falling
+              this.isGrounded = false;
+              this.jumpVelocity = 0;
+            } else {
+              // Snap to ground — never unground from terrain variation
+              this.position.y += _dy * 0.15;
+            }
           }
-        } else if (this.position.y > groundY + 1.5) {
-          this.isGrounded = false;
-          this.jumpVelocity = 0;
         }
       }
     }
+    
+    // Skip movement if camera-only mode
+    if (this._cameraOnlyMode) return;
     
     // Calculate movement direction relative to camera
     // Attack lunge — slide forward during attack
@@ -2037,8 +2213,12 @@ class CharacterController {
       // Drive locomotion state
       const sm = this.stateMachine;
       if (this.isSprinting || this.keys['control'] || this.isRunning || this.keys['shift']) {
-        if (this.speed > this.walkSpeed * 1.1) sm.transition(CharacterState.RUN);
-        else sm.transition(CharacterState.WALK);
+        // Only show run animation once speed is actually near run speed
+        if (this.speed > this.walkSpeed * 1.1) {
+          sm.transition(CharacterState.RUN);
+        } else {
+          sm.transition(CharacterState.WALK);
+        }
       } else {
         sm.transition(CharacterState.WALK);
       }
@@ -2458,6 +2638,13 @@ class CharacterController {
     } else {
       (this.modelContainer || this.model).position.set(this.position.x, this.position.y + (this.modelContainer ? 0 : (this.groundOffset || 0)), this.position.z);
       this.model.rotation.y = this.rotation;
+      // Swim body tilt — lean forward in water
+      if (this.stateMachine && this.stateMachine.state === 'swim') {
+        this.model.rotation.x += (0.35 - this.model.rotation.x) * 0.1;
+      } else if (this.model.rotation.x !== 0) {
+        this.model.rotation.x *= 0.88; // smooth restore upright
+        if (Math.abs(this.model.rotation.x) < 0.005) this.model.rotation.x = 0;
+      }
     }
     
     // Animation state
@@ -2824,15 +3011,8 @@ class CharacterController {
             const hits = ray.intersectObject(window._terrainMesh);
             if (hits.length > 0) closestHit = Math.min(closestHit, hits[0].distance);
           }
-          if (window._sceneObjects) {
-            const solids = window._sceneObjects.filter(o => o && o.userData && (o.userData.isSolid || o.userData.isInterior || o.userData.isGLB));
-            for (const obj of solids) {
-              try {
-                const hits = ray.intersectObject(obj, true);
-                if (hits.length > 0) closestHit = Math.min(closestHit, hits[0].distance);
-              } catch(e) {}
-            }
-          }
+          // Skip prop collision for camera — only terrain matters
+          // Props cause camera to jump around too much
         }
         if (closestHit < dist) {
           const safeDist = closestHit - 0.3;
@@ -2840,8 +3020,8 @@ class CharacterController {
         }
       }
       
-      // Smooth camera follow
-      this.camera.position.lerp(desiredPos, Math.min(1, this.cameraSmoothness * dt));
+      // Smooth camera follow (high smoothing = no jerk)
+      this.camera.position.lerp(desiredPos, Math.min(1, 6 * dt));
       
       // Look at point: slightly ahead of character (in aim direction) and at head height
       const lookAheadDist = THREE.MathUtils.lerp(0, 2, this.aimLerp);
@@ -4155,24 +4335,27 @@ export class NPCController {
   async spawnNPC(type, x, z, behavior = 'wander') {
     // Quaternius animated character models — each has 11 built-in animations!
     // (Walk, Run, Idle, Jump, Punch, Death, SwordSlash, Clapping, Sitting, Standing, RunningJump)
+    // Confirmed working models — cycled by spawn count so no two NPCs share same file
+    if (!NPCController._spawnCount) NPCController._spawnCount = 0;
+    NPCController._spawnCount++;
     const npcModelsMen = [
       'smooth_male_casual', 'smooth_male_longsleeve', 'smooth_male_shirt', 'smooth_male_suit',
-      'male_casual', 'male_longsleeve', 'male_shirt', 'male_suit', 'animated_human'
+      'male_casual', 'male_longsleeve', 'male_shirt', 'male_suit'
     ];
     const npcModelsWomen = [
       'smooth_female_casual', 'smooth_female_dress', 'smooth_female_tanktop', 'smooth_female_alternative',
-      'female_casual', 'female_dress', 'female_tanktop', 'female_alternative',
-      'animated_woman_smooth', 'animated_woman'
+      'female_casual', 'female_dress', 'female_tanktop', 'female_alternative'
     ];
     const allNpcModels = [...npcModelsMen, ...npcModelsWomen];
     
+    const sc = NPCController._spawnCount - 1;
     let file;
     if (type === 'woman' || type === 'female' || type === 'girl') {
-      file = 'npcs/' + npcModelsWomen[Math.floor(Math.random() * npcModelsWomen.length)];
+      file = 'npcs/' + npcModelsWomen[sc % npcModelsWomen.length];
     } else if (type === 'man' || type === 'male' || type === 'guy') {
-      file = 'npcs/' + npcModelsMen[Math.floor(Math.random() * npcModelsMen.length)];
+      file = 'npcs/' + npcModelsMen[sc % npcModelsMen.length];
     } else {
-      file = 'npcs/' + allNpcModels[Math.floor(Math.random() * allNpcModels.length)];
+      file = 'npcs/' + allNpcModels[sc % allNpcModels.length];
     }
     
     return new Promise(resolve => {
@@ -4181,24 +4364,43 @@ export class NPCController {
         // Auto-scale NPC to human height
         const npcBox = new THREE.Box3().setFromObject(model);
         const npcSize = npcBox.getSize(new THREE.Vector3());
-        const npcMaxDim = Math.max(npcSize.x, npcSize.y, npcSize.z);
-        model.scale.setScalar(1.8 / Math.max(npcMaxDim, 0.001));
-        // Ground the model — calculate groundOffset once
+        const npcHeight = Math.max(npcSize.y, 0.1);
+        model.scale.setScalar(3.0 / npcHeight); // Game-scale human (3 units tall, visible at camera distance)
+        // Recalculate skeleton bind matrices after scale change
+        model.updateMatrixWorld(true);
+        model.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.calculateInverses(); });
+        
+        // FIX: Shadows on ALL mesh types — SkinnedMesh included
+        // isMesh check only catches plain Mesh, SkinnedMesh extends Mesh but
+        // some Three.js builds don't match it with isMesh. Also guard against MeshBasicMaterial.
+        model.castShadow = true;
+        model.traverse(c => {
+          if (c.isMesh || c.isSkinnedMesh) {
+            c.castShadow = true;
+            c.receiveShadow = true;
+            // MeshBasicMaterial can't cast/receive shadows — convert to StandardMaterial
+            if (c.material && c.material.isMeshBasicMaterial) {
+              const mat = new THREE.MeshStandardMaterial({
+                color: c.material.color || new THREE.Color(0x888888),
+                metalness: 0.1, roughness: 0.8,
+                map: c.material.map || null,
+              });
+              c.material = mat;
+            }
+            // Force material recompile
+            if (c.material) c.material.needsUpdate = true;
+          }
+        });
+        
+        // NOW measure ground offset with correct skeleton pose
         const npcBox2 = new THREE.Box3().setFromObject(model);
-        const _npcGroundOffset = -npcBox2.min.y; // Distance from origin to feet
+        const _npcGroundOffset = -npcBox2.min.y;
         const _npcTerrainY = _getTerrainY(x, z);
         model.position.set(x, _npcTerrainY + _npcGroundOffset + 0.05, z);
-        // Rebind skeleton after scale — prevents NPC T-pose
-        model.updateMatrixWorld(true);
-        model.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.pose(); });
-        
-        model.castShadow = true;
-        model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
         this.scene.add(model);
         this.objects.push(model);
         model.userData.name = 'npc_' + type;
         model.userData.isNPC = true;
-        
         model.userData.groundOffset = _npcGroundOffset;
         const npc = {
           model, type, behavior,
@@ -4220,107 +4422,73 @@ export class NPCController {
         };
         
         // Create floating health bar
-        npc.healthBar = this._createHealthBar();
-        model.add(npc.healthBar);
         
-        // Setup animations — load from model or shared animation source
-        const hasAnims = gltf.animations.length > 0;
-        if (!hasAnims) {
-          // No embedded animations — replace with Soldier model (has Mixamo walk/idle/run)
-          console.log('[NPC] Replacing with Soldier model for', type);
-          const soldierFile = 'models/anim_idle.glb';
-          const _loader = window._gltfLoader || loader;
-          _loader.load(soldierFile, (soldierGltf) => {
-            if (!soldierGltf.animations || soldierGltf.animations.length === 0) return;
-            
-            // Replace KayKit mesh with Soldier mesh (same skeleton = perfect animation)
-            const soldierScene = soldierGltf.scene;
-            // Remove old children from model group
-            while (model.children.length > 0) model.remove(model.children[0]);
-            // Add Soldier children
-            while (soldierScene.children.length > 0) {
-              const child = soldierScene.children[0];
-              soldierScene.remove(child);
-              model.add(child);
-            }
-            
-            // Animations work directly — no retargeting needed
-            npc.mixer = new THREE.AnimationMixer(model);
-            soldierGltf.animations.forEach(clip => {
-              const name = clip.name.toLowerCase();
-              if (name === 'tpose') return;
-              // Filter position tracks — prevent folding/floating on different rigs
-              const rotTracks = clip.tracks.filter(t => !t.name.endsWith('.position') && !t.name.endsWith('.scale'));
-              const filteredClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
-              const action = npc.mixer.clipAction(filteredClip);
-              if (name === 'idle') npc.animations.idle = action;
-              else if (name === 'walk' || name === 'walking') npc.animations.walk = action;
-              else if (name === 'run' || name === 'running') npc.animations.run = action;
-            });
-            
-            // Play animation
-            if (npc.behavior === 'wander' && npc.animations.walk) {
-              npc.animations.walk.play();
-              npc.currentAnim = 'walk';
-            } else if (npc.animations.idle) {
-              npc.animations.idle.play();
-              npc.currentAnim = 'idle';
-            }
-            npc.proceduralAnim = false;
-            console.log('[NPC] Soldier model loaded, anims:', Object.keys(npc.animations).join(', '));
-          }, null, (e) => console.warn('[NPC] Failed to load Soldier model:', e));
-        }
-        if (gltf.animations.length > 0) {
+        
+        // ── NPC ANIMATION — SIMPLE & DIRECT ───────────────────────────────
+        // Each NPC gets its own unique model from the gltf.scene
+        // No cloning needed because each NPC picks a different file from the pool
+        npc.model = model;
+
+        if (gltf.animations && gltf.animations.length > 0) {
+          // Create mixer directly on the loaded scene — Three.js handles bone refs
           npc.mixer = new THREE.AnimationMixer(model);
+
           gltf.animations.forEach(clip => {
-            let name = clip.name.toLowerCase();
-            // Filter position tracks to prevent folding
-            const rotTracks = clip.tracks.filter(t => !t.name.endsWith('.position') && !t.name.endsWith('.scale'));
-            const fClip = new THREE.AnimationClip(clip.name, clip.duration, rotTracks);
-            if (name.includes('walk')) { npc.animations.walk = npc.mixer.clipAction(fClip); }
-            else if (name.includes('idle') && !name.includes('sword')) { npc.animations.idle = npc.mixer.clipAction(fClip); }
-            else if (name.includes('run')) { npc.animations.run = npc.mixer.clipAction(fClip); }
-            else if (name.includes('attack') || name.includes('slash') || name.includes('sword') || name.includes('punch')) { npc.animations.attack = npc.mixer.clipAction(fClip); }
-          });
-          if (npc.animations.idle) npc.animations.idle.play();
-          else if (npc.animations.walk) npc.animations.walk.play();
-        }
-        
-        // Procedural animation fallback for models without embedded anims
-        if (!npc.animations.idle && !npc.animations.walk) {
-          npc.proceduralAnim = true;
-          npc.animTime = Math.random() * 10; // Random phase offset
-          npc.bones = {};
-          model.traverse(node => {
-            if (node.isBone || node.type === 'Bone') {
-              const n = node.name.toLowerCase();
-              const nm = node.name; // original case for .L/.R matching
-              if (n.includes('hips') && !npc.bones.hips) npc.bones.hips = node;
-              else if (n.includes('spine') && !n.includes('1') && !n.includes('2') && !npc.bones.spine) npc.bones.spine = node;
-              else if ((n.includes('leftupperleg') || n.includes('leftupleg') || nm === 'UpperLeg.L' || (n.includes('upperleg') && n.includes('.l'))) && !npc.bones.leftLeg) npc.bones.leftLeg = node;
-              else if ((n.includes('rightupperleg') || n.includes('rightupleg') || nm === 'UpperLeg.R' || (n.includes('upperleg') && n.includes('.r'))) && !npc.bones.rightLeg) npc.bones.rightLeg = node;
-              else if ((n.includes('leftlowerleg') || n.includes('leftleg') || nm === 'LowerLeg.L' || (n.includes('lowerleg') && n.includes('.l'))) && !npc.bones.leftKnee) npc.bones.leftKnee = node;
-              else if ((n.includes('rightlowerleg') || n.includes('rightleg') || nm === 'LowerLeg.R' || (n.includes('lowerleg') && n.includes('.r'))) && !npc.bones.rightKnee) npc.bones.rightKnee = node;
-              else if ((n.includes('leftarm') || nm === 'UpperArm.L' || (n.includes('upperarm') && n.includes('.l'))) && !n.includes('fore') && !n.includes('lower') && !npc.bones.leftArm) npc.bones.leftArm = node;
-              else if ((n.includes('rightarm') || nm === 'UpperArm.R' || (n.includes('upperarm') && n.includes('.r'))) && !n.includes('fore') && !n.includes('lower') && !npc.bones.rightArm) npc.bones.rightArm = node;
-              else if ((n.includes('leftforearm') || nm === 'LowerArm.L' || (n.includes('lowerarm') && n.includes('.l'))) && !npc.bones.leftForearm) npc.bones.leftForearm = node;
-              else if ((n.includes('rightforearm') || nm === 'LowerArm.R' || (n.includes('lowerarm') && n.includes('.r'))) && !npc.bones.rightForearm) npc.bones.rightForearm = node;
-              else if (n.includes('head') && !n.includes('top') && !n.includes('eye') && !n.includes('_end') && !npc.bones.head) npc.bones.head = node;
-              else if (n.includes('neck') && !npc.bones.neck) npc.bones.neck = node;
+            // Strip any "Prefix|Prefix|" pattern to get bare name
+            const bare = clip.name.replace(/^[^|]*\|[^|]*\|/, '').replace(/^[^|]*\|/, '').toLowerCase().trim();
+
+            // Map to standard slot
+            let slot = null;
+            if (/idle/.test(bare))                          slot = 'idle';
+            else if (/walk/.test(bare))                     slot = 'walk';
+            else if (/run|running/.test(bare))              slot = 'run';
+            else if (/jump/.test(bare))                     slot = 'jump';
+            else if (/death|die/.test(bare))                slot = 'death';
+            else if (/punch|attack|slash|bite/.test(bare))  slot = 'attack';
+            else if (/sit/.test(bare))                      slot = 'sit';
+            else if (/wave|clap/.test(bare))                slot = 'wave';
+            else if (/armatureaction\.001/.test(bare))     slot = 'walk';
+            else if (/armatureaction\.002/.test(bare))     slot = 'run';
+
+            if (slot && !npc.animations[slot]) {
+              npc.animations[slot] = npc.mixer.clipAction(clip);
             }
           });
-          // Save original bone rotations & fix T-pose immediately
-          Object.values(npc.bones).forEach(bone => {
-            if (bone) bone.userData.origRot = { x: bone.rotation.x, y: bone.rotation.y, z: bone.rotation.z };
+
+          // Play immediately — no fadeIn, force first frame
+          const startAnim = npc.animations.walk || npc.animations.idle || Object.values(npc.animations)[0];
+          if (startAnim) {
+            startAnim.reset().play();
+            npc.mixer.update(0.02);  // apply frame 1 immediately, clears rest pose
+            npc.currentAnim = npc.animations.walk ? 'walk' : 'idle';
+          }
+
+          console.log('[NPC]', type, '— anims:', Object.keys(npc.animations).join(', '));
+        } else {
+          // No animations — procedural walk
+          console.warn('[NPC] No animations in', file, '— using procedural');
+          npc.proceduralAnim = true;
+          npc.animTime = Math.random() * 10;
+          npc.bones = {};
+          model.traverse(n => {
+            if (!n.isBone && n.type !== 'Bone') return;
+            const nm = n.name.toLowerCase();
+            if (nm.includes('hips') && !npc.bones.hips) npc.bones.hips = n;
+            else if ((nm.includes('spine') || nm.includes('torso')) && !npc.bones.spine) npc.bones.spine = n;
+            else if (nm.includes('upperleg') && (nm.includes('.l') || nm.includes('left')) && !npc.bones.leftLeg) npc.bones.leftLeg = n;
+            else if (nm.includes('upperleg') && !npc.bones.rightLeg) npc.bones.rightLeg = n;
+            else if ((nm.includes('upperarm') || nm.includes('shoulder')) && (nm.includes('.l') || nm.includes('left')) && !npc.bones.leftArm) npc.bones.leftArm = n;
+            else if ((nm.includes('upperarm') || nm.includes('shoulder')) && !npc.bones.rightArm) npc.bones.rightArm = n;
+            else if (nm.includes('head') && !nm.includes('top') && !npc.bones.head) npc.bones.head = n;
           });
-          // Arms down immediately — no T-pose on spawn
-          if (npc.bones.leftArm) npc.bones.leftArm.rotation.z = 0.15;
-          if (npc.bones.rightArm) npc.bones.rightArm.rotation.z = -0.15;
-          if (npc.bones.leftForearm) npc.bones.leftForearm.rotation.x = -0.12;
-          if (npc.bones.rightForearm) npc.bones.rightForearm.rotation.x = -0.12;
+          if (npc.bones.leftArm)  npc.bones.leftArm.rotation.z  =  0.2;
+          if (npc.bones.rightArm) npc.bones.rightArm.rotation.z = -0.2;
         }
-        
-        // Give NPC a weapon
+
+        npc.homePosition = model.position.clone();
+        npc.waypoint     = model.position.clone();
+
+                // Give NPC a weapon
         const weaponTypes = ['sword', 'axe', 'spear', 'rifle', 'pistol'];
         const npcWeapon = weaponTypes[Math.floor(Math.random() * weaponTypes.length)];
         npc.weaponType = npcWeapon;
@@ -4659,6 +4827,19 @@ export class NPCController {
       const aiState = npc.ai ? npc.ai.state : (npc.behavior === 'aggro' ? 'chase' : 'patrol');
       const playerPos = this.characterController ? this.characterController.position : new THREE.Vector3();
       const distToPlayer = npc.model.position.distanceTo(playerPos);
+
+      // ── SWIM detection ────────────────────────────────────────────────────
+      if (window._waterZones && window._waterZones.length > 0) {
+        const inWater = window._waterZones.some(w => {
+          if (!w || !w.position) return false;
+          const dx = npc.model.position.x - w.position.x;
+          const dz = npc.model.position.z - w.position.z;
+          const r = (w.userData && w.userData.radius) ? w.userData.radius : 15;
+          return (dx*dx + dz*dz) < r*r;
+        });
+        if (inWater && npc.currentAnim !== 'swim') _playAnim('swim');
+        else if (!inWater && npc.currentAnim === 'swim') _playAnim(npc.isMoving ? 'walk' : 'idle');
+      }
       
       // Helper: move NPC toward a target position
       const _moveToward = (target, speed) => {
@@ -4682,12 +4863,39 @@ export class NPCController {
         return true; // still moving
       };
       
-      // Helper: play NPC animation if not already playing
+      // Helper: play NPC animation with full state support
       const _playAnim = (name) => {
         if (npc.currentAnim === name) return;
-        Object.values(npc.animations).forEach(a => a && a.fadeOut(0.25));
-        if (npc.animations[name]) { npc.animations[name].reset().fadeIn(0.25).play(); }
         npc.currentAnim = name;
+        Object.values(npc.animations).forEach(a => a && a.fadeOut(0.3));
+
+        if (name === 'swim') {
+          const a = npc.animations.walk || npc.animations.idle;
+          if (a) a.reset().setEffectiveTimeScale(0.6).fadeIn(0.4).play();
+          if (npc.model) npc.model.rotation.x = 0.45;
+          return;
+        }
+        if (name === 'drive' || name === 'sit') {
+          const a = npc.animations.sit || npc.animations.idle;
+          if (a) a.reset().fadeIn(0.3).play();
+          if (npc.model) npc.model.rotation.x = 0;
+          return;
+        }
+        if (name === 'climb') {
+          const a = npc.animations.walk || npc.animations.idle;
+          if (a) a.reset().setEffectiveTimeScale(0.5).fadeIn(0.3).play();
+          if (npc.model) npc.model.rotation.x = -0.25;
+          return;
+        }
+        if (name === 'open_door') {
+          const a = npc.animations.interact || npc.animations.attack;
+          if (a) { a.setLoop(THREE.LoopOnce, 1); a.reset().fadeIn(0.2).play(); }
+          return;
+        }
+        // Restore upright for all other states
+        if (npc.model) npc.model.rotation.x = 0;
+        const anim = npc.animations[name] || npc.animations.idle;
+        if (anim) anim.reset().fadeIn(0.3).play();
       };
       
       // Helper: pick random waypoint near home
