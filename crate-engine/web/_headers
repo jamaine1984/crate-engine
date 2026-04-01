@@ -1,0 +1,24 @@
+# Don't cache HTML - always fresh
+/play.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/play
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/index.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/city/index.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+# Don't cache configs
+/asset-catalog.json
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+# Cache code modules aggressively (bust via ?v= param)
+/*.mjs
+  Cache-Control: public, max-age=31536000, immutable
+
+# Cache GLB models
+/*.glb
+  Cache-Control: public, max-age=604800
+
+/*.{png,jpg,svg,woff,woff2,ttf}
+  Cache-Control: public, max-age=604800
