@@ -299,9 +299,9 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=350'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=134'
 import { collisionWorld } from './collision.mjs?v=5';
-// Tutorials module removed — file was missing, causing engine boot failure
+import Tutorials from '../runtime/tutorials.mjs';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -6781,9 +6781,6 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     }
     const scale = scaleOverride || autoScale;
     model.scale.setScalar(scale);
-    // Rebind skeleton after scale for animated models
-    model.updateMatrixWorld(true);
-    model.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.pose(); });
     // Recompute after scale
     const box2 = new THREE.Box3().setFromObject(model);
     const bottom = box2.min.y;
@@ -22317,8 +22314,9 @@ let dragCounter = 0;
 // === END TUTORIAL ===
 
 // === INTERACTIVE TUTORIALS MODULE ===
-// Tutorials class was in missing ../runtime/tutorials.mjs — stubbed out
-window._tutorials = { init(){}, start(){}, stop(){} };
+const _tutorials = new Tutorials();
+_tutorials.init();
+window._tutorials = _tutorials;
 // === END INTERACTIVE TUTORIALS ===
 
 
