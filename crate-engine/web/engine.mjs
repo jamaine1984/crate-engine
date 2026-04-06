@@ -301,7 +301,7 @@ import './savesystem.mjs';
 import './mobile.mjs';
 import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=350'
 import { collisionWorld } from './collision.mjs?v=5';
-import Tutorials from '../runtime/tutorials.mjs';
+// Tutorials module removed — file was missing, causing engine boot failure
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -22317,9 +22317,8 @@ let dragCounter = 0;
 // === END TUTORIAL ===
 
 // === INTERACTIVE TUTORIALS MODULE ===
-const _tutorials = new Tutorials();
-_tutorials.init();
-window._tutorials = _tutorials;
+// Tutorials class was in missing ../runtime/tutorials.mjs — stubbed out
+window._tutorials = { init(){}, start(){}, stop(){} };
 // === END INTERACTIVE TUTORIALS ===
 
 
