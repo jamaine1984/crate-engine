@@ -232,7 +232,7 @@ function updateShooterHUD() {
 
 // === Speed HUD for vehicles ===
 function createSpeedHUD() {
-  let hud = document.getElementById('speed-hud');
+  hud = document.getElementById('speed-hud');
   if (hud) return;
   hud = document.createElement('div');
   hud.id = 'speed-hud';
@@ -299,9 +299,8 @@ import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
 import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=134'
+import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=610'
 import { collisionWorld } from './collision.mjs?v=5';
-import Tutorials from '../runtime/tutorials.mjs';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
@@ -434,7 +433,7 @@ class MultiplayerClient {
   _spawnPeer(data) {
     if (this.peers.has(data.id)) return;
     const charType = data.character || 'knight';
-    const url = 'models/character_' + charType + '.glb';
+    const url = '/models/character_' + charType + '.glb';
     gltfLoader.load(url, (gltf) => {
       const model = gltf.scene;
       const box = new THREE.Box3().setFromObject(model);
@@ -659,7 +658,7 @@ function setUserAIConfig(provider, apiKey, model) {
 
 // AI Settings Modal
 function showAISettingsModal() {
-  let existing = document.getElementById('ai-settings-modal');
+  existing = document.getElementById('ai-settings-modal');
   if (existing) { existing.remove(); return; }
   
   const config = getUserAIConfig();
@@ -792,38 +791,7 @@ function showMeshyKeyModal() {
 window.showMeshyKeyModal = showMeshyKeyModal;
 
 // ═══ GAME MODES SELECTOR ═══
-function showGameModesModal() {
-  if (document.getElementById('game-modes-modal')) { document.getElementById('game-modes-modal').remove(); return; }
-  const m = document.createElement('div');
-  m.id = 'game-modes-modal';
-  
-  const presets = {
-    zombie: { icon: '🧟', name: 'Zombie Survival', desc: 'Survive waves of undead in an abandoned city', color: '#dc2626' },
-    racing: { icon: '🏎️', name: 'Street Racing', desc: 'Race through city streets in sports cars', color: '#f59e0b' },
-    rpg: { icon: '⚔️', name: 'Fantasy RPG', desc: 'Medieval world with quests and combat', color: '#8b5cf6' },
-    survival: { icon: '🏕️', name: 'Survival Sandbox', desc: 'Gather, build, survive the night', color: '#22c55e' },
-    fps: { icon: '🔫', name: 'Arena FPS', desc: 'Fast-paced first-person combat', color: '#ef4444' },
-    horror: { icon: '👻', name: 'Horror Exploration', desc: 'Dark abandoned town — something watches', color: '#6b21a8' },
-    city_builder: { icon: '🏗️', name: 'City Builder', desc: 'Build your dream city from scratch', color: '#3b82f6' },
-    sandbox: { icon: '🎨', name: 'Creative Sandbox', desc: 'No rules, infinite freedom', color: '#14b8a6' },
-  };
-  
-  const cards = Object.entries(presets).map(([key, p]) => 
-    '<div onclick="document.getElementById(\'game-modes-modal\').remove();execSingle(\'' + key + ' game\')" style="background:#1a1a2e;border:2px solid #333;border-radius:12px;padding:16px;cursor:pointer;transition:all 0.2s;display:flex;gap:12px;align-items:center" onmouseenter="this.style.borderColor=\'' + p.color + '\';this.style.transform=\'scale(1.02)\'" onmouseleave="this.style.borderColor=\'#333\';this.style.transform=\'scale(1)\'">' +
-    '<div style="font-size:2rem;width:48px;text-align:center">' + p.icon + '</div>' +
-    '<div><div style="font-weight:700;font-size:0.95rem;color:#fff">' + p.name + '</div>' +
-    '<div style="color:#888;font-size:0.78rem;margin-top:2px">' + p.desc + '</div></div></div>'
-  ).join('');
-  
-  m.innerHTML = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">' +
-    '<div style="background:#0d0d1a;border-radius:16px;width:520px;max-height:85vh;overflow-y:auto;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5);padding:28px">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
-    '<div><h2 style="margin:0;font-size:1.4rem">🎮 Game Modes</h2>' +
-    '<p style="margin:4px 0 0;color:#888;font-size:0.8rem">Pick a mode — instant playable game</p></div>' +
-    '<button onclick="this.closest(\'#game-modes-modal\').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button></div>' +
-    '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div></div></div>';
-  document.body.appendChild(m);
-}
+function showGameModesModal() { true }
 window.showGameModesModal = showGameModesModal;
 
 
@@ -925,41 +893,104 @@ function _showEditorUI() {
 }
 
 function enterPlayMode() {
+  // Play = camera mode. User spawns NPC separately if they want one.
+  _activatePlayMode();
+  return '🎮 Play mode — fly camera! Type "spawn soldier" for a character.';
+}
+
+function _activatePlayMode() {
   startReplayRecording();
   playMode = true; window._playMode = true;
-    if (window._mobileControls && window._mobileControls.show) window._mobileControls.show();
   _hideEditorUI();
-  // Create or find avatar
-  playAvatar = objects.find(o => o.userData.name && o.userData.name.includes('player'));
-  if (!playAvatar) {
-    // Use camera as player
-    playAvatar = null;
-  }
-  // Spawn player on terrain surface
-  let spawnY = 2;
-  if (terrainMesh) {
-    const rc = new THREE.Raycaster(new THREE.Vector3(0, 200, 0), new THREE.Vector3(0, -1, 0));
-    const hits = rc.intersectObject(terrainMesh);
-    if (hits.length > 0) spawnY = hits[0].point.y + 2;
-  }
-  camera.position.set(0, spawnY, 0);
-  // Adjust spawn to safe position — check for nearby collision
-  if (characterController && characterController.position) {
-    characterController.position.set(5, spawnY + 1, 5); // Offset from center to avoid spawning in objects
-  }
-  camera.rotation.set(0, 0, 0);
-  try { controls.enabled = false; } catch(e) {}
-  var pi = document.getElementById('prompt-input'); if (pi) { pi.blur(); pi.parentElement.style.display = "none"; } // Create minimap
-  if (typeof createMiniMap === 'function') createMiniMap();
-  createCompass();
-  createStaminaBar();
+  
+  // ALWAYS start in camera mode — user spawns NPC when ready
+  if (characterController) characterController._cameraOnlyMode = true;
+  
+  // Enable smooth orbit controls (like editor but faster)
+  try { 
+    controls.enabled = true;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.1;
+    controls.rotateSpeed = 0.8;
+    controls.zoomSpeed = 1.5;
+    controls.panSpeed = 1.0;
+  } catch(e) {}
+  
+  // Camera mode — no character spawn needed
+  console.log('[Play] Camera mode active');
+  var pi = document.getElementById('prompt-input'); if (pi) { pi.blur(); pi.parentElement.style.display = "none"; }
+  // HUD elements created by game systems — don't duplicate
   showCrosshair(true);
-  return '🎮 Play mode ON — WASD move, Mouse look, G grapple, P photo, V first/third person, C crouch, E interact';
+  
+  // Add character selection button (bottom center)
+  if (!document.getElementById('char-select-btn')) {
+    const btn = document.createElement('div');
+    btn.id = 'char-select-btn';
+    btn.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:#fff;font-family:monospace;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;z-index:9998;border:1px solid rgba(255,255,255,0.2);';
+    btn.textContent = '👤 Change Character';
+    btn.onclick = () => {
+      const types = characterController ? Object.keys(characterController.characterModels) : [];
+      const menu = document.createElement('div');
+      menu.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);padding:12px;border-radius:8px;z-index:9999;display:flex;gap:8px;flex-wrap:wrap;max-width:400px;';
+      types.forEach(t => {
+        const b = document.createElement('button');
+        b.textContent = t;
+        b.style.cssText = 'padding:6px 12px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;';
+        b.onclick = () => { menu.remove(); if(window._parseAndExecute) window._parseAndExecute('spawn ' + t); };
+        menu.appendChild(b);
+      });
+      const close = document.createElement('button');
+      close.textContent = '✕';
+      close.style.cssText = 'padding:6px 10px;background:#600;color:#fff;border:1px solid #800;border-radius:4px;cursor:pointer;';
+      close.onclick = () => menu.remove();
+      menu.appendChild(close);
+      document.body.appendChild(menu);
+    };
+    document.body.appendChild(btn);
+  }
+  
+  // FPS counter for debugging performance
+  if (!document.getElementById('fps-counter')) {
+    const fpsEl = document.createElement('div');
+    fpsEl.id = 'fps-counter';
+    fpsEl.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font-family:monospace;font-size:14px;z-index:9999;pointer-events:none;text-shadow:0 0 3px #000;';
+    document.body.appendChild(fpsEl);
+    let frames = 0, lastTime = performance.now();
+    (function updateFPS() {
+      requestAnimationFrame(updateFPS);
+      frames++;
+      const now = performance.now();
+      if (now - lastTime >= 1000) {
+        fpsEl.textContent = frames + ' FPS';
+        fpsEl.style.color = frames >= 30 ? '#0f0' : frames >= 15 ? '#ff0' : '#f00';
+        frames = 0;
+        lastTime = now;
+      }
+    })();
+  }
+  
+  // Camera defaults set when user spawns a character
+  
+  // Camera mode — no pointer lock needed, orbit controls handle it
+  
+  // Disable post-processing for play mode FPS
+  window._composerDisabled = true;
+  showToast('🎮 Play mode ON! (fast mode)');
 }
 
 function exitPlayMode() {
   stopReplayRecording();
   playMode = false; window._playMode = false;
+  window._composerDisabled = false;
+  // Clean up play mode HUD elements
+  ['fps-counter','char-select-btn','click-to-play','city-minimap','rain-overlay'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.remove();
+  });
+  // Re-enable orbit controls
+  try { controls.enabled = true; controls.update(); } catch(e) {}
+  // Show editor UI
+  _showEditorUI();
+  showToast('🎮 Back to editor mode');
   _showEditorUI();
   // Hide v215 HUD elements
   ['compass','crosshair','stamina-bar','interact-prompt','damage-vignette','underwater-fx','speed-lines','kill-feed'].forEach(id => {
@@ -1037,7 +1068,8 @@ setTimeout(() => {
 
 window.addEventListener('keydown', e => {
   if (typeof dialogueSystem !== 'undefined' && e.key === ' ' && dialogueSystem && dialogueSystem.active) { dialogueSystem.advance(); e.preventDefault(); return; }
-  if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) { showCommandPage(); return; }
+    if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
   if ((e.key === 'Tab' || e.key === 'i') && playMode && typeof characterController !== 'undefined' && characterController && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
     characterController.toggleInventoryPanel();
@@ -1123,7 +1155,7 @@ function executeTriggerAction(trig, obj) {
     objects.splice(objects.indexOf(obj), 1);
   } else if (trig.action === 'teleport') {
     // Spawn player on terrain surface
-  let spawnY = 2;
+  spawnY = 2;
   if (terrainMesh) {
     const rc = new THREE.Raycaster(new THREE.Vector3(0, 200, 0), new THREE.Vector3(0, -1, 0));
     const hits = rc.intersectObject(terrainMesh);
@@ -1408,63 +1440,7 @@ function updateObjectCounter() {
 
 
 
-// === QUEST SYSTEM (v218b) ===
-let _activeQuests = [];
-let _completedQuests = [];
-let _questUI = null;
 
-function addQuest(quest) {
-  // quest = { id, title, description, objectives: [{text, count, current}], reward }
-  if (_activeQuests.find(function(q) { return q.id === quest.id; })) return;
-  quest.objectives = quest.objectives.map(function(o) { o.current = o.current || 0; return o; });
-  _activeQuests.push(quest);
-  showNotification('📜 New Quest: ' + quest.title);
-  updateQuestUI();
-}
-
-function completeObjective(questId, objectiveIndex) {
-  var quest = _activeQuests.find(function(q) { return q.id === questId; });
-  if (!quest) return;
-  var obj = quest.objectives[objectiveIndex];
-  if (!obj) return;
-  obj.current = Math.min(obj.current + 1, obj.count);
-  // Check if all objectives complete
-  var allDone = quest.objectives.every(function(o) { return o.current >= o.count; });
-  if (allDone) {
-    _completedQuests.push(quest);
-    _activeQuests = _activeQuests.filter(function(q) { return q.id !== questId; });
-    showNotification('✅ Quest Complete: ' + quest.title + (quest.reward ? ' — ' + quest.reward : ''));
-    recordEvent('quest_complete', { id: questId, title: quest.title });
-  }
-  updateQuestUI();
-}
-
-function updateQuestUI() {
-  if (!playMode) return;
-  var el = document.getElementById('quest-tracker');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'quest-tracker';
-    el.style.cssText = 'position:fixed;top:80px;left:12px;max-width:250px;z-index:9002;font-family:-apple-system,sans-serif;pointer-events:none;';
-    document.body.appendChild(el);
-  }
-  if (_activeQuests.length === 0) { el.innerHTML = ''; return; }
-  var html = '';
-  _activeQuests.forEach(function(q) {
-    html += '<div style="background:rgba(0,0,0,0.6);border-left:3px solid #f59e0b;padding:8px 10px;margin-bottom:6px;border-radius:0 6px 6px 0;">';
-    html += '<div style="color:#f59e0b;font-size:12px;font-weight:600;">' + q.title + '</div>';
-    q.objectives.forEach(function(o) {
-      var done = o.current >= o.count;
-      html += '<div style="color:' + (done ? '#4ade80' : '#ccc') + ';font-size:11px;margin-top:3px;">';
-      html += (done ? '✓ ' : '○ ') + o.text + ' (' + o.current + '/' + o.count + ')</div>';
-    });
-    html += '</div>';
-  });
-  el.innerHTML = html;
-}
-
-window.addQuest = addQuest;
-window.completeObjective = completeObjective;
 
 // === NPC DIALOG SYSTEM (v218b) ===
 let _dialogActive = false;
@@ -1732,7 +1708,7 @@ let _modelCatalog = null;
 async function loadModelCatalog() {
   if (_modelCatalog) return _modelCatalog;
   try {
-    const resp = await fetch('models/catalog.json');
+    const resp = await fetch('/models/catalog.json');
     _modelCatalog = await resp.json();
     console.log('[Catalog] Loaded', Object.keys(_modelCatalog).length, 'models');
   } catch(e) {
@@ -1791,6 +1767,107 @@ const MODEL_SCALE_OVERRIDES = {
 window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
 
 const GLB_MODELS = {
+
+
+  // ═══ CITY BUILDINGS (Toon City Pack) ═══
+  'apartment':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-A',
+  'apartment_a':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-A',
+  'apartment_b':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-B',
+  'apartment_c':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-C',
+  'apartment_d':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-D',
+  'apartment_e':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-E',
+  'apartment_f':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-F',
+  'apartment_g':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-G',
+  'apartment_h':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-H',
+  'coffee_shop':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-coffee-shop',
+  'fastfood':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-fastfood-shop',
+  'pizza_shop':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-pizza-shop',
+  'ice_cream_shop':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-ice-cream-shop',
+  'cinema':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-cinema',
+  'concert_hall':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-concert-hall',
+  'hotel':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-hotel',
+  'office':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-office',
+  'shopping_center':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-shopping-center',
+  'bank':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-bank',
+  'city_hall':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-city-hall',
+  'fire_station':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-fire-station',
+  'museum':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-museum',
+  'school':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-school',
+  'hospital':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-hospital',
+  'church':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-church',
+  'clock_tower':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-clock-tower',
+  'gas_station':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-gas-station',
+  'stadium':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-stadium',
+  'train_station':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-train-station',
+  'parking_lot':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-parking-lot',
+  'park':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-park',
+  'plaza':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-plaza',
+  'baseball_field':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-baseball-field',
+  'basketball_court':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-basketball-court',
+  'tennis_court':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-tennis-court',
+  'cemetery':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-cemetary',
+  'airport':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-airport',
+  'power_plant':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-power-plant',
+  'factory':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-building-A',
+  'factory_b':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-building-B',
+  'warehouse':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-building-C',
+  'construction':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-inconstruction-building',
+  'construction_warehouse':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-inconstruction-warehouse',
+  'house':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-A',
+  'house_a':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-A',
+  'house_b':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-B',
+  'house_c':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-C',
+  'house_d':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-D',
+  'house_e':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-E',
+  'dumpster':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/dumpster',
+  'fire_hydrant':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/fire-hydrant',
+  'garbage_bin':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/garbage-bin',
+  'trash_bags':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/trash-bags',
+  'mailbox':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/mailbox',
+  'bus_stop':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/bus-stop',
+  'hot_dog_stand':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/hot-dog-stand',
+  'ice_cream_stand':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/ice-cream-stand',
+  'lemonade_stand':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/lemonade-stand',
+  'outdoor_seating':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/outdoor-seating',
+  'public_bench':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/public-bench',
+  'public_stairs':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/public-stairs',
+  'subway_entrance':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/subway-entrance',
+  'stop_sign':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/stop-sign',
+  'speed_limit_sign':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/speed-limit-sign',
+  'no_parking_sign':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/no-parking-sign',
+  'traffic_light':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/traffic-lights-single',
+  'traffic_cone':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/traffic-cone',
+  'road_block':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/road-block-type-A',
+  'street_light':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/street-light-single',
+  'wired_fence':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/wired-fence',
+  'wooden_fence':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/wooden-fence',
+  'electrical_pole':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/electrical-pole-duo',
+  'city_tree':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-A',
+  'city_tree_b':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-B',
+  'city_tree_c':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-C',
+  'city_tree_d':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-D',
+  'city_bush':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/bush-type-A',
+  'road_straight':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-linear-road-piece',
+  'road_curved':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-curved-road-piece',
+  'road_intersection':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-intersaction',
+  'road_t_junction':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-T-junction',
+  'roundabout':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-road-roundabout',
+  'highway':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/linear-highway-piece',
+  'highway_curved':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/curved-highway-piece',
+  'highway_ramp':'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/highway-ramp',
+  // ═══ KENNEY CITY BUILDINGS ═══
+  'skyscraper':'kenney_city/building-skyscraper-a',
+  'skyscraper_a':'kenney_city/building-skyscraper-a',
+  'skyscraper_b':'kenney_city/building-skyscraper-b',
+  'skyscraper_c':'kenney_city/building-skyscraper-c',
+  'skyscraper_d':'kenney_city/building-skyscraper-d',
+  'skyscraper_e':'kenney_city/building-skyscraper-e',
+  'city_building':'kenney_city/building-a',
+  'city_building_b':'kenney_city/building-b',
+  'city_building_c':'kenney_city/building-c',
+  'city_building_d':'kenney_city/building-d',
+  'city_building_e':'kenney_city/building-e',
+  'city_building_f':'kenney_city/building-f',
 
   // ═══ COMMON WORD ALIASES (user-friendly names) ═══
   'car':'hd_ferrari',
@@ -6573,6 +6650,8 @@ const GLB_MODELS = {
   'bench': 'fab/bench_bench.glb',
   'graffiti_wall': 'fab/graffiti_wall_quincy_quarries_graffiti-2k.glb',
   'city_ruins': 'fab/city_ruins_city_ruins_1.glb',
+  'Trash_Can_Garbage_trashcan': 'fab/Trash_Can_Garbage_trashcan.glb',
+  'trash_can2': 'fab/trash_can2_trashcan.glb',
   'traffic_light': 'fab/traffic_light_mm_semaforofree.glb',
   'traffic_sign': 'fab/traffic_light_mm_semaforofree.glb',
   'forklift': 'fab/forklift_tires2.glb',
@@ -6590,6 +6669,1690 @@ const GLB_MODELS = {
   'junkyard_prop_8': 'fab/junkyard_wcliee1.glb',
   'junkyard_prop_9': 'fab/junkyard_wcljcaa.glb',
   'junkyard_prop_10': 'fab/junkyard_xh2kbey.glb',
+
+  // === UNITY ASSET STORE MODELS ===
+  'unity_cabin_fence_mine': '/models/unity_assets/Infini_GRASS/cabin FENCE MINE.glb',
+  'infini_fern': '/models/unity_assets/Infini_GRASS/Low poly foliege FERN.glb',
+  'fern': '/models/unity_assets/Infini_GRASS/Low poly foliege FERN.glb',
+  'unity_low_poly_foliege_fern': '/models/unity_assets/Infini_GRASS/Low poly foliege FERN.glb',
+  'unity_smallrockslod1': '/models/unity_assets/Infini_GRASS/SmallRocksLOD1.glb',
+  'infini_lily': '/models/unity_assets/Infini_GRASS/Low poly foliege LILLY.glb',
+  'unity_low_poly_foliege_lilly': '/models/unity_assets/Infini_GRASS/Low poly foliege LILLY.glb',
+  'infini_mushrooms': '/models/unity_assets/Infini_GRASS/mushrooms_and_flowers_v2 LOD0.glb',
+  'mushroom_cluster': '/models/unity_assets/Infini_GRASS/mushrooms_and_flowers_v2 LOD0.glb',
+  'unity_mushrooms_and_flowers_v2_lod0': '/models/unity_assets/Infini_GRASS/mushrooms_and_flowers_v2 LOD0.glb',
+  'infini_twist_tree': '/models/unity_assets/Infini_GRASS/TWIST TREE.glb',
+  'unity_twist_tree': '/models/unity_assets/Infini_GRASS/TWIST TREE.glb',
+  'unity_flowers_mine_1': '/models/unity_assets/Infini_GRASS/flowers MINE 1.glb',
+  'unity_mushrooms_and_flowers_v2': '/models/unity_assets/Infini_GRASS/mushrooms_and_flowers_v2.glb',
+  'unity_shroom_lod2': '/models/unity_assets/Infini_GRASS/Shroom LOD2.glb',
+  'unity_grass_blade_detailed_infinigrassblend': '/models/unity_assets/Infini_GRASS/GRASS BLADE DETAILED InfiniGRASSblend.glb',
+  'unity_lowplant_03_moss': '/models/unity_assets/Infini_GRASS/LowPlant_03 MOSS.glb',
+  'unity_low_poly_foliege_vines': '/models/unity_assets/Infini_GRASS/Low poly foliege VINES.glb',
+  'infini_terrain': '/models/unity_assets/Infini_GRASS/terrain_03.glb',
+  'unity_terrain_03': '/models/unity_assets/Infini_GRASS/terrain_03.glb',
+  'unity_smallrockslod0': '/models/unity_assets/Infini_GRASS/SmallRocksLOD0.glb',
+  'unity_grass_blade_detailed_infinigrassblendlong_otherblend': '/models/unity_assets/Infini_GRASS/GRASS BLADE DETAILED InfiniGRASSblendLONG OTHERblend.glb',
+  'infini_grass_blade': '/models/unity_assets/Infini_GRASS/GRASS BLADE MINE7a.glb',
+  'unity_grass_blade_mine7a': '/models/unity_assets/Infini_GRASS/GRASS BLADE MINE7a.glb',
+  'unity_grass_blade_detailed_infinigrassblendlong1': '/models/unity_assets/Infini_GRASS/GRASS BLADE DETAILED InfiniGRASSblendLONG1.glb',
+  'unity_flowers_other_poppy': '/models/unity_assets/Infini_GRASS/flowers OTHER POPPY.glb',
+  'unity_normaltree_4': '/models/unity_assets/Infini_GRASS/NormalTree_4.glb',
+  'unity_logs1': '/models/unity_assets/Infini_GRASS/logs1.glb',
+  'unity_twist_tree_hq': '/models/unity_assets/Infini_GRASS/TWIST TREE HQ.glb',
+  'unity_grass_blade_mine7': '/models/unity_assets/Infini_GRASS/GRASS BLADE MINE7.glb',
+  'unity_new_tree_lod_packed_mine_leaf_cleared_altered1': '/models/unity_assets/Infini_GRASS/New Tree Lod Packed MINE LEAF CLEARED Altered1.glb',
+  'unity_lowpolyrock3': '/models/unity_assets/Infini_GRASS/lowpolyrock3.glb',
+  'unity_mushrooms_and_flowers_v2_mine_flower': '/models/unity_assets/Infini_GRASS/mushrooms_and_flowers_v2 MINE FLOWER.glb',
+  'unity_twist_tree_lod': '/models/unity_assets/Infini_GRASS/TWIST TREE LOD.glb',
+  'unity_flowers_daisy': '/models/unity_assets/Infini_GRASS/flowers DAISY.glb',
+  'unity_orifice_octagonwide': '/models/unity_assets/Space_Combat_Kit/Orifice_OctagonWide.glb',
+  'space_rifle': '/models/unity_assets/Space_Combat_Kit/Rifle.glb',
+  'unity_rifle': '/models/unity_assets/Space_Combat_Kit/Rifle.glb',
+  'unity_flybyparticlemesh': '/models/unity_assets/Space_Combat_Kit/FlybyParticleMesh.glb',
+  'unity_light': '/models/unity_assets/Space_Combat_Kit/Light.glb',
+  'unity_cap_triangular': '/models/unity_assets/Space_Combat_Kit/Cap_Triangular.glb',
+  'unity_body_triangular': '/models/unity_assets/Space_Combat_Kit/Body_Triangular.glb',
+  'unity_plate_01': '/models/unity_assets/Space_Combat_Kit/Plate_01.glb',
+  'unity_foot_01': '/models/unity_assets/Space_Combat_Kit/Foot_01.glb',
+  'unity_plate_05': '/models/unity_assets/Space_Combat_Kit/Plate_05.glb',
+  'unity_explosion_debris3': '/models/unity_assets/Space_Combat_Kit/Explosion_Debris3.glb',
+  'unity_enemybase_forcefield': '/models/unity_assets/Space_Combat_Kit/EnemyBase_ForceField.glb',
+  'unity_lattice': '/models/unity_assets/Space_Combat_Kit/Lattice.glb',
+  'unity_explosion_debris4': '/models/unity_assets/Space_Combat_Kit/Explosion_Debris4.glb',
+  'unity_plate_04': '/models/unity_assets/Space_Combat_Kit/Plate_04.glb',
+  'unity_greeble_04': '/models/unity_assets/Space_Combat_Kit/Greeble_04.glb',
+  'unity_cover_octagon': '/models/unity_assets/Space_Combat_Kit/Cover_Octagon.glb',
+  'unity_explosion_debris2': '/models/unity_assets/Space_Combat_Kit/Explosion_Debris2.glb',
+  'unity_spacefightershield_collider': '/models/unity_assets/Space_Combat_Kit/SpaceFighterShield_Collider.glb',
+  'unity_capitalship_engine': '/models/unity_assets/Space_Combat_Kit/CapitalShip_Engine.glb',
+  'unity_cover_square': '/models/unity_assets/Space_Combat_Kit/Cover_Square.glb',
+  'unity_cover_diamond': '/models/unity_assets/Space_Combat_Kit/Cover_Diamond.glb',
+  'unity_body_rectangular': '/models/unity_assets/Space_Combat_Kit/Body_Rectangular.glb',
+  'unity_cap_octagonwide': '/models/unity_assets/Space_Combat_Kit/Cap_OctagonWide.glb',
+  'unity_body_diamond': '/models/unity_assets/Space_Combat_Kit/Body_Diamond.glb',
+  'unity_twowayvfxcards_long': '/models/unity_assets/Space_Combat_Kit/TwoWayVFXCards_Long.glb',
+  'unity_tip_diamond': '/models/unity_assets/Space_Combat_Kit/Tip_Diamond.glb',
+  'unity_greeble_03': '/models/unity_assets/Space_Combat_Kit/Greeble_03.glb',
+  'unity_foot_03': '/models/unity_assets/Space_Combat_Kit/Foot_03.glb',
+  'unity_spheresmooth': '/models/unity_assets/Space_Combat_Kit/SphereSmooth.glb',
+  'unity_spacefighter_hologram': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Hologram.glb',
+  'unity_enemybase': '/models/unity_assets/Space_Combat_Kit/EnemyBase.glb',
+  'unity_capitalship_hull': '/models/unity_assets/Space_Combat_Kit/CapitalShip_Hull.glb',
+  'unity_spacestation': '/models/unity_assets/Space_Combat_Kit/SpaceStation.glb',
+  'unity_threewayvfxcards': '/models/unity_assets/Space_Combat_Kit/ThreeWayVFXCards.glb',
+  'unity_tip_cylinder': '/models/unity_assets/Space_Combat_Kit/Tip_Cylinder.glb',
+  'unity_ship_ramp': '/models/unity_assets/Space_Combat_Kit/Ship_Ramp.glb',
+  'unity_orifice_square': '/models/unity_assets/Space_Combat_Kit/Orifice_Square.glb',
+  'unity_ship': '/models/unity_assets/Space_Combat_Kit/Ship.glb',
+  'unity_enemybase_mine': '/models/unity_assets/Space_Combat_Kit/EnemyBase_Mine.glb',
+  'unity_orifice_triangular': '/models/unity_assets/Space_Combat_Kit/Orifice_Triangular.glb',
+  'unity_capitalship_engine_collider': '/models/unity_assets/Space_Combat_Kit/CapitalShip_Engine_Collider.glb',
+  'unity_box_rectangular': '/models/unity_assets/Space_Combat_Kit/Box_Rectangular.glb',
+  'unity_thrustercone': '/models/unity_assets/Space_Combat_Kit/ThrusterCone.glb',
+  'unity_spacestation_landingpad': '/models/unity_assets/Space_Combat_Kit/SpaceStation_LandingPad.glb',
+  'unity_greeble_07': '/models/unity_assets/Space_Combat_Kit/Greeble_07.glb',
+  'unity_cap_diamond': '/models/unity_assets/Space_Combat_Kit/Cap_Diamond.glb',
+  'unity_asteroid': '/models/unity_assets/Space_Combat_Kit/Asteroid.glb',
+  'unity_cap_square': '/models/unity_assets/Space_Combat_Kit/Cap_Square.glb',
+  'unity_orifice_diamond': '/models/unity_assets/Space_Combat_Kit/Orifice_Diamond.glb',
+  'unity_orbshield': '/models/unity_assets/Space_Combat_Kit/OrbShield.glb',
+  'unity_greeble_05': '/models/unity_assets/Space_Combat_Kit/Greeble_05.glb',
+  'unity_capitalship_shieldgenerator': '/models/unity_assets/Space_Combat_Kit/CapitalShip_ShieldGenerator.glb',
+  'unity_capitalship_hullcollider1': '/models/unity_assets/Space_Combat_Kit/CapitalShip_HullCollider1.glb',
+  'unity_plate_03': '/models/unity_assets/Space_Combat_Kit/Plate_03.glb',
+  'unity_spacefighter_fin': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Fin.glb',
+  'unity_greeble_06': '/models/unity_assets/Space_Combat_Kit/Greeble_06.glb',
+  'unity_tip_rectangular': '/models/unity_assets/Space_Combat_Kit/Tip_Rectangular.glb',
+  'unity_cap_cylinder': '/models/unity_assets/Space_Combat_Kit/Cap_Cylinder.glb',
+  'unity_orifice_rectangular': '/models/unity_assets/Space_Combat_Kit/Orifice_Rectangular.glb',
+  'unity_greeble_01': '/models/unity_assets/Space_Combat_Kit/Greeble_01.glb',
+  'unity_capitalship_hullcollider2': '/models/unity_assets/Space_Combat_Kit/CapitalShip_HullCollider2.glb',
+  'unity_orifice_cylinder': '/models/unity_assets/Space_Combat_Kit/Orifice_Cylinder.glb',
+  'unity_spacefighter_wing': '/models/unity_assets/Space_Combat_Kit/Spacefighter_Wing.glb',
+  'unity_cap_rectangular': '/models/unity_assets/Space_Combat_Kit/Cap_Rectangular.glb',
+  'capital_ship_shield': '/models/unity_assets/Space_Combat_Kit/CapitalShip_Shield.glb',
+  'unity_capitalship_shield': '/models/unity_assets/Space_Combat_Kit/CapitalShip_Shield.glb',
+  'unity_body_square': '/models/unity_assets/Space_Combat_Kit/Body_Square.glb',
+  'unity_explosion_debris1': '/models/unity_assets/Space_Combat_Kit/Explosion_Debris1.glb',
+  'unity_foot_02': '/models/unity_assets/Space_Combat_Kit/Foot_02.glb',
+  'space_fighter': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Fuselage.glb',
+  'spaceship': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Fuselage.glb',
+  'unity_spacefighter_fuselage': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Fuselage.glb',
+  'unity_spacefighter_engine_exhaust': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Engine_Exhaust.glb',
+  'unity_capitalship_shield_collider': '/models/unity_assets/Space_Combat_Kit/CapitalShip_Shield_Collider.glb',
+  'unity_plate_02': '/models/unity_assets/Space_Combat_Kit/Plate_02.glb',
+  'unity_asteroid_collider': '/models/unity_assets/Space_Combat_Kit/Asteroid_Collider.glb',
+  'unity_orb': '/models/unity_assets/Space_Combat_Kit/Orb.glb',
+  'unity_ship_cockpitcollider': '/models/unity_assets/Space_Combat_Kit/Ship_CockpitCollider.glb',
+  'unity_enemybase_forcefield_collider': '/models/unity_assets/Space_Combat_Kit/EnemyBase_ForceField_Collider.glb',
+  'unity_body_cylinder': '/models/unity_assets/Space_Combat_Kit/Body_Cylinder.glb',
+  'unity_greeble_02': '/models/unity_assets/Space_Combat_Kit/Greeble_02.glb',
+  'unity_capitalship_bridge': '/models/unity_assets/Space_Combat_Kit/CapitalShip_Bridge.glb',
+  'unity_ship_landinggear': '/models/unity_assets/Space_Combat_Kit/Ship_LandingGear.glb',
+  'unity_body_octagonwide': '/models/unity_assets/Space_Combat_Kit/Body_OctagonWide.glb',
+  'unity_spacefighter_greeble': '/models/unity_assets/Space_Combat_Kit/Spacefighter_Greeble.glb',
+  'unity_spacefighter_shield': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Shield.glb',
+  'unity_tip_square': '/models/unity_assets/Space_Combat_Kit/Tip_Square.glb',
+  'unity_planet': '/models/unity_assets/Space_Combat_Kit/Planet.glb',
+  'unity_box': '/models/unity_assets/Space_Combat_Kit/Box.glb',
+  'unity_tip_octagonwide': '/models/unity_assets/Space_Combat_Kit/Tip_OctagonWide.glb',
+  'unity_cover_cylinder': '/models/unity_assets/Space_Combat_Kit/Cover_Cylinder.glb',
+  'space_fighter_engine': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Engine.glb',
+  'unity_spacefighter_engine': '/models/unity_assets/Space_Combat_Kit/SpaceFighter_Engine.glb',
+  'unity_tip_triangular': '/models/unity_assets/Space_Combat_Kit/Tip_Triangular.glb',
+  'touring_race_car': '/models/unity_assets/Touring_Race_Car_Pack_Demo/Chev.glb',
+  'unity_race_car': '/models/unity_assets/Touring_Race_Car_Pack_Demo/Chev.glb',
+  'race_car_wheels': '/models/unity_assets/Touring_Race_Car_Pack_Demo/Tires.glb',
+  'unity_knight': '/models/unity_assets/Knight_with_Sword/Knight.glb',
+  'knight_character': '/models/unity_assets/Knight_with_Sword/Knight.glb',
+  'unity_sword': '/models/unity_assets/Knight_with_Sword/Sword.glb',
+  'zombie_male': '/models/unity_assets/FREE_Zombie_Male_AAB/ZombieMale_AAB.glb',
+  'zombie': '/models/unity_assets/FREE_Zombie_Male_AAB/ZombieMale_AAB.glb',
+  'dark_knight': '/models/unity_assets/Dead_Knight_Sword_and_Shield/DKSwordAndShield_Unity.glb',
+  'medieval_sword_fps': '/models/unity_assets/FPS_Medieval_Weapons_-_Free_Starter_Pack/sword_1.glb',
+  'medieval_axe_fps': '/models/unity_assets/FPS_Medieval_Weapons_-_Free_Starter_Pack/axe_4.glb',
+  'toon_helicopter': '/models/unity_assets/Toon_City_Pack/helicopter.glb',
+  'helicopter': '/models/unity_assets/Toon_City_Pack/helicopter.glb',
+  'toon_ambulance': '/models/unity_assets/Toon_City_Pack/ambulance.glb',
+  'toon_apartment': '/models/unity_assets/Toon_City_Pack/cb-apartment-B.glb',
+  'toon_building': '/models/unity_assets/Toon_City_Pack/cb-apartment-B.glb',
+  'toon_concert_hall': '/models/unity_assets/Toon_City_Pack/commercial-building-concert-hall.glb',
+  'toon_city_hall': '/models/unity_assets/Toon_City_Pack/government-building-city-hall.glb',
+  'toon_park': '/models/unity_assets/Toon_City_Pack/infrastructure-building-park.glb',
+  'pistol_9mm': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Pistol 9mm Bullet_Low_sep.glb',
+  'pistol': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Pistol 9mm Bullet_Low_sep.glb',
+  'unity_zombiemale_aab': '/models/unity_assets/FREE_Zombie_Male_AAB/ZombieMale_AAB.glb',
+  'unity_zombiemale_aab_bodyparts': '/models/unity_assets/FREE_Zombie_Male_AAB/ZombieMale_AAB_BodyParts.glb',
+  'unity_church1_base_stairs_a': '/models/unity_assets/Flooded_Grounds/Church1_Base_Stairs_A.glb',
+  'unity_barn2_mid_a': '/models/unity_assets/Flooded_Grounds/Barn2_Mid_A.glb',
+  'unity_struct_fence2_mid_a': '/models/unity_assets/Flooded_Grounds/Struct_Fence2_Mid_A.glb',
+  'unity_church1_door_c': '/models/unity_assets/Flooded_Grounds/Church1_Door_C.glb',
+  'unity_cabin2_deco_windowglass_a': '/models/unity_assets/Flooded_Grounds/Cabin2_Deco_WindowGlass_A.glb',
+  'unity_struct_billboard_a_col': '/models/unity_assets/Flooded_Grounds/Struct_Billboard_A_COL.glb',
+  'unity_barn2_mid_a_col': '/models/unity_assets/Flooded_Grounds/Barn2_Mid_A_COL.glb',
+  'unity_grass_small_a': '/models/unity_assets/Flooded_Grounds/Grass_Small_A.glb',
+  'unity_cabin2_mid2': '/models/unity_assets/Flooded_Grounds/Cabin2_Mid2.glb',
+  'unity_struct_extstairs_a_col': '/models/unity_assets/Flooded_Grounds/Struct_ExtStairs_A_COL.glb',
+  'unity_villa2_deco_column_top_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Column_Top_A.glb',
+  'unity_villa2_door_b': '/models/unity_assets/Flooded_Grounds/Villa2_Door_B.glb',
+  'unity_grass_small_d': '/models/unity_assets/Flooded_Grounds/Grass_Small_D.glb',
+  'unity_villa2_floor_mid_a_4x': '/models/unity_assets/Flooded_Grounds/Villa2_Floor_Mid_A_4x.glb',
+  'unity_struct_flowerbox_a': '/models/unity_assets/Flooded_Grounds/Struct_FlowerBox_A.glb',
+  'unity_villa2_wall_mid_d': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Mid_D.glb',
+  'unity_decobush_b': '/models/unity_assets/Flooded_Grounds/DecoBush_B.glb',
+  'unity_greenhouse1_deco_roofpiece_a': '/models/unity_assets/Flooded_Grounds/GreenHouse1_Deco_RoofPiece_A.glb',
+  'unity_prop_painting_a': '/models/unity_assets/Flooded_Grounds/Prop_Painting_A.glb',
+  'unity_villa2_wall_ext_a_col': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Ext_A_COL.glb',
+  'unity_indbuilding1_intstairs_a_col': '/models/unity_assets/Flooded_Grounds/IndBuilding1_IntStairs_A_COL.glb',
+  'unity_indbuilding2_end_b_col': '/models/unity_assets/Flooded_Grounds/IndBuilding2_End_B_COL.glb',
+  'unity_villa1_wall_cor_a': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Cor_A.glb',
+  'unity_villa1_deco_handrail1_cap_a': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_Handrail1_Cap_A.glb',
+  'unity_struct_docking_a_col': '/models/unity_assets/Flooded_Grounds/Struct_Docking_A_COL.glb',
+  'unity_villa2_deco_beam_a_2x': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Beam_A_2x.glb',
+  'unity_indbuilding1_ext_a_col': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Ext_A_COL.glb',
+  'unity_villa2_wall_mid_a': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Mid_A.glb',
+  'unity_villa2_door_a': '/models/unity_assets/Flooded_Grounds/Villa2_Door_A.glb',
+  'unity_pavement2_end_a': '/models/unity_assets/Flooded_Grounds/Pavement2_End_A.glb',
+  'unity_struct_flowerbox_b': '/models/unity_assets/Flooded_Grounds/Struct_FlowerBox_B.glb',
+  'unity_barn1_end_b_col': '/models/unity_assets/Flooded_Grounds/Barn1_End_B_COL.glb',
+  'unity_villa2_intstairs_a': '/models/unity_assets/Flooded_Grounds/Villa2_IntStairs_A.glb',
+  'unity_lo_prop_churchbench_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_ChurchBench_A.glb',
+  'unity_villa2_deco_column_mid_b': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Column_Mid_B.glb',
+  'unity_church1_end_a': '/models/unity_assets/Flooded_Grounds/Church1_End_A.glb',
+  'unity_villa1_top_mid_a': '/models/unity_assets/Flooded_Grounds/Villa1_Top_Mid_A.glb',
+  'unity_indbuilding1_top_mid_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Top_Mid_A.glb',
+  'unity_pavement1_cor_a': '/models/unity_assets/Flooded_Grounds/Pavement1_Cor_A.glb',
+  'unity_struct_docking_b': '/models/unity_assets/Flooded_Grounds/Struct_Docking_B.glb',
+  'unity_brickhouse_floor_end_a_dm_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Floor_End_A_DM_A.glb',
+  'unity_guardhouse_a': '/models/unity_assets/Flooded_Grounds/GuardHouse_A.glb',
+  'unity_prop_painting_c': '/models/unity_assets/Flooded_Grounds/Prop_Painting_C.glb',
+  'unity_lo_prop_gravestone_e': '/models/unity_assets/Flooded_Grounds/lo_Prop_Gravestone_E.glb',
+  'unity_struct_roundabout_a': '/models/unity_assets/Flooded_Grounds/Struct_Roundabout_A.glb',
+  'unity_villa1_wall_mid_d': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Mid_D.glb',
+  'unity_lo_prop_chair_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Chair_A.glb',
+  'unity_villa1_floor_mid_a': '/models/unity_assets/Flooded_Grounds/Villa1_Floor_Mid_A.glb',
+  'unity_pavement1_side_a': '/models/unity_assets/Flooded_Grounds/Pavement1_Side_A.glb',
+  'unity_struct_fence1_column_a': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Column_A.glb',
+  'unity_villa2_deco_roofpiece_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_RoofPiece_A.glb',
+  'unity_lo_cobblerock_f': '/models/unity_assets/Flooded_Grounds/lo_CobbleRock_F.glb',
+  'unity_decobush_a': '/models/unity_assets/Flooded_Grounds/DecoBush_A.glb',
+  'unity_decobush_c': '/models/unity_assets/Flooded_Grounds/DecoBush_C.glb',
+  'unity_villa1_deco_windowglass_b': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_WindowGlass_B.glb',
+  'unity_villa2_top_mid_a': '/models/unity_assets/Flooded_Grounds/Villa2_Top_Mid_A.glb',
+  'unity_lo_prop_car_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Car_A.glb',
+  'unity_villa1_deco_handrail1_mid_a_dm': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_Handrail1_Mid_A_DM.glb',
+  'unity_lo_prop_bed_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Bed_A.glb',
+  'unity_lo_prop_vase_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Vase_A.glb',
+  'unity_bld_bridge_a': '/models/unity_assets/Flooded_Grounds/BLD_Bridge_A.glb',
+  'unity_barn1_mid_a_col': '/models/unity_assets/Flooded_Grounds/Barn1_Mid_A_COL.glb',
+  'unity_brickhouse_mid_c': '/models/unity_assets/Flooded_Grounds/BrickHouse_Mid_C.glb',
+  'unity_villa1_roof_mid_a': '/models/unity_assets/Flooded_Grounds/Villa1_Roof_Mid_A.glb',
+  'unity_struct_docking_a_dm_col': '/models/unity_assets/Flooded_Grounds/Struct_Docking_A_DM_COL.glb',
+  'unity_indbuilding1_wall_cor_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Wall_Cor_A.glb',
+  'unity_barn2_end_a_col': '/models/unity_assets/Flooded_Grounds/Barn2_End_A_COL.glb',
+  'unity_lo_prop_smalltable_b': '/models/unity_assets/Flooded_Grounds/lo_Prop_SmallTable_B.glb',
+  'unity_lo_cobblerock_c': '/models/unity_assets/Flooded_Grounds/lo_CobbleRock_C.glb',
+  'unity_struct_fence1_mid_b': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Mid_B.glb',
+  'unity_struct_fence1_mid_a': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Mid_A.glb',
+  'unity_lo_prop_cabinet_b': '/models/unity_assets/Flooded_Grounds/lo_Prop_Cabinet_B.glb',
+  'unity_villa2_wall_ext_a': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Ext_A.glb',
+  'unity_villa1_ext_b': '/models/unity_assets/Flooded_Grounds/Villa1_Ext_B.glb',
+  'unity_brickhouse_deco_intcolumn_b': '/models/unity_assets/Flooded_Grounds/BrickHouse_Deco_IntColumn_B.glb',
+  'unity_bgr_largepipe_a': '/models/unity_assets/Flooded_Grounds/BGR_LargePipe_A.glb',
+  'unity_brickhouse_intwall_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_IntWall_A.glb',
+  'unity_villa2_deco_handrail1_cor_b_col': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Handrail1_Cor_B_COL.glb',
+  'unity_villa1_top_cor_a': '/models/unity_assets/Flooded_Grounds/Villa1_Top_Cor_A.glb',
+  'unity_indbuilding2_door_a': '/models/unity_assets/Flooded_Grounds/Indbuilding2_Door_A.glb',
+  'unity_struct_fence1_gate_b': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Gate_B.glb',
+  'unity_cabin1_door_a': '/models/unity_assets/Flooded_Grounds/Cabin1_Door_A.glb',
+  'unity_lo_prop_lamp_b': '/models/unity_assets/Flooded_Grounds/lo_Prop_Lamp_B.glb',
+  'unity_indbuilding1_ext_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Ext_A.glb',
+  'unity_barn1_end_a_col': '/models/unity_assets/Flooded_Grounds/Barn1_End_A_COL.glb',
+  'unity_villa2_base_cor_a': '/models/unity_assets/Flooded_Grounds/Villa2_Base_Cor_A.glb',
+  'unity_struct_fence1_column_a_dm': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Column_A_DM.glb',
+  'unity_indbuilding1_deco_intcolumn_base': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_IntColumn_Base.glb',
+  'unity_indbuilding2_mid_a_col': '/models/unity_assets/Flooded_Grounds/IndBuilding2_Mid_A_COL.glb',
+  'unity_villa2_wall_cor_b': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Cor_B.glb',
+  'unity_villa1_wall_int_a': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Int_A.glb',
+  'unity_struct_fence3_mid_a': '/models/unity_assets/Flooded_Grounds/Struct_Fence3_Mid_A.glb',
+  'unity_lo_prop_cabinet_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Cabinet_A.glb',
+  'unity_indbuilding1_deco_intcolumn_top': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_IntColumn_Top.glb',
+  'unity_struct_fence1_gate_a': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Gate_A.glb',
+  'unity_indbuilding2_end_b': '/models/unity_assets/Flooded_Grounds/IndBuilding2_End_B.glb',
+  'unity_villa2_base_mid_a': '/models/unity_assets/Flooded_Grounds/Villa2_Base_Mid_A.glb',
+  'unity_struct_docking_a_dm': '/models/unity_assets/Flooded_Grounds/Struct_Docking_A_DM.glb',
+  'unity_villa2_wall_mid_b': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Mid_B.glb',
+  'unity_struct_fence1_mid_c': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Mid_C.glb',
+  'unity_prop_rug_c': '/models/unity_assets/Flooded_Grounds/Prop_Rug_C.glb',
+  'unity_lo_rock_b': '/models/unity_assets/Flooded_Grounds/lo_Rock_B.glb',
+  'unity_indbuilding1_base_cor_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Base_Cor_A.glb',
+  'unity_grass_tall_b': '/models/unity_assets/Flooded_Grounds/Grass_Tall_B.glb',
+  'unity_cabin2_ext1': '/models/unity_assets/Flooded_Grounds/Cabin2_Ext1.glb',
+  'unity_villa1_wall_cor_b': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Cor_B.glb',
+  'unity_struct_billboard_a_dm': '/models/unity_assets/Flooded_Grounds/Struct_Billboard_A_DM.glb',
+  'unity_indbuilding1_wall_mid_c': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Wall_Mid_C.glb',
+  'unity_brickhouse_deco_handrail_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Deco_Handrail_A.glb',
+  'unity_villa2_deco_handrail1_cap_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Handrail1_Cap_A.glb',
+  'unity_indbuilding1_wall_mid_d': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Wall_Mid_D.glb',
+  'unity_brickhouse_floor_mid_a_dm_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Floor_Mid_A_DM_A.glb',
+  'unity_indbuilding1_deco_column_mid': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_Column_Mid.glb',
+  'unity_indbuilding1_floor_mid_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Floor_Mid_A.glb',
+  'unity_struct_pavilion_b_col': '/models/unity_assets/Flooded_Grounds/Struct_Pavilion_B_COL.glb',
+  'unity_church1_deco_windowglass_a': '/models/unity_assets/Flooded_Grounds/Church1_Deco_WindowGlass_A.glb',
+  'unity_lo_prop_pulpit_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Pulpit_A.glb',
+  'unity_villa2_top_cor_b': '/models/unity_assets/Flooded_Grounds/Villa2_Top_Cor_B.glb',
+  'unity_branch3': '/models/unity_assets/Flooded_Grounds/Branch3.glb',
+  'unity_indbuilding1_deco_handrail_mid_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_Handrail_Mid_A.glb',
+  'unity_brickhouse_floor_mid_b': '/models/unity_assets/Flooded_Grounds/BrickHouse_Floor_Mid_B.glb',
+  'unity_cabin2_stairs': '/models/unity_assets/Flooded_Grounds/Cabin2_Stairs.glb',
+  'unity_indbuilding1_deco_handrail_cor_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_Handrail_Cor_A.glb',
+  'unity_villa1_door_a': '/models/unity_assets/Flooded_Grounds/Villa1_Door_A.glb',
+  'unity_struct_fence2_mid_a_dm': '/models/unity_assets/Flooded_Grounds/Struct_Fence2_Mid_A_DM.glb',
+  'unity_villa1_deco_handrail1_mid_a': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_Handrail1_Mid_A.glb',
+  'unity_decobush_d': '/models/unity_assets/Flooded_Grounds/DecoBush_D.glb',
+  'unity_indbuilding1_base_mid_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Base_Mid_A.glb',
+  'unity_villa1_deco_windowglass_c': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_WindowGlass_C.glb',
+  'unity_lo_prop_vase_b': '/models/unity_assets/Flooded_Grounds/lo_Prop_Vase_B.glb',
+  'unity_struct_floodwall_b': '/models/unity_assets/Flooded_Grounds/Struct_FloodWall_B.glb',
+  'unity_villa1_deco_intdivider_a': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_IntDivider_A.glb',
+  'unity_villa2_deco_handrail1_cor_a_col': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Handrail1_Cor_A_COL.glb',
+  'unity_villa1_base_stairs_a': '/models/unity_assets/Flooded_Grounds/Villa1_Base_Stairs_A.glb',
+  'unity_villa1_intstairs_a': '/models/unity_assets/Flooded_Grounds/Villa1_IntStairs_A.glb',
+  'unity_greenhouse1_mid_a': '/models/unity_assets/Flooded_Grounds/GreenHouse1_Mid_A.glb',
+  'unity_lo_prop_smalltable_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_SmallTable_A.glb',
+  'unity_lo_prop_chair_b': '/models/unity_assets/Flooded_Grounds/lo_Prop_Chair_B.glb',
+  'unity_indbuilding1_floor_mid_a_4x': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Floor_Mid_A_4x.glb',
+  'unity_villa2_base_ext_a': '/models/unity_assets/Flooded_Grounds/Villa2_Base_Ext_A.glb',
+  'unity_lighthouse_a_col': '/models/unity_assets/Flooded_Grounds/LightHouse_A_COL.glb',
+  'unity_struct_extstairs_b': '/models/unity_assets/Flooded_Grounds/Struct_ExtStairs_B.glb',
+  'unity_indbuilding1_deco_column_base': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_Column_Base.glb',
+  'unity_cabin2_end2': '/models/unity_assets/Flooded_Grounds/Cabin2_End2.glb',
+  'unity_cabin1_dm': '/models/unity_assets/Flooded_Grounds/Cabin1_DM.glb',
+  'unity_lo_prop_gravestone_b': '/models/unity_assets/Flooded_Grounds/lo_Prop_Gravestone_B.glb',
+  'unity_cabin1': '/models/unity_assets/Flooded_Grounds/Cabin1.glb',
+  'unity_struct_docking_a': '/models/unity_assets/Flooded_Grounds/Struct_Docking_A.glb',
+  'unity_greenhouse1_door_a': '/models/unity_assets/Flooded_Grounds/GreenHouse1_Door_A.glb',
+  'unity_struct_radiotower_a': '/models/unity_assets/Flooded_Grounds/Struct_RadioTower_A.glb',
+  'unity_indbuilding2_deco_windowglass_a': '/models/unity_assets/Flooded_Grounds/IndBuilding2_Deco_WindowGlass_A.glb',
+  'unity_branch1': '/models/unity_assets/Flooded_Grounds/Branch1.glb',
+  'unity_barn2_end_b_col': '/models/unity_assets/Flooded_Grounds/Barn2_End_B_COL.glb',
+  'unity_indbuilding1_top_cor_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Top_Cor_A.glb',
+  'unity_church1_deco_column_a': '/models/unity_assets/Flooded_Grounds/Church1_Deco_Column_A.glb',
+  'unity_barn1_door_a': '/models/unity_assets/Flooded_Grounds/Barn1_Door_A.glb',
+  'unity_prop_rug_d': '/models/unity_assets/Flooded_Grounds/Prop_Rug_D.glb',
+  'unity_barn1_end_b': '/models/unity_assets/Flooded_Grounds/Barn1_End_B.glb',
+  'unity_brickhouse_end_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_End_A.glb',
+  'unity_struct_woodpath_a': '/models/unity_assets/Flooded_Grounds/Struct_WoodPath_A.glb',
+  'unity_villa2_wall_cor_a': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Cor_A.glb',
+  'unity_indbuilding1_intstairs_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_IntStairs_A.glb',
+  'unity_brickhouse_deco_windowglass_b': '/models/unity_assets/Flooded_Grounds/BrickHouse_Deco_WindowGlass_B.glb',
+  'unity_lo_prop_gravestone_c': '/models/unity_assets/Flooded_Grounds/lo_Prop_Gravestone_C.glb',
+  'unity_prop_rug_a': '/models/unity_assets/Flooded_Grounds/Prop_Rug_A.glb',
+  'unity_indbuilding1_door_a': '/models/unity_assets/Flooded_Grounds/Indbuilding1_Door_A.glb',
+  'unity_villa1_intstairs_a_col': '/models/unity_assets/Flooded_Grounds/Villa1_IntStairs_A_COL.glb',
+  'unity_lo_prop_clock_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Clock_A.glb',
+  'unity_villa2_wall_mid_a_col': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Mid_A_COL.glb',
+  'unity_indbuilding1_deco_windowglass_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_WindowGlass_A.glb',
+  'unity_indbuilding1_base_stairs': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Base_Stairs.glb',
+  'unity_villa2_wall_cor_a_col': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Cor_A_COL.glb',
+  'unity_lo_cobblerock_b': '/models/unity_assets/Flooded_Grounds/lo_CobbleRock_B.glb',
+  'unity_lo_prop_lamp_e': '/models/unity_assets/Flooded_Grounds/lo_Prop_Lamp_E.glb',
+  'unity_lo_prop_car1_dm': '/models/unity_assets/Flooded_Grounds/lo_Prop_Car1_DM.glb',
+  'unity_indbuilding2_end_a_col': '/models/unity_assets/Flooded_Grounds/IndBuilding2_End_A_COL.glb',
+  'unity_brickhouse_deco_intcolumn_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Deco_IntColumn_A.glb',
+  'unity_lo_cobblerock_d': '/models/unity_assets/Flooded_Grounds/lo_CobbleRock_D.glb',
+  'unity_villa2_top_cor_c': '/models/unity_assets/Flooded_Grounds/Villa2_Top_Cor_C.glb',
+  'unity_atm_haloring': '/models/unity_assets/Flooded_Grounds/ATM_HaloRing.glb',
+  'unity_lo_prop_sofa_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Sofa_A.glb',
+  'unity_greenhouse1_deco_roofpiece_b': '/models/unity_assets/Flooded_Grounds/GreenHouse1_Deco_RoofPiece_B.glb',
+  'unity_brickhouse_intwall_c': '/models/unity_assets/Flooded_Grounds/BrickHouse_IntWall_C.glb',
+  'unity_grass_tall_a': '/models/unity_assets/Flooded_Grounds/Grass_Tall_A.glb',
+  'unity_indbuilding1_deco_intcolumn_mid': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_IntColumn_Mid.glb',
+  'unity_lo_rock_a': '/models/unity_assets/Flooded_Grounds/lo_Rock_A.glb',
+  'unity_struct_docking_b_col': '/models/unity_assets/Flooded_Grounds/Struct_Docking_B_COL.glb',
+  'unity_villa2_deco_column_mid_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Column_Mid_A.glb',
+  'unity_grass_small_b': '/models/unity_assets/Flooded_Grounds/Grass_Small_B.glb',
+  'unity_villa2_deco_roofpiece_b': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_RoofPiece_B.glb',
+  'unity_struct_pavilion_a': '/models/unity_assets/Flooded_Grounds/Struct_Pavilion_A.glb',
+  'unity_guardhouse_a_col': '/models/unity_assets/Flooded_Grounds/GuardHouse_A_COL.glb',
+  'unity_indbuilding1_wall_int_b': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Wall_Int_B.glb',
+  'unity_bgr_pipe_b': '/models/unity_assets/Flooded_Grounds/BGR_Pipe_B.glb',
+  'unity_struct_fence1_mid_a_col': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Mid_A_COL.glb',
+  'unity_villa1_intstairs_b_col': '/models/unity_assets/Flooded_Grounds/Villa1_IntStairs_B_COL.glb',
+  'unity_indbuilding1_roof_mid_a_4x': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Roof_Mid_A_4x.glb',
+  'unity_struct_floodwall_a_col': '/models/unity_assets/Flooded_Grounds/Struct_FloodWall_A_COL.glb',
+  'unity_indbuilding1_roof_mid_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Roof_Mid_A.glb',
+  'unity_brickhouse_deco_handrail_cap_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Deco_Handrail_Cap_A.glb',
+  'unity_villa2_deco_handrail1_cor_b': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Handrail1_Cor_B.glb',
+  'unity_villa1_intstairs_b': '/models/unity_assets/Flooded_Grounds/Villa1_IntStairs_B.glb',
+  'unity_lo_flyingsaucer': '/models/unity_assets/Flooded_Grounds/lo_FlyingSaucer.glb',
+  'unity_villa1_deco_handrail1_cor_a_col': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_Handrail1_Cor_A_COL.glb',
+  'unity_villa2_roof_mid_a': '/models/unity_assets/Flooded_Grounds/Villa2_Roof_Mid_A.glb',
+  'unity_struct_billboard_a': '/models/unity_assets/Flooded_Grounds/Struct_BillBoard_A.glb',
+  'unity_indbuilding2_end_a': '/models/unity_assets/Flooded_Grounds/Indbuilding2_End_A.glb',
+  'unity_struct_pole_b_col': '/models/unity_assets/Flooded_Grounds/Struct_Pole_B_COL.glb',
+  'unity_villa2_deco_beam_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Beam_A.glb',
+  'unity_bgr_factory_a': '/models/unity_assets/Flooded_Grounds/BGR_Factory_A.glb',
+  'unity_barn1_end_a': '/models/unity_assets/Flooded_Grounds/Barn1_End_A.glb',
+  'unity_brickhouse_floor_mid_a_dm_b_col': '/models/unity_assets/Flooded_Grounds/BrickHouse_Floor_Mid_A_DM_B_COL.glb',
+  'unity_villa1_top_mid_b': '/models/unity_assets/Flooded_Grounds/Villa1_Top_Mid_B.glb',
+  'unity_prop_painting_b': '/models/unity_assets/Flooded_Grounds/Prop_Painting_B.glb',
+  'unity_villa2_wall_int_a': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Int_A.glb',
+  'unity_villa1_top_cor1': '/models/unity_assets/Flooded_Grounds/Villa1_Top_Cor1.glb',
+  'unity_villa1_floor_mid_b': '/models/unity_assets/Flooded_Grounds/Villa1_Floor_Mid_B.glb',
+  'unity_villa1_wall_mid_a': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Mid_A.glb',
+  'unity_villa1_base_mid_a': '/models/unity_assets/Flooded_Grounds/Villa1_Base_Mid_A.glb',
+  'unity_lo_prop_parkbench_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_ParkBench_A.glb',
+  'unity_greenhouse1_end_a': '/models/unity_assets/Flooded_Grounds/GreenHouse1_End_A.glb',
+  'unity_struct_fence1_gate_a_door_dm': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Gate_A_Door_DM.glb',
+  'unity_indbuilding1_wall_mid_b': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Wall_Mid_B.glb',
+  'unity_villa2_deco_column_top_b': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Column_Top_B.glb',
+  'unity_villa2_roof_mid_a_4x': '/models/unity_assets/Flooded_Grounds/Villa2_Roof_Mid_A_4x.glb',
+  'unity_villa2_base_cor_b': '/models/unity_assets/Flooded_Grounds/Villa2_Base_Cor_B.glb',
+  'unity_villa1_deco_deco_beam_a': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_Deco_Beam_A.glb',
+  'unity_struct_fence1_mid_b_col': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Mid_B_COL.glb',
+  'unity_villa1_base_cor_a': '/models/unity_assets/Flooded_Grounds/Villa1_Base_Cor_A.glb',
+  'unity_villa2_deco_windowglass_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_WindowGlass_A.glb',
+  'unity_brickhouse_intwall_b': '/models/unity_assets/Flooded_Grounds/BrickHouse_IntWall_B.glb',
+  'unity_villa1_ext_b_col': '/models/unity_assets/Flooded_Grounds/Villa1_Ext_B_COL.glb',
+  'unity_indbuilding2_mid_a': '/models/unity_assets/Flooded_Grounds/IndBuilding2_Mid_A.glb',
+  'unity_brickhouse_ext_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Ext_A.glb',
+  'unity_struct_kiosk_a': '/models/unity_assets/Flooded_Grounds/Struct_Kiosk_A.glb',
+  'unity_bgr_factory_b': '/models/unity_assets/Flooded_Grounds/BGR_Factory_B.glb',
+  'unity_church1_mid_a': '/models/unity_assets/Flooded_Grounds/Church1_Mid_A.glb',
+  'unity_struct_floodwall_a': '/models/unity_assets/Flooded_Grounds/Struct_FloodWall_A.glb',
+  'unity_villa1_floor_mid_c_col': '/models/unity_assets/Flooded_Grounds/Villa1_Floor_Mid_C_COL.glb',
+  'unity_brickhouse_deco_windowglass_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Deco_WindowGlass_A.glb',
+  'unity_lo_prop_gravestone_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Gravestone_A.glb',
+  'unity_grass_tall_c': '/models/unity_assets/Flooded_Grounds/Grass_Tall_C.glb',
+  'unity_villa2_floor_mid_a': '/models/unity_assets/Flooded_Grounds/Villa2_Floor_Mid_A.glb',
+  'unity_church1_door_a': '/models/unity_assets/Flooded_Grounds/Church1_Door_A.glb',
+  'unity_villa1_deco_column_top_a': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_Column_Top_A.glb',
+  'unity_grass_med_a': '/models/unity_assets/Flooded_Grounds/Grass_Med_A.glb',
+  'unity_cabin1_stairs': '/models/unity_assets/Flooded_Grounds/Cabin1_Stairs.glb',
+  'unity_grass_small_c': '/models/unity_assets/Flooded_Grounds/Grass_Small_C.glb',
+  'unity_villa1_wall_mid_e': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Mid_E.glb',
+  'unity_villa1_deco_column_mid_a': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_Column_Mid_A.glb',
+  'unity_villa1_wall_mid_c': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Mid_C.glb',
+  'unity_villa1_floor_mid_a_4x': '/models/unity_assets/Flooded_Grounds/Villa1_Floor_Mid_A_4x.glb',
+  'unity_lo_prop_lamp_c': '/models/unity_assets/Flooded_Grounds/lo_Prop_Lamp_C.glb',
+  'unity_villa2_floor_mid_b': '/models/unity_assets/Flooded_Grounds/Villa2_Floor_Mid_B.glb',
+  'unity_indbuilding1_deco_column_top': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_Column_Top.glb',
+  'unity_brickhouse_ext_b': '/models/unity_assets/Flooded_Grounds/BrickHouse_Ext_B.glb',
+  'unity_struct_extstairs_b_col': '/models/unity_assets/Flooded_Grounds/Struct_ExtStairs_B_COL.glb',
+  'unity_cabin2_end1': '/models/unity_assets/Flooded_Grounds/Cabin2_End1.glb',
+  'unity_struct_extstairs_a': '/models/unity_assets/Flooded_Grounds/Struct_ExtStairs_A.glb',
+  'unity_villa2_base_stairs_a': '/models/unity_assets/Flooded_Grounds/Villa2_Base_Stairs_A.glb',
+  'unity_waterplane': '/models/unity_assets/Flooded_Grounds/WaterPlane.glb',
+  'unity_villa2_wall_int_b': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Int_B.glb',
+  'unity_church1_end_b': '/models/unity_assets/Flooded_Grounds/Church1_End_B.glb',
+  'unity_branch2': '/models/unity_assets/Flooded_Grounds/Branch2.glb',
+  'unity_wheelmovecs': '/models/unity_assets/Flooded_Grounds/WheelMovecs.glb',
+  'unity_cabin2_door_a': '/models/unity_assets/Flooded_Grounds/Cabin2_Door_A.glb',
+  'unity_struct_billboard_c': '/models/unity_assets/Flooded_Grounds/Struct_Billboard_C.glb',
+  'unity_villa1_deco_windowglass_a': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_WindowGlass_A.glb',
+  'unity_indbuilding1_wall_mid_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Wall_Mid_A.glb',
+  'unity_villa2_deco_roofpiece_c': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_RoofPiece_C.glb',
+  'unity_bld_bridge_b': '/models/unity_assets/Flooded_Grounds/BLD_Bridge_B.glb',
+  'unity_struct_pavilion_b': '/models/unity_assets/Flooded_Grounds/Struct_Pavilion_B.glb',
+  'unity_church1_door_b': '/models/unity_assets/Flooded_Grounds/Church1_Door_B.glb',
+  'unity_villa1_roof_mid_b': '/models/unity_assets/Flooded_Grounds/Villa1_Roof_Mid_B.glb',
+  'unity_lo_prop_churchbench_a_dm': '/models/unity_assets/Flooded_Grounds/lo_Prop_ChurchBench_A_DM.glb',
+  'unity_villa1_door_b': '/models/unity_assets/Flooded_Grounds/Villa1_Door_B.glb',
+  'unity_villa2_deco_handrail1_cor_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Handrail1_Cor_A.glb',
+  'unity_villa2_deco_chimney_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Chimney_A.glb',
+  'unity_lo_prop_boat_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Boat_A.glb',
+  'unity_villa2_deco_column_base_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Column_Base_A.glb',
+  'unity_villa2_base_mid_b': '/models/unity_assets/Flooded_Grounds/Villa2_Base_Mid_B.glb',
+  'unity_villa1_ext_a': '/models/unity_assets/Flooded_Grounds/Villa1_Ext_A.glb',
+  'unity_brickhouse_door_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Door_A.glb',
+  'unity_prop_ship_a': '/models/unity_assets/Flooded_Grounds/Prop_Ship_A.glb',
+  'unity_lo_prop_gravestone_d': '/models/unity_assets/Flooded_Grounds/lo_Prop_Gravestone_D.glb',
+  'unity_villa1_deco_handrail1_cor_a': '/models/unity_assets/Flooded_Grounds/Villa1_Deco_Handrail1_Cor_A.glb',
+  'unity_brickhouse_floor_mid_a_dm_b': '/models/unity_assets/Flooded_Grounds/BrickHouse_Floor_Mid_A_DM_B.glb',
+  'unity_villa1_base_mid_b': '/models/unity_assets/Flooded_Grounds/Villa1_Base_Mid_B.glb',
+  'unity_lo_prop_lamp_d': '/models/unity_assets/Flooded_Grounds/lo_Prop_Lamp_D.glb',
+  'unity_prop_painting_d': '/models/unity_assets/Flooded_Grounds/Prop_Painting_D.glb',
+  'unity_struct_pole_b': '/models/unity_assets/Flooded_Grounds/Struct_Pole_B.glb',
+  'unity_struct_billboard_a_dm_col': '/models/unity_assets/Flooded_Grounds/Struct_Billboard_A_DM_COL.glb',
+  'unity_indbuilding1_deco_handrail_cor_a_col': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Deco_Handrail_Cor_A_COL.glb',
+  'unity_barn2_door_a': '/models/unity_assets/Flooded_Grounds/Barn2_Door_A.glb',
+  'unity_grass_med_c': '/models/unity_assets/Flooded_Grounds/Grass_Med_C.glb',
+  'unity_blockercube': '/models/unity_assets/Flooded_Grounds/_BLOCKERCUBE.glb',
+  'unity_lighthouse_a': '/models/unity_assets/Flooded_Grounds/LightHouse_A.glb',
+  'unity_villa2_deco_handrail1_mid_a': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Handrail1_Mid_A.glb',
+  'unity_lo_prop_bed_b': '/models/unity_assets/Flooded_Grounds/lo_Prop_Bed_B.glb',
+  'unity_brickhouse_floor_end_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Floor_End_A.glb',
+  'unity_villa1_base_stairs_a_col': '/models/unity_assets/Flooded_Grounds/Villa1_Base_Stairs_A_COL.glb',
+  'unity_indbuilding1_wall_int_a': '/models/unity_assets/Flooded_Grounds/IndBuilding1_Wall_Int_A.glb',
+  'unity_struct_billboard_b': '/models/unity_assets/Flooded_Grounds/Struct_Billboard_B.glb',
+  'unity_struct_fence1_gate_b_col': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Gate_B_COL.glb',
+  'unity_struct_fence1_gate_a_door': '/models/unity_assets/Flooded_Grounds/Struct_Fence1_Gate_A_Door.glb',
+  'unity_lo_prop_largetable_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_LargeTable_A.glb',
+  'unity_barn2_end_a': '/models/unity_assets/Flooded_Grounds/Barn2_End_A.glb',
+  'unity_villa1_wall_int_b': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Int_B.glb',
+  'unity_villa2_deco_handrail1_mid_a_dm': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_Handrail1_Mid_A_DM.glb',
+  'unity_cabin1_deco_windowglass_a': '/models/unity_assets/Flooded_Grounds/Cabin1_Deco_WindowGlass_A.glb',
+  'unity_brickhouse_end_b': '/models/unity_assets/Flooded_Grounds/BrickHouse_End_B.glb',
+  'unity_outhouse_a': '/models/unity_assets/Flooded_Grounds/Outhouse_A.glb',
+  'unity_lo_cobblerock_a': '/models/unity_assets/Flooded_Grounds/lo_CobbleRock_A.glb',
+  'unity_church1_deco_windowglass_b': '/models/unity_assets/Flooded_Grounds/Church1_Deco_WindowGlass_B.glb',
+  'unity_brickhouse_intstairs_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_IntStairs_A.glb',
+  'unity_pavement2_mid_a': '/models/unity_assets/Flooded_Grounds/Pavement2_Mid_A.glb',
+  'unity_villa2_deco_roofpiece_d': '/models/unity_assets/Flooded_Grounds/Villa2_Deco_RoofPiece_D.glb',
+  'unity_brickhouse_mid_b': '/models/unity_assets/Flooded_Grounds/BrickHouse_Mid_B.glb',
+  'unity_grass_med_b': '/models/unity_assets/Flooded_Grounds/Grass_Med_B.glb',
+  'unity_villa2_top_cor_a': '/models/unity_assets/Flooded_Grounds/Villa2_Top_Cor_A.glb',
+  'unity_villa2_intstairs_a_col': '/models/unity_assets/Flooded_Grounds/Villa2_IntStairs_A_COL.glb',
+  'unity_villa2_wall_mid_c': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Mid_C.glb',
+  'unity_villa2_wall_mid_e': '/models/unity_assets/Flooded_Grounds/Villa2_Wall_Mid_E.glb',
+  'unity_struct_pole_a': '/models/unity_assets/Flooded_Grounds/Struct_Pole_A.glb',
+  'unity_villa1_ext_a_col': '/models/unity_assets/Flooded_Grounds/Villa1_Ext_A_COL.glb',
+  'unity_villa2_intstairs_b': '/models/unity_assets/Flooded_Grounds/Villa2_IntStairs_B.glb',
+  'unity_brickhouse_floor_mid_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Floor_Mid_A.glb',
+  'unity_struct_woodboard_a': '/models/unity_assets/Flooded_Grounds/Struct_WoodBoard_A.glb',
+  'unity_prop_rug_b': '/models/unity_assets/Flooded_Grounds/Prop_Rug_B.glb',
+  'unity_brickhouse_intstairs_a_col': '/models/unity_assets/Flooded_Grounds/BrickHouse_IntStairs_A_COL.glb',
+  'unity_lo_prop_lamp_a': '/models/unity_assets/Flooded_Grounds/lo_Prop_Lamp_A.glb',
+  'unity_villa1_floor_mid_c': '/models/unity_assets/Flooded_Grounds/Villa1_Floor_Mid_C.glb',
+  'unity_cabin2_mid1': '/models/unity_assets/Flooded_Grounds/Cabin2_Mid1.glb',
+  'unity_villa1_wall_mid_b': '/models/unity_assets/Flooded_Grounds/Villa1_Wall_Mid_B.glb',
+  'unity_bgr_pipe_a': '/models/unity_assets/Flooded_Grounds/BGR_Pipe_A.glb',
+  'unity_barn2_end_b': '/models/unity_assets/Flooded_Grounds/Barn2_End_B.glb',
+  'unity_lo_cobblerock_e': '/models/unity_assets/Flooded_Grounds/lo_CobbleRock_E.glb',
+  'unity_brickhouse_base_stairs_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Base_Stairs_A.glb',
+  'unity_brickhouse_mid_a': '/models/unity_assets/Flooded_Grounds/BrickHouse_Mid_A.glb',
+  'unity_villa2_intstairs_b_col': '/models/unity_assets/Flooded_Grounds/Villa2_IntStairs_B_COL.glb',
+  'unity_barn1_mid_a': '/models/unity_assets/Flooded_Grounds/Barn1_Mid_A.glb',
+  'unity_helmet': '/models/unity_assets/Modular_Fantasy_knight_character/Helmet.glb',
+  'unity_boots': '/models/unity_assets/Modular_Fantasy_knight_character/Boots.glb',
+  'unity_body_02': '/models/unity_assets/Modular_Fantasy_knight_character/Body_02.glb',
+  'unity_legs_separate': '/models/unity_assets/Modular_Fantasy_knight_character/Legs_Separate.glb',
+  'unity_skin_2': '/models/unity_assets/Modular_Fantasy_knight_character/Skin_2.glb',
+  'unity_pants': '/models/unity_assets/Modular_Fantasy_knight_character/Pants.glb',
+  'unity_bags': '/models/unity_assets/Modular_Fantasy_knight_character/Bags.glb',
+  'unity_bracers': '/models/unity_assets/Modular_Fantasy_knight_character/Bracers.glb',
+  'unity_torso': '/models/unity_assets/Modular_Fantasy_knight_character/Torso.glb',
+  'unity_mace': '/models/unity_assets/Modular_Fantasy_knight_character/Mace.glb',
+  'unity_skin_1': '/models/unity_assets/Modular_Fantasy_knight_character/Skin_1.glb',
+  'unity_hair': '/models/unity_assets/Modular_Fantasy_knight_character/Hair.glb',
+  'unity_tunic': '/models/unity_assets/Modular_Fantasy_knight_character/Tunic.glb',
+  'unity_head': '/models/unity_assets/Modular_Fantasy_knight_character/Head.glb',
+  'unity_gloves': '/models/unity_assets/Modular_Fantasy_knight_character/Gloves.glb',
+  'unity_shield': '/models/unity_assets/Modular_Fantasy_knight_character/Shield.glb',
+  'unity_skin_3': '/models/unity_assets/Modular_Fantasy_knight_character/Skin_3.glb',
+  'unity_shorts': '/models/unity_assets/Modular_Fantasy_knight_character/shorts.glb',
+  'unity_body_01': '/models/unity_assets/Modular_Fantasy_knight_character/Body_01.glb',
+  'unity_dkswordandshield_unity': '/models/unity_assets/Dead_Knight_Sword_and_Shield/DKSwordAndShield_Unity.glb',
+  'unity_tires': '/models/unity_assets/Touring_Race_Car_Pack_Demo/Tires.glb',
+  'unity_floor': '/models/unity_assets/Touring_Race_Car_Pack_Demo/Floor.glb',
+  'unity_chev': '/models/unity_assets/Touring_Race_Car_Pack_Demo/Chev.glb',
+  'unity_infrastructure_building_nuclear_power_plant': '/models/unity_assets/Toon_City_Pack/infrastructure-building-nuclear-power-plant.glb',
+  'unity_cb_apartment_b': '/models/unity_assets/Toon_City_Pack/cb-apartment-B.glb',
+  'unity_industrial_buildings_inconstruction_warehouse': '/models/unity_assets/Toon_City_Pack/industrial-buildings-inconstruction-warehouse.glb',
+  'unity_atm_b': '/models/unity_assets/Toon_City_Pack/atm-B.glb',
+  'unity_wired_fence': '/models/unity_assets/Toon_City_Pack/wired-fence.glb',
+  'unity_infrastructure_building_park': '/models/unity_assets/Toon_City_Pack/infrastructure-building-park.glb',
+  'unity_two_lane_linear_half': '/models/unity_assets/Toon_City_Pack/two-lane-linear-half.glb',
+  'unity_cb_apartment_e': '/models/unity_assets/Toon_City_Pack/cb-apartment-E.glb',
+  'unity_infrastructure_building_cemetary': '/models/unity_assets/Toon_City_Pack/infrastructure-building-cemetary.glb',
+  'unity_two_lane_road_roundabout': '/models/unity_assets/Toon_City_Pack/two-lane-road-roundabout.glb',
+  'unity_government_building_city_hall': '/models/unity_assets/Toon_City_Pack/government-building-city-hall.glb',
+  'unity_single_lane_l_junction_road_piece': '/models/unity_assets/Toon_City_Pack/single-lane-L-junction-road-piece.glb',
+  'unity_helicopter': '/models/unity_assets/Toon_City_Pack/helicopter.glb',
+  'unity_cb_apartment_h': '/models/unity_assets/Toon_City_Pack/cb-apartment-H.glb',
+  'unity_infrastructure_building_clock_tower': '/models/unity_assets/Toon_City_Pack/infrastructure-building-clock-tower.glb',
+  'unity_suburban_house_e': '/models/unity_assets/Toon_City_Pack/suburban-house-E.glb',
+  'unity_police_car': '/models/unity_assets/Toon_City_Pack/police-car.glb',
+  'unity_single_lane_curved_road_piece': '/models/unity_assets/Toon_City_Pack/single-lane-curved-road-piece.glb',
+  'unity_cb_apartment_c': '/models/unity_assets/Toon_City_Pack/cb-apartment-C.glb',
+  'unity_curved_highway_piece': '/models/unity_assets/Toon_City_Pack/curved-highway-piece.glb',
+  'unity_airplane': '/models/unity_assets/Toon_City_Pack/airplane.glb',
+  'unity_pedestrian_way_linear_piece': '/models/unity_assets/Toon_City_Pack/pedestrian-way-linear-piece.glb',
+  'unity_suburban_house_b': '/models/unity_assets/Toon_City_Pack/suburban-house-B.glb',
+  'unity_wooden_fence': '/models/unity_assets/Toon_City_Pack/wooden-fence.glb',
+  'unity_civil_car_c': '/models/unity_assets/Toon_City_Pack/civil-car-C.glb',
+  'unity_no_parking_sign': '/models/unity_assets/Toon_City_Pack/no-parking-sign.glb',
+  'unity_infrastructure_building_stadium': '/models/unity_assets/Toon_City_Pack/infrastructure-building-stadium.glb',
+  'unity_two_lane_l_junction_left': '/models/unity_assets/Toon_City_Pack/two-lane-L-junction-left.glb',
+  'unity_two_lane_linear_road_end_piece': '/models/unity_assets/Toon_City_Pack/two-lane-linear-road-end-piece.glb',
+  'unity_infrastructure_building_power_plant': '/models/unity_assets/Toon_City_Pack/infrastructure-building-power-plant.glb',
+  'unity_government_building_police_station': '/models/unity_assets/Toon_City_Pack/government-building-police-station.glb',
+  'unity_pedestrian_way_right_turn': '/models/unity_assets/Toon_City_Pack/pedestrian-way-right-turn.glb',
+  'unity_tree_type_c': '/models/unity_assets/Toon_City_Pack/tree-type-C.glb',
+  'unity_fire_truck': '/models/unity_assets/Toon_City_Pack/fire-truck.glb',
+  'unity_commercial_building_pizza_shop': '/models/unity_assets/Toon_City_Pack/commercial-building-pizza-shop.glb',
+  'unity_stop_sign': '/models/unity_assets/Toon_City_Pack/stop-sign.glb',
+  'unity_dumpster': '/models/unity_assets/Toon_City_Pack/dumpster.glb',
+  'unity_ice_cream_stand': '/models/unity_assets/Toon_City_Pack/ice-cream-stand.glb',
+  'unity_infrastructure_building_tennis_court': '/models/unity_assets/Toon_City_Pack/infrastructure-building-tennis-court.glb',
+  'unity_infrastructure_building_basketball_court': '/models/unity_assets/Toon_City_Pack/infrastructure-building-basketball-court.glb',
+  'unity_traffic_cone': '/models/unity_assets/Toon_City_Pack/traffic-cone.glb',
+  'unity_civil_truck_a': '/models/unity_assets/Toon_City_Pack/civil-truck-A.glb',
+  'unity_commercial_building_office': '/models/unity_assets/Toon_City_Pack/commercial-building-office.glb',
+  'unity_industrial_buildings_inconstruction_building': '/models/unity_assets/Toon_City_Pack/industrial-buildings-inconstruction-building.glb',
+  'unity_infrastructure_building_airport': '/models/unity_assets/Toon_City_Pack/infrastructure-building-airport.glb',
+  'unity_street_light_single': '/models/unity_assets/Toon_City_Pack/street-light-single.glb',
+  'unity_cb_apartment_g': '/models/unity_assets/Toon_City_Pack/cb-apartment-G.glb',
+  'unity_commercial_building_coffee_shop': '/models/unity_assets/Toon_City_Pack/commercial-building-coffee-shop.glb',
+  'unity_road_sign_double_two_lane_road': '/models/unity_assets/Toon_City_Pack/road-sign-double(two-lane-road).glb',
+  'unity_industrial_buildings_building_a': '/models/unity_assets/Toon_City_Pack/industrial-buildings-building-A.glb',
+  'unity_civil_car_a': '/models/unity_assets/Toon_City_Pack/civil-car-A.glb',
+  'unity_rock_type_a': '/models/unity_assets/Toon_City_Pack/rock-type-A.glb',
+  'unity_public_bench': '/models/unity_assets/Toon_City_Pack/public-bench.glb',
+  'unity_street_light_double': '/models/unity_assets/Toon_City_Pack/street-light-double.glb',
+  'unity_single_lane_road_roundabout': '/models/unity_assets/Toon_City_Pack/single-lane-road-roundabout.glb',
+  'unity_two_lane_l_junction_right': '/models/unity_assets/Toon_City_Pack/two-lane-L-junction-right.glb',
+  'unity_lemonade_stand': '/models/unity_assets/Toon_City_Pack/lemonade-stand.glb',
+  'unity_highway_ramp': '/models/unity_assets/Toon_City_Pack/highway-ramp.glb',
+  'unity_railroad_track_linear_piece': '/models/unity_assets/Toon_City_Pack/railroad-track-linear-piece.glb',
+  'unity_government_building_museum': '/models/unity_assets/Toon_City_Pack/government-building-museum.glb',
+  'unity_pedestrian_way_curved_piece': '/models/unity_assets/Toon_City_Pack/pedestrian-way-curved-piece.glb',
+  'unity_single_lane_linear_road_end_piece': '/models/unity_assets/Toon_City_Pack/single-lane-linear-road-end-piece.glb',
+  'unity_road_block_type_a': '/models/unity_assets/Toon_City_Pack/road-block-type-A.glb',
+  'unity_public_stairs': '/models/unity_assets/Toon_City_Pack/public-stairs.glb',
+  'unity_traffic_lights_single': '/models/unity_assets/Toon_City_Pack/traffic-lights-single.glb',
+  'unity_government_building_bank': '/models/unity_assets/Toon_City_Pack/government-building-bank.glb',
+  'unity_atm_a': '/models/unity_assets/Toon_City_Pack/atm-A.glb',
+  'unity_road_sign_single': '/models/unity_assets/Toon_City_Pack/road-sign-single.glb',
+  'unity_infrastructure_building_gas_station': '/models/unity_assets/Toon_City_Pack/infrastructure-building-gas-station.glb',
+  'unity_trash_bags': '/models/unity_assets/Toon_City_Pack/trash-bags.glb',
+  'unity_commercial_building_hotel': '/models/unity_assets/Toon_City_Pack/commercial-building-hotel.glb',
+  'unity_suburban_house_d': '/models/unity_assets/Toon_City_Pack/suburban-house-D.glb',
+  'unity_tree_type_b': '/models/unity_assets/Toon_City_Pack/tree-type-B.glb',
+  'unity_train': '/models/unity_assets/Toon_City_Pack/train.glb',
+  'unity_government_building_fire_station': '/models/unity_assets/Toon_City_Pack/government-building-fire-station.glb',
+  'unity_industrial_buildings_building_c': '/models/unity_assets/Toon_City_Pack/industrial-buildings-building-C.glb',
+  'unity_cb_apartment_f': '/models/unity_assets/Toon_City_Pack/cb-apartment-F.glb',
+  'unity_speed_limit_sign': '/models/unity_assets/Toon_City_Pack/speed-limit-sign.glb',
+  'unity_railroad_track_curved_piece': '/models/unity_assets/Toon_City_Pack/railroad-track-curved-piece.glb',
+  'unity_cb_apartment_j': '/models/unity_assets/Toon_City_Pack/cb-apartment-J.glb',
+  'unity_two_lane_linear_road_piece': '/models/unity_assets/Toon_City_Pack/two-lane-linear-road-piece.glb',
+  'unity_rock_type_b': '/models/unity_assets/Toon_City_Pack/rock-type-B.glb',
+  'unity_electrical_pole_duo': '/models/unity_assets/Toon_City_Pack/electrical-pole-duo.glb',
+  'unity_bush_type_a': '/models/unity_assets/Toon_City_Pack/bush-type-A.glb',
+  'unity_civil_car_d': '/models/unity_assets/Toon_City_Pack/civil-car-D.glb',
+  'unity_bus_stop': '/models/unity_assets/Toon_City_Pack/bus-stop.glb',
+  'unity_infrastructure_building_hospital': '/models/unity_assets/Toon_City_Pack/infrastructure-building-hospital.glb',
+  'unity_fire_hydrant': '/models/unity_assets/Toon_City_Pack/fire-hydrant.glb',
+  'unity_two_lane_curved_road_piece': '/models/unity_assets/Toon_City_Pack/two-lane-curved-road-piece.glb',
+  'unity_suburban_house_c': '/models/unity_assets/Toon_City_Pack/suburban-house-C.glb',
+  'unity_tree_type_a': '/models/unity_assets/Toon_City_Pack/tree-type-A.glb',
+  'unity_city_bus': '/models/unity_assets/Toon_City_Pack/city-bus.glb',
+  'unity_commercial_building_ice_cream_shop': '/models/unity_assets/Toon_City_Pack/commercial-building-ice-cream-shop.glb',
+  'unity_cb_apartment_a': '/models/unity_assets/Toon_City_Pack/cb-apartment-A.glb',
+  'unity_subway_entrance': '/models/unity_assets/Toon_City_Pack/subway-entrance.glb',
+  'unity_pedestrian_way_left_turn': '/models/unity_assets/Toon_City_Pack/pedestrian-way-left-turn.glb',
+  'unity_school_bus': '/models/unity_assets/Toon_City_Pack/school-bus.glb',
+  'unity_electrical_pylons_quadra': '/models/unity_assets/Toon_City_Pack/electrical-pylons-quadra.glb',
+  'unity_infrastructure_building_ms_parking_lot': '/models/unity_assets/Toon_City_Pack/infrastructure-building-ms-parking-lot.glb',
+  'unity_traffic_lights_curved': '/models/unity_assets/Toon_City_Pack/traffic-lights-curved.glb',
+  'unity_garbage_bin': '/models/unity_assets/Toon_City_Pack/garbage-bin.glb',
+  'unity_industrial_buildings_building_b': '/models/unity_assets/Toon_City_Pack/industrial-buildings-building-B.glb',
+  'unity_civil_car_b': '/models/unity_assets/Toon_City_Pack/civil-car-B.glb',
+  'unity_subway_metro': '/models/unity_assets/Toon_City_Pack/subway-metro.glb',
+  'unity_bush_type_b': '/models/unity_assets/Toon_City_Pack/bush-type-B.glb',
+  'unity_single_lane_linear_road_piece': '/models/unity_assets/Toon_City_Pack/single-lane-linear-road-piece.glb',
+  'unity_commercial_building_shopping_center': '/models/unity_assets/Toon_City_Pack/commercial-building-shopping-center.glb',
+  'unity_commercial_building_fastfood_shop': '/models/unity_assets/Toon_City_Pack/commercial-building-fastfood-shop.glb',
+  'unity_infrastructure_building_train_station': '/models/unity_assets/Toon_City_Pack/infrastructure-building-train-station.glb',
+  'unity_suburban_house_a': '/models/unity_assets/Toon_City_Pack/suburban-house-A.glb',
+  'unity_linear_highway_piece': '/models/unity_assets/Toon_City_Pack/linear-highway-piece.glb',
+  'unity_cb_apartment_d': '/models/unity_assets/Toon_City_Pack/cb-apartment-D.glb',
+  'unity_civil_truck_b': '/models/unity_assets/Toon_City_Pack/civil-truck-B.glb',
+  'unity_road_block_type_b': '/models/unity_assets/Toon_City_Pack/road-block-type-B.glb',
+  'unity_two_lane_intersaction': '/models/unity_assets/Toon_City_Pack/two-lane-intersaction.glb',
+  'unity_electrical_pole_extra_cable': '/models/unity_assets/Toon_City_Pack/electrical-pole-extra-cable.glb',
+  'unity_commercial_building_cinema': '/models/unity_assets/Toon_City_Pack/commercial-building-cinema.glb',
+  'unity_infrastructure_building_plaza': '/models/unity_assets/Toon_City_Pack/infrastructure-building-plaza.glb',
+  'unity_government_building_school': '/models/unity_assets/Toon_City_Pack/government-building-school.glb',
+  'unity_outdoor_seating': '/models/unity_assets/Toon_City_Pack/outdoor-seating.glb',
+  'unity_two_lane_t_junction': '/models/unity_assets/Toon_City_Pack/two-lane-T-junction.glb',
+  'unity_infrastructure_building_church': '/models/unity_assets/Toon_City_Pack/infrastructure-building-church.glb',
+  'unity_taxi': '/models/unity_assets/Toon_City_Pack/taxi.glb',
+  'unity_ambulance': '/models/unity_assets/Toon_City_Pack/ambulance.glb',
+  'unity_infrastructure_building_baseball_field': '/models/unity_assets/Toon_City_Pack/infrastructure-building-baseball-field.glb',
+  'unity_infrastructure_building_parking_lot': '/models/unity_assets/Toon_City_Pack/infrastructure-building-parking-lot.glb',
+  'unity_hot_dog_stand': '/models/unity_assets/Toon_City_Pack/hot-dog-stand.glb',
+  'unity_commercial_building_concert_hall': '/models/unity_assets/Toon_City_Pack/commercial-building-concert-hall.glb',
+  'unity_mailbox': '/models/unity_assets/Toon_City_Pack/mailbox.glb',
+  'unity_tree_type_d': '/models/unity_assets/Toon_City_Pack/tree-type-D.glb',
+  'unity_pt_generic_shrub_01_dead': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Generic_Shrub_01_dead.glb',
+  'unity_pt_pine_tree_03_dead': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Pine_Tree_03_dead.glb',
+  'unity_pt_wooden_bridge_02': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Wooden_Bridge_02.glb',
+  'unity_pt_fruit_tree_01_plums': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_plums.glb',
+  'unity_pt_pine_tree_03_stump': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Pine_Tree_03_stump.glb',
+  'unity_pt_fruit_tree_01_green_cut': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_green_cut.glb',
+  'unity_pt_fruit_tree_01_logs': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_logs.glb',
+  'unity_pt_pine_tree_03_green_cut': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Pine_Tree_03_green_cut.glb',
+  'unity_pt_caesars_mushroom_01': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Caesars_Mushroom_01.glb',
+  'unity_pt_pine_tree_03_dead_cut': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Pine_Tree_03_dead_cut.glb',
+  'unity_pt_fruit_tree_01_dead': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_dead.glb',
+  'unity_pt_poppy_02': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Poppy_02.glb',
+  'unity_pt_grass_02': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Grass_02.glb',
+  'unity_pt_modular_fence_wood_03': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Modular_Fence_Wood_03.glb',
+  'unity_pt_ore_rock_01': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Ore_Rock_01.glb',
+  'unity_pt_fruit_tree_01_pears': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_pears.glb',
+  'unity_pt_modular_fence_wood_02': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Modular_Fence_Wood_02.glb',
+  'unity_pt_modular_gate_wood_01': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Modular_Gate_Wood_01.glb',
+  'unity_pt_pine_tree_03_green': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Pine_Tree_03_green.glb',
+  'unity_pt_generic_shrub_01_green': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Generic_Shrub_01_green.glb',
+  'unity_pt_fruit_tree_01_dead_cut': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_dead_cut.glb',
+  'unity_pt_ore_rock_01_split': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Ore_Rock_01_split.glb',
+  'unity_pt_menhir_rock_02': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Menhir_Rock_02.glb',
+  'unity_pt_river_rock_pile_02': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_River_Rock_Pile_02.glb',
+  'unity_pt_pine_tree_03_logs': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Pine_Tree_03_logs.glb',
+  'unity_pt_modular_fence_wood_01': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Modular_Fence_Wood_01.glb',
+  'unity_pt_fruit_tree_01_green': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_green.glb',
+  'unity_pt_generic_rock_01': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Generic_Rock_01.glb',
+  'unity_pt_fruit_tree_01_stump': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_stump.glb',
+  'unity_pt_fruit_tree_01_apples': '/models/unity_assets/Lowpoly_Environment_-_Nature_Free_-_LOW_POLY_MEDIEVAL_FANTASY_SERIES/PT_Fruit_Tree_01_apples.glb',
+  'unity_pt_9m_case': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Case.glb',
+  'unity_pt_9m_pistol_9mm_bullet_low_sep': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Pistol 9mm Bullet_Low_sep.glb',
+  'unity_pt_9m_pistol_9mm_bullet_high_sep': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Pistol 9mm Bullet_High_sep.glb',
+  'unity_pt_9m_pistol_ammo': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Pistol Ammo.glb',
+  'unity_pt_9m_pistol_9mm_bullet_high': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Pistol 9mm Bullet_High.glb',
+  'unity_pt_9m_pistol_9mm_bullet_low': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Pistol 9mm Bullet_Low.glb',
+  'unity_pt_9m_pistol': '/models/unity_assets/Weapon_NZ_PT-9M_Pistol/PT-9M Pistol.glb',
+  'unity_sword_1': '/models/unity_assets/FPS_Medieval_Weapons_-_Free_Starter_Pack/sword_1.glb',
+  'unity_axe_4': '/models/unity_assets/FPS_Medieval_Weapons_-_Free_Starter_Pack/axe_4.glb',
+  'unity_sword5_3': '/models/unity_assets/FREE_-_Stylized_Weapons/Sword5_3.glb',
+  'unity_shield_evo_02_v1': '/models/unity_assets/FREE_-_Stylized_Weapons/SHIELD_EVO_02_V1.glb',
+  'unity_staff_05_v1': '/models/unity_assets/FREE_-_Stylized_Weapons/STAFF_05_V1.glb',
+  'unity_axebasic2': '/models/unity_assets/FREE_-_Stylized_Weapons/AxeBasic2.glb',
+  'unity_shield_evo_03_v1': '/models/unity_assets/FREE_-_Stylized_Weapons/SHIELD_EVO_03_V1.glb',
+  'unity_polearm2_2': '/models/unity_assets/FREE_-_Stylized_Weapons/Polearm2_2.glb',
+  'unity_shield_handle_arm_01': '/models/unity_assets/FREE_-_Stylized_Weapons/SHIELD_HANDLE_ARM_01.glb',
+  'unity_shield_handle_hand_02': '/models/unity_assets/FREE_-_Stylized_Weapons/SHIELD_HANDLE_HAND_02.glb',
+  'unity_staff_04_v1': '/models/unity_assets/FREE_-_Stylized_Weapons/STAFF_04_V1.glb',
+  'unity_sword1_1': '/models/unity_assets/FREE_-_Stylized_Weapons/Sword1_1.glb',
+  'unity_dagger1_3': '/models/unity_assets/FREE_-_Stylized_Weapons/Dagger1_3.glb',
+  'unity_sword2_3': '/models/unity_assets/FREE_-_Stylized_Weapons/Sword2_3.glb',
+  'unity_hammer1_1': '/models/unity_assets/FREE_-_Stylized_Weapons/Hammer1_1.glb',
+  'unity_dagger4_1': '/models/unity_assets/FREE_-_Stylized_Weapons/Dagger4_1.glb',
+  'unity_sword3_1': '/models/unity_assets/FREE_-_Stylized_Weapons/Sword3_1.glb',
+  'unity_axeevolving3_3': '/models/unity_assets/FREE_-_Stylized_Weapons/AxeEvolving3_3.glb',
+  'unity_staff_evo_02_v2': '/models/unity_assets/FREE_-_Stylized_Weapons/STAFF_EVO_02_V2.glb',
+  'unity_scythe1_3': '/models/unity_assets/FREE_-_Stylized_Weapons/Scythe1_3.glb',
+  'unity_musket1_2': '/models/unity_assets/FREE_-_Stylized_Weapons/Musket1_2.glb',
+  'unity_axebasic1': '/models/unity_assets/FREE_-_Stylized_Weapons/AxeBasic1.glb',
+  'unity_humanm_run01_backwardleft': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_BackwardLeft.glb',
+  'unity_humanm_attackpolearm01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@AttackPolearm01.glb',
+  'unity_humanf_run01_backwardleft_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_BackwardLeft [RM].glb',
+  'unity_humanm_straferun01_forwardright_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_ForwardRight [RM].glb',
+  'unity_human_warhammer': '/models/unity_assets/Human_Melee_Animations_FREE/Human_Warhammer.glb',
+  'unity_humanf_idle01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Idle01.glb',
+  'unity_humanf_run01_backwardright': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_BackwardRight.glb',
+  'unity_humanf_run01_forwardright_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_ForwardRight [RM].glb',
+  'unity_humanm_run01_forwardright': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_ForwardRight.glb',
+  'unity_humanf_straferun01_left': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_Left.glb',
+  'unity_humanf_model': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF_Model.glb',
+  'unity_humanf_combatidle2h01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@CombatIdle2H01.glb',
+  'unity_humanf_run01_backwardleft': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_BackwardLeft.glb',
+  'unity_humanf_straferun01_backwardright': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_BackwardRight.glb',
+  'unity_humanm_straferun01_forwardleft_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_ForwardLeft [RM].glb',
+  'unity_humanf_straferun01_right': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_Right.glb',
+  'unity_humanm_run01_forwardleft': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_ForwardLeft.glb',
+  'unity_humanf_objectgripshoulder02_l': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@ObjectGripShoulder02_L.glb',
+  'unity_humanm_model': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM_Model.glb',
+  'unity_humanm_run01_backward_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_Backward [RM].glb',
+  'unity_humanm_straferun01_backwardright_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_BackwardRight [RM].glb',
+  'unity_humanm_objectgripshoulder02_r': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@ObjectGripShoulder02_R.glb',
+  'unity_humanf_combatdamage01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@CombatDamage01.glb',
+  'unity_humanm_objectgripshoulder01_l': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@ObjectGripShoulder01_L.glb',
+  'unity_human_shield': '/models/unity_assets/Human_Melee_Animations_FREE/Human_Shield.glb',
+  'unity_humanm_attackshield01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@AttackShield01.glb',
+  'unity_humanm_weaponhold2h01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@WeaponHold2H01.glb',
+  'unity_humanm_straferun01_backwardleft_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_BackwardLeft [RM].glb',
+  'unity_humanf_run01_forward': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_Forward.glb',
+  'unity_humanf_attack1h01_r': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Attack1H01_R.glb',
+  'unity_humanf_weaponholdpolearm01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@WeaponHoldPolearm01.glb',
+  'unity_humanf_run01_left': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_Left.glb',
+  'unity_humanm_death01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Death01.glb',
+  'unity_humanm_run01_backwardright_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_BackwardRight [RM].glb',
+  'unity_humanf_attack2h01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Attack2H01.glb',
+  'unity_humanm_weaponholdpolearm01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@WeaponHoldPolearm01.glb',
+  'unity_humanf_objectgripshoulder02_r': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@ObjectGripShoulder02_R.glb',
+  'unity_humanf_run01_forwardright': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_ForwardRight.glb',
+  'unity_humanm_straferun01_backwardleft': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_BackwardLeft.glb',
+  'unity_humanf_run01_backwardright_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_BackwardRight [RM].glb',
+  'unity_humanm_run01_forwardleft_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_ForwardLeft [RM].glb',
+  'unity_humanm_idle01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Idle01.glb',
+  'unity_humanm_objectgripshoulder01_r': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@ObjectGripShoulder01_R.glb',
+  'unity_human_handsclosed01': '/models/unity_assets/Human_Melee_Animations_FREE/Human@HandsClosed01.glb',
+  'unity_human_dagger': '/models/unity_assets/Human_Melee_Animations_FREE/Human_Dagger.glb',
+  'unity_humanf_attackshield01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@AttackShield01.glb',
+  'unity_humanf_run01_right_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_Right [RM].glb',
+  'unity_human_polearm': '/models/unity_assets/Human_Melee_Animations_FREE/Human_Polearm.glb',
+  'unity_humanf_combatidle01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@CombatIdle01.glb',
+  'unity_humanm_run01_forward': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_Forward.glb',
+  'unity_humanf_straferun01_forwardleft_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_ForwardLeft [RM].glb',
+  'unity_humanf_run01_backward_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_Backward [RM].glb',
+  'unity_humanf_straferun01_forwardright_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_ForwardRight [RM].glb',
+  'unity_humanf_straferun01_right_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_Right [RM].glb',
+  'unity_humanm_run01_forwardright_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_ForwardRight [RM].glb',
+  'unity_humanf_straferun01_forwardleft': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_ForwardLeft.glb',
+  'unity_humanf_straferun01_backwardright_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_BackwardRight [RM].glb',
+  'unity_humanm_straferun01_forwardright': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_ForwardRight.glb',
+  'unity_humanm_straferun01_left': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_Left.glb',
+  'unity_humanf_attackpolearm01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@AttackPolearm01.glb',
+  'unity_humanm_run01_right': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_Right.glb',
+  'unity_humanf_objectgripshoulder01_r': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@ObjectGripShoulder01_R.glb',
+  'unity_humanm_run01_forward_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_Forward [RM].glb',
+  'unity_humanm_run01_left': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_Left.glb',
+  'unity_humanm_straferun01_right': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_Right.glb',
+  'unity_humanm_attack2h01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Attack2H01.glb',
+  'unity_humanf_combatidlepolearm01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@CombatIdlePolearm01.glb',
+  'unity_human_greatsword': '/models/unity_assets/Human_Melee_Animations_FREE/Human_Greatsword.glb',
+  'unity_humanm_run01_backward': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_Backward.glb',
+  'unity_human_objectgriphands01': '/models/unity_assets/Human_Melee_Animations_FREE/Human@ObjectGripHands01.glb',
+  'unity_humanf_death01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Death01.glb',
+  'unity_humanf_straferun01_left_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_Left [RM].glb',
+  'unity_humanf_attack1h01_l': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Attack1H01_L.glb',
+  'unity_humanm_straferun01_right_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_Right [RM].glb',
+  'unity_humanf_run01_forward_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_Forward [RM].glb',
+  'unity_humanf_run01_backward': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_Backward.glb',
+  'unity_humanf_straferun01_backwardleft_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_BackwardLeft [RM].glb',
+  'unity_humanm_combatidlepolearm01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@CombatIdlePolearm01.glb',
+  'unity_humanf_run01_forwardleft_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_ForwardLeft [RM].glb',
+  'unity_humanf_combatidle1h01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@CombatIdle1H01.glb',
+  'unity_humanm_objectgripshoulder02_l': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@ObjectGripShoulder02_L.glb',
+  'unity_humanm_run01_right_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_Right [RM].glb',
+  'unity_humanm_run01_backwardright': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_BackwardRight.glb',
+  'unity_humanf_run01_forwardleft': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_ForwardLeft.glb',
+  'unity_humanm_combatidle2h01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@CombatIdle2H01.glb',
+  'unity_humanm_combatidle1h01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@CombatIdle1H01.glb',
+  'unity_humanm_run01_backwardleft_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_BackwardLeft [RM].glb',
+  'unity_humanf_straferun01_backwardleft': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_BackwardLeft.glb',
+  'unity_humanf_objectgripshoulder01_l': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@ObjectGripShoulder01_L.glb',
+  'unity_humanm_straferun01_left_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_Left [RM].glb',
+  'unity_human_sword': '/models/unity_assets/Human_Melee_Animations_FREE/Human_Sword.glb',
+  'unity_humanm_straferun01_forwardleft': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_ForwardLeft.glb',
+  'unity_humanm_run01_left_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Run01_Left [RM].glb',
+  'unity_humanm_combatdamage01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@CombatDamage01.glb',
+  'unity_humanf_run01_right': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_Right.glb',
+  'unity_humanf_weaponhold2h01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@WeaponHold2H01.glb',
+  'unity_humanm_attack1h01_r': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Attack1H01_R.glb',
+  'unity_humanm_combatidle01': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@CombatIdle01.glb',
+  'unity_humanf_straferun01_forwardright': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@StrafeRun01_ForwardRight.glb',
+  'unity_humanm_straferun01_backwardright': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@StrafeRun01_BackwardRight.glb',
+  'unity_humanf_run01_left_rm': '/models/unity_assets/Human_Melee_Animations_FREE/HumanF@Run01_Left [RM].glb',
+  'unity_humanm_attack1h01_l': '/models/unity_assets/Human_Melee_Animations_FREE/HumanM@Attack1H01_L.glb',
+  'unity_torus1': '/models/unity_assets/Magic_Effects_FREE/Torus1.glb',
+  'unity_cylinder': '/models/unity_assets/Magic_Effects_FREE/Cylinder.glb',
+  'unity_slash': '/models/unity_assets/Magic_Effects_FREE/Slash.glb',
+  'unity_crystal1': '/models/unity_assets/Magic_Effects_FREE/Crystal1.glb',
+  'unity_standing_melee_attack_horizontal': '/models/unity_assets/o3n_Male_and_Female_UMA_Races/Standing Melee Attack Horizontal.glb',
+  'unity_mutant_flexing_muscles': '/models/unity_assets/o3n_Male_and_Female_UMA_Races/Mutant Flexing Muscles.glb',
+  'unity_f1': '/models/unity_assets/HQ_FPS_Weapons_20/F1.glb',
+  'unity_flaregun': '/models/unity_assets/HQ_FPS_Weapons_20/FlareGun.glb',
+  'unity_fp_arms_f1': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Arms_F1.glb',
+  'unity_crate_fragments': '/models/unity_assets/HQ_FPS_Weapons_20/Crate_Fragments.glb',
+  'unity_fp_arms_molotovcocktail': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Arms_MolotovCocktail.glb',
+  'unity_fp_dbshotgun': '/models/unity_assets/HQ_FPS_Weapons_20/FP_DBShotgun.glb',
+  'unity_fp_revolver': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Revolver.glb',
+  'unity_lighter': '/models/unity_assets/HQ_FPS_Weapons_20/Lighter.glb',
+  'unity_crossbow': '/models/unity_assets/HQ_FPS_Weapons_20/Crossbow.glb',
+  'unity_fp_combatknife': '/models/unity_assets/HQ_FPS_Weapons_20/FP_CombatKnife.glb',
+  'unity_m1911': '/models/unity_assets/HQ_FPS_Weapons_20/M1911.glb',
+  'unity_conifertree': '/models/unity_assets/HQ_FPS_Weapons_20/ConiferTree.glb',
+  'unity_radiotower': '/models/unity_assets/HQ_FPS_Weapons_20/RadioTower.glb',
+  'unity_firingrange_exteriorpieces': '/models/unity_assets/HQ_FPS_Weapons_20/FiringRange_ExteriorPieces.glb',
+  'unity_r870': '/models/unity_assets/HQ_FPS_Weapons_20/R870.glb',
+  'unity_fireaxe': '/models/unity_assets/HQ_FPS_Weapons_20/FireAxe.glb',
+  'unity_fp_syringe': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Syringe.glb',
+  'unity_fp_arms_fireaxe': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Arms_FireAxe.glb',
+  'unity_decals': '/models/unity_assets/HQ_FPS_Weapons_20/Decals.glb',
+  'unity_fp_crossbow': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Crossbow.glb',
+  'unity_fp_arms_fraggrenade': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Arms_FragGrenade.glb',
+  'unity_fp_arms_crossbow': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Arms_Crossbow.glb',
+  'unity_sniperscope1': '/models/unity_assets/HQ_FPS_Weapons_20/SniperScope1.glb',
+  'unity_molotovcocktail': '/models/unity_assets/HQ_FPS_Weapons_20/MolotovCocktail.glb',
+  'unity_fp_arms_mp5': '/models/unity_assets/HQ_FPS_Weapons_20/FP_Arms_MP5.glb',
+  'unity_humanm_at_idle01-idle02':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Idle01-Idle02.glb',
+  'unity_humanm_at_sprint01_right':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_Right.glb',
+  'unity_humanm_at_turn01_right':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Turn01_Right.glb',
+  'unity_humanm_at_walk01_right_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Right_[RM].glb',
+  'unity_humanf_at_walk01_backwardright':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_BackwardRight.glb',
+  'unity_humanm_at_fall01':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Fall01.glb',
+  'unity_humanm_at_sprint01_left_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_Left_[RM].glb',
+  'unity_humanm_at_walk01_forwardleft_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_ForwardLeft_[RM].glb',
+  'unity_humanf_at_jump01_-_land':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Jump01_-_Land.glb',
+  'unity_humanf_at_walk01_left':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_Left.glb',
+  'unity_humanm_at_jump01':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Jump01.glb',
+  'unity_humanf_at_idle02':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Idle02.glb',
+  'unity_humanm_at_walk01_right':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Right.glb',
+  'unity_humanf_at_jump01_[rm]_-_land':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Jump01_[RM]_-_Land.glb',
+  'unity_humanf_at_walk01_forward':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_Forward.glb',
+  'unity_humanf_at_walk01_backward_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_Backward_[RM].glb',
+  'unity_humanf_at_sprint01_right':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_Right.glb',
+  'unity_humanf_at_jump01_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Jump01_[RM].glb',
+  'unity_humanm_at_walk01_forwardleft':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_ForwardLeft.glb',
+  'unity_humanf_at_walk01_forwardleft_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_ForwardLeft_[RM].glb',
+  'unity_humanm_at_talk01':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Talk01.glb',
+  'unity_humanm_at_jump01_[rm]_-_begin':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Jump01_[RM]_-_Begin.glb',
+  'unity_humanf_at_walk01_backwardright_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_BackwardRight_[RM].glb',
+  'unity_humanm_at_walk01_backwardright':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_BackwardRight.glb',
+  'unity_humanf_at_walk01_backward':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_Backward.glb',
+  'unity_humanm_at_sprint01_forward_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_Forward_[RM].glb',
+  'unity_humanm_at_walk01_backwardleft':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_BackwardLeft.glb',
+  'unity_humanf_at_sprint01_forwardleft':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_ForwardLeft.glb',
+  'unity_humanm_at_turn01_left':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Turn01_Left.glb',
+  'unity_humanf_at_walk01_right':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_Right.glb',
+  'unity_humanf_at_fall01':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Fall01.glb',
+  'unity_humanm_at_turn01_left_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Turn01_Left_[RM].glb',
+  'unity_humanf_at_walk01_forwardleft':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_ForwardLeft.glb',
+  'unity_humanm_at_sprint01_forwardright':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_ForwardRight.glb',
+  'unity_humanf_at_turn01_right_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Turn01_Right_[RM].glb',
+  'unity_humanf_at_walk01_right_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_Right_[RM].glb',
+  'unity_humanm_at_walk01_backwardleft_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_BackwardLeft_[RM].glb',
+  'unity_humanm_at_turn01_right_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Turn01_Right_[RM].glb',
+  'unity_humanf_at_sprint01_forwardright_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_ForwardRight_[RM].glb',
+  'unity_humanf_at_walk01_forward_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_Forward_[RM].glb',
+  'unity_humanf_at_sprint01_left_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_Left_[RM].glb',
+  'unity_humanm_at_sprint01_right_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_Right_[RM].glb',
+  'unity_humanm_at_walk01_forward_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Forward_[RM].glb',
+  'unity_humanm_at_idle02':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Idle02.glb',
+  'unity_humanm_at_walk01_forwardright_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_ForwardRight_[RM].glb',
+  'unity_humanm_at_walk01_left_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Left_[RM].glb',
+  'unity_humanm_at_walk01_backwardright_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_BackwardRight_[RM].glb',
+  'unity_humanf_at_turn01_left':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Turn01_Left.glb',
+  'unity_humanf_at_sprint01_right_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_Right_[RM].glb',
+  'unity_humanf_at_walk01_forwardright':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_ForwardRight.glb',
+  'unity_humanf_at_walk01_backwardleft_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_BackwardLeft_[RM].glb',
+  'unity_humanf_at_walk01_forwardright_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_ForwardRight_[RM].glb',
+  'unity_humanf_at_jump01_-_begin':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Jump01_-_Begin.glb',
+  'unity_humanm_at_jump01_-_begin':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Jump01_-_Begin.glb',
+  'unity_humanf_at_turn01_right':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Turn01_Right.glb',
+  'unity_humanm_at_walk01_left':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Left.glb',
+  'unity_humanf_at_sprint01_left':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_Left.glb',
+  'unity_humanm_at_walk01_forward':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Forward.glb',
+  'unity_humanm_at_jump01_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Jump01_[RM].glb',
+  'unity_humanf_at_jump01_[rm]_-_begin':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Jump01_[RM]_-_Begin.glb',
+  'unity_humanm_at_jump01_-_land':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Jump01_-_Land.glb',
+  'unity_humanf_at_turn01_left_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Turn01_Left_[RM].glb',
+  'unity_humanm_at_sprint01_forward':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_Forward.glb',
+  'unity_humanm_at_sprint01_forwardleft_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_ForwardLeft_[RM].glb',
+  'unity_humanf_at_jump01':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Jump01.glb',
+  'unity_humanf_at_walk01_left_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_Left_[RM].glb',
+  'unity_humanf_at_idle02-idle01':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Idle02-Idle01.glb',
+  'unity_humanf_at_walk01_backwardleft':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Walk01_BackwardLeft.glb',
+  'unity_humanm_at_walk01_forwardright':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_ForwardRight.glb',
+  'unity_humanm_at_idle02-idle01':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Idle02-Idle01.glb',
+  'unity_humanf_at_sprint01_forwardleft_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_ForwardLeft_[RM].glb',
+  'unity_humanm_at_walk01_backward_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Backward_[RM].glb',
+  'unity_humanf_at_sprint01_forwardright':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_ForwardRight.glb',
+  'unity_humanf_at_sprint01_forward_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_Forward_[RM].glb',
+  'unity_humanf_at_talk01':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Talk01.glb',
+  'unity_humanm_at_sprint01_left':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_Left.glb',
+  'unity_humanf_at_sprint01_forward':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Sprint01_Forward.glb',
+  'unity_humanm_at_sprint01_forwardleft':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_ForwardLeft.glb',
+  'unity_humanm_at_walk01_backward':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Backward.glb',
+  'unity_humanm_at_sprint01_forwardright_[rm]':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_ForwardRight_[RM].glb',
+  'unity_humanf_at_idle01-idle02':'/models/unity_assets/Human_Basic_Motions_FREE/HumanF_at_Idle01-Idle02.glb',
+  'unity_humanm_at_jump01_[rm]_-_land':'/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Jump01_[RM]_-_Land.glb',
+  'unity_sportcar_3_baked':'/models/unity_assets/Sport_Car_Free_3/SportCar_3_Baked.glb',
+  'unity_sportcar_3_lowpoly':'/models/unity_assets/Sport_Car_Free_3/SportCar_3_LowPoly.glb',
+  'unity_wheel':'/models/unity_assets/Sport_Car_Free_3/Wheel.glb',
+  'unity_sportcar_3':'/models/unity_assets/Sport_Car_Free_3/SportCar_3.glb',
+  'unity_rock_a_02':'/models/unity_assets/Unity_URP_Demo/Rock_A_02.glb',
+  'unity_skyboxmountains07':'/models/unity_assets/Unity_URP_Demo/SkyboxMountains07.glb',
+  'unity_skyboxmountains05':'/models/unity_assets/Unity_URP_Demo/SkyboxMountains05.glb',
+  'unity_skyboxmountains01':'/models/unity_assets/Unity_URP_Demo/SkyboxMountains01.glb',
+  'unity_rock_a_01':'/models/unity_assets/Unity_URP_Demo/Rock_A_01.glb',
+  'unity_rock_c_02':'/models/unity_assets/Unity_URP_Demo/Rock_C_02.glb',
+  'unity_skyboxmountains03':'/models/unity_assets/Unity_URP_Demo/SkyboxMountains03.glb',
+  'unity_skyboxmountains08':'/models/unity_assets/Unity_URP_Demo/SkyboxMountains08.glb',
+  'unity_red_bush':'/models/unity_assets/Unity_URP_Demo/Red_Bush.glb',
+  'unity_skyboxhorizon':'/models/unity_assets/Unity_URP_Demo/SkyboxHorizon.glb',
+  'unity_rock_b_01':'/models/unity_assets/Unity_URP_Demo/Rock_B_01.glb',
+  'unity_rock_c_01':'/models/unity_assets/Unity_URP_Demo/Rock_C_01.glb',
+  'unity_rock_d':'/models/unity_assets/Unity_URP_Demo/Rock_D.glb',
+  'unity_skyboxmountains02':'/models/unity_assets/Unity_URP_Demo/SkyboxMountains02.glb',
+  'unity_rock_b_02':'/models/unity_assets/Unity_URP_Demo/Rock_B_02.glb',
+  'unity_skyboxmountains06':'/models/unity_assets/Unity_URP_Demo/SkyboxMountains06.glb',
+  'unity_skyboxmountains04':'/models/unity_assets/Unity_URP_Demo/SkyboxMountains04.glb',
+  'unity_tree_1':'/models/unity_assets/Fantasy_Forest_Environment/tree_1.glb',
+  'unity_grass01':'/models/unity_assets/Fantasy_Forest_Environment/grass01.glb',
+  'unity_l10km_cc4_sl69_t1212029_rw12_wh15_n1_rsbtw_meshv00':'/models/unity_assets/Kajamans_Roads/l10km_cc4_sl69_t1212029_rw12_wh15_n1_RsBtW_MeshV00.glb',
+  'unity_l10km_cc4_sl20_t12123025_rw10_wh3_n3_rsbtw_meshv00':'/models/unity_assets/Kajamans_Roads/l10km_cc4_sl20_t12123025_rw10_wh3_n3_RsBTW_MeshV00.glb',
+  'unity_l20km_cc2_sl30_t401509_rw28_wh15_n1_rsbtw_meshv00':'/models/unity_assets/Kajamans_Roads/l20km_cc2_sl30_t401509_rw28_wh15_n1_RsBTW_MeshV00.glb',
+  'unity_l10km_cc4_sl20_t12123025_a87113010_alley':'/models/unity_assets/Kajamans_Roads/l10km_cc4_sl20_t12123025_A87113010_Alley.glb',
+  'unity_housemodel02wallroof':'/models/unity_assets/Horror_Multiplayer_Template/HouseModel02WallRoof.glb',
+  'unity_pioneersw80':'/models/unity_assets/Horror_Multiplayer_Template/PioneerSW80.glb',
+  'unity_strettlight':'/models/unity_assets/Horror_Multiplayer_Template/StrettLight.glb',
+  'unity_killer_menu_animation':'/models/unity_assets/Horror_Multiplayer_Template/Killer_Menu_Animation.glb',
+  'unity_chainsawhandle':'/models/unity_assets/Horror_Multiplayer_Template/ChainsawHandle.glb',
+  'unity_jump__inair_anim':'/models/unity_assets/Horror_Multiplayer_Template/Jump__InAir_anim.glb',
+  'unity_run_new4_anim':'/models/unity_assets/Horror_Multiplayer_Template/run_new4_anim.glb',
+  'unity_player_at_run2':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Run2.glb',
+  'unity_stumble_anim':'/models/unity_assets/Horror_Multiplayer_Template/stumble_anim.glb',
+  'unity_door_out_001':'/models/unity_assets/Horror_Multiplayer_Template/Door_out_001.glb',
+  'unity_chain':'/models/unity_assets/Horror_Multiplayer_Template/Chain.glb',
+  'unity_stand__idle_anim':'/models/unity_assets/Horror_Multiplayer_Template/Stand__Idle_anim.glb',
+  'unity_windowwallmodel':'/models/unity_assets/Horror_Multiplayer_Template/WindowWallModel.glb',
+  'unity_locomotion__run_n_anim':'/models/unity_assets/Horror_Multiplayer_Template/Locomotion__Run_N_anim.glb',
+  'unity_cravate':'/models/unity_assets/Horror_Multiplayer_Template/CRAVATE.glb',
+  'unity_player_at_grab_by_killer':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Grab_by_Killer.glb',
+  'unity_roadblockmodel':'/models/unity_assets/Horror_Multiplayer_Template/RoadBlockModel.glb',
+  'unity_killer_at_grab_kill_player':'/models/unity_assets/Horror_Multiplayer_Template/Killer_at_Grab_Kill_Player.glb',
+  'unity_knife_suit_man':'/models/unity_assets/Horror_Multiplayer_Template/KNIFE_SUIT_MAN.glb',
+  'unity_exitcar':'/models/unity_assets/Horror_Multiplayer_Template/ExitCar.glb',
+  'unity_copcrsr_hp':'/models/unity_assets/Horror_Multiplayer_Template/copcrsr_hp.glb',
+  'unity_gasmask':'/models/unity_assets/Horror_Multiplayer_Template/gasmask.glb',
+  'unity_attic_door':'/models/unity_assets/Horror_Multiplayer_Template/Attic_door.glb',
+  'unity_door_in_001':'/models/unity_assets/Horror_Multiplayer_Template/Door_in_001.glb',
+  'unity_player_at_grab_struggle_loop':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Grab_Struggle_loop.glb',
+  'unity_generator':'/models/unity_assets/Horror_Multiplayer_Template/Generator.glb',
+  'unity_old_house_002':'/models/unity_assets/Horror_Multiplayer_Template/Old_House_002.glb',
+  'unity_medikit':'/models/unity_assets/Horror_Multiplayer_Template/Medikit.glb',
+  'unity_locomotion__walk_n_land_anim':'/models/unity_assets/Horror_Multiplayer_Template/Locomotion__Walk_N_Land_anim.glb',
+  'unity_old_house_windows_separated':'/models/unity_assets/Horror_Multiplayer_Template/Old_House_windows_separated.glb',
+  'unity_safcom__bushes_high':'/models/unity_assets/Horror_Multiplayer_Template/Safcom__BUSHES_High.glb',
+  'unity_run_anim':'/models/unity_assets/Horror_Multiplayer_Template/run_anim.glb',
+  'unity_windows_all_001':'/models/unity_assets/Horror_Multiplayer_Template/Windows_all_001.glb',
+  'unity_rusticirongatemodel':'/models/unity_assets/Horror_Multiplayer_Template/RusticIronGateModel.glb',
+  'unity_armature':'/models/unity_assets/Horror_Multiplayer_Template/Armature.glb',
+  'unity_lockpick':'/models/unity_assets/Horror_Multiplayer_Template/Lockpick.glb',
+  'unity_shellcasing':'/models/unity_assets/Horror_Multiplayer_Template/ShellCasing.glb',
+  'unity_fearful_walk_anim':'/models/unity_assets/Horror_Multiplayer_Template/Fearful_walk_anim.glb',
+  'unity_locomotion__run_n_land_anim':'/models/unity_assets/Horror_Multiplayer_Template/Locomotion__Run_N_Land_anim.glb',
+  'unity_windowwall':'/models/unity_assets/Horror_Multiplayer_Template/WindowWall.glb',
+  'unity_entercar':'/models/unity_assets/Horror_Multiplayer_Template/EnterCar.glb',
+  'unity_wall_sconce_luminaire_1120165213':'/models/unity_assets/Horror_Multiplayer_Template/Wall_Sconce_Luminaire_1120165213.glb',
+  'unity_woodenpaletdestructiblemodel':'/models/unity_assets/Horror_Multiplayer_Template/WoodenPaletDestructibleModel.glb',
+  'unity_ramp_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Ramp_Mesh.glb',
+  'unity_turnlightleft':'/models/unity_assets/Horror_Multiplayer_Template/TurnLightLeft.glb',
+  'unity_toiletpaper':'/models/unity_assets/Horror_Multiplayer_Template/toiletpaper.glb',
+  'unity_door_in_001_destroyed':'/models/unity_assets/Horror_Multiplayer_Template/Door_in_001_Destroyed.glb',
+  'unity_slashlowerbody':'/models/unity_assets/Horror_Multiplayer_Template/SlashLowerBody.glb',
+  'unity_turnlightright':'/models/unity_assets/Horror_Multiplayer_Template/TurnLightRight.glb',
+  'unity_hatchet':'/models/unity_assets/Horror_Multiplayer_Template/Hatchet.glb',
+  'unity_killer_grab_failed_return':'/models/unity_assets/Horror_Multiplayer_Template/Killer_Grab_Failed_Return.glb',
+  'unity_sawandhandle':'/models/unity_assets/Horror_Multiplayer_Template/SawAndHandle.glb',
+  'unity_crawl_idle_anim':'/models/unity_assets/Horror_Multiplayer_Template/crawl_Idle_anim.glb',
+  'unity_firecracker':'/models/unity_assets/Horror_Multiplayer_Template/Firecracker.glb',
+  'unity_solitudemonument':'/models/unity_assets/Horror_Multiplayer_Template/SolitudeMonument.glb',
+  'unity_housemodel02wall':'/models/unity_assets/Horror_Multiplayer_Template/HouseModel02Wall.glb',
+  'unity_staircase':'/models/unity_assets/Horror_Multiplayer_Template/Staircase.glb',
+  'unity_handsup':'/models/unity_assets/Horror_Multiplayer_Template/HandsUp.glb',
+  'unity_muscular_stylized_man':'/models/unity_assets/Horror_Multiplayer_Template/muscular_stylized_man.glb',
+  'unity_fearful_running_anim':'/models/unity_assets/Horror_Multiplayer_Template/Fearful_running_anim.glb',
+  'unity_player_at_grab_dead':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Grab_Dead.glb',
+  'unity_medi':'/models/unity_assets/Horror_Multiplayer_Template/medi.glb',
+  'unity_02':'/models/unity_assets/Horror_Multiplayer_Template/02.glb',
+  'unity_safcom__bushes':'/models/unity_assets/Horror_Multiplayer_Template/Safcom__BUSHES.glb',
+  'unity_radio':'/models/unity_assets/Horror_Multiplayer_Template/radio.glb',
+  'unity_sheriff_badge':'/models/unity_assets/Horror_Multiplayer_Template/Sheriff_Badge.glb',
+  'unity_stairs_650_400_300_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Stairs_650_400_300_Mesh.glb',
+  'unity_killer_at_grab_failed':'/models/unity_assets/Horror_Multiplayer_Template/Killer_at_Grab_Failed.glb',
+  'unity_exitcar_rightside':'/models/unity_assets/Horror_Multiplayer_Template/ExitCar_RightSide.glb',
+  'unity_car_open_door':'/models/unity_assets/Horror_Multiplayer_Template/Car_Open_Door.glb',
+  'unity_player_at_climb_over_window':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Climb_Over_Window.glb',
+  'unity_locomotion__walk_n_anim':'/models/unity_assets/Horror_Multiplayer_Template/Locomotion__Walk_N_anim.glb',
+  'unity_city':'/models/unity_assets/Horror_Multiplayer_Template/City.glb',
+  'unity_entercarshort':'/models/unity_assets/Horror_Multiplayer_Template/EnterCarShort.glb',
+  'unity_telephonereceiver':'/models/unity_assets/Horror_Multiplayer_Template/telephoneReceiver.glb',
+  'unity_floor2model':'/models/unity_assets/Horror_Multiplayer_Template/Floor2Model.glb',
+  'unity_phoneboothmodel':'/models/unity_assets/Horror_Multiplayer_Template/PhoneBoothModel.glb',
+  'unity_ladder_door_001':'/models/unity_assets/Horror_Multiplayer_Template/Ladder_Door_001.glb',
+  'unity_pallets':'/models/unity_assets/Horror_Multiplayer_Template/pallets.glb',
+  'unity_player_at_grab_escape':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Grab_Escape.glb',
+  'unity_run_new_anim':'/models/unity_assets/Horror_Multiplayer_Template/run_new_anim.glb',
+  'unity_jump__jump_anim':'/models/unity_assets/Horror_Multiplayer_Template/Jump__Jump_anim.glb',
+  'unity_locomotion__run_s_anim':'/models/unity_assets/Horror_Multiplayer_Template/Locomotion__Run_S_anim.glb',
+  'unity_killer_at_grab_struggle_loop':'/models/unity_assets/Horror_Multiplayer_Template/Killer_at_Grab_Struggle_loop.glb',
+  'unity_machete':'/models/unity_assets/Horror_Multiplayer_Template/Machete.glb',
+  'unity_old_house_001':'/models/unity_assets/Horror_Multiplayer_Template/Old_House_001.glb',
+  'unity_ground_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Ground_Mesh.glb',
+  'unity_player_at_run':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Run.glb',
+  'unity_idle_anim':'/models/unity_assets/Horror_Multiplayer_Template/idle_anim.glb',
+  'unity_player_at_walk':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Walk.glb',
+  'unity_chain1':'/models/unity_assets/Horror_Multiplayer_Template/Chain1.glb',
+  'unity_doorwall':'/models/unity_assets/Horror_Multiplayer_Template/DoorWall.glb',
+  'unity_ramp_100x100x200_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Ramp_100x100x200_Mesh.glb',
+  'unity_walk_anim':'/models/unity_assets/Horror_Multiplayer_Template/walk_anim.glb',
+  'unity_window':'/models/unity_assets/Horror_Multiplayer_Template/window.glb',
+  'unity_rocketwarhead':'/models/unity_assets/Horror_Multiplayer_Template/RocketWarhead.glb',
+  'unity_run_new3_anim':'/models/unity_assets/Horror_Multiplayer_Template/run_new3_anim.glb',
+  'unity_player_unity_05':'/models/unity_assets/Horror_Multiplayer_Template/Player_unity_05.glb',
+  'unity_killer_at_grab_player':'/models/unity_assets/Horror_Multiplayer_Template/Killer_at_Grab_Player.glb',
+  'unity_box_350x250x200_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Box_350x250x200_Mesh.glb',
+  'unity_window_001':'/models/unity_assets/Horror_Multiplayer_Template/Window_001.glb',
+  'unity_player_at_walk_injured':'/models/unity_assets/Horror_Multiplayer_Template/Player_at_Walk_Injured.glb',
+  'unity_mediopen':'/models/unity_assets/Horror_Multiplayer_Template/MediOpen.glb',
+  'unity_entercar_rightside':'/models/unity_assets/Horror_Multiplayer_Template/EnterCar_RightSide.glb',
+  'unity_flashli':'/models/unity_assets/Horror_Multiplayer_Template/flashli.glb',
+  'unity_cowboyhat':'/models/unity_assets/Horror_Multiplayer_Template/CowboyHat.glb',
+  'unity_chainsaw':'/models/unity_assets/Horror_Multiplayer_Template/Chainsaw.glb',
+  'unity_structure_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Structure_Mesh.glb',
+  'unity_box_350x250x300_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Box_350x250x300_Mesh.glb',
+  'unity_ladder_attic_door_001':'/models/unity_assets/Horror_Multiplayer_Template/Ladder_Attic_Door_001.glb',
+  'unity_doorwall2':'/models/unity_assets/Horror_Multiplayer_Template/DoorWall2.glb',
+  'unity_dresser':'/models/unity_assets/Horror_Multiplayer_Template/dresser.glb',
+  'unity_killer_02_menu_animation':'/models/unity_assets/Horror_Multiplayer_Template/Killer_02_Menu_Animation.glb',
+  'unity_run_new2_anim':'/models/unity_assets/Horror_Multiplayer_Template/run_new2_anim.glb',
+  'unity_shotgun':'/models/unity_assets/Horror_Multiplayer_Template/Shotgun.glb',
+  'unity_crawl_anim':'/models/unity_assets/Horror_Multiplayer_Template/crawl_anim.glb',
+  'unity_toolbox':'/models/unity_assets/Horror_Multiplayer_Template/Toolbox.glb',
+  'unity_wall':'/models/unity_assets/Horror_Multiplayer_Template/wall.glb',
+  'unity_lightbar_glass':'/models/unity_assets/Horror_Multiplayer_Template/Lightbar_glass.glb',
+  'unity_wave':'/models/unity_assets/Horror_Multiplayer_Template/Wave.glb',
+  'unity_tunnel_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Tunnel_Mesh.glb',
+  'unity_old_house_002_roofpart':'/models/unity_assets/Horror_Multiplayer_Template/Old_House_002_RoofPart.glb',
+  'unity_old_house_003':'/models/unity_assets/Horror_Multiplayer_Template/Old_House_003.glb',
+  'unity_stairs_200x100x200_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Stairs_200x100x200_Mesh.glb',
+  'unity_wall_mesh':'/models/unity_assets/Horror_Multiplayer_Template/Wall_Mesh.glb',
+  'unity_sedanturnlights':'/models/unity_assets/Horror_Multiplayer_Template/SedanTurnLights.glb',
+  'unity_casual01_m':'/models/unity_assets/Urban_Traffic_System/casual01_m.glb',
+  'unity_casual23_m':'/models/unity_assets/Urban_Traffic_System/casual23_m.glb',
+  'unity_nude08_m':'/models/unity_assets/Urban_Traffic_System/nude08_m.glb',
+  'unity_truck_2':'/models/unity_assets/Urban_Traffic_System/Truck_2.glb',
+  'unity_idle2_child_boy':'/models/unity_assets/Urban_Traffic_System/idle2_child_boy.glb',
+  'unity_sitidle':'/models/unity_assets/Urban_Traffic_System/sitidle.glb',
+  'unity_girl_talk1':'/models/unity_assets/Urban_Traffic_System/girl_talk1.glb',
+  'unity_claphands_child_girl':'/models/unity_assets/Urban_Traffic_System/ClapHands_child_girl.glb',
+  'unity_road_2_line_3_road':'/models/unity_assets/Urban_Traffic_System/Road_2_line_3_road.glb',
+  'unity_big_road_55':'/models/unity_assets/Urban_Traffic_System/Big_Road_55.glb',
+  'unity_big_road_20':'/models/unity_assets/Urban_Traffic_System/Big_Road_20.glb',
+  'unity_sportive09_m':'/models/unity_assets/Urban_Traffic_System/sportive09_m.glb',
+  'unity_casual25_m':'/models/unity_assets/Urban_Traffic_System/casual25_m.glb',
+  'unity_lierelaxed2_f':'/models/unity_assets/Urban_Traffic_System/lierelaxed2_f.glb',
+  'unity_walk_child_boy':'/models/unity_assets/Urban_Traffic_System/Walk_child_boy.glb',
+  'unity_cheer_f':'/models/unity_assets/Urban_Traffic_System/cheer_f.glb',
+  'unity_big_road_up_10_2':'/models/unity_assets/Urban_Traffic_System/Big_Road_UP_10_2.glb',
+  'unity_casual02_f':'/models/unity_assets/Urban_Traffic_System/casual02_f.glb',
+  'unity_casual10_m':'/models/unity_assets/Urban_Traffic_System/casual10_m.glb',
+  'unity_minibus_ambulance':'/models/unity_assets/Urban_Traffic_System/MiniBus_Ambulance.glb',
+  'unity_sitground_f':'/models/unity_assets/Urban_Traffic_System/sitground_f.glb',
+  'unity_cheer_child_boy':'/models/unity_assets/Urban_Traffic_System/cheer_child_boy.glb',
+  'unity_shout_f':'/models/unity_assets/Urban_Traffic_System/shout_f.glb',
+  'unity_man_listen':'/models/unity_assets/Urban_Traffic_System/man_listen.glb',
+  'unity_casual21_f':'/models/unity_assets/Urban_Traffic_System/casual21_f.glb',
+  'unity_big_road_75':'/models/unity_assets/Urban_Traffic_System/Big_Road_75.glb',
+  'unity_walk_f':'/models/unity_assets/Urban_Traffic_System/walk_f.glb',
+  'unity_car_3':'/models/unity_assets/Urban_Traffic_System/Car_3.glb',
+  'unity_casual12_f':'/models/unity_assets/Urban_Traffic_System/casual12_f.glb',
+  'unity_taxi_1':'/models/unity_assets/Urban_Traffic_System/Taxi_1.glb',
+  'unity_casual31_m':'/models/unity_assets/Urban_Traffic_System/casual31_m.glb',
+  'unity_drown_f':'/models/unity_assets/Urban_Traffic_System/drown_f.glb',
+  'unity_road1':'/models/unity_assets/Urban_Traffic_System/Road1.glb',
+  'unity_sitground':'/models/unity_assets/Urban_Traffic_System/sitground.glb',
+  'unity_circle_prefab':'/models/unity_assets/Urban_Traffic_System/Circle_prefab.glb',
+  'unity_gyroscooter_2_girl_11':'/models/unity_assets/Urban_Traffic_System/Gyroscooter_2_Girl_11.glb',
+  'unity_idle2_child_girl':'/models/unity_assets/Urban_Traffic_System/idle2_child_girl.glb',
+  'unity_man_talk1':'/models/unity_assets/Urban_Traffic_System/man_talk1.glb',
+  'unity_casual04_m':'/models/unity_assets/Urban_Traffic_System/casual04_m.glb',
+  'unity_swim':'/models/unity_assets/Urban_Traffic_System/swim.glb',
+  'unity_car_10':'/models/unity_assets/Urban_Traffic_System/Car_10.glb',
+  'unity_walk':'/models/unity_assets/Urban_Traffic_System/walk.glb',
+  'unity_work_computer_f':'/models/unity_assets/Urban_Traffic_System/work_computer_f.glb',
+  'unity_man_55':'/models/unity_assets/Urban_Traffic_System/Man_55.glb',
+  'unity_girl_claphands':'/models/unity_assets/Urban_Traffic_System/girl_claphands.glb',
+  'unity_casual30_m':'/models/unity_assets/Urban_Traffic_System/casual30_m.glb',
+  'unity_run_f':'/models/unity_assets/Urban_Traffic_System/run_f.glb',
+  'unity_gyroscooter_2_girl_44':'/models/unity_assets/Urban_Traffic_System/Gyroscooter_2_Girl_44.glb',
+  'unity_girl_33':'/models/unity_assets/Urban_Traffic_System/Girl_33.glb',
+  'unity_talk1':'/models/unity_assets/Urban_Traffic_System/talk1.glb',
+  'unity_man_player':'/models/unity_assets/Urban_Traffic_System/Man_Player.glb',
+  'unity_business05_m':'/models/unity_assets/Urban_Traffic_System/business05_m.glb',
+  'unity_talk2_child_girl':'/models/unity_assets/Urban_Traffic_System/Talk2_child_girl.glb',
+  'unity_casual19_m':'/models/unity_assets/Urban_Traffic_System/casual19_m.glb',
+  'unity_man_77':'/models/unity_assets/Urban_Traffic_System/Man_77.glb',
+  'unity_sportive03_f':'/models/unity_assets/Urban_Traffic_System/sportive03_f.glb',
+  'unity_casual32_m':'/models/unity_assets/Urban_Traffic_System/casual32_m.glb',
+  'unity_lierelaxed1_f':'/models/unity_assets/Urban_Traffic_System/lierelaxed1_f.glb',
+  'unity_road_2_lines_45':'/models/unity_assets/Urban_Traffic_System/Road_2_lines_45.glb',
+  'unity_lierelaxed2':'/models/unity_assets/Urban_Traffic_System/lierelaxed2.glb',
+  'unity_casual07_m':'/models/unity_assets/Urban_Traffic_System/casual07_m.glb',
+  'unity_trailer':'/models/unity_assets/Urban_Traffic_System/Trailer.glb',
+  'unity_idle1_f':'/models/unity_assets/Urban_Traffic_System/idle1_f.glb',
+  'unity_casual08_f':'/models/unity_assets/Urban_Traffic_System/casual08_f.glb',
+  'unity_sportive11_m':'/models/unity_assets/Urban_Traffic_System/sportive11_m.glb',
+  'unity_girl_talk2':'/models/unity_assets/Urban_Traffic_System/girl_talk2.glb',
+  'unity_granny01':'/models/unity_assets/Urban_Traffic_System/granny01.glb',
+  'unity_casual24_m':'/models/unity_assets/Urban_Traffic_System/casual24_m.glb',
+  'unity_big_road_65':'/models/unity_assets/Urban_Traffic_System/Big_Road_65.glb',
+  'unity_casual17_m':'/models/unity_assets/Urban_Traffic_System/casual17_m.glb',
+  'unity_sitidle_f':'/models/unity_assets/Urban_Traffic_System/sitidle_f.glb',
+  'unity_car_6':'/models/unity_assets/Urban_Traffic_System/Car_6.glb',
+  'unity_eatsitting_f':'/models/unity_assets/Urban_Traffic_System/eatsitting_f.glb',
+  'unity_road_2018':'/models/unity_assets/Urban_Traffic_System/Road_2018.glb',
+  'unity_idle1_child_boy':'/models/unity_assets/Urban_Traffic_System/idle1_child_boy.glb',
+  'unity_bicycle_man_34':'/models/unity_assets/Urban_Traffic_System/Bicycle_Man_34.glb',
+  'unity_talk2':'/models/unity_assets/Urban_Traffic_System/talk2.glb',
+  'unity_casual11_m':'/models/unity_assets/Urban_Traffic_System/casual11_m.glb',
+  'unity_child_girl_02':'/models/unity_assets/Urban_Traffic_System/child_girl_02.glb',
+  'unity_talk1_f':'/models/unity_assets/Urban_Traffic_System/talk1_f.glb',
+  'unity_business06_m':'/models/unity_assets/Urban_Traffic_System/business06_m.glb',
+  'unity_girl_listen':'/models/unity_assets/Urban_Traffic_System/girl_listen.glb',
+  'unity_claphands_f':'/models/unity_assets/Urban_Traffic_System/claphands_f.glb',
+  'unity_gyroscooter_man_33':'/models/unity_assets/Urban_Traffic_System/Gyroscooter_Man_33.glb',
+  'unity_idle1_child_girl':'/models/unity_assets/Urban_Traffic_System/idle1_child_girl.glb',
+  'unity_car_4':'/models/unity_assets/Urban_Traffic_System/Car_4.glb',
+  'unity_casual26_f':'/models/unity_assets/Urban_Traffic_System/casual26_f.glb',
+  'unity_big_road_85':'/models/unity_assets/Urban_Traffic_System/Big_Road_85.glb',
+  'unity_swim_f':'/models/unity_assets/Urban_Traffic_System/swim_f.glb',
+  'unity_casual15_m':'/models/unity_assets/Urban_Traffic_System/casual15_m.glb',
+  'unity_big_road_0':'/models/unity_assets/Urban_Traffic_System/Big_Road_0.glb',
+  'unity_big_road_down_5':'/models/unity_assets/Urban_Traffic_System/Big_Road_down_5.glb',
+  'unity_casual14_m':'/models/unity_assets/Urban_Traffic_System/casual14_m.glb',
+  'unity_stair':'/models/unity_assets/Urban_Traffic_System/Stair.glb',
+  'unity_run_child_girl':'/models/unity_assets/Urban_Traffic_System/Run_child_girl.glb',
+  'unity_car_1':'/models/unity_assets/Urban_Traffic_System/Car_1.glb',
+  'unity_cheer_child_girl':'/models/unity_assets/Urban_Traffic_System/cheer_child_girl.glb',
+  'unity_idlewall_f':'/models/unity_assets/Urban_Traffic_System/idlewall_f.glb',
+  'unity_road_2_lines_90':'/models/unity_assets/Urban_Traffic_System/Road_2_lines_90.glb',
+  'unity_run':'/models/unity_assets/Urban_Traffic_System/run.glb',
+  'unity_man_walk':'/models/unity_assets/Urban_Traffic_System/man_walk.glb',
+  'unity_man_22':'/models/unity_assets/Urban_Traffic_System/Man_22.glb',
+  'unity_casual03_f':'/models/unity_assets/Urban_Traffic_System/casual03_f.glb',
+  'unity_sportive07_m':'/models/unity_assets/Urban_Traffic_System/sportive07_m.glb',
+  'unity_casual22_f':'/models/unity_assets/Urban_Traffic_System/casual22_f.glb',
+  'unity_casual10_m_highpoly':'/models/unity_assets/Urban_Traffic_System/casual10_m_highpoly.glb',
+  'unity_drown':'/models/unity_assets/Urban_Traffic_System/drown.glb',
+  'unity_girl_idle2':'/models/unity_assets/Urban_Traffic_System/girl_idle2.glb',
+  'unity_listen_f':'/models/unity_assets/Urban_Traffic_System/listen_f.glb',
+  'unity_eatsitting':'/models/unity_assets/Urban_Traffic_System/eatsitting.glb',
+  'unity_talk1_child_boy':'/models/unity_assets/Urban_Traffic_System/Talk1_child_boy.glb',
+  'unity_run_child_boy':'/models/unity_assets/Urban_Traffic_System/Run_child_boy.glb',
+  'unity_casual09_m_highpoly':'/models/unity_assets/Urban_Traffic_System/casual09_m_highpoly.glb',
+  'unity_casual23_f':'/models/unity_assets/Urban_Traffic_System/casual23_f.glb',
+  'unity_dance_man':'/models/unity_assets/Urban_Traffic_System/Dance_man.glb',
+  'unity_car_9':'/models/unity_assets/Urban_Traffic_System/Car_9.glb',
+  'unity_manipulate_f':'/models/unity_assets/Urban_Traffic_System/manipulate_f.glb',
+  'unity_gyroscooter_girl_44':'/models/unity_assets/Urban_Traffic_System/Gyroscooter_Girl_44.glb',
+  'unity_traffic_light_3':'/models/unity_assets/Urban_Traffic_System/Traffic_Light_3.glb',
+  'unity_girl_66':'/models/unity_assets/Urban_Traffic_System/Girl_66.glb',
+  'unity_casual07_f':'/models/unity_assets/Urban_Traffic_System/casual07_f.glb',
+  'unity_casual05_f':'/models/unity_assets/Urban_Traffic_System/casual05_f.glb',
+  'unity_girl_55':'/models/unity_assets/Urban_Traffic_System/Girl_55.glb',
+  'unity_casual09_f':'/models/unity_assets/Urban_Traffic_System/casual09_f.glb',
+  'unity_casual24_f':'/models/unity_assets/Urban_Traffic_System/casual24_f.glb',
+  'unity_nude03_f':'/models/unity_assets/Urban_Traffic_System/nude03_f.glb',
+  'unity_child_girl_01':'/models/unity_assets/Urban_Traffic_System/child_girl_01.glb',
+  'unity_girl_walk':'/models/unity_assets/Urban_Traffic_System/girl_walk.glb',
+  'unity_big_road_crossroads':'/models/unity_assets/Urban_Traffic_System/Big_Road_Crossroads.glb',
+  'unity_work_assembly_f':'/models/unity_assets/Urban_Traffic_System/work_assembly_f.glb',
+  'unity_man_talk2':'/models/unity_assets/Urban_Traffic_System/man_talk2.glb',
+  'unity_big_road_35':'/models/unity_assets/Urban_Traffic_System/Big_Road_35.glb',
+  'unity_sportbike':'/models/unity_assets/Urban_Traffic_System/SportBike.glb',
+  'unity_casual22_m':'/models/unity_assets/Urban_Traffic_System/casual22_m.glb',
+  'unity_soccerplayer01_m':'/models/unity_assets/Urban_Traffic_System/soccerplayer01_m.glb',
+  'unity_walk_child_girl':'/models/unity_assets/Urban_Traffic_System/Walk_child_girl.glb',
+  'unity_business04_f':'/models/unity_assets/Urban_Traffic_System/business04_f.glb',
+  'unity_casual03_m':'/models/unity_assets/Urban_Traffic_System/casual03_m.glb',
+  'unity_casual13_m':'/models/unity_assets/Urban_Traffic_System/casual13_m.glb',
+  'unity_bicycle':'/models/unity_assets/Urban_Traffic_System/Bicycle.glb',
+  'unity_casual13_f':'/models/unity_assets/Urban_Traffic_System/casual13_f.glb',
+  'unity_girl_44':'/models/unity_assets/Urban_Traffic_System/Girl_44.glb',
+  'unity_sportive04_m':'/models/unity_assets/Urban_Traffic_System/sportive04_m.glb',
+  'unity_walkdrunk_f':'/models/unity_assets/Urban_Traffic_System/walkdrunk_f.glb',
+  'unity_big_road_40':'/models/unity_assets/Urban_Traffic_System/Big_Road_40.glb',
+  'unity_jeep':'/models/unity_assets/Urban_Traffic_System/Jeep.glb',
+  'unity_sportive04_f':'/models/unity_assets/Urban_Traffic_System/sportive04_f.glb',
+  'unity_sportive01_f':'/models/unity_assets/Urban_Traffic_System/sportive01_f.glb',
+  'unity_business06_m_highpoly':'/models/unity_assets/Urban_Traffic_System/business06_m_highpoly.glb',
+  'unity_dance_f':'/models/unity_assets/Urban_Traffic_System/dance_f.glb',
+  'unity_car_8':'/models/unity_assets/Urban_Traffic_System/Car_8.glb',
+  'unity_casual20_f':'/models/unity_assets/Urban_Traffic_System/casual20_f.glb',
+  'unity_casual18_f':'/models/unity_assets/Urban_Traffic_System/casual18_f.glb',
+  'unity_big_road_5':'/models/unity_assets/Urban_Traffic_System/Big_Road_5.glb',
+  'unity_biker_girl':'/models/unity_assets/Urban_Traffic_System/biker_girl.glb',
+  'unity_big_road_up_5':'/models/unity_assets/Urban_Traffic_System/Big_Road_up_5.glb',
+  'unity_business01_f':'/models/unity_assets/Urban_Traffic_System/business01_f.glb',
+  'unity_traffic_light_2':'/models/unity_assets/Urban_Traffic_System/Traffic_Light_2.glb',
+  'unity_work_computer':'/models/unity_assets/Urban_Traffic_System/work_computer.glb',
+  'unity_business02_m':'/models/unity_assets/Urban_Traffic_System/business02_m.glb',
+  'unity_business04_m':'/models/unity_assets/Urban_Traffic_System/business04_m.glb',
+  'unity_nude01_m':'/models/unity_assets/Urban_Traffic_System/nude01_m.glb',
+  'unity_minibus':'/models/unity_assets/Urban_Traffic_System/MiniBus.glb',
+  'unity_sportive06_f':'/models/unity_assets/Urban_Traffic_System/sportive06_f.glb',
+  'unity_girl_idle1':'/models/unity_assets/Urban_Traffic_System/girl_idle1.glb',
+  'unity_shout':'/models/unity_assets/Urban_Traffic_System/Shout.glb',
+  'unity_police_2':'/models/unity_assets/Urban_Traffic_System/Police_2.glb',
+  'unity_lierelaxed1':'/models/unity_assets/Urban_Traffic_System/lierelaxed1.glb',
+  'unity_dance':'/models/unity_assets/Urban_Traffic_System/Dance.glb',
+  'unity_traffic_light_1':'/models/unity_assets/Urban_Traffic_System/Traffic_Light_1.glb',
+  'unity_scooter':'/models/unity_assets/Urban_Traffic_System/Scooter.glb',
+  'unity_gyroscooter_2_man_33':'/models/unity_assets/Urban_Traffic_System/Gyroscooter_2_Man_33.glb',
+  'unity_sportive02_f':'/models/unity_assets/Urban_Traffic_System/sportive02_f.glb',
+  'unity_girl_run':'/models/unity_assets/Urban_Traffic_System/girl_run.glb',
+  'unity_nude10_m':'/models/unity_assets/Urban_Traffic_System/nude10_m.glb',
+  'unity_child01_m_highpoly':'/models/unity_assets/Urban_Traffic_System/child01_m_highpoly.glb',
+  'unity_nude02_f':'/models/unity_assets/Urban_Traffic_System/nude02_f.glb',
+  'unity_business03_f':'/models/unity_assets/Urban_Traffic_System/business03_f.glb',
+  'unity_listen_child_girl':'/models/unity_assets/Urban_Traffic_System/Listen_child_girl.glb',
+  'unity_casual15_f':'/models/unity_assets/Urban_Traffic_System/casual15_f.glb',
+  'unity_man_111':'/models/unity_assets/Urban_Traffic_System/Man_111.glb',
+  'unity_claphands_child_boy':'/models/unity_assets/Urban_Traffic_System/claphands_child_boy.glb',
+  'unity_bicycle_man_33':'/models/unity_assets/Urban_Traffic_System/Bicycle_Man_33.glb',
+  'unity_hands_up':'/models/unity_assets/Urban_Traffic_System/hands_up.glb',
+  'unity_idle2_f':'/models/unity_assets/Urban_Traffic_System/idle2_f.glb',
+  'unity_casual02_m':'/models/unity_assets/Urban_Traffic_System/casual02_m.glb',
+  'unity_big_road_45':'/models/unity_assets/Urban_Traffic_System/Big_Road_45.glb',
+  'unity_car_2':'/models/unity_assets/Urban_Traffic_System/Car_2.glb',
+  'unity_casual11_f':'/models/unity_assets/Urban_Traffic_System/casual11_f.glb',
+  'unity_lookaround_f':'/models/unity_assets/Urban_Traffic_System/lookaround_f.glb',
+  'unity_sportive08_m':'/models/unity_assets/Urban_Traffic_System/sportive08_m.glb',
+  'unity_casual08_m':'/models/unity_assets/Urban_Traffic_System/casual08_m.glb',
+  'unity_man_idle2':'/models/unity_assets/Urban_Traffic_System/man_idle2.glb',
+  'unity_man_99':'/models/unity_assets/Urban_Traffic_System/Man_99.glb',
+  'unity_man_33':'/models/unity_assets/Urban_Traffic_System/Man_33.glb',
+  'unity_listen':'/models/unity_assets/Urban_Traffic_System/listen.glb',
+  'unity_big_road_60':'/models/unity_assets/Urban_Traffic_System/Big_Road_60.glb',
+  'unity_lookaround':'/models/unity_assets/Urban_Traffic_System/lookaround.glb',
+  'unity_idle1':'/models/unity_assets/Urban_Traffic_System/idle1.glb',
+  'unity_casual16_f':'/models/unity_assets/Urban_Traffic_System/casual16_f.glb',
+  'unity_man_claphands':'/models/unity_assets/Urban_Traffic_System/man_claphands.glb',
+  'unity_casual29_m':'/models/unity_assets/Urban_Traffic_System/casual29_m.glb',
+  'unity_big_road_30':'/models/unity_assets/Urban_Traffic_System/Big_Road_30.glb',
+  'unity_business07_m':'/models/unity_assets/Urban_Traffic_System/business07_m.glb',
+  'unity_big_road_80':'/models/unity_assets/Urban_Traffic_System/Big_Road_80.glb',
+  'unity_nude02_m':'/models/unity_assets/Urban_Traffic_System/nude02_m.glb',
+  'unity_drivecar':'/models/unity_assets/Urban_Traffic_System/drivecar.glb',
+  'unity_business03_m':'/models/unity_assets/Urban_Traffic_System/business03_m.glb',
+  'unity_girl_77':'/models/unity_assets/Urban_Traffic_System/Girl_77.glb',
+  'unity_business05_f':'/models/unity_assets/Urban_Traffic_System/business05_f.glb',
+  'unity_listen_child_boy':'/models/unity_assets/Urban_Traffic_System/listen_child_boy.glb',
+  'unity_gas_trailer_1':'/models/unity_assets/Urban_Traffic_System/Gas_Trailer_1.glb',
+  'unity_gyroscooter_2':'/models/unity_assets/Urban_Traffic_System/Gyroscooter_2.glb',
+  'unity_sportive05_f':'/models/unity_assets/Urban_Traffic_System/sportive05_f.glb',
+  'unity_big_road_90':'/models/unity_assets/Urban_Traffic_System/Big_Road_90.glb',
+  'unity_claphands':'/models/unity_assets/Urban_Traffic_System/claphands.glb',
+  'unity_casual14_f':'/models/unity_assets/Urban_Traffic_System/casual14_f.glb',
+  'unity_talk2_f':'/models/unity_assets/Urban_Traffic_System/talk2_f.glb',
+  'unity_casual12_m':'/models/unity_assets/Urban_Traffic_System/casual12_m.glb',
+  'unity_casual09_m':'/models/unity_assets/Urban_Traffic_System/casual09_m.glb',
+  'unity_man_88':'/models/unity_assets/Urban_Traffic_System/Man_88.glb',
+  'unity_child02_m':'/models/unity_assets/Urban_Traffic_System/child02_m.glb',
+  'unity_dance_woman':'/models/unity_assets/Urban_Traffic_System/Dance_woman.glb',
+  'unity_big_road_15':'/models/unity_assets/Urban_Traffic_System/Big_Road_15.glb',
+  'unity_idledrunk_f':'/models/unity_assets/Urban_Traffic_System/idledrunk_f.glb',
+  'unity_car_5':'/models/unity_assets/Urban_Traffic_System/Car_5.glb',
+  'unity_shout':'/models/unity_assets/Urban_Traffic_System/shout.glb',
+  'unity_talk1_child_girl':'/models/unity_assets/Urban_Traffic_System/Talk1_child_girl.glb',
+  'unity_big_road_50':'/models/unity_assets/Urban_Traffic_System/Big_Road_50.glb',
+  'unity_casual01_f':'/models/unity_assets/Urban_Traffic_System/casual01_f.glb',
+  'unity_road_2_line_crossroad':'/models/unity_assets/Urban_Traffic_System/Road_2_line_Crossroad.glb',
+  'unity_talk2_child_boy':'/models/unity_assets/Urban_Traffic_System/Talk2_child_boy.glb',
+  'unity_skateboard':'/models/unity_assets/Urban_Traffic_System/Skateboard.glb',
+  'unity_road_2_line':'/models/unity_assets/Urban_Traffic_System/Road_2_line.glb',
+  'unity_idle2':'/models/unity_assets/Urban_Traffic_System/idle2.glb',
+  'unity_granny02':'/models/unity_assets/Urban_Traffic_System/granny02.glb',
+  'unity_plane_prefab':'/models/unity_assets/Urban_Traffic_System/Plane_prefab.glb',
+  'unity_gyroscooter_girl_11':'/models/unity_assets/Urban_Traffic_System/Gyroscooter_Girl_11.glb',
+  'unity_walkcarry1':'/models/unity_assets/Urban_Traffic_System/walkcarry1.glb',
+  'unity_jeep_2':'/models/unity_assets/Urban_Traffic_System/Jeep_2.glb',
+  'unity_casual06_f':'/models/unity_assets/Urban_Traffic_System/casual06_f.glb',
+  'unity_girl_cheer':'/models/unity_assets/Urban_Traffic_System/girl_cheer.glb',
+  'unity_casual10_f':'/models/unity_assets/Urban_Traffic_System/casual10_f.glb',
+  'unity_casual18_m':'/models/unity_assets/Urban_Traffic_System/casual18_m.glb',
+  'unity_girl_11':'/models/unity_assets/Urban_Traffic_System/Girl_11.glb',
+  'unity_sportive10_m':'/models/unity_assets/Urban_Traffic_System/sportive10_m.glb',
+  'unity_nude09_m':'/models/unity_assets/Urban_Traffic_System/nude09_m.glb',
+  'unity_casual28_m':'/models/unity_assets/Urban_Traffic_System/casual28_m.glb',
+  'unity_business02_f':'/models/unity_assets/Urban_Traffic_System/business02_f.glb',
+  'unity_casual06_m':'/models/unity_assets/Urban_Traffic_System/casual06_m.glb',
+  'unity_casual27_m':'/models/unity_assets/Urban_Traffic_System/casual27_m.glb',
+  'unity_nude04_m':'/models/unity_assets/Urban_Traffic_System/nude04_m.glb',
+  'unity_casual17_f':'/models/unity_assets/Urban_Traffic_System/casual17_f.glb',
+  'unity_man_idle1':'/models/unity_assets/Urban_Traffic_System/man_idle1.glb',
+  'unity_nude04_f':'/models/unity_assets/Urban_Traffic_System/nude04_f.glb',
+  'unity_big_road_70':'/models/unity_assets/Urban_Traffic_System/Big_Road_70.glb',
+  'unity_road_2_lines_small_90':'/models/unity_assets/Urban_Traffic_System/Road_2_lines_small_90.glb',
+  'unity_walkcarry1_f':'/models/unity_assets/Urban_Traffic_System/walkcarry1_f.glb',
+  'unity_big_road_up_10':'/models/unity_assets/Urban_Traffic_System/Big_Road_UP_10.glb',
+  'unity_big_road_short':'/models/unity_assets/Urban_Traffic_System/Big_Road_Short.glb',
+  'unity_sportive03_m':'/models/unity_assets/Urban_Traffic_System/sportive03_m.glb',
+  'unity_minibus_commercial':'/models/unity_assets/Urban_Traffic_System/MiniBus_Commercial.glb',
+  'unity_sportive05_m':'/models/unity_assets/Urban_Traffic_System/sportive05_m.glb',
+  'unity_truck_1':'/models/unity_assets/Urban_Traffic_System/Truck_1.glb',
+  'unity_sportive07_f':'/models/unity_assets/Urban_Traffic_System/sportive07_f.glb',
+  'unity_girl_22':'/models/unity_assets/Urban_Traffic_System/Girl_22.glb',
+  'unity_big_road_10':'/models/unity_assets/Urban_Traffic_System/Big_Road_10.glb',
+  'unity_casual04_f':'/models/unity_assets/Urban_Traffic_System/casual04_f.glb',
+  'unity_gyroscooter':'/models/unity_assets/Urban_Traffic_System/Gyroscooter.glb',
+  'unity_nude03_m':'/models/unity_assets/Urban_Traffic_System/nude03_m.glb',
+  'unity_man_66':'/models/unity_assets/Urban_Traffic_System/Man_66.glb',
+  'unity_casual19_f':'/models/unity_assets/Urban_Traffic_System/casual19_f.glb',
+  'unity_big_road_down_10':'/models/unity_assets/Urban_Traffic_System/Big_Road_down_10.glb',
+  'unity_big_road_25':'/models/unity_assets/Urban_Traffic_System/Big_Road_25.glb',
+  'unity_walkdrunk':'/models/unity_assets/Urban_Traffic_System/walkdrunk.glb',
+  'unity_business01_m':'/models/unity_assets/Urban_Traffic_System/business01_m.glb',
+  'unity_idledrunk':'/models/unity_assets/Urban_Traffic_System/idledrunk.glb',
+  'unity_b_anim':'/models/unity_assets/Urban_Traffic_System/B_anim.glb',
+  'unity_drivecar_f':'/models/unity_assets/Urban_Traffic_System/drivecar_f.glb',
+  'unity_casual25_f':'/models/unity_assets/Urban_Traffic_System/casual25_f.glb',
+  'unity_casual20_m':'/models/unity_assets/Urban_Traffic_System/casual20_m.glb',
+  'unity_man_11':'/models/unity_assets/Urban_Traffic_System/Man_11.glb',
+  'unity_casual21_m':'/models/unity_assets/Urban_Traffic_System/casual21_m.glb',
+  'unity_casual26_m':'/models/unity_assets/Urban_Traffic_System/casual26_m.glb',
+  'unity_casual16_m':'/models/unity_assets/Urban_Traffic_System/casual16_m.glb',
+  'unity_big_bus':'/models/unity_assets/Urban_Traffic_System/Big_Bus.glb',
+  'unity_man_44':'/models/unity_assets/Urban_Traffic_System/Man_44.glb',
+  'unity_nude01_f':'/models/unity_assets/Urban_Traffic_System/nude01_f.glb',
+  'unity_man_run':'/models/unity_assets/Urban_Traffic_System/man_run.glb',
+  'unity_casual05_m':'/models/unity_assets/Urban_Traffic_System/casual05_m.glb',
+  'unity_sportive01_m':'/models/unity_assets/Urban_Traffic_System/sportive01_m.glb',
+  'unity_big_road_ring':'/models/unity_assets/Urban_Traffic_System/Big_Road_Ring.glb',
+  'unity_biker':'/models/unity_assets/Urban_Traffic_System/Biker.glb',
+  'unity_casual27_m_highpoly':'/models/unity_assets/Urban_Traffic_System/casual27_m_highpoly.glb',
+  'unity_police_1':'/models/unity_assets/Urban_Traffic_System/Police_1.glb',
+  'unity_cheer':'/models/unity_assets/Urban_Traffic_System/cheer.glb',
+  'unity_big_road':'/models/unity_assets/Urban_Traffic_System/Big_Road.glb',
+  'unity_vb1lafx':'/models/unity_assets/Junkyard_Low_Poly/vb1lafx.glb',
+  'unity_wcvodhd':'/models/unity_assets/Junkyard_Low_Poly/wcvodhd.glb',
+  'unity_wdljaaqbw':'/models/unity_assets/Junkyard_Low_Poly/wdljaaqbw.glb',
+  'unity_wdlmdexbw':'/models/unity_assets/Junkyard_Low_Poly/wdlmdexbw.glb',
+  'unity_xkzhcih':'/models/unity_assets/Junkyard_Low_Poly/xkzhcih.glb',
+  'unity_xiwcfassc':'/models/unity_assets/Junkyard_Low_Poly/xiwcfassc.glb',
+  'unity_vdjkbfmiw':'/models/unity_assets/Junkyard_Low_Poly/vdjkbfmiw.glb',
+  'unity_wcliee1':'/models/unity_assets/Junkyard_Low_Poly/wcliee1.glb',
+  'unity_wcljcaa':'/models/unity_assets/Junkyard_Low_Poly/wcljcaa.glb',
+  'unity_xh2kbey':'/models/unity_assets/Junkyard_Low_Poly/xh2kbey.glb',
+  'unity_ui1maewga':'/models/unity_assets/Junkyard_Low_Poly/ui1maewga.glb',
+  'unity_xkzlae1':'/models/unity_assets/Junkyard_Low_Poly/xkzlae1.glb',
+  'unity_vj2meecs_lod0':'/models/unity_assets/Junkyard_Low_Poly/vj2meecs_lod0.glb',
+  'unity_xdcgdgbh':'/models/unity_assets/Junkyard_Low_Poly/xdcgdgbh.glb',
+  'unity_xdcgdbrh':'/models/unity_assets/Junkyard_Low_Poly/xdcgdbrh.glb',
+  'unity_xf3pcdc':'/models/unity_assets/Junkyard_Low_Poly/xf3pcdc.glb',
+  'unity_wdlmdgebw':'/models/unity_assets/Junkyard_Low_Poly/wdlmdgebw.glb',
+  'unity_wcvoaje':'/models/unity_assets/Junkyard_Low_Poly/wcvoaje.glb',
+  'unity_tewscfuda':'/models/unity_assets/Junkyard_Low_Poly/tewscfuda.glb',
+  'unity_wcvoefi':'/models/unity_assets/Junkyard_Low_Poly/wcvoefi.glb',
+  'unity_vh2mecws_lod0':'/models/unity_assets/Junkyard_Low_Poly/vh2mecws_lod0.glb',
+  'unity_teraccgda':'/models/unity_assets/Junkyard_Low_Poly/teraccgda.glb',
+  'unity_vdqidbfiw':'/models/unity_assets/Junkyard_Low_Poly/vdqidbfiw.glb',
+  'unity_wcvocfe':'/models/unity_assets/Junkyard_Low_Poly/wcvocfe.glb',
+  'unity_vj1wdcq':'/models/unity_assets/Junkyard_Low_Poly/vj1wdcq.glb',
+  'unity_wclifde':'/models/unity_assets/Junkyard_Low_Poly/wclifde.glb',
+  'unity_wdktaj0aw_lod0':'/models/unity_assets/Junkyard_Low_Poly/wdktaj0aw_lod0.glb',
+  'unity_wdqqeae':'/models/unity_assets/Junkyard_Low_Poly/wdqqeae.glb',
+  'unity_uiujbcxva':'/models/unity_assets/Junkyard_Low_Poly/uiujbcxva.glb',
+  'unity_xf3pbgi':'/models/unity_assets/Junkyard_Low_Poly/xf3pbgi.glb',
+  'unity_wclifiq':'/models/unity_assets/Junkyard_Low_Poly/wclifiq.glb',
+  'unity_wcvoaas':'/models/unity_assets/Junkyard_Low_Poly/wcvoaas.glb',
+  'unity_wcvoegp':'/models/unity_assets/Junkyard_Low_Poly/wcvoegp.glb',
+  'unity_wcvoeht':'/models/unity_assets/Junkyard_Low_Poly/wcvoeht.glb',
+  'unity_wdlmfbbaw':'/models/unity_assets/Junkyard_Low_Poly/wdlmfbbaw.glb',
+  'unity_wcljdbi_lod0':'/models/unity_assets/Junkyard_Low_Poly/wcljdbi_lod0.glb',
+  'unity_wclicd1':'/models/unity_assets/Junkyard_Low_Poly/wclicd1.glb',
+  'unity_wcvodih':'/models/unity_assets/Junkyard_Low_Poly/wcvodih.glb',
+  'unity_wcljejz':'/models/unity_assets/Junkyard_Low_Poly/wcljejz.glb',
+  'unity_wdlifhrs':'/models/unity_assets/Junkyard_Low_Poly/wdlifhrs.glb',
+  'unity_xf3mfak':'/models/unity_assets/Junkyard_Low_Poly/xf3mfak.glb',
+  'unity_wcvodee':'/models/unity_assets/Junkyard_Low_Poly/wcvodee.glb',
+  'unity_vgyieacaw':'/models/unity_assets/Junkyard_Low_Poly/vgyieacaw.glb',
+  'unity_wcljea1':'/models/unity_assets/Junkyard_Low_Poly/wcljea1.glb',
+  'unity_udmkdejqx':'/models/unity_assets/Junkyard_Low_Poly/udmkdejqx.glb',
+  'unity_wcljagy':'/models/unity_assets/Junkyard_Low_Poly/wcljagy.glb',
+  'unity_wcvodba':'/models/unity_assets/Junkyard_Low_Poly/wcvodba.glb',
+  'unity_wdklears':'/models/unity_assets/Junkyard_Low_Poly/wdklears.glb',
+  'unity_wcvodge':'/models/unity_assets/Junkyard_Low_Poly/wcvodge.glb',
+  'unity_wclida0':'/models/unity_assets/Junkyard_Low_Poly/wclida0.glb',
+  'unity_wcvocea':'/models/unity_assets/Junkyard_Low_Poly/wcvocea.glb',
+  'unity_tl1rbitfa':'/models/unity_assets/Junkyard_Low_Poly/tl1rbitfa.glb',
+  'unity_tlomdibiw':'/models/unity_assets/Junkyard_Low_Poly/tlomdibiw.glb',
+  'unity_wdkmabe':'/models/unity_assets/Junkyard_Low_Poly/wdkmabe.glb',
+  'unity_wcvoef3':'/models/unity_assets/Junkyard_Low_Poly/wcvoef3.glb',
+  'unity_wdlnah1aw_lod0':'/models/unity_assets/Junkyard_Low_Poly/wdlnah1aw_lod0.glb',
+  'unity_wcvocfz':'/models/unity_assets/Junkyard_Low_Poly/wcvocfz.glb',
+  'unity_xf3pbjy':'/models/unity_assets/Junkyard_Low_Poly/xf3pbjy.glb',
+  'unity_wcljdev':'/models/unity_assets/Junkyard_Low_Poly/wcljdev.glb',
+  'unity_ufghbgyfa':'/models/unity_assets/Junkyard_Low_Poly/ufghbgyfa.glb',
+  'unity_wclifak':'/models/unity_assets/Junkyard_Low_Poly/wclifak.glb',
+  'unity_vj1tfaj':'/models/unity_assets/Junkyard_Low_Poly/vj1tfaj.glb',
+  'unity_xf4fdex':'/models/unity_assets/Junkyard_Low_Poly/xf4fdex.glb',
+  'unity_wcljbdb_lod0':'/models/unity_assets/Junkyard_Low_Poly/wcljbdb_lod0.glb',
+  'unity_wcvoahp':'/models/unity_assets/Junkyard_Low_Poly/wcvoahp.glb',
+  'unity_teufceuda':'/models/unity_assets/Junkyard_Low_Poly/teufceuda.glb',
+  'unity_wcliffv':'/models/unity_assets/Junkyard_Low_Poly/wcliffv.glb',
+  'unity_wcvoagh':'/models/unity_assets/Junkyard_Low_Poly/wcvoagh.glb',
+  'unity_wcvoadt':'/models/unity_assets/Junkyard_Low_Poly/wcvoadt.glb',
+  'unity_tlzkdilva':'/models/unity_assets/Junkyard_Low_Poly/tlzkdilva.glb',
+  'unity_wclidiw':'/models/unity_assets/Junkyard_Low_Poly/wclidiw.glb',
+  'unity_vb1kfhv':'/models/unity_assets/Junkyard_Low_Poly/vb1kfhv.glb',
+  'unity_wcvoca1':'/models/unity_assets/Junkyard_Low_Poly/wcvoca1.glb',
+  'unity_wcvodcw':'/models/unity_assets/Junkyard_Low_Poly/wcvodcw.glb',
+  'unity_wclhfco':'/models/unity_assets/Junkyard_Low_Poly/wclhfco.glb',
+  'unity_vktifj1ga':'/models/unity_assets/Junkyard_Low_Poly/vktifj1ga.glb',
+  'unity_wcliegz':'/models/unity_assets/Junkyard_Low_Poly/wcliegz.glb',
+  'unity_wdkkaar':'/models/unity_assets/Junkyard_Low_Poly/wdkkaar.glb',
+  'unity_wdljebz':'/models/unity_assets/Junkyard_Low_Poly/wdljebz.glb',
+  'unity_vizqehw':'/models/unity_assets/Junkyard_Low_Poly/vizqehw.glb',
+  'unity_wdlmaco':'/models/unity_assets/Junkyard_Low_Poly/wdlmaco.glb',
+  'unity_wdlkaces':'/models/unity_assets/Junkyard_Low_Poly/wdlkaces.glb',
+  'unity_vj2meecs_lod2':'/models/unity_assets/Junkyard_Mid_Poly/vj2meecs_lod2.glb',
+  'unity_vh2mecws_lod2':'/models/unity_assets/Junkyard_Mid_Poly/vh2mecws_lod2.glb',
+  'unity_wdktaj0aw_lod2':'/models/unity_assets/Junkyard_Mid_Poly/wdktaj0aw_lod2.glb',
+  'unity_wcljdbi_lod2':'/models/unity_assets/Junkyard_Mid_Poly/wcljdbi_lod2.glb',
+  'unity_wdlnah1aw_lod2':'/models/unity_assets/Junkyard_Mid_Poly/wdlnah1aw_lod2.glb',
+  'unity_wcljbdb_lod2':'/models/unity_assets/Junkyard_Mid_Poly/wcljbdb_lod2.glb',
+
+  // ── FAB COMMUNITY ASSETS — small/medium GLBs (served from Pages) ──────────
+  // Props
+  'office_chair':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/office_chair_3_low_poly.glb',
+  'desk':               'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/desk_1_low_poly.glb',
+  'office_desk':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/desk_1_low_poly.glb',
+  'shelf':              'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/shleving_2_low_poly.glb',
+  'office_shelf':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/shleving_2_low_poly.glb',
+  'bench':              'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/bench_1_low_poly.glb',
+  'park_bench':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/bench_1_low_poly.glb',
+  'cargo_container':    'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cargo_container_mesh_dae.glb',
+  'shipping_container': 'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cargo_container_mesh_dae.glb',
+  'corner_piece':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/corner.glb',
+  'tunnel':             'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/tunnels.glb',
+  'bridge':             'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/bridge_roads.glb',
+  'stone_stairs':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/entry_stairs_lubeck_full.glb',
+  'electrical_box':     'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/electrical_substation.glb',
+  'substation':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/electrical_substation.glb',
+  // Vehicles
+  'morris_minor':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/morris_minor.glb',
+  'retro_car':          'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/morris_minor.glb',
+  'copper_car':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/low_polly_retro_copper_car.glb',
+  'rc_car':             'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/rc_fab.glb',
+  // Architecture
+  'stone_house':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/stone_house_exterior.glb',
+  'diorama_house':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/ign_diorama_house.glb',
+  'diorama_tree':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/ign_pine_tree.glb',
+  'wood_fence':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/white_wood_fence.glb',
+  // Characters / apocalypse
+  'apocalypse_female':  'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/futuristic_apocalypse_female_cargo_pants.glb',
+  'futuristic_female':  'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/futuristic_apocalypse_female_cargo_pants.glb',
+  // Weapons
+  'steam_carbine':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/practice_steam_viper_carbine.glb',
+  'viper_carbine':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/practice_steam_viper_carbine.glb',
+  // Environment misc
+  'street_signs':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/iy_signs_exp.glb',
+  'signs':              'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/iy_signs_exp.glb',
+  'metro_props':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/low_poly_psx_style_soviet_subway_metro_props.glb',
+  'subway_props':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/low_poly_psx_style_soviet_subway_metro_props.glb',
+  'minuteman_missile':  'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/minuteman_missile.glb',
+  // ── END FAB COMMUNITY ASSETS (small) ──────────────────────────────────────
+  'junkyard_1':'/models/unity_assets/Junkyard_Low_Poly/vb1lafx.glb',
+  'junk_1':'/models/unity_assets/Junkyard_Low_Poly/vb1lafx.glb',
+  'junkyard_2':'/models/unity_assets/Junkyard_Low_Poly/wcvodhd.glb',
+  'junk_2':'/models/unity_assets/Junkyard_Low_Poly/wcvodhd.glb',
+  'junkyard_3':'/models/unity_assets/Junkyard_Low_Poly/wdljaaqbw.glb',
+  'junk_3':'/models/unity_assets/Junkyard_Low_Poly/wdljaaqbw.glb',
+  'junkyard_4':'/models/unity_assets/Junkyard_Low_Poly/wdlmdexbw.glb',
+  'junk_4':'/models/unity_assets/Junkyard_Low_Poly/wdlmdexbw.glb',
+  'junkyard_5':'/models/unity_assets/Junkyard_Low_Poly/xkzhcih.glb',
+  'junk_5':'/models/unity_assets/Junkyard_Low_Poly/xkzhcih.glb',
+  'junkyard_6':'/models/unity_assets/Junkyard_Low_Poly/xiwcfassc.glb',
+  'junk_6':'/models/unity_assets/Junkyard_Low_Poly/xiwcfassc.glb',
+  'junkyard_7':'/models/unity_assets/Junkyard_Low_Poly/vdjkbfmiw.glb',
+  'junk_7':'/models/unity_assets/Junkyard_Low_Poly/vdjkbfmiw.glb',
+  'junkyard_8':'/models/unity_assets/Junkyard_Low_Poly/wcliee1.glb',
+  'junk_8':'/models/unity_assets/Junkyard_Low_Poly/wcliee1.glb',
+  'junkyard_9':'/models/unity_assets/Junkyard_Low_Poly/wcljcaa.glb',
+  'junk_9':'/models/unity_assets/Junkyard_Low_Poly/wcljcaa.glb',
+  'junkyard_10':'/models/unity_assets/Junkyard_Low_Poly/xh2kbey.glb',
+  'junk_10':'/models/unity_assets/Junkyard_Low_Poly/xh2kbey.glb',
+  'junkyard_11':'/models/unity_assets/Junkyard_Low_Poly/ui1maewga.glb',
+  'junk_11':'/models/unity_assets/Junkyard_Low_Poly/ui1maewga.glb',
+  'junkyard_12':'/models/unity_assets/Junkyard_Low_Poly/xkzlae1.glb',
+  'junk_12':'/models/unity_assets/Junkyard_Low_Poly/xkzlae1.glb',
+  'junkyard_13':'/models/unity_assets/Junkyard_Low_Poly/vj2meecs_lod0.glb',
+  'junk_13':'/models/unity_assets/Junkyard_Low_Poly/vj2meecs_lod0.glb',
+  'junkyard_14':'/models/unity_assets/Junkyard_Low_Poly/xdcgdgbh.glb',
+  'junk_14':'/models/unity_assets/Junkyard_Low_Poly/xdcgdgbh.glb',
+  'junkyard_15':'/models/unity_assets/Junkyard_Low_Poly/xdcgdbrh.glb',
+  'junk_15':'/models/unity_assets/Junkyard_Low_Poly/xdcgdbrh.glb',
+  'junkyard_16':'/models/unity_assets/Junkyard_Low_Poly/xf3pcdc.glb',
+  'junk_16':'/models/unity_assets/Junkyard_Low_Poly/xf3pcdc.glb',
+  'junkyard_17':'/models/unity_assets/Junkyard_Low_Poly/wdlmdgebw.glb',
+  'junk_17':'/models/unity_assets/Junkyard_Low_Poly/wdlmdgebw.glb',
+  'junkyard_18':'/models/unity_assets/Junkyard_Low_Poly/wcvoaje.glb',
+  'junk_18':'/models/unity_assets/Junkyard_Low_Poly/wcvoaje.glb',
+  'junkyard_19':'/models/unity_assets/Junkyard_Low_Poly/tewscfuda.glb',
+  'junk_19':'/models/unity_assets/Junkyard_Low_Poly/tewscfuda.glb',
+  'junkyard_20':'/models/unity_assets/Junkyard_Low_Poly/wcvoefi.glb',
+  'junk_20':'/models/unity_assets/Junkyard_Low_Poly/wcvoefi.glb',
+  'junkyard_hq_1':'/models/unity_assets/Junkyard_Mid_Poly/vj2meecs_lod2.glb',
+  'junkyard_hq_2':'/models/unity_assets/Junkyard_Mid_Poly/vh2mecws_lod2.glb',
+  'junkyard_hq_3':'/models/unity_assets/Junkyard_Mid_Poly/wdktaj0aw_lod2.glb',
+  'junkyard_hq_4':'/models/unity_assets/Junkyard_Mid_Poly/wcljdbi_lod2.glb',
+  'junkyard_hq_5':'/models/unity_assets/Junkyard_Mid_Poly/wdlnah1aw_lod2.glb',
+  'junkyard_hq_6':'/models/unity_assets/Junkyard_Mid_Poly/wcljbdb_lod2.glb',
+
+  // ── HORROR + TRAFFIC ALIASES ──────────────────────────────────────────────
+  'chainsaw':'web/models/unity_assets/Horror_Multiplayer_Template/ChainsawHandle.glb',
+  'hatchet':'web/models/unity_assets/Horror_Multiplayer_Template/Hatchet.glb',
+  'medkit':'web/models/unity_assets/Horror_Multiplayer_Template/medi.glb',
+  'horror_house':'web/models/unity_assets/Horror_Multiplayer_Template/HouseModel02WallRoof.glb',
+  'horror_car':'web/models/unity_assets/Horror_Multiplayer_Template/PioneerSW80.glb',
+  'street_light_horror':'web/models/unity_assets/Horror_Multiplayer_Template/StrettLight.glb',
+  'killer_character':'web/models/unity_assets/Horror_Multiplayer_Template/Killer_Menu_Animation.glb',
+  'pedestrian':'web/models/unity_assets/Urban_Traffic_System/casual01_m.glb',
+  'pedestrian_f':'web/models/unity_assets/Urban_Traffic_System/lierelaxed2_f.glb',
+  'traffic_truck':'web/models/unity_assets/Urban_Traffic_System/Truck_2.glb',
+  'traffic_child':'web/models/unity_assets/Urban_Traffic_System/Walk_child_boy.glb',
+  'sitting_person':'web/models/unity_assets/Urban_Traffic_System/sitidle.glb',
+  'talking_person':'web/models/unity_assets/Urban_Traffic_System/girl_talk1.glb',
+  'city_road':'web/models/unity_assets/Urban_Traffic_System/Big_Road_55.glb',
+  'road_long':'web/models/unity_assets/Urban_Traffic_System/Big_Road_55.glb',
+  // ── END HORROR + TRAFFIC ALIASES ──
+
+  // ── FAB ASSETS (large files via GitHub Releases CDN) ─────────────────────
+  'positano':'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/positano_lite.glb',
+  'positano_town':'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/positano_lite.glb',
+  'italian_town':'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/positano_lite.glb',
+  'coastal_town':'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/positano_lite.glb',
+  'amalfi':'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/positano_lite.glb',
+  // ── END FAB ASSETS ────────────────────────────────────────────────────────
+
+  // ── FAB ASSETS — compressed, served from Pages CDN ───────────────────────
+  'highrise':           'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/highrise.glb',
+  'highrise_building':  'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/highrise.glb',
+  'office_building':    'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/office_building.glb',
+  'dodge_challenger':   'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/dodge_challenger.glb',
+  'muscle_car':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/dodge_challenger.glb',
+  'stone_stairs':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/stone_stairs.glb',
+  'entry_stairs':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/stone_stairs.glb',
+  'cardboard_box':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cardboard_box.glb',
+  'debris_box':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cardboard_box.glb',
+  'nexus_robot':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/nexus_robot.glb',
+  'mech':               'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/nexus_robot.glb',
+  'elergy_robot':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/elergy_robot.glb',
+  // ── END FAB PAGES ASSETS ──────────────────────────────────────────────────
+
+
+  // ── FAB ASSETS — large models on GitHub Releases CDN ────────────────────
+  // Landmarks & Cities
+  'la_night_city':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/la_night_city.glb',
+  'night_city':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/la_night_city.glb',
+  'la_city':            'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/la_night_city.glb',
+  'asian_suburb':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/asian_suburb_town.glb',
+  'asian_town':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/asian_suburb_town.glb',
+  'london':             'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/london_city.glb',
+  'london_city':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/london_city.glb',
+  'arc_de_triomphe':    'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/arc_de_triomphe.glb',
+  'paris_arch':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/arc_de_triomphe.glb',
+  'sacre_coeur':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/sacre_coeur.glb',
+  'paris_church':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/sacre_coeur.glb',
+  'monemvasia':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/monemvasia_town.glb',
+  'greek_town':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/monemvasia_town.glb',
+  'ancient_corinth':    'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/ancient_corinth.glb',
+  'corinth':            'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/ancient_corinth.glb',
+  'marble_quarry':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/marble_quarry.glb',
+  'quarry':             'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/marble_quarry.glb',
+  'football_pitch':     'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/football_pitch.glb',
+  'stadium':            'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/football_pitch.glb',
+  'cliff_tombs':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cliff_tombs.glb',
+  'ancient_ruins':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cliff_tombs.glb',
+  'de_haar_castle':     'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/de_haar_castle.glb',
+  'jemeppe_castle':     'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/jemeppe_castle.glb',
+  'french_chateau':     'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/french_chateau.glb',
+  'chateau':            'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/french_chateau.glb',
+  'chicago_building':   'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/chicago_building.glb',
+  'granada_courtyard':  'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/granada_courtyard.glb',
+  'spanish_courtyard':  'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/granada_courtyard.glb',
+  'beach_house':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/beach_house.glb',
+  'cathedral':          'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cathedral.glb',
+  'church':             'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cathedral.glb',
+  'car_garage':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/car_garage.glb',
+  'garage':             'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/car_garage.glb',
+  // Vehicles
+  'willys_buggy':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/willys_buggy.glb',
+  'mountain_buggy':     'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/willys_buggy.glb',
+  'burned_cars':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/burned_cars.glb',
+  'car_wreck':          'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/burned_cars.glb',
+  'burnt_cars':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/burned_cars.glb',
+  // Characters / Robots
+  'sentinel':           'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/sentinel_pursuer.glb',
+  'sentinel_pursuer':   'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/sentinel_pursuer.glb',
+  // Weapons
+  'sniper_rifle':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/sniper_rifle.glb',
+  'wooden_sniper':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/sniper_rifle.glb',
+  // Props
+  'cardboard_boxes':    'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cardboard_boxes.glb',
+  'boxes':              'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/cardboard_boxes.glb',
+  'playground':         'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/playground.glb',
+  'diner_booth':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/diner_booth.glb',
+  // Military trenches
+  'trench_rock':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/trench_rock.glb',
+  'trench_stairs':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/trench_stairs.glb',
+  'trench_tunnel':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/trench_tunnel.glb',
+  'trench_wall':        'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/trench_wall.glb',
+  'sandbag_barrier':    'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/sandbag_barrier.glb',
+  'sandbag_pile':       'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/sandbag_pile.glb',
+  'trench':             'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/trench_wall.glb',
+  'military_trench':    'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/trench_wall.glb',
+  // Misc
+  'parking_meter':      'https://pub-a37df921890542d69a8ec4cc32e6788c.r2.dev/parking_meter.glb',
+  // ── END FAB RELEASES ASSETS ───────────────────────────────────────────────
+
+  'sport_car':'web/models/unity_assets/Sport_Car_Free_3/SportCar_3_Baked.glb',
+  'sports_car':'web/models/unity_assets/Sport_Car_Free_3/SportCar_3_Baked.glb',
+  'sportcar':'web/models/unity_assets/Sport_Car_Free_3/SportCar_3_Baked.glb',
+  'urp_rock':'web/models/unity_assets/Unity_URP_Demo/Rock_A_01.glb',
+  'urp_rock_large':'web/models/unity_assets/Unity_URP_Demo/Rock_D.glb',
+  'urp_bush':'web/models/unity_assets/Unity_URP_Demo/Red_Bush.glb',
+  'fantasy_tree':'web/models/unity_assets/Fantasy_Forest_Environment/tree_1.glb',
+  'forest_tree':'web/models/unity_assets/Fantasy_Forest_Environment/tree_1.glb',
+  'road_piece':'web/models/unity_assets/Kajamans_Roads/l10km_cc4_sl20_t_12123025_rw10_wh3_n3_RsBTW_MeshV00.glb',
+  'kajaman_road':'web/models/unity_assets/Kajamans_Roads/l10km_cc4_sl20_t_12123025_rw10_wh3_n3_RsBTW_MeshV00.glb',
+  'alley':'web/models/unity_assets/Kajamans_Roads/l10km_cc4_sl20_t_12123025_A87113010_Alley.glb',
+  'human_talk':'web/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Talk01.glb',
+  'human_idle':'web/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Idle02.glb',
+  'human_walk':'web/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Walk01_Forward.glb',
+  'human_sprint':'web/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Sprint01_Forward.glb',
+  'human_jump':'web/models/unity_assets/Human_Basic_Motions_FREE/HumanM_at_Jump01.glb',
+
+  // === UE5 Matrix Awakens Building Pieces ===
+  'ue_downtown_wall':'ue_sm_bldg_nyg_l01_a_wall_01_n1',
+  'ue_commercial_wall':'ue_sm_bldg_sfb_l1_a_wall_01_n1',
+  'ue_residential_wall':'ue_sm_bldg_sfa_l1_a_wall_01_n1',
+  'ue_industrial_wall':'ue_sm_bldg_sfd_l01_a_wall_01_n1',
+  // === Downloaded AAA Models ===
+  'dl_retro_car':'dl_low_polly_retro_copper_car',
+  'dl_bench':'dl_bench_1_low_poly',
+  'dl_cargo_container':'dl_cargo_container_mesh_dae',
+  'dl_bridge':'dl_bridge_roads',
+  'dl_morris':'dl_morris_minor',
 };
 
 
@@ -6688,7 +8451,7 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
   }
   // Strip .glb if already present (catalog entries include extension)
   const cleanFile = glbFile.endsWith('.glb') ? glbFile.slice(0, -4) : glbFile;
-  const url = customPath || ('models/' + cleanFile + '.glb');
+  const url = customPath || ('/models/' + cleanFile + '.glb');
   const statusEl = document.getElementById('engine-status');
   if (statusEl) statusEl.textContent = 'Loading ' + glbFile + '...';
   // Space models apart when multiple added at once
@@ -6711,7 +8474,8 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
       model.userData.animations = gltf.animations.map(a => a.name);
       model.userData.clips = gltf.animations; // Store actual clips for switching
     }
-    // Fix checkerboard/missing textures — replace with solid PBR materials
+    // Fix checkerboard/missing textures + tint white/untextured models
+    const _bldgTints = [0xd8ccb8,0xc8bca8,0xb8b0a0,0xd0c8b8,0xc0b8a8,0xe0d8c8,0xc8c0b0,0xb0a898,0xd4ccc0,0xc0b4a4,0xa8a098,0xd8d0c0,0xc8c4b8,0xb8b4a8];
     model.traverse(child => {
       if (child.isMesh && child.material) {
         const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -6719,6 +8483,35 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
           // If map is a tiny placeholder texture (checkerboard), remove it
           if (mat.map && mat.map.image && mat.map.image.width <= 2) {
             mat.map = null; mat.needsUpdate = true;
+          }
+          // Tint ONLY pure white meshes with no texture — apply realistic building colors
+          if (!mat.map && mat.color) {
+            const _r = mat.color.r, _g = mat.color.g, _b = mat.color.b;
+            // Only tint if nearly white (>0.9 all channels) — leave colored meshes alone
+            if (_r > 0.9 && _g > 0.9 && _b > 0.9) {
+              mat.color.setHex(_bldgTints[Math.floor(Math.random() * _bldgTints.length)]);
+              mat.roughness = 0.7;
+              mat.metalness = 0.02;
+            }
+            // Glass windows — use MeshPhysicalMaterial for realism
+            const _mName = (mat.name || '').toLowerCase();
+            const _nName = (child.name || '').toLowerCase();
+            if (_mName.includes('glass') || _mName.includes('window') || _nName.includes('glass') || _nName.includes('window')) {
+              const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0x88bbdd, metalness: 0.1, roughness: 0.05,
+                transmission: 0.7, thickness: 0.3, ior: 1.5,
+                transparent: true, opacity: 0.6, envMapIntensity: 1.5,
+              });
+              child.material = glassMat;
+            }
+            // Also detect blue-ish parts as windows
+            if (mat.color && mat.color.b > 0.5 && mat.color.b > mat.color.r * 1.4) {
+              child.material = new THREE.MeshPhysicalMaterial({
+                color: 0x99ccee, metalness: 0.1, roughness: 0.08,
+                transmission: 0.6, thickness: 0.2, ior: 1.45,
+                transparent: true, opacity: 0.55,
+              });
+            }
           }
           child.castShadow = true;
           child.receiveShadow = true;
@@ -6781,6 +8574,9 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     }
     const scale = scaleOverride || autoScale;
     model.scale.setScalar(scale);
+    // Rebind skeleton after scale so animated models don't T-pose
+    model.updateMatrixWorld(true);
+    model.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.pose(); });
     // Recompute after scale
     const box2 = new THREE.Box3().setFromObject(model);
     const bottom = box2.min.y;
@@ -7177,7 +8973,7 @@ window.PlayerAgent = PlayerAgent;
 
 // === SETUP ===
 const canvas = document.getElementById('crate-canvas');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); // Capped for performance
 renderer.setSize(canvas.clientWidth, canvas.clientHeight);
 renderer.shadowMap.enabled = true;
@@ -7362,7 +9158,7 @@ const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clien
 camera.position.set(15, 10, 20);
 
 const controls = new OrbitControls(camera, canvas);
-window._cam = camera; window._ctrl = controls; window._scene = scene;
+window._cam = camera; window._ctrl = controls; window._scene = scene; window._renderer = renderer;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.target.set(0, 1, 0);
@@ -7784,7 +9580,7 @@ createSun();
 function createGround(type) {
   const colors = { grass: 0x3a7a3a, dirt: 0x6b4a2a, sand: 0xc4a96a, snow: 0xd8dce8, gravel: 0x888888, stone: 0x666666, mud: 0x4a3a2a, lava: 0xcc3300, water: 0x2266aa, wood: 0x7a5530, marble: 0xddddcc, metal: 0x888899, concrete: 0x999999, asphalt: 0x333333, gold: 0xccaa22, obsidian: 0x111115, crystal: 0x8899cc, ice: 0xaaddff, rock: 0x555555 };
   const color = colors[type] || colors.grass;
-  const geo = new THREE.PlaneGeometry(800, 800, 256, 256);
+  const geo = new THREE.PlaneGeometry(800, 800, 64, 64);
   
   // Smooth procedural height — layered sine waves (no visible grid)
   const pos = geo.attributes.position;
@@ -7884,6 +9680,101 @@ function createGround(type) {
 }
 
 let currentGround = createGround('grass');
+
+// ══════════════════════════════════════════════════════
+// TEXTURE PACK SYSTEM — Real ground textures from CDN
+// Uses AmbientCG CC0 textures (no auth, free, public domain)
+// ══════════════════════════════════════════════════════
+const TEXTURE_PACKS = {
+  grass:    { color: '#ambientcg/Grass001',    hex: 0x3a7a3a, repeat: 40, roughness: 0.95 },
+  sand:     { color: '#ambientcg/Sand001',     hex: 0xc4a96a, repeat: 50, roughness: 1.0 },
+  desert:   { color: '#ambientcg/Ground036',   hex: 0xb8924a, repeat: 40, roughness: 1.0 },
+  snow:     { color: '#ambientcg/Snow006',     hex: 0xd8dce8, repeat: 40, roughness: 0.7 },
+  dirt:     { color: '#ambientcg/Ground025',   hex: 0x6b4a2a, repeat: 40, roughness: 0.98 },
+  stone:    { color: '#ambientcg/Rock022',     hex: 0x666666, repeat: 30, roughness: 0.9 },
+  rock:     { color: '#ambientcg/Rock035',     hex: 0x555555, repeat: 30, roughness: 0.95 },
+  mud:      { color: '#ambientcg/Ground037',   hex: 0x4a3a2a, repeat: 35, roughness: 1.0 },
+  gravel:   { color: '#ambientcg/Gravel015',   hex: 0x888888, repeat: 50, roughness: 0.9 },
+  concrete: { color: '#ambientcg/Concrete034', hex: 0x999999, repeat: 20, roughness: 0.85 },
+  asphalt:  { color: '#ambientcg/Asphalt012',  hex: 0x333333, repeat: 15, roughness: 0.85 },
+  lava:     { color: null,                     hex: 0xcc3300, repeat: 10, roughness: 0.6 },
+  ice:      { color: '#ambientcg/Ice002',      hex: 0xaaddff, repeat: 30, roughness: 0.1,  metalness: 0.1 },
+  marble:   { color: '#ambientcg/Marble006',   hex: 0xddddcc, repeat: 20, roughness: 0.3,  metalness: 0.05 },
+  wood:     { color: '#ambientcg/WoodFloor041',hex: 0x7a5530, repeat: 20, roughness: 0.8 },
+  metal:    { color: '#ambientcg/Metal032',    hex: 0x888899, repeat: 15, roughness: 0.4,  metalness: 0.7 },
+  forest:   { color: '#ambientcg/Moss001',     hex: 0x2a5a2a, repeat: 40, roughness: 0.98 },
+  swamp:    { color: null,                     hex: 0x3a4a2a, repeat: 35, roughness: 1.0 },
+  gold:     { color: null,                     hex: 0xccaa22, repeat: 10, roughness: 0.3,  metalness: 0.8 },
+  obsidian: { color: null,                     hex: 0x111115, repeat: 10, roughness: 0.1,  metalness: 0.3 },
+  crystal:  { color: null,                     hex: 0x8899cc, repeat: 10, roughness: 0.05, metalness: 0.2 },
+  water:    { color: null,                     hex: 0x2266aa, repeat: 20, roughness: 0.1,  metalness: 0.1 },
+};
+
+// AmbientCG texture URLs (CC0 - public domain)
+const AMBIENTCG_BASE = 'https://ambientcg.com/get?file=';
+const TEXTURE_URLS = {
+  grass:    'Grass001_1K-JPG_Color.jpg',
+  sand:     'Sand001_1K-JPG_Color.jpg',
+  desert:   'Ground036_1K-JPG_Color.jpg',
+  snow:     'Snow006_1K-JPG_Color.jpg',
+  dirt:     'Ground025_1K-JPG_Color.jpg',
+  stone:    'Rock022_1K-JPG_Color.jpg',
+  rock:     'Rock035_1K-JPG_Color.jpg',
+  mud:      'Ground037_1K-JPG_Color.jpg',
+  gravel:   'Gravel015_1K-JPG_Color.jpg',
+  concrete: 'Concrete034_1K-JPG_Color.jpg',
+  asphalt:  'Asphalt012_1K-JPG_Color.jpg',
+  ice:      'Ice002_1K-JPG_Color.jpg',
+  marble:   'Marble006_1K-JPG_Color.jpg',
+  wood:     'WoodFloor041_1K-JPG_Color.jpg',
+  metal:    'Metal032_1K-JPG_Color.jpg',
+  forest:   'Moss001_1K-JPG_Color.jpg',
+};
+
+const _texCache = {};
+const _texLoader = new THREE.TextureLoader();
+
+async function loadGroundTexture(type) {
+  if (_texCache[type]) return _texCache[type];
+  const filename = TEXTURE_URLS[type];
+  if (!filename) return null;
+  return new Promise((resolve) => {
+    _texLoader.load(
+      AMBIENTCG_BASE + filename,
+      (tex) => {
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        const pack = TEXTURE_PACKS[type] || {};
+        tex.repeat.set(pack.repeat || 40, pack.repeat || 40);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        _texCache[type] = tex;
+        resolve(tex);
+      },
+      undefined,
+      () => resolve(null) // graceful fallback on error
+    );
+  });
+}
+
+async function applyGroundTexture(mesh, type) {
+  const pack = TEXTURE_PACKS[type] || TEXTURE_PACKS.grass;
+  const tex = await loadGroundTexture(type);
+  if (tex) {
+    mesh.material.map = tex;
+    mesh.material.vertexColors = false;
+    mesh.material.color.set(0xffffff);
+  } else {
+    // Fallback to vertex colors
+    mesh.material.map = null;
+    mesh.material.vertexColors = true;
+  }
+  mesh.material.roughness = pack.roughness ?? 0.9;
+  mesh.material.metalness = pack.metalness ?? 0;
+  mesh.material.needsUpdate = true;
+}
+// ══════════════════════════════════════════════════════
+// END TEXTURE PACK SYSTEM
+// ══════════════════════════════════════════════════════
+
 let groundSize = 300; // current ground plane size
 scene.add(currentGround);
 
@@ -7958,6 +9849,7 @@ function expandGround(newSize) {
   groundSize = newSize;
   scene.add(currentGround);
   console.log('[CrateEngine] Ground expanded to ' + newSize + 'x' + newSize);
+  applyGroundTexture(currentGround, gType);
   return newSize;
 }
 
@@ -8590,7 +10482,7 @@ const KENNEY_GRAVEYARD_PROPS = [
 
 function loadKenneyModel(modelPath, x, y, z, scale) {
   const s = scale || 3;
-  gltfLoader.load('models/' + modelPath + '.glb', (gltf) => {
+  gltfLoader.load('/models/' + modelPath + '.glb', (gltf) => {
     const model = gltf.scene;
     model.scale.setScalar(s);
     model.position.set(x, y, z);
@@ -8609,7 +10501,7 @@ function randomKenneyBuilding(x, z) {
 
 function randomKenneyVehicle(x, z, rotation) {
   const model = KENNEY_VEHICLES[Math.floor(Math.random() * KENNEY_VEHICLES.length)];
-  gltfLoader.load('models/' + model + '.glb', (gltf) => {
+  gltfLoader.load('/models/' + model + '.glb', (gltf) => {
     const m = gltf.scene;
     m.scale.setScalar(2.5);
     m.position.set(x, 0.1, z);
@@ -8793,7 +10685,7 @@ function createCommercialBuilding(opts) {
     furniture.push({m:'ph_WoodenTable_01',p:[0,0.18,d*0.1],s:1.8});
   }
   furniture.forEach(f => {
-    gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
+    gltfLoader.load('/models/'+f.m+'.glb',(gltf)=>{
       const obj=gltf.scene; obj.position.set(f.p[0],f.p[1],f.p[2]);
       if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
       obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
@@ -8901,7 +10793,7 @@ function createPitchedRoofHouse(opts) {
       furniture.push({m:'ph_Rockingchair_01',p:[w*0.25,0.18,d*0.2],r:-Math.PI/3,s:1.3});
     }
     furniture.forEach(f => {
-      gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
+      gltfLoader.load('/models/'+f.m+'.glb',(gltf)=>{
         const obj=gltf.scene; obj.position.set(f.p[0],f.p[1]+by,f.p[2]);
         if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
         obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
@@ -9498,7 +11390,7 @@ function createGlassOfficeBuilding(opts) {
       furniture.push({m:'ph_Sofa_01', p:[0, 0.16, d*0.3], r:Math.PI, s:1.5});
     }
     furniture.forEach(f => {
-      gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
+      gltfLoader.load('/models/'+f.m+'.glb',(gltf)=>{
         const obj=gltf.scene; obj.position.set(f.p[0],f.p[1]+y,f.p[2]);
         if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
         obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
@@ -9621,7 +11513,7 @@ function createPark(opts) {
   }
   // Benches
   [[-3,0,0],[3,0,Math.PI],[0,-5,Math.PI/2],[0,5,-Math.PI/2]].forEach(([x,z,ry]) => {
-    gltfLoader.load('models/ph_park_bench.glb',(gltf)=>{
+    gltfLoader.load('/models/ph_park_bench.glb',(gltf)=>{
       const obj=gltf.scene; obj.position.set(x,0.08,z); obj.rotation.y=ry||0; obj.scale.setScalar(1.5);
       obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
     },null,()=>{});
@@ -9838,7 +11730,7 @@ function createModernHouse(opts) {
     }
     
     furniture.forEach(f => {
-      gltfLoader.load('models/' + f.m + '.glb', (gltf) => {
+      gltfLoader.load('/models/' + f.m + '.glb', (gltf) => {
         const obj = gltf.scene;
         obj.position.set(f.p[0], f.p[1]+by, f.p[2]);
         if (f.r) obj.rotation.y = f.r;
@@ -11028,9 +12920,1823 @@ function addSpotLight(x, y, z, targetX, targetY, targetZ, color) {
 
 // === NLP COMMAND PARSER ===
 // Bridge: expose for command bus (Engine 2.0)
+
+
+// ══════════════════════════════════════════════════════
+// COMPREHENSIVE COMMAND REFERENCE PAGE
+// ══════════════════════════════════════════════════════
+function showCommandPage() {
+  const existing = document.getElementById('cmd-page-modal');
+  if (existing) { existing.remove(); return; }
+
+  const categories = [
+    { icon: '🌍', name: 'World & Terrain', cmds: [
+      'terrain flat / hills / mountains / desert / island / canyon / volcanic / arctic',
+      'ground grass / dirt / sand / snow / stone / concrete / asphalt / lava / mud / forest',
+      'ground rock / marble / metal / wood / ice / obsidian / crystal / gravel',
+      'I want a desert land / grass land / snowy world / forest land / volcanic land / swamp land',
+      'mountains / rolling hills / canyon / volcano / desert dunes / arctic plains',
+      'generate desert city / snow city / jungle city / swamp city',
+      'generate world / auto town / build a town',
+    ]},
+    { icon: '🌅', name: 'Sky & Lighting', cmds: [
+      'time dawn / sunrise / morning / noon / afternoon / sunset / dusk / night / midnight',
+      'aaa sky / realistic sky / sunrise / sunset sky',
+      'set ambient [0-1] / ambient brightness [0-1]',
+      'sun intensity [0-5] / sun color [hex] / shadow softness [0-5]',
+      'bloom on/off / bloom [0-5] / grain [0-1]',
+      'add god rays / disable god rays / add lens flare',
+    ]},
+    { icon: '🌦️', name: 'Weather & Atmosphere', cmds: [
+      'fog on/off / fog [0.001-0.05]',
+      'make it rain / stop rain / heavy rain / drizzle',
+      'make it snow / stop snow / blizzard',
+      'clear weather / storm',
+      'particles dust / fireflies / embers / ash / leaves / snow / spores',
+    ]},
+    { icon: '🏔️', name: 'Water', cmds: [
+      'add water / add ocean / add river / add pool / add lake / add swimming',
+      'water calm / tropical / stormy / arctic / blood / lava / crystal',
+    ]},
+    { icon: '🧑', name: 'Characters', cmds: [
+      'play as knight / swat / soldier / casual / suit / witch / medieval / scifi / beach / spacesuit',
+      'equip sword / axe / rifle / pistol / shotgun / bow / spear / hammer / dagger / katana / staff',
+      'spawn [N] npcs / spawn [N] enemies / spawn [N] guards',
+      'spawn npc zombie / woman / man / knight / soldier',
+      'add npc [type] at [x,y,z] / npc say [text]',
+      'add quest giver npc / add shopkeeper npc / add merchant npc',
+      'npc [name] has quest [name] / add npc dialogue',
+    ]},
+    { icon: '🏗️', name: 'Buildings & Structures', cmds: [
+      'add modern house / add modern house 2 floors',
+      'build a city / build downtown / build residential area',
+      'build a dungeon / build a cave / build interior',
+      'add skyscraper / add tower / add castle / add ruins',
+      'add traffic light / add street lamp / add fire hydrant',
+      'add road / add roads / add park / add commercial area',
+    ]},
+    { icon: '📦', name: 'Models & Props (857 Unity + 3400 base)', cmds: [
+      '── FLOODED/POST-APOC ──',
+      'add unity_villa1_ext_b / add unity_villa2_ext_a / add unity_church1_mid_a / add unity_barn2_mid_a',
+      'add unity_bld_bridge_a / add unity_lo_prop_car_a / add unity_lo_prop_boat_a',
+      '── TOON CITY ──',
+      'add toon_apartment / add toon_city_hall / add helicopter / add toon_park / add toon_ambulance',
+      '── SPACE/SCI-FI ──',
+      'add space_fighter / add spaceship / add unity_capitalship_shield / add space_rifle',
+      '── MEDIEVAL/FANTASY ──',
+      'add knight_character / add dark_knight / add zombie / add unity_sword5_3 / add unity_shield_evo_02_v1',
+      'add unity_pt_pine_tree_03_green / add unity_pt_wooden_bridge_02 / add unity_pt_ore_rock_01',
+      '── FPS WEAPONS ──',
+      'add unity_akm / add unity_revolver / add unity_crossbow / add pistol / add medieval_sword_fps',
+      'add unity_fp_doublebarlshotgun / add unity_fp_huntingrifle / add unity_fp_arms_akm',
+      '── NATURE ──',
+      'add infini_twist_tree / add fern / add infini_mushrooms / add infini_fern / add infini_lily',
+      '── VEHICLES ──',
+      'add touring_race_car / add toon_ambulance / add unity_lo_prop_car_a',
+      '── BASE MODELS (3400+) ──',
+      'add tree / add pine / add palm / add rock / add boulder / add bench / add chair / add table',
+      'add car / add taxi / add police car / add ambulance / add truck / add bus',
+      'add chest / add barrel / add crate / add torch / add campfire',
+    ]},
+    { icon: '🚗', name: 'Vehicles', cmds: [
+      'add car / add vehicle [type] / drive car / enter vehicle / exit vehicle',
+      'add traffic / add ai cars / add pedestrians',
+      'add touring_race_car / add toon_ambulance',
+    ]},
+    { icon: '⚔️', name: 'Combat & Systems', cmds: [
+      'add shooting / add combat system / add melee combat',
+      'add health system / set health [100] / heal / add respawn',
+      'add damage system / add enemy ai / set enemy aggro range [20]',
+      'add knockback / add stagger / add death animation',
+      'zombie game / racing mode / rpg mode / survival mode / fps mode / horror mode',
+    ]},
+    { icon: '🎒', name: 'Inventory & Items', cmds: [
+      'add inventory / open inventory / inventory grid 4x4',
+      'add item [name] to inventory / equip [item] / drop item / use item',
+      'inventory hotbar / show backpack / add loot system',
+      'add health potion / add armor item / add stamina item',
+      'add crafting / add shop / add vendor / add buy menu',
+    ]},
+    { icon: '💬', name: 'Dialogue & Quests', cmds: [
+      'npc say [text] / npc [name] say [text]',
+      'add quest / add quest [name]',
+      'quest objective: kill [N] [type] / collect [N] [item] / reach [location]',
+      'quest reward: [item] / complete quest / fail quest',
+      'add dialogue tree / add dialogue option [text]',
+      'add skill tree / add experience system / add leveling',
+      'gain xp [amount] / unlock achievement [name]',
+    ]},
+    { icon: '📺', name: 'HUD & Menus', cmds: [
+      'add HUD / hide HUD / toggle HUD',
+      'add health bar / add stamina bar / add ammo counter / add minimap / add compass',
+      'add kill counter / add score display / add timer / add wave counter / add xp bar',
+      'add main menu / add pause menu / add settings menu',
+      'add game over screen / add victory screen / add loading screen',
+      'add crosshair / hide crosshair / crosshair dot/cross/circle',
+    ]},
+    { icon: '🎬', name: 'Cutscenes & Cinematics', cmds: [
+      'add cutscene / start cutscene / end cutscene',
+      'cinematic mode / letterbox on/off',
+      'camera pan to [x,y,z] in [seconds] / camera orbit / camera fly through',
+      'add intro cutscene / add outro cutscene',
+      'add slow motion / slow motion [0.1-1.0] / normal speed',
+      'freeze frame / add black fade / add white fade',
+    ]},
+    { icon: '🏆', name: 'Win/Lose Conditions', cmds: [
+      'add win condition / win if kill [N] enemies / win if collect [N] items',
+      'win if reach [location] / win if survive [N] seconds / win if score [N] points',
+      'add lose condition / lose if health 0 / add timer countdown [seconds]',
+      'add checkpoint / add respawn point / add lives system / set lives [N]',
+      'add score system / add high score',
+    ]},
+    { icon: '🔊', name: 'Audio', cmds: [
+      'add background music / play music epic/calm/horror/action/ambient',
+      'add ambient sound / stop music / fade music out',
+      'add footstep sounds / add combat sounds / add explosion sounds',
+      'add spatial audio / audio range [meters]',
+      'add rain sound / add wind sound / add crowd sound',
+      'mute / unmute / volume [0-1]',
+    ]},
+    { icon: '✨', name: 'Polish & Post-Processing', cmds: [
+      '── VISUAL EFFECTS ──',
+      'bloom on/off / bloom [0-5]',
+      'vignette [0-1] (edge darkening)',
+      'chromatic aberration [0-0.01]',
+      'grain [0-1] (film grain)',
+      'depth of field on/off / dof focus [distance]',
+      'motion blur on/off',
+      'ssao on/off (ambient occlusion)',
+      '── COLOR GRADING ──',
+      'color grade cinematic / warm / cool / horror / noir / vivid / neutral',
+      'contrast [0.5-2.0] / saturation [0-2] / brightness [0-2]',
+      '── QUALITY ──',
+      'graphics low / medium / high / ultra',
+      'anti-aliasing on/off / fxaa / smaa',
+      'shadow quality low/medium/high/ultra',
+      'performance mode / quality mode / lod on/off',
+      'add god rays / add lens flare',
+    ]},
+    { icon: '🎮', name: 'Game Presets', cmds: [
+      'zombie game — survival horror with waves',
+      'racing mode — race track, cars, timer',
+      'rpg mode — fantasy world, quests, inventory',
+      'survival mode — hunger, inventory, crafting',
+      'fps mode — shooter with weapons, enemies',
+      'horror mode — dark, fog, jump scares',
+      'city builder mode — construction mechanics',
+      'sandbox mode — free creative mode',
+    ]},
+    { icon: '📷', name: 'Camera', cmds: [
+      'fps mode / tps mode',
+      'add first person camera / add third person camera / add cinematic camera',
+      'camera distance [meters] / camera height [meters]',
+      'camera shake on/off / screen shake [intensity]',
+      'zoom in / zoom out / fov [60-120]',
+    ]},
+    { icon: '🌐', name: 'Multiplayer', cmds: [
+      'multiplayer / join [room] / host game / create room',
+      'chat [message] / broadcast [message]',
+      'sync players / add netcode',
+      'wss://crate-engine-mp.fly.dev (default server)',
+    ]},
+    { icon: '📥', name: 'Import & Save', cmds: [
+      'import model [URL] — load any GLB from web',
+      'import my model — open file picker for local GLB',
+      'use my model as [name] — register with alias',
+      'place my model / place imported model',
+      'save / load / clear / new game',
+      'auto save / add checkpoint / export world',
+    ]},
+    { icon: '🔧', name: 'Utility', cmds: [
+      'clear / reset / help / commands',
+      'stats / show stats / fps counter on',
+      'show buildings / show weapons / show characters / show vehicles / show trees',
+      'heal / respawn / teleport [x,y,z]',
+      'performance mode / optimize scene',
+      'inspect — click any object to select & edit',
+      'clone — duplicate selected object',
+      'delete — remove selected object',
+    ]},
+  ];
+
+  const modal = document.createElement('div');
+  modal.id = 'cmd-page-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99999;display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,sans-serif;overflow:hidden;backdrop-filter:blur(4px)';
+
+  const header = `
+    <div style="padding:16px 20px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <div style="font-size:1.5rem">⌨️</div>
+      <div style="flex:1">
+        <div style="font-size:1.1rem;font-weight:700;color:#fff">Command Reference</div>
+        <div style="font-size:0.7rem;color:#555">All ${categories.reduce((s,c)=>s+c.cmds.length,0)}+ commands — click any command to run it</div>
+      </div>
+      <input id="cmd-search" placeholder="Search commands..." style="background:#111;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.82rem;width:200px;outline:none" oninput="window._filterCmds(this.value)">
+      <button onclick="document.getElementById('cmd-page-modal').remove()" style="background:none;border:1px solid #333;color:#888;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:0.85rem" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">✕ Close</button>
+    </div>`;
+
+  let bodyHtml = '<div id="cmd-body" style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;align-content:start">';
+  
+  for (const cat of categories) {
+    bodyHtml += `<div class="cmd-cat" style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden">`;
+    bodyHtml += `<div style="padding:10px 14px;background:rgba(255,107,53,0.06);border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:8px">`;
+    bodyHtml += `<span style="font-size:1rem">${cat.icon}</span><span style="font-weight:700;color:#ff6b35;font-size:0.82rem;text-transform:uppercase;letter-spacing:1px">${cat.name}</span>`;
+    bodyHtml += `</div><div style="padding:10px">`;
+    for (const cmd of cat.cmds) {
+      if (cmd.startsWith('──') || cmd.startsWith('─')) {
+        bodyHtml += `<div class="cmd-divider" style="color:#444;font-size:0.65rem;margin:6px 0 4px;letter-spacing:2px">${cmd}</div>`;
+      } else {
+        const parts = cmd.split('/').map(p => p.trim());
+        const firstCmd = parts[0].split(' ')[0] === parts[0].split(' ')[0] ? parts[0] : cmd;
+        bodyHtml += `<div class="cmd-line" data-cmd="${cmd.replace(/"/g,"&quot;")}" style="padding:3px 6px;margin:1px 0;border-radius:5px;cursor:pointer;font-size:0.72rem;color:#aaa;transition:all 0.15s;line-height:1.5" onmouseenter="this.style.background='rgba(255,107,53,0.1)';this.style.color='#ff6b35'" onmouseleave="this.style.background='transparent';this.style.color='#aaa'" onclick="window._runCmdFromPage('${cmd.replace(/'/g,"\'").split(' /')[0].trim()}')">${cmd}</div>`;
+      }
+    }
+    bodyHtml += `</div></div>`;
+  }
+  bodyHtml += '</div>';
+
+  modal.innerHTML = header + bodyHtml;
+  document.body.appendChild(modal);
+
+  // Search filter
+  window._filterCmds = (q) => {
+    const lines = modal.querySelectorAll('.cmd-line');
+    const cats = modal.querySelectorAll('.cmd-cat');
+    q = q.toLowerCase();
+    cats.forEach(cat => {
+      const lines2 = cat.querySelectorAll('.cmd-line');
+      let hasMatch = false;
+      lines2.forEach(l => {
+        const match = !q || l.textContent.toLowerCase().includes(q);
+        l.style.display = match ? '' : 'none';
+        if (match) hasMatch = true;
+      });
+      cat.style.display = hasMatch || !q ? '' : 'none';
+    });
+  };
+
+  window._runCmdFromPage = (cmd) => {
+    // Extract just the first command variant
+    const bare = cmd.split('/')[0].replace(/\[.*?\]/g, '1').trim();
+    parseAndExecute(bare);
+    showToast('Running: ' + bare);
+  };
+
+  // Focus search
+  setTimeout(() => document.getElementById('cmd-search')?.focus(), 100);
+}
+
+window.showCommandPage = showCommandPage;
+// ══════════════════════════════════════════════════════
+// END COMMAND REFERENCE PAGE
+// ══════════════════════════════════════════════════════
+
+// ── USER MODEL IMPORT FUNCTIONS ───────────────────────────────────────────────
+async function loadUserModel(url, alias) {
+  try {
+    showNotification('Loading model...');
+    return new Promise((resolve) => {
+      gltfLoader.load(url,
+        (gltf) => {
+          const model = gltf.scene;
+          model.position.set(px || 0, 0, pz || 0);
+          model.scale.setScalar(1);
+          scene.add(model);
+          window._lastImportedModel = url;
+          GLB_MODELS[alias] = url;
+          if (alias !== 'imported_model') GLB_MODELS['my_model'] = url;
+          showNotification('Model imported! Use "place my model" to add more copies.');
+          resolve('Custom model loaded successfully');
+        },
+        (progress) => {},
+        (err) => resolve('Failed to load model: ' + err.message)
+      );
+    });
+  } catch(e) {
+    return 'Import error: ' + e.message;
+  }
+}
+
+function openModelFilePicker() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.glb,.gltf';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    loadUserModel(url, 'my_model');
+    showNotification('Loading ' + file.name + '...');
+  };
+  input.click();
+  return 'File picker opened - select your GLB/GLTF file';
+}
+// ── END USER MODEL IMPORT FUNCTIONS ──────────────────────────────────────────
+
+
+
+
+// ══════════════════════════════════════════════════════
+// AUTOSAVE SYSTEM
+// ══════════════════════════════════════════════════════
+let _autosaveInterval = null;
+let _lastAutosave = 0;
+
+function startAutosave(intervalSec = 60) {
+  if (_autosaveInterval) clearInterval(_autosaveInterval);
+  _autosaveInterval = setInterval(async () => {
+    try {
+      const state = captureWorldState();
+      const json = JSON.stringify(state);
+      localStorage.setItem('crate_autosave', json);
+      localStorage.setItem('crate_autosave_time', Date.now());
+      _lastAutosave = Date.now();
+    } catch(e) {}
+  }, intervalSec * 1000);
+}
+
+function checkAutosaveRestore() {
+  const saved = localStorage.getItem('crate_autosave');
+  const savedTime = localStorage.getItem('crate_autosave_time');
+  if (!saved || !savedTime) return;
+  const age = (Date.now() - parseInt(savedTime)) / 1000 / 60;
+  if (age > 60 * 24) return; // Ignore saves older than 24h
+  const state = JSON.parse(saved);
+  if (!state.objects || state.objects.length === 0) return;
+  // Don't auto-prompt to restore large generated worlds (city/town builds)
+  if (state.objects.length > 80) return;
+
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:46px;left:50%;transform:translateX(-50%);z-index:9997;background:#111;border:1px solid #333;border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:12px;font-family:-apple-system,sans-serif;font-size:0.82rem;box-shadow:0 8px 24px rgba(0,0,0,0.5)';
+  banner.innerHTML = `<span>💾</span><span style="color:#ccc">Autosave from ${Math.round(age)} min ago (${state.objects.length} objects)</span><button onclick="loadWorldFromJSON(JSON.parse(localStorage.getItem('crate_autosave')));this.parentElement.remove()" style="padding:5px 12px;background:#ff6b35;border:none;border-radius:6px;color:#fff;font-weight:700;cursor:pointer">Restore</button><button onclick="this.parentElement.remove()" style="padding:5px 10px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#888;cursor:pointer">Dismiss</button>`;
+  document.body.appendChild(banner);
+  setTimeout(() => banner.remove(), 15000);
+}
+// ══════════════════════════════════════════════════════
+// END AUTOSAVE
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// QUEST / OBJECTIVE SYSTEM
+// ══════════════════════════════════════════════════════
+const _quests = {};
+let _questHUD = null;
+
+function addQuest(name, description = '') {
+  const id = name.toLowerCase().replace(/\s+/g, '_');
+  _quests[id] = { name, description, objectives: [], completed: false, active: true };
+  updateQuestHUD();
+  showToast('📋 Quest added: ' + name);
+  return id;
+}
+
+function addObjective(questId, text) {
+  const id = questId.toLowerCase().replace(/\s+/g, '_');
+  if (!_quests[id]) return;
+  _quests[id].objectives.push({ text, done: false });
+  updateQuestHUD();
+}
+
+function completeObjective(questId, index) {
+  const id = questId.toLowerCase().replace(/\s+/g, '_');
+  if (!_quests[id] || !_quests[id].objectives[index]) return;
+  _quests[id].objectives[index].done = true;
+  updateQuestHUD();
+  showToast('✅ Objective complete!');
+  if (_quests[id].objectives.every(o => o.done)) completeQuest(id);
+}
+
+function completeQuest(questId) {
+  const id = questId.toLowerCase().replace(/\s+/g, '_');
+  if (!_quests[id]) return;
+  _quests[id].completed = true;
+  updateQuestHUD();
+  showWinScreen(_quests[id].name);
+}
+
+function showWinScreen(questName) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+  overlay.innerHTML = `<div style="text-align:center;padding:40px"><div style="font-size:4rem;margin-bottom:16px">🏆</div><div style="font-size:2.5rem;font-weight:900;color:#f7c948;margin-bottom:8px">Quest Complete!</div><div style="color:#888;font-size:1.1rem;margin-bottom:28px">${questName}</div><div style="display:flex;gap:12px;justify-content:center"><button onclick="this.closest('[style*=fixed]').remove()" style="padding:12px 28px;background:#ff6b35;border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:1rem">Continue</button><button onclick="if(window.saveWorld)saveWorld()" style="padding:12px 28px;background:#1a1a1a;border:1px solid #333;border-radius:10px;color:#ccc;cursor:pointer;font-size:1rem">Save World</button></div></div>`;
+  document.body.appendChild(overlay);
+}
+
+function showGameOver(reason = 'You died.') {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+  overlay.innerHTML = `<div style="text-align:center;padding:40px"><div style="font-size:4rem;margin-bottom:16px">💀</div><div style="font-size:2.5rem;font-weight:900;color:#ef4444;margin-bottom:8px">GAME OVER</div><div style="color:#666;font-size:1.1rem;margin-bottom:28px">${reason}</div><button onclick="location.reload()" style="padding:12px 28px;background:#ef4444;border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:1rem">Try Again</button></div>`;
+  document.body.appendChild(overlay);
+}
+
+function updateQuestHUD() {
+  if (!_questHUD) {
+    _questHUD = document.createElement('div');
+    _questHUD.id = 'quest-hud';
+    _questHUD.style.cssText = 'position:fixed;top:46px;right:16px;z-index:300;width:220px;font-family:-apple-system,sans-serif;display:flex;flex-direction:column;gap:6px;pointer-events:none';
+    document.body.appendChild(_questHUD);
+  }
+  const active = Object.values(_quests).filter(q => q.active && !q.completed);
+  _questHUD.innerHTML = active.map(q => `
+    <div style="background:rgba(10,10,10,0.85);border:1px solid #1a1a1a;border-radius:8px;padding:10px;backdrop-filter:blur(8px)">
+      <div style="color:#f7c948;font-weight:700;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">📋 ${q.name}</div>
+      ${q.objectives.map(o => `<div style="color:${o.done?'#4ade80':'#888'};font-size:0.7rem;padding:2px 0;display:flex;gap:5px"><span>${o.done?'✅':'○'}</span><span style="${o.done?'text-decoration:line-through':''}">${o.text}</span></div>`).join('')}
+      ${q.objectives.length===0?`<div style="color:#555;font-size:0.7rem">Active quest</div>`:''}
+    </div>`).join('');
+}
+
+window.addQuest = addQuest;
+window.addObjective = addObjective;
+window.completeObjective = completeObjective;
+window.completeQuest = completeQuest;
+window.showWinScreen = showWinScreen;
+window.showGameOver = showGameOver;
+// ══════════════════════════════════════════════════════
+// END QUEST SYSTEM
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// WEATHER SYSTEM
+// ══════════════════════════════════════════════════════
+const _weatherParticles = { rain: null, snow: null };
+let _weatherActive = null;
+_lightningTimer = null;
+
+function startRain(heavy = false) {
+  stopWeather();
+  _weatherActive = 'rain';
+  const count = heavy ? 2000 : 800;
+  const geo = new THREE.BufferGeometry();
+  const verts = new Float32Array(count * 3);
+  for (let i = 0; i < count * 3; i += 3) {
+    verts[i]   = (Math.random() - 0.5) * 200;
+    verts[i+1] = Math.random() * 80;
+    verts[i+2] = (Math.random() - 0.5) * 200;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xaaaaff, size: heavy ? 0.3 : 0.2, transparent: true, opacity: 0.6 });
+  const rain = new THREE.Points(geo, mat);
+  rain.userData.isWeather = true;
+  scene.add(rain);
+  _weatherParticles.rain = rain;
+
+  // Animate rain fall
+  rain._tick = () => {
+    const pos = rain.geometry.attributes.position.array;
+    for (let i = 1; i < pos.length; i += 3) {
+      pos[i] -= heavy ? 1.2 : 0.7;
+      if (pos[i] < -5) pos[i] = 80;
+    }
+    rain.geometry.attributes.position.needsUpdate = true;
+  };
+  if (!window._weatherTickAdded) {
+    window._weatherTickAdded = true;
+    const origAnimate = window._animateHook;
+    window._animateHook = () => {
+      if (origAnimate) origAnimate();
+      if (_weatherParticles.rain?._tick) _weatherParticles.rain._tick();
+      if (_weatherParticles.snow?._tick) _weatherParticles.snow._tick();
+    };
+  }
+  showToast(heavy ? '⛈️ Heavy rain' : '🌧️ Rain started');
+}
+
+function startSnow() {
+  stopWeather();
+  _weatherActive = 'snow';
+  const geo = new THREE.BufferGeometry();
+  const verts = new Float32Array(1200 * 3);
+  for (let i = 0; i < 1200 * 3; i += 3) {
+    verts[i]   = (Math.random() - 0.5) * 200;
+    verts[i+1] = Math.random() * 60;
+    verts[i+2] = (Math.random() - 0.5) * 200;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.8 });
+  const snow = new THREE.Points(geo, mat);
+  snow.userData.isWeather = true;
+  scene.add(snow);
+  _weatherParticles.snow = snow;
+  snow._tick = () => {
+    const pos = snow.geometry.attributes.position.array;
+    for (let i = 1; i < pos.length; i += 3) {
+      pos[i] -= 0.15;
+      pos[i-1] += Math.sin(Date.now() * 0.001 + i) * 0.02;
+      if (pos[i] < -5) pos[i] = 60;
+    }
+    snow.geometry.attributes.position.needsUpdate = true;
+  };
+  showToast('❄️ Snow started');
+}
+
+function startLightning() {
+  if (_lightningTimer) clearInterval(_lightningTimer);
+  _lightningTimer = setInterval(() => {
+    const orig = renderer.getClearColor(new THREE.Color()).clone();
+    renderer.setClearColor(0xaaaaff);
+    setTimeout(() => renderer.setClearColor(orig), 80);
+    setTimeout(() => {
+      renderer.setClearColor(0xaaaaff);
+      setTimeout(() => renderer.setClearColor(0x0a0a0a), 60);
+    }, 150);
+  }, 3000 + Math.random() * 4000);
+  showToast('⚡ Lightning storm');
+}
+
+function stopWeather() {
+  if (_weatherParticles.rain) { scene.remove(_weatherParticles.rain); _weatherParticles.rain = null; }
+  if (_weatherParticles.snow) { scene.remove(_weatherParticles.snow); _weatherParticles.snow = null; }
+  if (_lightningTimer) { clearInterval(_lightningTimer); _lightningTimer = null; }
+  _weatherActive = null;
+}
+
+window.startRain = startRain;
+window.startSnow = startSnow;
+window.startLightning = startLightning;
+window.stopWeather = stopWeather;
+// ══════════════════════════════════════════════════════
+// END WEATHER SYSTEM
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// DAY/NIGHT AUTO-CYCLE
+// ══════════════════════════════════════════════════════
+let _dayNightCycle = null;
+ // 0-1: 0=dawn, 0.25=noon, 0.5=dusk, 0.75=midnight
+
+const DAY_CYCLE_COLORS = [
+  { t: 0,    sky: 0x1a0a2e, ambient: 0.2, sun: 0x221133 }, // midnight
+  { t: 0.2,  sky: 0xff7043, ambient: 0.5, sun: 0xff9966 }, // dawn
+  { t: 0.35, sky: 0x87ceeb, ambient: 1.0, sun: 0xffffff }, // noon
+  { t: 0.6,  sky: 0xff6b35, ambient: 0.6, sun: 0xff8844 }, // sunset
+  { t: 0.75, sky: 0x0d0d2e, ambient: 0.3, sun: 0x334455 }, // dusk
+  { t: 1.0,  sky: 0x1a0a2e, ambient: 0.2, sun: 0x221133 }, // midnight again
+];
+
+function startDayNightCycle(speedMultiplier = 1) {
+  if (_dayNightCycle) clearInterval(_dayNightCycle);
+  _dayNightCycle = setInterval(() => {
+    _cycleTime = (_cycleTime + 0.0002 * speedMultiplier) % 1;
+    // Interpolate sky color
+    let a, b;
+    for (let i = 0; i < DAY_CYCLE_COLORS.length - 1; i++) {
+      if (_cycleTime >= DAY_CYCLE_COLORS[i].t && _cycleTime < DAY_CYCLE_COLORS[i+1].t) {
+        a = DAY_CYCLE_COLORS[i]; b = DAY_CYCLE_COLORS[i+1]; break;
+      }
+    }
+    if (!a || !b) return;
+    const f = (_cycleTime - a.t) / (b.t - a.t);
+    const sky = new THREE.Color(a.sky).lerp(new THREE.Color(b.sky), f);
+    renderer.setClearColor(sky);
+    if (scene.fog) scene.fog.color.copy(sky);
+    // Update ambient light
+    const ambientLight = scene.children.find(c => c.isAmbientLight);
+    if (ambientLight) ambientLight.intensity = a.ambient + (b.ambient - a.ambient) * f;
+  }, 33);
+  showToast('🌅 Day/night cycle started');
+}
+
+function stopDayNightCycle() {
+  if (_dayNightCycle) { clearInterval(_dayNightCycle); _dayNightCycle = null; }
+  showToast('⏸️ Day/night cycle stopped');
+}
+
+window.startDayNightCycle = startDayNightCycle;
+window.stopDayNightCycle = stopDayNightCycle;
+// ══════════════════════════════════════════════════════
+// END DAY/NIGHT CYCLE
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// NPC PROXIMITY TRIGGER — approach NPC to open dialogue
+// ══════════════════════════════════════════════════════
+let _proximityCheckInterval = null;
+const _proximityTriggers = [];  // { mesh, radius, onEnter, onExit, triggered }
+
+function addProximityTrigger(mesh, radius, onEnter, onExit) {
+  _proximityTriggers.push({ mesh, radius, onEnter, onExit, triggered: false });
+  if (!_proximityCheckInterval) {
+    _proximityCheckInterval = setInterval(() => {
+      const playerPos = camera.position;
+      for (const t of _proximityTriggers) {
+        if (!t.mesh.parent) continue;
+        const dist = playerPos.distanceTo(t.mesh.position);
+        if (!t.triggered && dist < t.radius) {
+          t.triggered = true;
+          if (t.onEnter) t.onEnter(t.mesh, dist);
+        } else if (t.triggered && dist > t.radius * 1.3) {
+          t.triggered = false;
+          if (t.onExit) t.onExit(t.mesh, dist);
+        }
+      }
+    }, 500);
+  }
+}
+
+// Auto-attach proximity to any object tagged as NPC with dialogue
+function attachDialogueProximity(mesh, treeName, radius = 8) {
+  addProximityTrigger(mesh, radius, () => {
+    if (window._dialogueTrees?.[treeName]) {
+      showDialoguePreview(treeName);
+    } else {
+      showToast(`💬 Press E to talk to ${mesh.userData.name || 'NPC'}`);
+    }
+  });
+}
+
+window.addProximityTrigger = addProximityTrigger;
+window.attachDialogueProximity = attachDialogueProximity;
+// ══════════════════════════════════════════════════════
+// END NPC PROXIMITY TRIGGER
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// NPC BEHAVIOR SYSTEM — Patrol / Chase / Follow
+// ══════════════════════════════════════════════════════
+const _npcAgents = [];   // { mesh, mode, waypoints, waypointIdx, speed, target, state }
+let _npcUpdateInterval = null;
+
+function spawnBehaviorNPC(opts = {}) {
+  const {
+    glbKey = 'human_walk',
+    mode = 'patrol',         // 'patrol'|'chase'|'follow'|'idle'
+    pos = { x: 0, y: 0, z: 0 },
+    speed = 3,
+    waypointRadius = 20,
+    numWaypoints = 4,
+  } = opts;
+
+  const _rawGLB = GLB_MODELS[glbKey] || glbKey;
+  const _cleanGLB = _rawGLB.endsWith('.glb') ? _rawGLB.slice(0,-4) : _rawGLB;
+  const glbPath = '/models/' + _cleanGLB + '.glb';
+  gltfLoader.load(glbPath, (gltf) => {
+    const mesh = gltf.scene;
+    mesh.position.set(pos.x, pos.y, pos.z);
+    mesh.scale.setScalar(opts.scale || 1);
+    mesh.userData = { isNPC: true, npcMode: mode, glbPath, name: opts.name || glbKey };
+
+    // Generate patrol waypoints
+    const waypoints = [];
+    for (let i = 0; i < numWaypoints; i++) {
+      const angle = (i / numWaypoints) * Math.PI * 2;
+      waypoints.push(new THREE.Vector3(
+        pos.x + Math.cos(angle) * waypointRadius,
+        pos.y,
+        pos.z + Math.sin(angle) * waypointRadius
+      ));
+    }
+
+    const agent = { mesh, mode, waypoints, waypointIdx: 0, speed, state: 'moving',
+                    chaseRange: opts.chaseRange || 30, loseRange: opts.loseRange || 50,
+                    originalMode: mode };
+    _npcAgents.push(agent);
+    scene.add(mesh);
+    // Rebind skeleton after scale for animated NPCs
+    mesh.updateMatrixWorld(true);
+    mesh.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.pose(); });
+    objects.push(mesh);
+
+    if (!_npcUpdateInterval) startNPCLoop();
+  });
+}
+
+function startNPCLoop() {
+  if (_npcUpdateInterval) return;
+  const clock2 = new THREE.Clock();
+  _npcUpdateInterval = setInterval(() => {
+    const dt = Math.min(clock2.getDelta(), 0.1);
+    const playerPos = camera.position;
+
+    for (const agent of _npcAgents) {
+      if (!agent.mesh.parent) continue;
+      const m = agent.mesh;
+
+      // Chase detection — switch mode if player is close
+      const distToPlayer = m.position.distanceTo(playerPos);
+      if (agent.originalMode === 'chase' || agent.mode === 'chase') {
+        if (distToPlayer < agent.chaseRange) {
+          agent.mode = 'chase';
+        } else if (distToPlayer > agent.loseRange) {
+          agent.mode = agent.originalMode === 'chase' ? 'patrol' : agent.originalMode;
+        }
+      }
+
+      let target = null;
+      if (agent.mode === 'patrol') {
+        target = agent.waypoints[agent.waypointIdx];
+        const dist = m.position.distanceTo(target);
+        if (dist < 1.5) {
+          agent.waypointIdx = (agent.waypointIdx + 1) % agent.waypoints.length;
+          target = agent.waypoints[agent.waypointIdx];
+        }
+      } else if (agent.mode === 'chase' || agent.mode === 'follow') {
+        target = playerPos;
+        if (m.position.distanceTo(target) < 2.5) continue; // close enough
+      } else if (agent.mode === 'idle') {
+        continue;
+      }
+
+      if (!target) continue;
+
+      // Move toward target
+      const dir = new THREE.Vector3().subVectors(target, m.position).normalize();
+      dir.y = 0;
+      const spd = agent.mode === 'chase' ? agent.speed * 1.8 : agent.speed;
+      m.position.addScaledVector(dir, spd * dt);
+      m.position.y = 0; // stay on ground
+
+      // Face direction of movement
+      if (dir.lengthSq() > 0.01) {
+        const angle = Math.atan2(dir.x, dir.z);
+        m.rotation.y = THREE.MathUtils.lerp(m.rotation.y, angle, 0.12);
+      }
+    }
+  }, 1000 / 30); // 30fps update
+}
+
+function setNPCMode(index, mode) {
+  if (!_npcAgents[index]) return false;
+  _npcAgents[index].mode = mode;
+  _npcAgents[index].originalMode = mode;
+  return true;
+}
+
+function clearAllNPCAgents() {
+  for (const a of _npcAgents) { scene.remove(a.mesh); }
+  _npcAgents.length = 0;
+  if (_npcUpdateInterval) { clearInterval(_npcUpdateInterval); _npcUpdateInterval = null; }
+}
+
+window._npcAgents = _npcAgents;
+window.spawnBehaviorNPC = spawnBehaviorNPC;
+window.setNPCMode = setNPCMode;
+// ══════════════════════════════════════════════════════
+// END NPC BEHAVIOR SYSTEM
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// MOBILE POLISH — Better touch controls
+// ══════════════════════════════════════════════════════
+(function patchMobileControls(){
+  if (!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) return;
+  document.addEventListener('DOMContentLoaded', () => {
+    // Increase joystick size for phones
+    const joyWrap = document.getElementById('joystick-wrapper') || document.querySelector('[id*="joystick"]');
+    if (joyWrap) {
+      joyWrap.style.width = '110px';
+      joyWrap.style.height = '110px';
+      joyWrap.style.bottom = '24px';
+      joyWrap.style.left = '24px';
+    }
+
+    // Pinch-to-zoom (adjust camera FOV)
+    let lastPinchDist = null;
+    document.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 2) { lastPinchDist = null; return; }
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (lastPinchDist !== null) {
+        const delta = lastPinchDist - dist;
+        if (camera) {
+          camera.fov = Math.min(100, Math.max(30, camera.fov + delta * 0.08));
+          camera.updateProjectionMatrix();
+        }
+      }
+      lastPinchDist = dist;
+    }, { passive: true });
+
+    // Double-tap to interact / select object
+    let lastTap = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTap < 300 && e.touches.length === 0) {
+        // Double tap — raycast to select nearest object
+        const touch = e.changedTouches[0];
+        if (!touch) return;
+        const rc = new THREE.Raycaster();
+        const rect = renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((touch.clientX - rect.left) / rect.width) * 2 - 1,
+          -((touch.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        rc.setFromCamera(mouse, camera);
+        const hits = rc.intersectObjects(objects, true);
+        if (hits.length > 0) {
+          const obj = hits[0].object;
+          const name = obj.userData?.name || 'Object';
+          showToast('👆 ' + name);
+        }
+      }
+      lastTap = now;
+    });
+
+    // Swipe-to-look (right side of screen)
+    let lookTouch = null, lastLookX = 0, lastLookY = 0;
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.clientX > window.innerWidth * 0.5) {
+          lookTouch = t.identifier; lastLookX = t.clientX; lastLookY = t.clientY;
+        }
+      }
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== lookTouch) continue;
+        const dx = t.clientX - lastLookX;
+        const dy = t.clientY - lastLookY;
+        lastLookX = t.clientX; lastLookY = t.clientY;
+        if (window._camYaw !== undefined) {
+          window._camYaw -= dx * 0.003;
+          window._camPitch = Math.max(-1.2, Math.min(0.5, (window._camPitch||0) - dy * 0.003));
+        } else if (camera) {
+          camera.rotation.y -= dx * 0.003;
+          camera.rotation.x = Math.max(-0.8, Math.min(0.4, camera.rotation.x - dy * 0.003));
+        }
+      }
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchend', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === lookTouch) lookTouch = null;
+      }
+    });
+
+    // Overlay action buttons for mobile
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:500;display:flex;flex-direction:column;gap:8px';
+    const mkBtn = (label, cmd, color='#ff6b35') => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = `width:52px;height:52px;border-radius:50%;background:rgba(10,10,10,0.9);border:2px solid ${color};color:${color};font-size:1.2rem;cursor:pointer;backdrop-filter:blur(8px)`;
+      b.addEventListener('touchend', (e) => { e.preventDefault(); if(window.parseAndExecute)parseAndExecute(cmd); });
+      return b;
+    };
+    bar.appendChild(mkBtn('⚔️', 'attack'));
+    bar.appendChild(mkBtn('💊', 'add medkit', '#4ade80'));
+    bar.appendChild(mkBtn('🔦', 'play flashlight_on', '#f7c948'));
+    document.body.appendChild(bar);
+  });
+})();
+// ══════════════════════════════════════════════════════
+// END MOBILE POLISH
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// WORLD SAVE / EXPORT / LOAD SYSTEM
+// ══════════════════════════════════════════════════════
+const WORLD_VERSION = 2;
+
+function captureWorldState() {
+  const state = {
+    version: WORLD_VERSION,
+    timestamp: Date.now(),
+    name: window._worldName || 'My World',
+    terrain: { type: currentGroundType || 'grass', heightmap: null },
+    sky: { time: window._currentTimeOfDay || 'afternoon' },
+    fog: { enabled: scene.fog !== null, density: scene.fog?.density || 0 },
+    objects: [],
+    npcs: [],
+    audio: { music: window._currentMusic || null },
+    postfx: {
+      bloom: bloomPass?.strength || 0.3,
+      vignette: window._colorPass?.uniforms.vignetteStrength?.value || 0.35,
+      grain: window._colorPass?.uniforms.filmGrain?.value || 0.03,
+    }
+  };
+
+  // Capture all placed objects
+  for (const obj of objects) {
+    if (!obj || !obj.userData) continue;
+    const entry = {
+      name: obj.userData.name || 'Object',
+      glb: obj.userData.glbPath || null,
+      primitive: obj.userData.primitive || null,
+      pos: { x: +obj.position.x.toFixed(2), y: +obj.position.y.toFixed(2), z: +obj.position.z.toFixed(2) },
+      rot: { y: +(obj.rotation.y * 180 / Math.PI).toFixed(1) },
+      scale: +obj.scale.x.toFixed(3),
+      color: obj.userData.color || null,
+    };
+    if (obj.userData.isNPC) state.npcs.push(entry);
+    else state.objects.push(entry);
+  }
+  return state;
+}
+
+async function saveWorld(name) {
+  window._worldName = name || window._worldName || 'My World';
+  const state = captureWorldState();
+  const json = JSON.stringify(state, null, 2);
+  // Save to localStorage
+  try {
+    localStorage.setItem('crate_world_' + state.name, json);
+    localStorage.setItem('crate_world_last', json);
+  } catch(e) {}
+  // Also trigger download
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (state.name || 'world') + '.crate.json';
+  a.click(); URL.revokeObjectURL(url);
+  showToast('🌍 World saved: ' + state.name + ' (' + state.objects.length + ' objects)');
+  return 'World saved as ' + state.name + '.crate.json';
+}
+
+async function loadWorldFromJSON(json) {
+  let state;
+  try { state = typeof json === 'string' ? JSON.parse(json) : json; }
+  catch(e) { return 'Invalid world file: ' + e.message; }
+
+  showToast('Loading world: ' + (state.name || 'unknown') + '...');
+
+  // Apply terrain
+  if (state.terrain?.type) {
+    currentGroundType = state.terrain.type;
+    await applyGroundTexture(currentGround, currentGroundType);
+  }
+
+  // Apply sky
+  if (state.sky?.time) await parseAndExecute('time ' + state.sky.time);
+
+  // Apply fog
+  if (state.fog?.enabled) {
+    scene.fog = new THREE.FogExp2(0x8899aa, state.fog.density || 0.01);
+  } else { scene.fog = null; }
+
+  // Restore post-fx
+  if (state.postfx && window._colorPass) {
+    if (state.postfx.bloom !== undefined && bloomPass) bloomPass.strength = state.postfx.bloom;
+    if (state.postfx.vignette !== undefined) window._colorPass.uniforms.vignetteStrength.value = state.postfx.vignette;
+    if (state.postfx.grain !== undefined) window._colorPass.uniforms.filmGrain.value = state.postfx.grain;
+  }
+
+  // Restore objects
+  let placed = 0;
+  for (const entry of [...(state.objects||[]), ...(state.npcs||[])]) {
+    try {
+      if (entry.glb) {
+        await new Promise((resolve) => {
+          gltfLoader.load(entry.glb, (gltf) => {
+            const m = gltf.scene;
+            m.position.set(entry.pos.x, entry.pos.y, entry.pos.z);
+            m.rotation.y = (entry.rot?.y || 0) * Math.PI / 180;
+            m.scale.setScalar(entry.scale || 1);
+            m.userData = { name: entry.name, glbPath: entry.glb, isGLB: true };
+            scene.add(m); objects.push(m); placed++;
+            resolve();
+          }, undefined, resolve);
+        });
+      }
+    } catch(e) {}
+  }
+
+  window._worldName = state.name;
+  showToast('🌍 World loaded: ' + placed + ' objects restored');
+  return 'World loaded: ' + state.name;
+}
+
+function openWorldFilePicker() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json,.crate.json';
+  inp.onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const text = await file.text();
+    loadWorldFromJSON(text);
+  };
+  inp.click();
+  return 'File picker opened — select your .crate.json world file';
+}
+
+window.saveWorld = saveWorld;
+window.loadWorldFromJSON = loadWorldFromJSON;
+// ══════════════════════════════════════════════════════
+// END WORLD SAVE / EXPORT / LOAD
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// AUDIO SYSTEM — Horror SFX + Music + Ambient
+// ══════════════════════════════════════════════════════
+const HORROR_AUDIO = {
+  // Music
+  menu_music:       '/audio/horror/menumusic01.wav',
+  event_music:      '/audio/horror/eventmusic01.wav',
+  horror_music:     '/audio/horror/eventmusic01.wav',
+  // Ambient / atmosphere
+  heartbeat:        '/audio/horror/heartbeat.wav',
+  vision_ambient:   '/audio/horror/visionsound1.wav',
+  street_light_hum: '/audio/horror/streetlightsoundloop.wav',
+  police_siren:     '/audio/horror/policesiren.wav',
+  // Killer / hunter
+  chainsaw_idle:    '/audio/horror/chainsawidle.wav',
+  chainsaw_attack:  '/audio/horror/chainsawattack.wav',
+  chainsaw_on:      '/audio/horror/chainsawturnon.wav',
+  hunter_chase:     '/audio/horror/hunter01chase01loop.wav',
+  hunter_vision:    '/audio/horror/huntersvisionsound.wav',
+  // Footsteps
+  footstep_1:       '/audio/horror/player_footstep_01.wav',
+  footstep_land:    '/audio/horror/player_land.wav',
+  // Props
+  door_open:        '/audio/horror/dooropen.wav',
+  door_close:       '/audio/horror/closecardoor.wav',
+  door_unlock:      '/audio/horror/doorunlockingsoundloop.wav',
+  flashlight_on:    '/audio/horror/flashlightturnonsound.wav',
+  flashlight_off:   '/audio/horror/flashlightturnoffsound.wav',
+  light_on:         '/audio/horror/lightturnonsound.wav',
+  light_off:        '/audio/horror/lightturnoffsound.wav',
+  match_start:      '/audio/horror/matchstartsound.wav',
+  street_break:     '/audio/horror/streetlightbreaksound.wav',
+  // Combat
+  sword_swing:      '/audio/horror/swordswing01.wav',
+  sword_hit_flesh:  '/audio/horror/swordfleshhit01.wav',
+  sword_equip:      '/audio/horror/swordequip01.wav',
+  knife_hit:        '/audio/horror/knifecharacterhit.wav',
+  shotgun:          '/audio/horror/shotgunsound.wav',
+  // Vehicles
+  car_start:        '/audio/horror/carturnonsound.wav',
+  car_accel:        '/audio/horror/accelerationhigh.wav',
+  car_skid:         '/audio/horror/skid.wav',
+  firecracker:      '/audio/horror/firecrackersound.wav',
+};
+
+const _audioCtx = { ctx: null, nodes: {}, music: null };
+
+function getAudioCtx() {
+  if (!_audioCtx.ctx) _audioCtx.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx.ctx;
+}
+
+async function playSound(key, loop=false, volume=1.0) {
+  const src = HORROR_AUDIO[key];
+  if (!src) return false;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const resp = await fetch(src);
+    const buf = await ctx.decodeAudioData(await resp.arrayBuffer());
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buf;
+    source.loop = loop;
+    gain.gain.value = volume;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(0);
+    if (loop) _audioCtx.nodes[key] = { source, gain };
+    return true;
+  } catch(e) { return false; }
+}
+
+function stopSound(key) {
+  const node = _audioCtx.nodes[key];
+  if (node) { try { node.source.stop(); } catch(e) {} delete _audioCtx.nodes[key]; }
+}
+
+function stopAllSounds() {
+  Object.keys(_audioCtx.nodes).forEach(stopSound);
+  if (_audioCtx.ctx) { _audioCtx.ctx.close(); _audioCtx.ctx = null; }
+}
+
+window._playHorrorSound = playSound;
+window._stopSound = stopSound;
+window._stopAllSounds = stopAllSounds;
+window._HORROR_AUDIO = HORROR_AUDIO;
+// ══════════════════════════════════════════════════════
+// END AUDIO SYSTEM
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// NPC DIALOGUE EDITOR — Visual Conversation Tree Builder
+// ══════════════════════════════════════════════════════
+const _dialogueTrees = {};   // name -> { nodes: [], start: 'node_0' }
+let   _activeDialogue = null;
+
+function showDialogueEditor(npcName) {
+  const existing = document.getElementById('dialogue-editor-modal');
+  if (existing) { existing.remove(); return; }
+
+  const treeName = npcName || 'NPC_1';
+  if (!_dialogueTrees[treeName]) {
+    _dialogueTrees[treeName] = {
+      nodes: [
+        { id: 'node_0', text: 'Hello traveler, what do you seek?', options: [
+          { text: 'Tell me about this place', next: 'node_1' },
+          { text: 'I need supplies', next: 'node_2' },
+          { text: 'Goodbye', next: null }
+        ]},
+        { id: 'node_1', text: 'This is a dangerous land. Beware the creatures at night.', options: [
+          { text: 'Thank you for the warning', next: null },
+          { text: 'What creatures?', next: null }
+        ]},
+        { id: 'node_2', text: 'I have potions and weapons for sale.', options: [
+          { text: 'Show me your wares', next: null },
+          { text: 'Never mind', next: null }
+        ]}
+      ],
+      start: 'node_0'
+    };
+  }
+
+  const tree = _dialogueTrees[treeName];
+
+  const modal = document.createElement('div');
+  modal.id = 'dialogue-editor-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99998;display:flex;flex-direction:column;font-family:-apple-system,sans-serif;overflow:hidden';
+
+  function renderEditor() {
+    const nodeList = tree.nodes.map((node, ni) => `
+      <div style="background:#0d0d0d;border:1px solid ${node.id===tree.start?'#ff6b35':'#222'};border-radius:10px;padding:12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="color:#555;font-size:0.7rem;font-family:monospace">${node.id}</span>
+          ${node.id===tree.start?'<span style="background:#ff6b35;color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">START</span>':''}
+          <button onclick="window._dlgSetStart('${node.id}')" style="margin-left:auto;background:#111;border:1px solid #333;color:#888;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.65rem">Set Start</button>
+          <button onclick="window._dlgDeleteNode(${ni})" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.65rem">Delete</button>
+        </div>
+        <textarea id="node-text-${ni}" style="width:100%;background:#111;border:1px solid #333;border-radius:6px;padding:8px;color:#fff;font-size:0.82rem;resize:vertical;min-height:60px;box-sizing:border-box" onchange="window._dlgUpdateText(${ni},this.value)">${node.text}</textarea>
+        <div style="margin-top:8px">
+          <div style="color:#555;font-size:0.65rem;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Response Options</div>
+          ${node.options.map((opt,oi)=>`
+            <div style="display:flex;gap:6px;margin-bottom:4px;align-items:center">
+              <input value="${opt.text}" onchange="window._dlgUpdateOpt(${ni},${oi},'text',this.value)" style="flex:1;background:#111;border:1px solid #333;border-radius:4px;padding:5px 8px;color:#ccc;font-size:0.75rem">
+              <select onchange="window._dlgUpdateOpt(${ni},${oi},'next',this.value||null)" style="background:#111;border:1px solid #333;border-radius:4px;padding:5px;color:#ccc;font-size:0.75rem">
+                <option value="">→ End</option>
+                ${tree.nodes.map(n=>`<option value="${n.id}" ${opt.next===n.id?'selected':''}>${n.id}</option>`).join('')}
+              </select>
+              <button onclick="window._dlgDeleteOpt(${ni},${oi})" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem">✕</button>
+            </div>`).join('')}
+          <button onclick="window._dlgAddOpt(${ni})" style="background:#111;border:1px solid #4ade80;color:#4ade80;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.7rem;margin-top:2px">+ Add Option</button>
+        </div>
+      </div>`).join('');
+
+    modal.innerHTML = `
+      <div style="padding:14px 18px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <span style="font-size:1.2rem">💬</span>
+        <div style="flex:1">
+          <div style="font-weight:700;color:#fff">Dialogue Editor — <span style="color:#ff6b35">${treeName}</span></div>
+          <div style="font-size:0.65rem;color:#555">${tree.nodes.length} nodes • Click node to preview</div>
+        </div>
+        <button onclick="window._dlgPreview()" style="background:#1a1a2e;border:1px solid #4ade80;color:#4ade80;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.8rem">▶ Preview</button>
+        <button onclick="window._dlgExport('${treeName}')" style="background:#1a1a2e;border:1px solid #ff6b35;color:#ff6b35;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.8rem">💾 Save</button>
+        <button onclick="document.getElementById('dialogue-editor-modal').remove()" style="background:none;border:1px solid #333;color:#888;padding:6px 12px;border-radius:8px;cursor:pointer">✕</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start">
+        <div>
+          <div style="color:#ff6b35;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Dialogue Nodes</div>
+          ${nodeList}
+          <button onclick="window._dlgAddNode()" style="width:100%;padding:10px;background:#111;border:2px dashed #333;border-radius:8px;color:#555;cursor:pointer;font-size:0.8rem;margin-top:4px" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#555'">+ Add Node</button>
+        </div>
+        <div>
+          <div style="color:#4ade80;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Flow Preview</div>
+          <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:10px;padding:12px;font-size:0.75rem;color:#888;font-family:monospace;white-space:pre-wrap">${
+            tree.nodes.map(n=>`[${n.id}] "${n.text.substring(0,40)}..."\n${n.options.map(o=>`  → "${o.text}" → ${o.next||'END'}`).join('\n')}`).join('\n\n')
+          }</div>
+          <div style="margin-top:12px;color:#555;font-size:0.7rem">Commands:</div>
+          <div style="font-family:monospace;font-size:0.7rem;color:#888;background:#0d0d0d;padding:8px;border-radius:6px;margin-top:4px">
+npc ${treeName} say Hello traveler<br>
+add npc dialogue<br>
+show dialogue ${treeName}<br>
+attach dialogue ${treeName} to [npc name]
+          </div>
+        </div>
+      </div>`;
+
+    // Wire handlers
+    window._dlgAddNode = () => {
+      const id = 'node_' + tree.nodes.length;
+      tree.nodes.push({ id, text: 'New dialogue node', options: [{ text: 'Continue', next: null }] });
+      renderEditor();
+    };
+    window._dlgDeleteNode = (i) => { tree.nodes.splice(i,1); renderEditor(); };
+    window._dlgSetStart = (id) => { tree.start = id; renderEditor(); };
+    window._dlgUpdateText = (i, v) => { tree.nodes[i].text = v; };
+    window._dlgAddOpt = (ni) => { tree.nodes[ni].options.push({text:'New option',next:null}); renderEditor(); };
+    window._dlgDeleteOpt = (ni,oi) => { tree.nodes[ni].options.splice(oi,1); renderEditor(); };
+    window._dlgUpdateOpt = (ni,oi,k,v) => { tree.nodes[ni].options[oi][k] = v||null; };
+    window._dlgPreview = () => showDialoguePreview(treeName);
+    window._dlgExport = (name) => {
+      const json = JSON.stringify(_dialogueTrees[name], null, 2);
+      localStorage.setItem('crate_dialogue_' + name, json);
+      showToast('💬 Dialogue "' + name + '" saved');
+    };
+  }
+
+  document.body.appendChild(modal);
+  renderEditor();
+}
+
+function showDialoguePreview(treeName) {
+  const tree = _dialogueTrees[treeName];
+  if (!tree) return;
+  let currentNode = tree.nodes.find(n=>n.id===tree.start) || tree.nodes[0];
+  if (!currentNode) return;
+
+  const overlay = document.getElementById('dlg-preview-overlay') || (() => {
+    const el = document.createElement('div');
+    el.id = 'dlg-preview-overlay';
+    el.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);width:500px;max-width:92vw;background:rgba(10,10,10,0.95);border:1px solid #333;border-radius:14px;z-index:100000;padding:20px;font-family:-apple-system,sans-serif;backdrop-filter:blur(10px)';
+    document.body.appendChild(el);
+    return el;
+  })();
+
+  function render(node) {
+    overlay.innerHTML = `
+      <div style="color:#888;font-size:0.65rem;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">💬 ${treeName}</div>
+      <div style="color:#fff;font-size:0.95rem;line-height:1.5;margin-bottom:14px">${node.text}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${node.options.map((opt,i)=>`
+          <button onclick="window._dlgPickOpt(${i})" style="text-align:left;padding:8px 14px;background:#111;border:1px solid #333;border-radius:8px;color:#ccc;cursor:pointer;font-size:0.82rem;transition:all 0.15s" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#ccc'">
+            [${i+1}] ${opt.text}
+          </button>`).join('')}
+      </div>
+      <button onclick="document.getElementById('dlg-preview-overlay').remove()" style="margin-top:10px;background:none;border:none;color:#444;cursor:pointer;font-size:0.75rem">Close preview</button>`;
+
+    window._dlgPickOpt = (i) => {
+      const next = node.options[i]?.next;
+      if (!next) { overlay.remove(); return; }
+      const nextNode = tree.nodes.find(n=>n.id===next);
+      if (nextNode) render(nextNode); else overlay.remove();
+    };
+  }
+  render(currentNode);
+}
+
+window.showDialogueEditor = showDialogueEditor;
+window._dialogueTrees = _dialogueTrees;
+// ══════════════════════════════════════════════════════
+// END NPC DIALOGUE EDITOR
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// TERRAIN PAINT UI — Click to paint texture zones
+// ══════════════════════════════════════════════════════
+let _terrainPaintMode = false;
+let _terrainPaintType = 'grass';
+let _terrainPaintRadius = 15;
+const _paintedZones = [];
+
+const PAINT_COLORS = {
+  grass:    0x3a7a3a,
+  sand:     0xc4a96a,
+  desert:   0xb8924a,
+  snow:     0xd8dce8,
+  dirt:     0x6b4a2a,
+  stone:    0x666666,
+  rock:     0x555555,
+  mud:      0x4a3a2a,
+  lava:     0xcc3300,
+  forest:   0x2a5a2a,
+  concrete: 0x999999,
+  asphalt:  0x333333,
+  ice:      0xaaddff,
+};
+
+function showTerrainPaintUI() {
+  const existing = document.getElementById('terrain-paint-ui');
+  if (existing) { existing.remove(); _terrainPaintMode = false; return; }
+
+  const panel = document.createElement('div');
+  panel.id = 'terrain-paint-ui';
+  panel.style.cssText = 'position:fixed;top:60px;left:20px;z-index:300;width:220px;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden;font-family:-apple-system,sans-serif';
+
+  const texTypes = ['grass','sand','desert','snow','dirt','stone','rock','mud','lava','forest','concrete','asphalt','ice'];
+
+  panel.innerHTML = `
+    <div style="padding:10px 12px;background:rgba(255,107,53,0.08);border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:8px">
+      <span>🖌️</span>
+      <div style="flex:1;font-weight:700;color:#ff6b35;font-size:0.8rem">Terrain Painter</div>
+      <button onclick="document.getElementById('terrain-paint-ui').remove();window._terrainPaintMode=false" style="background:none;border:none;color:#555;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:10px">
+      <div style="color:#555;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Texture</div>
+      <div id="paint-texture-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px">
+        ${texTypes.map(t=>`
+          <div onclick="window._setPaintType('${t}')" id="paint-btn-${t}" style="aspect-ratio:1;border-radius:6px;cursor:pointer;border:2px solid ${t===_terrainPaintType?'#ff6b35':'transparent'};background:${('#' + PAINT_COLORS[t]?.toString(16).padStart(6,'0'))||'#333'};position:relative;transition:all 0.15s" title="${t}">
+            <span style="position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:0.45rem;color:rgba(255,255,255,0.8)">${t}</span>
+          </div>`).join('')}
+      </div>
+      <div style="color:#555;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Brush Radius: <span id="paint-radius-val">${_terrainPaintRadius}</span></div>
+      <input type="range" min="2" max="50" value="${_terrainPaintRadius}" id="paint-radius" oninput="window._setPaintRadius(+this.value)" style="width:100%;accent-color:#ff6b35;margin-bottom:10px">
+      <button onclick="window._terrainPaintMode=!window._terrainPaintMode;this.style.background=window._terrainPaintMode?'rgba(255,107,53,0.2)':'#111';this.style.color=window._terrainPaintMode?'#ff6b35':'#888';this.textContent=window._terrainPaintMode?'🖌️ Painting...':'🖌️ Start Painting'" 
+        style="width:100%;padding:8px;background:#111;border:1px solid #333;border-radius:8px;color:#888;cursor:pointer;font-size:0.8rem;margin-bottom:6px">🖌️ Start Painting</button>
+      <button onclick="window._clearPaintZones()" style="width:100%;padding:6px;background:#111;border:1px solid #ef4444;border-radius:8px;color:#ef4444;cursor:pointer;font-size:0.75rem">Clear All Zones</button>
+      <div style="color:#555;font-size:0.65rem;margin-top:8px">Click terrain to paint • Painted zones show colored circles</div>
+    </div>`;
+
+  document.body.appendChild(panel);
+  _terrainPaintMode = false;
+
+  window._setPaintType = (t) => {
+    _terrainPaintType = t;
+    document.querySelectorAll('[id^="paint-btn-"]').forEach(el => el.style.borderColor='transparent');
+    const btn = document.getElementById('paint-btn-' + t);
+    if (btn) btn.style.borderColor = '#ff6b35';
+  };
+  window._setPaintRadius = (r) => {
+    _terrainPaintRadius = r;
+    const el = document.getElementById('paint-radius-val');
+    if (el) el.textContent = r;
+  };
+  window._clearPaintZones = () => {
+    _paintedZones.forEach(z => scene.remove(z));
+    _paintedZones.length = 0;
+    showToast('Paint zones cleared');
+  };
+
+  // Paint on canvas click when in paint mode
+  window._terrainPaintMode = false;
+  if (!window._paintClickHandler) {
+    window._paintClickHandler = (e) => {
+      if (!window._terrainPaintMode) return;
+      const rc = new THREE.Raycaster();
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      rc.setFromCamera(mouse, camera);
+      const hits = rc.intersectObject(currentGround);
+      if (hits.length > 0) {
+        const pt = hits[0].point;
+        // Spawn a paint zone disc
+        const geo = new THREE.CircleGeometry(_terrainPaintRadius, 32);
+        const col = new THREE.Color(PAINT_COLORS[_terrainPaintType] || 0x3a7a3a);
+        const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55, depthWrite: false });
+        const disc = new THREE.Mesh(geo, mat);
+        disc.rotation.x = -Math.PI/2;
+        disc.position.set(pt.x, 0.05, pt.z);
+        disc.userData = { isPaintZone: true, paintType: _terrainPaintType };
+        scene.add(disc);
+        _paintedZones.push(disc);
+        // Also queue texture load for this zone (visual feedback)
+        loadGroundTexture(_terrainPaintType).then(tex => {
+          if (tex) {
+            const tTex = tex.clone();
+            tTex.wrapS = tTex.wrapT = THREE.RepeatWrapping;
+            tTex.repeat.set(4, 4);
+            mat.map = tTex;
+            mat.color.set(0xffffff);
+            mat.needsUpdate = true;
+          }
+        });
+        showToast('Painted ' + _terrainPaintType + ' zone at (' + pt.x.toFixed(0) + ',' + pt.z.toFixed(0) + ')');
+      }
+    };
+    renderer.domElement.addEventListener('click', window._paintClickHandler);
+  }
+}
+
+window.showTerrainPaintUI = showTerrainPaintUI;
+window._terrainPaintMode = false;
+// ══════════════════════════════════════════════════════
+// END TERRAIN PAINT UI
+// ══════════════════════════════════════════════════════
+
 async function parseAndExecute(rawCmd) {
+  const cmd = rawCmd; // alias for compatibility
+
+  const lower = (rawCmd || "").toLowerCase().trim();
+  // === AI AGENT COMMANDS ===
+  if (lower.startsWith('agent build ') || lower.startsWith('ai build ')) {
+    const agentPrompt = cmd.replace(/^(agent|ai) build /i, '').trim();
+    if (!window._agentReady) return '⚠️ Agent not loaded yet. Try again in a few seconds.';
+    window._agent.agentBuildLoop(agentPrompt, 3);
+    return '🤖 Agent building: "' + agentPrompt + '" (with screenshot learning loop)';
+  }
+  if (lower === 'agent memory' || lower === 'ai memory') {
+    if (window._agentShowMemory) window._agentShowMemory();
+    const mem = window._agentMemory ? window._agentMemory() : [];
+    if (mem.length === 0) return '🧠 Agent memory is empty — no lessons learned yet.';
+    return '🧠 Agent memory (' + mem.length + ' lessons):\n' + mem.slice(-10).map(l => '• [' + (l.type||'?') + ' s:' + (l.score||'?') + '] ' + l.summary).join('\n');
+  }
+  if (lower === 'agent stats' || lower === 'ai stats') {
+    if (window._agentStats) {
+      const s = window._agentStats();
+      return '📊 Agent stats: ' + s.total + ' lessons | avg score: ' + s.avgScore + ' | refs: ' + s.refs + ' categories | types: ' + JSON.stringify(s.types);
+    }
+    return '⚠️ Agent not loaded.';
+  }
+  if (lower === 'agent clear memory' || lower === 'ai clear memory') {
+    if (window._agent?.clearMemory) window._agent.clearMemory();
+    else localStorage.removeItem('crate_agent_memory');
+    return '🧹 Agent memory cleared.';
+  }
+
+  if (/^build (a |the )?(city|full city|the city)$/i.test(cmd)) {
+    buildCityWorld3();
+    return '🏙️ Building full city... give it 15-20 seconds to load all assets!';
+  }
   // Skip NL rewrite for gallery keywords — let gallery commands handle directly
   const _galBypass = /^(?:show |browse |open |pick |choose |select )?(characters?|weapons?|swords?|axes?|guns?|buildings?|houses?|vehicles?|cars?|animals?|trees?|plants?|rocks?|stones?|furniture|tables?|chairs?|food|items?|potions?|dungeon|sci-?fi|space|nature|survival|animations?|library|asset library|browse all|all assets|all models|model library|browse$)$/i;
+
+  // ── USER MODEL IMPORT SYSTEM ──────────────────────────────────────────────
+  if (/^import model (.+)/i.test(cmd)) {
+    const url = cmd.match(/^import model (.+)/i)[1].trim();
+    return loadUserModel(url, 'imported_model');
+  }
+  if (/^load model from (.+)/i.test(cmd)) {
+    const url = cmd.match(/^load model from (.+)/i)[1].trim();
+    return loadUserModel(url, 'imported_model');
+  }
+  if (/^import my model$/i.test(cmd) || /^load my model$/i.test(cmd)) {
+    return openModelFilePicker();
+  }
+  if (/^use my model as (.+)/i.test(cmd)) {
+    const alias = cmd.match(/^use my model as (.+)/i)[1].trim();
+    if (window._lastImportedModel) {
+      GLB_MODELS[alias] = window._lastImportedModel;
+      return `Model registered as "${alias}" - use "add ${alias}" to place it`;
+    }
+    return 'No model imported yet. Use "import model [URL]" first.';
+  }
+  if (/^place (my model|imported model|my imported model)$/i.test(cmd)) {
+    if (window._lastImportedModel) {
+      return execSingle(`add ${window._lastImportedModel}`);
+    }
+    return 'No model imported yet. Use "import model [URL]" first.';
+  }
+  // ── END USER MODEL IMPORT ─────────────────────────────────────────────────
+
+  // ── NATURAL LANGUAGE TERRAIN COMMANDS ────────────────────────────────────
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(desert|sandy) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain desert');
+    await parseAndExecute('ground sand');
+    await parseAndExecute('time noon');
+    await parseAndExecute('fog off');
+    return 'Desert land created — sandy terrain, harsh noon sun';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(grass|green|lush) (land|terrain|world|ground|area|meadow)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground grass');
+    await parseAndExecute('time afternoon');
+    return 'Grassy land created — rolling green hills';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(snow|snowy|arctic|winter|frozen) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain arctic');
+    await parseAndExecute('ground snow');
+    await parseAndExecute('time morning');
+    await parseAndExecute('make it snow');
+    return 'Snowy land created — arctic terrain with snowfall';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(forest|woodland|jungle|tropical) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground forest');
+    await parseAndExecute('time morning');
+    await parseAndExecute('fog 0.008');
+    return 'Forest land created — wooded hills with morning mist';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(volcanic|lava|hellscape|infernal) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain volcanic');
+    await parseAndExecute('ground lava');
+    await parseAndExecute('time night');
+    await parseAndExecute('particles embers');
+    return 'Volcanic land created — lava ground, ember particles, night sky';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(stone|rocky|mountain|mountainous) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain mountains');
+    await parseAndExecute('ground rock');
+    await parseAndExecute('time noon');
+    return 'Mountain land created — rocky terrain with stone ground';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(swamp|muddy|dark forest|bayou) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground mud');
+    await parseAndExecute('time dusk');
+    await parseAndExecute('fog 0.015');
+    await parseAndExecute('particles fireflies');
+    return 'Swamp land created — murky, foggy with fireflies';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(dirt|earthy|wasteland) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground dirt');
+    await parseAndExecute('time afternoon');
+    return 'Wasteland created — dry dirt ground, barren hills';
+  }
+  if (/^ground (forest|swamp|desert|all grass|all sand|all snow)$/i.test(cmd)) {
+    const t = cmd.match(/^ground (.+)$/i)[1].toLowerCase();
+    const map = {'forest':'forest','swamp':'mud','all grass':'grass','all sand':'sand','all snow':'snow','desert':'sand'};
+    const gType = map[t] || t;
+    currentGroundType = gType;
+    setTimeout(() => applyGroundTexture(currentGround, gType), 100);
+    return `Ground texture set to ${gType}`;
+  }
+  // ── END NATURAL LANGUAGE TERRAIN ─────────────────────────────────────────
+
+  // ── POLISH COMMANDS ───────────────────────────────────────────────────────
+  if (/^dof (on|off)$/i.test(cmd) || /^depth of field (on|off)$/i.test(cmd)) {
+    const on = /on/i.test(cmd);
+    if (on && BokehPass && !bokehPass) {
+      bokehPass = new BokehPass(scene, camera, { focus: 20, aperture: 0.001, maxblur: 0.015 });
+      if (composer) composer.addPass(bokehPass);
+    }
+    if (bokehPass) bokehPass.enabled = on;
+    return `Depth of field ${on ? 'enabled' : 'disabled'}`;
+  }
+  if (/^dof focus (\d+\.?\d*)$/i.test(cmd)) {
+    const dist = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (bokehPass) bokehPass.uniforms['focus'].value = dist;
+    return `DOF focus set to ${dist}`;
+  }
+  if (/^motion blur (on|off)$/i.test(cmd)) {
+    const on = /on/i.test(cmd);
+    if (window._colorPass) window._colorPass.uniforms.chromaticAberration.value = on ? 0.002 : 0;
+    return `Motion blur ${on ? 'on' : 'off'}`;
+  }
+  if (/^chromatic aberration ([\d.]+)$/i.test(cmd) || /^chroma ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.chromaticAberration.value = Math.min(val, 0.02);
+    return `Chromatic aberration: ${val}`;
+  }
+  if (/^contrast ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.contrast.value = val;
+    return `Contrast: ${val}`;
+  }
+  if (/^saturation ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.saturation.value = val;
+    return `Saturation: ${val}`;
+  }
+  if (/^brightness ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.brightness.value = val;
+    return `Brightness: ${val}`;
+  }
+  if (/^color grade (cinematic|warm|cool|horror|noir|vivid|neutral|default)$/i.test(cmd)) {
+    const style = cmd.split(' ').pop().toLowerCase();
+    const grades = {
+      cinematic: { contrast: 1.15, saturation: 0.9, brightness: 0.95, vignette: 0.5 },
+      warm:      { contrast: 1.05, saturation: 1.2, brightness: 1.05, vignette: 0.2 },
+      cool:      { contrast: 1.08, saturation: 0.85, brightness: 0.98, vignette: 0.25 },
+      horror:    { contrast: 1.3,  saturation: 0.4, brightness: 0.75, vignette: 0.7 },
+      noir:      { contrast: 1.4,  saturation: 0.0, brightness: 0.85, vignette: 0.6 },
+      vivid:     { contrast: 1.1,  saturation: 1.5, brightness: 1.05, vignette: 0.15 },
+      neutral:   { contrast: 1.0,  saturation: 1.0, brightness: 1.0,  vignette: 0.2 },
+      default:   { contrast: 1.08, saturation: 1.12, brightness: 1.02, vignette: 0.35 },
+    };
+    const g = grades[style] || grades.default;
+    if (window._colorPass) {
+      window._colorPass.uniforms.contrast.value = g.contrast;
+      window._colorPass.uniforms.saturation.value = g.saturation;
+      window._colorPass.uniforms.brightness.value = g.brightness;
+      window._colorPass.uniforms.vignetteStrength.value = g.vignette;
+    }
+    return `Color grade: ${style}`;
+  }
+  if (/^commands?$|^help commands?$|^command (page|list|reference|browser)$/i.test(cmd)) {
+    showCommandPage();
+    return 'Command reference opened';
+  }
+
+  if (/^(what.*next|polish.*guide|finish.*game|game.*done|ship.*game|publish.*game|export.*game)$/i.test(cmd)) {
+    return `🏁 **GAME POLISH CHECKLIST** — Here\'s what to do after your world is built:
+
+**VISUAL POLISH:**
+• color grade cinematic — cinematic look
+• bloom 1.5 — soft glow on lights
+• vignette 0.4 — edge darkening
+• ssao on — contact shadows
+• shadow quality ultra
+
+**ATMOSPHERE:**
+• Adjust fog density for your scene
+• Set the perfect time of day
+• Add ambient particles (fireflies, dust, embers)
+• Add god rays for sunlight
+
+**GAME FEEL:**
+• Add win condition — what does the player work toward?
+• Add main menu — first thing players see
+• Add game over screen — what happens on death?
+• Add background music — sets the tone
+• Add checkpoint — so players don\'t lose progress
+
+**PERFORMANCE:**
+• performance mode — if targeting mobile/low-end
+• lod on — reduces polygon count at distance
+• limit fps 60 — consistent frame rate
+
+**SHARE:**
+• Your game runs at: https://crateshipgames.com
+• Share the URL — anyone can play instantly, no install`;
+  }
+  // ── END POLISH COMMANDS ───────────────────────────────────────────────────
+
+
+  // ── NPC BEHAVIOR COMMANDS ──────────────────────────────────────────────────
+  if (/^add patrol(?:ling)? npc$/i.test(cmd) || /^add walking npc$/i.test(cmd)) {
+    spawnBehaviorNPC({ glbKey:'human_walk', mode:'patrol', pos:{x:px,y:0,z:pz}, speed:3, waypointRadius:18 });
+    return 'Patrolling NPC spawned';
+  }
+  if (/^add chasing? npc$/i.test(cmd) || /^spawn killer$/i.test(cmd)) {
+    spawnBehaviorNPC({ glbKey:'killer_character', mode:'chase', pos:{x:px+20,y:0,z:pz+20}, speed:4, chaseRange:35, waypointRadius:15 });
+    return 'Killer NPC spawned — will chase you within 35 units';
+  }
+  if (/^add following? npc$/i.test(cmd) || /^add companion$/i.test(cmd)) {
+    spawnBehaviorNPC({ glbKey:'human_walk', mode:'follow', pos:{x:px+3,y:0,z:pz+3}, speed:4 });
+    return 'Companion NPC spawned — follows you';
+  }
+  if (/^add zombie patrol$/i.test(cmd) || /^add roaming zombie$/i.test(cmd)) {
+    spawnBehaviorNPC({ glbKey:'zombie', mode:'patrol', pos:{x:px,y:0,z:pz}, speed:1.5, waypointRadius:12 });
+    return 'Roaming zombie spawned';
+  }
+  if (/^add zombie horde$/i.test(cmd)) {
+    for(let i=0;i<5;i++) spawnBehaviorNPC({ glbKey:'zombie', mode:'chase', pos:{x:px+(Math.random()-0.5)*30,y:0,z:pz+20+(Math.random()*15)}, speed:2+Math.random(), chaseRange:40 });
+    return 'Zombie horde (5) spawned — they will chase you!';
+  }
+  if (/^clear npcs?$/i.test(cmd) || /^remove all npcs?$/i.test(cmd)) {
+    clearAllNPCAgents();
+    return 'All NPC agents cleared';
+  }
+
+  // ── SHARE WORLD COMMAND ───────────────────────────────────────────────────
+  if (/^share world$/i.test(cmd) || /^share game$/i.test(cmd) || /^get share link$/i.test(cmd)) {
+    showToast('📡 Saving world to cloud...');
+    try {
+      const state = captureWorldState();
+      const resp = await fetch('https://crate-engine-ai.koikes2021.workers.dev/save-world', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state)
+      });
+      const data = await resp.json();
+      if (data.url) {
+        await navigator.clipboard.writeText(data.url).catch(()=>{});
+        // Show share modal
+        const modal = document.createElement('div');
+        modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+        modal.innerHTML='<div style="background:#111;border:1px solid #1a1a1a;border-radius:16px;padding:28px;max-width:480px;width:92vw;text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">🌍</div><div style="font-weight:700;color:#fff;font-size:1.2rem;margin-bottom:6px">World Shared!</div><div style="color:#888;font-size:0.82rem;margin-bottom:18px">Anyone with this link can play your world</div><div style="background:#0a0a0a;border:1px solid #333;border-radius:8px;padding:12px;font-family:monospace;font-size:0.78rem;color:#4ade80;word-break:break-all;margin-bottom:16px">'+data.url+'</div><div style="display:flex;gap:8px"><button onclick="navigator.clipboard.writeText(\'' + data.url + '\');this.textContent=\'✅ Copied!\'" style="flex:1;padding:10px;background:#ff6b35;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer">📋 Copy Link</button><button onclick="this.closest(\'[style*=fixed]\').remove()" style="padding:10px 16px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#888;cursor:pointer">Close</button></div></div>';
+        document.body.appendChild(modal);
+        modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+        return '🔗 World shared! Link copied to clipboard: ' + data.url;
+      }
+      return 'Share failed: ' + (data.error || 'Unknown error');
+    } catch(e) {
+      return 'Share failed: ' + e.message;
+    }
+  }
+  // ── END SHARE WORLD ───────────────────────────────────────────────────────
+
+  // ── EMBED COMMANDS ─────────────────────────────────────────────────────────
+  if (/^embed code$/i.test(cmd) || /^get embed$/i.test(cmd) || /^iframe code$/i.test(cmd)) {
+    const tmpl = window._templateMode || 'play';
+    const eurl = 'https://crateshipgames.com/' + (tmpl==='play'?'play.html':tmpl+'/');
+    const code = '<iframe src="' + eurl + '" width="800" height="600" frameborder="0" allowfullscreen style="border-radius:12px"></iframe>';
+    const modal = document.createElement('div');
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+    modal.innerHTML='<div style="background:#111;border:1px solid #222;border-radius:16px;padding:28px;max-width:560px;width:92vw"><div style="font-weight:700;color:#ff6b35;margin-bottom:12px;font-size:1.1rem">📋 Embed Your Game</div><div style="color:#888;font-size:0.8rem;margin-bottom:10px">Paste this into any webpage:</div><textarea id="emb-box" style="width:100%;background:#0a0a0a;border:1px solid #333;border-radius:8px;padding:12px;color:#4ade80;font-family:monospace;font-size:0.75rem;resize:none;height:80px" readonly>'+code+'</textarea><div style="display:flex;gap:8px;margin-top:12px"><button onclick="navigator.clipboard.writeText(document.getElementById(\'emb-box\').value);this.textContent=\'✅ Copied!\'" style="flex:1;padding:10px;background:#ff6b35;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer">📋 Copy Code</button><button onclick="this.closest(\'[style*=fixed]\').remove()" style="padding:10px 16px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#888;cursor:pointer">Close</button></div></div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+    return 'Embed code generated';
+  }
+  // ── END NPC + EMBED COMMANDS ───────────────────────────────────────────────
+
+  // ── WORLD SAVE / LOAD ────────────────────────────────────────────────────
+  if (/^save world$/i.test(cmd) || /^save game$/i.test(cmd)) {
+    return await saveWorld(window._worldName || 'My World');
+  }
+  if (/^save world (.+)$/i.test(cmd) || /^save as (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:save world|save as) (.+)/i)[1].trim();
+    return await saveWorld(name);
+  }
+  if (/^load world$/i.test(cmd) || /^load game$/i.test(cmd) || /^open world$/i.test(cmd)) {
+    return openWorldFilePicker();
+  }
+  if (/^export world$/i.test(cmd)) {
+    return await saveWorld(window._worldName || 'My World');
+  }
+  if (/^world name (.+)$/i.test(cmd)) {
+    window._worldName = cmd.match(/world name (.+)/i)[1].trim();
+    return 'World named: ' + window._worldName;
+  }
+
+
+  // ── WEATHER COMMANDS ──────────────────────────────────────────────────────
+  if (/^rain$/i.test(cmd) || /^start rain$/i.test(cmd)) { startRain(false); return 'Rain started'; }
+  if (/^heavy rain$/i.test(cmd) || /^storm$/i.test(cmd)) { startRain(true); return 'Heavy rain/storm'; }
+  if (/^snow$/i.test(cmd) || /^start snow$/i.test(cmd)) { startSnow(); return 'Snow started'; }
+  if (/^lightning$/i.test(cmd) || /^thunder(storm)?$/i.test(cmd)) { startLightning(); return 'Lightning storm started'; }
+  if (/^(stop|clear) weather$/i.test(cmd) || /^no rain$/i.test(cmd) || /^no snow$/i.test(cmd)) { stopWeather(); return 'Weather cleared'; }
+  if (/^horror weather$/i.test(cmd)) { startRain(true); startLightning(); return 'Horror storm: heavy rain + lightning'; }
+
+  // ── DAY/NIGHT CYCLE COMMANDS ───────────────────────────────────────────────
+  if (/^(start |enable )?day.?night( cycle)?$/i.test(cmd) || /^auto time$/i.test(cmd)) {
+    startDayNightCycle(1); return 'Day/night cycle started (1x speed)';
+  }
+  if (/^day.?night (fast|2x|3x|5x)$/i.test(cmd)) {
+    const speed = cmd.match(/(\d+)x/i)?.[1] || 3;
+    startDayNightCycle(+speed); return `Day/night cycle at ${speed}x speed`;
+  }
+  if (/^stop (day.?night|cycle|auto time)$/i.test(cmd)) { stopDayNightCycle(); return 'Day/night cycle stopped'; }
+
+  // ── QUEST COMMANDS ─────────────────────────────────────────────────────────
+  if (/^add quest (.+)$/i.test(cmd)) {
+    const name = cmd.match(/add quest (.+)/i)[1].trim();
+    addQuest(name);
+    return 'Quest added: ' + name;
+  }
+  if (/^complete quest (.+)$/i.test(cmd) || /^finish quest (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:complete|finish) quest (.+)/i)[1].trim();
+    const id = name.toLowerCase().replace(/\s+/g,'_');
+    if (_quests[id]) { completeQuest(id); return 'Quest completed: ' + name; }
+    return 'Quest not found: ' + name;
+  }
+  if (/^game over$/i.test(cmd) || /^you died$/i.test(cmd)) {
+    showGameOver('You were caught.'); return 'Game over screen shown';
+  }
+  if (/^win( game)?$/i.test(cmd) || /^you win$/i.test(cmd)) {
+    showWinScreen('Victory!'); return 'Win screen shown';
+  }
+  if (/^(show |list )?quests?$/i.test(cmd)) {
+    const qs = Object.values(_quests);
+    if (!qs.length) return 'No active quests';
+    return qs.map(q => `${q.completed?'✅':'📋'} ${q.name}`).join('\n');
+  }
+
+  // ── AUTOSAVE COMMANDS ─────────────────────────────────────────────────────
+  if (/^autosave( on)?$/i.test(cmd)) { startAutosave(60); return 'Autosave enabled (every 60s)'; }
+  if (/^autosave off$/i.test(cmd)) { if(_autosaveInterval){clearInterval(_autosaveInterval);_autosaveInterval=null;} return 'Autosave disabled'; }
+
+  // ── END NEW COMMANDS ───────────────────────────────────────────────────────
+
+  // ── AUDIO COMMANDS ────────────────────────────────────────────────────────
+  if (/^play (chainsaw|chainsaw_idle|chainsaw idle)$/i.test(cmd)) {
+    await playSound('chainsaw_idle', true, 0.6);
+    return 'Chainsaw sound playing (looping)';
+  }
+  if (/^play heartbeat$/i.test(cmd)) {
+    await playSound('heartbeat', true, 0.5);
+    return 'Heartbeat sound playing';
+  }
+  if (/^play (horror music|horror_music|scary music)$/i.test(cmd)) {
+    await playSound('event_music', true, 0.4);
+    return 'Horror music playing';
+  }
+  if (/^play (menu music|menumusic)$/i.test(cmd)) {
+    await playSound('menu_music', true, 0.4);
+    return 'Menu music playing';
+  }
+  if (/^play (police siren|siren)$/i.test(cmd)) {
+    await playSound('police_siren', false, 0.7);
+    return 'Police siren playing';
+  }
+  if (/^play (door open|dooropen)$/i.test(cmd)) {
+    await playSound('door_open', false, 0.8);
+    return 'Door opening sound';
+  }
+  if (/^play hunter$/i.test(cmd)) {
+    await playSound('hunter_chase', true, 0.5);
+    return 'Hunter chase music playing';
+  }
+  if (/^play (sword|sword swing)$/i.test(cmd)) {
+    await playSound('sword_swing', false, 0.9);
+    return 'Sword swing sound';
+  }
+  if (/^play (shotgun|gunshot)$/i.test(cmd)) {
+    await playSound('shotgun', false, 0.9);
+    return 'Shotgun sound';
+  }
+  if (/^stop (music|audio|sound|all sounds?)$/i.test(cmd)) {
+    stopAllSounds();
+    return 'All sounds stopped';
+  }
+  if (/^play sound (.+)$/i.test(cmd)) {
+    const key = cmd.match(/play sound (.+)/i)[1].trim().replace(/ /g,'_');
+    const ok = await playSound(key, false, 0.8);
+    return ok ? `Playing: ${key}` : `Sound not found: ${key}. Available: ${Object.keys(HORROR_AUDIO).join(', ')}`;
+  }
+  if (/^list (sounds?|audio)$/i.test(cmd)) {
+    return 'Available sounds: ' + Object.keys(HORROR_AUDIO).join(', ');
+  }
+
+  // ── DIALOGUE EDITOR ───────────────────────────────────────────────────────
+  if (/^(dialogue editor|npc editor|open dialogue)$/i.test(cmd)) {
+    showDialogueEditor('NPC_1');
+    return 'Dialogue editor opened';
+  }
+  if (/^dialogue editor (.+)$/i.test(cmd) || /^edit dialogue (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:dialogue editor|edit dialogue) (.+)/i)[1].trim();
+    showDialogueEditor(name);
+    return 'Dialogue editor opened for ' + name;
+  }
+  if (/^show dialogue (.+)$/i.test(cmd) || /^preview dialogue (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:show|preview) dialogue (.+)/i)[1].trim();
+    showDialoguePreview(name);
+    return 'Dialogue preview: ' + name;
+  }
+
+  // ── TERRAIN PAINTER ───────────────────────────────────────────────────────
+  if (/^(terrain paint|paint terrain|terrain painter|open painter)$/i.test(cmd)) {
+    showTerrainPaintUI();
+    return 'Terrain painter opened — click ground to paint texture zones';
+  }
+  if (/^paint (mode|brush)$/i.test(cmd)) {
+    showTerrainPaintUI();
+    return 'Terrain painter opened';
+  }
+  // ── END NEW COMMANDS ──────────────────────────────────────────────────────
+
+
+
   if (_galBypass.test(rawCmd.toLowerCase().trim())) {
     console.log('[GALLERY] Bypassing NL for gallery command:', rawCmd);
     const parts = rawCmd.split(/\s+(?:and|with|plus|,|\+)\s+/i).map(s => s.trim()).filter(Boolean);
@@ -11093,6 +14799,10 @@ async function parseAndExecute(rawCmd) {
         rawLower.startsWith('water ') || rawLower === 'water' ||
         rawLower.startsWith('equip ') || rawLower === 'unequip' || rawLower.startsWith('swap ') ||
         rawLower === 'play' || rawLower === 'edit' || rawLower === 'play mode' || rawLower === 'edit mode' ||
+        rawLower === 'city 3' || rawLower === 'full city' || rawLower === 'city world 3' ||
+        rawLower === 'build city 3' || rawLower === 'generate city' || rawLower === 'build city' ||
+        rawLower === 'horror' || rawLower === 'horror game' || rawLower === 'horror world' || rawLower === 'build horror' ||
+        rawLower === 'space' || rawLower === 'space game' || rawLower === 'space world' || rawLower === 'space station' || rawLower === 'build space' ||
         rawLower === 'inventory' || rawLower === 'help' || rawLower === 'stats' ||
         rawLower.startsWith('generate ') || rawLower === 'generator' || rawLower === '3d generator' ||
         rawLower.startsWith('interior ') || rawLower.endsWith('story house') ||
@@ -11176,7 +14886,7 @@ let _assetCatalog = null;
 async function _loadAssetCatalog() {
   if (_assetCatalog) return _assetCatalog;
   try {
-    const r = await fetch('asset-catalog.json');
+    const r = await fetch('asset-catalog.json?v=295');
     _assetCatalog = await r.json();
   } catch(e) { _assetCatalog = {}; }
   
@@ -11237,6 +14947,24 @@ const _CAT_META = {
   characters: { icon: '🧑', color: '#ffd700', label: 'Characters' },
   weapons: { icon: '⚔️', color: '#ef4444', label: 'Weapons' },
   buildings: { icon: '🏠', color: '#8b5cf6', label: 'Buildings' },
+  vehicles: { icon: '🚗', color: '#f97316', label: 'Cars & Vehicles' },
+  roads: { icon: '🛣️', color: '#6b7280', label: 'Roads & Bridges' },
+  'city-props': { icon: '🏙️', color: '#06b6d4', label: 'City Props' },
+  medieval: { icon: '🏰', color: '#b45309', label: 'Medieval' },
+  horror: { icon: '💀', color: '#7c3aed', label: 'Horror & Graveyard' },
+  dungeon: { icon: '🗝️', color: '#4b5563', label: 'Dungeon' },
+  fantasy: { icon: '🧙', color: '#a855f7', label: 'Fantasy & RPG' },
+  pirate: { icon: '🏴‍☠️', color: '#0891b2', label: 'Pirate' },
+  cyberpunk: { icon: '🤖', color: '#22d3ee', label: 'Cyberpunk' },
+  survival: { icon: '🪓', color: '#65a30d', label: 'Survival' },
+  farming: { icon: '🌾', color: '#84cc16', label: 'Crops & Farming' },
+  animals: { icon: '🦊', color: '#fb923c', label: 'Animals & Creatures' },
+  ships: { icon: '⛵', color: '#0ea5e9', label: 'Ships & Boats' },
+  platformer: { icon: '🎮', color: '#ec4899', label: 'Platformer' },
+  rocks: { icon: '🪨', color: '#78716c', label: 'Rocks & Terrain' },
+  'unity-assets': { icon: '🎯', color: '#16a34a', label: 'Unity Assets' },
+  'hd-assets': { icon: '💎', color: '#e11d48', label: 'HD Assets' },
+  misc: { icon: '📦', color: '#64748b', label: 'Misc' },
   vehicles: { icon: '🚗', color: '#3b82f6', label: 'Vehicles' },
   animals: { icon: '🐾', color: '#22c55e', label: 'Animals' },
   trees: { icon: '🌳', color: '#16a34a', label: 'Trees & Plants' },
@@ -11390,7 +15118,7 @@ function _renderThumb(file, container, fallbackIcon) {
   dl.position.set(2, 4, 3);
   s.add(dl);
 
-  gltfLoader.load('models/' + (file.endsWith('.glb') ? file : file + '.glb'), (gltf) => {
+  gltfLoader.load('/models/' + (file.endsWith('.glb') ? file : file + '.glb'), (gltf) => {
     const m = gltf.scene;
     const box = new THREE.Box3().setFromObject(m);
     const sz = box.getSize(new THREE.Vector3());
@@ -11416,13 +15144,26 @@ function _renderThumb(file, container, fallbackIcon) {
 
 function showCategoryPicker() {
   return new Promise(async (resolve) => {
-    const catalog = await _loadAssetCatalog();
+    showToast('📦 Opening asset library...');
+    let catalog;
+    try { catalog = await _loadAssetCatalog(); } catch(e) { catalog = {}; }
+    // Remove any existing picker
+    const existing = document.getElementById('_catPicker');
+    if (existing) existing.remove();
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:10005;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
-    overlay.innerHTML = '<div style="font-size:28px;color:#ffd700;margin-bottom:8px;">📂 ASSET LIBRARY</div><div style="font-size:13px;color:#666;margin-bottom:30px;">Choose a category to browse 3D models</div>';
-    
+    overlay.id = '_catPicker';
+    // Use maximum possible z-index to avoid stacking context issues
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.96);z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+    // Header stays fixed, grid scrolls
+    const header = document.createElement('div');
+    header.style.cssText = 'text-align:center;padding:24px 24px 16px;flex-shrink:0;width:100%;';
+    header.innerHTML = '<div style="font-size:28px;color:#ffd700;margin-bottom:6px;">📦 ASSET LIBRARY</div><div style="font-size:13px;color:#555;margin-bottom:16px;">4,122 models across 26 categories</div><input id="_catSearch" placeholder="🔍  Search categories..." style="background:#111;border:1px solid #333;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;width:260px;outline:none;" />';
+    overlay.appendChild(header);
+    // Scrollable grid wrapper
+    const scrollWrap = document.createElement('div');
+    scrollWrap.style.cssText = 'flex:1;overflow-y:auto;width:100%;padding:0 24px 24px;box-sizing:border-box;';
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,180px);gap:16px;justify-content:center;max-width:900px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,180px);gap:16px;justify-content:center;max-width:960px;margin:0 auto;';
     
     ['characters', ...Object.keys(catalog)].forEach(cat => {
       const m = _CAT_META[cat] || { icon: '📦', color: '#888', label: cat };
@@ -11430,17 +15171,30 @@ function showCategoryPicker() {
       if (!count) return;
       const card = document.createElement('div');
       card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + m.color + '30;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s;';
+      card.dataset.cat = (cat + ' ' + m.label).toLowerCase();
       card.onmouseenter = () => { card.style.borderColor = m.color; card.style.transform = 'scale(1.04)'; };
       card.onmouseleave = () => { card.style.borderColor = m.color + '30'; card.style.transform = 'scale(1)'; };
       card.innerHTML = '<div style="font-size:40px;margin-bottom:8px;">' + m.icon + '</div><div style="font-size:15px;font-weight:bold;color:' + m.color + ';margin-bottom:4px;">' + m.label + '</div><div style="font-size:12px;color:#555;">' + count + ' models</div>';
       card.onclick = () => { overlay.remove(); if (cat === 'characters') { showCharacterGallery().then(resolve); } else { showGallery(cat).then(resolve); } };
       grid.appendChild(card);
     });
-    overlay.appendChild(grid);
-    
+    scrollWrap.appendChild(grid);
+    overlay.appendChild(scrollWrap);
+
+    // Category search filter
+    setTimeout(() => {
+      const si = document.getElementById('_catSearch');
+      if (si) si.addEventListener('input', () => {
+        const q = si.value.toLowerCase();
+        grid.querySelectorAll('[data-cat]').forEach(card => {
+          card.style.display = card.dataset.cat.includes(q) || !q ? '' : 'none';
+        });
+      });
+    }, 50);
+
     const closeBtn = document.createElement('div');
     closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = () => { overlay.remove(); resolve(null); };
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
@@ -11477,7 +15231,7 @@ function showAnimationGallery(targetName) {
     });
     overlay.appendChild(grid);
     const closeBtn = document.createElement('div'); closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = () => { overlay.remove(); resolve(null); };
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
@@ -11872,170 +15626,10 @@ async function execSingle(cmd) {
     return '🔫 Shooter mode enabled! 5 enemies spawned. Click to fire!';
   }
   
-  // === Driving Demo (v61) ===
-  if (lower === 'playground' || lower === 'test world' || lower === 'demo world') {
-    // Quick test world with everything
-    const cmds = [
-      'generate town',
-    ];
-    cmds.forEach((cmd, i) => setTimeout(() => execSingle(cmd), i * 200));
-    setTimeout(() => {
-      execSingle('add car');
-      execSingle('add interior house 2');
-      execSingle('play');
-      showToast('🎮 Playground loaded! Explore, drive, enter buildings.');
-    }, 3000);
-    return '🎮 Loading playground — town with car, house, and play mode...';
-  }
-  
-  if (lower === 'driving demo' || lower === 'drive demo' || lower === 'car demo') {
-    // Create road circuit
-    execSingle('add road');
-    setTimeout(() => {
-      execSingle('add car');
-      setTimeout(() => {
-        if (typeof showToast === 'function') showToast('🏎️ Press F near car to drive! WASD to steer.');
-      }, 500);
-    }, 500);
-    return '🏎️ Driving demo! Road + car added. Press F near the car!';
-  }
+
 
   // ═══ MAP / LEVEL GENERATOR (JSON Template System v67) ═══
-const GAME_PRESETS = {
-  'zombie': {
-    name: 'Zombie Survival',
-    description: 'Survive waves of zombies in an abandoned city',
-    map: 'city',
-    env: ['time night', 'fog on'],
-    commands: [
-      'flat height:0',
-      'generate city',
-      'add npc zombie at 30,0,30',
-      'add npc zombie at -20,0,40',
-      'add npc zombie at 50,0,-10',
-      'add npc zombie at -40,0,20',
-      'add npc zombie at 10,0,-50',
-      'add npc zombie at 60,0,60',
-      'add npc zombie at -30,0,-30',
-      'add npc zombie at 0,0,70',
-      'equip sword',
-    ],
-    hud: { showHealth: true, showWaves: true, showKills: true },
-    rules: { hostile: true, respawn: true, waveInterval: 45, maxWave: 10 },
-    music: 'horror',
-  },
-  'racing': {
-    name: 'Street Racing',
-    description: 'Race through city streets in sports cars',
-    map: 'city',
-    env: ['time sunset'],
-    commands: [
-      'flat height:0',
-      'generate city',
-      'add ferrari at 0,0,5',
-      'add ferrari at 5,0,5',
-      'add ferrari at -5,0,5',
-    ],
-    hud: { showSpeed: true, showLap: true, showPosition: true },
-    rules: { laps: 3, checkpoints: true },
-    music: 'electronic',
-  },
-  'rpg': {
-    name: 'Fantasy RPG',
-    description: 'Explore a medieval world with quests and combat',
-    map: 'medieval',
-    env: ['time day'],
-    commands: [
-      'flat height:0',
-      'generate medieval village',
-      'add npc guard at 10,0,10',
-      'add npc guard at -10,0,10',
-      'add npc at 20,0,5',
-      'add npc at -15,0,15',
-      'add npc at 5,0,25',
-      'equip sword',
-    ],
-    hud: { showHealth: true, showXP: true, showQuests: true },
-    rules: { quests: true, levelUp: true },
-    music: 'fantasy',
-  },
-  'survival': {
-    name: 'Survival Sandbox',
-    description: 'Gather resources, build shelter, survive the night',
-    map: 'forest',
-    env: ['time dawn'],
-    commands: [
-      'terrain hills',
-      'add 20 trees',
-      'add 10 rocks',
-      'add campfire at 5,0,5',
-      'equip axe',
-    ],
-    hud: { showHealth: true, showHunger: true, showInventory: true },
-    rules: { dayNightCycle: true, crafting: true },
-    music: 'ambient',
-  },
-  'fps': {
-    name: 'First Person Shooter',
-    description: 'Fast-paced arena combat',
-    map: 'arena',
-    env: ['time noon'],
-    commands: [
-      'flat height:0',
-      'generate arena',
-      'camera first_person',
-      'add npc enemy at 30,0,0',
-      'add npc enemy at -30,0,0',
-      'add npc enemy at 0,0,30',
-      'add npc enemy at 0,0,-30',
-      'equip rifle',
-    ],
-    hud: { showHealth: true, showAmmo: true, showKills: true },
-    rules: { hostile: true, respawn: true },
-    music: 'action',
-  },
-  'sandbox': {
-    name: 'Creative Sandbox',
-    description: 'Build anything — no rules, infinite freedom',
-    map: 'flat',
-    env: ['time day'],
-    commands: [
-      'flat height:0',
-    ],
-    hud: {},
-    rules: {},
-    music: 'chill',
-  },
-  'horror': {
-    name: 'Horror Exploration',
-    description: 'Explore a dark abandoned town — something is watching',
-    map: 'abandoned',
-    env: ['time midnight', 'fog on'],
-    commands: [
-      'flat height:0',
-      'generate abandoned town',
-      'add streetlamp at 10,0,0',
-      'add streetlamp at -10,0,20',
-      'add npc at 50,0,50',
-    ],
-    hud: { showHealth: true, showFlashlight: true },
-    rules: { hostile: true, ambiance: 'creepy' },
-    music: 'horror',
-  },
-  'city_builder': {
-    name: 'City Builder',
-    description: 'Build your dream city from scratch',
-    map: 'flat',
-    env: ['time day'],
-    commands: [
-      'flat height:0',
-      'add road at 0,0,0',
-    ],
-    hud: { showMoney: true, showPopulation: true },
-    rules: { economy: true, building: true },
-    music: 'chill',
-  },
-};
+const GAME_PRESETS = {}; // removed game presets
 
 // ═══ GAME PRESET COMMAND HANDLER ═══
 // Matches: "make this a zombie game", "zombie mode", "start zombie survival", etc.
@@ -12093,7 +15687,7 @@ async function applyGamePreset(key, preset) {
 
 // ═══ GAME HUD OVERLAY ═══
 function showGameHUD(preset) {
-  let hud = document.getElementById('game-hud');
+  hud = document.getElementById('game-hud');
   if (hud) hud.remove();
   
   hud = document.createElement('div');
@@ -12169,6 +15763,11 @@ function showGameHUD(preset) {
       underwater: 'UNDERWATER_REEF', reef: 'UNDERWATER_REEF',
     };
     const worldTemplate = WORLD_COMPILER_MAP[mapType];
+    // Route city/urban directly to Ultra City builder (all new assets)
+    if (worldTemplate === 'CITY_MODERN') {
+      buildCityWorld3();
+      return '🏙️ Building Ultra City with all new assets...';
+    }
     if (worldTemplate) {
       try {
         const { buildAndApply } = await import('./runtime/world-client.mjs');
@@ -13174,7 +16773,7 @@ function showGameHUD(preset) {
         // Spawn GPU instanced grass for any generated world
         try {
           if (window._grassSystem) { window._grassSystem.dispose(); window._grassSystem = null; }
-          import('./runtime/grass-system.mjs').then(({ createGrassForWorld }) => {
+          Promise.resolve() /* grass-system disabled */.then(({ createGrassForWorld }) => {
             if (window._scene) {
               const manifest = { spawn: { position: [0, 0, 0] }, world_size: [200, 200] };
               window._grassSystem = createGrassForWorld(window._scene, manifest);
@@ -13237,7 +16836,7 @@ function showGameHUD(preset) {
   }
 
   
-  if (lower === "models" || lower === "model count" || lower === "how many models" || lower === "library") {
+  if (lower === "models" || lower === "model count" || lower === "how many models") {
     const count = Object.keys(GLB_MODELS).length;
     return "📚 Crate Engine Model Library: " + count + "+ models\n\nCategories:\n  🚗 Vehicles: sedan, SUV, taxi, ambulance, ferrari, truck\n  🏢 Buildings: houses, offices, shops, skyscrapers\n  🛋️ Furniture: tables, chairs, sofas, beds, shelves\n  ⚔️ Weapons: swords, axes, bows, blasters, shields\n  🌿 Nature: trees, rocks, plants, flowers\n  🛤️ Roads: straight, curved, intersections\n  🧟 Characters: NPCs, zombies, skeletons, dragons\n  🏴‍☠️ Themed: pirate, medieval, dungeon, sci-fi, horror\n\nUse: search [keyword] to find specific models\nUse: add [name] to place in scene";
   }
@@ -13347,7 +16946,7 @@ function showGameHUD(preset) {
     const match = resizeMatch || biggerMatch || smallerMatch || scaleMultMatch;
     const objName = match[1].toLowerCase();
     const arg = match[2];
-    let found = null;
+    found = null;
     scene.traverse(child => {
       if (child.userData && child.userData.name && child.userData.name.toLowerCase().includes(objName)) {
         found = child;
@@ -13685,11 +17284,15 @@ function showGameHUD(preset) {
       try { localStorage.setItem('crate_character', charName); } catch(e) {}
       await characterController.loadCharacter(charName);
       if (playAsMatch) {
-        // Also enter play mode
-        playMode = true;
-        _hideEditorUI();
-        try { controls.enabled = false; } catch(e) {}
-        { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.position.set(0, _sy, 0); } }
+        enterPlayMode();
+        // Spawn at current camera position (stay in current world)
+    {
+      const cx = camera.position.x || 0;
+      const cz = camera.position.z || 0;
+      const _sy = Math.max(0, getTerrainY(cx, cz)) + 2;
+      characterController.position.set(cx, _sy, cz);
+      if (characterController.collider) characterController.collider.teleport(cx, _sy, cz);
+    }
         // Apply player agent profile
     const _agentProfile = PlayerAgent.load();
     PlayerAgent.apply(_agentProfile, characterController);
@@ -13708,105 +17311,15 @@ function showGameHUD(preset) {
     try { localStorage.setItem('crate_character', charName); } catch(e) {}
     await characterController.loadCharacter(charName);
     if (playAsMatch) {
-      playMode = true;
-      _hideEditorUI();
-      try { controls.enabled = false; } catch(e) {}
-      { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) characterController.position.set(0, _sy, 0); }
+      enterPlayMode();
       return '⚔️ Playing as ' + charName + '! WASD to move, mouse to look, ESC to exit.';
     }
     return '✅ Character set to ' + charName + '. Available: ' + validChars.join(', ');
   }
 
-  // === PLAY WITH CHARACTER ===
-  if ((lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo') && characterController) {
-    var isDemoMode = lower === 'demo' || window._isAutoDemo;
-    playMode = true;
-    _hideEditorUI();
-    try { controls.enabled = isDemoMode ? true : false; } catch(e) {}
-    if (!characterController.model) {
-      // Show character select if user hasn't chosen yet (skip for demo mode)
-      try {
-        if (!isDemoMode && !selectedCharacterType) {
-          var chosen = await showCharacterGallery();
-          if (!chosen) { playMode = false; _showEditorUI(); return '↩ Character select cancelled'; }
-          if (!characterController.characterModels[chosen]) {
-            var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
-            if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
-          }
-          await characterController.loadCharacter(chosen);
-        } else {
-          await characterController.loadCharacter(selectedCharacterType || 'knight');
-        }
-      } catch (charErr) {
-        console.warn('[Play] Character load failed, using fallback:', charErr.message);
-        // Force fallback capsule if loadCharacter threw
-        if (!characterController.model) {
-          const capsuleGeo = new THREE.CapsuleGeometry(0.3, 1.2, 8, 16);
-          const capsuleMat = new THREE.MeshStandardMaterial({ color: 0x4488ff });
-          characterController.model = new THREE.Mesh(capsuleGeo, capsuleMat);
-          characterController.model.castShadow = true;
-          characterController.modelContainer = new THREE.Group();
-          characterController.modelContainer.add(characterController.model);
-          characterController.modelContainer.userData.isPlayer = true;
-          characterController.modelContainer.userData.name = 'player_fallback';
-          characterController.modelContainer.position.copy(characterController.position);
-          scene.add(characterController.modelContainer);
-          objects.push(characterController.modelContainer);
-          characterController.proceduralAnim = true;
-        }
-      }
-    }
-    // Spawn at origin ON TOP of terrain
-    { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.position.set(0, _sy, 0); } }
-    characterController.health = characterController.maxHealth;
-    characterController.stamina = characterController.maxStamina;
-    
-    if (isDemoMode) {
-      // FORCE bright daylight for demo
-      setSky('#3388dd', '#99ddff');
-      sunLight.color.set(0xffffff); sunLight.intensity = 4; sunLight.position.set(30,50,20);
-      scene.fog = null;
-      ambientLight.color.set(0xffffff); ambientLight.intensity = 1.2;
-      createSun();
-      // Demo: start outside the town, walk in
-      characterController.position.set(-20, 0, -20);
-      if (characterController.model) {
-        characterController.position.set(-20, 0, -20);
-      }
-      characterController.cameraMode = '3rd';
-      characterController.cameraDistance = 10;
-      characterController.cameraHeight = 5;
-      characterController.cameraPitch = 0.3;
-      window._demoMode = true;
-      window._demoTime = 0;
-      window._demoPhase = 0;
-    } else {
-      const canvas = document.querySelector('canvas');
-      // Show click-to-play overlay (browsers require user gesture for pointer lock)
-      if (canvas && !document.pointerLockElement) {
-        const overlay = document.createElement('div');
-        overlay.id = 'click-to-play';
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);cursor:pointer;';
-        overlay.innerHTML = '<div style="text-align:center;color:white;font-family:monospace;"><div style="font-size:48px;margin-bottom:16px;">🎮</div><div style="font-size:24px;">Click to Play</div><div style="font-size:14px;opacity:0.7;margin-top:8px;">WASD move · Shift run · Mouse look</div></div>';
-        overlay.addEventListener('click', () => {
-          overlay.remove();
-          canvas.requestPointerLock();
-        });
-        document.body.appendChild(overlay);
-      }
-    }
-    // Init crafting
-    if (!craftingSystem) craftingSystem = new CraftingSystem(characterController);
-    if (!levelSystem) levelSystem = new LevelSystem(characterController);
-    // Init minimap
-    if (!minimap) {
-      minimap = createMinimap(scene, camera, characterController, objects);
-    }
-    minimap.el.style.display = 'block';
-    const xpBar = document.getElementById('xp-bar-container');
-    if (xpBar) xpBar.style.display = 'block';
-    return '🎮 Play mode ON — WASD move, Shift run, Space jump, C roll, E attack, V toggle camera, ESC exit';
-  }
+  // === PLAY === (redirects to enterPlayMode)
+  // Handled above — enterPlayMode() is the single entry point
+
   
   // === CAMERA TOGGLE ===
   if ((lower === 'toggle camera' || lower === 'v' || lower === '1st person' || lower === '3rd person' || lower === 'first person' || lower === 'third person') && characterController) {
@@ -13829,11 +17342,8 @@ function showGameHUD(preset) {
   if (agentChanges.length > 0) {
     PlayerAgent.save(agentProfile);
     if (characterController) PlayerAgent.apply(agentProfile, characterController);
-    // Handle world building from AI agent
-    if (window._agentBuildWorld) {
-      const w = window._agentBuildWorld; window._agentBuildWorld = null;
-      setTimeout(() => parseAndExecute('generate ' + w), 100);
-    }
+    // World building disabled in play mode — keep current world as-is
+    // if (window._agentBuildWorld) { ... }
     // Handle water preset from AI agent
     if (window._agentWaterPreset) {
       const wp = window._agentWaterPreset; window._agentWaterPreset = null;
@@ -14087,7 +17597,7 @@ function showGameHUD(preset) {
   }
 
   // === BUILD WORLD (AI Agent world builder) ===
-  const buildWorldMatch = lower.match(/^(?:build|create|generate|make|load) (?:a |an |the )?(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|village|city|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|mountain|volcano|haunted|western|ruins|zen|swamp|floating)(?: world| map| scene)?$/);
+  const buildWorldMatch = lower.match(/^(?:build|create|generate|make|load) (?:a |an |the )?(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|village|city|big city|small city|suburb|downtown|neighborhood|block|dungeon|arena|battlefield|kingdom|island|forest|camp|farm|ranch|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|mountain|volcano|haunted|western|ruins|zen|swamp|floating|beach|coastal|harbor|port|airport|stadium|park|mall|hospital|school|university|prison|military|base|factory|warehouse|parking lot)(?: world| map| scene)?$/);
   if (buildWorldMatch) {
     // Redirect as 'generate <worldType>' — line 6580 handler now catches multi-word types
     return parseAndExecute('generate ' + buildWorldMatch[1]);
@@ -14424,28 +17934,53 @@ function showGameHUD(preset) {
   }
   
   // === PLAY MODE (fallback — main handler at line ~8276) ===
-  if (lower === 'play' || lower === 'play mode' || lower === 'fps' || lower === 'first person' || lower === 'walk') {
-    // If characterController exists, redirect to the full play handler above
-    if (characterController) {
-      // This shouldn't normally be reached, but just in case:
-      if (!characterController.model) {
-        try {
-          await characterController.loadCharacter('knight');
-        } catch(e) {
-          console.warn('[Play] Fallback character load failed:', e.message);
-        }
-      }
-      playMode = true;
-      _hideEditorUI();
-      try { controls.enabled = false; } catch(e) {}
-      const _sy = getTerrainY(0, 0) + 1;
-      characterController.position.set(0, _sy, 0);
-      if (characterController.collider) characterController.collider.teleport(0, _sy, 0);
+  // [REMOVED] Duplicate play handler — use enterPlayMode() only
+  // === SPAWN CHARACTER ===
+  if (lower.startsWith('spawn ') && characterController) {
+    const charType = lower.replace('spawn ', '').trim();
+    const validTypes = Object.keys(characterController.characterModels);
+    const type = validTypes.includes(charType) ? charType : 'woman';
+    try {
+      await characterController.loadCharacter(type);
+      // Auto-enter play mode if not already
+      if (!playMode) _activatePlayMode();
+      // Switch from camera mode to character mode
+      characterController._cameraOnlyMode = false;
+      // Spawn at camera look target (where user is looking)
+      const spawnPos = controls && controls.target ? controls.target.clone() : new THREE.Vector3(0, 0, 0);
+      spawnPos.y = Math.max(0.5, spawnPos.y);
+      characterController.position.set(spawnPos.x, spawnPos.y + 1, spawnPos.z);
+      if (characterController.collider) characterController.collider.teleport(spawnPos.x, spawnPos.y + 1, spawnPos.z);
       characterController.health = characterController.maxHealth;
       characterController.stamina = characterController.maxStamina;
-      return '🎮 Play mode ON — WASD move, Shift run, Space jump, ESC exit';
+      // Set up 3rd person camera
+      characterController.cameraMode = '3rd';
+      characterController.cameraDistance = 8;
+      characterController.cameraHeight = 4.0;
+      characterController.cameraPitch = 0.15;
+      if (characterController.model) characterController.model.visible = true;
+      // Disable orbit controls, character controller takes over camera
+      try { controls.enabled = false; } catch(e) {}
+      // Request pointer lock for mouse look
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const overlay = document.createElement('div');
+        overlay.id = 'click-to-play';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);cursor:pointer;';
+        overlay.innerHTML = '<div style="text-align:center;color:white;font-family:monospace;"><div style="font-size:48px;margin-bottom:16px;">🎮</div><div style="font-size:24px;">Click to Play as ' + type + '</div><div style="font-size:14px;opacity:0.7;margin-top:8px;">WASD move · Shift run · Mouse look · E interact</div></div>';
+        overlay.addEventListener('click', () => { overlay.remove(); canvas.requestPointerLock(); });
+        document.body.appendChild(overlay);
+      }
+      showToast('🎮 ' + type + ' spawned! Click to play.');
+      return '🎮 ' + type + ' spawned at camera target!';
+    } catch(e) {
+      return '⚠ Failed to spawn: ' + e.message;
     }
-    return enterPlayMode();
+  }
+  // === PLAY MODE ===
+  if (lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo' || lower === 'fps' || lower === 'first person' || lower === 'walk') {
+    if (characterController) return enterPlayMode();
+    return '⚠ Character system not loaded yet';
   }
   if (lower === 'edit' || lower === 'edit mode' || lower === 'stop playing' || lower === 'exit play') {
     return exitPlayMode();
@@ -14868,7 +18403,7 @@ function showGameHUD(preset) {
     for (const [cn, cv] of Object.entries(colorMap)) { if (lower.includes(cn)) { foundColor = cv; colorName = cn; break; } }
     if (foundColor !== null) {
       const clean = lower.replace(/^(turn|make|paint|set|color)\s+/,'').replace(/(the|a|it|to)\s/g,'').replace(colorName,'').trim();
-      let target = clean ? objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(clean)) : (selectedObj || objects[objects.length-1]);
+      target = clean ? objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(clean)) : (selectedObj || objects[objects.length-1]);
       if (target) {
         const setColor = (o) => { if (o.isMesh && o.material) o.material.color.setHex(foundColor); if (o.children) o.children.forEach(setColor); };
         setColor(target);
@@ -14887,7 +18422,7 @@ function showGameHUD(preset) {
   // EXPAND GROUND: "expand ground" / "bigger map" / "extend level" / "double floor"
   if (lower.match(/\b(expand|extend|enlarge|bigger|larger|grow|double|widen|stretch)\b/) && lower.match(/\b(ground|floor|map|level|board|terrain|area|space)\b/) && !lower.includes('world') && !lower.includes('platform')) {
     const numMatch = lower.match(/(\d+)/);
-    let newSize = numMatch ? parseInt(numMatch[1]) : groundSize + 300;
+    newSize = numMatch ? parseInt(numMatch[1]) : groundSize + 300;
     if (newSize < groundSize) newSize = groundSize + 300;
     expandGround(newSize);
     return '✓ Ground expanded to ' + groundSize + 'x' + groundSize + '! More room to build.';
@@ -14923,7 +18458,7 @@ function showGameHUD(preset) {
     const gType = _groundMatch[1];
     if (currentGround) { scene.remove(currentGround); currentGround.geometry.dispose(); currentGround.material.dispose(); }
     currentGround = createGround(gType);
-    currentGroundType = gType;
+    currentGroundType = gType; setTimeout(() => applyGroundTexture(currentGround, gType), 100);
     scene.add(currentGround);
     return addToLog('✓ Ground: ' + gType);
   }
@@ -15084,12 +18619,27 @@ function showGameHUD(preset) {
     return '🌳 Added ' + count + ' ' + treeType + (count > 1 ? ' trees' : ' tree') + ' (mixed varieties)';
   }
 
-  const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+))?$/);
+  const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+)(?:\s*,?\s*(-?[\d.,]+))?)?(?:\s+scale\s+(-?[\d.,]+))?(?:\s+ry\s+(-?[\d.,]+))?$/);
     if (addGenMatch) {
       const rawInput = addGenMatch[1].trim();
       const rawName = rawInput.replace(/\s+/g, '_');
-      const ax = addGenMatch[2] !== undefined ? parseFloat(addGenMatch[2]) : (Math.random() - 0.5) * 20;
-      const az = addGenMatch[3] !== undefined ? parseFloat(addGenMatch[3]) : (Math.random() - 0.5) * 20;
+      // Support both "add X at X Z" (2 coords) and "add X at X Y Z" (3 coords)
+      let ax, ay = 0, az;
+      if (addGenMatch[4] !== undefined) {
+        // 3 coords: X Y Z
+        ax = parseFloat(addGenMatch[2]);
+        ay = parseFloat(addGenMatch[3]);
+        az = parseFloat(addGenMatch[4]);
+      } else if (addGenMatch[2] !== undefined) {
+        // 2 coords: X Z
+        ax = parseFloat(addGenMatch[2]);
+        az = parseFloat(addGenMatch[3] || '0');
+      } else {
+        ax = (Math.random() - 0.5) * 20;
+        az = (Math.random() - 0.5) * 20;
+      }
+      const scaleOverride = addGenMatch[5] ? parseFloat(addGenMatch[5]) : undefined;
+      const ryOverride = addGenMatch[6] ? parseFloat(addGenMatch[6]) : undefined;
 
       // 1. Try GLB_MODELS alias map (exact match)
       const glb = GLB_MODELS[rawName] || GLB_MODELS[rawName.replace(/_/g, '-')] || GLB_MODELS[rawInput] || null;
@@ -15119,7 +18669,21 @@ function showGameHUD(preset) {
         finalGlb = rawName;
       }
 
-      loadGLBModel(displayName, finalGlb, ax, az);
+      loadGLBModel(displayName, finalGlb, ax, az, scaleOverride);
+      // Set Y position after load if not 0
+      if (ay !== 0) {
+        setTimeout(() => {
+          const obj = objects[objects.length - 1];
+          if (obj) obj.position.y = ay;
+        }, 2000);
+      }
+      // Set rotation if specified
+      if (ryOverride !== undefined) {
+        setTimeout(() => {
+          const obj = objects[objects.length - 1];
+          if (obj) obj.rotation.y = ryOverride;
+        }, 2000);
+      }
       return '✅ Adding ' + displayName + '...';
     }
   }
@@ -15447,10 +19011,10 @@ canvas.addEventListener('pointerup', () => {
 
 // Fix stuck WASM loading text
 setTimeout(() => {
-  const wasmEl = document.getElementById('wasm-status') ||
-    document.querySelector('[data-wasm-status]');
-  if (wasmEl) { wasmEl.textContent = '✓ Ready'; wasmEl.style.color = '#4ade80'; }
-}, 3000);
+  const wasmEl = document.querySelector('[data-wasm-status]') || 
+    [...document.querySelectorAll('*')].find(el => el.textContent === 'WASM: loading...' && el.children.length === 0);
+  if (wasmEl) wasmEl.textContent = '✓ Ready';
+}, 5000);
 
 // === FAB GALLERY ===
 function showFabGallery() {
@@ -15583,13 +19147,13 @@ window._decomposedPieces = _decomposedPieces;
 // Auto-decompose the street props pack on load
 (function autoDecomposeStreetProps() {
   setTimeout(() => {
-    decomposeGLB('models/fab/street_props_streeprops.glb', 'street_props');
-    decomposeGLB('models/fab/Street_Props_GLB_StreeProps.glb', 'street_props');
+    decomposeGLB('/models/fab/street_props_streeprops.glb', 'street_props');
+    decomposeGLB('/models/fab/Street_Props_GLB_StreeProps.glb', 'street_props');
   }, 2000); // wait for engine init
 })();
 
 // === FOREST LAKE WORLD ===
-window.buildForestLakeWorld = buildForestLakeWorld;
+// [removed] buildForestLakeWorld
 
 
 // === FREE-FLY EDITOR CAMERA (WASD + Q/E + mouse) ===
@@ -15690,7 +19254,7 @@ function buildGrassField(opts = {}) {
     0x276020, 0x4a8c28, 0x3e7830, 0x62b840,
   ];
 
-  let placed = 0;
+  placed = 0;
   let attempts = 0;
   while (placed < count && attempts < count * 4) {
     attempts++;
@@ -15978,7 +19542,7 @@ function showCharacterGallery(onSelect) {
             const miniLoader = new GLTFLoader();
             miniLoader.setDRACOLoader(dracoLoader);
             
-            miniLoader.load('models/' + (ch.file.endsWith('.glb') ? ch.file : ch.file + '.glb'), (gltf) => {
+            miniLoader.load('/models/' + (ch.file.endsWith('.glb') ? ch.file : ch.file + '.glb'), (gltf) => {
               spinner.remove();
               const model = gltf.scene;
               const box = new THREE.Box3().setFromObject(model);
@@ -16201,8 +19765,7 @@ function enterVehicle(veh) {
   showVehicleHUD(true);
   // Auto-enable play mode so vehicle controls work
   if (!playMode) {
-    playMode = true;
-    _hideEditorUI();
+    _activatePlayMode();
     console.log('[CrateEngine] ▶ Play mode enabled for driving');
   }
   activeVehicle = {
@@ -16413,7 +19976,7 @@ function addInstancedObject(glbFile, positions) {
   }
   
   // Load model and create InstancedMesh
-  gltfLoader.load('models/' + glbFile + '.glb', (gltf) => {
+  gltfLoader.load('/models/' + glbFile + '.glb', (gltf) => {
     const original = gltf.scene;
     // Find first mesh in the loaded model
     let sourceMesh = null;
@@ -16425,7 +19988,7 @@ function addInstancedObject(glbFile, positions) {
     instMesh.castShadow = true;
     instMesh.receiveShadow = true;
     
-    let count = 0;
+    count = 0;
     for (const pos of positions) {
       const matrix = new THREE.Matrix4();
       const scale = pos.scale || 1;
@@ -16688,11 +20251,11 @@ function autoParticlesForScene(sceneName) {
 }
 
 // Start default particles
-setTimeout(() => createAmbientParticles('dust', 200), 1500);
+setTimeout(() => createAmbientParticles('dust', 0), 1500);
 
 
 // === DAY/NIGHT CYCLE ===
-let _dayNightCycle = false;
+
 let _dayTime = 12; // 0-24 hours, start at noon
 window._toggleDayNight = function() { _dayNightCycle = !_dayNightCycle; return _dayNightCycle; };
 window._setDayTime = function(h) { _dayTime = h % 24; };
@@ -17242,7 +20805,8 @@ function updateInteractionPrompt() {
 
 // === CROSSHAIR (v215) ===
 function showCrosshair(show) {
-  let ch = document.getElementById('crosshair');
+  let
+  ch = document.getElementById('crosshair');
   if (!ch) {
     ch = document.createElement('div');
     ch.id = 'crosshair';
@@ -17304,7 +20868,7 @@ window.updateStaminaBar = updateStaminaBar;
 
 // === KILL FEED / EVENT LOG (v215) ===
 function showKillFeed(text, color) {
-  let feed = document.getElementById('kill-feed');
+  feed = document.getElementById('kill-feed');
   if (!feed) {
     feed = document.createElement('div');
     feed.id = 'kill-feed';
@@ -17693,7 +21257,7 @@ function setAmbientSound(type) {
     const bufferSize = ctx.sampleRate * 2;
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
-    let last = 0;
+    last = 0;
     for (let i = 0; i < bufferSize; i++) {
       const white = Math.random() * 2 - 1;
       data[i] = (last + (0.02 * white)) / 1.02;
@@ -17932,7 +21496,7 @@ function createMuzzleFlash(position, direction) {
   light.position.copy(flash.position);
   scene.add(light);
   
-  let t = 0;
+  t = 0;
   const tick = () => {
     t += 0.016;
     flash.material.opacity = Math.max(0, 1 - t * 15);
@@ -18201,7 +21765,7 @@ function spawnTrafficCar(roadX, roadZ, dir, laneOffset) {
   const carColor = TRAFFIC_CAR_COLORS[Math.floor(Math.random() * TRAFFIC_CAR_COLORS.length)];
   
   // Load GLB car
-  const modelPath = 'models/' + carModel + '.glb';
+  const modelPath = '/models/' + carModel + '.glb';
   const loader = window._gltfLoader || new THREE.GLTFLoader();
   
   loader.load(modelPath, (gltf) => {
@@ -18852,7 +22416,7 @@ function animate() {
           for (let k = 0; k < kills; k++) window._killFeed('☠️ Enemy eliminated +100');
         }
         // Kill message
-        let msg = document.getElementById('pickup-msg');
+        msg = document.getElementById('pickup-msg');
         if (!msg) {
           msg = document.createElement('div');
           msg.id = 'pickup-msg';
@@ -18878,7 +22442,7 @@ function animate() {
         if (parts && craftingSystem) craftingSystem.addMaterial(parts[1], parseInt(parts[2]));
       }
       // Flash pickup message
-      let msg = document.getElementById('pickup-msg');
+      msg = document.getElementById('pickup-msg');
       if (!msg) {
         msg = document.createElement('div');
         msg.id = 'pickup-msg';
@@ -18922,8 +22486,23 @@ function animate() {
   // NPC update — runs ALWAYS (editor + play mode)
   const _nc = npcController || window.npcController;
   if (_nc) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
+  // If character model was deleted, switch to camera-only mode
+  if (characterController && !characterController.model && !characterController._cameraOnlyMode && playMode) {
+    characterController._cameraOnlyMode = true;
+    try { controls.enabled = true; } catch(e) {}
+    showToast('📷 Character removed — camera mode');
+  }
+  // Hard floor — prevent character from falling through world
+  if (characterController && characterController.position && characterController.position.y < -2) {
+    characterController.position.y = 2;
+    if (characterController.collider && characterController.collider.teleport) {
+      characterController.collider.teleport(characterController.position.x, 2, characterController.position.z);
+    }
+    characterController.jumpVelocity = 0;
+    characterController.isGrounded = true;
+  }
 
-  if (ppEnabled && composer) {
+  if (ppEnabled && composer && !window._composerDisabled) {
       if (window._colorPass) window._colorPass.uniforms.time.value = performance.now() * 0.001;
       composer.render();
     } else {
@@ -19098,7 +22677,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
     const bridge = window._engineBridge;
     
     // Execute based on intent
-    let result = null;
+    result = null;
     try {
       // execRaw = pass directly to parseAndExecute (specific structures, etc.)
       if (intent.action === 'execRaw') {
@@ -19210,7 +22789,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
               for (const item of items) {
                 const name = item.name.toLowerCase();
                 const file = item.file.toLowerCase();
-                let score = 0;
+                score = 0;
                 
                 if (name === query || file.replace('.glb','') === query) score = 100;
                 else if (name.startsWith(query)) score = 80;
@@ -19303,7 +22882,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             const cat = await _loadAssetCatalog();
             if (cat) {
               const q = intent.query.toLowerCase();
-              let best = null, bestS = 0;
+              best = null, bestS = 0;
               for (const [c, items] of Object.entries(cat)) {
                 for (const item of items) {
                   const n = item.name.toLowerCase();
@@ -19339,7 +22918,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'delete':
           {
             const q = intent.query.toLowerCase();
-            let found = false;
+            found = false;
             for (let i = objects.length - 1; i >= 0; i--) {
               const o = objects[i];
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
@@ -19373,7 +22952,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             const q = intent.target.toLowerCase();
             const colorMap = {red:0xff0000,blue:0x0044ff,green:0x00ff44,yellow:0xffff00,white:0xffffff,black:0x111111,orange:0xff8800,purple:0x8800ff,pink:0xff44aa,cyan:0x00ffff,gold:0xffd700,silver:0xc0c0c0,brown:0x8b4513,gray:0x888888,grey:0x888888};
             let c = colorMap[intent.color] || parseInt(intent.color.replace('#',''), 16);
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 o.traverse(ch => { if (ch.isMesh && ch.material) { ch.material = ch.material.clone(); ch.material.color.setHex(c); } });
@@ -19387,7 +22966,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'scaleObject':
           {
             const q = intent.target.toLowerCase();
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 o.scale.setScalar(intent.scale);
@@ -19401,7 +22980,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'moveObject':
           {
             const q = intent.target.toLowerCase();
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 o.position.set(intent.x, intent.y || o.position.y, intent.z !== undefined ? intent.z : o.position.z);
@@ -19415,7 +22994,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'rotateObject':
           {
             const q = intent.target.toLowerCase();
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 o.rotation.y += (intent.degrees * Math.PI / 180);
@@ -19456,7 +23035,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'stopAnimation':
           {
             const q = intent.target.toLowerCase();
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 if (o.userData.mixer) { o.userData.mixer.stopAllAction(); }
@@ -19491,7 +23070,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             }
             // Equip and play
             if (characterController) {
-              await characterController.loadCharacter('knight');
+              await characterController.loadCharacter('soldier');
               characterController.equipWeapon('sword', 0);
             }
             enterPlayMode();
@@ -19504,7 +23083,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             await bridge.setTerrain('flat');
             await bridge.setTime('night');
             if (characterController) {
-              await characterController.loadCharacter('knight');
+              await characterController.loadCharacter('soldier');
               characterController.equipWeapon('sword', 0);
               characterController.equipWeapon('pistol', 1);
             }
@@ -19524,7 +23103,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
           {
             await bridge.buildWorld('tropical paradise');
             if (characterController) {
-              await characterController.loadCharacter('knight');
+              await characterController.loadCharacter('soldier');
             }
             if (npcController) {
               for (let i = 0; i < 5; i++) {
@@ -19540,7 +23119,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             bridge.clearScene();
             await bridge.buildWorld('medieval siege');
             if (characterController) {
-              await characterController.loadCharacter('knight');
+              await characterController.loadCharacter('soldier');
               characterController.equipWeapon('sword', 0);
               characterController.equipWeapon('bow', 1);
             }
@@ -19592,6 +23171,10 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
   };
   
   console.log('[Crate Engine] ✅ New interpreter active — Phase 2 ready');
+  // Show quick-start help for new users
+  setTimeout(() => {
+    showToast('🎮 Try: "build a city" → "play" | Or: "help"', 5000);
+  }, 2000);
 }).catch(err => {
   console.warn('[Crate Engine] Interpreter not loaded, using legacy parser:', err.message);
 });
@@ -19606,7 +23189,7 @@ window._runCommand = async function(cmd) {
   cmdEl.className = 'entry cmd';
   cmdEl.textContent = '❯ ' + cmd;
   log.appendChild(cmdEl);
-  let response = '';
+  response = '';
   try {
     response = await parseAndExecute(cmd);
     const text = (response || '').toString();
@@ -19631,31 +23214,24 @@ window._runCommand = async function(cmd) {
 };
 
 window._engineReady = true;
-if (window._hideLoader) window._hideLoader();
+window.parseAndExecute = parseAndExecute;
+window._showCategoryPicker = showCategoryPicker;
+window._execCommand = parseAndExecute;
+// Apply template preset if on a template page
+if (window._templateMode) {
+  applyTemplatePreset(window._templateMode).then(() => {
+    if (window._hideLoader) window._hideLoader();
+  });
+} else {
+  if (window._hideLoader) window._hideLoader();
+}
 
 // === COMMAND PALETTE DROPDOWN ===
 (function initCommandPalette() {
   const menu = document.getElementById('cmd-dropdown-menu');
   if (!menu) return;
   const COMMAND_PALETTE = {
-    'Build World': [
-      { label: 'Modern City', cmd: 'generate city' },
-      { label: 'Medieval Town', cmd: 'generate town' },
-      { label: 'Suburban', cmd: 'generate suburban' },
-      { label: 'Tropical Island', cmd: 'generate island' },
-      { label: 'Desert', cmd: 'generate desert' },
-      { label: 'Space Station', cmd: 'generate space' },
-      { label: 'Dungeon', cmd: 'generate dungeon' },
-      { label: 'Pirate Cove', cmd: 'generate pirate' },
-      { label: 'Cyberpunk City', cmd: 'generate cyberpunk' },
-      { label: 'Haunted', cmd: 'generate haunted' },
-      { label: 'Jungle', cmd: 'generate jungle' },
-      { label: 'Kingdom', cmd: 'generate kingdom' },
-      { label: 'Arena', cmd: 'generate arena' },
-      { label: 'Zen Garden', cmd: 'generate zen' },
-      { label: 'Volcano', cmd: 'generate volcano' },
-      { label: 'Western', cmd: 'generate western' },
-    ],
+
     'Add Objects': [
       { label: 'Car', cmd: 'add sedan', glb: 'kenney_cars/sedan' },
       { label: 'Truck', cmd: 'add truck', glb: 'truck' },
@@ -19759,7 +23335,7 @@ setTimeout(() => {
     console.log('[Engine] Canvas resized to', w, 'x', h);
   }
 }, 100);
-if (window._autoDemoQueued) { window._autoDemoQueued = false; setTimeout(function() { if (window._autoDemo) window._autoDemo(); }, 500); }
+// demo autorun removed
 
 window.addEventListener('resize', () => {
   camera.aspect = canvas.clientWidth / canvas.clientHeight;
@@ -19770,7 +23346,7 @@ window.addEventListener('resize', () => {
 
 // Stats
 function animateCount(el, target, dur) {
-  let s=0;const step=target/(dur/16);const t=setInterval(()=>{s+=step;if(s>=target){el.textContent=target.toLocaleString();clearInterval(t);return;}el.textContent=Math.floor(s).toLocaleString();},16);
+  s=0;const step=target/(dur/16);const t=setInterval(()=>{s+=step;if(s>=target){el.textContent=target.toLocaleString();clearInterval(t);return;}el.textContent=Math.floor(s).toLocaleString();},16);
 }
 
 
@@ -20213,13 +23789,23 @@ document.addEventListener('keydown', (e) => {
 const inspectorPanel = document.createElement('div');
 inspectorPanel.id = 'inspector';
 Object.assign(inspectorPanel.style, {
-  position: 'fixed', top: '60px', right: '20px', zIndex: '240',
-  width: '260px', borderRadius: '12px',
-  background: '#0a0a0a', border: '1px solid #1f1f1f',
-  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+  position: 'fixed', top: '50px', right: '12px', zIndex: '240',
+  width: '220px', borderRadius: '10px',
+  background: 'rgba(10,10,10,0.92)', border: '1px solid #2a2a2a',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
   display: 'none', flexDirection: 'column', overflow: 'hidden',
-  fontFamily: "'Inter', -apple-system, sans-serif", fontSize: '0.78rem',
+  fontFamily: "'Inter', -apple-system, sans-serif", fontSize: '0.75rem',
+  backdropFilter: 'blur(8px)',
 });
+// Make inspector draggable so it never blocks the scene
+let _inspDragging=false,_inspDx=0,_inspDy=0;
+inspectorPanel.addEventListener('mousedown', e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON'||e.target.tagName==='SELECT') return;
+  _inspDragging=true; _inspDx=e.clientX-inspectorPanel.getBoundingClientRect().left;
+  _inspDy=e.clientY-inspectorPanel.getBoundingClientRect().top; e.preventDefault();
+});
+document.addEventListener('mousemove',e=>{ if(!_inspDragging)return; inspectorPanel.style.left=Math.max(0,e.clientX-_inspDx)+'px'; inspectorPanel.style.top=Math.max(0,e.clientY-_inspDy)+'px'; inspectorPanel.style.bottom='auto'; });
+document.addEventListener('mouseup',()=>_inspDragging=false);
 document.body.appendChild(inspectorPanel);
 
 function updateInspector(obj) {
@@ -20324,7 +23910,7 @@ window._equipWeapon = function() {
   showGallery('weapons', { hint: 'Choose a weapon to equip on ' + (selectedObj.userData.name || 'character') }).then(result => {
     if (!result || !selectedObj) return;
     const glb = GLB_MODELS[result.file] || result.file;
-    gltfLoader.load('models/' + glb + '.glb', (gltf) => {
+    gltfLoader.load('/models/' + glb + '.glb', (gltf) => {
       const weapon = gltf.scene;
       // Scale weapon to reasonable size relative to character
       const charBox = new THREE.Box3().setFromObject(selectedObj);
@@ -20487,7 +24073,7 @@ window._animateSelected = function() {
     
     const closeBtn = document.createElement('div');
     closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = () => overlay.remove();
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
@@ -20567,7 +24153,7 @@ window._colorSelected = function() {
   
   const closeBtn = document.createElement('div');
   closeBtn.textContent = '✕';
-  closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+  closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
   closeBtn.onclick = () => overlay.remove();
   overlay.appendChild(closeBtn);
   document.body.appendChild(overlay);
@@ -20632,7 +24218,7 @@ function createModelBrowser() {
     list.innerHTML = '';
     const filtered = filter ? modelNames.filter(n => n.toLowerCase().includes(filter.toLowerCase())) : modelNames.slice(0, 50);
     const countEl = document.getElementById('browser-count');
-    if (countEl) countEl.textContent = filter ? filtered.length + ' found' : '1,339 models';
+    if (countEl) countEl.textContent = filter ? filtered.length + ' found' : '4,122 models';
     
     filtered.slice(0, 60).forEach(name => {
       const item = document.createElement('div');
@@ -20676,9 +24262,19 @@ Object.assign(browserBtn.style, {
 });
 browserBtn.onmouseenter = () => { browserBtn.style.borderColor = '#ff6b35'; browserBtn.style.transform = 'scale(1.1)'; };
 browserBtn.onmouseleave = () => { browserBtn.style.borderColor = '#252525'; browserBtn.style.transform = 'scale(1)'; };
-browserBtn.onclick = () => {
-  const showing = modelBrowser.style.display === 'flex';
-  modelBrowser.style.display = showing ? 'none' : 'flex';
+browserBtn.onclick = async () => {
+  // Open the full category picker (4,122 models, 26 categories)
+  const result = await showCategoryPicker();
+  if (result && result.file) {
+    loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+    sceneHistory.push('add ' + result.file);
+    showToast('✅ Added ' + (result.name||result.file));
+  } else if (result && typeof result === 'string') {
+    if (characterController) {
+      if (!characterController.characterModels[result]) characterController.characterModels[result] = { file: result, animPrefix: '', procedural: true };
+      await characterController.loadCharacter(result);
+    }
+  }
 };
 document.body.appendChild(browserBtn);
 document.addEventListener('keydown', (e) => {
@@ -20686,7 +24282,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // AI Agent integration
-import { CrateAgent } from './ai-agent.mjs?v=4';
+import { CrateAgent } from './ai-agent.mjs?v=5';
 import { matchIntent, initVoice, startListening, stopListening, isListening, getStats } from './voice-commands.mjs';
 const agent = new CrateAgent((cmd) => {
   parseAndExecute(cmd);
@@ -20701,7 +24297,21 @@ setInterval(() => {
 // === ENGINE 2.0 BRIDGE ===
 // Expose parseAndExecute for command bus, then initialize the bridge.
 window._parseAndExecute = parseAndExecute;
-import('./runtime/engine-bridge.mjs').then(bridge => {
+
+// === AI AGENT INTEGRATION ===
+// "agent build X" or "ai build X" triggers the learning agent loop
+window._agentReady = false;
+import('./runtime/city-agent.mjs?v=23').then(agent => {
+  window._agent = agent;
+  window._agentReady = true;
+  window._agentMemory = agent.loadMemory;
+  window._agentStats = agent.getStats;
+  window._agentShowMemory = agent.showMemory;
+  console.log('[Agent] City agent v4 loaded. Memory:', agent.loadMemory().length, 'lessons');
+  console.log('[Agent] Commands: agent build | agent memory | agent stats | agent clear memory');
+}).catch(err => console.warn('[Agent] Agent not loaded:', err.message));
+
+import('./runtime/engine-bridge.mjs').catch(() => null) /* optional */; Promise.resolve().then(bridge => {
   bridge.initBridge();
   console.log('[Engine] Command bus bridge loaded.');
 }).catch(err => console.warn('[Engine] Bridge load deferred:', err.message));
@@ -21180,6 +24790,33 @@ function getSceneCommands(scene) {
 (function() {
   // Scene actions - injected into build toolbar as icon buttons
   window._sceneActions = {
+    play: function() {
+      if (window.parseAndExecute) parseAndExecute('play');
+    },
+    worlds: function() {
+      const existing=document.getElementById('_worldPicker'); if(existing){existing.remove();return;}
+      const d=document.createElement('div'); d.id='_worldPicker';
+      d.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#111;border:1px solid #333;border-radius:12px;padding:28px;z-index:9999;font-family:monospace;min-width:340px;box-shadow:0 8px 40px #000;';
+      d.innerHTML=`<div style="color:#fff;font-size:18px;font-weight:bold;margin-bottom:20px;text-align:center;">🌍 Choose World</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+  // [REMOVED] buildSpaceCombatGame button
+  // [REMOVED] buildCityWorld2 button
+  // [REMOVED] buildHorrorWorld button
+  <button onclick="document.getElementById('_worldPicker').remove();" style="background:#0d0d0d;border:1px solid #222;color:#555;padding:22px 12px;border-radius:8px;cursor:pointer;font-family:monospace;font-size:13px;line-height:1.8;width:100%;">✖<br><b>CANCEL</b></button>
+</div>`;
+      document.body.appendChild(d);
+    },
+    library: function() {
+      if (window._showCategoryPicker) {
+        window._showCategoryPicker().then(function(result) {
+          if (result && result.file) {
+            loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+            sceneHistory.push('add ' + result.file);
+            showToast('\u2705 Added ' + (result.name||result.file));
+          }
+        });
+      }
+    },
     save: function() {
       var data = serializeScene();
       if (!data) { logOutput('warn', 'Nothing to save'); return; }
@@ -21699,7 +25336,7 @@ window.showHelp = showHelp;
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
   
   const colors = ['#4ade80','#60a5fa','#f59e0b','#c084fc','#ef4444','#22d3ee','#fb923c','#a78bfa','#f472b6','#34d399','#fbbf24','#818cf8','#fb7185','#2dd4bf'];
-  let ci = 0;
+  ci = 0;
   
   for (const [category, commands] of Object.entries(window._COMMANDS_SHOWCASE || {})) {
     const color = colors[ci % colors.length];
@@ -22064,7 +25701,7 @@ document.addEventListener('keydown', function(e) {
       _paintUI.id = 'terrain-paint-ui';
       _paintUI.style.cssText = 'position:fixed;top:50%;left:16px;transform:translateY(-50%);background:rgba(0,0,0,0.9);border:1px solid #8b5cf6;border-radius:12px;padding:12px;z-index:10000;font-family:-apple-system,sans-serif;width:140px;';
       
-      let html = '<div style="color:#8b5cf6;font-weight:700;font-size:12px;margin-bottom:8px">🎨 PAINT BRUSH</div>';
+      html = '<div style="color:#8b5cf6;font-weight:700;font-size:12px;margin-bottom:8px">🎨 PAINT BRUSH</div>';
       for (const [key, preset] of Object.entries(PAINT_PRESETS)) {
         const hex = '#' + new THREE.Color(preset.color).getHexString();
         html += '<button onclick="window._terrainPaint.setColor(\''+key+'\');document.querySelectorAll(\'.paint-swatch\').forEach(s=>s.style.outline=\'none\');this.style.outline=\'2px solid #fff\'" class="paint-swatch" style="display:inline-block;width:28px;height:28px;margin:2px;border:none;border-radius:6px;background:'+hex+';cursor:pointer" title="'+preset.label+'"></button>';
@@ -22313,12 +25950,6 @@ let dragCounter = 0;
 })();
 // === END TUTORIAL ===
 
-// === INTERACTIVE TUTORIALS MODULE ===
-const _tutorials = new Tutorials();
-_tutorials.init();
-window._tutorials = _tutorials;
-// === END INTERACTIVE TUTORIALS ===
-
 
 // Model catalog system moved to top of file (see loadModelCatalog)
 
@@ -22334,7 +25965,7 @@ function showSuggestionPanel(query, results) {
   
   if (!results.length) { panel.style.display = 'none'; return; }
   
-  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
   html += '<div style="color:#7c5cff;font-size:14px;font-weight:700;">🤖 AI Agent — Found ' + results.length + ' models for "' + query + '"</div>';
   html += '<button onclick="document.getElementById(\'ai-suggest-panel\').style.display=\'none\'" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;">✕</button>';
   html += '</div>';
@@ -22435,8 +26066,14 @@ parseAndExecute = async function(rawCmd) {
   const _directCat = _directGalleryMap[lower];
   if (_directCat !== undefined) {
     if (_directCat === null) {
-      // Open main library
-      execSingle('models');
+      // Open full category picker
+      showCategoryPicker().then(result => {
+        if (result && result.file) {
+          loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+          sceneHistory.push('add ' + result.file);
+          showToast('✅ Added ' + (result.name||result.file));
+        }
+      });
     } else {
       execSingle(_directCat);
     }
@@ -22495,11 +26132,31 @@ parseAndExecute = async function(rawCmd) {
   if (lower === 'old mine world' || lower === 'show old mine' || lower === 'mine world') {
     buildPackShowcase('old_mine', 'Old Mine', 47); return;
   }
-  if (lower === 'city world' || lower === 'build city' || lower === 'city demo' || lower === 'new city') {
-    buildCityWorld(); return;
+    if (/^(space combat|space fighter|space game combat|fight.*space|spaceship.*fight|make.*space.*fight)$/.test(lower)) {
+      if (window.buildSpaceCombatGame) { true; return; }
+    }
+    if (/^(horror|horror game|horror world|build horror|graveyard)$/.test(lower)) {
+      if (window.buildHorrorWorld) { true; return; }
+    }
+    if (/^(space|space game|space world|space station|build space|build space game)$/.test(lower)) {
+      if (window.buildSpaceWorld) { true; return; }
+    }
+    if (/^(space combat|space fighter|space shooting|fight in space|fly.*space|spaceship.*fight)$/.test(lower)) {
+      if (window.buildSpaceCombatGame) { true; return; }
+    }
+    if (lower === 'city 3' || lower === 'city world 3' || lower === 'build city 3' || lower === 'full city') {
+    if (typeof buildCityWorld3 === 'function') buildCityWorld3();
+    else if (window.buildCityWorld3) window.buildCityWorld3();
+    return '🏙️ Building City 3 — 10x10 grid, all car types, 30 NPCs, fab buildings...';
+  }
+  if (lower === 'city 2' || lower === 'new city 2' || lower === 'city world 2' || lower === 'build city 2' || lower === 'second city') {
+    // [removed] buildCityWorld2 return;
+  }
+  if (lower === 'city world' || lower === 'build city' || lower === 'new city') {
+    buildCityWorld3(); return;
   }
   if (lower === 'quarry world' || lower === 'african quarry' || lower === 'build quarry' || lower === 'slate quarry') {
-    buildQuarryWorld(); return;
+    // [removed] buildQuarryWorld return;
   }
   if (lower === 'quarry grid' || lower === 'show quarry') {
     buildPackShowcase('quarry', 'African Slate Quarry', 47); return;
@@ -22534,7 +26191,7 @@ parseAndExecute = async function(rawCmd) {
 
   if (lower === 'forest world' || lower === 'build forest' || lower === 'forest lake' || 
       lower === 'make forest' || lower === 'create forest' || lower === 'forest') {
-    buildForestLakeWorld();
+    // [removed] buildForestLakeWorld
     return;
   }
 
@@ -22583,7 +26240,7 @@ parseAndExecute = async function(rawCmd) {
     const fabAliases = window._fabAliases || {};
     const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
     if (modelPath) {
-      const fullPath = modelPath.startsWith('http') || modelPath.startsWith('models/') ? modelPath : 'models/' + modelPath;
+      const fullPath = modelPath.startsWith('http') || modelPath.startsWith('/models/') ? modelPath : '/models/' + modelPath;
       loadGLBModel(fabName, fabName, 0, 0, null, fullPath); showToast('✅ Spawned: ' + fabName);
     } else if (window._decomposedPieces && window._decomposedPieces[fabName]) {
       placeDecomposedPiece(fabName, 0, 0); showToast('✅ Placed piece: ' + fabName);
@@ -23454,7 +27111,7 @@ function showQuickStart() {
   modal.id = 'quick-start-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10010;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;backdrop-filter:blur(10px);';
   
-  let html = '<div style="text-align:center;margin-bottom:32px;"><div style="font-size:40px;margin-bottom:8px;">🎮</div><h1 style="color:#fff;font-size:28px;margin:0;">What do you want to build?</h1><p style="color:#888;font-size:14px;margin:8px 0 0 0;">Pick a preset or start from scratch</p></div>';
+  html = '<div style="text-align:center;margin-bottom:32px;"><div style="font-size:40px;margin-bottom:8px;">🎮</div><h1 style="color:#fff;font-size:28px;margin:0;">What do you want to build?</h1><p style="color:#888;font-size:14px;margin:8px 0 0 0;">Pick a preset or start from scratch</p></div>';
   html += '<div style="display:grid;grid-template-columns:repeat(4,180px);gap:12px;max-width:760px;">';
   
   for (const s of scenes) {
@@ -23511,7 +27168,7 @@ window.showQuickStart = showQuickStart;
 
 // === SETTINGS MENU (v217) ===
 function showSettings() {
-  let panel = document.getElementById('settings-panel');
+  panel = document.getElementById('settings-panel');
   if (panel) { panel.remove(); return; }
   
   // Load saved settings
@@ -23665,7 +27322,8 @@ window.showSettings = showSettings;
   toolbar.style.cssText = 'position:fixed;bottom:42px;left:50%;transform:translateX(-50%);z-index:9997;display:flex;flex-direction:row;gap:4px;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);padding:6px 10px;border-radius:12px;border:1px solid #252525;max-width:80vw;overflow-x:auto;';
   
   const cats = [
-    { cmd: 'play', icon: '▶️', tip: 'Play / Stop', color: '#22c55e', isPlay: true },
+    { action: 'play', icon: '▶️', tip: 'Play / First Person', color: '#22c55e', isPlay: true },
+    { action: 'worlds', icon: '🌍', tip: 'Switch World', color: '#a855f7' },
     { cmd: 'edit', icon: '⏹️', tip: 'Stop', color: '#ef4444', isStop: true },
     { cmd: '_sep1', icon: '|', tip: '', isSep: true },
     { action: 'save', icon: '💾', tip: 'Save', color: '#4ade80' },
@@ -23673,8 +27331,7 @@ window.showSettings = showSettings;
     { action: 'share', icon: '🔗', tip: 'Share', color: '#ff6b35' },
     { action: 'export_html', icon: '📦', tip: 'Export', color: '#c084fc' },
     { cmd: '_sep2', icon: '|', tip: '', isSep: true },
-    { cmd: 'library', icon: '🗂️', tip: 'All Assets', color: '#ffd700' },
-    { cmd: 'scripts', icon: '🧠', tip: 'Custom Scripts', color: '#7c5cff' },
+    { action: 'library', icon: '🗂️', tip: 'All Assets', color: '#ffd700' },
   ];
   
   cats.forEach(c => {
@@ -24227,25 +27884,7 @@ function selectPlan(plan, credits, price) {
   }
 }
 
-// Add 🎨 button to build toolbar
-(function addGen3dButton() {
-  const tryAdd = () => {
-    const toolbar = document.getElementById('build-toolbar');
-    if (!toolbar) { setTimeout(tryAdd, 1000); return; }
-    // Check if already added
-    if (document.getElementById('gen3d-toolbar-btn')) return;
-    const btn = document.createElement('button');
-    btn.id = 'gen3d-toolbar-btn';
-    btn.textContent = '🎨';
-    btn.title = '3D Model Generator';
-    btn.style.cssText = 'font-size:20px;padding:8px 12px;border:none;border-radius:8px;background:#6366f1;cursor:pointer;margin-left:4px;transition:transform 0.1s';
-    btn.onmouseenter = () => btn.style.transform = 'scale(1.1)';
-    btn.onmouseleave = () => btn.style.transform = 'scale(1)';
-    btn.onclick = showGeneratorModal;
-    toolbar.appendChild(btn);
-  };
-  tryAdd();
-})();
+// 3D generator button removed
 
 // Hook into AI agent — "generate" commands open the generator
 window._handleGenerateCommand = function(cmd) {
@@ -24676,775 +28315,14 @@ window.buildGerstnerLake = buildGerstnerLake;
 // ============================================================
 // AFRICAN SLATE QUARRY WORLD — v3 (proper engine clear)
 // ============================================================
-async function buildQuarryWorld() {
-  try {
-    showToast('⛏ Building African Slate Quarry...');
-
-    // ── PROPER ENGINE CLEAR ───────────────────────────────
-    // 1. Remove all user-placed objects
-    for (let i = objects.length - 1; i >= 0; i--) {
-      scene.remove(objects[i]); objects.splice(i, 1);
-    }
-    // 2. Remove engine ground plane (replace with ours)
-    if (typeof currentGround !== 'undefined' && currentGround) {
-      scene.remove(currentGround);
-      if (currentGround.geometry) currentGround.geometry.dispose();
-      if (currentGround.material) currentGround.material.dispose();
-      currentGround = null;
-      window._currentGround = null;
-    }
-    // 3. Remove existing terrain mesh
-    if (typeof terrainMesh !== 'undefined' && terrainMesh) {
-      scene.remove(terrainMesh);
-      terrainMesh.geometry.dispose(); terrainMesh.material.dispose();
-      terrainMesh = null;
-      window._terrainMesh = null;
-    }
-    // 4. Kill water zones
-    if (window._waterZones) window._waterZones.length = 0;
-    window._lakeAnimators = [];
-    // 5. Clear fog/scene decorations
-    scene.fog = null;
-
-    // Remove ANY remaining meshes/groups not caught above
-    const extras = [];
-    scene.children.forEach(o => {
-      if (!o.isLight && !o.isCamera && !(o instanceof THREE.AxesHelper) && !(o instanceof THREE.GridHelper)) {
-        extras.push(o);
-      }
-    });
-    extras.forEach(o => scene.remove(o));
-    sceneHistory.length = 0;
-
-    // ── COLORS ───────────────────────────────────────────
-    const C_FLOOR  = 0x7a5535;
-    const C_DIRT2  = 0x5c3d22;
-    const C_ROCK1  = 0x3a2510;
-    const C_ROCK2  = 0x5c3d22;
-    const C_ROCK3  = 0x7a5535;
-    const C_SLATE  = 0x3d342a;
-    const C_STRAT1 = 0x4a3018;
-    const C_STRAT2 = 0x8a6040;
-    const C_STRAT3 = 0x6b4a28;
-
-    // ── SINGLE FLAT GROUND ───────────────────────────────
-    // ONE PlaneGeometry — no overlap, no z-fighting
-    const GROUND_SIZE = 1400;
-    const groundMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
-      new THREE.MeshStandardMaterial({ color: C_FLOOR, roughness: 1.0 })
-    );
-    groundMesh.rotation.x = -Math.PI / 2;
-    groundMesh.position.y = 0;
-    groundMesh.receiveShadow = true;
-    groundMesh.userData.isGround = true;
-    scene.add(groundMesh);
-    // Register as engine ground so future 'clear' removes it correctly
-    currentGround = groundMesh;
-    window._currentGround = groundMesh;
-
-    // ── QUARRY CLIFF WALLS ────────────────────────────────
-    const PIT_W = 440;
-    const PIT_D = 400;
-    const WALL_H = 90;
-    const WALL_T = 30;
-
-    function buildCliffWall(cx, cz, wallWidth, rotY) {
-      const group = new THREE.Group();
-      const strata = [
-        { yBot: 0,  h: 14, c: C_ROCK1 },
-        { yBot: 14, h: 7,  c: C_STRAT1 },
-        { yBot: 21, h: 18, c: C_ROCK2 },
-        { yBot: 39, h: 5,  c: C_STRAT2 },
-        { yBot: 44, h: 20, c: C_STRAT3 },
-        { yBot: 64, h: 6,  c: C_SLATE },
-        { yBot: 70, h: 20, c: C_ROCK3 },
-      ];
-      strata.forEach(s => {
-        const seg = new THREE.Mesh(
-          new THREE.BoxGeometry(wallWidth, s.h, WALL_T),
-          new THREE.MeshStandardMaterial({ color: s.c, roughness: 1.0, flatShading: true })
-        );
-        seg.position.y = s.yBot + s.h / 2;
-        seg.castShadow = true; seg.receiveShadow = true;
-        group.add(seg);
-        // Rock debris ledge at each strata break
-        if (s.yBot > 0) {
-          const ledge = new THREE.Mesh(
-            new THREE.BoxGeometry(wallWidth + 8, 2, WALL_T + 12),
-            new THREE.MeshStandardMaterial({ color: s.c, roughness: 1.0 })
-          );
-          ledge.position.set(0, s.yBot + 1, 4);
-          ledge.castShadow = true;
-          group.add(ledge);
-        }
-      });
-      // Cap (ground above wall)
-      const cap = new THREE.Mesh(
-        new THREE.BoxGeometry(wallWidth + 20, 12, WALL_T + 60),
-        new THREE.MeshStandardMaterial({ color: C_FLOOR, roughness: 1.0 })
-      );
-      cap.position.set(0, WALL_H + 6, WALL_T / 2 + 30);
-      group.add(cap);
-      group.position.set(cx, 0, cz);
-      group.rotation.y = rotY;
-      scene.add(group);
-    }
-
-    buildCliffWall(0,        -PIT_D/2, PIT_W + 60, 0);
-    buildCliffWall(0,         PIT_D/2, PIT_W + 60, Math.PI);
-    buildCliffWall(-PIT_W/2, 0,        PIT_D,       Math.PI/2);
-    buildCliffWall( PIT_W/2, 0,        PIT_D,      -Math.PI/2);
-
-    // Corner fills
-    [[-PIT_W/2,-PIT_D/2],[PIT_W/2,-PIT_D/2],[-PIT_W/2,PIT_D/2],[PIT_W/2,PIT_D/2]].forEach(([cx,cz]) => {
-      const c = new THREE.Mesh(
-        new THREE.BoxGeometry(70, WALL_H + 10, 70),
-        new THREE.MeshStandardMaterial({ color: C_ROCK2, roughness: 1.0 })
-      );
-      c.position.set(cx, WALL_H/2, cz);
-      c.castShadow = true; scene.add(c);
-    });
-
-    // ── LIGHTING ────────────────────────────────────────
-    // Add fresh lights (scene was fully cleared)
-    const sun = new THREE.DirectionalLight(0xffe0a0, 3.5);
-    sun.position.set(200, 350, -100);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
-    sun.shadow.camera.left = -800; sun.shadow.camera.right = 800;
-    sun.shadow.camera.top  =  800; sun.shadow.camera.bottom = -800;
-    sun.shadow.camera.far  = 2000; sun.shadow.bias = -0.0003;
-    scene.add(sun);
-    const amb = new THREE.AmbientLight(0xb88850, 0.35);
-    scene.add(amb);
-    renderer.shadowMap.enabled = true;
-
-    // Warm African dust haze
-    scene.fog = new THREE.FogExp2(0xc0945a, 0.0010);
-    renderer.setClearColor(0x8aa8cc, 1);
-
-    // ── QUARRY ASSET CLUSTERS ────────────────────────────
-    showToast('✅ Walls built — loading rocks...');
-
-    const waitForAliases = (cb) => {
-      if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
-      setTimeout(() => waitForAliases(cb), 200);
-    };
-
-    waitForAliases((aliases) => {
-      const items = Object.entries(aliases)
-        .filter(([k]) => k.startsWith('quarry_') && /\d+$/.test(k))
-        .sort(([a],[b]) => a.localeCompare(b));
-
-      if (!items.length) { showToast('⚠ No quarry assets found'); return; }
-
-      // 14 clusters — against walls and on the floor
-      const clusters = [
-        { cx:  -60, cz: -PIT_D/2+40, n:6, sMin:14, sMax:24 },
-        { cx:   80, cz: -PIT_D/2+38, n:5, sMin:12, sMax:20 },
-        { cx:  180, cz: -PIT_D/2+42, n:4, sMin:10, sMax:18 },
-        { cx: -160, cz: -PIT_D/2+36, n:4, sMin:12, sMax:22 },
-        { cx: -100, cz:  PIT_D/2-42, n:6, sMin:14, sMax:24 },
-        { cx:   60, cz:  PIT_D/2-38, n:5, sMin:12, sMax:20 },
-        { cx:  170, cz:  PIT_D/2-40, n:4, sMin:10, sMax:18 },
-        { cx:  PIT_W/2-42, cz:  -60, n:5, sMin:12, sMax:22 },
-        { cx:  PIT_W/2-38, cz:   80, n:4, sMin:10, sMax:18 },
-        { cx: -PIT_W/2+42, cz:  -40, n:5, sMin:12, sMax:20 },
-        { cx: -PIT_W/2+38, cz:   80, n:4, sMin:10, sMax:18 },
-        { cx:    0, cz:   40, n:7, sMin:8, sMax:16 },
-        { cx:  120, cz:  -80, n:5, sMin:8, sMax:14 },
-        { cx: -140, cz:   90, n:5, sMin:8, sMax:14 },
-      ];
-
-      let idx = 0, delay = 0;
-      clusters.forEach(cl => {
-        for (let i = 0; i < cl.n; i++) {
-          const [, relPath] = items[idx % items.length]; idx++;
-          const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
-          const tScale = cl.sMin + Math.random() * (cl.sMax - cl.sMin);
-          const ang = (i / cl.n) * Math.PI * 2 + Math.random();
-          const dist = 1.5 + Math.random() * 4; // tight cluster
-          const rx = cl.cx + Math.cos(ang) * dist;
-          const rz = cl.cz + Math.sin(ang) * dist;
-          setTimeout(() => {
-            gltfLoader.load(fullPath, (gltf) => {
-              const m = gltf.scene;
-              m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-              const box = new THREE.Box3().setFromObject(m);
-              const dim = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).y, box.getSize(new THREE.Vector3()).z, 0.01);
-              m.scale.setScalar(tScale / dim);
-              const b2 = new THREE.Box3().setFromObject(m);
-              m.position.set(rx, -b2.min.y, rz); // sit on y=0
-              m.rotation.y = Math.random() * Math.PI * 2;
-              m.userData.isPlaced = true;
-              scene.add(m); objects.push(m);
-            }, null, () => {});
-          }, delay);
-          delay += 80;
-        }
-      });
-
-      setTimeout(() => {
-        showToast('✅ Quarry complete! Building mine cave...');
-        const caveInfo = buildMineInterior();
-        window._quarryCaveInfo = caveInfo;
-        const waitMine = (cb) => {
-          if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
-          setTimeout(() => waitMine(cb), 200);
-        };
-        waitMine((al) => { populateMineAssets(caveInfo, al); showToast('⛏ Mine cave ready — "enter mine" to explore!'); });
-      }, delay + 400);
-    });
-
-    // ── SPARSE TREES ON RIM ─────────────────────────────
-    for (let i = 0; i < 40; i++) {
-      const side = i % 4;
-      let tx, tz;
-      const spread = 80;
-      if (side===0) { tx=(Math.random()-0.5)*PIT_W; tz=-PIT_D/2-20-Math.random()*spread; }
-      else if (side===1) { tx=(Math.random()-0.5)*PIT_W; tz= PIT_D/2+20+Math.random()*spread; }
-      else if (side===2) { tx=-PIT_W/2-20-Math.random()*spread; tz=(Math.random()-0.5)*PIT_D; }
-      else              { tx= PIT_W/2+20+Math.random()*spread; tz=(Math.random()-0.5)*PIT_D; }
-      const h = 3 + Math.random() * 5;
-      const tg = new THREE.Group();
-      tg.add(Object.assign(
-        new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.22,h,5),
-          new THREE.MeshStandardMaterial({color:0x3d2510,roughness:1.0})),
-        {position:new THREE.Vector3(0,h/2,0)}
-      ));
-      for (let b = 0; b < 3; b++) {
-        const ba = (b/3)*Math.PI*2;
-        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.5+Math.random()*0.5,5,3),
-          new THREE.MeshStandardMaterial({color:0x3a5515,roughness:1.0,flatShading:true}));
-        leaf.position.set(Math.cos(ba)*(1.2+Math.random()), h+Math.random()*0.5, Math.sin(ba)*(1.2+Math.random()));
-        tg.add(leaf);
-      }
-      tg.position.set(tx, WALL_H, tz);
-      scene.add(tg);
-    }
-
-    // ── CAMERA — ground level ────────────────────────────
-    if (window._cam) {
-      window._cam.position.set(-80, 10, -20);
-      window._cam.lookAt(80, 8, 60);
-    }
-    if (window._ctrl) {
-      window._ctrl.target.set(80, 8, 60);
-      window._ctrl.update();
-    }
-
-  } catch(err) {
-    console.error('[QUARRY]', err);
-    showToast('❌ ' + err.message);
-  }
-}
-window.buildQuarryWorld = buildQuarryWorld;
+// [REMOVED] buildQuarryWorld — old world builder deleted
 
 
 
 // ============================================================
 // CITY WORLD v2 — Downtown + Residential + AI Traffic
 // ============================================================
-async function buildCityWorld() {
-  try {
-    showToast('🏙 Building City World...');
-
-    // ── FULL CLEAR ────────────────────────────────────────
-    for (let i = objects.length - 1; i >= 0; i--) { scene.remove(objects[i]); objects.splice(i, 1); }
-    if (typeof currentGround !== 'undefined' && currentGround) {
-      scene.remove(currentGround);
-      if (currentGround.geometry) currentGround.geometry.dispose();
-      if (currentGround.material) currentGround.material.dispose();
-      currentGround = null; window._currentGround = null;
-    }
-    if (typeof terrainMesh !== 'undefined' && terrainMesh) { scene.remove(terrainMesh); terrainMesh = null; }
-    clearDrivingCars();
-    if (window._waterZones) window._waterZones.length = 0;
-    window._lakeAnimators = [];
-    window._cityCarUpdate = null;
-    scene.fog = null;
-    const extras = [];
-    scene.children.forEach(o => { if (!o.isLight && !o.isCamera) extras.push(o); });
-    extras.forEach(o => scene.remove(o));
-    if (window.npcController) window.npcController.npcs.length = 0;
-
-    // ── GRID CONFIG ───────────────────────────────────────
-    const BLOCK  = 64;   // plot width/depth
-    const ROAD   = 16;   // road width
-    const STEP   = BLOCK + ROAD;   // 80 per cell
-    const COLS   = 5;
-    const HALF   = (COLS - 1) / 2; // 2
-
-    // Road centerline X/Z positions
-    const rp = [];
-    for (let i = 0; i <= COLS; i++) rp.push(-HALF * STEP - ROAD/2 + i * STEP);
-    // Block center X/Z positions (inside each cell, away from roads)
-    const bp = [];
-    for (let i = 0; i < COLS; i++) bp.push(rp[i] + ROAD/2 + BLOCK/2);
-
-    const zone = (c, r) => {
-      const dc = Math.abs(c - HALF), dr = Math.abs(r - HALF);
-      if (dc <= 1 && dr <= 1) return 'downtown';
-      if (dc <= 2 && dr <= 2) return 'commercial';
-      return 'residential';
-    };
-
-    // ── GROUND ───────────────────────────────────────────
-    const GSIZE = COLS * STEP + ROAD + 500;
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(GSIZE, GSIZE),
-      new THREE.MeshStandardMaterial({ color: 0x4a7040, roughness: 1.0 })
-    );
-    ground.rotation.x = -Math.PI/2; ground.position.y = 0;
-    ground.receiveShadow = true; ground.userData.isGround = true;
-    scene.add(ground);
-    currentGround = ground; window._currentGround = ground;
-
-    // ── ROAD SURFACE ─────────────────────────────────────
-    const roadMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.95 });
-    const swMat    = new THREE.MeshStandardMaterial({ color: 0x999888, roughness: 1.0 });
-    const lineMat  = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, emissive: 0x444444 });
-    const ylwMat   = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 1.0 });
-
-    const CITY_SPAN = COLS * STEP + ROAD;
-
-    // Horizontal roads (E-W, at each rp[j] Z)
-    rp.forEach(rz => {
-      const road = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.12, ROAD), roadMat);
-      road.position.set(0, 0.06, rz); road.receiveShadow = true; scene.add(road);
-      // Sidewalks N and S
-      [-1,1].forEach(side => {
-        const sw = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.2, 3.5), swMat);
-        sw.position.set(0, 0.1, rz + side * (ROAD/2 + 1.75)); scene.add(sw);
-      });
-      // Yellow center line
-      const cl = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.02, 0.3), ylwMat);
-      cl.position.set(0, 0.14, rz); scene.add(cl);
-      // White lane dashes
-      for (let d = 0; d < 16; d++) {
-        const dash = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, 0.25), lineMat);
-        dash.position.set(-CITY_SPAN/2 + d * (CITY_SPAN/16) + CITY_SPAN/32, 0.14, rz + ROAD/4); scene.add(dash);
-        const dash2 = dash.clone(); dash2.position.z = rz - ROAD/4; scene.add(dash2);
-      }
-    });
-
-    // Vertical roads (N-S, at each rp[i] X)
-    rp.forEach(rx => {
-      const road = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.12, CITY_SPAN), roadMat);
-      road.position.set(rx, 0.06, 0); road.receiveShadow = true; scene.add(road);
-      [-1,1].forEach(side => {
-        const sw = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.2, CITY_SPAN), swMat);
-        sw.position.set(rx + side * (ROAD/2 + 1.75), 0.1, 0); scene.add(sw);
-      });
-      const cl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, CITY_SPAN), ylwMat);
-      cl.position.set(rx, 0.14, 0); scene.add(cl);
-    });
-
-    // Intersection asphalt patches + crosswalks
-    rp.forEach(rx => rp.forEach(rz => {
-      const ix = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.13, ROAD), roadMat);
-      ix.position.set(rx, 0.065, rz); scene.add(ix);
-      // 4 crosswalks (one per side of intersection)
-      [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz]) => {
-        for (let s = 0; s < 3; s++) {
-          const stripe = new THREE.Mesh(new THREE.BoxGeometry(
-            dz !== 0 ? 0.9 : ROAD*0.7,
-            0.01,
-            dz !== 0 ? ROAD*0.7 : 0.9
-          ), lineMat);
-          stripe.position.set(
-            rx + dx*(ROAD/2+0.5) + (dz!==0 ? (s-1)*1.8 : 0),
-            0.14,
-            rz + dz*(ROAD/2+0.5) + (dx!==0 ? (s-1)*1.8 : 0)
-          );
-          scene.add(stripe);
-        }
-      });
-    }));
-
-    showToast('✅ Roads done — placing buildings...');
-
-    // ── BUILDINGS — STRICTLY INSIDE BLOCK BOUNDARIES ─────
-    // Max building footprint = BLOCK - 10 (5 unit margin from road on each side)
-    const MARGIN = 10; // keep buildings this far from road edge
-    const MAX_FOOTPRINT = BLOCK - MARGIN * 2; // 44 units max
-
-    const DT_MODELS   = ['kenney_city/building-skyscraper-a','kenney_city/building-skyscraper-b','kenney_city/building-skyscraper-c','kenney_city/building-skyscraper-d','kenney_city/building-skyscraper-e'];
-    const COMM_MODELS = ['kenney_city/building-a','kenney_city/building-b','kenney_city/building-c','kenney_city/building-d','kenney_city/building-e','kenney_city/building-f','kenney_city/building-g','kenney_city/building-h'];
-    const COMM2_MODELS= ['kenney_city/building-i','kenney_city/building-j','kenney_city/building-k','kenney_city/building-l','kenney_city/building-m','kenney_city/building-n'];
-
-    function placeBuilding(modelPath, bx, bz, targetH, maxFootprint, rotY) {
-      return new Promise(resolve => {
-        gltfLoader.load('models/' + modelPath + '.glb', (gltf) => {
-          const m = gltf.scene;
-          m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-          const box = new THREE.Box3().setFromObject(m);
-          const s3 = box.getSize(new THREE.Vector3());
-          const maxDim = Math.max(s3.x, s3.z, 0.01);
-          // Scale by HEIGHT target first
-          let sc = targetH / (s3.y || 1);
-          // Clamp so footprint doesn't exceed maxFootprint
-          const scaledFP = maxDim * sc;
-          if (scaledFP > maxFootprint) sc = maxFootprint / maxDim;
-          m.scale.setScalar(sc);
-          const b2 = new THREE.Box3().setFromObject(m);
-          m.position.set(bx, -b2.min.y, bz);
-          m.rotation.y = rotY || 0;
-          m.userData.isBuilding = true;
-          m.userData.canEnter = true;
-          m.userData.buildingId = modelPath;
-          scene.add(m); objects.push(m);
-          resolve(m);
-        }, null, () => resolve(null));
-      });
-    }
-
-    let delay = 0;
-    for (let c = 0; c < COLS; c++) {
-      for (let r = 0; r < COLS; r++) {
-        const bx = bp[c], bz = bp[r];
-        const z = zone(c, r);
-        const rot = Math.floor(Math.random() * 4) * Math.PI/2;
-
-        if (z === 'downtown') {
-          // 1 skyscraper per downtown block — centered, never touching road
-          const mdl = DT_MODELS[(c*COLS+r) % DT_MODELS.length];
-          setTimeout(() => placeBuilding(mdl, bx, bz, 55 + Math.random()*35, 50, rot), delay);
-          delay += 50;
-        } else if (z === 'commercial') {
-          const mdl = COMM_MODELS[(c*COLS+r) % COMM_MODELS.length];
-          setTimeout(() => placeBuilding(mdl, bx, bz, 20 + Math.random()*12, MAX_FOOTPRINT, rot), delay);
-          delay += 50;
-        } else {
-          // Residential — house + yard
-          setTimeout(() => {
-            // House (front half of block)
-            try {
-              const h = createModernHouse({ floors: Math.random()>0.5?2:1 });
-              h.traverse(c => { if (c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });
-              const hb = new THREE.Box3().setFromObject(h);
-              // Place in front-left of block with margin
-              h.position.set(bx - 8, -hb.min.y, bz - 6);
-              h.userData.isBuilding = true; h.userData.canEnter = true; h.userData.isHouse = true;
-              scene.add(h); objects.push(h);
-            } catch(e) {}
-
-            // Lawn
-            const lawn = new THREE.Mesh(
-              new THREE.PlaneGeometry(BLOCK-2, BLOCK-2),
-              new THREE.MeshStandardMaterial({ color: 0x3d7530, roughness: 1.0 })
-            );
-            lawn.rotation.x = -Math.PI/2; lawn.position.set(bx, 0.04, bz); scene.add(lawn);
-
-            // Fence (4 sides, with front gate gap)
-            const hs = (BLOCK-2)/2;
-            const fMat = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.9 });
-            // Side fences (no gap)
-            [-hs, hs].forEach(fx => {
-              const f = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.4, BLOCK-2), fMat);
-              f.position.set(bx+fx, 0.9, bz); scene.add(f);
-            });
-            // Back fence
-            const fb = new THREE.Mesh(new THREE.BoxGeometry(BLOCK-2, 1.4, 0.35), fMat);
-            fb.position.set(bx, 0.9, bz+hs); scene.add(fb);
-            // Front fence (two halves with gate gap)
-            [-1,1].forEach(side => {
-              const ff = new THREE.Mesh(new THREE.BoxGeometry(hs*0.7, 1.4, 0.35), fMat);
-              ff.position.set(bx + side*(hs*0.35 + 3), 0.9, bz-hs); scene.add(ff);
-            });
-
-            // Pool (back yard)
-            const px = bx + 10, pz = bz + 18;
-            const poolBorder = new THREE.Mesh(
-              new THREE.BoxGeometry(11, 0.4, 17),
-              new THREE.MeshStandardMaterial({ color: 0xddd8c8, roughness: 0.8 })
-            );
-            poolBorder.position.set(px, 0.2, pz); scene.add(poolBorder);
-            const poolWater = new THREE.Mesh(
-              new THREE.BoxGeometry(9.4, 0.5, 15.4),
-              new THREE.MeshStandardMaterial({ color: 0x1a9ad4, transparent:true, opacity:0.88, roughness:0.08 })
-            );
-            poolWater.position.set(px, 0.25, pz); scene.add(poolWater);
-            // Pool ladder
-            const ladder = new THREE.Mesh(
-              new THREE.BoxGeometry(0.15, 1.5, 0.15),
-              new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness:0.8 })
-            );
-            ladder.position.set(px+4.5, 0.75, pz); scene.add(ladder);
-
-            // Parked car in driveway
-            const driveX = bx - 22, driveZ = bz - hs + 6;
-            const parkedColors = [0x334488, 0xaa3322, 0x228844, 0xcccccc, 0x111111];
-            const parkedCar = new THREE.Group();
-            parkedCar.userData.isDrivable = true;
-            parkedCar.userData.isParked = true;
-            const pcBody = new THREE.Mesh(new THREE.BoxGeometry(2,1,4),
-              new THREE.MeshStandardMaterial({color: parkedColors[Math.floor(Math.random()*parkedColors.length)], roughness:0.3, metalness:0.6}));
-            pcBody.position.y = 0.7; pcBody.castShadow = true; parkedCar.add(pcBody);
-            const pcCabin = new THREE.Mesh(new THREE.BoxGeometry(1.7,0.7,2.2),
-              new THREE.MeshStandardMaterial({color: parkedColors[0], roughness:0.3, metalness:0.6}));
-            pcCabin.position.set(0,1.45,0.2); parkedCar.add(pcCabin);
-            const pcWMat = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
-            [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz])=>{
-              const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.18,10),pcWMat);
-              w.rotation.z=Math.PI/2; w.position.set(wx,wy,wz); parkedCar.add(w);
-            });
-            parkedCar.position.set(driveX, 0, driveZ);
-            parkedCar.rotation.y = Math.PI/2;
-            scene.add(parkedCar); objects.push(parkedCar);
-
-            // Driveway (concrete strip)
-            const dw = new THREE.Mesh(
-              new THREE.PlaneGeometry(6, BLOCK*0.4),
-              new THREE.MeshStandardMaterial({color:0x666655, roughness:1.0})
-            );
-            dw.rotation.x=-Math.PI/2; dw.position.set(bx-22, 0.05, bz-hs/2); scene.add(dw);
-
-          }, delay);
-          delay += 80;
-        }
-      }
-    }
-
-    showToast('✅ Buildings placed — adding furniture & street props...');
-
-    // ── FURNITURE INSIDE RESIDENTIAL HOMES ─────────────────
-    setTimeout(() => {
-      for (let c = 0; c < COLS; c++) {
-        for (let r = 0; r < COLS; r++) {
-          if (zone(c,r) !== 'residential') continue;
-          const hx = bp[c] - 8, hz = bp[r] - 6;
-          // Living room — couch, TV, coffee table
-          const furniture = [
-            { alias: 'sofa',         ox: -3, oz:  3, ry: 0 },
-            { alias: 'television',   ox:  5, oz:  3, ry: Math.PI },
-            { alias: 'coffee_table', ox:  1, oz:  3, ry: 0 },
-            { alias: 'armchair',     ox: -3, oz:  6, ry: Math.PI/2 },
-          ];
-          furniture.forEach(f => {
-            const key = GLB_MODELS[f.alias] || f.alias;
-            gltfLoader.load('models/' + key + '.glb', (gltf) => {
-              const m = gltf.scene;
-              m.traverse(c => { if (c.isMesh) c.castShadow = true; });
-              const box = new THREE.Box3().setFromObject(m);
-              const h = box.getSize(new THREE.Vector3()).y;
-              m.scale.setScalar(1.5 / (h || 1));
-              const b2 = new THREE.Box3().setFromObject(m);
-              m.position.set(hx + f.ox, -b2.min.y + 0.5, hz + f.oz);
-              m.rotation.y = f.ry;
-              m.userData.isFurniture = true;
-              scene.add(m); objects.push(m);
-            }, null, () => {
-              // Fallback box furniture
-              const colors = {sofa:0x4466aa, television:0x111111, coffee_table:0x885533, armchair:0x664422};
-              const dims = {sofa:[2.2,0.7,1],television:[1.2,0.8,0.1],coffee_table:[1.2,0.4,0.7],armchair:[1,0.7,0.9]};
-              const fb = new THREE.Mesh(
-                new THREE.BoxGeometry(...(dims[f.alias]||[1,0.8,1])),
-                new THREE.MeshStandardMaterial({color:colors[f.alias]||0x887744, roughness:0.8})
-              );
-              fb.position.set(hx+f.ox, 0.5, hz+f.oz);
-              fb.rotation.y = f.ry; scene.add(fb);
-            });
-          });
-        }
-      }
-    }, delay + 200);
-
-    // ── STREET LIGHTS & STOP SIGNS ────────────────────────
-    setTimeout(() => {
-      rp.forEach((lx, i) => rp.forEach((lz, j) => {
-        // Lamp post (each intersection corner)
-        [[1,1],[-1,1],[1,-1],[-1,-1]].forEach(([sx,sz], k) => {
-          if (k > 0) return; // just one per intersection
-          const post = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.12, 0.18, 8, 6),
-            new THREE.MeshStandardMaterial({color:0x555566, metalness:0.5, roughness:0.6})
-          );
-          post.position.set(lx + sx*(ROAD/2+2.5), 4, lz + sz*(ROAD/2+2.5));
-          post.castShadow = true; scene.add(post);
-          const head = new THREE.Mesh(new THREE.BoxGeometry(2.5,0.3,0.8),
-            new THREE.MeshStandardMaterial({color:0x333344, metalness:0.7}));
-          head.position.set(lx + sx*(ROAD/2+2.5) + sx*0.8, 8.1, lz + sz*(ROAD/2+2.5));
-          scene.add(head);
-          const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.35,8,6),
-            new THREE.MeshStandardMaterial({color:0xfffce0, emissive:0xffee88, emissiveIntensity:2}));
-          bulb.position.set(lx + sx*(ROAD/2+2.5) + sx*1.2, 8, lz + sz*(ROAD/2+2.5));
-          scene.add(bulb);
-          // Actual point light
-          const pl = new THREE.PointLight(0xfff8d0, 0.7, 28);
-          pl.position.set(lx + sx*(ROAD/2+2.5), 8, lz + sz*(ROAD/2+2.5));
-          scene.add(pl);
-        });
-
-        // Traffic light pole
-        const tlPost = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.12,5,6),
-          new THREE.MeshStandardMaterial({color:0x444444, metalness:0.5}));
-        tlPost.position.set(lx + ROAD/2+2, 2.5, lz - ROAD/2-2);
-        scene.add(tlPost);
-        const tlBox = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.8,0.4),
-          new THREE.MeshStandardMaterial({color:0x222222}));
-        tlBox.position.set(lx + ROAD/2+2, 5.4, lz - ROAD/2-2);
-        scene.add(tlBox);
-        [[0xee2222,0],[0xeeee22,0.65],[0x22ee22,1.3]].forEach(([col,dy]) => {
-          const light = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,6),
-            new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity:dy===0?1.5:0.3}));
-          light.position.set(lx + ROAD/2+2, 6.2-dy, lz - ROAD/2-2);
-          scene.add(light);
-        });
-
-        // Stop sign (one per intersection)
-        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,3,6),
-          new THREE.MeshStandardMaterial({color:0x999999,metalness:0.4}));
-        sp.position.set(lx - ROAD/2-1.8, 1.5, lz - ROAD/2-1.8);
-        scene.add(sp);
-        const ss = new THREE.Mesh(new THREE.CylinderGeometry(0.65,0.65,0.08,8),
-          new THREE.MeshStandardMaterial({color:0xcc1111}));
-        ss.position.set(lx - ROAD/2-1.8, 3.1, lz - ROAD/2-1.8);
-        ss.rotation.y = Math.PI/8; scene.add(ss);
-      }));
-    }, delay + 300);
-
-    // ── AI CARS ON ROAD CENTERLINES ───────────────────────
-    setTimeout(() => {
-      showToast('🚗 Spawning traffic...');
-      window._cityCarUpdate = null;
-
-      // Routes defined EXACTLY on road centerlines (rp values)
-      const carRoutes = [
-        // Outer loop CW: top road → right road → bottom → left → back
-        [new THREE.Vector3(rp[0],0.3,rp[0]), new THREE.Vector3(rp[COLS],0.3,rp[0]),
-         new THREE.Vector3(rp[COLS],0.3,rp[COLS]), new THREE.Vector3(rp[0],0.3,rp[COLS])],
-        // Inner downtown loop CCW
-        [new THREE.Vector3(rp[1],0.3,rp[1]), new THREE.Vector3(rp[1],0.3,rp[COLS-1]),
-         new THREE.Vector3(rp[COLS-1],0.3,rp[COLS-1]), new THREE.Vector3(rp[COLS-1],0.3,rp[1])],
-        // E-W along rp[2] (center horizontal)
-        [new THREE.Vector3(rp[0],0.3,rp[2]), new THREE.Vector3(rp[COLS],0.3,rp[2]),
-         new THREE.Vector3(rp[COLS],0.3,rp[2]+ROAD*0.4), new THREE.Vector3(rp[0],0.3,rp[2]+ROAD*0.4)],
-        // N-S along rp[2] (center vertical)
-        [new THREE.Vector3(rp[2],0.3,rp[0]), new THREE.Vector3(rp[2],0.3,rp[COLS]),
-         new THREE.Vector3(rp[2]-ROAD*0.4,0.3,rp[COLS]), new THREE.Vector3(rp[2]-ROAD*0.4,0.3,rp[0])],
-        // Mix: corner route
-        [new THREE.Vector3(rp[1],0.3,rp[0]), new THREE.Vector3(rp[1],0.3,rp[2]),
-         new THREE.Vector3(rp[3],0.3,rp[2]), new THREE.Vector3(rp[3],0.3,rp[COLS])],
-        // Residential route
-        [new THREE.Vector3(rp[0],0.3,rp[1]), new THREE.Vector3(rp[1],0.3,rp[1]),
-         new THREE.Vector3(rp[1],0.3,rp[COLS-1]), new THREE.Vector3(rp[0],0.3,rp[COLS-1])],
-      ];
-
-      const carMeshes = [
-        'models/kenney_cars/sedan.glb','models/kenney_cars/taxi.glb',
-        'models/kenney_cars/police.glb','models/kenney_cars/suv.glb',
-        'models/kenney_cars/van.glb','models/kenney_cars/sedan-sports.glb',
-        'models/kenney_cars/hatchback-sports.glb','models/kenney_cars/delivery.glb',
-        'models/kenney_cars/ambulance.glb',
-      ];
-      const carCols = [0x2244cc,0xffcc00,0x112299,0x333333,0xffffff,0xcc3322,0x226644,0x884411,0xee3311];
-
-      const trafficCars = [];
-      for (let ci = 0; ci < 18; ci++) {
-        const route = carRoutes[ci % carRoutes.length];
-        const wp0 = route[Math.floor(Math.random() * route.length)].clone();
-        // Offset within lane (not center-line exactly)
-        const laneOffset = (Math.random() - 0.5) * 4;
-
-        const carGroup = new THREE.Group();
-        carGroup.userData.waypointRoute = route;
-        carGroup.userData.waypointIdx = Math.floor(Math.random() * route.length);
-        carGroup.userData.speed = 9 + Math.random() * 10;
-        carGroup.userData.laneOffset = laneOffset;
-        carGroup.userData.isTrafficCar = true;
-
-        // Placeholder box car
-        const cc = carCols[ci % carCols.length];
-        const bm = new THREE.MeshStandardMaterial({color:cc, roughness:0.3, metalness:0.6});
-        const body = new THREE.Mesh(new THREE.BoxGeometry(2,1.0,4), bm);
-        body.position.y=0.7; body.castShadow=true; carGroup.add(body);
-        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7,0.7,2.2), bm);
-        cab.position.set(0,1.45,0.2); carGroup.add(cab);
-        const wm = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
-        [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz])=>{
-          const w=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.18,10),wm);
-          w.rotation.z=Math.PI/2; w.position.set(wx,wy,wz); carGroup.add(w);
-        });
-
-        carGroup.position.copy(wp0);
-        carGroup.position.x += laneOffset;
-        scene.add(carGroup); objects.push(carGroup);
-        trafficCars.push(carGroup);
-
-        // Load real GLB async
-        const path = carMeshes[ci % carMeshes.length];
-        gltfLoader.load(path, (gltf) => {
-          const glb = gltf.scene;
-          const cb = new THREE.Box3().setFromObject(glb);
-          glb.scale.setScalar(4.5 / Math.max(cb.getSize(new THREE.Vector3()).z, 0.1));
-          const cb2 = new THREE.Box3().setFromObject(glb);
-          glb.position.y = -cb2.min.y;
-          glb.traverse(c => { if (c.isMesh) c.castShadow=true; });
-          while (carGroup.children.length) carGroup.remove(carGroup.children[0]);
-          carGroup.add(glb);
-        }, null, () => {});
-      }
-
-      // Car update function — pure waypoint following on road centerlines
-      window._cityCarUpdate = (dt) => {
-        trafficCars.forEach(car => {
-          const route = car.userData.waypointRoute;
-          const idx = car.userData.waypointIdx;
-          const target = route[idx].clone();
-          target.x += car.userData.laneOffset;
-
-          const dx = target.x - car.position.x;
-          const dz = target.z - car.position.z;
-          const dist = Math.sqrt(dx*dx + dz*dz);
-
-          if (dist < 2) {
-            car.userData.waypointIdx = (idx + 1) % route.length;
-          } else {
-            const spd = car.userData.speed * dt;
-            car.position.x += (dx/dist) * spd;
-            car.position.z += (dz/dist) * spd;
-            car.position.y = 0.3;
-            // Smooth turn
-            const ta = Math.atan2(dx, dz);
-            let diff = ta - car.rotation.y;
-            while (diff > Math.PI) diff -= Math.PI*2;
-            while (diff < -Math.PI) diff += Math.PI*2;
-            car.rotation.y += diff * Math.min(1, dt*6);
-          }
-        });
-      };
-
-      showToast('✅ 18 traffic cars on 6 road routes');
-    }, delay + 400);
-
-    // ── LIGHTING ────────────────────────────────────────
-    const sun = new THREE.DirectionalLight(0xfff5e0, 2.8);
-    sun.position.set(200, 400, 100);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(4096,4096);
-    sun.shadow.camera.left=-700; sun.shadow.camera.right=700;
-    sun.shadow.camera.top=700; sun.shadow.camera.bottom=-700;
-    sun.shadow.camera.far=2000; sun.shadow.bias=-0.0003;
-    scene.add(sun);
-    scene.add(new THREE.AmbientLight(0xd0e8ff, 0.55));
-    renderer.shadowMap.enabled = true;
-
-    scene.fog = new THREE.FogExp2(0xc8d8f0, 0.0006);
-    renderer.setClearColor(0x87ceeb, 1);
-
-    // ── CAMERA — downtown street view ────────────────────
-    if (window._cam) { window._cam.position.set(0,14,-90); window._cam.lookAt(0,10,0); }
-    if (window._ctrl) { window._ctrl.target.set(0,10,0); window._ctrl.update(); }
-
-    showToast('🏙 City loading — buildings & cars streaming in!');
-  } catch(err) {
-    console.error('[CITY]', err);
-    showToast('❌ ' + err.message);
-  }
-}
-window.buildCityWorld = buildCityWorld;
+// [REMOVED] buildCityWorld — old world builder deleted
 
 // ============================================================
 // OLD MINE CAVE INTERIOR — inside the African Slate Quarry
@@ -25660,7 +28538,7 @@ function populateMineAssets(caveInfo, aliases) {
     .sort(([a],[b]) => a.localeCompare(b));
 
   mineItems.forEach(([alias, relPath], i) => {
-    const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+    const fullPath = relPath.startsWith('/models/') ? relPath : '/models/' + relPath;
     // Spread along the main corridor and branches
     const seg = Math.floor(i / 3);
     const side = (i % 3) - 1; // -1, 0, 1
@@ -25735,7 +28613,7 @@ function populateMineAssets(caveInfo, aliases) {
 // ============================================================
 const _groupedAssets = {
   'street_props': {
-    path: 'models/fab/street_props_streeprops.glb',
+    path: '/models/fab/street_props_streeprops.glb',
     pieces: ['Ad poster','Pole','Power box','Public phone box','Bus stop',
       'street light','Street light','Pole metal','Bike parking','Cone',
       'Water Cannister','Construction asset','Road sign','fence',
@@ -25757,7 +28635,7 @@ function loadGroupedAsset(groupName, pieceName, x, z, onDone) {
 
   const place = (cachedScene) => {
     // Find the named node
-    let target = null;
+    target = null;
     cachedScene.traverse(o => { 
       if (o.name && o.name.toLowerCase() === pieceName.toLowerCase()) target = o; 
     });
@@ -25837,7 +28715,7 @@ async function buildPackShowcase(packPrefix, packName, count) {
         const row = Math.floor(i / COLS);
         const x = startX + col * SPACING;
         const z = row * SPACING;
-        const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
+        const fullPath = relPath.startsWith('/models/') ? relPath : '/models/' + relPath;
         const label = alias;
         loadGLBModel(label, label, x, z, null, fullPath);
       });
@@ -25849,254 +28727,1597 @@ async function buildPackShowcase(packPrefix, packName, count) {
 }
 window.buildPackShowcase = buildPackShowcase;
 
-async function buildForestLakeWorld() {
-  const _log = (m) => { console.log('[FOREST]', m); try { showToast(m); } catch(e) {} };
-  try {
-    _log('🌲 Building world...');
+// [REMOVED] buildForestLakeWorld — old world builder deleted
 
-    // Clear scene
-    const toRemove = [];
-    scene.children.forEach(o => {
-      if ((o.type === 'Mesh' || o.type === 'Group' || o.isInstancedMesh) && !o.isLight) toRemove.push(o);
-    });
-    toRemove.forEach(o => scene.remove(o));
-    objects.length = 0;
-    if (window.npcController) window.npcController.npcs.length = 0;
-    window._lakeAnimators = [];
+// ════════════════════════════════════════════════════════════════════════════
+// CITY WORLD 2 — Advanced procedural city with zones, parks, pools, NPCs
+// Command: "city 2" / "city world 2" / "second city"
+// ════════════════════════════════════════════════════════════════════════════
+// [REMOVED] buildCityWorld2 — old world builder deleted
 
-    // Ground
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 0.95 });
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(500, 64), groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    ground.userData.isGround = true;
-    scene.add(ground);
 
-    // Ground patches
-    const patchColors = [0x2d6618, 0x4a8c28, 0x3a7d2c, 0x5a9e38, 0x285520];
-    for (let i = 0; i < 80; i++) {
-      const a = Math.random() * Math.PI * 2, r = Math.random() * 460;
-      const p = new THREE.Mesh(new THREE.CircleGeometry(3 + Math.random() * 12, 7),
-        new THREE.MeshStandardMaterial({ color: patchColors[i % patchColors.length] }));
-      p.rotation.x = -Math.PI / 2;
-      p.position.set(Math.cos(a)*r, 0.01, Math.sin(a)*r);
-      scene.add(p);
-    }
 
-    // BIG LAKE — r=90 for boats + swimming
-    const lakeR = 90;
-    const lake = buildGerstnerLake(lakeR, 'calm');
-    scene.add(lake);
 
-    // Sandy shore
-    const shore = new THREE.Mesh(
-      new THREE.RingGeometry(lakeR, lakeR + 7, 80),
-      new THREE.MeshStandardMaterial({ color: 0xd4b483, roughness: 0.95 })
-    );
-    shore.rotation.x = -Math.PI / 2;
-    shore.position.y = 0.02;
-    scene.add(shore);
-    _log('  ✅ Gerstner lake placed (r=90)');
+// ════════════════════════════════════════════════════════════════════════════
+// City World 3 v4 — modern skyscrapers (R2), 3 bridges, visible cars+people
+// ════════════════════════════════════════════════════════════════════════════
 
-    // Shoreline rocks
-    for (let i = 0; i < 50; i++) {
-      const a = (i/50)*Math.PI*2 + Math.random()*0.4;
-      const r = lakeR + 1 + Math.random() * 5;
-      const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(0.4 + Math.random()*1.2, 0),
-        new THREE.MeshStandardMaterial({ color: [0x8a7a6a,0x9a8a7a,0x6a6058,0xb0a090][i%4], roughness: 0.95, flatShading: true })
-      );
-      rock.position.set(Math.cos(a)*r, 0.15, Math.sin(a)*r);
-      rock.rotation.set(Math.random(), Math.random(), Math.random());
-      rock.castShadow = true;
-      scene.add(rock);
-    }
-
-    // ============================================
-    // FAB ASSET SHOWCASE — ring around the lake
-    // ============================================
-    _log('  📦 Placing Fab assets...');
-    const FAB_SHOWCASE = [
-      // === RING 1 (r=110): Junkyard Fab pack ===
-      { alias: 'junkyard_1',  ring: 1, angle: 0 },
-      { alias: 'junkyard_2',  ring: 1, angle: 0.63 },
-      { alias: 'junkyard_3',  ring: 1, angle: 1.26 },
-      { alias: 'junkyard_4',  ring: 1, angle: 1.88 },
-      { alias: 'junkyard_5',  ring: 1, angle: 2.51 },
-      { alias: 'junkyard_6',  ring: 1, angle: 3.14 },
-      { alias: 'junkyard_7',  ring: 1, angle: 3.77 },
-      { alias: 'junkyard_8',  ring: 1, angle: 4.40 },
-      { alias: 'junkyard_9',  ring: 1, angle: 5.03 },
-      { alias: 'junkyard_10', ring: 1, angle: 5.65 },
-      // === RING 2 (r=145): Saloon Fab pack ===
-      { alias: 'saloon_1',  ring: 2, angle: 0 },
-      { alias: 'saloon_2',  ring: 2, angle: 0.7 },
-      { alias: 'saloon_3',  ring: 2, angle: 1.4 },
-      { alias: 'saloon_4',  ring: 2, angle: 2.1 },
-      { alias: 'saloon_5',  ring: 2, angle: 2.8 },
-      { alias: 'saloon_6',  ring: 2, angle: 3.5 },
-      { alias: 'saloon_7',  ring: 2, angle: 4.2 },
-      { alias: 'saloon_8',  ring: 2, angle: 4.9 },
-      { alias: 'saloon_9',  ring: 2, angle: 5.6 },
-      // === RING 3 (r=185): Street Fab props ===
-      { alias: 'street_props',         ring: 3, angle: 0.2 },
-      { alias: 'fire_hydrant',          ring: 3, angle: 0.9 },
-      { alias: 'bench',                 ring: 3, angle: 1.6 },
-      { alias: 'forklift',              ring: 3, angle: 2.3 },
-      { alias: 'mailbox',               ring: 3, angle: 3.0 },
-      { alias: 'wooden_door',           ring: 3, angle: 3.7 },
-      { alias: 'trash_can',             ring: 3, angle: 4.4 },
-      { alias: 'graffiti_wall_1k',      ring: 3, angle: 5.1 },
-      { alias: 'electrical_substation', ring: 3, angle: 5.8 },
-      { alias: 'trash_dumpster',        ring: 3, angle: 1.3 },
-      { alias: 'female_civilian',       ring: 3, angle: 2.0 },
-      { alias: 'manhole_cover',         ring: 3, angle: 2.7 },
-      // === RING 4 (r=230): Kenney Cars ===
-      { alias: 'kenney_cars/sedan',       ring: 4, angle: 0 },
-      { alias: 'kenney_cars/taxi',        ring: 4, angle: 0.52 },
-      { alias: 'kenney_cars/police',      ring: 4, angle: 1.05 },
-      { alias: 'kenney_cars/ambulance',   ring: 4, angle: 1.57 },
-      { alias: 'kenney_cars/firetruck',   ring: 4, angle: 2.09 },
-      { alias: 'kenney_cars/van',         ring: 4, angle: 2.62 },
-      { alias: 'kenney_cars/truck',       ring: 4, angle: 3.14 },
-      { alias: 'kenney_cars/race',        ring: 4, angle: 3.67 },
-      { alias: 'kenney_cars/suv',         ring: 4, angle: 4.19 },
-      { alias: 'kenney_cars/garbage-truck', ring: 4, angle: 4.71 },
-      { alias: 'kenney_cars/hatchback-sports', ring: 4, angle: 5.24 },
-      { alias: 'kenney_cars/delivery',    ring: 4, angle: 5.76 },
-      // === RING 5 (r=280): Kenney City buildings ===
-      { alias: 'kenney_city/building-a',  ring: 5, angle: 0 },
-      { alias: 'kenney_city/building-b',  ring: 5, angle: 0.63 },
-      { alias: 'kenney_city/building-c',  ring: 5, angle: 1.26 },
-      { alias: 'kenney_city/building-d',  ring: 5, angle: 1.88 },
-      { alias: 'kenney_city/building-e',  ring: 5, angle: 2.51 },
-      { alias: 'kenney_city/building-f',  ring: 5, angle: 3.14 },
-      { alias: 'kenney_city/road-straight', ring: 5, angle: 3.77 },
-      { alias: 'kenney_city/road-corner',   ring: 5, angle: 4.40 },
-      // === RING 6 (r=340): Kenney Fantasy ===
-      { alias: 'kenney_fantasy/banner-green',   ring: 6, angle: 0 },
-      { alias: 'kenney_fantasy/tower-round-top', ring: 6, angle: 0.78 },
-      { alias: 'kenney_fantasy/wall-corner',     ring: 6, angle: 1.57 },
-      { alias: 'kenney_fantasy/gate-open',       ring: 6, angle: 2.36 },
-      { alias: 'kenney_fantasy/tree-fantasy',    ring: 6, angle: 3.14 },
-      { alias: 'kenney_fantasy/chest-closed',    ring: 6, angle: 3.93 },
-      { alias: 'kenney_fantasy/well',            ring: 6, angle: 4.71 },
-      { alias: 'kenney_fantasy/catapult',        ring: 6, angle: 5.50 },
-      // === RING 7 (r=400): Kenney Pirate + Graveyard + Medieval ===
-      { alias: 'kenney_pirate/boat-row-large',   ring: 7, angle: 0 },
-      { alias: 'kenney_pirate/barrel',           ring: 7, angle: 0.63 },
-      { alias: 'kenney_pirate/cannon',           ring: 7, angle: 1.26 },
-      { alias: 'kenney_medieval/barrels',        ring: 7, angle: 1.88 },
-      { alias: 'kenney_medieval/fence-round',    ring: 7, angle: 2.51 },
-      { alias: 'kenney_graveyard/altar-stone',   ring: 7, angle: 3.14 },
-      { alias: 'kenney_graveyard/bench-damaged', ring: 7, angle: 3.77 },
-      { alias: 'kenney_weapons/blaster-a',       ring: 7, angle: 4.40 },
-      { alias: 'kenney_dungeon/barrel',          ring: 7, angle: 5.03 },
-      { alias: 'kenney_props/ball-blue',         ring: 7, angle: 5.65 },
-    ];
-
-    const ringRadii = [lakeR + 20, lakeR + 55, lakeR + 95, lakeR + 140, lakeR + 190, lakeR + 250, lakeR + 310];
-    // Wait for fab aliases to be available (they load async on startup)
-    const waitForAliases = (cb, retries = 20) => {
-      if (window._fabAliases && Object.keys(window._fabAliases).length > 0) { cb(window._fabAliases); return; }
-      if (retries <= 0) { console.warn('[FOREST] fab aliases never loaded'); cb({}); return; }
-      setTimeout(() => waitForAliases(cb, retries - 1), 150);
-    };
-
-    waitForAliases((aliases) => {
-      FAB_SHOWCASE.forEach(item => {
-        // Resolve path: check fab aliases, then GLB_MODELS map, then try direct
-        let fullPath = null;
-        const rawAlias = aliases[item.alias];
-        if (rawAlias) {
-          // Fab alias like 'fab/fire_hydrant.glb' → 'models/fab/fire_hydrant.glb'
-          fullPath = rawAlias.startsWith('http') || rawAlias.startsWith('models/') 
-            ? rawAlias : 'models/' + rawAlias;
-        } else {
-          // GLB_MODELS entries are keys like 'kenney_cars/sedan' → 'models/kenney_cars/sedan.glb'
-          const glbKey = GLB_MODELS[item.alias];
-          if (glbKey) {
-            const cleanKey = glbKey.endsWith('.glb') ? glbKey.slice(0,-4) : glbKey;
-            fullPath = 'models/' + cleanKey + '.glb';
-          } else {
-            // Direct path: 'kenney_cars/sedan' → 'models/kenney_cars/sedan.glb'
-            fullPath = 'models/' + item.alias + '.glb';
+// === UE BUILDING COLOR SYSTEM ===
+// UE5 Matrix Awakens pieces are grey (no textures), so we tint them on load
+const UE_ZONE_COLORS = {
+  downtown: [0x889999, 0xaa9988, 0x8888aa, 0x998877, 0xaabbcc, 0xbbaa99, 0x778899, 0xccbbaa],
+  commercial: [0xcc9966, 0xbb8855, 0xaa7744, 0xddaa77, 0xcc8844, 0xbb9977],
+  residential: [0xddccbb, 0xccbbaa, 0xeeddcc, 0xbbccdd, 0xccddcc, 0xddcccc, 0xaabbcc],
+  industrial: [0x777780, 0x888890, 0x666670, 0x999988],
+};
+function loadUEBuilding(key, x, y, z, scale, ry, zoneType) {
+  const path = GLB_MODELS[key] || key;
+  const url = '/models/' + (path.endsWith('.glb') ? path.slice(0,-4) : path) + '.glb';
+  const colors = UE_ZONE_COLORS[zoneType] || UE_ZONE_COLORS.residential;
+  const color = colors[Math.floor((x*137+z*89+y*53) % colors.length + colors.length) % colors.length];
+  
+  return new Promise(res => {
+    gltfLoader.load(url, g => {
+      const m = g.scene;
+      m.position.set(x, y, z);
+      m.scale.setScalar(scale);
+      if (ry) m.rotation.y = ry;
+      // Apply zone color to all meshes (UE pieces are grey)
+      m.traverse(n => {
+        if (n.isMesh) {
+          n.castShadow = true;
+          n.receiveShadow = true;
+          // Clone material so we don't affect other instances
+          if (n.material) {
+            n.material = n.material.clone();
+            n.material.color = new THREE.Color(color);
+            n.material.roughness = 0.85;
+            n.material.metalness = zoneType === 'downtown' ? 0.3 : 0.05;
           }
         }
-        const r = ringRadii[item.ring - 1] || ringRadii[0];
-        const x = Math.cos(item.angle) * r;
-        const z = Math.sin(item.angle) * r;
-        const label = item.alias.split('/').pop();
-        loadGLBModel(label, label, x, z, null, fullPath);
       });
-      _log('  ✅ Fab assets placed (' + Object.keys(aliases).length + ' aliases loaded)');
+      m.userData = { isGLB: true, isAutoCity: true, isBuilding: true, name: key };
+      scene.add(m);
+      objects.push(m);
+      res(m);
+    }, undefined, () => res(null));
+  });
+}
+
+// UE wall piece catalog for city builder
+const UE_WALLS = {
+  downtown: [
+    'ue_sm_bldg_nyg_l01_a_wall_01_n1','ue_sm_bldg_nyg_l03_a_wall_02_n1','ue_sm_bldg_nyg_l05_a_wall_02_n1',
+    'ue_sm_bldg_nyg_l07_a_wall_02_n1','ue_sm_bldg_nyg_l08_a_wall_02_n1','ue_sm_bldg_nyg_l10_a_wall_02_n1',
+    'ue_sm_bldg_nya_l6_f_wall_02_n1','ue_sm_bldg_nya_l7_f_wall_01_n1',
+  ],
+  commercial: [
+    'ue_sm_bldg_sfb_l1_a_wall_01_n1','ue_sm_bldg_sfb_l2_a_wall_01_n1','ue_sm_bldg_sfb_l3_a_wall_01_n1',
+    'ue_sm_bldg_sfe_l1_a1_wall_01_n1','ue_sm_bldg_sfj_l1_a1_wall_01_n1',
+  ],
+  residential: [
+    'ue_sm_bldg_sfa_l1_a_wall_01_n1','ue_sm_bldg_sfa_l2_a_wall_01_n1','ue_sm_bldg_sfa_l3_a_wall_01_n1',
+    'ue_sm_bldg_sfc_l1_a1_wall_01_n1','ue_sm_bldg_nyh_l1_a_wall_01_n1',
+  ],
+  industrial: [
+    'ue_sm_bldg_sfd_l01_a_wall_01_n1','ue_sm_bldg_sfd_l01_a_wall_02_n1','ue_sm_bldg_sfd_l02_a_wall_01_n1',
+  ],
+};
+
+async function buildCityWorld3() {
+  try {
+    showToast('🏙️ Building GTA City...');
+
+    // ═══ CLEANUP — remove previous auto-city objects ═══
+    const toRemove = objects.filter(o => o.userData.isAutoCity);
+    toRemove.forEach(o => scene.remove(o));
+    for (let i = objects.length - 1; i >= 0; i--) {
+      if (objects[i].userData.isAutoCity) objects.splice(i, 1);
+    }
+    scene.children.filter(o => o.userData.isAutoCityLight || o.userData.isAutoCityGround)
+      .forEach(o => scene.remove(o));
+    if (window._trafficCars) window._trafficCars = window._trafficCars.filter(c => !c.mesh?.userData?.isAutoCity);
+    if (window._boatAnimFrame) { cancelAnimationFrame(window._boatAnimFrame); window._boatAnimFrame = null; }
+    if (window._oceanWaveFrame) { cancelAnimationFrame(window._oceanWaveFrame); window._oceanWaveFrame = null; }
+    // Remove ALL existing ground planes — grass terrain causes green bleed
+    const oldGround = objects.filter(o => 
+      o.userData.name === 'ground' || 
+      o === currentGround || 
+      o === window._currentGround ||
+      (o.geometry?.parameters?.width >= 400) ||
+      (o.material?.color && o.material.color.g > 0.4 && o.material.color.r < 0.5 && o.geometry?.parameters?.width >= 100)
+    );
+    oldGround.forEach(o => { 
+      scene.remove(o); 
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+      const idx = objects.indexOf(o); 
+      if (idx >= 0) objects.splice(idx, 1); 
     });
-    _log('  ✅ Fab assets placed');
+    // Also search scene directly for any green planes
+    const greenKill = [];
+    scene.traverse(o => {
+      if (o.isMesh && o.geometry?.parameters?.width >= 400 && !o.userData.isAutoCity) greenKill.push(o);
+    });
+    greenKill.forEach(o => { scene.remove(o); if(o.geometry) o.geometry.dispose(); });
+    currentGround = null; window._currentGround = null;
 
-    // Forest — pushed out to ring lakeR+100+ so it frames the showcase area
-    const TYPES = ['pine','pine','pine','oak','oak','birch'];
-    let planted = 0;
+    // ═══ LOAD ASSET MANIFEST ═══
+    const assets = await fetch('city_assets.json').then(r => r.json());
 
-    for (let i = 0; i < 300; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = lakeR + 110 + Math.random() * 200;
-      const x = Math.cos(a)*r, z = Math.sin(a)*r;
-      const h = 8 + Math.random() * 12;
-      const t = TYPES[Math.floor(Math.random()*TYPES.length)];
-      const tree = t==='pine' ? createPineTree({x,z,height:h}) : t==='oak' ? createOakTree({x,z,height:h}) : createBirchTree({x,z,height:h});
-      tree.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      scene.add(tree);
-      planted++;
+    // ═══ SEEDED PRNG (deterministic layout) ═══
+    let _seed = 48271;
+    const rand = () => { _seed = (_seed * 16807) % 2147483647; return (_seed - 1) / 2147483646; };
+    const pick = arr => arr[Math.floor(rand() * arr.length)];
+    const rr = (lo, hi) => lo + rand() * (hi - lo);
+
+    // ═══ GRID CONSTANTS ═══
+    const G = 8;                    // 8×8 city blocks
+    const SEG = 10;                 // road piece size (units)
+    const BLK = 40;                 // city block size
+    const CELL = BLK + SEG;        // 50 — node-to-node spacing
+    const HALF = G * CELL / 2;     // 200 — half-city extent
+
+    // Block center & grid-node position helpers
+    const bc = (c, r) => ({ x: -HALF + CELL / 2 + c * CELL, z: -HALF + CELL / 2 + r * CELL });
+    const np = (c, r) => ({ x: -HALF + c * CELL, z: -HALF + r * CELL });
+    const tag = o => { o.userData.isAutoCity = true; return o; };
+
+    // ═══ DISTRICT MAP — GTA-style ring layout ═══
+    // Downtown core → Commercial ring → Residential sprawl → Industrial corner
+    const getDist = (c, r) => {
+      if (c >= 6 && r >= 6) return 'industrial';
+      const dx = Math.abs(c - 3.5), dz = Math.abs(r - 3.5);
+      if (dx <= 1 && dz <= 1) return 'downtown';
+      if (dx <= 2 && dz <= 2) return 'commercial';
+      return 'residential';
+    };
+
+    // ═══ SCENE SETUP ═══
+    // Sky — set solid blue immediately, then load HDRI
+    scene.background = new THREE.Color(0x7EC8E3);
+    scene.fog = new THREE.FogExp2(0xc0d8f0, 0.0008);
+    // Load HDRI sky with clouds (async, will replace blue when ready)
+    try {
+      if (typeof RGBELoader !== 'undefined') {
+        new RGBELoader().load(
+          'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr',
+          (tex) => {
+            tex.mapping = THREE.EquirectangularReflectionMapping;
+            scene.background = tex;
+            scene.environment = tex;
+            window._envMap = tex;
+            showToast('☁️ HDRI sky loaded!');
+          },
+          undefined,
+          () => { console.warn('[city] HDRI failed, keeping blue sky'); }
+        );
+      }
+    } catch(e) { /* keep blue sky */ }
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.3;
+    scene.children.filter(o => o.isLight).forEach(l => scene.remove(l));
+
+    // Sun — warm key light with shadows
+    const sun = new THREE.DirectionalLight(0xfff5e0, 2.5);
+    sun.position.set(150, 200, 100);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -400;
+    sun.shadow.camera.right = sun.shadow.camera.top = 400;
+    sun.shadow.camera.far = 800;
+    sun.userData.isAutoCityLight = true;
+    scene.add(sun);
+
+    // Ambient sky fill
+    const amb = new THREE.AmbientLight(0xd0e8ff, 0.9);
+    amb.userData.isAutoCityLight = true;
+    scene.add(amb);
+
+    // Cool fill light from opposite side
+    const fill = new THREE.DirectionalLight(0xa0c0ff, 0.4);
+    fill.position.set(-100, 80, -120);
+    fill.userData.isAutoCityLight = true;
+    scene.add(fill);
+
+    // ═══ CLOUDS — animated puffy clouds ═══
+    const _cloudGrp = new THREE.Group();
+    _cloudGrp.userData.isAutoCity = true;
+    const _cMat = new THREE.MeshLambertMaterial({color:0xffffff, transparent:true, opacity:0.82});
+    for (let ci = 0; ci < 45; ci++) {
+      const cg = new THREE.Group();
+      const puffs = 3 + Math.floor(Math.random() * 5);
+      for (let p = 0; p < puffs; p++) {
+        const sz = 8 + Math.random() * 18;
+        const pf = new THREE.Mesh(new THREE.SphereGeometry(sz, 7, 5), _cMat);
+        pf.scale.set(1 + Math.random(), 0.35 + Math.random()*0.25, 0.8 + Math.random()*0.5);
+        pf.position.set(p*14 - puffs*7, Math.random()*5, Math.random()*10 - 5);
+        cg.add(pf);
+      }
+      cg.position.set((Math.random()-0.5)*1000, 150 + Math.random()*80, (Math.random()-0.5)*900);
+      cg.userData.cSpd = 0.015 + Math.random()*0.04;
+      cg.userData.isAutoCity = true;
+      _cloudGrp.add(cg);
     }
+    scene.add(_cloudGrp); objects.push(_cloudGrp);
+    if (window._cloudAnim) cancelAnimationFrame(window._cloudAnim);
+    (function _acl() {
+      window._cloudAnim = requestAnimationFrame(_acl);
+      for (const c of _cloudGrp.children) {
+        c.position.x += c.userData.cSpd;
+        if (c.position.x > 500) c.position.x = -500;
+      }
+    })();
 
-    // Bushes between showcase rings
-    for (let i = 0; i < 80; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = lakeR + 12 + Math.random() * 95;
-      const x = Math.cos(a)*r + (Math.random()-0.5)*8;
-      const z = Math.sin(a)*r + (Math.random()-0.5)*8;
-      if (Math.sqrt(x*x+z*z) < lakeR+8) continue;
-      scene.add(createBush({ x, z, scale: 0.4 + Math.random() * 1.0 }));
+    // ═══ PROCEDURAL WINDOW TEXTURES ═══
+    // Generate building facade textures with windows programmatically
+    function makeBuildingTexture(baseColor, windowRows, windowCols, width, height) {
+      const cv = document.createElement('canvas');
+      cv.width = width || 128; cv.height = height || 256;
+      const ctx = cv.getContext('2d');
+      // Base wall color
+      ctx.fillStyle = baseColor || '#c8bca8';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      // Add subtle noise/grain
+      for (let i = 0; i < 200; i++) {
+        const x = Math.random() * cv.width;
+        const y = Math.random() * cv.height;
+        const brightness = Math.random() * 20 - 10;
+        ctx.fillStyle = brightness > 0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)';
+        ctx.fillRect(x, y, 2, 2);
+      }
+      // Windows
+      const wRows = windowRows || 6;
+      const wCols = windowCols || 4;
+      const wMargin = cv.width * 0.12;
+      const wGapX = (cv.width - wMargin * 2) / wCols;
+      const wGapY = (cv.height - wMargin * 2) / wRows;
+      const wW = wGapX * 0.55;
+      const wH = wGapY * 0.6;
+      for (let r = 0; r < wRows; r++) {
+        for (let c = 0; c < wCols; c++) {
+          const wx = wMargin + c * wGapX + (wGapX - wW) / 2;
+          const wy = wMargin + r * wGapY + (wGapY - wH) / 2;
+          // Window frame
+          ctx.fillStyle = '#333840';
+          ctx.fillRect(wx - 1, wy - 1, wW + 2, wH + 2);
+          // Glass — varies between lit and dark
+          const isLit = Math.random() > 0.6;
+          if (isLit) {
+            ctx.fillStyle = Math.random() > 0.5 ? '#ffe8a0' : '#f0d880'; // warm interior light
+          } else {
+            ctx.fillStyle = Math.random() > 0.5 ? '#6088a8' : '#507090'; // dark reflective glass
+          }
+          ctx.fillRect(wx, wy, wW, wH);
+          // Glass reflection highlight
+          ctx.fillStyle = 'rgba(200,220,240,0.15)';
+          ctx.fillRect(wx, wy, wW * 0.4, wH * 0.3);
+        }
+      }
+      // Ground floor — different (storefront or entrance)
+      const gfY = cv.height - wMargin - wGapY * 0.3;
+      ctx.fillStyle = '#555';
+      ctx.fillRect(wMargin, gfY, cv.width - wMargin * 2, cv.height - gfY - 4);
+      // Door
+      ctx.fillStyle = '#3a3a3a';
+      const doorW = wGapX * 0.6;
+      const doorX = cv.width / 2 - doorW / 2;
+      ctx.fillRect(doorX, gfY, doorW, cv.height - gfY - 4);
+      
+      const tex = new THREE.CanvasTexture(cv);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      return tex;
     }
-    _log('  ✅ ' + planted + ' trees + bushes placed');
+    
+    // Pre-generate a few building facade textures
+    const facadeTextures = {
+      downtown: [
+        makeBuildingTexture('#b0aaa0', 12, 6, 256, 512),
+        makeBuildingTexture('#a0a8b0', 10, 5, 256, 512),
+        makeBuildingTexture('#c0b8a8', 14, 7, 256, 512),
+      ],
+      commercial: [
+        makeBuildingTexture('#c8bca8', 4, 4, 128, 256),
+        makeBuildingTexture('#d0c4b0', 3, 3, 128, 256),
+        makeBuildingTexture('#b8b0a0', 5, 4, 128, 256),
+      ],
+      residential: [
+        makeBuildingTexture('#d8ccb8', 2, 3, 128, 128),
+        makeBuildingTexture('#c8c0b0', 2, 2, 128, 128),
+      ],
+      industrial: [
+        makeBuildingTexture('#888880', 3, 6, 256, 128),
+        makeBuildingTexture('#808078', 2, 8, 256, 128),
+      ],
+    };
+    window._facadeTextures = facadeTextures;
 
-    // Instanced grass
-    const grassMesh = buildGrassField({ count: 40000, radius: 460, excludeRadius: lakeR + 8 });
-    scene.add(grassMesh);
-    _log('  ✅ Grass placed');
+    // ═══ GROUND PLANE ═══
+    const gndSize = HALF * 2 + 600;
+    const gnd = tag(new THREE.Mesh(
+      new THREE.PlaneGeometry(gndSize, gndSize),
+      new THREE.MeshLambertMaterial({ color: 0x1a1a1a })
+    ));
+    gnd.rotation.x = -Math.PI / 2;
+    gnd.position.y = -0.5;
+    gnd.receiveShadow = true;
+    gnd.userData.isAutoCityGround = true;
+    scene.add(gnd); objects.push(gnd);
+    currentGround = gnd; window._currentGround = gnd;
 
-    // Atmosphere
-    scene.fog = new THREE.FogExp2(0x99c8aa, 0.004);
-    renderer.setClearColor(0x85b8e0, 1);
+    // ═══ MODEL LOADING SYSTEM ═══
+    const cache = {};
 
-    // Lighting
-    const sun = scene.children.find(o => o.isDirectionalLight);
-    if (sun) {
-      sun.color.setHex(0xfff0c0); sun.intensity = 2.2;
-      sun.position.set(100, 160, 80);
-      sun.castShadow = true;
-      if (sun.shadow) {
-        sun.shadow.mapSize.width = 2048; sun.shadow.mapSize.height = 2048;
-        sun.shadow.camera.left = -300; sun.shadow.camera.right = 300;
-        sun.shadow.camera.top = 300; sun.shadow.camera.bottom = -300;
-        sun.shadow.camera.far = 800; sun.shadow.bias = -0.0003;
+    const preload = path => new Promise(resolve => {
+      if (cache[path]) return resolve(cache[path]);
+      gltfLoader.load('/models/' + path, gltf => {
+        cache[path] = gltf.scene;
+        resolve(gltf.scene);
+      }, undefined, () => {
+        console.warn('[city] failed to load:', path);
+        resolve(null);
+      });
+    });
+
+    const batchPreload = async (paths, label) => {
+      const uniq = [...new Set(paths.filter(Boolean))];
+      for (let i = 0; i < uniq.length; i += 15) {
+        showToast('📦 ' + label + ' ' + Math.round(i / uniq.length * 100) + '%');
+        await Promise.all(uniq.slice(i, i + 15).map(preload));
+        await new Promise(r => setTimeout(r, 10));
+      }
+    };
+
+    // Place model grounded (bottom of bounding box touches y=0)
+    const placeGround = (path, x, z, sc, ry) => {
+      const t = cache[path];
+      if (!t) return null;
+      const m = t.clone();
+      m.scale.setScalar(sc || 1);
+      m.rotation.y = ry || 0;
+      m.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true;
+        if (n.material && n.material.color) { const _c = n.material.color;
+          // Desaturate cartoon colors → realistic + detect windows for glass
+          const sat = Math.max(_c.r, _c.g, _c.b) - Math.min(_c.r, _c.g, _c.b);
+          const matName = (n.material.name || n.name || '').toLowerCase();
+          const isGlass = matName.includes('glass') || matName.includes('window') || matName.includes('vitr');
+          const isBlueish = _c.b > 0.5 && _c.b > _c.r * 1.3 && _c.b > _c.g * 1.1;
+          const isCyanish = _c.b > 0.4 && _c.g > 0.4 && _c.r < 0.3;
+          
+          if (isGlass || isBlueish || isCyanish) {
+            // This is likely a window — make it glass!
+            n.material = new THREE.MeshPhysicalMaterial({
+              color: 0x88bbdd,
+              metalness: 0.1,
+              roughness: 0.05,
+              transmission: 0.7,
+              thickness: 0.3,
+              ior: 1.5,
+              transparent: true,
+              opacity: 0.6,
+              envMapIntensity: 1.5,
+            });
+          } else if (sat > 0.25 && !n.material.map) {
+            // Desaturate cartoon colors by 65%
+            n.material = n.material.clone();
+            const avg = (_c.r + _c.g + _c.b) / 3;
+            n.material.color.setRGB(
+              _c.r * 0.2 + avg * 0.8,
+              _c.g * 0.2 + avg * 0.8,
+              _c.b * 0.2 + avg * 0.8
+            );
+            n.material.roughness = 0.75;
+            n.material.metalness = 0.02;
+          }
+          if (_c.r > 0.92 && _c.g > 0.92 && _c.b > 0.92 && !n.material.map) { 
+            n.material = n.material.clone();
+            // Apply procedural facade texture if available
+            if (window._facadeTextures && n.geometry) {
+              const box = new THREE.Box3().setFromObject(n);
+              const sz = box.getSize(new THREE.Vector3());
+              const isTall = sz.y > 3;
+              const districtKey = isTall ? 'downtown' : (sz.y > 1.5 ? 'commercial' : 'residential');
+              const texArr = window._facadeTextures[districtKey];
+              if (texArr && texArr.length > 0) {
+                n.material.map = texArr[Math.floor(Math.random() * texArr.length)];
+                n.material.map.needsUpdate = true;
+              }
+            }
+            const _t = [0xd8ccb8,0xc8bca8,0xb8b0a0,0xd0c8b8,0xc0b8a8,0xe0d8c8,0xc8c0b0,0xb0a898,0xd4ccc0,0xc0b4a4,0xa8a098,0xd8d0c0,0xc8c4b8,0xb8b4a8];
+            n.material.color.setHex(_t[Math.floor(Math.random()*_t.length)]);
+            n.material.roughness = 0.7 + Math.random()*0.2;
+            n.material.metalness = 0.05; }}
+      } });
+      const box = new THREE.Box3().setFromObject(m);
+      m.position.set(x, -box.min.y, z);
+      m.userData = { isAutoCity: true, isGLB: true, name: path };
+      scene.add(m); objects.push(m);
+      return m;
+    };
+
+    // Place building — auto-scale to target height with footprint cap
+    const placeBldg = (path, x, z, tgtH, maxFP, ry) => {
+      const t = cache[path];
+      if (!t) return null;
+      const m = t.clone();
+      m.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true;
+        if (n.material && n.material.color) { const _c = n.material.color;
+          // Desaturate cartoon colors → realistic + detect windows for glass
+          const sat = Math.max(_c.r, _c.g, _c.b) - Math.min(_c.r, _c.g, _c.b);
+          const matName = (n.material.name || n.name || '').toLowerCase();
+          const isGlass = matName.includes('glass') || matName.includes('window') || matName.includes('vitr');
+          const isBlueish = _c.b > 0.5 && _c.b > _c.r * 1.3 && _c.b > _c.g * 1.1;
+          const isCyanish = _c.b > 0.4 && _c.g > 0.4 && _c.r < 0.3;
+          
+          if (isGlass || isBlueish || isCyanish) {
+            // This is likely a window — make it glass!
+            n.material = new THREE.MeshPhysicalMaterial({
+              color: 0x88bbdd,
+              metalness: 0.1,
+              roughness: 0.05,
+              transmission: 0.7,
+              thickness: 0.3,
+              ior: 1.5,
+              transparent: true,
+              opacity: 0.6,
+              envMapIntensity: 1.5,
+            });
+          } else if (sat > 0.25 && !n.material.map) {
+            // Desaturate cartoon colors by 65%
+            n.material = n.material.clone();
+            const avg = (_c.r + _c.g + _c.b) / 3;
+            n.material.color.setRGB(
+              _c.r * 0.2 + avg * 0.8,
+              _c.g * 0.2 + avg * 0.8,
+              _c.b * 0.2 + avg * 0.8
+            );
+            n.material.roughness = 0.75;
+            n.material.metalness = 0.02;
+          }
+          if (_c.r > 0.92 && _c.g > 0.92 && _c.b > 0.92 && !n.material.map) { 
+            n.material = n.material.clone();
+            // Apply procedural facade texture if available
+            if (window._facadeTextures && n.geometry) {
+              const box = new THREE.Box3().setFromObject(n);
+              const sz = box.getSize(new THREE.Vector3());
+              const isTall = sz.y > 3;
+              const districtKey = isTall ? 'downtown' : (sz.y > 1.5 ? 'commercial' : 'residential');
+              const texArr = window._facadeTextures[districtKey];
+              if (texArr && texArr.length > 0) {
+                n.material.map = texArr[Math.floor(Math.random() * texArr.length)];
+                n.material.map.needsUpdate = true;
+              }
+            }
+            const _t = [0xd8ccb8,0xc8bca8,0xb8b0a0,0xd0c8b8,0xc0b8a8,0xe0d8c8,0xc8c0b0,0xb0a898,0xd4ccc0,0xc0b4a4,0xa8a098,0xd8d0c0,0xc8c4b8,0xb8b4a8];
+            n.material.color.setHex(_t[Math.floor(Math.random()*_t.length)]);
+            n.material.roughness = 0.7 + Math.random()*0.2;
+            n.material.metalness = 0.05; }}
+      } });
+      const b1 = new THREE.Box3().setFromObject(m);
+      const sz = b1.getSize(new THREE.Vector3());
+      let sc = tgtH / Math.max(sz.y, 0.1);
+      const fp = Math.max(sz.x, sz.z, 0.1);
+      if (fp * sc > (maxFP || 18)) sc = (maxFP || 18) / fp;
+      m.scale.setScalar(sc);
+      const b2 = new THREE.Box3().setFromObject(m);
+      m.position.set(x, -b2.min.y, z);
+      m.rotation.y = ry || 0;
+      m.userData = { isAutoCity: true, isGLB: true, isBuilding: true, name: path };
+      scene.add(m); objects.push(m);
+      return m;
+    };
+
+    // Place road piece — receive shadow only, slight y-lift to avoid z-fight
+    const placeRoad = (path, x, z, sc, ry) => {
+      const t = cache[path];
+      if (!t) return null;
+      const m = t.clone();
+      m.scale.setScalar(sc || 1);
+      m.rotation.y = ry || 0;
+      m.traverse(n => { if (n.isMesh) { n.receiveShadow = true; } });
+      const box = new THREE.Box3().setFromObject(m);
+      m.position.set(x, -box.min.y + 0.02, z);
+      m.userData = { isAutoCity: true, isGLB: true, name: 'road' };
+      scene.add(m); objects.push(m);
+      return m;
+    };
+
+    // ═══ PRELOAD ALL MODELS ═══
+    showToast('📦 Loading city assets...');
+    const allPaths = [];
+    Object.values(assets.roads).forEach(p => allPaths.push(p));
+    Object.values(assets.districts).forEach(d =>
+      Object.values(d).forEach(a => { if (Array.isArray(a)) a.forEach(p => allPaths.push(p)); })
+    );
+    Object.values(assets.props).forEach(p => allPaths.push(p));
+    Object.values(assets.nature).forEach(v => {
+      if (Array.isArray(v)) v.forEach(p => allPaths.push(p));
+    });
+    Object.values(assets.vehicles).forEach(v => {
+      if (Array.isArray(v)) v.forEach(p => allPaths.push(p));
+    });
+    Object.values(assets.infrastructure).forEach(p => allPaths.push(p));
+
+    await batchPreload(allPaths, 'Loading models');
+
+    // ═══ ROAD NETWORK (GLB Toon City Pack pieces) ═══
+    showToast('🛣️ Building road network...');
+
+    const R = assets.roads;
+    // Measure the straight road piece to determine proper scale
+    const stmpl = cache[R.straight];
+    let rsc = 1;
+    let roadAlongZ = true;
+    if (stmpl) {
+      const sb = new THREE.Box3().setFromObject(stmpl);
+      const ss = sb.getSize(new THREE.Vector3());
+      rsc = SEG / Math.max(ss.x, ss.z, 0.1);
+      roadAlongZ = ss.z >= ss.x;
+    }
+    const EW_ROT = roadAlongZ ? Math.PI / 2 : 0;  // rotation for east-west roads
+    const NS_ROT = roadAlongZ ? 0 : Math.PI / 2;  // rotation for north-south roads
+
+    // --- Junction pieces at every grid node (9×9 = 81 nodes) ---
+    for (let nc = 0; nc <= G; nc++) {
+      for (let nr = 0; nr <= G; nr++) {
+        const { x, z } = np(nc, nr);
+        const top = nr === 0, bot = nr === G, left = nc === 0, right = nc === G;
+        const isCorner = (top || bot) && (left || right);
+        const isEdge = !isCorner && (top || bot || left || right);
+
+        if (isCorner) {
+          if (top && left)       placeRoad(R.l_junction_left,  x, z, rsc, Math.PI / 2);
+          else if (top && right) placeRoad(R.l_junction_right, x, z, rsc, 0);
+          else if (bot && left)  placeRoad(R.l_junction_right, x, z, rsc, Math.PI);
+          else                   placeRoad(R.l_junction_left,  x, z, rsc, -Math.PI / 2);
+        } else if (isEdge) {
+          if (top)        placeRoad(R.t_junction, x, z, rsc, Math.PI);
+          else if (bot)   placeRoad(R.t_junction, x, z, rsc, 0);
+          else if (left)  placeRoad(R.t_junction, x, z, rsc, Math.PI / 2);
+          else            placeRoad(R.t_junction, x, z, rsc, -Math.PI / 2);
+        } else {
+          // Interior — full intersections + one central roundabout
+          if (nc === 4 && nr === 4) placeRoad(R.roundabout, x, z, rsc, 0);
+          else placeRoad(R.intersection, x, z, rsc, 0);
+        }
       }
     }
-    let amb = scene.children.find(o => o.isAmbientLight);
-    if (!amb) { amb = new THREE.AmbientLight(0xc8dcc8, 0.5); scene.add(amb); }
-    else { amb.color.setHex(0xc8dcc8); amb.intensity = 0.5; }
-    renderer.shadowMap.enabled = true;
 
-    // Camera — wide view of the lake
-    window._cam.position.set(0, 180, 280);
-    window._cam.lookAt(0, 0, 0);
-    if (window._ctrl) { window._ctrl.target.set(0, 0, 0); window._ctrl.update(); }
+    // --- Straight road segments filling gaps between nodes ---
+    // E-W roads (horizontal, constant z per row)
+    for (let nr = 0; nr <= G; nr++) {
+      const z = np(0, nr).z;
+      for (let gap = 0; gap < G; gap++) {
+        const startX = np(gap, 0).x;
+        for (let s = 0; s < 4; s++) {
+          placeRoad(R.straight, startX + (s + 1) * SEG, z, rsc, EW_ROT);
+        }
+      }
+    }
+    // N-S roads (vertical, constant x per col)
+    for (let nc = 0; nc <= G; nc++) {
+      const x = np(nc, 0).x;
+      for (let gap = 0; gap < G; gap++) {
+        const startZ = np(0, gap).z;
+        for (let s = 0; s < 4; s++) {
+          placeRoad(R.straight, x, startZ + (s + 1) * SEG, rsc, NS_ROT);
+        }
+      }
+    }
 
-    _log('🌲 World ready! Fab assets loading around the lake...');
+    // ═══ SIDEWALK PADS (concrete base per block) ═══
+    const padMat = new THREE.MeshLambertMaterial({ color: 0x999088 });
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        const { x, z } = bc(c, r);
+        const pad = tag(new THREE.Mesh(new THREE.PlaneGeometry(BLK, BLK), padMat));
+        pad.rotation.x = -Math.PI / 2;
+        pad.position.set(x, 0.01, z);
+        pad.receiveShadow = true;
+        scene.add(pad); objects.push(pad);
+      }
+    }
 
-  } catch(err) {
-    console.error('[FOREST ERROR]', err.stack || err);
-    try { showToast('❌ ' + err.message); } catch(e) {}
+    // ═══ BUILDINGS BY DISTRICT ═══
+    showToast('🏢 Placing buildings...');
+
+    // Building slot offsets within each block (from block center)
+    const bldgSlots = {
+      downtown:    [[-12,-12],[12,-12],[-12,12],[12,12],[0,-6],[0,6],[-12,0],[12,0]],
+      commercial:  [[-13,-10],[13,-10],[-13,10],[13,10],[0,0]],
+      residential: [[-14,-14],[14,-14],[-14,14],[14,14]],
+      industrial:  [[-10,-10],[10,-10],[-10,10],[10,10]]
+    };
+
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        const d = getDist(c, r);
+        const { x: cx, z: cz } = bc(c, r);
+        const da = assets.districts[d];
+        if (!da) continue;
+
+        // Merge all available building models for this district
+        const pool = [
+          ...(da.buildings || []),
+          ...(da.commercial || []),
+          ...(da.shops || []),
+          ...(da.apartments || [])
+        ];
+        if (!pool.length) continue;
+
+        const slots = bldgSlots[d] || bldgSlots.residential;
+        const count = d === 'downtown'   ? 5 + Math.floor(rand() * 3) :
+                      d === 'commercial'  ? 3 + Math.floor(rand() * 3) :
+                      d === 'residential' ? 2 + Math.floor(rand() * 2) :
+                      2 + Math.floor(rand() * 2);
+
+        for (let i = 0; i < Math.min(count, slots.length); i++) {
+          const [ox, oz] = slots[i];
+          const path = pick(pool);
+          const ry = Math.floor(rand() * 4) * Math.PI / 2;
+          let tH, mFP;
+          if (d === 'downtown')        { tH = rr(35, 80); mFP = 14; }
+          else if (d === 'commercial') { tH = rr(15, 35); mFP = 16; }
+          else if (d === 'residential') { tH = rr(8, 20);  mFP = 14; }
+          else                          { tH = rr(10, 22); mFP = 18; }
+          placeBldg(path, cx + ox, cz + oz, tH, mFP, ry);
+        }
+      }
+    }
+
+    // ═══ GOVERNMENT / LANDMARK BUILDINGS ═══
+    showToast('🏛️ Placing landmarks...');
+    const gov = assets.districts.government?.buildings || [];
+    const landmarks = [
+      [0, 3, 2],  // bank — edge of downtown
+      [1, 4, 2],  // city hall — across from bank
+      [2, 2, 4],  // fire station — commercial belt
+      [3, 5, 2],  // museum — east commercial
+      [4, 1, 5],  // school — residential south
+      [5, 4, 5],  // hospital — south side
+      [6, 1, 1],  // church — residential NW
+      [7, 5, 5],  // clock tower — south commercial
+    ];
+    landmarks.forEach(([idx, col, row]) => {
+      if (idx < gov.length) {
+        const { x, z } = bc(col, row);
+        placeBldg(gov[idx], x, z, rr(20, 32), 22, 0);
+      }
+    });
+
+    // ═══ INFRASTRUCTURE ═══
+    showToast('⛽ Infrastructure...');
+    const inf = assets.infrastructure;
+
+    const placeInfra = (path, col, row, footprint, ry) => {
+      const { x, z } = bc(col, row);
+      const t = cache[path];
+      if (!t) return;
+      const m = t.clone();
+      m.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true;
+        if (n.material && n.material.color) { const _c = n.material.color;
+          // Desaturate cartoon colors → realistic + detect windows for glass
+          const sat = Math.max(_c.r, _c.g, _c.b) - Math.min(_c.r, _c.g, _c.b);
+          const matName = (n.material.name || n.name || '').toLowerCase();
+          const isGlass = matName.includes('glass') || matName.includes('window') || matName.includes('vitr');
+          const isBlueish = _c.b > 0.5 && _c.b > _c.r * 1.3 && _c.b > _c.g * 1.1;
+          const isCyanish = _c.b > 0.4 && _c.g > 0.4 && _c.r < 0.3;
+          
+          if (isGlass || isBlueish || isCyanish) {
+            // This is likely a window — make it glass!
+            n.material = new THREE.MeshPhysicalMaterial({
+              color: 0x88bbdd,
+              metalness: 0.1,
+              roughness: 0.05,
+              transmission: 0.7,
+              thickness: 0.3,
+              ior: 1.5,
+              transparent: true,
+              opacity: 0.6,
+              envMapIntensity: 1.5,
+            });
+          } else if (sat > 0.25 && !n.material.map) {
+            // Desaturate cartoon colors by 65%
+            n.material = n.material.clone();
+            const avg = (_c.r + _c.g + _c.b) / 3;
+            n.material.color.setRGB(
+              _c.r * 0.2 + avg * 0.8,
+              _c.g * 0.2 + avg * 0.8,
+              _c.b * 0.2 + avg * 0.8
+            );
+            n.material.roughness = 0.75;
+            n.material.metalness = 0.02;
+          }
+          if (_c.r > 0.92 && _c.g > 0.92 && _c.b > 0.92 && !n.material.map) { 
+            n.material = n.material.clone();
+            // Apply procedural facade texture if available
+            if (window._facadeTextures && n.geometry) {
+              const box = new THREE.Box3().setFromObject(n);
+              const sz = box.getSize(new THREE.Vector3());
+              const isTall = sz.y > 3;
+              const districtKey = isTall ? 'downtown' : (sz.y > 1.5 ? 'commercial' : 'residential');
+              const texArr = window._facadeTextures[districtKey];
+              if (texArr && texArr.length > 0) {
+                n.material.map = texArr[Math.floor(Math.random() * texArr.length)];
+                n.material.map.needsUpdate = true;
+              }
+            }
+            const _t = [0xd8ccb8,0xc8bca8,0xb8b0a0,0xd0c8b8,0xc0b8a8,0xe0d8c8,0xc8c0b0,0xb0a898,0xd4ccc0,0xc0b4a4,0xa8a098,0xd8d0c0,0xc8c4b8,0xb8b4a8];
+            n.material.color.setHex(_t[Math.floor(Math.random()*_t.length)]);
+            n.material.roughness = 0.7 + Math.random()*0.2;
+            n.material.metalness = 0.05; }}
+      } });
+      const b = new THREE.Box3().setFromObject(m);
+      const s = b.getSize(new THREE.Vector3());
+      const sc = (footprint || 20) / Math.max(s.x, s.z, 0.1);
+      m.scale.setScalar(sc);
+      const b2 = new THREE.Box3().setFromObject(m);
+      m.position.set(x, -b2.min.y, z);
+      m.rotation.y = ry || 0;
+      m.userData = { isAutoCity: true, isGLB: true, name: path };
+      scene.add(m); objects.push(m);
+    };
+
+    placeInfra(inf.gas_station,   7, 1, 28, 0);               // NE edge
+    placeInfra(inf.parking_lot,   1, 3, 32, 0);               // west commercial
+    placeInfra(inf.parking_lot,   5, 4, 32, Math.PI / 2);     // east commercial
+    placeInfra(inf.park,          0, 0, 36, 0);               // NW residential park
+    placeInfra(inf.park,          7, 0, 36, Math.PI);          // NE residential park
+    placeInfra(inf.stadium,       0, 7, 36, 0);               // SW corner stadium
+    placeInfra(inf.train_station, 7, 3, 28, Math.PI / 2);     // east side
+    placeInfra(inf.plaza,         3, 4, 24, 0);               // downtown edge plaza
+
+    // ═══ STREET PROPS ═══
+    showToast('🏮 Street props...');
+
+    // Street lights along every road (alternating sides)
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r <= G; r++) {
+        const rz = np(0, r).z;
+        const cx = bc(c, 0).x;
+        if ((c + r) % 2 === 0) {
+          placeGround(assets.props.street_light_double, cx - BLK / 2 - 2, rz, rsc * 1.2, 0);
+        } else {
+          placeGround(assets.props.street_light_single, cx + BLK / 2 + 2, rz, rsc * 1.2, Math.PI);
+        }
+      }
+    }
+
+    // Traffic lights at alternate interior intersections
+    for (let nc = 1; nc < G; nc += 2) {
+      for (let nr = 1; nr < G; nr += 2) {
+        const { x, z } = np(nc, nr);
+        placeGround(assets.props.traffic_light_single, x + 6, z + 6, rsc * 1.0, 0);
+        placeGround(assets.props.traffic_light_curved, x - 6, z - 6, rsc * 1.0, Math.PI);
+      }
+    }
+
+    // Stop signs at other intersections
+    for (let nc = 2; nc < G; nc += 2) {
+      for (let nr = 2; nr < G; nr += 2) {
+        const { x, z } = np(nc, nr);
+        placeGround(assets.props.stop_sign, x - 6, z + 6, rsc * 0.9, 0);
+      }
+    }
+
+    // Per-block sidewalk furniture & district-specific props
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        const d = getDist(c, r);
+        const { x: cx, z: cz } = bc(c, r);
+
+        // --- Universal sidewalk props ---
+        if (rand() > 0.35) placeGround(assets.props.bench,        cx - 19, cz + rr(3, 14), rsc * 0.9, Math.PI / 2);
+        if (rand() > 0.45) placeGround(assets.props.fire_hydrant,  cx + 19, cz - rr(3, 14), rsc * 0.7, 0);
+        if (rand() > 0.55) placeGround(assets.props.garbage_bin,   cx - rr(15, 18), cz - 19, rsc * 0.7, 0);
+        if (rand() > 0.60) placeGround(assets.props.mailbox,       cx + rr(15, 18), cz + 19, rsc * 0.85, 0);
+
+        // --- Downtown: dense urban furniture ---
+        if (d === 'downtown') {
+          if (rand() > 0.35) placeGround(assets.props.bus_stop,        cx + rr(-5, 5), cz + 21, rsc * 1.0, 0);
+          if (rand() > 0.45) placeGround(assets.props.atm,             cx - 17, cz + rr(-5, 5), rsc * 0.7, Math.PI / 2);
+          if (rand() > 0.40) placeGround(assets.props.hot_dog_stand,   cx + 17, cz + rr(-3, 3), rsc * 0.8, -Math.PI / 2);
+          if (rand() > 0.50) placeGround(assets.props.subway_entrance, cx + rr(-5, 5), cz - 21, rsc * 1.0, Math.PI);
+        }
+
+        // --- Commercial: dining, transit, signage ---
+        if (d === 'commercial') {
+          if (rand() > 0.40) placeGround(assets.props.outdoor_seating,  cx - rr(8, 12), cz + 20, rsc * 0.8, 0);
+          if (rand() > 0.45) placeGround(assets.props.bus_stop,         cx + 20, cz + rr(-5, 5), rsc * 1.0, Math.PI / 2);
+          if (rand() > 0.50) placeGround(assets.props.speed_limit_sign, cx - 20, cz + rr(5, 12), rsc * 0.8, 0);
+        }
+
+        // --- Industrial: fencing, hazards, heavy equipment ---
+        if (d === 'industrial') {
+          for (let f = -16; f <= 16; f += 8) {
+            placeGround(assets.props.wired_fence, cx + f, cz - 21, rsc * 0.9, 0);
+            placeGround(assets.props.wired_fence, cx + f, cz + 21, rsc * 0.9, Math.PI);
+          }
+          if (rand() > 0.30) placeGround(assets.props.traffic_cone, cx + rr(-8, 8), cz + rr(-8, 8), rsc * 0.6, 0);
+          if (rand() > 0.30) placeGround(assets.props.dumpster,     cx - 14, cz - 14, rsc * 0.9, 0);
+          if (rand() > 0.35) placeGround(assets.props.trash_bags,   cx + 14, cz - 14, rsc * 0.7, 0);
+          if (rand() > 0.40) placeGround(assets.props.road_block_a, cx + rr(5, 12), cz + 18, rsc * 0.8, 0);
+          placeGround(assets.props.electrical_pole, cx + 21, cz, rsc * 1.0, 0);
+        }
+
+        // --- Residential: suburban touches ---
+        if (d === 'residential') {
+          if (rand() > 0.50) placeGround(assets.props.wooden_fence,    cx - 18, cz + rr(-8, 8), rsc * 0.8, 0);
+          if (rand() > 0.60) placeGround(assets.props.no_parking_sign, cx + 20, cz - 18, rsc * 0.8, 0);
+        }
+      }
+    }
+
+    // ═══ VEHICLES ═══
+    showToast('🚗 Parking vehicles...');
+    const civCars = assets.vehicles.civilian;
+    const svcCars = assets.vehicles.service;
+    const comCars = assets.vehicles.commercial;
+
+    // Parked civilian cars along road edges
+    for (let nc = 0; nc <= G; nc++) {
+      for (let gap = 0; gap < G; gap++) {
+        // Along E-W roads (south side)
+        if (rand() > 0.45) {
+          const z = np(0, nc).z;
+          const x = np(gap, 0).x + CELL / 2;
+          placeGround(pick(civCars), x, z + 5.5, rsc * 1.8, EW_ROT + Math.PI);
+        }
+        // Along N-S roads (east side)
+        if (rand() > 0.45) {
+          const x = np(nc, 0).x;
+          const z = np(0, gap).z + CELL / 2;
+          placeGround(pick(civCars), x + 5.5, z, rsc * 1.8, NS_ROT);
+        }
+      }
+    }
+
+    // Emergency vehicles near landmarks
+    placeGround(pick(svcCars), bc(2, 4).x + 16, bc(2, 4).z, rsc * 1.8, Math.PI / 4);
+    placeGround(pick(svcCars), bc(4, 5).x - 16, bc(4, 5).z, rsc * 1.8, 0);
+    placeGround(pick(svcCars), bc(3, 3).x + 12, bc(3, 3).z + 12, rsc * 1.8, Math.PI);
+
+    // Commercial trucks in industrial district
+    for (let c = 6; c < G; c++) {
+      for (let r = 6; r < G; r++) {
+        const { x, z } = bc(c, r);
+        placeGround(pick(comCars), x + rr(5, 12), z + rr(5, 12), rsc * 1.8, rand() * Math.PI * 2);
+        placeGround(pick(comCars), x - rr(5, 12), z - rr(5, 12), rsc * 1.8, rand() * Math.PI * 2);
+      }
+    }
+
+    // ═══ TREES & NATURE ═══
+    showToast('🌳 Planting trees...');
+    const trees = assets.nature.trees;
+    const bushes = assets.nature.bushes;
+    const palms = assets.nature.palms;
+
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        const d = getDist(c, r);
+        const { x: cx, z: cz } = bc(c, r);
+
+        if (d === 'residential') {
+          // Yard trees — lush suburban canopy
+          const nt = 2 + Math.floor(rand() * 4);
+          for (let t = 0; t < nt; t++) {
+            placeGround(pick(trees), cx + rr(-16, 16), cz + rr(-16, 16), rsc * rr(0.8, 1.4), rand() * 0.3);
+          }
+          if (rand() > 0.35) placeGround(pick(bushes), cx + rr(-12, 12), cz + rr(-12, 12), rsc * 0.9, 0);
+          if (rand() > 0.45) placeGround(pick(bushes), cx + rr(-12, 12), cz + rr(-12, 12), rsc * 0.8, 0);
+        }
+
+        if (d === 'downtown' || d === 'commercial') {
+          // Palm-lined boulevards
+          if (rand() > 0.30) placeGround(pick(palms), cx - 21, cz + rr(-8, 8), rsc * 1.3, rand() * 0.2);
+          if (rand() > 0.30) placeGround(pick(palms), cx + 21, cz + rr(-8, 8), rsc * 1.3, rand() * 0.2);
+        }
+
+        if (d === 'industrial') {
+          // Sparse, hardy vegetation
+          if (rand() > 0.70) placeGround(pick(trees), cx + rr(-14, 14), cz + rr(-14, 14), rsc * 0.7, 0);
+        }
+      }
+    }
+
+    // Avenue trees along major N-S roads
+    for (let nc = 0; nc <= G; nc += 2) {
+      for (let gap = 0; gap < G; gap++) {
+        const x = np(nc, 0).x;
+        const z = np(0, gap).z + CELL / 2;
+        placeGround(pick(trees), x + SEG + 2, z, rsc * 0.9, 0);
+      }
+    }
+
+    // Rocks scattered in park areas and residential edges
+    const rocks = assets.nature.rocks;
+    for (let c = 0; c < G; c += 3) {
+      for (let r = 0; r < G; r += 3) {
+        if (getDist(c, r) === 'residential') {
+          const { x, z } = bc(c, r);
+          placeGround(pick(rocks), x + rr(-10, 10), z + rr(-10, 10), rsc * 0.6, rand() * Math.PI);
+        }
+      }
+    }
+
+    // Window overlays removed — using procedural textures instead
+
+    // ═══ TRAFFIC LIGHTS at intersections ═══
+    // ═══ CURBS — simplified long strips ═══
+    const curbMat = new THREE.MeshLambertMaterial({color: 0xaaa898});
+    // E-W curbs along each road
+    for (let r = 0; r <= G; r++) {
+      const rz = -HALF + r * CELL;
+      const cn = tag(new THREE.Mesh(new THREE.BoxGeometry(HALF*2, 0.12, 0.25), curbMat));
+      cn.position.set(0, 0.06, rz + SEG/2 + 0.3); scene.add(cn); objects.push(cn);
+      const cs = tag(new THREE.Mesh(new THREE.BoxGeometry(HALF*2, 0.12, 0.25), curbMat));
+      cs.position.set(0, 0.06, rz - SEG/2 - 0.3); scene.add(cs); objects.push(cs);
+    }
+    // N-S curbs
+    for (let c = 0; c <= G; c++) {
+      const rx = -HALF + c * CELL;
+      const ce = tag(new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.12, HALF*2), curbMat));
+      ce.position.set(rx + SEG/2 + 0.3, 0.06, 0); scene.add(ce); objects.push(ce);
+      const cw = tag(new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.12, HALF*2), curbMat));
+      cw.position.set(rx - SEG/2 - 0.3, 0.06, 0); scene.add(cw); objects.push(cw);
+    }
+
+    // ═══ CENTER LINES on roads — solid yellow ═══
+    const dashMat = new THREE.MeshLambertMaterial({color: 0xf0d020});
+    for (let r = 0; r <= G; r++) {
+      const rz = -HALF + r * CELL;
+      const line = tag(new THREE.Mesh(new THREE.PlaneGeometry(HALF*2, 0.2), dashMat));
+      line.rotation.x = -Math.PI/2; line.position.set(0, 0.07, rz);
+      scene.add(line); objects.push(line);
+    }
+    for (let c = 0; c <= G; c++) {
+      const rx = -HALF + c * CELL;
+      const line = tag(new THREE.Mesh(new THREE.PlaneGeometry(0.2, HALF*2), dashMat));
+      line.rotation.x = -Math.PI/2; line.position.set(rx, 0.07, 0);
+      scene.add(line); objects.push(line);
+    }
+
+    // ═══ CROSSWALKS — simplified for performance ═══
+    const crossMat2 = new THREE.MeshLambertMaterial({color: 0xdddddd});
+    for (let c = 0; c <= G; c++) {
+      for (let r = 0; r <= G; r++) {
+        const ix = -HALF + c * CELL;
+        const iz = -HALF + r * CELL;
+        // 2 crosswalk strips per intersection (N-S and E-W)
+        const cwNS = tag(new THREE.Mesh(new THREE.PlaneGeometry(SEG*0.7, 2.5), crossMat2));
+        cwNS.rotation.x = -Math.PI/2; cwNS.position.set(ix, 0.08, iz + SEG/2 + 0.5);
+        scene.add(cwNS); objects.push(cwNS);
+        const cwEW = tag(new THREE.Mesh(new THREE.PlaneGeometry(2.5, SEG*0.7), crossMat2));
+        cwEW.rotation.x = -Math.PI/2; cwEW.position.set(ix + SEG/2 + 0.5, 0.08, iz);
+        scene.add(cwEW); objects.push(cwEW);
+      }
+    }
+
+    showToast('🚦 Setting up traffic lights...');
+    window._trafficLights = [];
+    const tlPaths = ['unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/traffic-lights-single.glb'];
+    await batchPreload(tlPaths, 'Traffic Lights');
+    for (let c = 1; c < G; c += 2) {
+      for (let r = 1; r < G; r += 2) {
+        const ix = -HALF + c * CELL;
+        const iz = -HALF + r * CELL;
+        // Place traffic light at intersection corners
+        for (let corner = 0; corner < 2; corner++) {
+          const ox = corner === 0 ? SEG/2 + 1 : -SEG/2 - 1;
+          const oz = corner === 0 ? SEG/2 + 1 : -SEG/2 - 1;
+          const tl = placeGround(tlPaths[0], ix + ox, iz + oz, 1, corner * Math.PI);
+          if (tl) {
+            const tlData = { mesh: tl, x: ix, z: iz, state: rand() > 0.5 ? 'green' : 'red', timer: rand() * 8 };
+            window._trafficLights.push(tlData);
+          }
+        }
+      }
+    }
+    // Traffic light cycle with visual indicators
+    // Add colored light indicators to traffic light models
+    for (const tl of window._trafficLights) {
+      if (!tl.mesh) continue;
+      const redLight = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 8, 6),
+        new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 1})
+      );
+      redLight.position.set(0, 4, 0.4);
+      tl.mesh.add(redLight);
+      tl.redLight = redLight;
+      const greenLight = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 8, 6),
+        new THREE.MeshBasicMaterial({color: 0x00ff00, transparent: true, opacity: 0.2})
+      );
+      greenLight.position.set(0, 3.2, 0.4);
+      tl.mesh.add(greenLight);
+      tl.greenLight = greenLight;
+    }
+    if (window._tlFrame) cancelAnimationFrame(window._tlFrame);
+    (function _tlCycle() {
+      window._tlFrame = requestAnimationFrame(_tlCycle);
+      if (!window._trafficLights) return;
+      for (const tl of window._trafficLights) {
+        tl.timer += 0.016;
+        if (tl.timer > 6) { // 6 second cycle (faster, more visible)
+          tl.state = tl.state === 'green' ? 'red' : 'green';
+          tl.timer = 0;
+        }
+        // Update visual lights — just scale and opacity
+        if (tl.redLight) {
+          tl.redLight.material.opacity = tl.state === 'red' ? 1.0 : 0.2;
+          tl.redLight.scale.setScalar(tl.state === 'red' ? 1.3 : 0.6);
+        }
+        if (tl.greenLight) {
+          tl.greenLight.material.opacity = tl.state === 'green' ? 1.0 : 0.2;
+          tl.greenLight.scale.setScalar(tl.state === 'green' ? 1.3 : 0.6);
+        }
+      }
+    })();
+
+    // ═══ DRIVING TRAFFIC — cars moving on roads ═══
+    showToast('🚗 Starting traffic...');
+    window._trafficCars = [];
+    const carModels = ['kenney_cars/sedan.glb','kenney_cars/sedan-sports.glb','kenney_cars/suv.glb',
+      'kenney_cars/suv-luxury.glb','kenney_cars/van.glb','kenney_cars/taxi.glb','kenney_cars/truck.glb',
+      'kenney_cars/hatchback-sports.glb','kenney_cars/police.glb','kenney_cars/delivery.glb'];
+    // Preload car models
+    await batchPreload(carModels, 'Cars');
+    // Place cars on road lanes
+    for (let i = 0; i < 50; i++) {
+      const isEW = rand() > 0.5;
+      const roadIdx = Math.floor(rand() * (G + 1));
+      const lane = rand() > 0.5 ? 1 : -1;
+      const carPath = carModels[Math.floor(rand() * carModels.length)];
+      const carModel = cache[carPath];
+      if (!carModel) continue;
+      const car = carModel.clone();
+      car.scale.setScalar(1.8);
+      car.traverse(n => { if(n.isMesh) n.castShadow = true; });
+      let cx2, cz2, ry2;
+      if (isEW) {
+        cx2 = (rand()-0.5) * HALF * 1.6;
+        cz2 = -HALF + roadIdx * CELL + lane * 2.5;
+        ry2 = lane > 0 ? Math.PI/2 : -Math.PI/2;
+      } else {
+        cx2 = -HALF + roadIdx * CELL + lane * 2.5;
+        cz2 = (rand()-0.5) * HALF * 1.6;
+        ry2 = lane > 0 ? 0 : Math.PI;
+      }
+      car.position.set(cx2, 0.15, cz2);
+      car.rotation.y = ry2;
+      car.userData.isAutoCity = true;
+      scene.add(car); objects.push(car);
+      window._trafficCars.push({
+        mesh: car, isEW, lane,
+        speed: (0.04 + rand() * 0.06) * lane,
+        bound: HALF + 30,
+        laneZ: isEW ? cz2 : undefined,
+        laneX: !isEW ? cx2 : undefined,
+      });
+    }
+    // Traffic animation
+    if (window._trafficFrame) cancelAnimationFrame(window._trafficFrame);
+    (function _traf() {
+      window._trafficFrame = requestAnimationFrame(_traf);
+      if (!window._trafficCars) return;
+      for (const tc of window._trafficCars) {
+        if (!tc.mesh || !tc.mesh.parent) continue;
+        // Check traffic lights — stop at red
+        let stopped = false;
+        if (window._trafficLights) {
+          for (const tl of window._trafficLights) {
+            if (tl.state !== 'red') continue;
+            const dx = tc.mesh.position.x - tl.x;
+            const dz = tc.mesh.position.z - tl.z;
+            const dist = Math.sqrt(dx*dx + dz*dz);
+            if (dist < 20) {
+              // Check if car is approaching the light (wider detection cone)
+              if (tc.isEW && Math.abs(dz) < 8 && dx * tc.speed > 0 && Math.abs(dx) < 18) { stopped = true; break; }
+              if (!tc.isEW && Math.abs(dx) < 8 && dz * tc.speed > 0 && Math.abs(dz) < 18) { stopped = true; break; }
+            }
+          }
+        }
+        if (!stopped) {
+          if (tc.isEW) {
+            tc.mesh.position.x += tc.speed;
+            // Snap to lane (prevent drift)
+            tc.mesh.position.z = tc.laneZ || tc.mesh.position.z;
+            if (tc.mesh.position.x > tc.bound) tc.mesh.position.x = -tc.bound;
+            if (tc.mesh.position.x < -tc.bound) tc.mesh.position.x = tc.bound;
+          } else {
+            tc.mesh.position.z += tc.speed;
+            // Snap to lane
+            tc.mesh.position.x = tc.laneX || tc.mesh.position.x;
+            if (tc.mesh.position.z > tc.bound) tc.mesh.position.z = -tc.bound;
+            if (tc.mesh.position.z < -tc.bound) tc.mesh.position.z = tc.bound;
+          }
+        }
+      }
+    })();
+    showToast('🚗 ' + window._trafficCars.length + ' cars driving!');
+    
+    // Parked cars along sidewalks
+    const parkedCarPaths = ['kenney_cars/sedan.glb','kenney_cars/suv.glb','kenney_cars/van.glb','kenney_cars/hatchback-sports.glb','kenney_cars/truck.glb'];
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        if (rand() > 0.6) continue; // not every block
+        const bpos = bc(c, r);
+        const numParked = 1 + Math.floor(rand() * 2);
+        for (let pk = 0; pk < numParked; pk++) {
+          const cp = parkedCarPaths[Math.floor(rand()*parkedCarPaths.length)];
+          const side = Math.floor(rand()*4);
+          const px = bpos.x + (side<2 ? (rand()-0.5)*BLK*0.5 : (side===2?-1:1)*(BLK/2+4));
+          const pz = bpos.z + (side>=2 ? (rand()-0.5)*BLK*0.5 : (side===0?-1:1)*(BLK/2+4));
+          const ry = side < 2 ? 0 : Math.PI/2;
+          const pc = placeGround(cp, px, pz, 1.8, ry);
+        }
+      }
+    }
+
+    // ═══ SIDEWALK TREES — along streets per district ═══
+    showToast('🌳 Planting trees...');
+    const treePaths = [
+      'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-A.glb',
+      'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-B.glb',
+      'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-C.glb',
+      'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-D.glb',
+    ];
+    const palmPaths2 = ['palm_00.glb','palm_01.glb','palm_02.glb','palm_03.glb'];
+    const allTreePaths = [...treePaths, ...palmPaths2];
+    await batchPreload(allTreePaths, 'Trees');
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        const d = getDist(c, r);
+        const bpos = bc(c, r);
+        let treeCount = d === 'residential' ? 4 : d === 'commercial' ? 2 : d === 'downtown' ? 1 : 0;
+        const usePalms = d === 'downtown' || d === 'commercial';
+        for (let t = 0; t < treeCount; t++) {
+          const tp = usePalms ? palmPaths2[Math.floor(rand()*palmPaths2.length)] : treePaths[Math.floor(rand()*treePaths.length)];
+          // Place along sidewalk edges
+          const side = Math.floor(rand()*4);
+          const tx = bpos.x + (side<2 ? (rand()-0.5)*BLK*0.7 : (side===2?-1:1)*(BLK/2+2));
+          const tz = bpos.z + (side>=2 ? (rand()-0.5)*BLK*0.7 : (side===0?-1:1)*(BLK/2+2));
+          placeGround(tp, tx, tz, 0.8 + rand()*0.5, rand()*Math.PI*2);
+        }
+      }
+    }
+
+    // ═══ STREET LIGHTS with actual glow ═══
+    showToast('💡 Installing street lights...');
+    const slPath = 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/street-light-single.glb';
+    const slDblPath = 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/street-light-double.glb';
+    await batchPreload([slPath, slDblPath], 'Street Lights');
+    // Place street lights along every road
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r <= G; r++) {
+        const rz = -HALF + r * CELL;
+        const bx2 = -HALF + CELL/2 + c * CELL;
+        // Lights on north side of E-W roads
+        if (rand() > 0.3) {
+          const sl = placeGround(rand()>0.5 ? slPath : slDblPath, bx2 + (rand()-0.5)*BLK*0.4, rz + SEG/2 + 1.5, 1, 0);
+          if (sl) {
+            // No point light — too many kills FPS. Visual glow only.
+          }
+        }
+        // Lights on south side
+        if (rand() > 0.3) {
+          const sl2 = placeGround(rand()>0.5 ? slPath : slDblPath, bx2 + (rand()-0.5)*BLK*0.4, rz - SEG/2 - 1.5, 1, Math.PI);
+          if (sl2) {
+            // No point light — performance.
+          }
+        }
+      }
+    }
+    // Street light points tracked by parent objects
+
+    // District ground overlays removed for performance
+    // ═══ EXTRA STREET PROPS — signs, hydrants, benches, dumpsters ═══
+    const extraPropPaths = {
+      bench: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/public-bench.glb',
+      hydrant: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/fire-hydrant.glb',
+      mailbox: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/mailbox.glb',
+      dumpster: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/dumpster.glb',
+      trashBags: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/trash-bags.glb',
+      stopSign: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/stop-sign.glb',
+    };
+    await batchPreload(Object.values(extraPropPaths), 'Street Props');
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        if ((c + r) % 2 !== 0) continue; // Every 2nd block for performance
+        const bpos = bc(c, r);
+        const d = getDist(c, r);
+        // Benches on sidewalks (commercial + downtown)
+        if ((d === 'commercial' || d === 'downtown') && rand() > 0.4) {
+          placeGround(extraPropPaths.bench, bpos.x + BLK/2 + 2, bpos.z + (rand()-0.5)*BLK*0.5, 1, Math.PI/2);
+        }
+        // Fire hydrants
+        if (rand() > 0.5) {
+          placeGround(extraPropPaths.hydrant, bpos.x - BLK/2 - 2, bpos.z + (rand()-0.5)*BLK*0.5, 1, 0);
+        }
+        // Mailboxes in residential
+        if (d === 'residential' && rand() > 0.5) {
+          placeGround(extraPropPaths.mailbox, bpos.x + BLK/2 + 2, bpos.z + (rand()-0.5)*BLK*0.3, 1, Math.PI/2);
+        }
+        // Dumpsters in commercial/industrial alleys
+        if ((d === 'commercial' || d === 'industrial') && rand() > 0.5) {
+          placeGround(extraPropPaths.dumpster, bpos.x + (rand()-0.5)*10, bpos.z - BLK/2 + 2, 1, rand()*Math.PI);
+        }
+        // Trash bags near dumpsters in industrial
+        if (d === 'industrial' && rand() > 0.4) {
+          placeGround(extraPropPaths.trashBags, bpos.x + (rand()-0.5)*15, bpos.z + (rand()-0.5)*15, 1, rand()*Math.PI);
+        }
+        // Fences around industrial blocks
+        if (d === 'industrial' && rand() > 0.5) {
+          const fencePath = 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/wired-fence.glb';
+          if (cache[fencePath]) {
+            placeGround(fencePath, bpos.x, bpos.z + BLK/2 + 1, 1, 0);
+            placeGround(fencePath, bpos.x, bpos.z - BLK/2 - 1, 1, 0);
+          }
+        }
+        // Stop signs at alternating intersections  
+        if ((c + r) % 3 === 0 && rand() > 0.4) {
+          placeGround(extraPropPaths.stopSign, bpos.x - BLK/2 - 4, bpos.z - BLK/2 - 4, 1, Math.PI/4);
+        }
+      }
+    }
+
+    // ═══ PEDESTRIANS — walking NPCs ═══
+    showToast('🚶 Adding pedestrians...');
+    window._peds = [];
+    const skinT = [0xFFDBAC,0xD2A06B,0x8D5524,0xC68642,0xF1C27D,0x4A2912];
+    const outfitC = [0xFF6B9D,0x4488CC,0xFFD700,0xFF4500,0x00CED1,0x9D4EDD,0x44AA44,0xEE8833,0xCC3366,0x6688BB];
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        const d = getDist(c, r);
+        const bpos = bc(c, r);
+        let pCount = d === 'downtown' ? 3 : d === 'commercial' ? 2 : d === 'residential' ? 1 : 0;
+        for (let p = 0; p < pCount; p++) {
+          const g = new THREE.Group();
+          const sk = new THREE.MeshLambertMaterial({color: skinT[Math.floor(rand()*skinT.length)]});
+          const bd = new THREE.MeshLambertMaterial({color: outfitC[Math.floor(rand()*outfitC.length)]});
+          const lg = new THREE.MeshLambertMaterial({color: 0x222233});
+          const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 5), sk); head.position.y = 1.6; g.add(head);
+          const torso = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.25), bd); torso.position.y = 1.15; g.add(torso);
+          const la = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), bd); la.position.set(-0.3, 1.1, 0); g.add(la);
+          const ra = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), bd); ra.position.set(0.3, 1.1, 0); g.add(ra);
+          const ll = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); ll.position.set(-0.1, 0.45, 0); g.add(ll);
+          const rl = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); rl.position.set(0.1, 0.45, 0); g.add(rl);
+          g.traverse(n => { if(n.isMesh) n.castShadow = true; });
+          // Place on sidewalk edge
+          const side = Math.floor(rand()*4);
+          const px = bpos.x + (side<2 ? (rand()-0.5)*BLK*0.7 : (side===2?-1:1)*(BLK/2+2));
+          const pz = bpos.z + (side>=2 ? (rand()-0.5)*BLK*0.7 : (side===0?-1:1)*(BLK/2+2));
+          g.position.set(px, 0, pz);
+          g.userData.isAutoCity = true;
+          tag(g); scene.add(g); objects.push(g);
+          const a = rand()*Math.PI*2;
+          window._peds.push({g, la, ra, ll, rl, vx:Math.cos(a)*0.03, vz:Math.sin(a)*0.03, ph:rand()*6, tm:0});
+        }
+      }
+    }
+    // Ped animation
+    if (window._pedFrame) cancelAnimationFrame(window._pedFrame);
+    (function _pa() {
+      window._pedFrame = requestAnimationFrame(_pa);
+      if (!window._peds) return;
+      for (const p of window._peds) {
+        p.ph += 0.07; p.tm += 0.016;
+        p.g.position.x += p.vx; p.g.position.z += p.vz;
+        const sw = Math.sin(p.ph) * 0.35;
+        p.la.rotation.x = sw; p.ra.rotation.x = -sw;
+        p.ll.rotation.x = -sw*0.5; p.rl.rotation.x = sw*0.5;
+        if (p.tm > 3 + Math.random()*4) {
+          const a2 = Math.random()*Math.PI*2;
+          p.vx = Math.cos(a2)*0.03; p.vz = Math.sin(a2)*0.03;
+          p.g.rotation.y = a2; p.tm = 0;
+        }
+        if (Math.abs(p.g.position.x) > HALF+15 || Math.abs(p.g.position.z) > HALF+15) {
+          p.vx *= -1; p.vz *= -1; p.g.rotation.y += Math.PI;
+        }
+      }
+    })();
+
+    // ═══ CAMERA ═══
+    camera.position.set(0, 150, 200);
+    camera.lookAt(0, 0, 0);
+    if (window._cam) { window._cam.position.set(0, 150, 200); window._cam.lookAt(0, 0, 0); }
+    if (window._ctrl) { window._ctrl.target.set(0, 0, 0); window._ctrl.update(); window._ctrl.enabled = true; }
+    // Re-enable orbit controls so user can look around
+    try { controls.enabled = true; controls.update(); } catch(e) {}
+
+    // Freeze static objects for performance
+    let frozenCount = 0;
+    for (const obj of objects) {
+      if (obj.userData.isAutoCity && !obj.userData.isGLB) {
+        obj.matrixAutoUpdate = false;
+        obj.updateMatrix();
+        frozenCount++;
+      }
+    }
+    console.log('[city] Frozen', frozenCount, 'static objects for performance');
+    showToast('✅ GTA City ready! ' + window._trafficCars.length + ' cars, ' + window._peds.length + ' pedestrians');
+
+    // City minimap removed — use game minimap instead
+
+    // ═══ DAY/NIGHT CYCLE ═══
+    window._dayNight = { time: 0.35, speed: 0.0002, enabled: false }; // 0=midnight, 0.25=sunrise, 0.5=noon, 0.75=sunset
+    window.toggleDayNight = () => { window._dayNight.enabled = !window._dayNight.enabled; showToast(window._dayNight.enabled ? '🌅 Day/Night ON' : '☀️ Day/Night OFF'); };
+    if (window._dnFrame) cancelAnimationFrame(window._dnFrame);
+    (function _dn() {
+      window._dnFrame = requestAnimationFrame(_dn);
+      if (!window._dayNight || !window._dayNight.enabled) return;
+      const dn = window._dayNight;
+      dn.time = (dn.time + dn.speed) % 1;
+      const t = dn.time;
+      // Sun position follows time
+      const sunAngle = t * Math.PI * 2 - Math.PI/2;
+      const sunY = Math.sin(sunAngle);
+      const sunX = Math.cos(sunAngle);
+      if (sun) {
+        sun.position.set(sunX * 200, Math.max(sunY * 200, 5), 100);
+        sun.intensity = Math.max(0, sunY * 2.5);
+      }
+      // Sky color transitions
+      const isDay = sunY > 0;
+      if (isDay) {
+        const dayProgress = sunY;
+        const r = 0.49 + dayProgress * 0.1;
+        const g = 0.78 + dayProgress * 0.05;
+        const b = 0.89 + dayProgress * 0.05;
+        if (!scene.background?.isTexture) scene.background = new THREE.Color(r, g, b);
+        if (amb) amb.intensity = 0.4 + dayProgress * 0.5;
+      } else {
+        const nightDepth = Math.abs(sunY);
+        const r = 0.05 + (1-nightDepth) * 0.2;
+        const g = 0.05 + (1-nightDepth) * 0.15;
+        const b = 0.15 + (1-nightDepth) * 0.25;
+        if (!scene.background?.isTexture) scene.background = new THREE.Color(r, g, b);
+        if (amb) amb.intensity = 0.1 + (1-nightDepth) * 0.2;
+      }
+      // Street lights glow at night
+      if (window._streetLightPts) {
+        const nightIntensity = sunY < 0.1 ? Math.max(0, (0.1 - sunY) * 8) : 0;
+        for (const pl of window._streetLightPts) pl.intensity = nightIntensity;
+      }
+      if (window._trafficLights && sunY < 0.1) {
+        for (const tl of window._trafficLights) {
+          if (tl.mesh) tl.mesh.traverse(n => {
+            if (n.isMesh && n.material) {
+              if (!n.material._origEmissive) n.material._origEmissive = true;
+              n.material.emissive = n.material.emissive || new THREE.Color();
+              n.material.emissive.setHex(tl.state === 'red' ? 0xff2200 : 0x00ff44);
+              n.material.emissiveIntensity = 0.5;
+            }
+          });
+        }
+      }
+    })();
+  } catch (e) {
+    console.error('[buildCityWorld3]', e);
+    showToast('⚠ City error: ' + e.message);
   }
 }
-window.buildForestLakeWorld = buildForestLakeWorld;
+
+window.buildCityWorld3=buildCityWorld3;
+
+
+// ═══════════════════════════════════════════════════
+// HORROR WORLD — kenney_graveyard kit
+// ═══════════════════════════════════════════════════
+// [REMOVED] buildHorrorWorld — old world builder deleted
+
+
+// ═══════════════════════════════════════════════════
+// SPACE WORLD — kenney_space modular station kit
+// ═══════════════════════════════════════════════════
+// [REMOVED] buildSpaceWorld — old world builder deleted
+
+// [REMOVED] buildSpaceCombatGame — old world builder deleted
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ══════════════════════════════════════════════════════
+// TEMPLATE PRESET SYSTEM — direct Three.js, no command chain
+// ══════════════════════════════════════════════════════
+async function applyTemplatePreset(mode) {
+  if (!mode) return;
+
+  const darkenGround = (color, roughness = 0.95) => {
+    if (currentGround?.material) {
+      currentGround.material.color.setHex(color);
+      currentGround.material.roughness = roughness;
+      if (currentGround.material.map) currentGround.material.map = null;
+      currentGround.material.needsUpdate = true;
+    }
+  };
+  const setNight = () => {
+    renderer.setClearColor(0x0a0a1a);
+    scene.fog = new THREE.FogExp2(0x080810, 0.018);
+    scene.traverse(c => {
+      if (c.isAmbientLight) c.intensity = 0.12;
+      if (c.isDirectionalLight) { c.intensity = 0.05; c.color.setHex(0x334466); }
+    });
+    // Horror vignette + desaturate
+    if (window._colorPass) {
+      window._colorPass.uniforms.vignetteStrength.value = 0.85;
+      window._colorPass.uniforms.saturation.value = 0.25;
+      window._colorPass.uniforms.brightness.value = 0.82;
+      window._colorPass.uniforms.contrast.value = 1.35;
+      window._colorPass.uniforms.vignetteColor.value = new THREE.Color(0.4, 0.0, 0.0);
+    }
+    if (bloomPass) bloomPass.strength = 0.6;
+    darkenGround(0x111a11, 0.98); // dark grass at night
+  };
+
+  const setAfternoon = () => {
+    renderer.setClearColor(0x87ceeb);
+    scene.fog = null;
+    scene.traverse(c => {
+      if (c.isAmbientLight) c.intensity = 1.0;
+      if (c.isDirectionalLight) { c.intensity = 1.4; c.color.setHex(0xfff5e0); }
+    });
+    if (window._colorPass) {
+      window._colorPass.uniforms.vignetteStrength.value = 0.2;
+      window._colorPass.uniforms.saturation.value = 1.15;
+      window._colorPass.uniforms.brightness.value = 1.05;
+      window._colorPass.uniforms.contrast.value = 1.1;
+    }
+  };
+
+  const setSpace = () => {
+    renderer.setClearColor(0x020208);
+    scene.fog = null;
+    scene.traverse(c => {
+      if (c.isAmbientLight) c.intensity = 0.25;
+      if (c.isDirectionalLight) { c.intensity = 1.8; c.color.setHex(0xc0d0ff); }
+    });
+    if (window._colorPass) {
+      window._colorPass.uniforms.vignetteStrength.value = 0.5;
+      window._colorPass.uniforms.saturation.value = 0.85;
+      window._colorPass.uniforms.brightness.value = 0.9;
+      window._colorPass.uniforms.contrast.value = 1.4;
+    }
+    if (bloomPass) bloomPass.strength = 1.2;
+    // Star field
+    const starGeo = new THREE.BufferGeometry();
+    const sv = new Float32Array(3000 * 3);
+    for (let i = 0; i < sv.length; i++) sv[i] = (Math.random() - 0.5) * 2000;
+    starGeo.setAttribute('position', new THREE.BufferAttribute(sv, 3));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({color:0xffffff, size:0.8}));
+    scene.add(stars);
+  };
+
+  const setSunset = () => {
+    renderer.setClearColor(0xff6b35);
+    scene.fog = new THREE.FogExp2(0x443322, 0.01);
+    scene.traverse(c => {
+      if (c.isAmbientLight) c.intensity = 0.55;
+      if (c.isDirectionalLight) { c.intensity = 0.9; c.color.setHex(0xff8844); }
+    });
+    if (window._colorPass) {
+      window._colorPass.uniforms.vignetteStrength.value = 0.45;
+      window._colorPass.uniforms.saturation.value = 1.3;
+      window._colorPass.uniforms.brightness.value = 0.95;
+    }
+    if (bloomPass) bloomPass.strength = 0.7;
+    darkenGround(0x2a3a1a, 0.9); // forest floor at sunset
+  };
+
+  // Spawn helper — place models in a grid/arc around spawn point
+  const spawnGrid = async (models, spacing = 18, baseZ = -25) => {
+    for (let i = 0; i < models.length; i++) {
+      const col = i % 3, row = Math.floor(i / 3);
+      const x = (col - 1) * spacing, z = -(baseZ + row * spacing);
+      const glbKey = models[i];
+      const glbPath = GLB_MODELS[glbKey];
+      if (!glbPath) continue;
+      await new Promise(resolve => {
+        gltfLoader.load(glbPath, gltf => {
+          const m = gltf.scene;
+          m.position.set(x, 0, z);
+          m.userData = { name: glbKey, glbPath, isGLB: true };
+          scene.add(m); objects.push(m); resolve();
+        }, undefined, resolve);
+      });
+    }
+  };
+
+  const spawnLine = async (models, startX = -40, stepX = 15, z = -30) => {
+    for (let i = 0; i < models.length; i++) {
+      const glbKey = models[i];
+      const glbPath = GLB_MODELS[glbKey];
+      if (!glbPath) continue;
+      await new Promise(resolve => {
+        gltfLoader.load(glbPath, gltf => {
+          const m = gltf.scene;
+          m.position.set(startX + i * stepX, 0, z);
+          m.userData = { name: glbKey, glbPath, isGLB: true };
+          scene.add(m); objects.push(m); resolve();
+        }, undefined, resolve);
+      });
+    }
+  };
+
+  if (mode === 'horror') {
+    setNight();
+    const _hcmds = ['add horror_house','add horror_house','add horror_house','add horror_house',
+                    'add horror_car','add street_light_horror','add street_light_horror','add street_light_horror',
+                    'add killer_character','add medkit','add medkit'];
+    (async () => { for(const c of _hcmds){ await parseAndExecute(c); await new Promise(r=>setTimeout(r,80)); } })();
+    if (typeof addQuest === 'function') setTimeout(() => addQuest('Survive the Night'), 2500);
+
+  } else if (mode === 'city') {
+    // City 2 — nice city with driving cars
+    setTimeout(() => { if (window.buildCityWorld2) true; }, 600);
+    return;
+    buildCityWorld3();
+
+  } else if (mode === 'space') {
+    // Space Combat Game — auto-launch
+    setTimeout(() => { if (window.buildSpaceCombatGame) true; }, 600);
+    return;
+
+  } else if (mode === 'rpg') {
+    setSunset();
+    darkenGround(0x2a3a1a, 0.9);
+    const _rcmds = ['add dark_knight','add zombie','add zombie','add zombie',
+                    'add fantasy_tree','add fantasy_tree','add fantasy_tree','add fantasy_tree',
+                    'add treasure chest','add treasure chest',
+                    'add kite_shield','add kite_shield'];
+    (async () => { for(const c of _rcmds){ await parseAndExecute(c); await new Promise(r=>setTimeout(r,80)); } })();
+    if (typeof addQuest === 'function') setTimeout(() => addQuest('Defeat the Dark Knight'), 2500);
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// FULL CITY WORLD BUILDER v1.0
+// Zones: Downtown Core → Midtown → Residential → Castle Outskirts
+// ═══════════════════════════════════════════════════════════
+window._cityVehicles = [];
+window._cityVehicleRAF = null;
+
+function _stopCityVehicles() {
+  if (window._cityVehicleRAF) { cancelAnimationFrame(window._cityVehicleRAF); window._cityVehicleRAF = null; }
+  window._cityVehicles = [];
+}
+
+function _startCityVehicles() {
+  _stopCityVehicles();
+  function tick() {
+    for (const v of window._cityVehicles) {
+      if (!v.mesh) continue;
+      const wp = v.path[v.wpIdx];
+      const dx = wp[0] - v.mesh.position.x;
+      const dz = wp[1] - v.mesh.position.z;
+      const dist = Math.sqrt(dx*dx + dz*dz);
+      if (dist < 1.5) {
+        v.wpIdx = (v.wpIdx + 1) % v.path.length;
+      } else {
+        const nx = dx/dist, nz = dz/dist;
+        v.mesh.position.x += nx * v.spd;
+        v.mesh.position.z += nz * v.spd;
+        v.mesh.rotation.y = Math.atan2(nx, nz);
+      }
+    }
+    window._cityVehicleRAF = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+// [REMOVED] buildFullCity — old world builder deleted

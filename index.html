@@ -1,126 +1,270 @@
-<!DOCTYPE html>
+<!DOCTYPE html><!-- v295 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crate Engine — AI-Powered 3D Game Engine</title>
-<meta name="description" content="Build 3D games by typing natural language commands. 800+ commands, 1,339 real 3D models — all in your browser.">
+<title>Crate Engine — Build 3D Games in Your Browser</title>
+<meta name="description" content="Build and share 3D games by just typing. AI-powered. 1,479 models. No code, no installs. Free.">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="theme-color" content="#ff6b35">
+<meta property="og:title" content="Crate Engine — Build 3D Games in Your Browser">
+<meta property="og:description" content="AI-powered 3D game builder. Type commands, build worlds, share instantly.">
+<meta property="og:image" content="https://crateshipgames.com/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{height:100%;overflow:hidden}
-  body{background:#0a0a0a;color:#e0e0e0;font-family:'Inter',-apple-system,system-ui,sans-serif}
-  nav{display:flex;align-items:center;justify-content:space-between;padding:6px 16px;background:rgba(10,10,10,0.95);backdrop-filter:blur(12px);border-bottom:1px solid #1a1a1a;z-index:100;height:36px}
-  nav .logo{font-size:1rem;font-weight:900;background:linear-gradient(135deg,#ff6b35,#f7c948);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-  nav .links{display:flex;gap:14px;align-items:center}
-  nav .links a{color:#666;text-decoration:none;font-size:0.75rem;transition:color 0.2s}
-  nav .links a:hover{color:#ff6b35}
-  .btn-nav{padding:4px 12px;background:#ff6b35;color:white!important;border-radius:6px;font-weight:600;font-size:0.7rem}
-  .viewport-wrapper{position:relative;background:#0d0d0d;height:calc(100vh - 36px);display:flex;flex-direction:column}
-  .viewport-toolbar{display:flex;align-items:center;padding:4px 12px;background:#111;border-bottom:1px solid #252525;gap:6px;flex-shrink:0;height:28px}
-  .viewport-toolbar .dot{width:7px;height:7px;border-radius:50%}
-  .viewport-toolbar .dot.red{background:#ff5f57}
-  .viewport-toolbar .dot.yel{background:#ffbd2e}
-  .viewport-toolbar .dot.grn{background:#28c840}
-  .viewport-toolbar .title{margin-left:8px;color:#555;font-size:0.7rem;font-family:'JetBrains Mono',monospace}
-  .viewport-toolbar .status{margin-left:auto;color:#4ade80;font-size:0.65rem;font-family:'JetBrains Mono',monospace}
-  .viewport-toolbar .expand-btn{margin-left:8px;background:none;border:1px solid #333;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.65rem}
-  .viewport-toolbar .expand-btn:hover{border-color:#ff6b35;color:#ff6b35}
-  #crate-canvas{flex:1;width:100%;display:block;background:#111}
-  .output-log{position:fixed;bottom:90px;left:0;right:0;max-height:60px;overflow-y:auto;padding:4px 12px;background:rgba(0,0,0,0.75);font-family:'JetBrains Mono',monospace;font-size:0.7rem;display:none;z-index:9996;pointer-events:none}
-  .output-log .entry{padding:1px 0}
-  .output-log .cmd{color:#666}
-  .output-log .ok{color:#4ade80}
-  .output-log .err{color:#ef4444}
-  .output-log .info{color:#f7c948}
-  .prompt-overlay{position:fixed;bottom:0;left:0;right:0;padding:8px 12px;background:rgba(0,0,0,0.95);backdrop-filter:blur(8px);border-top:1px solid #333;display:flex;align-items:center;gap:6px;z-index:9999;height:38px}
-  .prompt-overlay .prefix{color:#ff6b35;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.85rem}
-  .prompt-overlay input{flex:1;background:transparent;border:none;color:#e0e0e0;font-family:'JetBrains Mono',monospace;font-size:0.85rem;outline:none}
-  .prompt-overlay input::placeholder{color:#333}
-  .engine-loader{position:absolute;top:28px;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#111;z-index:20;transition:opacity 0.5s}
-  .engine-loader.hidden{opacity:0;pointer-events:none}
-  .spinner{width:40px;height:40px;border:3px solid #252525;border-top-color:#ff6b35;border-radius:50%;animation:spin 0.8s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .loader-text{color:#555;font-size:0.75rem;margin-top:10px;font-family:'JetBrains Mono',monospace}
-  .viewport-wrapper.fullscreen{position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;z-index:10000!important;background:#000!important}
-  .viewport-wrapper.fullscreen #crate-canvas{width:100vw!important;height:calc(100vh - 28px)!important}
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--orange:#ff6b35;--gold:#f7c948;--bg:#080808;--bg2:#0d0d0d;--border:#1a1a1a;--text:#e0e0e0;--muted:#555}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;overflow-x:hidden}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:52px;background:rgba(8,8,8,0.9);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.logo{font-size:1.1rem;font-weight:900;background:linear-gradient(135deg,var(--orange),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-decoration:none}
+.nav-links{display:flex;gap:20px;align-items:center}
+.nav-links a{color:var(--muted);text-decoration:none;font-size:0.82rem;transition:color 0.2s}
+.nav-links a:hover{color:var(--orange)}
+.btn-primary{padding:8px 20px;background:var(--orange);color:#fff!important;border-radius:8px;font-weight:700;font-size:0.85rem;transition:all 0.2s;text-decoration:none}
+.btn-primary:hover{background:#e55a24;transform:translateY(-1px)}
+.btn-outline{padding:8px 20px;border:1px solid #333;color:var(--text)!important;border-radius:8px;font-weight:600;font-size:0.85rem;transition:all 0.2s;text-decoration:none}
+.btn-outline:hover{border-color:var(--orange);color:var(--orange)!important}
+
+/* HERO */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px 24px 60px;position:relative;overflow:hidden}
+.hero-glow{position:absolute;top:20%;left:50%;transform:translateX(-50%);width:800px;height:400px;background:radial-gradient(ellipse,rgba(255,107,53,0.12) 0%,transparent 70%);pointer-events:none}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;background:rgba(255,107,53,0.1);border:1px solid rgba(255,107,53,0.3);border-radius:100px;font-size:0.75rem;color:var(--orange);margin-bottom:24px;font-weight:600}
+.hero h1{font-size:clamp(2.8rem,7vw,5.5rem);font-weight:900;line-height:1.05;letter-spacing:-0.03em;margin-bottom:20px;max-width:900px}
+.hero h1 span{background:linear-gradient(135deg,var(--orange),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero-sub{font-size:clamp(1rem,2.5vw,1.3rem);color:#888;max-width:560px;line-height:1.6;margin-bottom:36px}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:56px}
+.hero-demo{width:100%;max-width:860px;background:var(--bg2);border:1px solid #222;border-radius:16px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.6)}
+.demo-bar{display:flex;align-items:center;padding:10px 14px;background:#111;border-bottom:1px solid #222;gap:6px}
+.demo-dot{width:10px;height:10px;border-radius:50%}
+.demo-terminal{padding:20px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;text-align:left;min-height:120px;line-height:1.8}
+.demo-line{display:flex;gap:8px;animation:fadeSlide 0.4s ease forwards;opacity:0}
+.demo-prompt{color:var(--orange)}
+.demo-cmd{color:#e0e0e0}
+.demo-out{color:#4ade80;padding-left:16px}
+.demo-out.info{color:#f7c948}
+@keyframes fadeSlide{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* STATS */
+.stats{display:flex;gap:40px;justify-content:center;flex-wrap:wrap;padding:40px 24px;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.stat{text-align:center}
+.stat-num{font-size:2.2rem;font-weight:900;background:linear-gradient(135deg,var(--orange),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-label{color:var(--muted);font-size:0.78rem;margin-top:2px}
+
+/* TEMPLATES */
+.section{padding:80px 24px;max-width:1100px;margin:0 auto}
+.section-label{color:var(--orange);font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px}
+.section-title{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:900;margin-bottom:12px;letter-spacing:-0.02em}
+.section-sub{color:#777;font-size:1rem;margin-bottom:48px;max-width:500px}
+.templates-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.template-card{background:var(--bg2);border:1px solid #1a1a1a;border-radius:14px;overflow:hidden;cursor:pointer;transition:all 0.25s;text-decoration:none;display:block}
+.template-card:hover{border-color:var(--orange);transform:translateY(-3px);box-shadow:0 16px 40px rgba(255,107,53,0.15)}
+.template-thumb{height:160px;display:flex;align-items:center;justify-content:center;font-size:4rem;position:relative}
+.template-info{padding:14px 16px}
+.template-name{font-weight:700;font-size:0.95rem;margin-bottom:3px}
+.template-desc{color:var(--muted);font-size:0.75rem;line-height:1.5}
+.template-tag{display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:3px 10px;background:rgba(255,107,53,0.1);border:1px solid rgba(255,107,53,0.2);border-radius:100px;font-size:0.65rem;color:var(--orange)}
+
+/* FEATURES */
+.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.feature{background:var(--bg2);border:1px solid #1a1a1a;border-radius:12px;padding:22px}
+.feature-icon{font-size:1.8rem;margin-bottom:10px}
+.feature-title{font-weight:700;margin-bottom:5px}
+.feature-desc{color:var(--muted);font-size:0.82rem;line-height:1.6}
+
+/* HOW IT WORKS */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px;position:relative}
+.step{text-align:center;padding:24px 16px}
+.step-num{width:48px;height:48px;border-radius:50%;background:rgba(255,107,53,0.1);border:2px solid rgba(255,107,53,0.3);display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:900;color:var(--orange);margin:0 auto 14px}
+.step-title{font-weight:700;margin-bottom:6px}
+.step-desc{color:var(--muted);font-size:0.8rem;line-height:1.6}
+
+/* CTA BANNER */
+.cta-banner{background:linear-gradient(135deg,rgba(255,107,53,0.08),rgba(247,201,72,0.05));border:1px solid rgba(255,107,53,0.2);border-radius:20px;padding:60px 40px;text-align:center;margin:0 24px 80px}
+.cta-banner h2{font-size:clamp(1.8rem,4vw,2.6rem);font-weight:900;margin-bottom:12px}
+.cta-banner p{color:#777;margin-bottom:28px;font-size:1rem}
+
+/* FOOTER */
+footer{border-top:1px solid var(--border);padding:32px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:gap;color:var(--muted);font-size:0.78rem;max-width:1100px;margin:0 auto;gap:12px}
+.footer-links{display:flex;gap:20px}
+.footer-links a{color:var(--muted);text-decoration:none;transition:color 0.2s}
+.footer-links a:hover{color:var(--orange)}
+@media(max-width:600px){.nav-links{display:none}.hero h1{font-size:2.4rem}.stats{gap:20px}}
 </style>
 </head>
 <body>
-<!-- LOADING SCREEN -->
-<div id="loading-screen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#0a0a0a;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;transition:opacity 0.5s;">
-  <div style="font-size:2.5rem;font-weight:900;background:linear-gradient(135deg,#ff6b35,#f7c948);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:20px;">CRATE ENGINE</div>
-  <div style="width:200px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden;margin-bottom:12px;">
-    <div id="loading-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#ff6b35,#f7c948);border-radius:2px;transition:width 0.3s;"></div>
-  </div>
-  <div id="loading-text" style="color:#555;font-size:0.75rem;">Initializing...</div>
-</div>
-<script>
-  // Loading progress
-  window._loadProgress = function(pct, text) {
-    const bar = document.getElementById('loading-bar');
-    const txt = document.getElementById('loading-text');
-    if (bar) bar.style.width = pct + '%';
-    if (txt) txt.textContent = text || 'Loading...';
-  };
-  window._hideLoading = function() {
-    const el = document.getElementById('loading-screen');
-    if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }
-  };
-  // Auto-hide after 5s max (in case engine loads fast)
-  setTimeout(() => { if (document.getElementById('loading-screen')) window._hideLoading(); }, 5000);
-</script>
 
 <nav>
-  <div class="logo">📦 Crate Engine</div>
-  <div class="links">
+  <a class="logo" href="/">📦 Crate Engine</a>
+  <div class="nav-links">
     <a href="/features.html">Features</a>
-    <a href="/compare.html">Compare</a>
-    <a href="/marketplace.html">Marketplace</a>
-    <a href="/creators.html">Creators</a>
+    <a href="/play.html">Try Now</a>
+    <a href="/pricing.html">Pricing</a>
+    <a href="https://github.com/jamaine1984/crate-engine">GitHub</a>
+    <a href="/play.html" class="btn-primary">Launch Engine ⚡</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-badge">🎮 AI-Powered · Free · No Code Required</div>
+  <h1>Build <span>3D games</span><br>just by typing.</h1>
+  <p class="hero-sub">Type natural language commands. The AI builds your world in real-time. 1,479 models. Share with a link.</p>
+  <div class="hero-cta">
+    <a href="/play.html" class="btn-primary">🚀 Start Building Free</a>
+  </div>
+  <!-- Terminal demo -->
+  <div class="hero-demo">
+    <div class="demo-bar">
+      <div class="demo-dot" style="background:#ff5f57"></div>
+      <div class="demo-dot" style="background:#ffbd2e"></div>
+      <div class="demo-dot" style="background:#28c840"></div>
+      <span style="color:#555;font-size:0.7rem;font-family:'JetBrains Mono',monospace;margin-left:8px">Crate Engine — 3D viewport</span>
+    </div>
+    <div class="demo-terminal" id="demo-terminal"></div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="stat"><div class="stat-num">1,479</div><div class="stat-label">3D Models</div></div>
+  <div class="stat"><div class="stat-num">800+</div><div class="stat-label">AI Commands</div></div>
+  <div class="stat"><div class="stat-num">18</div><div class="stat-label">Game Categories</div></div>
+  <div class="stat"><div class="stat-num">Free</div><div class="stat-label">Always</div></div>
+</div>
+
+<!-- TEMPLATE GAMES -->
+<div class="section">
+  <div style="text-align:center">
+    <div class="section-label">Ready-to-Play Templates</div>
+    <h2 class="section-title">Jump in. No setup.</h2>
+    <p class="section-sub">Pre-built game worlds. Play them now or remix them into your own.</p>
+  </div>
+  <div class="templates-grid">
+    <a href="/horror/" class="template-card">
+      <div class="template-thumb" style="background:linear-gradient(135deg,#0d0d0d,#1a0000)">🔪</div>
+      <div class="template-info">
+        <div class="template-name">Horror Survival</div>
+        <div class="template-desc">Survive the night. Killer AI. Chainsaw audio. Police car. Dark suburb scene.</div>
+        <div class="template-tag">🩸 Horror</div>
+      </div>
+    </a>
+    <a href="/city/" class="template-card">
+      <div class="template-thumb" style="background:linear-gradient(135deg,#0a0a1a,#0d1a2e)">🌆</div>
+      <div class="template-info">
+        <div class="template-name">Living City</div>
+        <div class="template-desc">30+ pedestrian types. Trucks, traffic lights, city props. Day/night cycle.</div>
+        <div class="template-tag">🚗 Urban</div>
+      </div>
+    </a>
+    <a href="/space/" class="template-card">
+      <div class="template-thumb" style="background:linear-gradient(135deg,#050510,#0a0a2a)">🚀</div>
+      <div class="template-info">
+        <div class="template-name">Space Combat</div>
+        <div class="template-desc">Fighter jets. Capital ships. Asteroid fields. Zero-G dogfights.</div>
+        <div class="template-tag">⭐ Sci-Fi</div>
+      </div>
+    </a>
+    <a href="/rpg/" class="template-card">
+      <div class="template-thumb" style="background:linear-gradient(135deg,#0a1a0a,#0d2a0d)">⚔️</div>
+      <div class="template-info">
+        <div class="template-name">Fantasy RPG</div>
+        <div class="template-desc">Knight character, haunted graveyard, medieval town, inventory system.</div>
+        <div class="template-tag">🧙 Fantasy</div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<div class="section" style="background:var(--bg2);max-width:100%;padding:80px 24px">
+  <div style="max-width:1100px;margin:0 auto">
+    <div style="text-align:center;margin-bottom:48px">
+      <div class="section-label">Everything Included</div>
+      <h2 class="section-title">A full engine in your browser.</h2>
+    </div>
+    <div class="features-grid">
+      <div class="feature"><div class="feature-icon">🤖</div><div class="feature-title">AI World Builder</div><div class="feature-desc">Natural language builds entire game worlds. The AI understands context, game patterns, and 3D composition.</div></div>
+      <div class="feature"><div class="feature-icon">📦</div><div class="feature-title">1,479 Real 3D Models</div><div class="feature-desc">Horror props, vehicles, pedestrians, weapons, space ships, fantasy characters — all production-ready GLBs.</div></div>
+      <div class="feature"><div class="feature-icon">🎨</div><div class="feature-title">Visual Polish System</div><div class="feature-desc">Cinematic color grading, depth of field, motion blur, bloom, chromatic aberration. 8 preset themes.</div></div>
+      <div class="feature"><div class="feature-icon">💬</div><div class="feature-title">NPC Dialogue Editor</div><div class="feature-desc">Build branching conversation trees visually. Wire responses, set start nodes, preview in-game.</div></div>
+      <div class="feature"><div class="feature-icon">🖌️</div><div class="feature-title">Terrain Painter</div><div class="feature-desc">Click to paint grass, sand, snow, lava, stone and 9 more textures. Adjustable brush radius.</div></div>
+      <div class="feature"><div class="feature-icon">🔊</div><div class="feature-title">78 Horror Sound FX</div><div class="feature-desc">Chainsaw, heartbeat, police siren, door sounds, footsteps, music. All triggered by voice commands.</div></div>
+      <div class="feature"><div class="feature-icon">💾</div><div class="feature-title">World Save & Share</div><div class="feature-desc">Save your scene as JSON. Share a link anyone can open and play. Export for embedding anywhere.</div></div>
+      <div class="feature"><div class="feature-icon">🌐</div><div class="feature-title">Multiplayer Ready</div><div class="feature-desc">Live WebSocket multiplayer. Invite players to your world with one link.</div></div>
+      <div class="feature"><div class="feature-icon">📱</div><div class="feature-title">Mobile Friendly</div><div class="feature-desc">Touch joystick, gesture controls, full playability on iPhone and Android browsers.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<div class="section">
+  <div style="text-align:center;margin-bottom:48px">
+    <div class="section-label">How It Works</div>
+    <h2 class="section-title">Three steps to a game.</h2>
+  </div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-title">Type a command</div><div class="step-desc">"Create a haunted town with fog at night" — the AI handles all the 3D layout.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-title">Customize & polish</div><div class="step-desc">Paint terrain, edit NPC dialogues, tune lighting, add sound effects with more commands.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-title">Share it</div><div class="step-desc">Save your world. Share the link. Anyone can play it instantly — no download, no account needed.</div></div>
+  </div>
+</div>
+
+<!-- CTA -->
+<div style="max-width:1100px;margin:0 auto;padding:0 24px">
+  <div class="cta-banner">
+    <h2>Start building your game today.</h2>
+    <p>Free. No account required. Works in any modern browser.</p>
+    <a href="/play.html" class="btn-primary" style="font-size:1rem;padding:14px 36px">🚀 Launch the Engine</a>
+  </div>
+</div>
+
+<footer>
+  <span>© 2026 Crateship Studios</span>
+  <div class="footer-links">
+    <a href="/features.html">Features</a>
     <a href="/pricing.html">Pricing</a>
     <a href="/docs/">Docs</a>
     <a href="https://github.com/jamaine1984/crate-engine">GitHub</a>
-    <span id="account-nav"></span>
-    <a href="#" class="btn-nav" onclick="window._showUpgradeModal?window._showUpgradeModal('pro'):alert('Loading...');return false">⚡ Upgrade</a>
+    <a href="/creators.html">Creators</a>
   </div>
-</nav>
-<div class="viewport-wrapper">
-  <div class="viewport-toolbar">
-    <div class="dot red"></div><div class="dot yel"></div><div class="dot grn"></div>
-    <div class="title">crate-engine — 3D viewport</div>
-    <div class="status" id="wasm-status" style="color:#d29922;margin-right:8px;font-size:11px">WASM: loading...</div>
-    <div class="status" id="engine-status">● 3D Ready</div>
-    <button class="expand-btn" id="expand-btn" onclick="toggleFullscreen()">⛶ Expand</button>
-    <div style="position:relative;margin-left:4px;">
-      <button id="cmd-menu-btn" onclick="document.getElementById('cmd-dropdown-menu').style.display=document.getElementById('cmd-dropdown-menu').style.display==='none'?'block':'none'" style="background:none;border:1px solid #444;color:#ccc;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:0.65rem;font-family:'JetBrains Mono',monospace;">Commands ▾</button>
-      <div id="cmd-dropdown-menu" style="display:none;position:absolute;top:100%;right:0;width:260px;max-height:420px;overflow-y:auto;background:#141414;border:1px solid #333;border-radius:8px;z-index:10001;padding:6px 0;margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;box-shadow:0 8px 32px rgba(0,0,0,0.6);"></div>
-    </div>
-  </div>
-  <canvas id="crate-canvas"></canvas>
-  <div class="engine-loader" id="engine-loader"><div class="spinner"></div><div class="loader-text">Loading Crate Engine...</div></div>
-  <div class="output-log" id="output-log"></div>
-  <div class="prompt-overlay">
-    <span class="prefix">❯</span>
-    <input type="text" id="prompt-input" placeholder="Type a command... (try 'add cube' or 'make it rain')" autocomplete="off" spellcheck="false">
-    <span class="hint">⏎</span>
-  </div>
-</div>
+</footer>
+
 <script>
-(function(){var c=parseInt(localStorage.getItem('crate_scene_count')||'0');if(c<1247)c=1247+Math.floor(Math.random()*200);localStorage.setItem('crate_scene_count',''+c);window._incrementSceneCount=function(){c++;localStorage.setItem('crate_scene_count',''+c);}})();
-window._hideLoader=function(){var l=document.getElementById('engine-loader');if(l){l.classList.add('hidden');setTimeout(function(){l.remove();},600);}};
-window._autoDemo=function(){if(!window._engineReady){setTimeout(window._autoDemo,500);return;}window._hideLoader();window._isAutoDemo=false;};
-window._autoDemoQueued=true;
-window.onerror=(msg,src,line)=>{console.error('[ENGINE ERROR]',msg,'at',src,':',line);const l=document.querySelector('.engine-loader');if(l)l.innerHTML='<div style="color:#f87171;padding:20px;text-align:center">Engine error: '+msg+'<br><small>Try refreshing (Ctrl+R)</small></div>';};
-setTimeout(()=>{const l=document.querySelector('.engine-loader');if(l&&l.offsetHeight>0)l.style.display='none';},15000);
+// Animated terminal demo
+const lines = [
+  {type:'cmd',text:'create horror town at night'},
+  {type:'out',text:'✅ Dark suburb spawned: 8 houses, fog, streetlights'},
+  {type:'cmd',text:'add killer character with chainsaw'},
+  {type:'out',text:'✅ Killer spawned at (0, 0, 30) — chainsaw equipped'},
+  {type:'cmd',text:'play horror music'},
+  {type:'out',text:'🔊 Horror music playing (loop)'},
+  {type:'cmd',text:'color grade horror'},
+  {type:'out',text:'✅ Color grade: horror — deep shadows, red vignette'},
+  {type:'cmd',text:'add 5 pedestrians'},
+  {type:'out',text:'✅ 5 survivors spawned — they\'re scared'},
+  {type:'cmd',text:'share world'},
+  {type:'out',text:'🔗 Link copied: crateshipgames.com/play?world=x8k2p'},
+];
+let i=0;
+const term = document.getElementById('demo-terminal');
+function addLine(){
+  if(i>=lines.length){i=0;setTimeout(()=>{term.innerHTML='';addLine();},3000);return;}
+  const l=lines[i++];
+  const el=document.createElement('div');
+  el.className='demo-line';
+  el.style.animationDelay='0s';
+  if(l.type==='cmd')el.innerHTML=`<span class="demo-prompt">❯</span><span class="demo-cmd">${l.text}</span>`;
+  else el.innerHTML=`<span class="demo-out ${l.info?'info':''}">${l.text}</span>`;
+  term.appendChild(el);
+  el.style.opacity='1';
+  setTimeout(addLine, l.type==='cmd'?800:400);
+}
+setTimeout(addLine,600);
 </script>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
-<script type="module" src="engine.mjs?v=264"></script>
-<script type="module">import auth from './auth.mjs';auth.renderAccountBadge(document.getElementById('account-nav'));</script>
-<button id="ai-settings-btn" onclick="showAISettingsModal()" title="AI Settings" style="position:fixed;top:72px;left:16px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">⚙️</button>
-<button id="mp-lobby-btn" onclick="showMultiplayerLobby()" title="Multiplayer" style="position:fixed;top:72px;left:62px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">🌐</button>
 </body>
 </html>
