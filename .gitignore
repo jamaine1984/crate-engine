@@ -1,3 +1,4 @@
-KOKO.app/
-.wranglerignore
+KOKO.app
+models/
 firebase-debug.log
+.wranglerignore
