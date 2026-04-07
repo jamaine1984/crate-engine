@@ -615,7 +615,7 @@ async function buildCityWorld3() {
     const assets = await fetch('city_assets.json').then(r => r.json());
 
     // ═══ SEEDED PRNG (deterministic layout) ═══
-    let _seed = 48271;
+    let _seed = Date.now() % 2147483647 || 48271; // Random seed each time
     const rand = () => { _seed = (_seed * 16807) % 2147483647; return (_seed - 1) / 2147483646; };
     const pick = arr => arr[Math.floor(rand() * arr.length)];
     const rr = (lo, hi) => lo + rand() * (hi - lo);
