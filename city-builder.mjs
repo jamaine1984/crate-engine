@@ -996,18 +996,19 @@ async function buildCityWorld3() {
     // ═══ PRELOAD ALL MODELS ═══
     showToast('\ud83d\udce6 Loading city assets...');
     const allPaths = [];
-    Object.values(assets.roads).forEach(p => allPaths.push(p));
-    Object.values(assets.districts).forEach(d =>
-      Object.values(d).forEach(a => { if (Array.isArray(a)) a.forEach(p => allPaths.push(p)); })
-    );
-    Object.values(assets.props).forEach(p => allPaths.push(p));
-    Object.values(assets.nature).forEach(v => {
+    if (assets.roads) Object.values(assets.roads).forEach(p => { if (typeof p === 'string') allPaths.push(p); });
+    if (assets.districts) Object.values(assets.districts).forEach(d => {
+      if (d) Object.values(d).forEach(a => { if (Array.isArray(a)) a.forEach(p => allPaths.push(p)); });
+    });
+    if (assets.props) Object.values(assets.props).forEach(p => { if (typeof p === 'string') allPaths.push(p); });
+    if (assets.nature) Object.values(assets.nature).forEach(v => {
       if (Array.isArray(v)) v.forEach(p => allPaths.push(p));
     });
-    Object.values(assets.vehicles).forEach(v => {
+    if (assets.vehicles) Object.values(assets.vehicles).forEach(v => {
       if (Array.isArray(v)) v.forEach(p => allPaths.push(p));
     });
-    Object.values(assets.infrastructure).forEach(p => allPaths.push(p));
+    if (assets.infrastructure) Object.values(assets.infrastructure).forEach(p => { if (typeof p === 'string') allPaths.push(p); });
+    if (assets.furniture) Object.values(assets.furniture).forEach(p => { if (typeof p === 'string') allPaths.push(p); });
 
     await batchPreload(allPaths, 'Loading models');
 
