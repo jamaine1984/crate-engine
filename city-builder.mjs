@@ -615,7 +615,7 @@ async function buildCityWorld3() {
     const assets = await fetch('city_assets.json').then(r => r.json());
 
     // ═══ SEEDED PRNG (deterministic layout) ═══
-    let _seed = Date.now() % 2147483647 || 48271; // Random seed each time
+    let _seed = 77731; // Curated seed — produces clean layout
     const rand = () => { _seed = (_seed * 16807) % 2147483647; return (_seed - 1) / 2147483646; };
     const pick = arr => arr[Math.floor(rand() * arr.length)];
     const rr = (lo, hi) => lo + rand() * (hi - lo);
@@ -1266,33 +1266,31 @@ async function buildCityWorld3() {
     // ═══ STREET PROPS ═══
     showToast('\ud83c\udfee Street props...');
 
-    // Street lights along every road (alternating sides)
+    // Street lights — on sidewalk inside blocks, NOT on road grid lines
     for (let c = 0; c < G; c++) {
-      for (let r = 0; r <= G; r++) {
-        const rz = np(0, r).z;
-        const cx = bc(c, 0).x;
-        if ((c + r) % 2 === 0) {
-          placeGround(assets.props.street_light_double, cx - BLK / 2 + 3, rz, rsc * 1.2, 0);
-        } else {
-          placeGround(assets.props.street_light_single, cx + BLK / 2 - 3, rz, rsc * 1.2, Math.PI);
-        }
+      for (let r = 0; r < G; r++) {
+        const { x: cx, z: cz } = bc(c, r);
+        // Two lights per block, on opposite sidewalk edges (inside block at ±15)
+        placeGround(assets.props.street_light_double, cx - 15, cz - 10, rsc * 1.2, 0);
+        placeGround(assets.props.street_light_single, cx + 15, cz + 10, rsc * 1.2, Math.PI);
       }
     }
 
-    // Traffic lights at alternate interior intersections
+    // Traffic lights — at intersection CORNERS (offset diagonally from road center)
     for (let nc = 1; nc < G; nc += 2) {
       for (let nr = 1; nr < G; nr += 2) {
         const { x, z } = np(nc, nr);
-        placeGround(assets.props.traffic_light_single, x + 6, z + 6, rsc * 1.0, 0);
-        placeGround(assets.props.traffic_light_curved, x - 6, z - 6, rsc * 1.0, Math.PI);
+        // Place on the sidewalk corner, not in the road
+        placeGround(assets.props.traffic_light_single, x + SEG/2 + 2, z + SEG/2 + 2, rsc * 1.0, 0);
+        placeGround(assets.props.traffic_light_curved, x - SEG/2 - 2, z - SEG/2 - 2, rsc * 1.0, Math.PI);
       }
     }
 
-    // Stop signs at other intersections
+    // Stop signs — on sidewalk corners at intersections
     for (let nc = 2; nc < G; nc += 2) {
       for (let nr = 2; nr < G; nr += 2) {
         const { x, z } = np(nc, nr);
-        placeGround(assets.props.stop_sign, x - 6, z + 6, rsc * 0.9, 0);
+        placeGround(assets.props.stop_sign, x - SEG/2 - 2, z + SEG/2 + 2, rsc * 0.9, 0);
       }
     }
 
@@ -1338,8 +1336,8 @@ async function buildCityWorld3() {
 
         // --- Residential: suburban touches ---
         if (d === 'residential') {
-          if (rand() > 0.50) placeGround(assets.props.wooden_fence,    cx - 18, cz + rr(-8, 8), rsc * 0.8, 0);
-          if (rand() > 0.60) placeGround(assets.props.no_parking_sign, cx + 20, cz - 18, rsc * 0.8, 0);
+          if (rand() > 0.50) placeGround(assets.props.wooden_fence,    cx - 15, cz + rr(-6, 6), rsc * 0.8, 0);
+          if (rand() > 0.60) placeGround(assets.props.no_parking_sign, cx + 15, cz - 15, rsc * 0.8, 0);
         }
       }
     }
@@ -1368,10 +1366,10 @@ async function buildCityWorld3() {
       }
     }
 
-    // Emergency vehicles near landmarks
-    placeGround(pick(svcCars), bc(2, 4).x + 16, bc(2, 4).z, rsc * 1.8, Math.PI / 4);
-    placeGround(pick(svcCars), bc(4, 5).x - 16, bc(4, 5).z, rsc * 1.8, 0);
-    placeGround(pick(svcCars), bc(3, 3).x + 12, bc(3, 3).z + 12, rsc * 1.8, Math.PI);
+    // Emergency vehicles near landmarks — parked inside block
+    placeGround(pick(svcCars), bc(2, 4).x + 12, bc(2, 4).z, rsc * 1.8, Math.PI / 4);
+    placeGround(pick(svcCars), bc(4, 5).x - 12, bc(4, 5).z, rsc * 1.8, 0);
+    placeGround(pick(svcCars), bc(3, 3).x + 10, bc(3, 3).z + 10, rsc * 1.8, Math.PI);
 
     // Commercial trucks in industrial district
     for (let c = 6; c < G; c++) {
@@ -1796,10 +1794,9 @@ async function buildCityWorld3() {
           const ll = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); ll.position.set(-0.1, 0.45, 0); g.add(ll);
           const rl = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); rl.position.set(0.1, 0.45, 0); g.add(rl);
           g.traverse(n => { if(n.isMesh) n.castShadow = true; });
-          // Place on sidewalk edge
-          const side = Math.floor(rand()*4);
-          const px = bpos.x + (side<2 ? (rand()-0.5)*BLK*0.7 : (side===2?-1:1)*(BLK/2+2));
-          const pz = bpos.z + (side>=2 ? (rand()-0.5)*BLK*0.7 : (side===0?-1:1)*(BLK/2+2));
+          // Place on sidewalk INSIDE block (±13 max, well clear of roads at ±20)
+          const px = bpos.x + (rand()-0.5) * 26; // ±13 from block center
+          const pz = bpos.z + (rand()-0.5) * 26;
           g.position.set(px, 0, pz);
           g.userData.isAutoCity = true;
           tag(g); scene.add(g); objects.push(g);
