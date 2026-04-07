@@ -2,3 +2,6 @@ KOKO.app
 models/
 firebase-debug.log
 .wranglerignore
+
+.env*
+.env.local

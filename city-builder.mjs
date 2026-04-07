@@ -985,7 +985,7 @@ async function buildCityWorld3() {
       m.rotation.y = ry || 0;
       m.traverse(n => { if (n.isMesh) { n.receiveShadow = true; } });
       const box = new THREE.Box3().setFromObject(m);
-      m.position.set(x, -box.min.y + 0.02, z);
+      m.position.set(x, -box.min.y + 0.15, z);
       m.userData = { isAutoCity: true, isGLB: true, name: 'road' };
       scene.add(m); objects.push(m);
       return m;
@@ -1081,7 +1081,7 @@ async function buildCityWorld3() {
         const { x, z } = bc(c, r);
         const pad = tag(new THREE.Mesh(new THREE.PlaneGeometry(BLK, BLK), padMat));
         pad.rotation.x = -Math.PI / 2;
-        pad.position.set(x, 0.01, z);
+        pad.position.set(x, 0.05, z);
         pad.receiveShadow = true;
         scene.add(pad); objects.push(pad);
       }

@@ -2342,7 +2342,7 @@ if (_webgpuRequested) {
   }
 }
 if (!renderer) {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true });
   window._isWebGPU = false;
 }
 
@@ -2604,7 +2604,8 @@ function updateShadowCascades() {
   nearShadowLight.target.position.set(camPos.x, 0, camPos.z);
 }
 window._updateShadowCascades = updateShadowCascades;
-sunLight.shadow.bias = -0.0005;
+sunLight.shadow.bias = -0.001;
+sunLight.shadow.normalBias = 0.04;
 scene.add(sunLight);
 
 // === CHARACTER & TOWN SYSTEMS ===
