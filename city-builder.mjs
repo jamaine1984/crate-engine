@@ -1026,6 +1026,21 @@ async function buildCityWorld3() {
     const EW_ROT = roadAlongZ ? Math.PI / 2 : 0;  // rotation for east-west roads
     const NS_ROT = roadAlongZ ? 0 : Math.PI / 2;  // rotation for north-south roads
 
+    // Measure junction piece to compute actual gap between nodes
+    const juncTmpl = cache[R.intersection] || cache[R.t_junction];
+    let juncAlong = SEG;
+    if (juncTmpl) {
+      const jb = new THREE.Box3().setFromObject(juncTmpl);
+      const js = jb.getSize(new THREE.Vector3());
+      juncAlong = Math.max(js.x, js.z) * rsc;
+    }
+    // Gap to fill: from junction edge to next junction edge
+    const gapStart = juncAlong / 2;
+    const gapLen = CELL - juncAlong;
+    const straightLen = SEG; // straight piece is exactly SEG after rsc scaling
+    const fillCount = Math.max(1, Math.ceil(gapLen / straightLen));
+    const fillStep = gapLen / fillCount;
+
     // --- Junction pieces at every grid node (9×9 = 81 nodes) ---
     for (let nc = 0; nc <= G; nc++) {
       for (let nr = 0; nr <= G; nr++) {
@@ -1058,8 +1073,9 @@ async function buildCityWorld3() {
       const z = np(0, nr).z;
       for (let gap = 0; gap < G; gap++) {
         const startX = np(gap, 0).x;
-        for (let s = 0; s < 4; s++) {
-          placeRoad(R.straight, startX + (s + 1) * SEG, z, rsc, EW_ROT);
+        for (let s = 0; s < fillCount; s++) {
+          const offset = gapStart + fillStep / 2 + s * fillStep;
+          placeRoad(R.straight, startX + offset, z, rsc, EW_ROT);
         }
       }
     }
@@ -1068,8 +1084,9 @@ async function buildCityWorld3() {
       const x = np(nc, 0).x;
       for (let gap = 0; gap < G; gap++) {
         const startZ = np(0, gap).z;
-        for (let s = 0; s < 4; s++) {
-          placeRoad(R.straight, x, startZ + (s + 1) * SEG, rsc, NS_ROT);
+        for (let s = 0; s < fillCount; s++) {
+          const offset = gapStart + fillStep / 2 + s * fillStep;
+          placeRoad(R.straight, x, startZ + offset, rsc, NS_ROT);
         }
       }
     }
@@ -1386,8 +1403,11 @@ async function buildCityWorld3() {
     const bushes = assets.nature.bushes;
     const palms = assets.nature.palms;
 
-    // Helper: check if position is on a road (within SEG/2 of any grid line)
-    const ROAD_HALF = SEG / 2 + 2; // road half-width + buffer
+    // Helper: check if position is on a road or intersection
+    // Road strips run along every grid line; intersections are where two strips cross.
+    // Any point near a grid column X is on a N-S road; near a grid row Z is on an E-W road.
+    // Intersections are caught by either check. Buffer of 3 keeps props clear of road edges.
+    const ROAD_HALF = SEG / 2 + 3; // road half-width + 3-unit safety buffer
     const isOnRoad = (wx, wz) => {
       for (let nc = 0; nc <= G; nc++) {
         if (Math.abs(wx - np(nc, 0).x) < ROAD_HALF) return true;
@@ -1657,120 +1677,23 @@ async function buildCityWorld3() {
         for (let pk = 0; pk < numParked; pk++) {
           const cp = parkedCarPaths[Math.floor(rand()*parkedCarPaths.length)];
           const side = Math.floor(rand()*4);
-          const px = bpos.x + (side<2 ? (rand()-0.5)*BLK*0.5 : (side===2?-1:1)*(BLK/2+4));
-          const pz = bpos.z + (side>=2 ? (rand()-0.5)*BLK*0.5 : (side===0?-1:1)*(BLK/2+4));
+          const px = bpos.x + (side<2 ? (rand()-0.5)*BLK*0.5 : (side===2?-1:1)*18);
+          const pz = bpos.z + (side>=2 ? (rand()-0.5)*BLK*0.5 : (side===0?-1:1)*18);
           const ry = side < 2 ? 0 : Math.PI/2;
           const pc = placeGround(cp, px, pz, 1.8, ry);
         }
       }
     }
 
-    // ═══ SIDEWALK TREES — along streets per district ═══
-    showToast('\ud83c\udf33 Planting trees...');
-    const treePaths = [
-      'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-A.glb',
-      'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-B.glb',
-      'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-C.glb',
-      'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-D.glb',
-    ];
-    const palmPaths2 = ['palm_00.glb','palm_01.glb','palm_02.glb','palm_03.glb'];
-    const allTreePaths = [...treePaths, ...palmPaths2];
-    await batchPreload(allTreePaths, 'Trees');
-    for (let c = 0; c < G; c++) {
-      for (let r = 0; r < G; r++) {
-        const d = getDist(c, r);
-        const bpos = bc(c, r);
-        let treeCount = d === 'residential' ? 4 : d === 'commercial' ? 2 : d === 'downtown' ? 1 : 0;
-        const usePalms = d === 'downtown' || d === 'commercial';
-        for (let t = 0; t < treeCount; t++) {
-          const tp = usePalms ? palmPaths2[Math.floor(rand()*palmPaths2.length)] : treePaths[Math.floor(rand()*treePaths.length)];
-          // Place along sidewalk edges
-          const side = Math.floor(rand()*4);
-          const tx = bpos.x + (side<2 ? (rand()-0.5)*BLK*0.7 : (side===2?-1:1)*(BLK/2+2));
-          const tz = bpos.z + (side>=2 ? (rand()-0.5)*BLK*0.7 : (side===0?-1:1)*(BLK/2+2));
-          placeGround(tp, tx, tz, 0.8 + rand()*0.5, rand()*Math.PI*2);
-        }
-      }
-    }
+    // REMOVED: duplicate sidewalk tree pass (placed at BLK/2+2 which lands on roads)
+    // — first pass via assets.nature already handles trees with isOnRoad() checks
 
-    // ═══ STREET LIGHTS with actual glow ═══
-    showToast('\ud83d\udca1 Installing street lights...');
-    const slPath = 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/street-light-single.glb';
-    const slDblPath = 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/street-light-double.glb';
-    await batchPreload([slPath, slDblPath], 'Street Lights');
-    // Place street lights along every road
-    for (let c = 0; c < G; c++) {
-      for (let r = 0; r <= G; r++) {
-        const rz = -HALF + r * CELL;
-        const bx2 = -HALF + CELL/2 + c * CELL;
-        // Lights on north side of E-W roads
-        if (rand() > 0.3) {
-          const sl = placeGround(rand()>0.5 ? slPath : slDblPath, bx2 + (rand()-0.5)*BLK*0.4, rz + SEG/2 + 1.5, 1, 0);
-          if (sl) {
-            // No point light — too many kills FPS. Visual glow only.
-          }
-        }
-        // Lights on south side
-        if (rand() > 0.3) {
-          const sl2 = placeGround(rand()>0.5 ? slPath : slDblPath, bx2 + (rand()-0.5)*BLK*0.4, rz - SEG/2 - 1.5, 1, Math.PI);
-          if (sl2) {
-            // No point light — performance.
-          }
-        }
-      }
-    }
-    // Street light points tracked by parent objects
+    // REMOVED: duplicate street light pass (placed at road edges)
+    // — first pass via assets.props.street_light_single/double already places lights inside blocks at ±15
 
     // District ground overlays removed for performance
-    // ═══ EXTRA STREET PROPS — signs, hydrants, benches, dumpsters ═══
-    const extraPropPaths = {
-      bench: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/public-bench.glb',
-      hydrant: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/fire-hydrant.glb',
-      mailbox: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/mailbox.glb',
-      dumpster: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/dumpster.glb',
-      trashBags: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/trash-bags.glb',
-      stopSign: 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/stop-sign.glb',
-    };
-    await batchPreload(Object.values(extraPropPaths), 'Street Props');
-    for (let c = 0; c < G; c++) {
-      for (let r = 0; r < G; r++) {
-        if ((c + r) % 2 !== 0) continue; // Every 2nd block for performance
-        const bpos = bc(c, r);
-        const d = getDist(c, r);
-        // Benches on sidewalks (commercial + downtown)
-        if ((d === 'commercial' || d === 'downtown') && rand() > 0.4) {
-          placeGround(extraPropPaths.bench, bpos.x + BLK/2 + 2, bpos.z + (rand()-0.5)*BLK*0.5, 1, Math.PI/2);
-        }
-        // Fire hydrants
-        if (rand() > 0.5) {
-          placeGround(extraPropPaths.hydrant, bpos.x - BLK/2 - 2, bpos.z + (rand()-0.5)*BLK*0.5, 1, 0);
-        }
-        // Mailboxes in residential
-        if (d === 'residential' && rand() > 0.5) {
-          placeGround(extraPropPaths.mailbox, bpos.x + BLK/2 + 2, bpos.z + (rand()-0.5)*BLK*0.3, 1, Math.PI/2);
-        }
-        // Dumpsters in commercial/industrial alleys
-        if ((d === 'commercial' || d === 'industrial') && rand() > 0.5) {
-          placeGround(extraPropPaths.dumpster, bpos.x + (rand()-0.5)*10, bpos.z - BLK/2 + 2, 1, rand()*Math.PI);
-        }
-        // Trash bags near dumpsters in industrial
-        if (d === 'industrial' && rand() > 0.4) {
-          placeGround(extraPropPaths.trashBags, bpos.x + (rand()-0.5)*15, bpos.z + (rand()-0.5)*15, 1, rand()*Math.PI);
-        }
-        // Fences around industrial blocks
-        if (d === 'industrial' && rand() > 0.5) {
-          const fencePath = 'unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/wired-fence.glb';
-          if (cache[fencePath]) {
-            placeGround(fencePath, bpos.x, bpos.z + BLK/2 + 1, 1, 0);
-            placeGround(fencePath, bpos.x, bpos.z - BLK/2 - 1, 1, 0);
-          }
-        }
-        // Stop signs at alternating intersections
-        if ((c + r) % 3 === 0 && rand() > 0.4) {
-          placeGround(extraPropPaths.stopSign, bpos.x - BLK/2 - 4, bpos.z - BLK/2 - 4, 1, Math.PI/4);
-        }
-      }
-    }
+    // REMOVED: duplicate extra street props pass (benches, hydrants, mailboxes, etc.)
+    // — first pass via assets.props already handles all these at safe ±16 offsets
 
     // ═══ PEDESTRIANS — walking NPCs ═══
     showToast('\ud83d\udeb6 Adding pedestrians...');
