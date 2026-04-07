@@ -1462,6 +1462,7 @@ async function buildCityWorld3() {
       }
       return false;
     };
+    window._isOnRoad = isOnRoad;
 
     for (let c = 0; c < G; c++) {
       for (let r = 0; r < G; r++) {
@@ -1693,6 +1694,22 @@ async function buildCityWorld3() {
             }
           }
         }
+        // Car-to-car collision avoidance
+        if (!stopped) {
+          for (const oc of window._trafficCars) {
+            if (oc === tc || !oc.mesh || !oc.mesh.parent) continue;
+            if (oc.isEW !== tc.isEW) continue;
+            if (tc.isEW) {
+              if (Math.abs(tc.mesh.position.z - oc.mesh.position.z) > 3) continue;
+              const ahead = (oc.mesh.position.x - tc.mesh.position.x) * Math.sign(tc.speed);
+              if (ahead > 0 && ahead < 8) { stopped = true; break; }
+            } else {
+              if (Math.abs(tc.mesh.position.x - oc.mesh.position.x) > 3) continue;
+              const ahead = (oc.mesh.position.z - tc.mesh.position.z) * Math.sign(tc.speed);
+              if (ahead > 0 && ahead < 8) { stopped = true; break; }
+            }
+          }
+        }
         if (!stopped) {
           if (tc.isEW) {
             tc.mesh.position.x += tc.speed;
@@ -1762,14 +1779,27 @@ async function buildCityWorld3() {
           const ll = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); ll.position.set(-0.1, 0.45, 0); g.add(ll);
           const rl = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); rl.position.set(0.1, 0.45, 0); g.add(rl);
           g.traverse(n => { if(n.isMesh) n.castShadow = true; });
-          // Place on sidewalk INSIDE block (±13 max, well clear of roads at ±20)
-          const px = bpos.x + (rand()-0.5) * 26; // ±13 from block center
-          const pz = bpos.z + (rand()-0.5) * 26;
+          // Place on sidewalk strips (±17 to ±19 from block center)
+          const side = rand() > 0.5 ? 1 : -1;
+          const swOff = 17 + rand() * 2; // 17-19 from center
+          const alongAxis = rand() > 0.5; // which sidewalk edge
+          let px, pz, a;
+          if (alongAxis) {
+            px = bpos.x + side * swOff;
+            pz = bpos.z + (rand() - 0.5) * 34;
+            a = side > 0 ? Math.PI/2 : -Math.PI/2; // walk along Z
+            a += (rand() - 0.5) * 0.3; // slight variation
+          } else {
+            px = bpos.x + (rand() - 0.5) * 34;
+            pz = bpos.z + side * swOff;
+            a = side > 0 ? 0 : Math.PI;
+            a += (rand() - 0.5) * 0.3;
+          }
           g.position.set(px, 0, pz);
+          g.rotation.y = a;
           g.userData.isAutoCity = true;
           tag(g); scene.add(g); objects.push(g);
-          const a = rand()*Math.PI*2;
-          window._peds.push({g, la, ra, ll, rl, vx:Math.cos(a)*0.03, vz:Math.sin(a)*0.03, ph:rand()*6, tm:0});
+          window._peds.push({g, la, ra, ll, rl, vx:Math.cos(a)*0.03, vz:Math.sin(a)*0.03, ph:rand()*6, tm:0, bx:bpos.x, bz:bpos.z});
         }
       }
     }
@@ -1780,7 +1810,19 @@ async function buildCityWorld3() {
       if (!window._peds) return;
       for (const p of window._peds) {
         p.ph += 0.07; p.tm += 0.016;
-        p.g.position.x += p.vx; p.g.position.z += p.vz;
+        // Check if next position would be on a road
+        const nx = p.g.position.x + p.vx;
+        const nz = p.g.position.z + p.vz;
+        if (window._isOnRoad && window._isOnRoad(nx, nz)) {
+          p.vx *= -1; p.vz *= -1; p.g.rotation.y += Math.PI; p.tm = 0;
+        } else {
+          p.g.position.x = nx; p.g.position.z = nz;
+        }
+        // Keep within block bounds (±17 from block center)
+        if (p.bx !== undefined) {
+          if (Math.abs(p.g.position.x - p.bx) > 17) { p.vx *= -1; p.g.rotation.y += Math.PI; }
+          if (Math.abs(p.g.position.z - p.bz) > 17) { p.vz *= -1; p.g.rotation.y += Math.PI; }
+        }
         const sw = Math.sin(p.ph) * 0.35;
         p.la.rotation.x = sw; p.ra.rotation.x = -sw;
         p.ll.rotation.x = -sw*0.5; p.rl.rotation.x = sw*0.5;
