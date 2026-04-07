@@ -1468,11 +1468,11 @@ async function buildCityWorld3() {
           const nt = 2 + Math.floor(rand() * 3);
           for (let t = 0; t < nt; t++) {
             const tx = cx + rr(-13, 13), tz = cz + rr(-13, 13);
-            if (!isOnRoad(tx, tz)) placeGround(pick(trees), tx, tz, rsc * rr(0.8, 1.3), rand() * 0.3);
+            if (!isOnRoad(tx, tz)) placeGround(pick(trees), tx, tz, rsc * rr(0.3, 0.5), rand() * 0.3);
           }
           if (rand() > 0.4) {
             const bx = cx + rr(-10, 10), bz = cz + rr(-10, 10);
-            if (!isOnRoad(bx, bz)) placeGround(pick(bushes), bx, bz, rsc * 0.8, 0);
+            if (!isOnRoad(bx, bz)) placeGround(pick(bushes), bx, bz, rsc * 0.3, 0);
           }
         }
 
@@ -1480,18 +1480,18 @@ async function buildCityWorld3() {
           // Sidewalk palms — place on sidewalk edge (±17), NOT on road (±20+)
           if (rand() > 0.45) {
             const px = cx - 17, pz = cz + rr(-6, 6);
-            if (!isOnRoad(px, pz)) placeGround(pick(palms), px, pz, rsc * 1.2, rand() * 0.2);
+            if (!isOnRoad(px, pz)) placeGround(pick(palms), px, pz, rsc * 0.5, rand() * 0.2);
           }
           if (rand() > 0.45) {
             const px = cx + 17, pz = cz + rr(-6, 6);
-            if (!isOnRoad(px, pz)) placeGround(pick(palms), px, pz, rsc * 1.2, rand() * 0.2);
+            if (!isOnRoad(px, pz)) placeGround(pick(palms), px, pz, rsc * 0.5, rand() * 0.2);
           }
         }
 
         if (d === 'industrial') {
           if (rand() > 0.75) {
             const tx = cx + rr(-12, 12), tz = cz + rr(-12, 12);
-            if (!isOnRoad(tx, tz)) placeGround(pick(trees), tx, tz, rsc * 0.7, 0);
+            if (!isOnRoad(tx, tz)) placeGround(pick(trees), tx, tz, rsc * 0.3, 0);
           }
         }
       }
