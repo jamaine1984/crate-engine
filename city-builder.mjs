@@ -866,7 +866,8 @@ async function buildCityWorld3() {
               opacity: 0.6,
               envMapIntensity: 1.5,
             });
-          } else if (sat > 0.15) {
+          } else if (_c.g > 0.5 && _c.g > _c.r * 1.2 && _c.g > _c.b * 1.2) {
+            // Kill green-dominant colors only
             // Desaturate cartoon colors by 65%
             n.material = n.material.clone();
             const avg = (_c.r + _c.g + _c.b) / 3;
@@ -931,7 +932,8 @@ async function buildCityWorld3() {
               opacity: 0.6,
               envMapIntensity: 1.5,
             });
-          } else if (sat > 0.15) {
+          } else if (_c.g > 0.5 && _c.g > _c.r * 1.2 && _c.g > _c.b * 1.2) {
+            // Kill green-dominant colors only
             // Desaturate cartoon colors by 65%
             n.material = n.material.clone();
             const avg = (_c.r + _c.g + _c.b) / 3;
@@ -1009,129 +1011,45 @@ async function buildCityWorld3() {
 
     await batchPreload(allPaths, 'Loading models');
 
-    // ═══ ROAD NETWORK (GLB Toon City Pack pieces) ═══
-    showToast('\ud83d\udee3\ufe0f Building road network...');
+    // ═══ PROCEDURAL ROAD NETWORK (zero gaps) ═══
+    showToast('\ud83d\udee3\ufe0f Building roads...');
+    const rsc = 1; // kept for prop scaling compatibility
 
-    const R = assets.roads;
-    // Measure the straight road piece to determine proper scale
-    const stmpl = cache[R.straight];
-    let rsc = 1;
-    let roadAlongZ = true;
-    if (stmpl) {
-      const sb = new THREE.Box3().setFromObject(stmpl);
-      const ss = sb.getSize(new THREE.Vector3());
-      rsc = SEG / Math.max(ss.x, ss.z, 0.1);
-      roadAlongZ = ss.z >= ss.x;
+    const roadMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
+    const lineMat = new THREE.MeshLambertMaterial({ color: 0xf0d020 });
+    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
+
+    // E-W full-width road strips
+    for (let r = 0; r <= G; r++) {
+      const rz = -HALF + r * CELL;
+      const road = tag(new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2, SEG), roadMat));
+      road.rotation.x = -Math.PI / 2; road.position.set(0, 0.02, rz); road.receiveShadow = true;
+      scene.add(road); objects.push(road);
+      const line = tag(new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2, 0.3), lineMat));
+      line.rotation.x = -Math.PI / 2; line.position.set(0, 0.05, rz);
+      scene.add(line); objects.push(line);
     }
-    const EW_ROT = roadAlongZ ? Math.PI / 2 : 0;  // rotation for east-west roads
-    const NS_ROT = roadAlongZ ? 0 : Math.PI / 2;  // rotation for north-south roads
-
-    // Measure junction piece to compute actual gap between nodes
-    const juncTmpl = cache[R.intersection] || cache[R.t_junction];
-    let juncAlong = SEG;
-    if (juncTmpl) {
-      const jb = new THREE.Box3().setFromObject(juncTmpl);
-      const js = jb.getSize(new THREE.Vector3());
-      juncAlong = Math.max(js.x, js.z) * rsc;
+    // N-S full-width road strips
+    for (let c = 0; c <= G; c++) {
+      const rx = -HALF + c * CELL;
+      const road = tag(new THREE.Mesh(new THREE.PlaneGeometry(SEG, HALF * 2), roadMat));
+      road.rotation.x = -Math.PI / 2; road.position.set(rx, 0.03, 0); road.receiveShadow = true;
+      scene.add(road); objects.push(road);
+      const line = tag(new THREE.Mesh(new THREE.PlaneGeometry(0.3, HALF * 2), lineMat));
+      line.rotation.x = -Math.PI / 2; line.position.set(rx, 0.06, 0);
+      scene.add(line); objects.push(line);
     }
-    // Gap to fill: from junction edge to next junction edge
-    const gapStart = juncAlong / 2;
-    const gapLen = CELL - juncAlong;
-    const straightLen = SEG; // straight piece is exactly SEG after rsc scaling
-    const fillCount = Math.max(1, Math.ceil(gapLen / straightLen));
-    const fillStep = gapLen / fillCount;
-
-    // --- Asphalt fill planes under all intersections and road corridors ---
-    const asphaltMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
-
-    // Fill plane at every grid node (covers junction gaps)
-    for (let nc = 0; nc <= G; nc++) {
-      for (let nr = 0; nr <= G; nr++) {
-        const { x, z } = np(nc, nr);
-        const plane = new THREE.Mesh(new THREE.PlaneGeometry(SEG + 8, SEG + 8), asphaltMat);
-        plane.rotation.x = -Math.PI / 2;
-        plane.position.set(x, 0.01, z);
-        plane.receiveShadow = true;
-        scene.add(tag(plane));
-      }
-    }
-
-    // E-W road strips between nodes (along each row)
-    for (let nr = 0; nr <= G; nr++) {
-      for (let nc = 0; nc < G; nc++) {
-        const p1 = np(nc, nr);
-        const p2 = np(nc + 1, nr);
-        const cx = (p1.x + p2.x) / 2;
-        const cz = p1.z;
-        const strip = new THREE.Mesh(new THREE.PlaneGeometry(CELL, SEG + 4), asphaltMat);
-        strip.rotation.x = -Math.PI / 2;
-        strip.position.set(cx, 0.01, cz);
-        strip.receiveShadow = true;
-        scene.add(tag(strip));
-      }
-    }
-
-    // N-S road strips between nodes (along each column)
-    for (let nc = 0; nc <= G; nc++) {
-      for (let nr = 0; nr < G; nr++) {
-        const p1 = np(nc, nr);
-        const p2 = np(nc, nr + 1);
-        const cx = p1.x;
-        const cz = (p1.z + p2.z) / 2;
-        const strip = new THREE.Mesh(new THREE.PlaneGeometry(SEG + 4, CELL), asphaltMat);
-        strip.rotation.x = -Math.PI / 2;
-        strip.position.set(cx, 0.01, cz);
-        strip.receiveShadow = true;
-        scene.add(tag(strip));
-      }
-    }
-
-    // --- Junction pieces at every grid node (9×9 = 81 nodes) ---
-    for (let nc = 0; nc <= G; nc++) {
-      for (let nr = 0; nr <= G; nr++) {
-        const { x, z } = np(nc, nr);
-        const top = nr === 0, bot = nr === G, left = nc === 0, right = nc === G;
-        const isCorner = (top || bot) && (left || right);
-        const isEdge = !isCorner && (top || bot || left || right);
-
-        if (isCorner) {
-          if (top && left)       placeRoad(R.l_junction_left,  x, z, rsc, Math.PI / 2);
-          else if (top && right) placeRoad(R.l_junction_right, x, z, rsc, 0);
-          else if (bot && left)  placeRoad(R.l_junction_right, x, z, rsc, Math.PI);
-          else                   placeRoad(R.l_junction_left,  x, z, rsc, -Math.PI / 2);
-        } else if (isEdge) {
-          if (top)        placeRoad(R.t_junction, x, z, rsc, Math.PI);
-          else if (bot)   placeRoad(R.t_junction, x, z, rsc, 0);
-          else if (left)  placeRoad(R.t_junction, x, z, rsc, Math.PI / 2);
-          else            placeRoad(R.t_junction, x, z, rsc, -Math.PI / 2);
-        } else {
-          // Interior — full intersections + one central roundabout
-          if (nc === 4 && nr === 4) placeRoad(R.roundabout, x, z, rsc, 0);
-          else placeRoad(R.intersection, x, z, rsc, 0);
-        }
-      }
-    }
-
-    // --- Straight road segments filling gaps between nodes ---
-    // E-W roads (horizontal, constant z per row)
-    for (let nr = 0; nr <= G; nr++) {
-      const z = np(0, nr).z;
-      for (let gap = 0; gap < G; gap++) {
-        const startX = np(gap, 0).x;
-        for (let s = 0; s < fillCount; s++) {
-          const offset = gapStart + fillStep / 2 + s * fillStep;
-          placeRoad(R.straight, startX + offset, z, rsc, EW_ROT);
-        }
-      }
-    }
-    // N-S roads (vertical, constant x per col)
-    for (let nc = 0; nc <= G; nc++) {
-      const x = np(nc, 0).x;
-      for (let gap = 0; gap < G; gap++) {
-        const startZ = np(0, gap).z;
-        for (let s = 0; s < fillCount; s++) {
-          const offset = gapStart + fillStep / 2 + s * fillStep;
-          placeRoad(R.straight, x, startZ + offset, rsc, NS_ROT);
+    // Intersection squares + crosswalks
+    for (let c = 0; c <= G; c++) {
+      for (let r = 0; r <= G; r++) {
+        const ix = -HALF + c * CELL, iz = -HALF + r * CELL;
+        const isq = tag(new THREE.Mesh(new THREE.PlaneGeometry(SEG + 1, SEG + 1), new THREE.MeshLambertMaterial({ color: 0x4a4a4a })));
+        isq.rotation.x = -Math.PI / 2; isq.position.set(ix, 0.04, iz);
+        scene.add(isq); objects.push(isq);
+        for (let s = -3; s <= 3; s += 1.5) {
+          const cw = tag(new THREE.Mesh(new THREE.PlaneGeometry(0.5, SEG * 0.6), whiteMat));
+          cw.rotation.x = -Math.PI / 2; cw.position.set(ix + s, 0.07, iz + SEG / 2 + 1);
+          scene.add(cw); objects.push(cw);
         }
       }
     }
@@ -1272,7 +1190,8 @@ async function buildCityWorld3() {
               opacity: 0.6,
               envMapIntensity: 1.5,
             });
-          } else if (sat > 0.15) {
+          } else if (_c.g > 0.5 && _c.g > _c.r * 1.2 && _c.g > _c.b * 1.2) {
+            // Kill green-dominant colors only
             // Desaturate cartoon colors by 65%
             n.material = n.material.clone();
             const avg = (_c.r + _c.g + _c.b) / 3;
