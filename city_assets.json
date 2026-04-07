@@ -10,11 +10,6 @@
         "buildings_pack_2_building1_large.glb",
         "buildings_pack_2_building2_large.glb",
         "buildings_pack_2_building3_big.glb"
-      ],
-      "commercial": [
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-office.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-hotel.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-shopping-center.glb"
       ]
     },
     "commercial": {
@@ -30,130 +25,104 @@
         "buildings_pack_2_building1_small.glb",
         "buildings_pack_2_building2_small.glb",
         "buildings_pack_2_building4.glb"
-      ],
-      "shops": [
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-coffee-shop.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-fastfood-shop.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-ice-cream-shop.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-pizza-shop.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/commercial-building-cinema.glb"
       ]
     },
     "residential": {
       "buildings": [
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-A.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-B.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-C.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-D.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/suburban-house-E.glb",
         "buildings_pack_3_1story_mat.glb",
         "buildings_pack_3_1story_gableroof_mat.glb",
         "buildings_pack_3_2story_mat.glb",
         "buildings_pack_3_2story_gableroof_mat.glb",
         "buildings_pack_3_2story_sidehouse_mat.glb",
+        "buildings_pack_2_house1.glb",
+        "buildings_pack_2_house2.glb",
         "house_red.glb"
-      ],
-      "apartments": [
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-A.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-B.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-C.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-D.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-E.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-F.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-G.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-H.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/cb-apartment-J.glb"
       ]
     },
     "industrial": {
       "buildings": [
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-building-A.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-building-B.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-building-C.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-inconstruction-building.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/industrial-buildings-inconstruction-warehouse.glb"
+        "buildings_pack_3_2story_wide_2doors_mat.glb",
+        "buildings_pack_3_2story_stairs_mat.glb",
+        "buildings_pack_3_1story_roundroof_mat.glb",
+        "buildings_pack_2_building3_small.glb"
       ]
     },
     "government": {
       "buildings": [
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-bank.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-city-hall.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-fire-station.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-museum.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/government-building-school.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-hospital.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-church.glb",
-        "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-clock-tower.glb"
+        "buildings_pack_2_building1_large.glb",
+        "buildings_pack_2_building2_large.glb",
+        "buildings_pack_2_building3_big.glb",
+        "buildings_pack_3_4story_center_mat.glb",
+        "buildings_pack_3_6story_stack_mat.glb",
+        "buildings_pack_3_4story_wide_2doors_roof_mat.glb"
       ]
     }
   },
   "roads": {
-    "straight": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-linear-road-piece.glb",
-    "curved": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-curved-road-piece.glb",
-    "intersection": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-intersaction.glb",
-    "t_junction": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-T-junction.glb",
-    "l_junction_left": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-L-junction-left.glb",
-    "l_junction_right": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-L-junction-right.glb",
-    "roundabout": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-road-roundabout.glb",
-    "end": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-linear-road-end-piece.glb",
-    "highway_straight": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/linear-highway-piece.glb",
-    "highway_curved": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/curved-highway-piece.glb",
-    "highway_ramp": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/highway-ramp.glb"
+    "straight": "kenney_roads/road-straight.glb",
+    "curved": "kenney_roads/road-curve.glb",
+    "intersection": "kenney_roads/road-crossroad.glb",
+    "t_junction": "kenney_roads/road-intersection.glb",
+    "l_junction_left": "kenney_roads/road-bend.glb",
+    "l_junction_right": "kenney_roads/road-bend.glb",
+    "roundabout": "kenney_roads/road-roundabout.glb",
+    "end": "kenney_roads/road-end.glb"
   },
   "props": {
-    "street_light_single": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/street-light-single.glb",
-    "street_light_double": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/street-light-double.glb",
-    "traffic_light_single": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/traffic-lights-single.glb",
-    "traffic_light_curved": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/traffic-lights-curved.glb",
-    "bench": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/public-bench.glb",
-    "fire_hydrant": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/fire-hydrant.glb",
-    "dumpster": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/dumpster.glb",
-    "garbage_bin": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/garbage-bin.glb",
-    "trash_bags": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/trash-bags.glb",
-    "mailbox": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/mailbox.glb",
-    "stop_sign": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/stop-sign.glb",
-    "speed_limit_sign": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/speed-limit-sign.glb",
-    "no_parking_sign": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/no-parking-sign.glb",
-    "bus_stop": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/bus-stop.glb",
-    "atm": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/atm-A.glb",
-    "subway_entrance": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/subway-entrance.glb",
-    "outdoor_seating": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/outdoor-seating.glb",
-    "hot_dog_stand": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/hot-dog-stand.glb",
-    "traffic_cone": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/traffic-cone.glb",
-    "road_block_a": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/road-block-type-A.glb",
-    "road_block_b": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/road-block-type-B.glb",
-    "wired_fence": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/wired-fence.glb",
-    "wooden_fence": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/wooden-fence.glb",
-    "electrical_pole": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/electrical-pole-duo.glb"
+    "street_light_single": "kenney_roads/light-square.glb",
+    "street_light_double": "kenney_roads/light-square-double.glb",
+    "traffic_light_single": "kenney_roads/light-curved.glb",
+    "traffic_light_curved": "kenney_roads/light-curved-double.glb",
+    "bench": "barrel_00.glb",
+    "fire_hydrant": "barrel_01.glb",
+    "dumpster": "crate_00.glb",
+    "garbage_bin": "barrel_02.glb",
+    "trash_bags": "crate_01.glb",
+    "mailbox": "barrel_03.glb",
+    "stop_sign": "kenney_roads/road-straight-barrier-end.glb",
+    "speed_limit_sign": "kenney_roads/road-straight-barrier-end.glb",
+    "no_parking_sign": "kenney_roads/road-straight-barrier-end.glb",
+    "bus_stop": "barrel_04.glb",
+    "atm": "crate_02.glb",
+    "subway_entrance": "crate_03.glb",
+    "outdoor_seating": "barrel_05.glb",
+    "hot_dog_stand": "crate_04.glb",
+    "traffic_cone": "kenney_roads/construction-cone.glb",
+    "road_block_a": "kenney_roads/construction-barrier.glb",
+    "road_block_b": "kenney_roads/construction-barrier.glb",
+    "wired_fence": "cyberpunk_pack_fence.glb",
+    "wooden_fence": "cyberpunk_pack_fence.glb",
+    "electrical_pole": "kenney_roads/light-square.glb"
   },
   "nature": {
     "trees": [
-      "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-A.glb",
-      "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-B.glb",
-      "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-C.glb",
-      "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/tree-type-D.glb"
+      "tree_round_00.glb",
+      "tree_round_01.glb",
+      "tree_round_02.glb",
+      "tree_cone_00.glb",
+      "tree_layered_00.glb"
     ],
     "bushes": [
-      "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/bush-type-A.glb",
-      "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/bush-type-B.glb"
+      "bush_00.glb",
+      "bush_01.glb"
     ],
     "rocks": [
-      "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/rock-type-A.glb",
-      "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/rock-type-B.glb"
+      "rock_00.glb",
+      "rock_01.glb"
     ],
-    "palms": ["palm_00.glb","palm_01.glb","palm_02.glb","palm_03.glb","palm_04.glb"]
+    "palms": ["palm_00.glb","palm_01.glb","palm_02.glb","palm_03.glb"]
   },
   "vehicles": {
     "civilian": ["kenney_cars/sedan.glb","kenney_cars/sedan-sports.glb","kenney_cars/hatchback-sports.glb","kenney_cars/suv.glb","kenney_cars/suv-luxury.glb","kenney_cars/van.glb","kenney_cars/truck.glb"],
-    "service": ["kenney_cars/taxi.glb","kenney_cars/police.glb","kenney_cars/ambulance.glb","kenney_cars/firetruck.glb","kenney_cars/garbage-truck.glb"],
+    "service": ["kenney_cars/taxi.glb","kenney_cars/police.glb","kenney_cars/ambulance.glb","kenney_cars/firetruck.glb"],
     "commercial": ["kenney_cars/delivery.glb","kenney_cars/delivery-flat.glb","kenney_cars/truck-flat.glb"]
   },
   "infrastructure": {
-    "gas_station": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-gas-station.glb",
-    "parking_lot": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-parking-lot.glb",
-    "park": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-park.glb",
-    "train_station": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-train-station.glb",
-    "stadium": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-stadium.glb",
-    "plaza": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/infrastructure-building-plaza.glb"
+    "gas_station": "buildings_pack_3_1story_sign_mat.glb",
+    "parking_lot": "buildings_pack_3_1story_roundroof_mat.glb",
+    "park": "tree_00.glb",
+    "train_station": "buildings_pack_2_building4.glb",
+    "stadium": "buildings_pack_2_building3_big.glb",
+    "plaza": "buildings_pack_3_2story_center_mat.glb"
   }
 }
