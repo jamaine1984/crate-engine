@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crate Engine Docs — API Reference & Command Guide</title>
+<meta name="description" content="Complete documentation for Crate Engine — the AI-powered 3D game engine. Commands, API reference, world recipes, and more.">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root { --bg:#0a0a0a; --fg:#e0e0e0; --muted:#666; --accent:#ff6b35; --accent2:#f7c948; --card:#111; --border:#1a1a1a; --green:#4ade80; --blue:#60a5fa; --purple:#c084fc; --red:#ef4444; }
+  html { scroll-behavior:smooth; }
+  body { background:var(--bg); color:var(--fg); font-family:'Inter',-apple-system,system-ui,sans-serif; line-height:1.7; }
+
+  /* Nav */
+  nav { display:flex; align-items:center; justify-content:space-between; padding:10px 24px; background:rgba(10,10,10,0.95); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100; }
+  nav .logo { font-size:1.1rem; font-weight:900; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; text-decoration:none; }
+  nav .links { display:flex; gap:16px; align-items:center; }
+  nav .links a { color:var(--muted); text-decoration:none; font-size:0.8rem; transition:color 0.2s; }
+  nav .links a:hover { color:var(--accent); }
+
+  /* Layout */
+  .wrapper { display:flex; max-width:1200px; margin:0 auto; min-height:calc(100vh - 50px); }
+  .sidebar { width:240px; padding:24px 16px; border-right:1px solid var(--border); position:sticky; top:50px; height:calc(100vh - 50px); overflow-y:auto; flex-shrink:0; }
+  .sidebar h3 { color:var(--accent); font-size:0.7rem; text-transform:uppercase; letter-spacing:1.5px; margin:16px 0 8px; }
+  .sidebar a { display:block; color:var(--muted); text-decoration:none; font-size:0.8rem; padding:4px 8px; border-radius:4px; transition:all 0.15s; }
+  .sidebar a:hover, .sidebar a.active { color:var(--fg); background:rgba(255,107,53,0.08); }
+  .content { flex:1; padding:32px 40px; max-width:800px; }
+
+  /* Typography */
+  h1 { font-size:2rem; font-weight:900; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:8px; }
+  h2 { font-size:1.4rem; font-weight:700; color:var(--fg); margin:40px 0 16px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+  h3 { font-size:1rem; font-weight:700; color:var(--accent); margin:24px 0 12px; }
+  p { color:#bbb; margin-bottom:12px; }
+
+  /* Code */
+  code { font-family:'JetBrains Mono',monospace; font-size:0.85em; background:#1a1a2e; padding:2px 6px; border-radius:4px; color:var(--accent2); }
+  pre { background:#0d0d14; border:1px solid #1a1a2e; border-radius:8px; padding:16px; overflow-x:auto; margin:12px 0 20px; }
+  pre code { background:none; padding:0; font-size:0.8rem; color:#ccc; }
+
+  /* Command table */
+  .cmd-table { width:100%; border-collapse:collapse; margin:12px 0 24px; }
+  .cmd-table th { text-align:left; padding:10px 12px; background:#141414; color:var(--accent); font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; border-bottom:2px solid var(--border); }
+  .cmd-table td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:0.85rem; }
+  .cmd-table td:first-child { font-family:'JetBrains Mono',monospace; color:var(--accent2); white-space:nowrap; }
+  .cmd-table tr:hover td { background:rgba(255,107,53,0.03); }
+
+  /* Tags */
+  .tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+  .tag-new { background:rgba(74,222,128,0.15); color:var(--green); }
+  .tag-physics { background:rgba(247,201,72,0.15); color:var(--accent2); }
+  .tag-ai { background:rgba(192,132,252,0.15); color:var(--purple); }
+
+  /* Feature cards */
+  .feature-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:16px 0; }
+  .feature-card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:16px; }
+  .feature-card h4 { font-size:0.85rem; color:var(--fg); margin-bottom:6px; }
+  .feature-card p { font-size:0.8rem; color:var(--muted); margin:0; }
+
+  /* Responsive */
+  @media (max-width:768px) {
+    .sidebar { display:none; }
+    .content { padding:20px 16px; }
+    .feature-grid { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">Crate Engine Docs</a>
+  <div class="links">
+    <a href="/play.html">Open Engine</a>
+    <a href="/features.html">Features</a>
+    <a href="https://github.com/jamaine1984/crate-engine">GitHub</a>
+  </div>
+</nav>
+
+<div class="wrapper">
+<aside class="sidebar">
+  <h3>Getting Started</h3>
+  <a href="#overview">Overview</a>
+  <a href="#quickstart">Quick Start</a>
+  <a href="#architecture">Architecture</a>
+
+  <h3>Commands</h3>
+  <a href="#objects">Objects & Models</a>
+  <a href="#world-building">World Building</a>
+  <a href="#characters">Characters & NPCs</a>
+  <a href="#combat">Combat & Weapons</a>
+  <a href="#environment">Environment</a>
+  <a href="#camera">Camera & View</a>
+  <a href="#scene-mgmt">Scene Management</a>
+
+  <h3>Systems</h3>
+  <a href="#physics">Physics (Rapier)</a>
+  <a href="#animation">Animation</a>
+  <a href="#audio">Audio</a>
+  <a href="#multiplayer">Multiplayer</a>
+  <a href="#ai-agent">AI Agent</a>
+  <a href="#scripting">Scripting API</a>
+
+  <h3>Reference</h3>
+  <a href="#world-recipes">World Recipes</a>
+  <a href="#keyboard">Keyboard Shortcuts</a>
+  <a href="#voice">Voice Commands</a>
+  <a href="#export">Export & Share</a>
+</aside>
+
+<main class="content">
+
+<!-- ─── OVERVIEW ─── -->
+<h1>Crate Engine Documentation</h1>
+<p>Build 3D games by typing natural language commands. 6,218 real 3D models, 27+ world recipes, real-time physics, multiplayer, and AI-powered creation — all in your browser.</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <h4>AI-First Creation</h4>
+    <p>Type "build cyberpunk city" and get a playable 3D world in seconds. No coding required.</p>
+  </div>
+  <div class="feature-card">
+    <h4>Rapier Physics <span class="tag tag-new">NEW</span></h4>
+    <p>Real rigid-body simulation powered by Rust/WASM. Objects fall, bounce, and collide realistically.</p>
+  </div>
+  <div class="feature-card">
+    <h4>6,218 3D Models</h4>
+    <p>Characters, weapons, buildings, vehicles, trees, furniture — all ready to drop into your scene.</p>
+  </div>
+  <div class="feature-card">
+    <h4>Multiplayer</h4>
+    <p>WebSocket rooms with player sync, chat, and shared building.</p>
+  </div>
+</div>
+
+<h2 id="quickstart">Quick Start</h2>
+<p>Open <a href="/play.html" style="color:var(--accent)">crateshipgames.com/play.html</a> and type commands in the prompt bar at the bottom:</p>
+<pre><code>add tree                 — drops a 3D tree into the scene
+add castle               — places a castle model
+build medieval village   — generates a full village with NPCs
+play                     — enter first-person play mode (WASD + mouse)
+exit                     — return to editor mode</code></pre>
+
+<h2 id="architecture">Architecture</h2>
+<table class="cmd-table">
+  <tr><th>Module</th><th>Purpose</th></tr>
+  <tr><td>engine.mjs</td><td>Core renderer, scene graph, command system, HUD, world builder</td></tr>
+  <tr><td>character.mjs</td><td>Player controller, NPCs, animation state machine, combat</td></tr>
+  <tr><td>physics.mjs</td><td>Rapier 3D rigid-body physics (WASM) <span class="tag tag-new">NEW</span></td></tr>
+  <tr><td>ai-agent.mjs</td><td>AI chat interface, 27+ world recipes, NPC behavior</td></tr>
+  <tr><td>godmode.mjs</td><td>Runtime effect injection, visual FX</td></tr>
+  <tr><td>collision.mjs</td><td>Octree capsule collision (player movement)</td></tr>
+  <tr><td>sound.mjs</td><td>Procedural Web Audio (tones, music, SFX)</td></tr>
+  <tr><td>multiplayer-client.mjs</td><td>WebSocket rooms, peer sync</td></tr>
+  <tr><td>voice-commands.mjs</td><td>Web Speech API, 50K+ NLP phrase variations</td></tr>
+  <tr><td>mobile.mjs</td><td>Virtual joystick, touch buttons</td></tr>
+</table>
+
+<!-- ─── COMMANDS: OBJECTS ─── -->
+<h2 id="objects">Objects & Models</h2>
+<table class="cmd-table">
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td>add [model]</td><td>Add a 3D model. e.g. <code>add car</code>, <code>add house</code>, <code>add sword</code></td></tr>
+  <tr><td>add [model] at [x] [z]</td><td>Add at specific coordinates. e.g. <code>add tree at 10 5</code></td></tr>
+  <tr><td>remove [name]</td><td>Remove an object by name</td></tr>
+  <tr><td>scale [name] [n]</td><td>Scale object. e.g. <code>scale castle 2</code></td></tr>
+  <tr><td>rotate [name] [deg]</td><td>Rotate object. e.g. <code>rotate house 90</code></td></tr>
+  <tr><td>move [name] to [x] [z]</td><td>Move object to coordinates</td></tr>
+  <tr><td>color [name] [color]</td><td>Change material color. e.g. <code>color car red</code></td></tr>
+  <tr><td>clone [name]</td><td>Duplicate an object</td></tr>
+  <tr><td>clear</td><td>Remove all objects</td></tr>
+  <tr><td>browse [category]</td><td>Open model gallery. Categories: characters, weapons, buildings, vehicles, nature, furniture</td></tr>
+</table>
+
+<!-- ─── COMMANDS: WORLD BUILDING ─── -->
+<h2 id="world-building">World Building</h2>
+<table class="cmd-table">
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td>build city</td><td>Generate a full procedural city with roads, buildings, traffic, pedestrians</td></tr>
+  <tr><td>build medieval village</td><td>Cozy village with tavern, church, houses, NPCs</td></tr>
+  <tr><td>build cyberpunk city</td><td>Neon-lit streets, skyscrapers, holographic signs</td></tr>
+  <tr><td>build castle</td><td>Castle with walls, towers, courtyard, guards</td></tr>
+  <tr><td>build pirate port</td><td>Docks, ships, tavern, cannon emplacements</td></tr>
+  <tr><td>build forest</td><td>Dense procedural forest with lakes</td></tr>
+  <tr><td>build space base</td><td>Sci-fi corridors, landing pads, alien flora</td></tr>
+  <tr><td>build zombie wasteland</td><td>Destroyed buildings, barricades, zombie NPCs</td></tr>
+  <tr><td>build dungeon</td><td>Underground chambers, torches, traps</td></tr>
+  <tr><td>build arena</td><td>Colosseum-style fighting ring with spectators</td></tr>
+  <tr><td>build modern city</td><td>Contemporary buildings, parks, vehicles</td></tr>
+  <tr><td>set ground [type]</td><td>grass, sand, snow, lava, asphalt, dirt, stone, water</td></tr>
+  <tr><td>set terrain [type]</td><td>flat, hills, mountains, canyon, island, dunes, volcano, mesa</td></tr>
+</table>
+
+<h3 id="world-recipes">All 27 World Recipes</h3>
+<p>Type <code>build [name]</code> for any of these:</p>
+<pre><code>medieval village    medieval town    medieval city    fantasy town
+castle             castle town      pirate port      pirate island
+farm               forest camp      desert town      fishing village
+mountain settlement market district  military fort    cyberpunk city
+space base         zombie wasteland post-apocalyptic frozen tundra
+horror             dungeon          jungle           dinosaur valley
+underwater ruins   modern city      arena</code></pre>
+
+<!-- ─── CHARACTERS ─── -->
+<h2 id="characters">Characters & NPCs</h2>
+<table class="cmd-table">
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td>add npc [type]</td><td>Spawn NPC. Types: knight, soldier, woman, man, robot, guard</td></tr>
+  <tr><td>add [n] npcs</td><td>Spawn multiple NPCs. e.g. <code>add 5 npcs</code></td></tr>
+  <tr><td>select character [name]</td><td>Change player character for play mode</td></tr>
+  <tr><td>animate [name] [anim]</td><td>Play animation: idle, walk, run, attack, dance, wave, etc.</td></tr>
+</table>
+
+<!-- ─── COMBAT ─── -->
+<h2 id="combat">Combat & Weapons</h2>
+<table class="cmd-table">
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td>equip [weapon]</td><td>Equip weapon to character. e.g. <code>equip sword</code></td></tr>
+  <tr><td>shooter mode</td><td>Enable FPS shooting controls</td></tr>
+</table>
+<p><strong>Play mode controls:</strong> Left-click to attack/shoot, R to reload, Shift to sprint.</p>
+
+<!-- ─── ENVIRONMENT ─── -->
+<h2 id="environment">Environment</h2>
+<table class="cmd-table">
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td>set weather [type]</td><td>rain, snow, clear, storm, overcast, fog</td></tr>
+  <tr><td>set time [period]</td><td>dawn, morning, noon, afternoon, sunset, night</td></tr>
+  <tr><td>set fog [level]</td><td>none, light, heavy</td></tr>
+  <tr><td>add water</td><td>Add water plane to scene</td></tr>
+  <tr><td>add light</td><td>Add point light at cursor position</td></tr>
+</table>
+
+<!-- ─── CAMERA ─── -->
+<h2 id="camera">Camera & View</h2>
+<table class="cmd-table">
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td>play</td><td>Enter first-person play mode (pointer lock + WASD)</td></tr>
+  <tr><td>exit</td><td>Return to editor/orbit mode</td></tr>
+  <tr><td>screenshot</td><td>Capture viewport as PNG</td></tr>
+  <tr><td>photo mode</td><td>Toggle cinematic photo mode</td></tr>
+</table>
+
+<!-- ─── SCENE MANAGEMENT ─── -->
+<h2 id="scene-mgmt">Scene Management</h2>
+<table class="cmd-table">
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td>save</td><td>Save scene to browser storage</td></tr>
+  <tr><td>load</td><td>Show saved scenes list</td></tr>
+  <tr><td>share</td><td>Generate shareable URL with scene data</td></tr>
+  <tr><td>undo</td><td>Undo last action</td></tr>
+  <tr><td>redo</td><td>Redo undone action</td></tr>
+  <tr><td>export html</td><td>Export as standalone HTML file</td></tr>
+  <tr><td>export unity</td><td>Export scene as GLTF for Unity</td></tr>
+  <tr><td>export unreal</td><td>Export scene as GLTF for Unreal Engine</td></tr>
+</table>
+
+<!-- ─── PHYSICS ─── -->
+<h2 id="physics">Physics Engine (Rapier 3D) <span class="tag tag-new">NEW</span></h2>
+<p>Crate Engine integrates <strong>Rapier 3D</strong> — a high-performance rigid-body physics engine written in Rust, compiled to WebAssembly. Objects gain realistic gravity, collisions, bouncing, and impulse forces.</p>
+
+<h3>Using Physics in the Editor</h3>
+<p>Click any object to open the Inspector panel, then click <strong>"Add Physics"</strong>. The object becomes a dynamic rigid body that falls under gravity and collides with other physics objects and the ground.</p>
+
+<h3>Scripting API</h3>
+<pre><code>// Access the physics module
+const phys = window._physics;
+
+// Initialize (loads Rapier WASM — call once)
+await phys.init();
+
+// Make an object physical
+phys.addRigidbody(myMesh, 'dynamic');   // falls under gravity
+phys.addRigidbody(wall, 'static');      // immovable collider
+phys.addRigidbody(platform, 'kinematic'); // script-controlled
+
+// Apply forces
+phys.applyImpulse(myMesh, 0, 20, 0);   // launch upward
+phys.applyForce(myMesh, 10, 0, 0);     // push right
+
+// Remove physics
+phys.removeRigidbody(myMesh);
+
+// Query
+phys.isReady();    // true after init()
+phys.bodyCount();  // number of active physics bodies
+phys.clear();      // remove all physics bodies</code></pre>
+
+<h3>Physics Types</h3>
+<table class="cmd-table">
+  <tr><th>Type</th><th>Behavior</th><th>Use Case</th></tr>
+  <tr><td>dynamic</td><td>Affected by gravity, forces, collisions</td><td>Crates, barrels, NPCs, vehicles</td></tr>
+  <tr><td>static</td><td>Immovable, other objects collide with it</td><td>Walls, floors, terrain</td></tr>
+  <tr><td>kinematic</td><td>Moved by script, pushes dynamic objects</td><td>Moving platforms, elevators, doors</td></tr>
+</table>
+
+<!-- ─── ANIMATION ─── -->
+<h2 id="animation">Animation System</h2>
+<p>Crate Engine supports skeletal animation via Three.js AnimationMixer with automatic Mixamo retargeting.</p>
+<h3>Available Animations</h3>
+<pre><code>Locomotion:  idle, walk, run, sprint, strafe_left, strafe_right, crouch
+Combat:      attack, slash, parry, block, dodge, cast_spell
+Emotion:     celebrate, sad, angry, happy, agree, disagree
+Special:     swim, climb, fall, glide, dance, point, wave</code></pre>
+
+<!-- ─── AUDIO ─── -->
+<h2 id="audio">Audio System</h2>
+<p>Fully procedural — no audio files needed. All sound is synthesized via Web Audio API.</p>
+<table class="cmd-table">
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td>set music [mood]</td><td>peaceful, action, mysterious, horror, epic</td></tr>
+  <tr><td>set ambient [type]</td><td>forest, desert, underwater, city, cave</td></tr>
+  <tr><td>mute / unmute</td><td>Toggle all audio</td></tr>
+</table>
+
+<!-- ─── MULTIPLAYER ─── -->
+<h2 id="multiplayer">Multiplayer</h2>
+<p>Click the globe icon to open the multiplayer lobby. Supports WebSocket rooms with:</p>
+<ul style="color:#bbb;padding-left:20px;margin-bottom:16px">
+  <li>Player position/animation sync</li>
+  <li>Shared building (commands broadcast to room)</li>
+  <li>In-game chat</li>
+  <li>Custom room names</li>
+</ul>
+
+<!-- ─── AI AGENT ─── -->
+<h2 id="ai-agent">AI Build Agent <span class="tag tag-ai">AI</span></h2>
+<p>The AI agent interprets natural language and builds worlds. It works locally with zero API keys for built-in commands. For advanced LLM-powered interpretation, add an OpenRouter key in Settings.</p>
+<pre><code>// Examples of natural language commands:
+"make a spooky haunted house with fog"
+"create a racing track with 3 cars"
+"build me a village with a tavern and 10 villagers"
+"add a dragon flying over the castle"</code></pre>
+
+<!-- ─── SCRIPTING ─── -->
+<h2 id="scripting">Scripting API</h2>
+<p>Access engine internals via <code>window._engineBridge</code>:</p>
+<pre><code>const engine = window._engineBridge;
+
+// Load a 3D model
+engine.loadGLBModel('car', 'car', 5, 0);
+
+// Access the Three.js scene
+const scene = engine.scene;
+const camera = engine.camera;
+const renderer = engine.renderer;
+
+// Run a text command programmatically
+engine.exec('add tree at 10 5');
+
+// Get all scene objects
+const objects = engine.getObjects();
+
+// Physics (NEW)
+const phys = window._physics;
+await phys.init();
+phys.addRigidbody(objects[0], 'dynamic');</code></pre>
+
+<!-- ─── KEYBOARD ─── -->
+<h2 id="keyboard">Keyboard Shortcuts</h2>
+<table class="cmd-table">
+  <tr><th>Key</th><th>Editor Mode</th><th>Play Mode</th></tr>
+  <tr><td>WASD</td><td>—</td><td>Move character</td></tr>
+  <tr><td>Space</td><td>—</td><td>Jump</td></tr>
+  <tr><td>Shift</td><td>—</td><td>Sprint</td></tr>
+  <tr><td>E</td><td>—</td><td>Interact / Pickup</td></tr>
+  <tr><td>R</td><td>—</td><td>Reload weapon</td></tr>
+  <tr><td>F</td><td>—</td><td>Enter door / vehicle</td></tr>
+  <tr><td>V</td><td>Voice command</td><td>Voice command</td></tr>
+  <tr><td>Enter</td><td>Focus command bar</td><td>—</td></tr>
+  <tr><td>Escape</td><td>Deselect</td><td>Pause menu</td></tr>
+  <tr><td>Delete</td><td>Delete selected object</td><td>—</td></tr>
+  <tr><td>?</td><td>Show help</td><td>—</td></tr>
+  <tr><td>/</td><td>Focus command bar</td><td>—</td></tr>
+  <tr><td>`</td><td>Toggle FPS counter</td><td>Toggle FPS counter</td></tr>
+  <tr><td>Ctrl+Z</td><td>Undo</td><td>—</td></tr>
+  <tr><td>Ctrl+Y</td><td>Redo</td><td>—</td></tr>
+</table>
+
+<!-- ─── VOICE ─── -->
+<h2 id="voice">Voice Commands</h2>
+<p>Click the microphone button or press <strong>V</strong> to activate voice input. Crate Engine supports 50,000+ phrase variations with fuzzy matching.</p>
+<pre><code>// Examples:
+"add a big red castle"
+"make it rain"
+"spawn ten soldiers"
+"build me a dungeon"
+"play mode"</code></pre>
+
+<!-- ─── EXPORT ─── -->
+<h2 id="export">Export & Share</h2>
+<table class="cmd-table">
+  <tr><th>Format</th><th>Command</th><th>Description</th></tr>
+  <tr><td>Share URL</td><td><code>share</code></td><td>Compressed scene in URL — anyone can remix</td></tr>
+  <tr><td>Standalone HTML</td><td><code>export html</code></td><td>Self-contained HTML file with Three.js</td></tr>
+  <tr><td>Unity (GLTF)</td><td><code>export unity</code></td><td>GLTF scene file for Unity import</td></tr>
+  <tr><td>Unreal (GLTF)</td><td><code>export unreal</code></td><td>GLTF scene file for Unreal Engine import</td></tr>
+  <tr><td>Screenshot</td><td><code>screenshot</code></td><td>PNG capture of current viewport</td></tr>
+</table>
+
+<div style="margin-top:60px;padding:24px;background:#111;border:1px solid var(--border);border-radius:8px;text-align:center">
+  <p style="color:var(--muted);font-size:0.85rem;margin:0">Crate Engine v1.0 — Built by Jamaine Martin</p>
+  <p style="color:var(--muted);font-size:0.75rem;margin:4px 0 0"><a href="/play.html" style="color:var(--accent)">Open Engine</a> | <a href="https://github.com/jamaine1984/crate-engine" style="color:var(--accent)">GitHub</a></p>
+</div>
+
+</main>
+</div>
+
+<script>
+// Highlight active sidebar link on scroll
+const sections = document.querySelectorAll('h2[id], h3[id]');
+const sideLinks = document.querySelectorAll('.sidebar a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 80) current = s.id; });
+  sideLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+});
+</script>
+</body>
+</html>
