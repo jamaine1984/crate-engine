@@ -22,6 +22,7 @@
         "buildings_pack_3_2story_columns_mat.glb",
         "buildings_pack_3_2story_double_mat.glb",
         "buildings_pack_3_2story_wide_mat.glb",
+        "buildings_pack_3_2story_sign_mat.glb",
         "buildings_pack_2_building1_small.glb",
         "buildings_pack_2_building2_small.glb",
         "buildings_pack_2_building4.glb"
@@ -34,9 +35,9 @@
         "buildings_pack_3_2story_mat.glb",
         "buildings_pack_3_2story_gableroof_mat.glb",
         "buildings_pack_3_2story_sidehouse_mat.glb",
+        "buildings_pack_3_2story_slim_mat.glb",
         "buildings_pack_2_house1.glb",
-        "buildings_pack_2_house2.glb",
-        "house_red.glb"
+        "buildings_pack_2_house2.glb"
       ]
     },
     "industrial": {
@@ -44,6 +45,7 @@
         "buildings_pack_3_2story_wide_2doors_mat.glb",
         "buildings_pack_3_2story_stairs_mat.glb",
         "buildings_pack_3_1story_roundroof_mat.glb",
+        "buildings_pack_3_1story_sign_mat.glb",
         "buildings_pack_2_building3_small.glb"
       ]
     },
@@ -53,76 +55,112 @@
         "buildings_pack_2_building2_large.glb",
         "buildings_pack_2_building3_big.glb",
         "buildings_pack_3_4story_center_mat.glb",
-        "buildings_pack_3_6story_stack_mat.glb",
-        "buildings_pack_3_4story_wide_2doors_roof_mat.glb"
+        "buildings_pack_3_6story_stack_mat.glb"
       ]
     }
   },
-  "roads": {
-    "straight": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-linear-road-piece.glb",
-    "curved": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-curved-road-piece.glb",
-    "intersection": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-intersaction.glb",
-    "t_junction": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-T-junction.glb",
-    "l_junction_left": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-L-junction-left.glb",
-    "l_junction_right": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-L-junction-right.glb",
-    "roundabout": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-road-roundabout.glb",
-    "end": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-linear-road-end-piece.glb"
-  },
   "props": {
-    "street_light_single": "kenney_roads/light-square.glb",
-    "street_light_double": "kenney_roads/light-square-double.glb",
+    "street_light_single": "ph_street_lamp_01.glb",
+    "street_light_double": "ph_street_lamp_02.glb",
     "traffic_light_single": "kenney_roads/light-curved.glb",
     "traffic_light_curved": "kenney_roads/light-curved-double.glb",
-    "bench": "barrel_00.glb",
+    "bench": "dl_bench_1_low_poly.glb",
     "fire_hydrant": "barrel_01.glb",
-    "dumpster": "crate_00.glb",
+    "dumpster": "dl_cargo_container_mesh_dae.glb",
     "garbage_bin": "barrel_02.glb",
     "trash_bags": "crate_01.glb",
-    "mailbox": "barrel_03.glb",
-    "stop_sign": "kenney_roads/road-straight-barrier-end.glb",
-    "speed_limit_sign": "kenney_roads/road-straight-barrier-end.glb",
-    "no_parking_sign": "kenney_roads/road-straight-barrier-end.glb",
-    "bus_stop": "barrel_04.glb",
-    "atm": "crate_02.glb",
-    "subway_entrance": "crate_03.glb",
-    "outdoor_seating": "barrel_05.glb",
-    "hot_dog_stand": "crate_04.glb",
+    "mailbox": "crate_00.glb",
+    "stop_sign": "street_pack_sign_stop.glb",
+    "speed_limit_sign": "street_pack_sign_triangle.glb",
+    "no_parking_sign": "street_pack_sign_noparking.glb",
+    "bus_stop": "dl_bench_1_low_poly.glb",
+    "atm": "ph_CashRegister_01.glb",
+    "subway_entrance": "ph_concrete_road_barrier.glb",
+    "outdoor_seating": "ph_modular_street_seating.glb",
+    "hot_dog_stand": "ph_CoffeeCart_01.glb",
     "traffic_cone": "kenney_roads/construction-cone.glb",
     "road_block_a": "kenney_roads/construction-barrier.glb",
-    "road_block_b": "kenney_roads/construction-barrier.glb",
+    "road_block_b": "ph_concrete_road_barrier_02.glb",
     "wired_fence": "cyberpunk_pack_fence.glb",
-    "wooden_fence": "cyberpunk_pack_fence.glb",
-    "electrical_pole": "kenney_roads/light-square.glb"
+    "wooden_fence": "fence.glb",
+    "electrical_pole": "ph_modular_electricity_poles.glb",
+    "light_street_cyberpunk": "cyberpunk_pack_light_street_1.glb",
+    "sign_cyberpunk_1": "cyberpunk_pack_sign_1.glb",
+    "sign_cyberpunk_2": "cyberpunk_pack_sign_2.glb",
+    "sign_cyberpunk_3": "cyberpunk_pack_sign_3.glb",
+    "sign_corner": "cyberpunk_pack_sign_corner_1.glb",
+    "flower_pot": "flower_00.glb",
+    "planter": "flower_01.glb"
   },
   "nature": {
     "trees": [
       "tree_round_00.glb",
       "tree_round_01.glb",
       "tree_round_02.glb",
+      "tree_round_03.glb",
       "tree_cone_00.glb",
-      "tree_layered_00.glb"
+      "tree_cone_01.glb",
+      "tree_layered_00.glb",
+      "tree_layered_01.glb"
     ],
     "bushes": [
       "bush_00.glb",
-      "bush_01.glb"
+      "bush_01.glb",
+      "bush_02.glb",
+      "bush_03.glb"
     ],
     "rocks": [
       "rock_00.glb",
-      "rock_01.glb"
+      "rock_01.glb",
+      "boulder_00.glb",
+      "boulder_01.glb"
     ],
-    "palms": ["palm_00.glb","palm_01.glb","palm_02.glb","palm_03.glb"]
+    "palms": ["palm_00.glb","palm_01.glb","palm_02.glb","palm_03.glb"],
+    "flowers": ["flower_00.glb","flower_01.glb","flower_02.glb","flower_03.glb","flower_04.glb"]
   },
   "vehicles": {
-    "civilian": ["kenney_cars/sedan.glb","kenney_cars/sedan-sports.glb","kenney_cars/hatchback-sports.glb","kenney_cars/suv.glb","kenney_cars/suv-luxury.glb","kenney_cars/van.glb","kenney_cars/truck.glb"],
-    "service": ["kenney_cars/taxi.glb","kenney_cars/police.glb","kenney_cars/ambulance.glb","kenney_cars/firetruck.glb"],
-    "commercial": ["kenney_cars/delivery.glb","kenney_cars/delivery-flat.glb","kenney_cars/truck-flat.glb"]
+    "civilian": [
+      "kenney_cars/sedan.glb",
+      "kenney_cars/sedan-sports.glb",
+      "kenney_cars/hatchback-sports.glb",
+      "kenney_cars/suv.glb",
+      "kenney_cars/suv-luxury.glb",
+      "kenney_cars/van.glb",
+      "kenney_cars/truck.glb",
+      "kenney_cars/taxi.glb",
+      "dl_low_polly_retro_copper_car.glb",
+      "dl_morris_minor.glb"
+    ],
+    "service": [
+      "kenney_cars/police.glb",
+      "kenney_cars/ambulance.glb",
+      "kenney_cars/firetruck.glb",
+      "kenney_cars/garbage-truck.glb"
+    ],
+    "commercial": [
+      "kenney_cars/delivery.glb",
+      "kenney_cars/delivery-flat.glb",
+      "kenney_cars/truck-flat.glb"
+    ]
   },
   "infrastructure": {
     "gas_station": "buildings_pack_3_1story_sign_mat.glb",
     "parking_lot": "buildings_pack_3_1story_roundroof_mat.glb",
-    "park": "tree_00.glb",
-    "train_station": "buildings_pack_2_building4.glb",
+    "park": "tree_round_00.glb",
     "stadium": "buildings_pack_2_building3_big.glb",
     "plaza": "buildings_pack_3_2story_center_mat.glb"
+  },
+  "furniture": {
+    "bench": "dl_bench_1_low_poly.glb",
+    "chair": "chair_00.glb",
+    "table": "table_00.glb",
+    "lamp_post": "ph_street_lamp_01.glb",
+    "street_seating": "ph_modular_street_seating.glb",
+    "coffee_cart": "ph_CoffeeCart_01.glb",
+    "cargo_container": "dl_cargo_container_mesh_dae.glb",
+    "road_barrier": "ph_concrete_road_barrier.glb",
+    "electricity_pole": "ph_modular_electricity_poles.glb",
+    "flag": "flag_00.glb",
+    "lantern": "ph_Lantern_01.glb"
   }
 }

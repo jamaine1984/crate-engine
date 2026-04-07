@@ -1276,39 +1276,49 @@ async function buildCityWorld3() {
         if (rand() > 0.80) placeGround(assets.props.garbage_bin,   cx - rr(14, 16), cz - 16, rsc * 0.7, 0);
         if (rand() > 0.85) placeGround(assets.props.mailbox,       cx + rr(14, 16), cz + 16, rsc * 0.85, 0);
 
-        // --- Downtown: urban furniture on sidewalks (±16 from block center) ---
+        // --- Downtown: neon signs, food carts, street lamps ---
         if (d === 'downtown') {
-          if (rand() > 0.40) placeGround(assets.props.bus_stop,        cx + rr(-4, 4), cz + 16, rsc * 1.0, 0);
-          if (rand() > 0.50) placeGround(assets.props.atm,             cx - 15, cz + rr(-4, 4), rsc * 0.7, Math.PI / 2);
-          if (rand() > 0.45) placeGround(assets.props.hot_dog_stand,   cx + 15, cz + rr(-3, 3), rsc * 0.8, -Math.PI / 2);
-          if (rand() > 0.55) placeGround(assets.props.subway_entrance, cx + rr(-4, 4), cz - 16, rsc * 1.0, Math.PI);
+          if (rand() > 0.30) placeGround(assets.props.hot_dog_stand,   cx + 15, cz + rr(-3, 3), rsc * 0.8, -Math.PI / 2);
+          if (rand() > 0.30) placeGround(assets.props.subway_entrance, cx + rr(-4, 4), cz - 16, rsc * 1.0, Math.PI);
+          if (assets.props.sign_cyberpunk_1 && rand() > 0.30) placeGround(assets.props.sign_cyberpunk_1, cx - 14, cz + rr(-5, 5), rsc * 0.6, Math.PI / 2);
+          if (assets.props.sign_cyberpunk_2 && rand() > 0.40) placeGround(assets.props.sign_cyberpunk_2, cx + 14, cz + rr(-5, 5), rsc * 0.6, -Math.PI / 2);
+          if (assets.props.light_street_cyberpunk && rand() > 0.35) placeGround(assets.props.light_street_cyberpunk, cx + rr(-6, 6), cz + 16, rsc * 0.8, 0);
+          if (assets.props.sign_corner && rand() > 0.40) placeGround(assets.props.sign_corner, cx - 16, cz - 16, rsc * 0.5, 0);
         }
 
-        // --- Commercial: dining, transit on sidewalks ---
+        // --- Commercial: outdoor seating, signs, flowers ---
         if (d === 'commercial') {
-          if (rand() > 0.45) placeGround(assets.props.outdoor_seating,  cx - rr(8, 12), cz + 16, rsc * 0.8, 0);
-          if (rand() > 0.50) placeGround(assets.props.bus_stop,         cx + 16, cz + rr(-4, 4), rsc * 1.0, Math.PI / 2);
-          if (rand() > 0.55) placeGround(assets.props.speed_limit_sign, cx - 16, cz + rr(4, 10), rsc * 0.8, 0);
+          if (rand() > 0.35) placeGround(assets.props.outdoor_seating,  cx - rr(8, 12), cz + 16, rsc * 0.8, 0);
+          if (rand() > 0.40) placeGround(assets.props.speed_limit_sign, cx - 16, cz + rr(4, 10), rsc * 0.8, 0);
+          if (assets.props.flower_pot && rand() > 0.40) placeGround(assets.props.flower_pot, cx + 14, cz + rr(-4, 4), rsc * 0.15, 0);
+          if (assets.props.planter && rand() > 0.45) placeGround(assets.props.planter, cx - 14, cz + rr(-4, 4), rsc * 0.15, 0);
+          if (assets.props.sign_cyberpunk_3 && rand() > 0.50) placeGround(assets.props.sign_cyberpunk_3, cx + 15, cz - 12, rsc * 0.5, 0);
         }
 
-        // --- Industrial: fencing inside block edges, not on roads ---
+        // --- Industrial: fencing, containers, cones, barriers ---
         if (d === 'industrial') {
           for (let f = -14; f <= 14; f += 8) {
             placeGround(assets.props.wired_fence, cx + f, cz - 17, rsc * 0.9, 0);
-            placeGround(assets.props.wired_fence, cx + f, cz + 17, rsc * 0.9, Math.PI);
           }
-          if (rand() > 0.35) placeGround(assets.props.traffic_cone, cx + rr(-8, 8), cz + rr(-8, 8), rsc * 0.6, 0);
-          if (rand() > 0.35) placeGround(assets.props.dumpster,     cx - 13, cz - 13, rsc * 0.9, 0);
-          if (rand() > 0.40) placeGround(assets.props.trash_bags,   cx + 13, cz - 13, rsc * 0.7, 0);
-          if (rand() > 0.45) placeGround(assets.props.road_block_a, cx + rr(5, 10), cz + 15, rsc * 0.8, 0);
+          if (rand() > 0.30) placeGround(assets.props.traffic_cone, cx + rr(-8, 8), cz + rr(-8, 8), rsc * 0.6, 0);
+          if (rand() > 0.25) placeGround(assets.props.dumpster,     cx - 13, cz - 13, rsc * 0.5, 0);
+          if (rand() > 0.30) placeGround(assets.props.road_block_a, cx + rr(5, 10), cz + 15, rsc * 0.8, 0);
+          if (rand() > 0.35) placeGround(assets.props.road_block_b, cx - rr(5, 10), cz - 15, rsc * 0.8, 0);
           placeGround(assets.props.electrical_pole, cx + 17, cz, rsc * 1.0, 0);
+          if (rand() > 0.40) placeGround(assets.props.trash_bags,   cx + 13, cz - 13, rsc * 0.7, 0);
         }
 
-        // --- Residential: suburban touches ---
+        // --- Residential: fences, flowers, signs ---
         if (d === 'residential') {
-          if (rand() > 0.50) placeGround(assets.props.wooden_fence,    cx - 15, cz + rr(-6, 6), rsc * 0.8, 0);
-          if (rand() > 0.60) placeGround(assets.props.no_parking_sign, cx + 15, cz - 15, rsc * 0.8, 0);
+          if (rand() > 0.35) placeGround(assets.props.wooden_fence,    cx - 15, cz + rr(-6, 6), rsc * 0.8, 0);
+          if (rand() > 0.45) placeGround(assets.props.no_parking_sign, cx + 15, cz - 15, rsc * 0.8, 0);
+          if (assets.props.flower_pot && rand() > 0.35) placeGround(assets.props.flower_pot, cx + rr(-8, 8), cz + 14, rsc * 0.15, 0);
+          if (assets.props.planter && rand() > 0.40) placeGround(assets.props.planter, cx + rr(-8, 8), cz - 14, rsc * 0.15, 0);
         }
+
+        // --- ALL districts: street lamp posts on sidewalk edges ---
+        placeGround(assets.props.street_light_single, cx - 16, cz - 10, rsc * 0.6, 0);
+        placeGround(assets.props.street_light_single, cx + 16, cz + 10, rsc * 0.6, Math.PI);
       }
     }
 
@@ -1318,36 +1328,31 @@ async function buildCityWorld3() {
     const svcCars = assets.vehicles.service;
     const comCars = assets.vehicles.commercial;
 
-    // Parked civilian cars along road edges
-    for (let nc = 0; nc <= G; nc++) {
-      for (let gap = 0; gap < G; gap++) {
-        // Along E-W roads (south side)
-        if (rand() > 0.45) {
-          const z = np(0, nc).z;
-          const x = np(gap, 0).x + CELL / 2;
-          placeGround(pick(civCars), x, z + 5.5, rsc * 1.8, EW_ROT + Math.PI);
+    // Parked civilian cars along road edges (inside blocks at ±18)
+    for (let c = 0; c < G; c++) {
+      for (let r = 0; r < G; r++) {
+        if (rand() > 0.4) {
+          const bpos = bc(c, r);
+          placeGround(pick(civCars), bpos.x + 18, bpos.z + rr(-10, 10), rsc * 1.8, Math.PI / 2);
         }
-        // Along N-S roads (east side)
-        if (rand() > 0.45) {
-          const x = np(nc, 0).x;
-          const z = np(0, gap).z + CELL / 2;
-          placeGround(pick(civCars), x + 5.5, z, rsc * 1.8, NS_ROT);
+        if (rand() > 0.5) {
+          const bpos = bc(c, r);
+          placeGround(pick(civCars), bpos.x - 18, bpos.z + rr(-10, 10), rsc * 1.8, -Math.PI / 2);
         }
       }
     }
 
-    // Emergency vehicles near landmarks — parked inside block
-    placeGround(pick(svcCars), bc(2, 4).x + 12, bc(2, 4).z, rsc * 1.8, Math.PI / 4);
-    placeGround(pick(svcCars), bc(4, 5).x - 12, bc(4, 5).z, rsc * 1.8, 0);
-    placeGround(pick(svcCars), bc(3, 3).x + 10, bc(3, 3).z + 10, rsc * 1.8, Math.PI);
+    // Emergency vehicles near landmarks
+    if (G >= 2) {
+      placeGround(pick(svcCars), bc(1, 1).x + 12, bc(1, 1).z, rsc * 1.8, Math.PI / 4);
+      placeGround(pick(svcCars), bc(2, 2).x - 12, bc(2, 2).z, rsc * 1.8, 0);
+    }
 
-    // Commercial trucks in industrial district
-    for (let c = 6; c < G; c++) {
-      for (let r = 6; r < G; r++) {
-        const { x, z } = bc(c, r);
-        placeGround(pick(comCars), x + rr(5, 12), z + rr(5, 12), rsc * 1.8, rand() * Math.PI * 2);
-        placeGround(pick(comCars), x - rr(5, 12), z - rr(5, 12), rsc * 1.8, rand() * Math.PI * 2);
-      }
+    // Commercial trucks in industrial
+    if (G >= 4) {
+      const { x, z } = bc(3, 3);
+      placeGround(pick(comCars), x + rr(5, 12), z + rr(5, 12), rsc * 1.8, rand() * Math.PI * 2);
+      placeGround(pick(comCars), x - rr(5, 12), z - rr(5, 12), rsc * 1.8, rand() * Math.PI * 2);
     }
 
     // ═══ TREES & NATURE ═══
