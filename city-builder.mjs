@@ -1041,6 +1041,51 @@ async function buildCityWorld3() {
     const fillCount = Math.max(1, Math.ceil(gapLen / straightLen));
     const fillStep = gapLen / fillCount;
 
+    // --- Asphalt fill planes under all intersections and road corridors ---
+    const asphaltMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+
+    // Fill plane at every grid node (covers junction gaps)
+    for (let nc = 0; nc <= G; nc++) {
+      for (let nr = 0; nr <= G; nr++) {
+        const { x, z } = np(nc, nr);
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(SEG + 4, SEG + 4), asphaltMat);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.set(x, 0.01, z);
+        plane.receiveShadow = true;
+        scene.add(tag(plane));
+      }
+    }
+
+    // E-W road strips between nodes (along each row)
+    for (let nr = 0; nr <= G; nr++) {
+      for (let nc = 0; nc < G; nc++) {
+        const p1 = np(nc, nr);
+        const p2 = np(nc + 1, nr);
+        const cx = (p1.x + p2.x) / 2;
+        const cz = p1.z;
+        const strip = new THREE.Mesh(new THREE.PlaneGeometry(CELL, SEG + 2), asphaltMat);
+        strip.rotation.x = -Math.PI / 2;
+        strip.position.set(cx, 0.01, cz);
+        strip.receiveShadow = true;
+        scene.add(tag(strip));
+      }
+    }
+
+    // N-S road strips between nodes (along each column)
+    for (let nc = 0; nc <= G; nc++) {
+      for (let nr = 0; nr < G; nr++) {
+        const p1 = np(nc, nr);
+        const p2 = np(nc, nr + 1);
+        const cx = p1.x;
+        const cz = (p1.z + p2.z) / 2;
+        const strip = new THREE.Mesh(new THREE.PlaneGeometry(SEG + 2, CELL), asphaltMat);
+        strip.rotation.x = -Math.PI / 2;
+        strip.position.set(cx, 0.01, cz);
+        strip.receiveShadow = true;
+        scene.add(tag(strip));
+      }
+    }
+
     // --- Junction pieces at every grid node (9×9 = 81 nodes) ---
     for (let nc = 0; nc <= G; nc++) {
       for (let nr = 0; nr <= G; nr++) {
