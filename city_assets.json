@@ -59,14 +59,14 @@
     }
   },
   "roads": {
-    "straight": "kenney_roads/road-straight.glb",
-    "curved": "kenney_roads/road-curve.glb",
-    "intersection": "kenney_roads/road-crossroad.glb",
-    "t_junction": "kenney_roads/road-intersection.glb",
-    "l_junction_left": "kenney_roads/road-bend.glb",
-    "l_junction_right": "kenney_roads/road-bend.glb",
-    "roundabout": "kenney_roads/road-roundabout.glb",
-    "end": "kenney_roads/road-end.glb"
+    "straight": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-linear-road-piece.glb",
+    "curved": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-curved-road-piece.glb",
+    "intersection": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-intersaction.glb",
+    "t_junction": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-T-junction.glb",
+    "l_junction_left": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-L-junction-left.glb",
+    "l_junction_right": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-L-junction-right.glb",
+    "roundabout": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-road-roundabout.glb",
+    "end": "unity_assets/unity_assets_temp/unity_assets_temp/Toon_City_Pack/two-lane-linear-road-end-piece.glb"
   },
   "props": {
     "street_light_single": "kenney_roads/light-square.glb",
