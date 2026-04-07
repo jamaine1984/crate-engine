@@ -1017,7 +1017,6 @@ async function buildCityWorld3() {
 
     const roadMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
     const lineMat = new THREE.MeshLambertMaterial({ color: 0xf0d020 });
-    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
 
     // E-W full-width road strips
     for (let r = 0; r <= G; r++) {
@@ -1046,11 +1045,7 @@ async function buildCityWorld3() {
         const isq = tag(new THREE.Mesh(new THREE.PlaneGeometry(SEG + 1, SEG + 1), new THREE.MeshLambertMaterial({ color: 0x4a4a4a })));
         isq.rotation.x = -Math.PI / 2; isq.position.set(ix, 0.04, iz);
         scene.add(isq); objects.push(isq);
-        for (let s = -3; s <= 3; s += 1.5) {
-          const cw = tag(new THREE.Mesh(new THREE.PlaneGeometry(0.5, SEG * 0.6), whiteMat));
-          cw.rotation.x = -Math.PI / 2; cw.position.set(ix + s, 0.07, iz + SEG / 2 + 1);
-          scene.add(cw); objects.push(cw);
-        }
+
       }
     }
 
@@ -1467,21 +1462,7 @@ async function buildCityWorld3() {
       scene.add(line); objects.push(line);
     }
 
-    // ═══ CROSSWALKS — simplified for performance ═══
-    const crossMat2 = new THREE.MeshLambertMaterial({color: 0xdddddd});
-    for (let c = 0; c <= G; c++) {
-      for (let r = 0; r <= G; r++) {
-        const ix = -HALF + c * CELL;
-        const iz = -HALF + r * CELL;
-        // 2 crosswalk strips per intersection (N-S and E-W)
-        const cwNS = tag(new THREE.Mesh(new THREE.PlaneGeometry(SEG*0.7, 2.5), crossMat2));
-        cwNS.rotation.x = -Math.PI/2; cwNS.position.set(ix, 0.08, iz + SEG/2 + 0.5);
-        scene.add(cwNS); objects.push(cwNS);
-        const cwEW = tag(new THREE.Mesh(new THREE.PlaneGeometry(2.5, SEG*0.7), crossMat2));
-        cwEW.rotation.x = -Math.PI/2; cwEW.position.set(ix + SEG/2 + 0.5, 0.08, iz);
-        scene.add(cwEW); objects.push(cwEW);
-      }
-    }
+
 
     showToast('\ud83d\udea6 Setting up traffic lights...');
     window._trafficLights = [];
