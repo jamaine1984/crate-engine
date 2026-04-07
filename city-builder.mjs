@@ -621,7 +621,7 @@ async function buildCityWorld3() {
     const rr = (lo, hi) => lo + rand() * (hi - lo);
 
     // ═══ GRID CONSTANTS ═══
-    const G = 8;                    // 8×8 city blocks
+    const G = 4;                    // 4×4 city blocks
     const SEG = 10;                 // road piece size (units)
     const BLK = 40;                 // city block size
     const CELL = BLK + SEG;        // 50 — node-to-node spacing
@@ -635,10 +635,10 @@ async function buildCityWorld3() {
     // ═══ DISTRICT MAP — GTA-style ring layout ═══
     // Downtown core → Commercial ring → Residential sprawl → Industrial corner
     const getDist = (c, r) => {
-      if (c >= 6 && r >= 6) return 'industrial';
-      const dx = Math.abs(c - 3.5), dz = Math.abs(r - 3.5);
-      if (dx <= 1 && dz <= 1) return 'downtown';
-      if (dx <= 2 && dz <= 2) return 'commercial';
+      if (c >= 3 && r >= 3) return 'industrial';
+      const dx = Math.abs(c - 1.5), dz = Math.abs(r - 1.5);
+      if (dx <= 0.5 && dz <= 0.5) return 'downtown';
+      if (dx <= 1 && dz <= 1) return 'commercial';
       return 'residential';
     };
 
@@ -693,7 +693,7 @@ async function buildCityWorld3() {
     const _cloudGrp = new THREE.Group();
     _cloudGrp.userData.isAutoCity = true;
     const _cMat = new THREE.MeshLambertMaterial({color:0xffffff, transparent:true, opacity:0.82});
-    for (let ci = 0; ci < 45; ci++) {
+    for (let ci = 0; ci < 20; ci++) {
       const cg = new THREE.Group();
       const puffs = 3 + Math.floor(Math.random() * 5);
       for (let p = 0; p < puffs; p++) {
@@ -1188,7 +1188,7 @@ async function buildCityWorld3() {
           ...shopPool,
           ...(da.commercial || []),
           ...(da.apartments || [])
-        ].filter(Boolean);
+        ].filter(p => p && !p.includes('kenney') && !p.includes('Toon_City'));
         if (!pool.length) continue;
 
         const slots = bldgSlots[d] || bldgSlots.residential;
@@ -1227,14 +1227,12 @@ async function buildCityWorld3() {
     showToast('\ud83c\udfdb\ufe0f Placing landmarks...');
     const gov = assets.districts.government?.buildings || [];
     const landmarks = [
-      [0, 3, 2],  // bank — edge of downtown
-      [1, 4, 2],  // city hall — across from bank
-      [2, 2, 4],  // fire station — commercial belt
-      [3, 5, 2],  // museum — east commercial
-      [4, 1, 5],  // school — residential south
-      [5, 4, 5],  // hospital — south side
-      [6, 1, 1],  // church — residential NW
-      [7, 5, 5],  // clock tower — south commercial
+      [0, 1, 1],  // bank — downtown
+      [1, 2, 1],  // city hall
+      [2, 0, 2],  // fire station
+      [3, 3, 1],  // museum
+      [4, 0, 3],  // school
+      [5, 2, 3],  // hospital
     ];
     landmarks.forEach(([idx, col, row]) => {
       if (idx < gov.length) {
@@ -1316,14 +1314,10 @@ async function buildCityWorld3() {
       scene.add(m); objects.push(m);
     };
 
-    placeInfra(inf.gas_station,   7, 1, 28, 0);               // NE edge
-    placeInfra(inf.parking_lot,   1, 3, 32, 0);               // west commercial
-    placeInfra(inf.parking_lot,   5, 4, 32, Math.PI / 2);     // east commercial
-    placeInfra(inf.park,          0, 0, 36, 0);               // NW residential park
-    placeInfra(inf.park,          7, 0, 36, Math.PI);          // NE residential park
-    placeInfra(inf.stadium,       0, 7, 36, 0);               // SW corner stadium
-    placeInfra(inf.train_station, 7, 3, 28, Math.PI / 2);     // east side
-    placeInfra(inf.plaza,         3, 4, 24, 0);               // downtown edge plaza
+    placeInfra(inf.gas_station,   3, 0, 28, 0);               // NE edge
+    placeInfra(inf.parking_lot,   0, 1, 32, 0);               // west
+    placeInfra(inf.park,          0, 0, 36, 0);               // NW park
+    placeInfra(inf.stadium,       3, 3, 36, 0);               // SE corner
 
     // ═══ STREET PROPS ═══
     showToast('\ud83c\udfee Street props...');
@@ -1363,10 +1357,10 @@ async function buildCityWorld3() {
         const { x: cx, z: cz } = bc(c, r);
 
         // --- Universal sidewalk props (keep at ±16, well inside block edge) ---
-        if (rand() > 0.40) placeGround(assets.props.bench,        cx - 16, cz + rr(3, 12), rsc * 0.9, Math.PI / 2);
-        if (rand() > 0.50) placeGround(assets.props.fire_hydrant,  cx + 16, cz - rr(3, 12), rsc * 0.7, 0);
-        if (rand() > 0.60) placeGround(assets.props.garbage_bin,   cx - rr(14, 16), cz - 16, rsc * 0.7, 0);
-        if (rand() > 0.65) placeGround(assets.props.mailbox,       cx + rr(14, 16), cz + 16, rsc * 0.85, 0);
+        if (rand() > 0.60) placeGround(assets.props.bench,        cx - 16, cz + rr(3, 12), rsc * 0.9, Math.PI / 2);
+        if (rand() > 0.70) placeGround(assets.props.fire_hydrant,  cx + 16, cz - rr(3, 12), rsc * 0.7, 0);
+        if (rand() > 0.80) placeGround(assets.props.garbage_bin,   cx - rr(14, 16), cz - 16, rsc * 0.7, 0);
+        if (rand() > 0.85) placeGround(assets.props.mailbox,       cx + rr(14, 16), cz + 16, rsc * 0.85, 0);
 
         // --- Downtown: urban furniture on sidewalks (±16 from block center) ---
         if (d === 'downtown') {
@@ -1640,7 +1634,7 @@ async function buildCityWorld3() {
     // Preload car models
     await batchPreload(carModels, 'Cars');
     // Place cars on road lanes
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 20; i++) {
       const isEW = rand() > 0.5;
       const roadIdx = Math.floor(rand() * (G + 1));
       const lane = rand() > 0.5 ? 1 : -1;
@@ -1766,7 +1760,7 @@ async function buildCityWorld3() {
       for (let r = 0; r < G; r++) {
         const d = getDist(c, r);
         const bpos = bc(c, r);
-        let pCount = d === 'downtown' ? 3 : d === 'commercial' ? 2 : d === 'residential' ? 1 : 0;
+        let pCount = d === 'downtown' ? 2 : d === 'commercial' ? 1 : d === 'residential' ? 1 : 0;
         for (let p = 0; p < pCount; p++) {
           const g = new THREE.Group();
           const sk = new THREE.MeshLambertMaterial({color: skinT[Math.floor(rand()*skinT.length)]});
