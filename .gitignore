@@ -6,3 +6,6 @@ firebase-debug.log
 .env*
 .env.local
 .env.local
+.DS_Store
+crate-engine/.DS_Store
+web/.DS_Store
