@@ -34,6 +34,24 @@ const PAINT_COLORS = {
   ice: 0xaaddff,
 };
 
+const PROCEDURAL_ANIMATIONS = [
+  { id: 'spin', name: 'Spin', desc: 'Rotation', icon: '🔄' },
+  { id: 'bounce', name: 'Bounce', desc: 'Up/down', icon: '⬆️' },
+  { id: 'float', name: 'Float', desc: 'Floating', icon: '☁️' },
+  { id: 'pulse', name: 'Pulse', desc: 'Scale pulse', icon: '💫' },
+  { id: 'wobble', name: 'Wobble', desc: 'Side sway', icon: '↔️' },
+  { id: 'orbit', name: 'Orbit', desc: 'Circle', icon: '🌀' },
+  { id: 'swing', name: 'Swing', desc: 'Pendulum', icon: '🔔' },
+  { id: 'breathe', name: 'Breathe', desc: 'Breathing', icon: '🫁' },
+  { id: 'shake', name: 'Shake', desc: 'Vibration', icon: '📳' },
+  { id: 'walk', name: 'Walk', desc: 'Walk bob', icon: '🚶' },
+  { id: 'idle', name: 'Idle', desc: 'Subtle', icon: '🧍' },
+  { id: 'dance', name: 'Dance', desc: 'Dance moves', icon: '💃' },
+  { id: 'attack', name: 'Attack', desc: 'Lunge', icon: '⚔️' },
+  { id: 'die', name: 'Die', desc: 'Death fall', icon: '💀' },
+  { id: 'jump', name: 'Jump', desc: 'Jump', icon: '🦘' },
+];
+
 export function setEditorToolsContext(nextContext = {}) {
   context = { ...context, ...nextContext };
 }
@@ -435,4 +453,49 @@ export async function showFabGallery() {
   };
   document.body.appendChild(modal);
   search.focus();
+}
+
+export function showAnimationGallery(targetName) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:10005;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+    overlay.innerHTML = '<div style="font-size:24px;color:#ec4899;margin-bottom:6px;">🎬 ANIMATIONS</div><div style="font-size:13px;color:#666;margin-bottom:24px;">' + (targetName ? 'Apply to: ' + targetName : 'Choose animation') + '</div>';
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,130px);gap:14px;justify-content:center;max-width:700px;';
+
+    PROCEDURAL_ANIMATIONS.forEach((animation) => {
+      const card = document.createElement('div');
+      card.style.cssText = 'padding:18px 10px;background:rgba(236,72,153,0.05);border:2px solid rgba(236,72,153,0.2);border-radius:10px;cursor:pointer;text-align:center;transition:all 0.2s;';
+      card.onmouseenter = () => { card.style.borderColor = '#ec4899'; card.style.transform = 'scale(1.05)'; };
+      card.onmouseleave = () => { card.style.borderColor = 'rgba(236,72,153,0.2)'; card.style.transform = 'scale(1)'; };
+      card.innerHTML = '<div style="font-size:28px;margin-bottom:6px;">' + animation.icon + '</div><div style="font-size:13px;color:#ec4899;font-weight:bold;">' + animation.name + '</div><div style="font-size:10px;color:#666;">' + animation.desc + '</div>';
+      card.onclick = () => {
+        overlay.remove();
+        resolve({ animId: animation.id, animName: animation.name, target: targetName });
+      };
+      grid.appendChild(card);
+    });
+
+    overlay.appendChild(grid);
+
+    const closeButton = document.createElement('div');
+    closeButton.textContent = '✕';
+    closeButton.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
+    closeButton.onclick = () => {
+      overlay.remove();
+      resolve(null);
+    };
+    overlay.appendChild(closeButton);
+    document.body.appendChild(overlay);
+
+    const esc = (event) => {
+      if (event.key === 'Escape') {
+        document.removeEventListener('keydown', esc);
+        overlay.remove();
+        resolve(null);
+      }
+    };
+    document.addEventListener('keydown', esc);
+  });
 }

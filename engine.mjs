@@ -361,6 +361,8 @@ let editorToolsModule = null;
 let editorToolsPromise = null;
 let assetBrowserModule = null;
 let assetBrowserPromise = null;
+let audioToolsModule = null;
+let audioToolsPromise = null;
 let gameplayModule = null;
 let gameplayPromise = null;
 let collisionModule = null;
@@ -988,6 +990,28 @@ function loadAssetBrowserModule() {
   }
   return assetBrowserPromise;
 }
+
+function loadAudioToolsModule() {
+  if (audioToolsModule) return Promise.resolve(audioToolsModule);
+  if (!audioToolsPromise) {
+    audioToolsPromise = import('./audio-tools.mjs').then((mod) => {
+      audioToolsModule = mod;
+      return mod;
+    }).catch((err) => {
+      audioToolsPromise = null;
+      throw err;
+    });
+  }
+  return audioToolsPromise;
+}
+
+window._playHorrorSound = (...args) => loadAudioToolsModule().then((mod) => mod.playSound(...args));
+window._stopSound = (...args) => loadAudioToolsModule().then((mod) => mod.stopSound(...args));
+window._stopAllSounds = (...args) => loadAudioToolsModule().then((mod) => mod.stopAllSounds(...args));
+Object.defineProperty(window, '_HORROR_AUDIO', {
+  configurable: true,
+  get: () => audioToolsModule?.HORROR_AUDIO || {},
+});
 
 async function applyWaterPresetToObject(obj, preset) {
   if (!obj?.userData?.isGerstnerWater) return null;
@@ -5444,98 +5468,6 @@ window.loadWorldFromJSON = loadWorldFromJSON;
 
 
 // ══════════════════════════════════════════════════════
-// AUDIO SYSTEM — Horror SFX + Music + Ambient
-// ══════════════════════════════════════════════════════
-const HORROR_AUDIO = {
-  // Music
-  menu_music:       '/audio/horror/menumusic01.wav',
-  event_music:      '/audio/horror/eventmusic01.wav',
-  horror_music:     '/audio/horror/eventmusic01.wav',
-  // Ambient / atmosphere
-  heartbeat:        '/audio/horror/heartbeat.wav',
-  vision_ambient:   '/audio/horror/visionsound1.wav',
-  street_light_hum: '/audio/horror/streetlightsoundloop.wav',
-  police_siren:     '/audio/horror/policesiren.wav',
-  // Killer / hunter
-  chainsaw_idle:    '/audio/horror/chainsawidle.wav',
-  chainsaw_attack:  '/audio/horror/chainsawattack.wav',
-  chainsaw_on:      '/audio/horror/chainsawturnon.wav',
-  hunter_chase:     '/audio/horror/hunter01chase01loop.wav',
-  hunter_vision:    '/audio/horror/huntersvisionsound.wav',
-  // Footsteps
-  footstep_1:       '/audio/horror/player_footstep_01.wav',
-  footstep_land:    '/audio/horror/player_land.wav',
-  // Props
-  door_open:        '/audio/horror/dooropen.wav',
-  door_close:       '/audio/horror/closecardoor.wav',
-  door_unlock:      '/audio/horror/doorunlockingsoundloop.wav',
-  flashlight_on:    '/audio/horror/flashlightturnonsound.wav',
-  flashlight_off:   '/audio/horror/flashlightturnoffsound.wav',
-  light_on:         '/audio/horror/lightturnonsound.wav',
-  light_off:        '/audio/horror/lightturnoffsound.wav',
-  match_start:      '/audio/horror/matchstartsound.wav',
-  street_break:     '/audio/horror/streetlightbreaksound.wav',
-  // Combat
-  sword_swing:      '/audio/horror/swordswing01.wav',
-  sword_hit_flesh:  '/audio/horror/swordfleshhit01.wav',
-  sword_equip:      '/audio/horror/swordequip01.wav',
-  knife_hit:        '/audio/horror/knifecharacterhit.wav',
-  shotgun:          '/audio/horror/shotgunsound.wav',
-  // Vehicles
-  car_start:        '/audio/horror/carturnonsound.wav',
-  car_accel:        '/audio/horror/accelerationhigh.wav',
-  car_skid:         '/audio/horror/skid.wav',
-  firecracker:      '/audio/horror/firecrackersound.wav',
-};
-
-const _audioCtx = { ctx: null, nodes: {}, music: null };
-
-function getAudioCtx() {
-  if (!_audioCtx.ctx) _audioCtx.ctx = new (window.AudioContext || window.webkitAudioContext)();
-  return _audioCtx.ctx;
-}
-
-async function playSound(key, loop=false, volume=1.0) {
-  const src = HORROR_AUDIO[key];
-  if (!src) return false;
-  try {
-    const ctx = getAudioCtx();
-    if (ctx.state === 'suspended') await ctx.resume();
-    const resp = await fetch(src);
-    const buf = await ctx.decodeAudioData(await resp.arrayBuffer());
-    const source = ctx.createBufferSource();
-    const gain = ctx.createGain();
-    source.buffer = buf;
-    source.loop = loop;
-    gain.gain.value = volume;
-    source.connect(gain);
-    gain.connect(ctx.destination);
-    source.start(0);
-    if (loop) _audioCtx.nodes[key] = { source, gain };
-    return true;
-  } catch(e) { return false; }
-}
-
-function stopSound(key) {
-  const node = _audioCtx.nodes[key];
-  if (node) { try { node.source.stop(); } catch(e) {} delete _audioCtx.nodes[key]; }
-}
-
-function stopAllSounds() {
-  Object.keys(_audioCtx.nodes).forEach(stopSound);
-  if (_audioCtx.ctx) { _audioCtx.ctx.close(); _audioCtx.ctx = null; }
-}
-
-window._playHorrorSound = playSound;
-window._stopSound = stopSound;
-window._stopAllSounds = stopAllSounds;
-window._HORROR_AUDIO = HORROR_AUDIO;
-// ══════════════════════════════════════════════════════
-// END AUDIO SYSTEM
-// ══════════════════════════════════════════════════════
-
-
-// ══════════════════════════════════════════════════════
 // NPC DIALOGUE EDITOR — Visual Conversation Tree Builder
 // ══════════════════════════════════════════════════════
 const _dialogueTrees = {};   // name -> { nodes: [], start: 'node_0' }
@@ -6316,52 +6248,53 @@ async function parseAndExecute(rawCmd) {
 
   // ── AUDIO COMMANDS ────────────────────────────────────────────────────────
   if (/^play (chainsaw|chainsaw_idle|chainsaw idle)$/i.test(cmd)) {
-    await playSound('chainsaw_idle', true, 0.6);
+    await (await loadAudioToolsModule()).playSound('chainsaw_idle', true, 0.6);
     return 'Chainsaw sound playing (looping)';
   }
   if (/^play heartbeat$/i.test(cmd)) {
-    await playSound('heartbeat', true, 0.5);
+    await (await loadAudioToolsModule()).playSound('heartbeat', true, 0.5);
     return 'Heartbeat sound playing';
   }
   if (/^play (horror music|horror_music|scary music)$/i.test(cmd)) {
-    await playSound('event_music', true, 0.4);
+    await (await loadAudioToolsModule()).playSound('event_music', true, 0.4);
     return 'Horror music playing';
   }
   if (/^play (menu music|menumusic)$/i.test(cmd)) {
-    await playSound('menu_music', true, 0.4);
+    await (await loadAudioToolsModule()).playSound('menu_music', true, 0.4);
     return 'Menu music playing';
   }
   if (/^play (police siren|siren)$/i.test(cmd)) {
-    await playSound('police_siren', false, 0.7);
+    await (await loadAudioToolsModule()).playSound('police_siren', false, 0.7);
     return 'Police siren playing';
   }
   if (/^play (door open|dooropen)$/i.test(cmd)) {
-    await playSound('door_open', false, 0.8);
+    await (await loadAudioToolsModule()).playSound('door_open', false, 0.8);
     return 'Door opening sound';
   }
   if (/^play hunter$/i.test(cmd)) {
-    await playSound('hunter_chase', true, 0.5);
+    await (await loadAudioToolsModule()).playSound('hunter_chase', true, 0.5);
     return 'Hunter chase music playing';
   }
   if (/^play (sword|sword swing)$/i.test(cmd)) {
-    await playSound('sword_swing', false, 0.9);
+    await (await loadAudioToolsModule()).playSound('sword_swing', false, 0.9);
     return 'Sword swing sound';
   }
   if (/^play (shotgun|gunshot)$/i.test(cmd)) {
-    await playSound('shotgun', false, 0.9);
+    await (await loadAudioToolsModule()).playSound('shotgun', false, 0.9);
     return 'Shotgun sound';
   }
   if (/^stop (music|audio|sound|all sounds?)$/i.test(cmd)) {
-    stopAllSounds();
+    (await loadAudioToolsModule()).stopAllSounds();
     return 'All sounds stopped';
   }
   if (/^play sound (.+)$/i.test(cmd)) {
+    const audioMod = await loadAudioToolsModule();
     const key = cmd.match(/play sound (.+)/i)[1].trim().replace(/ /g,'_');
-    const ok = await playSound(key, false, 0.8);
-    return ok ? `Playing: ${key}` : `Sound not found: ${key}. Available: ${Object.keys(HORROR_AUDIO).join(', ')}`;
+    const ok = await audioMod.playSound(key, false, 0.8);
+    return ok ? `Playing: ${key}` : `Sound not found: ${key}. Available: ${audioMod.getAudioKeys().join(', ')}`;
   }
   if (/^list (sounds?|audio)$/i.test(cmd)) {
-    return 'Available sounds: ' + Object.keys(HORROR_AUDIO).join(', ');
+    return 'Available sounds: ' + (await loadAudioToolsModule()).getAudioKeys().join(', ');
   }
 
   // ── DIALOGUE EDITOR ───────────────────────────────────────────────────────
@@ -6865,40 +6798,7 @@ function showCategoryPicker() {
 }
 
 function showAnimationGallery(targetName) {
-  const ANIMS = [
-    { id:'spin',name:'Spin',desc:'Rotation',icon:'🔄' },{ id:'bounce',name:'Bounce',desc:'Up/down',icon:'⬆️' },
-    { id:'float',name:'Float',desc:'Floating',icon:'☁️' },{ id:'pulse',name:'Pulse',desc:'Scale pulse',icon:'💫' },
-    { id:'wobble',name:'Wobble',desc:'Side sway',icon:'↔️' },{ id:'orbit',name:'Orbit',desc:'Circle',icon:'🌀' },
-    { id:'swing',name:'Swing',desc:'Pendulum',icon:'🔔' },{ id:'breathe',name:'Breathe',desc:'Breathing',icon:'🫁' },
-    { id:'shake',name:'Shake',desc:'Vibration',icon:'📳' },{ id:'walk',name:'Walk',desc:'Walk bob',icon:'🚶' },
-    { id:'idle',name:'Idle',desc:'Subtle',icon:'🧍' },{ id:'dance',name:'Dance',desc:'Dance moves',icon:'💃' },
-    { id:'attack',name:'Attack',desc:'Lunge',icon:'⚔️' },{ id:'die',name:'Die',desc:'Death fall',icon:'💀' },
-    { id:'jump',name:'Jump',desc:'Jump',icon:'🦘' },
-  ];
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:10005;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
-    overlay.innerHTML = '<div style="font-size:24px;color:#ec4899;margin-bottom:6px;">🎬 ANIMATIONS</div><div style="font-size:13px;color:#666;margin-bottom:24px;">' + (targetName ? 'Apply to: ' + targetName : 'Choose animation') + '</div>';
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,130px);gap:14px;justify-content:center;max-width:700px;';
-    ANIMS.forEach(a => {
-      const card = document.createElement('div');
-      card.style.cssText = 'padding:18px 10px;background:rgba(236,72,153,0.05);border:2px solid rgba(236,72,153,0.2);border-radius:10px;cursor:pointer;text-align:center;transition:all 0.2s;';
-      card.onmouseenter = () => { card.style.borderColor = '#ec4899'; card.style.transform = 'scale(1.05)'; };
-      card.onmouseleave = () => { card.style.borderColor = 'rgba(236,72,153,0.2)'; card.style.transform = 'scale(1)'; };
-      card.innerHTML = '<div style="font-size:28px;margin-bottom:6px;">' + a.icon + '</div><div style="font-size:13px;color:#ec4899;font-weight:bold;">' + a.name + '</div><div style="font-size:10px;color:#666;">' + a.desc + '</div>';
-      card.onclick = () => { overlay.remove(); resolve({ animId: a.id, animName: a.name, target: targetName }); };
-      grid.appendChild(card);
-    });
-    overlay.appendChild(grid);
-    const closeBtn = document.createElement('div'); closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
-    closeBtn.onclick = () => { overlay.remove(); resolve(null); };
-    overlay.appendChild(closeBtn);
-    document.body.appendChild(overlay);
-    const esc = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); overlay.remove(); resolve(null); } };
-    document.addEventListener('keydown', esc);
-  });
+  return loadEditorToolsModule().then((mod) => mod.showAnimationGallery(targetName));
 }
 // === END INLINE ASSET GALLERY ===
 
@@ -15131,75 +15031,6 @@ function autoFrameScene() {
   if (!playMode) controls.update();
 }
 
-// Model Browser — searchable panel of all 1,339 models
-function createModelBrowser() {
-  const panel = document.createElement('div');
-  panel.id = 'model-browser';
-  Object.assign(panel.style, {
-    position: 'fixed', top: '60px', left: '20px', zIndex: '250',
-    width: '280px', maxHeight: '500px', borderRadius: '12px',
-    background: '#0a0a0a', border: '1px solid #1f1f1f',
-    boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
-    display: 'none', flexDirection: 'column', overflow: 'hidden',
-    fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
-  });
-
-  const header = document.createElement('div');
-  Object.assign(header.style, { padding: '12px', borderBottom: '1px solid #1a1a1a', display: 'flex', gap: '8px', alignItems: 'center' });
-  header.innerHTML = '<span style="font-size:1rem">📦</span><span style="font-weight:700;font-size:0.85rem;color:#fff;flex:1">Model Browser</span><span style="color:#888;font-size:0.7rem" id="browser-count">1,339 models</span>';
-  panel.appendChild(header);
-
-  const search = document.createElement('input');
-  search.placeholder = 'Search models...';
-  Object.assign(search.style, {
-    margin: '8px 12px', padding: '8px 12px', background: '#111', border: '1px solid #252525',
-    borderRadius: '8px', color: '#e0e0e0', fontSize: '0.8rem', outline: 'none', fontFamily: 'Inter, sans-serif',
-  });
-  search.onfocus = () => search.style.borderColor = '#ff6b35';
-  search.onblur = () => search.style.borderColor = '#252525';
-  panel.appendChild(search);
-
-  const list = document.createElement('div');
-  Object.assign(list.style, { flex: '1', overflowY: 'auto', padding: '4px 12px 12px', maxHeight: '380px' });
-  panel.appendChild(list);
-
-  // Get unique model names
-  const modelNames = Object.values(GLB_MODELS).filter((v, i, a) => a.indexOf(v) === i).sort();
-  
-  function renderList(filter) {
-    list.innerHTML = '';
-    const filtered = filter ? modelNames.filter(n => n.toLowerCase().includes(filter.toLowerCase())) : modelNames.slice(0, 50);
-    const countEl = document.getElementById('browser-count');
-    if (countEl) countEl.textContent = filter ? filtered.length + ' found' : '4,122 models';
-    
-    filtered.slice(0, 60).forEach(name => {
-      const item = document.createElement('div');
-      Object.assign(item.style, {
-        padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem',
-        color: '#aaa', transition: 'all 0.15s', fontFamily: "'JetBrains Mono', monospace",
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      });
-      // Clean display name
-      const display = name.replace(/_/g, ' ').replace(/pack /g, '').replace(/modular /g, '');
-      item.innerHTML = '<span>' + display + '</span><span style="color:#333;font-size:0.65rem">.glb</span>';
-      item.onmouseenter = () => { item.style.background = '#151515'; item.style.color = '#ff6b35'; };
-      item.onmouseleave = () => { item.style.background = 'transparent'; item.style.color = '#aaa'; };
-      item.onclick = () => { parseAndExecute('add ' + name.split('_pack_').pop()); };
-      list.appendChild(item);
-    });
-    if (filtered.length > 60) {
-      const more = document.createElement('div');
-      more.style.cssText = 'color:#555;font-size:0.7rem;padding:8px;text-align:center';
-      more.textContent = '+ ' + (filtered.length - 60) + ' more — type to filter';
-      list.appendChild(more);
-    }
-  }
-  
-  search.oninput = () => renderList(search.value);
-  renderList('');
-  document.body.appendChild(panel);
-  return panel;
-}
 // Toggle model browser with Ctrl+B or button
 const browserBtn = document.createElement('button');
 browserBtn.innerHTML = '📦';

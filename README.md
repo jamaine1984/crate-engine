@@ -45,6 +45,7 @@ Status snapshot: 2026-04-13
 - `legacy-multiplayer.mjs`
 - `editor-tools-ui.mjs`
 - `asset-browser-ui.mjs`
+- `audio-tools.mjs`
 - `navmesh.mjs`
 - `local-ai-tools.mjs`
 - `speech-tts.mjs`
@@ -55,7 +56,7 @@ Status snapshot: 2026-04-13
 
 Latest validated production build:
 
-- `engine`: `431.29 kB`
+- `engine`: `427.00 kB`
 - `app-assets`: `390.96 kB`
 - `app-gameplay`: `233.39 kB`
 - `app-builder`: `91.82 kB`
@@ -64,14 +65,15 @@ Latest validated production build:
 - `world-presets`: `31.67 kB`
 - `generator-ui`: `22.82 kB`
 - `project-tools`: `18.01 kB`
-- `editor-tools-ui`: `16.51 kB`
+- `editor-tools-ui`: `19.24 kB`
 - `app-worldfx`: `15.76 kB`
 - `character-gallery`: `13.02 kB`
 - `asset-browser-ui`: `9.42 kB`
+- `audio-tools`: `2.69 kB`
 
 Main result so far:
 
-- `engine` dropped from about `686 kB` earlier in the upgrade cycle to `431.29 kB`.
+- `engine` dropped from about `686 kB` earlier in the upgrade cycle to `427.00 kB`.
 - Heavy editor/UI paths are now mostly demand-loaded.
 - The startup preload graph stayed minimal while those features moved out.
 
@@ -82,8 +84,7 @@ Main result so far:
 - The main `engine` chunk is still the biggest startup target.
 - `app-assets` is still very large and should be split further.
 - `app-gameplay` is still large and can be deferred more aggressively.
-- The inline audio command stack is still in `engine.mjs`.
-- The animation/model-browser UI path is still in `engine.mjs`.
+- The remaining inline editor controls in `engine.mjs` should keep shrinking.
 
 ### 2. Security / Architecture Debt
 
@@ -113,14 +114,12 @@ Main result so far:
 
 ## Recommended Next Order
 
-1. Move the audio command system out of `engine.mjs`.
-2. Move the animation gallery and model-browser UI out of `engine.mjs`.
-3. Split `app-assets` further, especially around the remaining asset/editor helpers.
-4. Reduce `app-gameplay` by pushing more systems behind actual play-mode entry.
-5. Replace the OpenRouter/Gemini worker path with the intended local/proxy-safe AI path.
-6. Remove or harden `new Function(...)` in `code-editor.mjs`.
-7. Add a small regression harness for boot, play mode, galleries, imports, and multiplayer.
-8. Decide whether the legacy `crate-engine/web/` mirror is still needed; remove it once deployment no longer depends on it.
+1. Split `app-assets` further, especially around the remaining asset/editor helpers.
+2. Reduce `app-gameplay` by pushing more systems behind actual play-mode entry.
+3. Replace the OpenRouter/Gemini worker path with the intended local/proxy-safe AI path.
+4. Remove or harden `new Function(...)` in `code-editor.mjs`.
+5. Add a small regression harness for boot, play mode, galleries, imports, and multiplayer.
+6. Decide whether the legacy `crate-engine/web/` mirror is still needed; remove it once deployment no longer depends on it.
 
 ## Planned After Reductions And Fixes
 
