@@ -127,9 +127,20 @@ window._hideLoader=function(){var l=document.getElementById('engine-loader');if(
 window.onerror=(msg,src,line)=>{console.error('[ENGINE ERROR]',msg,'at',src,':',line);const l=document.querySelector('.engine-loader');if(l)l.innerHTML='<div style="color:#f87171;padding:20px;text-align:center">Engine error: '+msg+'<br><small>Try refreshing (Ctrl+R)</small></div>';};
 setTimeout(()=>{const l=document.querySelector('.engine-loader');if(l&&l.offsetHeight>0)l.style.display='none';},15000);
 </script>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
-<script type="module" src="engine.mjs?v=710"></script>
-<script type="module">import auth from './auth.mjs';auth.renderAccountBadge(document.getElementById('account-nav'));</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+<script type="module" src="engine.mjs"></script>
+<script type="module">
+const mountAccountBadge = () => {
+  import('./auth.mjs')
+    .then(({ default: auth }) => auth.renderAccountBadge(document.getElementById('account-nav')))
+    .catch((err) => console.warn('[Auth] Account badge failed to load:', err));
+};
+if ('requestIdleCallback' in window) {
+  window.requestIdleCallback(mountAccountBadge, { timeout: 1500 });
+} else {
+  window.setTimeout(mountAccountBadge, 250);
+}
+</script>
 <button id="ai-settings-btn" onclick="showAISettingsModal()" title="AI Settings" style="position:fixed;top:72px;left:16px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">⚙️</button>
 <button id="mp-lobby-btn" onclick="showMultiplayerLobby()" title="Multiplayer" style="position:fixed;top:72px;left:62px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">🌐</button>
 <button id="code-editor-btn" onclick="if(window._openCodeEditor)window._openCodeEditor()" title="Code Editor" style="position:fixed;top:72px;left:108px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #7c5cff;font-size:16px;cursor:pointer;color:#7c5cff;display:flex;align-items:center;justify-content:center">{ }</button>

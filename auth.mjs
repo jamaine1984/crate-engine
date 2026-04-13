@@ -1,10 +1,44 @@
 // Crate Engine Auth & API Client
 const API = 'https://api.crateshipgames.com';
+const AUTH_TOKEN_KEY = 'crate_token';
+const AUTH_USER_KEY = 'crate_user';
+
+function readSessionValue(key, migrateLegacy = false) {
+  const sessionValue = sessionStorage.getItem(key);
+  if (sessionValue !== null) return sessionValue;
+  if (!migrateLegacy) return null;
+  const legacyValue = localStorage.getItem(key);
+  if (legacyValue !== null) {
+    sessionStorage.setItem(key, legacyValue);
+    localStorage.removeItem(key);
+    return legacyValue;
+  }
+  return null;
+}
+
+function readSessionJSON(key, migrateLegacy = false) {
+  const value = readSessionValue(key, migrateLegacy);
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionValue(key, value) {
+  if (value === null || value === undefined || value === '') {
+    sessionStorage.removeItem(key);
+  } else {
+    sessionStorage.setItem(key, value);
+  }
+  localStorage.removeItem(key);
+}
 
 class CrateAuth {
   constructor() {
-    this.token = localStorage.getItem('crate_token');
-    this.user = JSON.parse(localStorage.getItem('crate_user') || 'null');
+    this.token = readSessionValue(AUTH_TOKEN_KEY, true);
+    this.user = readSessionJSON(AUTH_USER_KEY, true);
   }
 
   get isLoggedIn() { return !!this.token && !!this.user; }
@@ -33,21 +67,26 @@ class CrateAuth {
 
   logout() {
     this.token = null; this.user = null;
-    localStorage.removeItem('crate_token');
-    localStorage.removeItem('crate_user');
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    sessionStorage.removeItem(AUTH_USER_KEY);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
   }
 
   async refreshUser() {
     if (!this.token) return null;
     const data = await this._fetch('/api/auth/me');
-    if (data.user) { this.user = data.user; localStorage.setItem('crate_user', JSON.stringify(data.user)); }
+    if (data.user) {
+      this.user = data.user;
+      writeSessionValue(AUTH_USER_KEY, JSON.stringify(data.user));
+    }
     return data.user;
   }
 
   _save(token, user) {
     this.token = token; this.user = user;
-    localStorage.setItem('crate_token', token);
-    localStorage.setItem('crate_user', JSON.stringify(user));
+    writeSessionValue(AUTH_TOKEN_KEY, token);
+    writeSessionValue(AUTH_USER_KEY, JSON.stringify(user));
   }
 
   // === PUBLISH ===
@@ -106,7 +145,7 @@ class CrateAuth {
       modal.innerHTML = `
         <div style="background:#111;border:1px solid #252525;border-radius:16px;padding:32px;max-width:400px;width:90%;text-align:center">
           <div style="font-size:1.5rem;margin-bottom:4px">${isLogin ? '👋 Welcome Back' : '🚀 Create Account'}</div>
-          <p style="color:#888;font-size:0.8rem;margin-bottom:20px">${isLogin ? 'Log in to your Crate Engine account' : 'Join thousands of creators'}</p>
+          <p style="color:#888;font-size:0.8rem;margin-bottom:20px">${isLogin ? 'Log in to your Crate Engine account' : 'Join thousands of creators'}<br><span style="font-size:0.72rem;color:#666">Session login only on this browser for safer local use.</span></p>
           ${!isLogin ? '<input id="auth-name" placeholder="Your name" style="width:100%;padding:12px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-bottom:10px;outline:none">' : ''}
           <input id="auth-email" type="email" placeholder="Email" style="width:100%;padding:12px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-bottom:10px;outline:none">
           <input id="auth-pass" type="password" placeholder="Password" style="width:100%;padding:12px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-bottom:16px;outline:none">

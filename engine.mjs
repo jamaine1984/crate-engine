@@ -251,17 +251,8 @@ import * as THREE from 'three';
 console.log('THREE imported', typeof THREE); window.THREE = THREE;
 window._userScripts = window._userScripts || [];
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import auth from './auth.mjs';
-import physics from './physics.mjs';
-import { showCodeEditor, createSandboxAPI } from './code-editor.mjs';
-import { WATER_PRESETS, createGerstnerWaterMaterial, currentWaterPreset, createWater, createRain, createRainPuddles, clearRainPuddles, updateRainPuddles, createSnow, triggerLightning, updateLightning, setLightningTimer, setCurrentWaterPreset, activeParticleEffects, createFireEffect, createSmokeEffect, createMagicEffect, createExplosionFX, createSparkles, updateParticleEffects } from './weather.mjs';
-import { GLB_MODELS, MODEL_SCALE_OVERRIDES, searchModels, loadModelCatalog } from './model-registry.mjs';
-window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
-window.GLB_MODELS = GLB_MODELS;
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { setBuildingsScene, createWallWithDoor, createSolidWall, createInteriorHouse, KENNEY_CITY_BUILDINGS, KENNEY_VEHICLES, KENNEY_ROAD_PIECES, KENNEY_FANTASY_PROPS, KENNEY_GRAVEYARD_PROPS, loadKenneyModel, randomKenneyBuilding, randomKenneyVehicle, createSkyscraper, createCommercialBuilding, createPitchedRoofHouse, createMansion, createDuplex, createRanchHouse, createParkingLot, createGasStation, createBridge, createSupermarket, createApartmentBuilding, createBusStop, createDumpster, createTrashCan, createSwimmingPool, createStopSign, createTrafficLight, createRoadSegment, createIntersection, createGlassOfficeBuilding, createStadium, createFence, createPark, createSidewalk, createStreetLamp, createBench, createModernHouse, createInteriorShop, createInteriorTavern, createCastle, createRoad, createAvatar, createSword } from './buildings.mjs';
-import { buildGerstnerLake, buildMineInterior, populateMineAssets, loadGroupedAsset, listGroupPieces, buildPackShowcase, loadUEBuilding, buildCityWorld3, applyTemplatePreset, _stopCityVehicles, _startCityVehicles, setCityBuilderScene, setCityBuilderObjects, setCityBuilderRenderer, setCityBuilderCamera, setCityBuilderControls, setCityBuilderBloomPass, setCityBuilderShowToast, setCityBuilderLoadGLBModel, setCityBuilderParseAndExecute, setCityBuilderRGBELoader } from './city-builder.mjs?v=10';
 
 // ═══ POST-PROCESSING — Lazy loaded to prevent boot crashes ═══
 let EffectComposer, RenderPass, UnrealBloomPass, SMAAPass, ShaderPass, OutputPass, SSAOPass, RGBELoader, BokehPass;
@@ -301,502 +292,1116 @@ async function loadPostProcessingModules() {
 const gltfLoader = new GLTFLoader();
 window._gltfLoader = gltfLoader;
 const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/');
+const THREE_CDN_VERSION = '0.180.0';
+const DEFAULT_OLLAMA_MODEL = 'gemma4:latest';
+const DEFAULT_COLYSEUS_ENDPOINT = 'ws://127.0.0.1:2567';
+const DEFAULT_COLYSEUS_ROOM = 'crate-world';
+const AI_PROVIDER_KEY = 'crate_ai_provider';
+const AI_MODEL_KEY = 'crate_ai_model';
+const AI_API_KEY_KEY = 'crate_ai_api_key';
+const AI_LEGACY_CONFIG_KEY = 'crate_ai_config';
+const MESHY_API_KEY_STORAGE_KEY = 'crate_meshy_api_key';
+const WEATHER_WATER_PRESET_NAMES = new Set(['tropical', 'storm', 'lake', 'ocean', 'swamp', 'river', 'arctic', 'calm', 'hurricane']);
+let colyseusBridge = null;
+let colyseusLastPoseAt = 0;
+
+dracoLoader.setDecoderPath(`https://cdn.jsdelivr.net/npm/three@${THREE_CDN_VERSION}/examples/jsm/libs/draco/`);
 gltfLoader.setDRACOLoader(dracoLoader);
-import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
-import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=610'
-import { collisionWorld } from './collision.mjs?v=5';
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
+let voiceCommandsModule = null;
+let voiceCommandsPromise = null;
+let buildAgentUi = null;
+let buildAgentUiPromise = null;
+let codeEditorModule = null;
+let codeEditorPromise = null;
+let buildingsModule = null;
+let buildingsPromise = null;
+let cityBuilderModule = null;
+let cityBuilderPromise = null;
+let modelRegistryModule = null;
+let modelRegistryPromise = null;
+let navMeshModule = null;
+let navMeshPromise = null;
+let localAiToolsModule = null;
+let localAiToolsPromise = null;
+let speechTtsModule = null;
+let speechTtsPromise = null;
+let debugToolsModule = null;
+let debugToolsPromise = null;
+let colyseusModule = null;
+let colyseusPromise = null;
+let godmodeModule = null;
+let godmodePromise = null;
+let userScriptsModule = null;
+let userScriptsPromise = null;
+let projectToolsModule = null;
+let projectToolsPromise = null;
+let legacyMultiplayerModule = null;
+let legacyMultiplayerPromise = null;
+let aiSettingsUiModule = null;
+let aiSettingsUiPromise = null;
+let generatorUiModule = null;
+let generatorUiPromise = null;
+let authModule = null;
+let authPromise = null;
+let weatherModule = null;
+let weatherPromise = null;
+let weatherRequestToken = 0;
+let utilityUiModule = null;
+let utilityUiPromise = null;
+let worldPresetsModule = null;
+let worldPresetsPromise = null;
+let characterGalleryModule = null;
+let characterGalleryPromise = null;
+let editorToolsModule = null;
+let editorToolsPromise = null;
+let assetBrowserModule = null;
+let assetBrowserPromise = null;
+let gameplayModule = null;
+let gameplayPromise = null;
+let collisionModule = null;
+let collisionPromise = null;
+let physicsModule = null;
+let physicsPromise = null;
+let gameplaySystemsReady = false;
+let gameplaySystemsPromise = null;
+let playModeBootPending = false;
+let WEAPON_DATABASE = Object.create(null);
+let createGameHUD = () => document.getElementById('game-hud-full');
+let updateGameHUD = () => {};
+const GLB_MODELS = window.GLB_MODELS || (window.GLB_MODELS = {});
+const MODEL_SCALE_OVERRIDES = window.MODEL_SCALE_OVERRIDES || (window.MODEL_SCALE_OVERRIDES = {});
+
+function createCollisionWorldFallback() {
+  const colliderPosition = new THREE.Vector3();
+  return {
+    built: false,
+    _dirty: false,
+    _scene: null,
+    _collisionGroup: null,
+    build(root, sceneRef) {
+      this.built = !!root;
+      this._scene = sceneRef || null;
+      this._dirty = false;
+    },
+    markDirty() {
+      this._dirty = true;
+    },
+    rebuildFromGroup(group) {
+      this._collisionGroup = group || this._collisionGroup || null;
+      this.built = !!this._collisionGroup;
+      this._dirty = false;
+    },
+    updateIfDirty() {
+      if (this._dirty && this._collisionGroup) this.rebuildFromGroup(this._collisionGroup);
+    },
+    createPlayerCollider() {
+      return {
+        velocity: new THREE.Vector3(),
+        onFloor: true,
+        onSlope: false,
+        lastGroundY: 0,
+        groundNormal: new THREE.Vector3(0, 1, 0),
+        get position() { return colliderPosition; },
+        setPosition(x, y, z) { colliderPosition.set(x, y, z); },
+        teleport(x, y, z) { colliderPosition.set(x, y, z); },
+        update() {},
+      };
+    },
+  };
+}
+
+function createPhysicsFallback() {
+  return {
+    init: async () => false,
+    addRigidbody: () => null,
+    removeRigidbody: () => {},
+    step: () => {},
+    applyImpulse: () => {},
+    applyForce: () => {},
+    wake: () => {},
+    isReady: () => false,
+    getWorld: () => null,
+    getBodies: () => new Map(),
+    bodyCount: () => 0,
+    clear: () => {},
+  };
+}
+
+let collisionWorld = createCollisionWorldFallback();
+let physics = createPhysicsFallback();
+window._collisionWorld = collisionWorld;
+window._physics = physics;
+
+function searchRegistryModels(query, limit = 10) {
+  return modelRegistryModule?.searchModels ? modelRegistryModule.searchModels(query, limit) : [];
+}
+
+function loadModelRegistryModule() {
+  if (modelRegistryModule) return Promise.resolve(modelRegistryModule);
+  if (!modelRegistryPromise) {
+    modelRegistryPromise = import('./model-registry.mjs').then(async (mod) => {
+      modelRegistryModule = mod;
+      Object.assign(GLB_MODELS, mod.GLB_MODELS || {});
+      Object.assign(MODEL_SCALE_OVERRIDES, mod.MODEL_SCALE_OVERRIDES || {});
+      if (typeof mod.loadModelCatalog === 'function') {
+        await mod.loadModelCatalog().catch(() => ({}));
+      }
+      window.GLB_MODELS = GLB_MODELS;
+      window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
+      return mod;
+    }).catch((err) => {
+      modelRegistryPromise = null;
+      throw err;
+    });
+  }
+  return modelRegistryPromise;
+}
+
+function loadCodeEditorModule() {
+  if (codeEditorModule) return Promise.resolve(codeEditorModule);
+  if (!codeEditorPromise) {
+    codeEditorPromise = import('./code-editor.mjs').then((mod) => {
+      codeEditorModule = mod;
+      return mod;
+    }).catch((err) => {
+      codeEditorPromise = null;
+      throw err;
+    });
+  }
+  return codeEditorPromise;
+}
+
+function syncBuildingsModule(mod = buildingsModule) {
+  if (!mod) return;
+  mod.setBuildingsScene?.(scene);
+}
+
+function loadBuildingsModule() {
+  if (buildingsModule) {
+    syncBuildingsModule(buildingsModule);
+    return Promise.resolve(buildingsModule);
+  }
+  if (!buildingsPromise) {
+    buildingsPromise = import('./buildings.mjs').then((mod) => {
+      buildingsModule = mod;
+      syncBuildingsModule(mod);
+      return mod;
+    }).catch((err) => {
+      buildingsPromise = null;
+      throw err;
+    });
+  }
+  return buildingsPromise;
+}
+
+function syncCityBuilderModule(mod = cityBuilderModule) {
+  if (!mod) return;
+  mod.setCityBuilderScene?.(scene);
+  mod.setCityBuilderObjects?.(objects);
+  mod.setCityBuilderRenderer?.(renderer);
+  mod.setCityBuilderCamera?.(camera);
+  mod.setCityBuilderControls?.(controls);
+  mod.setCityBuilderShowToast?.(showToast);
+  mod.setCityBuilderLoadGLBModel?.(loadGLBModel);
+  mod.setCityBuilderParseAndExecute?.((...args) => parseAndExecute(...args));
+  mod.setCityBuilderBloomPass?.(bloomPass);
+  mod.setCityBuilderRGBELoader?.(RGBELoader);
+}
+
+function loadCityBuilderModule() {
+  if (cityBuilderModule) {
+    syncCityBuilderModule(cityBuilderModule);
+    return Promise.resolve(cityBuilderModule);
+  }
+  if (!cityBuilderPromise) {
+    cityBuilderPromise = import('./city-builder.mjs').then((mod) => {
+      cityBuilderModule = mod;
+      syncCityBuilderModule(mod);
+      return mod;
+    }).catch((err) => {
+      cityBuilderPromise = null;
+      throw err;
+    });
+  }
+  return cityBuilderPromise;
+}
+
+function loadNavMeshModule() {
+  if (navMeshModule) return Promise.resolve(navMeshModule);
+  if (!navMeshPromise) {
+    navMeshPromise = import('./navmesh.mjs').then((mod) => {
+      navMeshModule = mod;
+      return mod;
+    }).catch((err) => {
+      navMeshPromise = null;
+      throw err;
+    });
+  }
+  return navMeshPromise;
+}
+
+function loadLocalAiToolsModule() {
+  if (localAiToolsModule) return Promise.resolve(localAiToolsModule);
+  if (!localAiToolsPromise) {
+    localAiToolsPromise = import('./local-ai-tools.mjs').then((mod) => {
+      localAiToolsModule = mod;
+      return mod;
+    }).catch((err) => {
+      localAiToolsPromise = null;
+      throw err;
+    });
+  }
+  return localAiToolsPromise;
+}
+
+function loadSpeechTtsModule() {
+  if (speechTtsModule) return Promise.resolve(speechTtsModule);
+  if (!speechTtsPromise) {
+    speechTtsPromise = import('./speech-tts.mjs').then((mod) => {
+      speechTtsModule = mod;
+      return mod;
+    }).catch((err) => {
+      speechTtsPromise = null;
+      throw err;
+    });
+  }
+  return speechTtsPromise;
+}
+
+function loadDebugToolsModule() {
+  if (debugToolsModule) return Promise.resolve(debugToolsModule);
+  if (!debugToolsPromise) {
+    debugToolsPromise = import('./debug-tools.mjs').then((mod) => {
+      debugToolsModule = mod;
+      return mod;
+    }).catch((err) => {
+      debugToolsPromise = null;
+      throw err;
+    });
+  }
+  return debugToolsPromise;
+}
+
+function loadColyseusModule() {
+  if (colyseusModule) return Promise.resolve(colyseusModule);
+  if (!colyseusPromise) {
+    colyseusPromise = import('./multiplayer-colyseus.mjs').then((mod) => {
+      colyseusModule = mod;
+      return mod;
+    }).catch((err) => {
+      colyseusPromise = null;
+      throw err;
+    });
+  }
+  return colyseusPromise;
+}
+
+function loadGodmodeModule() {
+  if (godmodeModule) return Promise.resolve(godmodeModule);
+  if (!godmodePromise) {
+    godmodePromise = import('./godmode.mjs').then((mod) => {
+      godmodeModule = mod;
+      return mod;
+    }).catch((err) => {
+      godmodePromise = null;
+      throw err;
+    });
+  }
+  return godmodePromise;
+}
+
+function syncUserScriptsModule(mod = userScriptsModule) {
+  if (!mod) return;
+  mod.setUserScriptsContext?.({
+    getScene: () => scene,
+    getCamera: () => camera,
+    getObjects: () => objects,
+    getTHREE: () => THREE,
+    addObj: (...args) => addObj(...args),
+    showToast: (msg, duration) => showToast(msg, duration),
+    getCharacterController: () => characterController,
+    getNpcController: () => npcController,
+    isPlayMode: () => playMode,
+    getUserAIConfig,
+    getDefaultOllamaModel: () => DEFAULT_OLLAMA_MODEL,
+  });
+}
+
+function loadUserScriptsModule() {
+  if (userScriptsModule) {
+    syncUserScriptsModule(userScriptsModule);
+    return Promise.resolve(userScriptsModule);
+  }
+  if (!userScriptsPromise) {
+    userScriptsPromise = import('./user-scripts.mjs').then((mod) => {
+      userScriptsModule = mod;
+      syncUserScriptsModule(mod);
+      return mod;
+    }).catch((err) => {
+      userScriptsPromise = null;
+      throw err;
+    });
+  }
+  return userScriptsPromise;
+}
+
+function syncProjectToolsModule(mod = projectToolsModule) {
+  if (!mod) return;
+  mod.setProjectToolsContext?.({
+    parseAndExecute: (...args) => parseAndExecute(...args),
+    logOutput: (...args) => logOutput(...args),
+    serializeScene: () => serializeScene(),
+    loadGLBModel: (...args) => loadGLBModel(...args),
+    getGLBModels: () => GLB_MODELS,
+    showToast: (msg, duration) => showToast(msg, duration),
+    getModelDB: () => _modelDB,
+    invalidateAssetCatalog: () => {
+      _assetCatalog = null;
+      assetBrowserModule?.invalidateAssetCatalog?.();
+    },
+    getTHREE: () => THREE,
+    getTerrainMesh: () => window._terrainMesh || null,
+    getSceneObjects: () => window._sceneObjects || objects,
+    isProUser: () => isProUser(),
+    setProStatus: (value) => setProStatus(value),
+  });
+}
+
+function loadProjectToolsModule() {
+  if (projectToolsModule) {
+    syncProjectToolsModule(projectToolsModule);
+    return Promise.resolve(projectToolsModule);
+  }
+  if (!projectToolsPromise) {
+    projectToolsPromise = import('./project-tools.mjs').then((mod) => {
+      projectToolsModule = mod;
+      syncProjectToolsModule(mod);
+      return mod;
+    }).catch((err) => {
+      projectToolsPromise = null;
+      throw err;
+    });
+  }
+  return projectToolsPromise;
+}
+
+function syncLegacyMultiplayerModule(mod = legacyMultiplayerModule) {
+  if (!mod) return;
+  mod.setLegacyMultiplayerContext?.({
+    getScene: () => scene,
+    getCamera: () => camera,
+    getTHREE: () => THREE,
+    getGltfLoader: () => gltfLoader,
+    getAnimationMixers: () => animationMixers,
+    showToast: (msg, duration) => showToast(msg, duration),
+    getCharacterController: () => characterController,
+    parseAndExecute: (...args) => parseAndExecute(...args),
+    getHudUpdate: () => window._hudUpdate || null,
+  });
+}
+
+function loadLegacyMultiplayerModule() {
+  if (legacyMultiplayerModule) {
+    syncLegacyMultiplayerModule(legacyMultiplayerModule);
+    return Promise.resolve(legacyMultiplayerModule);
+  }
+  if (!legacyMultiplayerPromise) {
+    legacyMultiplayerPromise = import('./legacy-multiplayer.mjs').then((mod) => {
+      legacyMultiplayerModule = mod;
+      syncLegacyMultiplayerModule(mod);
+      return mod;
+    }).catch((err) => {
+      legacyMultiplayerPromise = null;
+      throw err;
+    });
+  }
+  return legacyMultiplayerPromise;
+}
+
+function syncAiSettingsUiModule(mod = aiSettingsUiModule) {
+  if (!mod) return;
+  mod.setAiSettingsUiContext?.({
+    getUserAIConfig,
+    setUserAIConfig,
+    getDefaultOllamaModel: () => DEFAULT_OLLAMA_MODEL,
+    getMeshyApiKey,
+    setMeshyApiKey,
+    getMeshyApiBase: () => MESHY_API_BASE,
+  });
+}
+
+function loadAiSettingsUiModule() {
+  if (aiSettingsUiModule) {
+    syncAiSettingsUiModule(aiSettingsUiModule);
+    return Promise.resolve(aiSettingsUiModule);
+  }
+  if (!aiSettingsUiPromise) {
+    aiSettingsUiPromise = import('./ai-settings-ui.mjs').then((mod) => {
+      aiSettingsUiModule = mod;
+      syncAiSettingsUiModule(mod);
+      return mod;
+    }).catch((err) => {
+      aiSettingsUiPromise = null;
+      throw err;
+    });
+  }
+  return aiSettingsUiPromise;
+}
+
+function syncGeneratorUiModule(mod = generatorUiModule) {
+  if (!mod) return;
+  mod.setGeneratorUiContext?.({
+    getMeshyApiKey,
+    getMeshyApiBase: () => MESHY_API_BASE,
+    showMeshyKeyModal,
+    showToast: (msg, duration) => showToast(msg, duration),
+    getCharacterController: () => characterController,
+    getGltfLoader: () => gltfLoader,
+    getTHREE: () => THREE,
+    addObj: (...args) => addObj(...args),
+    getModelDB: () => _modelDB,
+    invalidateAssetCatalog: () => {
+      _assetCatalog = null;
+      assetBrowserModule?.invalidateAssetCatalog?.();
+    },
+  });
+}
+
+function loadGeneratorUiModule() {
+  if (generatorUiModule) {
+    syncGeneratorUiModule(generatorUiModule);
+    return Promise.resolve(generatorUiModule);
+  }
+  if (!generatorUiPromise) {
+    generatorUiPromise = import('./generator-ui.mjs').then((mod) => {
+      generatorUiModule = mod;
+      syncGeneratorUiModule(mod);
+      return mod;
+    }).catch((err) => {
+      generatorUiPromise = null;
+      throw err;
+    });
+  }
+  return generatorUiPromise;
+}
+
+function loadAuthModule() {
+  if (window._crateAuth) return Promise.resolve(window._crateAuth);
+  if (authModule) return Promise.resolve(authModule);
+  if (!authPromise) {
+    authPromise = import('./auth.mjs').then((mod) => {
+      authModule = mod.default || mod;
+      return authModule;
+    }).catch((err) => {
+      authPromise = null;
+      throw err;
+    });
+  }
+  return authPromise;
+}
+
+function loadWeatherModule() {
+  if (weatherModule) return Promise.resolve(weatherModule);
+  if (!weatherPromise) {
+    weatherPromise = import('./weather.mjs').then((mod) => {
+      weatherModule = mod;
+      return mod;
+    }).catch((err) => {
+      weatherPromise = null;
+      throw err;
+    });
+  }
+  return weatherPromise;
+}
+
+function syncUtilityUiModule(mod = utilityUiModule) {
+  if (!mod) return;
+  mod.setUtilityUiContext?.({
+    getCommandShowcase: () => window._COMMANDS_SHOWCASE || {},
+    runCommand: (cmd) => window._runCommand?.(cmd),
+    loadSettings: () => {
+      try {
+        return JSON.parse(localStorage.getItem('crate-settings') || '{}');
+      } catch {
+        return {};
+      }
+    },
+    applySettings: (settings) => {
+      const qualityMap = { low: 0.5, medium: 0.75, high: 1, ultra: window.devicePixelRatio || 1 };
+      renderer.setPixelRatio(qualityMap[settings.quality] || 1);
+      renderer.shadowMap.enabled = settings.shadows;
+      camera.fov = settings.fov;
+      camera.updateProjectionMatrix();
+      if (!settings.fog) scene.fog = null;
+      if (!settings.clouds && _cloudGroup) {
+        scene.remove(_cloudGroup);
+        _cloudGroup = null;
+      } else if (settings.clouds && !_cloudGroup) {
+        createClouds();
+      }
+      window._mouseSensitivity = settings.sensitivity;
+    },
+    saveSettings: (settings) => {
+      localStorage.setItem('crate-settings', JSON.stringify(settings));
+    },
+    showToast: (msg, duration) => showToast(msg, duration),
+  });
+}
+
+function loadUtilityUiModule() {
+  if (utilityUiModule) {
+    syncUtilityUiModule(utilityUiModule);
+    return Promise.resolve(utilityUiModule);
+  }
+  if (!utilityUiPromise) {
+    utilityUiPromise = import('./utility-ui.mjs').then((mod) => {
+      utilityUiModule = mod;
+      syncUtilityUiModule(mod);
+      return mod;
+    }).catch((err) => {
+      utilityUiPromise = null;
+      throw err;
+    });
+  }
+  return utilityUiPromise;
+}
+
+function loadWorldPresetsModule() {
+  if (worldPresetsModule) return Promise.resolve(worldPresetsModule);
+  if (!worldPresetsPromise) {
+    worldPresetsPromise = import('./world-presets.mjs').then((mod) => {
+      worldPresetsModule = mod;
+      return mod;
+    }).catch((err) => {
+      worldPresetsPromise = null;
+      throw err;
+    });
+  }
+  return worldPresetsPromise;
+}
+
+function syncCharacterGalleryModule(mod = characterGalleryModule) {
+  if (!mod) return;
+  mod.setCharacterGalleryContext?.({
+    getSelectedCharacterType: () => selectedCharacterType,
+    setSelectedCharacterType: (value) => { selectedCharacterType = value; },
+    getCharacterController: () => characterController,
+    getRenderer: () => renderer,
+    getCanvas: () => canvas,
+    getScene: () => scene,
+    getCamera: () => camera,
+    getDracoLoader: () => dracoLoader,
+  });
+}
+
+function loadCharacterGalleryModule() {
+  if (characterGalleryModule) {
+    syncCharacterGalleryModule(characterGalleryModule);
+    return Promise.resolve(characterGalleryModule);
+  }
+  if (!characterGalleryPromise) {
+    characterGalleryPromise = import('./character-gallery.mjs').then((mod) => {
+      characterGalleryModule = mod;
+      syncCharacterGalleryModule(mod);
+      return mod;
+    }).catch((err) => {
+      characterGalleryPromise = null;
+      throw err;
+    });
+  }
+  return characterGalleryPromise;
+}
+
+async function findCharacterLibraryEntry(id) {
+  const mod = await loadCharacterGalleryModule();
+  return mod.findCharacterLibraryEntry(id);
+}
+
+function syncEditorToolsModule(mod = editorToolsModule) {
+  if (!mod) return;
+  mod.setEditorToolsContext?.({
+    showToast: (msg, duration) => showToast(msg, duration),
+    getScene: () => scene,
+    getRenderer: () => renderer,
+    getCamera: () => camera,
+    getCurrentGround: () => currentGround,
+    loadGroundTexture: (type) => loadGroundTexture(type),
+    loadGLBModel: (...args) => loadGLBModel(...args),
+    runCommand: (cmd) => parseAndExecute(cmd),
+    getGLBModels: () => GLB_MODELS,
+  });
+}
+
+function loadEditorToolsModule() {
+  if (editorToolsModule) {
+    syncEditorToolsModule(editorToolsModule);
+    return Promise.resolve(editorToolsModule);
+  }
+  if (!editorToolsPromise) {
+    editorToolsPromise = import('./editor-tools-ui.mjs').then((mod) => {
+      editorToolsModule = mod;
+      syncEditorToolsModule(mod);
+      return mod;
+    }).catch((err) => {
+      editorToolsPromise = null;
+      throw err;
+    });
+  }
+  return editorToolsPromise;
+}
+
+async function ensureFabAliasesLoaded() {
+  const mod = await loadEditorToolsModule();
+  return mod.ensureFabAliasesLoaded?.() || {};
+}
+
+function syncAssetBrowserModule(mod = assetBrowserModule) {
+  if (!mod) return;
+  mod.setAssetBrowserContext?.({
+    loadAssetCatalog: () => _loadAssetCatalog(),
+    getCharacterCount: async () => (await loadCharacterGalleryModule()).getCharacterLibrary().length,
+    showCharacterGallery: () => showCharacterGallery(),
+    getGltfLoader: () => gltfLoader,
+    showToast: (msg, duration) => showToast(msg, duration),
+  });
+}
+
+function loadAssetBrowserModule() {
+  if (assetBrowserModule) {
+    syncAssetBrowserModule(assetBrowserModule);
+    return Promise.resolve(assetBrowserModule);
+  }
+  if (!assetBrowserPromise) {
+    assetBrowserPromise = import('./asset-browser-ui.mjs').then((mod) => {
+      assetBrowserModule = mod;
+      syncAssetBrowserModule(mod);
+      return mod;
+    }).catch((err) => {
+      assetBrowserPromise = null;
+      throw err;
+    });
+  }
+  return assetBrowserPromise;
+}
+
+async function applyWaterPresetToObject(obj, preset) {
+  if (!obj?.userData?.isGerstnerWater) return null;
+  const mod = await loadWeatherModule();
+  const presetConfig = mod.WATER_PRESETS?.[preset];
+  if (!presetConfig || !obj.material?.uniforms) return null;
+  const uniforms = obj.material.uniforms;
+  uniforms.waveA.value.set(...presetConfig.waveA);
+  uniforms.waveB.value.set(...presetConfig.waveB);
+  uniforms.waveC.value.set(...presetConfig.waveC);
+  uniforms.waterColor.value.copy(presetConfig.color);
+  uniforms.deepColor.value.copy(presetConfig.deepColor);
+  uniforms.foamIntensity.value = presetConfig.foamIntensity;
+  uniforms.specularPower.value = presetConfig.specularPower;
+  uniforms.fresnelPower.value = presetConfig.fresnelPower;
+  uniforms.opacity.value = presetConfig.opacity;
+  obj.userData.waterPreset = preset;
+  mod.setCurrentWaterPreset?.(preset);
+  return presetConfig;
+}
+
+let userScriptsBootScheduled = false;
+function scheduleSavedUserScriptsLoad() {
+  if (userScriptsBootScheduled) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem('crate-user-scripts') || '[]');
+    if (!Array.isArray(saved) || !saved.length) return;
+  } catch {
+    return;
+  }
+  userScriptsBootScheduled = true;
+  const bootSavedScripts = () => {
+    loadUserScriptsModule().then((mod) => {
+      mod.initializeUserScripts?.();
+    }).catch((err) => {
+      console.warn('[AI Sandbox] Deferred script load failed:', err);
+    });
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => bootSavedScripts(), { timeout: 1500 });
+  } else {
+    setTimeout(bootSavedScripts, 400);
+  }
+}
+
+function syncCollisionWorld(mod = collisionModule) {
+  if (!mod?.collisionWorld) return;
+  collisionWorld = mod.collisionWorld;
+  collisionWorld._collisionGroup = collisionGroup || collisionWorld._collisionGroup || null;
+  if (collisionGroup?.children?.length) collisionWorld.rebuildFromGroup(collisionGroup);
+  else if (currentGround && scene) collisionWorld.build(currentGround, scene);
+  window._collisionWorld = collisionWorld;
+}
+
+function loadCollisionModule() {
+  if (collisionModule) {
+    syncCollisionWorld(collisionModule);
+    return Promise.resolve(collisionModule);
+  }
+  if (!collisionPromise) {
+    collisionPromise = import('./collision.mjs').then((mod) => {
+      collisionModule = mod;
+      syncCollisionWorld(mod);
+      return mod;
+    }).catch((err) => {
+      collisionPromise = null;
+      throw err;
+    });
+  }
+  return collisionPromise;
+}
+
+function syncPhysicsModule(mod = physicsModule) {
+  if (!mod?.default) return;
+  physics = mod.default;
+  window._physics = physics;
+}
+
+function loadPhysicsModule() {
+  if (physicsModule) {
+    syncPhysicsModule(physicsModule);
+    return Promise.resolve(physicsModule);
+  }
+  if (!physicsPromise) {
+    physicsPromise = import('./physics.mjs').then((mod) => {
+      physicsModule = mod;
+      syncPhysicsModule(mod);
+      return mod;
+    }).catch((err) => {
+      physicsPromise = null;
+      throw err;
+    });
+  }
+  return physicsPromise;
+}
+
+function syncGameplayModule(mod = gameplayModule) {
+  if (!mod) return;
+  WEAPON_DATABASE = mod.WEAPON_DATABASE || WEAPON_DATABASE;
+  createGameHUD = mod.createGameHUD || createGameHUD;
+  updateGameHUD = mod.updateGameHUD || updateGameHUD;
+}
+
+function loadGameplayModule() {
+  if (gameplayModule) {
+    syncGameplayModule(gameplayModule);
+    return Promise.resolve(gameplayModule);
+  }
+  if (!gameplayPromise) {
+    gameplayPromise = import('./character.mjs').then((mod) => {
+      gameplayModule = mod;
+      syncGameplayModule(mod);
+      return mod;
+    }).catch((err) => {
+      gameplayPromise = null;
+      throw err;
+    });
+  }
+  return gameplayPromise;
+}
+
+function syncGameplayGlobals() {
+  window.characterController = characterController;
+  window._characterController = characterController;
+  window.npcController = npcController;
+}
+
+async function ensureGameSystemsLoaded() {
+  if (gameplaySystemsReady && characterController && npcController) return gameplayModule;
+  if (!gameplaySystemsPromise) {
+    gameplaySystemsPromise = (async () => {
+      const [gameplay] = await Promise.all([
+        loadGameplayModule(),
+        loadCollisionModule(),
+      ]);
+      syncGameplayModule(gameplay);
+      if (!questSystem && gameplay.QuestSystem) questSystem = new gameplay.QuestSystem();
+      if (!dialogueSystem && gameplay.DialogueSystem) dialogueSystem = new gameplay.DialogueSystem();
+      if (!characterController && gameplay.CharacterController) {
+        characterController = new gameplay.CharacterController(scene, camera, objects);
+        characterController._autoSpawned = false;
+      }
+      if (!npcController && gameplay.NPCController && characterController) {
+        npcController = new gameplay.NPCController(scene, camera, objects, characterController);
+      }
+      if (!townBuilder && gameplay.TownBuilder) {
+        townBuilder = new gameplay.TownBuilder(scene, objects, loadGLBModel);
+      }
+      if (!gameHUD && typeof createGameHUD === 'function') {
+        gameHUD = createGameHUD();
+      }
+      if (!levelSystem && gameplay.LevelSystem && characterController) {
+        levelSystem = new gameplay.LevelSystem(characterController);
+      }
+      if (!craftingSystem && gameplay.CraftingSystem && characterController) {
+        craftingSystem = new gameplay.CraftingSystem(characterController);
+      }
+      if (!window._gamepad && gameplay.GamepadManager && characterController) {
+        window._gamepad = new gameplay.GamepadManager(characterController);
+      }
+      if (!window._mobileControls && gameplay.MobileControls && characterController) {
+        window._mobileControls = new gameplay.MobileControls(characterController);
+      }
+      syncGameplayGlobals();
+      gameplaySystemsReady = true;
+      return gameplay;
+    })().catch((err) => {
+      gameplaySystemsPromise = null;
+      throw err;
+    });
+  }
+  return gameplaySystemsPromise;
+}
+
+async function ensureGameplayReadyForCommand() {
+  try {
+    await ensureGameSystemsLoaded();
+    return true;
+  } catch (err) {
+    console.warn('[Gameplay] Command load failed:', err);
+    showToast('⚠ Failed to load gameplay systems');
+    return false;
+  }
+}
+let buildAgentSyncInterval = null;
+
+function readSessionValueWithLegacy(key, migrateLegacy = false) {
+  const sessionValue = sessionStorage.getItem(key);
+  if (sessionValue !== null) return sessionValue;
+  if (!migrateLegacy) return null;
+  const legacyValue = localStorage.getItem(key);
+  if (legacyValue !== null) {
+    sessionStorage.setItem(key, legacyValue);
+    localStorage.removeItem(key);
+    return legacyValue;
+  }
+  return null;
+}
+
+function writeSessionValue(key, value) {
+  if (value === null || value === undefined || value === '') {
+    sessionStorage.removeItem(key);
+  } else {
+    sessionStorage.setItem(key, value);
+  }
+  localStorage.removeItem(key);
+}
+
+function migrateLegacyAIConfig() {
+  try {
+    const legacy = JSON.parse(localStorage.getItem(AI_LEGACY_CONFIG_KEY) || 'null');
+    if (!legacy) return;
+    if (legacy.provider && !localStorage.getItem(AI_PROVIDER_KEY)) localStorage.setItem(AI_PROVIDER_KEY, legacy.provider);
+    if (legacy.model && !localStorage.getItem(AI_MODEL_KEY)) localStorage.setItem(AI_MODEL_KEY, legacy.model);
+    if (legacy.apiKey && !sessionStorage.getItem(AI_API_KEY_KEY)) sessionStorage.setItem(AI_API_KEY_KEY, legacy.apiKey);
+    localStorage.removeItem(AI_LEGACY_CONFIG_KEY);
+  } catch {
+    localStorage.removeItem(AI_LEGACY_CONFIG_KEY);
+  }
+}
+
+async function loadVoiceCommandsModule() {
+  if (voiceCommandsModule) return voiceCommandsModule;
+  if (!voiceCommandsPromise) {
+    voiceCommandsPromise = import('./voice-commands.mjs').then((mod) => {
+      voiceCommandsModule = mod;
+      return mod;
+    }).catch((err) => {
+      voiceCommandsPromise = null;
+      throw err;
+    });
+  }
+  return voiceCommandsPromise;
+}
+
+async function ensureBuildAgentUi() {
+  if (buildAgentUi) return buildAgentUi;
+  if (!buildAgentUiPromise) {
+    buildAgentUiPromise = import('./ai-agent.mjs').then(({ CrateAgent }) => {
+      buildAgentUi = new CrateAgent((cmd) => {
+        parseAndExecute(cmd);
+      });
+      if (!buildAgentSyncInterval) {
+        buildAgentSyncInterval = setInterval(() => {
+          if (!buildAgentUi) return;
+          const objs = [];
+          scene.traverse((child) => { if (child.isMesh || child.isGroup) objs.push(child); });
+          buildAgentUi.updateObjects(objs);
+        }, 2000);
+      }
+      return buildAgentUi;
+    }).catch((err) => {
+      buildAgentUiPromise = null;
+      console.warn('[BuildAgent] UI agent not loaded:', err.message);
+      return null;
+    });
+  }
+  return buildAgentUiPromise;
+}
+
+function getDefaultAIConfig() {
+  return { provider: 'ollama', apiKey: '', model: DEFAULT_OLLAMA_MODEL };
+}
+
+function getCurrentSelection() {
+  const sceneObjects = window._sceneObjects || [];
+  return selectedObj || window._lastPlacedObj || sceneObjects[sceneObjects.length - 1] || null;
+}
+
+function getNavStartPoint() {
+  if (playMode && characterController?.position) return characterController.position.clone();
+  return camera.position.clone();
+}
+
+function getAssetSearchCatalog() {
+  return Object.entries(GLB_MODELS || {}).map(([label, value]) => {
+    if (typeof value === 'string') {
+      return { label, file: value, text: `${label} ${value}` };
+    }
+    return {
+      label,
+      file: value?.file || label,
+      text: `${label} ${JSON.stringify(value || {})}`
+    };
+  });
+}
+
+async function getColyseusBridge() {
+  if (!colyseusBridge) {
+    const { ColyseusBridge } = await loadColyseusModule();
+    colyseusBridge = new ColyseusBridge();
+    window._colyseusBridge = colyseusBridge;
+  }
+  return colyseusBridge;
+}
+
+function getColyseusPose() {
+  const position = playMode && characterController?.position ? characterController.position : camera.position;
+  const yaw = playMode && characterController ? characterController.rotation : camera.rotation.y;
+  return {
+    x: position.x,
+    y: position.y,
+    z: position.z,
+    yaw,
+    name: localStorage.getItem('mp_name') || 'Player_' + Math.floor(Math.random() * 9999)
+  };
+}
+
+async function connectColyseusRoom(endpoint = DEFAULT_COLYSEUS_ENDPOINT, roomName = DEFAULT_COLYSEUS_ROOM, options = {}) {
+  const bridge = await getColyseusBridge();
+  if (bridge.connected) await bridge.disconnect();
+  const room = await bridge.connect(endpoint, roomName, {
+    name: options.name || localStorage.getItem('mp_name') || 'Player_' + Math.floor(Math.random() * 9999)
+  });
+  if (typeof room.onMessage === 'function') {
+    room.onMessage('presence', (payload) => {
+      if (!payload || payload.sessionId === room.sessionId) return;
+      addToLog(`🌐 Colyseus joined: ${payload.name || payload.sessionId}`);
+    });
+    room.onMessage('leave', (payload) => {
+      if (!payload) return;
+      addToLog(`🌐 Colyseus left: ${payload.sessionId}`);
+    });
+    room.onMessage('pose', (payload) => {
+      window._lastColyseusPose = payload;
+    });
+  }
+  colyseusLastPoseAt = 0;
+  return room;
+}
+
+function syncColyseusPose(now = performance.now()) {
+  if (!colyseusBridge?.connected) return;
+  if (now - colyseusLastPoseAt < 120) return;
+  colyseusLastPoseAt = now;
+  try {
+    colyseusBridge.sendPose(getColyseusPose());
+  } catch (err) {
+    console.warn('[Colyseus] Pose sync failed:', err.message);
+  }
+}
 
 
 // ═══ MULTIPLAYER LOBBY UI ═══
 
 // === MULTIPLAYER CLIENT ===
-class MultiplayerClient {
-  constructor() {
-    this.ws = null;
-    this.playerId = null;
-    this.room = null;
-    this.peers = new Map(); // id → { model, name, animation, mixer }
-    this.connected = false;
-    this._sendInterval = null;
-  }
-
-  connect(server, room, name) {
-    if (this.ws) this.disconnect();
-    server = server || localStorage.getItem('mp_server') || 'wss://crate-engine-mp.fly.dev';
-    room = room || 'default';
-    name = name || localStorage.getItem('mp_name') || 'Player_' + Math.floor(Math.random() * 9999);
-    
-    try {
-      this.ws = new WebSocket(server);
-    } catch(e) {
-      showToast('❌ Failed to connect: ' + e.message);
-      return;
-    }
-    
-    this.ws.onopen = () => {
-      this.connected = true;
-      this.ws.send(JSON.stringify({ type: 'join', room, name, character: characterController?.characterType || 'knight' }));
-      showToast('🌐 Connecting to ' + room + '...');
-      
-      // Send position updates at 15Hz
-      this._sendInterval = setInterval(() => {
-        if (!characterController || !this.connected) return;
-        const pos = characterController.position;
-        this.ws.send(JSON.stringify({
-          type: 'move',
-          position: { x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2) },
-          rotation: +(characterController.model?.rotation.y || 0).toFixed(3),
-          animation: characterController.stateMachine?.state || 'idle',
-        }));
-      }, 66);
-    };
-    
-    this.ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        this._handleMessage(msg);
-      } catch(err) {}
-    };
-    
-    this.ws.onclose = () => {
-      this.connected = false;
-      if (this._sendInterval) clearInterval(this._sendInterval);
-      this._removePeers();
-      showToast('🌐 Disconnected from multiplayer');
-    };
-    
-    this.ws.onerror = () => {
-      showToast('❌ Multiplayer connection error');
-    };
-  }
-
-  disconnect() {
-    if (this.ws) { this.ws.close(); this.ws = null; }
-    if (this._sendInterval) { clearInterval(this._sendInterval); this._sendInterval = null; }
-    this.connected = false;
-    this._removePeers();
-  }
-
-  chat(message) {
-    if (this.ws && this.connected) {
-      this.ws.send(JSON.stringify({ type: 'chat', message }));
-    }
-  }
-
-  _handleMessage(msg) {
-    switch (msg.type) {
-      case 'joined':
-        this.playerId = msg.playerId;
-        this.room = msg.room;
-        showToast('🌐 Joined room: ' + (msg.roomName || msg.room) + ' (Player #' + msg.playerId + ')');
-        // Spawn existing players
-        if (msg.players) msg.players.forEach(p => this._spawnPeer(p));
-        break;
-        
-      case 'player_joined':
-        this._spawnPeer(msg.player);
-        showToast('👤 ' + msg.player.name + ' joined');
-        break;
-        
-      case 'player_left':
-        this._removePeer(msg.id);
-        showToast('👤 ' + (msg.name || 'Player') + ' left');
-        break;
-        
-      case 'player_moved':
-        this._updatePeer(msg.id, msg.position, msg.rotation, msg.animation);
-        break;
-        
-      case 'chat':
-        this._showChat(msg.name, msg.message);
-        break;
-        
-      case 'scene_command':
-        // Another player ran a command — execute it locally
-        if (typeof parseAndExecute === 'function') parseAndExecute(msg.command);
-        break;
-        
-      case 'player_attack':
-        // Show attack animation on peer
-        const peer = this.peers.get(msg.id);
-        if (peer && peer.mixer) {
-          // trigger attack anim
-        }
-        break;
-        
-      case 'pong':
-        const ping = Date.now() - (msg.time || 0);
-        if (window._hudUpdate) window._hudUpdate.interact('Ping: ' + ping + 'ms');
-        break;
-    }
-  }
-
-  _spawnPeer(data) {
-    if (this.peers.has(data.id)) return;
-    const charType = data.character || 'knight';
-    const url = '/models/character_' + charType + '.glb';
-    gltfLoader.load(url, (gltf) => {
-      const model = gltf.scene;
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      model.scale.setScalar(1.8 / Math.max(size.y, 0.01));
-      model.position.set(data.position?.x || 0, data.position?.y || 0, data.position?.z || 0);
-      model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-      
-      const nameTag = document.createElement('div');
-      nameTag.style.cssText = 'position:fixed;color:' + (data.color || '#fff') + ';font-size:11px;font-family:system-ui;pointer-events:none;z-index:9990;text-shadow:0 1px 3px rgba(0,0,0,0.8);font-weight:600;';
-      nameTag.textContent = data.name || 'Player';
-      document.body.appendChild(nameTag);
-      
-      let mixer = null;
-      if (gltf.animations?.length) {
-        mixer = new THREE.AnimationMixer(model);
-        const clips = {};
-        gltf.animations.forEach(clip => { clips[clip.name.replace('HumanArmature|', '').toLowerCase()] = mixer.clipAction(clip); });
-        if (clips.idle) clips.idle.play();
-        animationMixers.push(mixer);
-      }
-      
-      scene.add(model);
-      this.peers.set(data.id, { model, nameTag, mixer, name: data.name, targetPos: new THREE.Vector3(), targetRot: 0, currentAnim: 'idle', clips: {} });
-    }, undefined, () => {
-      const geo = new THREE.BoxGeometry(0.5, 1.8, 0.5);
-      const mat = new THREE.MeshStandardMaterial({ color: data.color || '#ff6b35' });
-      const model = new THREE.Mesh(geo, mat);
-      model.position.set(data.position?.x || 0, 0.9, data.position?.z || 0);
-      scene.add(model);
-      this.peers.set(data.id, { model, targetPos: new THREE.Vector3(), targetRot: 0 });
-    });
-  }
-
-  _removePeer(id) {
-    const peer = this.peers.get(id);
-    if (!peer) return;
-    if (peer.model) scene.remove(peer.model);
-    if (peer.nameTag) peer.nameTag.remove();
-    this.peers.delete(id);
-  }
-
-  _removePeers() {
-    for (const [id] of this.peers) this._removePeer(id);
-  }
-
-  _showChat(name, message) {
-    let chatEl = document.getElementById('mp-chat-log');
-    if (!chatEl) {
-      chatEl = document.createElement('div');
-      chatEl.id = 'mp-chat-log';
-      chatEl.style.cssText = 'position:fixed;bottom:60px;left:20px;max-width:350px;max-height:200px;overflow-y:auto;z-index:9999;pointer-events:none;font-family:system-ui;';
-      document.body.appendChild(chatEl);
-    }
-    const line = document.createElement('div');
-    line.style.cssText = 'color:rgba(255,255,255,0.8);font-size:12px;padding:2px 8px;background:rgba(0,0,0,0.5);border-radius:4px;margin-bottom:2px;animation:hud-fade-out 1s ease-in 10s forwards;';
-    line.innerHTML = '<span style="color:#f59e0b;font-weight:600;">' + name + ':</span> ' + message;
-    chatEl.appendChild(line);
-    chatEl.scrollTop = chatEl.scrollHeight;
-    // Clean old messages
-    while (chatEl.children.length > 20) chatEl.removeChild(chatEl.firstChild);
-  }
-
-  // Call each frame to interpolate peer positions
-  update(dt) {
-    for (const [id, peer] of this.peers) {
-      if (!peer.model) continue;
-      // Lerp position
-      peer.model.position.lerp(peer.targetPos, 0.15);
-      // Lerp rotation
-      const diff = peer.targetRot - peer.model.rotation.y;
-      peer.model.rotation.y += diff * 0.15;
-      
-      // Update name tag (world to screen)
-      if (peer.nameTag && camera) {
-        const worldPos = peer.model.position.clone();
-        worldPos.y += 2.2;
-        worldPos.project(camera);
-        if (worldPos.z < 1) {
-          peer.nameTag.style.left = ((worldPos.x * 0.5 + 0.5) * window.innerWidth) + 'px';
-          peer.nameTag.style.top = ((-worldPos.y * 0.5 + 0.5) * window.innerHeight) + 'px';
-          peer.nameTag.style.display = 'block';
-        } else {
-          peer.nameTag.style.display = 'none';
-        }
-      }
-    }
-  }
-}
-window._mp = new MultiplayerClient();
-
 function showMultiplayerLobby() {
-  let existing = document.getElementById('mp-lobby-modal');
-  if (existing) { existing.remove(); return; }
-  
-  const modal = document.createElement('div');
-  modal.id = 'mp-lobby-modal';
-  Object.assign(modal.style, {
-    position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:'500',
-    background:'#0d0d0d', border:'1px solid #333', borderRadius:'16px', padding:'28px',
-    width:'500px', maxHeight:'80vh', overflowY:'auto', color:'#eee',
-    fontFamily:"'Inter',system-ui,sans-serif", boxShadow:'0 20px 60px rgba(0,0,0,0.8)',
+  loadLegacyMultiplayerModule().then((mod) => mod.showMultiplayerLobby()).catch((err) => {
+    console.error('[Legacy Multiplayer] Lobby failed:', err);
+    showToast('❌ Multiplayer tools failed to load');
   });
-  
-  modal.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="margin:0;font-size:1.2rem">🌐 Multiplayer</h2>
-      <button onclick="this.closest('#mp-lobby-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
-    </div>
-    
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <input id="mp-name" value="${localStorage.getItem('mp_name')||'Player'}" placeholder="Your name" style="flex:1;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.85rem">
-      <input id="mp-server" value="${localStorage.getItem('mp_server')||'wss://crate-engine-mp.fly.dev'}" placeholder="Server URL" style="flex:2;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.85rem">
-    </div>
-    
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button id="mp-quick-join" style="flex:1;padding:12px;background:linear-gradient(135deg,#ff6b35,#f7c948);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.9rem">⚡ Quick Match</button>
-      <button id="mp-create" style="flex:1;padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">🏗️ Create Room</button>
-      <button id="mp-refresh" style="padding:12px 16px;background:#111;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">🔄</button>
-    </div>
-    
-    <div id="mp-rooms" style="min-height:100px">
-      <div style="text-align:center;color:#555;padding:20px">Click 🔄 to load rooms or ⚡ Quick Match to jump in</div>
-    </div>
-    
-    <div id="mp-status" style="margin-top:12px;font-size:0.78rem;color:#666"></div>
-    
-    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #1a1a1a">
-      <p style="font-size:0.72rem;color:#555">
-        <strong>Self-host:</strong> Run <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">node server/multiplayer.mjs</code> or deploy to Railway/Render/Fly.io<br>
-        <strong>Commands:</strong> <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">multiplayer</code> / <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">join [room]</code> / <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">chat [message]</code>
-      </p>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  
-  const statusEl = document.getElementById('mp-status');
-  
-  document.getElementById('mp-quick-join').onclick = async () => {
-    const server = document.getElementById('mp-server').value;
-    const name = document.getElementById('mp-name').value;
-    localStorage.setItem('mp_server', server); localStorage.setItem('mp_name', name);
-    statusEl.innerHTML = '<span style="color:#f7c948">Matchmaking...</span>';
-    try {
-      const httpUrl = server.replace('ws://', 'http://').replace('wss://', 'https://');
-      const resp = await fetch(httpUrl.replace(/:\d+.*/, ':' + new URL(server.replace('ws','http')).port) + '/matchmake', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ scene: null }),
-      });
-      const data = await resp.json();
-      if (data.room) {
-        statusEl.innerHTML = '<span style="color:#4ade80">Joining ' + data.room + '...</span>';
-        if (window._mp) { window._mp.connect(server, data.room, name); }
-        setTimeout(() => modal.remove(), 1000);
-      }
-    } catch(e) {
-      statusEl.innerHTML = '<span style="color:#f87171">Could not reach server. Is it running?</span>';
-    }
-  };
-  
-  document.getElementById('mp-create').onclick = () => {
-    const server = document.getElementById('mp-server').value;
-    const name = document.getElementById('mp-name').value;
-    const roomId = 'room_' + Date.now().toString(36);
-    localStorage.setItem('mp_server', server); localStorage.setItem('mp_name', name);
-    if (window._mp) { window._mp.connect(server, roomId, name); }
-    statusEl.innerHTML = '<span style="color:#4ade80">Created room: ' + roomId + '</span>';
-    setTimeout(() => modal.remove(), 1500);
-  };
-  
-  document.getElementById('mp-refresh').onclick = async () => {
-    const server = document.getElementById('mp-server').value;
-    const roomsEl = document.getElementById('mp-rooms');
-    roomsEl.innerHTML = '<div style="text-align:center;color:#f7c948;padding:10px">Loading...</div>';
-    try {
-      const httpUrl = server.replace('ws://', 'http://').replace('wss://', 'https://');
-      const port = new URL(server.replace('ws','http')).port || '8860';
-      const resp = await fetch(httpUrl.split(':' + port)[0] + ':' + port + '/lobby');
-      const data = await resp.json();
-      if (data.rooms.length === 0) {
-        roomsEl.innerHTML = '<div style="text-align:center;color:#555;padding:20px">No rooms yet — create one!</div>';
-      } else {
-        roomsEl.innerHTML = data.rooms.map(r => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#111;border:1px solid #1a1a1a;border-radius:8px;margin-bottom:6px">
-            <div>
-              <strong style="color:#fff">${r.name}</strong>
-              <span style="color:#666;font-size:0.75rem;margin-left:8px">${r.scene || 'custom'}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="color:#888;font-size:0.8rem">${r.players}/${r.maxPlayers}</span>
-              <button onclick="window._mp&&window._mp.connect('${server}','${r.id}',document.getElementById('mp-name').value);this.closest('#mp-lobby-modal').remove()" style="padding:6px 14px;background:#ff6b35;border:none;border-radius:6px;color:#fff;font-size:0.78rem;cursor:pointer;font-weight:600">Join</button>
-            </div>
-          </div>
-        `).join('');
-      }
-    } catch(e) {
-      roomsEl.innerHTML = '<div style="text-align:center;color:#f87171;padding:20px">Could not reach server</div>';
-    }
-  };
 }
 window.showMultiplayerLobby = showMultiplayerLobby;
 
-// ═══ USER AI MODEL CONFIG ═══
-const AI_PROVIDERS = {
-  'claude': { name: 'Claude (Anthropic)', url: 'https://api.anthropic.com/v1/messages', header: 'x-api-key' },
-  'openai': { name: 'OpenAI / GPT', url: 'https://api.openai.com/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
-  'gemini': { name: 'Google Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', param: 'key' },
-  'groq': { name: 'Groq', url: 'https://api.groq.com/openai/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
-  'mistral': { name: 'Mistral AI', url: 'https://api.mistral.ai/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
-  'deepseek': { name: 'DeepSeek', url: 'https://api.deepseek.com/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
-  'ollama': { name: 'Ollama (Local)', url: 'http://localhost:11434/api/generate', header: null },
-};
-
 function getUserAIConfig() {
+  const fallback = getDefaultAIConfig();
+  migrateLegacyAIConfig();
   try {
-    return JSON.parse(localStorage.getItem('crate_ai_config') || 'null') || { provider: null, apiKey: null, model: null };
-  } catch { return { provider: null, apiKey: null, model: null }; }
+    const provider = localStorage.getItem(AI_PROVIDER_KEY) || fallback.provider;
+    const model = localStorage.getItem(AI_MODEL_KEY) || fallback.model;
+    const apiKey = readSessionValueWithLegacy(AI_API_KEY_KEY, true) || '';
+    return { ...fallback, provider, model, apiKey };
+  } catch {
+    return fallback;
+  }
 }
 function setUserAIConfig(provider, apiKey, model) {
-  localStorage.setItem('crate_ai_config', JSON.stringify({ provider, apiKey, model }));
+  localStorage.setItem(AI_PROVIDER_KEY, provider || getDefaultAIConfig().provider);
+  localStorage.setItem(AI_MODEL_KEY, model || (provider === 'ollama' ? DEFAULT_OLLAMA_MODEL : ''));
+  writeSessionValue(AI_API_KEY_KEY, apiKey || '');
+  localStorage.removeItem(AI_LEGACY_CONFIG_KEY);
 }
 
-// AI Settings Modal
+scheduleSavedUserScriptsLoad();
+
 function showAISettingsModal() {
-  existing = document.getElementById('ai-settings-modal');
-  if (existing) { existing.remove(); return; }
-  
-  const config = getUserAIConfig();
-  const modal = document.createElement('div');
-  modal.id = 'ai-settings-modal';
-  Object.assign(modal.style, {
-    position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:'500',
-    background:'#0d0d0d', border:'1px solid #333', borderRadius:'16px', padding:'28px',
-    width:'420px', maxHeight:'80vh', overflowY:'auto', color:'#eee',
-    fontFamily:"'Inter',system-ui,sans-serif", boxShadow:'0 20px 60px rgba(0,0,0,0.8)',
+  loadAiSettingsUiModule().then((mod) => mod.showAISettingsModal()).catch((err) => {
+    console.error('[AI Settings] Modal failed:', err);
+    showToast('❌ AI settings failed to load');
   });
-  
-  const providers = Object.entries(AI_PROVIDERS).map(([k,v]) => 
-    `<option value="${k}" ${config.provider===k?'selected':''}>${v.name}</option>`
-  ).join('');
-  
-  modal.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="margin:0;font-size:1.2rem">🤖 AI Model Settings</h2>
-      <button onclick="this.closest('#ai-settings-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
-    </div>
-    <p style="color:#888;font-size:0.8rem;margin-bottom:16px">Connect your own AI model for advanced scene generation, code assist, and NPC dialogue.</p>
-    
-    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Provider</label>
-    <select id="ai-provider" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:14px;font-size:0.85rem">
-      <option value="">None (use built-in commands only)</option>
-      ${providers}
-    </select>
-    
-    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">API Key</label>
-    <input id="ai-apikey" type="password" value="${config.apiKey||''}" placeholder="sk-..." style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:14px;font-size:0.85rem;box-sizing:border-box">
-    
-    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Model (optional)</label>
-    <input id="ai-model" value="${config.model||''}" placeholder="e.g. gpt-4o, claude-3-sonnet, gemini-pro" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:20px;font-size:0.85rem;box-sizing:border-box">
-    
-    <div style="display:flex;gap:10px">
-      <button id="ai-save-btn" style="flex:1;padding:10px;background:linear-gradient(135deg,#ff6b35,#f7c948);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.9rem">Save</button>
-      <button id="ai-test-btn" style="flex:1;padding:10px;background:#1a1a2e;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">Test Connection</button>
-    </div>
-    <div id="ai-status" style="margin-top:12px;font-size:0.78rem;color:#666"></div>
-  `;
-  document.body.appendChild(modal);
-  
-  document.getElementById('ai-save-btn').onclick = () => {
-    const p = document.getElementById('ai-provider').value;
-    const k = document.getElementById('ai-apikey').value;
-    const m = document.getElementById('ai-model').value;
-    setUserAIConfig(p, k, m);
-    document.getElementById('ai-status').innerHTML = '<span style="color:#4ade80">✓ Saved!</span>';
-    setTimeout(() => modal.remove(), 1000);
-  };
-  
-  document.getElementById('ai-test-btn').onclick = async () => {
-    const p = document.getElementById('ai-provider').value;
-    const k = document.getElementById('ai-apikey').value;
-    const statusEl = document.getElementById('ai-status');
-    if (!p || !k) { statusEl.innerHTML = '<span style="color:#f87171">⚠️ Select provider and enter API key</span>'; return; }
-    statusEl.innerHTML = '<span style="color:#f7c948">Testing...</span>';
-    try {
-      const prov = AI_PROVIDERS[p];
-      const headers = { 'Content-Type': 'application/json' };
-      if (prov.header) headers[prov.header] = (prov.prefix||'') + k;
-      const resp = await fetch(prov.url, { method: 'POST', headers, body: '{}' }).catch(() => null);
-      if (resp && (resp.status < 500)) {
-        statusEl.innerHTML = '<span style="color:#4ade80">✓ Connection OK (status ' + resp.status + ')</span>';
-      } else {
-        statusEl.innerHTML = '<span style="color:#f87171">⚠️ Could not reach API</span>';
-      }
-    } catch(e) {
-      statusEl.innerHTML = '<span style="color:#f87171">⚠️ Error: ' + e.message + '</span>';
-    }
-  };
 }
 window.showAISettingsModal = showAISettingsModal;
 
-// ═══ MESHY API KEY MODAL ═══
 function showMeshyKeyModal() {
-  if (document.getElementById('meshy-key-modal')) document.getElementById('meshy-key-modal').remove();
-  const existingKey = getMeshyApiKey();
-  const m = document.createElement('div');
-  m.id = 'meshy-key-modal';
-  m.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
-      <div style="background:#1a1a2e;border-radius:16px;width:480px;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5);padding:28px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <h2 style="margin:0;font-size:1.3rem">🔑 Connect Meshy AI</h2>
-          <button onclick="this.closest('#meshy-key-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
-        </div>
-        <p style="color:#888;font-size:0.85rem;margin-bottom:16px">Generate 3D models from text or images using Meshy AI. Connect your own Meshy account — <a href="https://www.meshy.ai/settings/api" target="_blank" style="color:#6366f1">get an API key here</a>.</p>
-        <p style="color:#666;font-size:0.78rem;margin-bottom:12px">Free tier: 200 credits/month. Pro ($16/mo): 1000 credits. Your key stays in your browser (localStorage).</p>
-        
-        <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Meshy API Key</label>
-        <input id="meshy-key-input" type="password" value="${existingKey}" placeholder="msy-..." style="width:100%;padding:12px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.9rem;box-sizing:border-box;margin-bottom:16px">
-        
-        <div style="display:flex;gap:10px">
-          <button id="meshy-save-btn" style="flex:1;padding:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.95rem">Save Key</button>
-          <button id="meshy-test-btn" style="flex:1;padding:12px;background:#2a2a4a;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.95rem">Test Connection</button>
-        </div>
-        <div id="meshy-key-status" style="margin-top:10px;font-size:0.8rem;color:#666;text-align:center"></div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(m);
-  
-  document.getElementById('meshy-save-btn').onclick = () => {
-    const key = document.getElementById('meshy-key-input').value.trim();
-    setMeshyApiKey(key);
-    document.getElementById('meshy-key-status').innerHTML = '<span style="color:#4ade80">✓ Saved! You can now generate 3D models.</span>';
-    setTimeout(() => m.remove(), 1200);
-  };
-  
-  document.getElementById('meshy-test-btn').onclick = async () => {
-    const key = document.getElementById('meshy-key-input').value.trim();
-    const statusEl = document.getElementById('meshy-key-status');
-    if (!key) { statusEl.innerHTML = '<span style="color:#f87171">Enter your Meshy API key (msy-...)</span>'; return; }
-    statusEl.innerHTML = '<span style="color:#fbbf24">Testing...</span>';
-    try {
-      const resp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d?page_size=1', { headers: { 'Authorization': 'Bearer ' + key } });
-      if (resp.ok) {
-        statusEl.innerHTML = '<span style="color:#4ade80">✓ Connected to Meshy AI!</span>';
-      } else {
-        const err = await resp.json().catch(()=>({}));
-        statusEl.innerHTML = '<span style="color:#f87171">❌ ' + (err.message || 'Auth failed — check your key') + '</span>';
-      }
-    } catch(e) {
-      statusEl.innerHTML = '<span style="color:#f87171">❌ Connection error</span>';
-    }
-  };
+  loadAiSettingsUiModule().then((mod) => mod.showMeshyKeyModal()).catch((err) => {
+    console.error('[Meshy Settings] Modal failed:', err);
+    showToast('❌ Meshy settings failed to load');
+  });
 }
 window.showMeshyKeyModal = showMeshyKeyModal;
+
+function showGeneratorModal() {
+  loadGeneratorUiModule().then((mod) => mod.showGeneratorModal()).catch((err) => {
+    console.error('[3D Generator] Modal failed:', err);
+    showToast('❌ 3D generator failed to load');
+  });
+}
+window.showGeneratorModal = showGeneratorModal;
+
+function handleGenerateCommand(cmd) {
+  const lower = String(cmd || '').toLowerCase();
+  if (
+    lower.match(/^(generate|create|make)\s+(a\s+)?3d\s+(model|asset|object)/i) ||
+    lower === '3d generator' ||
+    lower === 'generator' ||
+    lower === 'generate 3d' ||
+    lower === 'generate 3d model'
+  ) {
+    showGeneratorModal();
+    return '🎨 Opening 3D Generator...';
+  }
+  return null;
+}
+window._handleGenerateCommand = handleGenerateCommand;
 
 // ═══ GAME MODES SELECTOR ═══
 function showGameModesModal() { true }
@@ -902,6 +1507,20 @@ function _showEditorUI() {
 
 function enterPlayMode() {
   // Play = camera mode. User spawns NPC separately if they want one.
+  if (!characterController) {
+    if (!playModeBootPending) {
+      playModeBootPending = true;
+      ensureGameSystemsLoaded().then(() => {
+        playModeBootPending = false;
+        if (!playMode) _activatePlayMode();
+      }).catch((err) => {
+        playModeBootPending = false;
+        console.warn('[Gameplay] Failed to load play systems:', err);
+        showToast('⚠ Failed to load gameplay systems');
+      });
+    }
+    return '⏳ Loading gameplay systems...';
+  }
   _activatePlayMode();
   return '🎮 Play mode — fly camera! Type "spawn soldier" for a character.';
 }
@@ -2002,8 +2621,8 @@ scene.add(model);
     if (statusEl) statusEl.textContent = '3D Ready';
     // Show user-visible feedback and try fuzzy search fallback
     const cleanName = (name || glbFile || '').replace(/_/g, ' ');
-    if (typeof searchModels === 'function') {
-      const results = searchModels(cleanName, 3);
+    if (modelRegistryModule?.searchModels) {
+      const results = searchRegistryModels(cleanName, 3);
       if (results.length > 0 && results[0].path !== glbFile) {
         // Auto-load best match
         const best = results[0];
@@ -2331,7 +2950,8 @@ let renderer;
 
 if (_webgpuRequested) {
   try {
-    const { WebGPURenderer } = await import('https://cdn.jsdelivr.net/npm/three@0.175.0/examples/jsm/renderers/webgpu/WebGPURenderer.js');
+    const webgpuUrl = `https://cdn.jsdelivr.net/npm/three@${THREE_CDN_VERSION}/examples/jsm/renderers/webgpu/WebGPURenderer.js`;
+    const { default: WebGPURenderer } = await import(/* @vite-ignore */ webgpuUrl);
     renderer = new WebGPURenderer({ canvas, antialias: true });
     await renderer.init();
     window._isWebGPU = true;
@@ -2349,7 +2969,7 @@ if (!renderer) {
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setSize(canvas.clientWidth, canvas.clientHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.4;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -2364,7 +2984,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
   }
 }
 const scene = new THREE.Scene();
-setBuildingsScene(scene);
+syncBuildingsModule();
   // Atmospheric fog for depth perception
   scene.fog = new THREE.FogExp2(0x88aabb, 0.0015);
 if (window._loadProgress) window._loadProgress(20, "Creating scene...");
@@ -2611,26 +3231,13 @@ scene.add(sunLight);
 // === CHARACTER & TOWN SYSTEMS ===
 let characterController = null;
 let npcController = null;
-let questSystem = new QuestSystem();
+let questSystem = null;
 let craftingSystem = null;
 let levelSystem = null;
-let dialogueSystem = new DialogueSystem();
+let dialogueSystem = null;
 let minimap = null;
 let townBuilder = null;
 let gameHUD = null;
-
-function initGameSystems() {
-  characterController = new CharacterController(scene, camera, objects);
-  window._gamepad = new GamepadManager(characterController);
-  window._mobileControls = new MobileControls(characterController);
-  window.characterController = characterController;
-  characterController._autoSpawned = false; // Don't auto-spawn until "play" 
-  npcController = new NPCController(scene, camera, objects, characterController);
-  window.npcController = npcController;
-  townBuilder = new TownBuilder(scene, objects, loadGLBModel);
-  gameHUD = createGameHUD();
-}
-setTimeout(initGameSystems, 500);
 
 
 const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
@@ -2899,7 +3506,7 @@ function setGraphicsQuality(level) {
       ppEnabled = true;
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
       if (ssaoPass) { ssaoPass.enabled = true; ssaoPass.kernelRadius = 16; }
       if (bloomPass) { bloomPass.strength = 0.5; bloomPass.radius = 0.7; }
       sunLight.shadow.mapSize.set(8192, 8192);
@@ -3172,6 +3779,7 @@ collisionGroup.add(currentGround.clone()); // Clone so original stays in scene
 scene.add(collisionGroup);
 collisionGroup.visible = false; // invisible collision layer
 collisionWorld._collisionGroup = collisionGroup;
+syncCollisionWorld();
 
 // Helper: add object to collision and mark dirty
 window._addToCollision = function(obj) {
@@ -3243,20 +3851,8 @@ function expandGround(newSize) {
 // === OBJECTS LIST ===
 const objects = [];
 window._sceneObjects = objects; // expose for collision system
-// ── Wire up city-builder module with engine globals ──
-setCityBuilderScene(scene);
-setCityBuilderObjects(objects);
-setCityBuilderRenderer(renderer);
-setCityBuilderCamera(camera);
-setCityBuilderControls(controls);
-setCityBuilderShowToast(showToast);
-setCityBuilderLoadGLBModel(loadGLBModel);
-setCityBuilderParseAndExecute((...args) => parseAndExecute(...args));
-// bloomPass, currentGround, and RGBELoader are set lazily — update them when they change
-// We use a small interval to sync dynamic state into the city-builder module
 setInterval(() => {
-  setCityBuilderBloomPass(bloomPass);
-  setCityBuilderRGBELoader(RGBELoader);
+  syncCityBuilderModule();
 }, 2000);
 if (window._loadProgress) window._loadProgress(90, "Almost ready...");
 setTimeout(() => { if (window._hideLoading) window._hideLoading(); }, 500);
@@ -3859,6 +4455,8 @@ function addSpotLight(x, y, z, targetX, targetY, targetZ, color) {
 // COMPREHENSIVE COMMAND REFERENCE PAGE
 // ══════════════════════════════════════════════════════
 function showCommandPage() {
+  showHelp();
+  return;
   const existing = document.getElementById('cmd-page-modal');
   if (existing) { existing.remove(); return; }
 
@@ -4944,6 +5542,11 @@ const _dialogueTrees = {};   // name -> { nodes: [], start: 'node_0' }
 let   _activeDialogue = null;
 
 function showDialogueEditor(npcName) {
+  loadEditorToolsModule().then((mod) => mod.showDialogueEditor(npcName)).catch((err) => {
+    console.warn('[DialogueEditor] Failed to load:', err.message);
+    showToast('Dialogue tools failed to load');
+  });
+  return;
   const existing = document.getElementById('dialogue-editor-modal');
   if (existing) { existing.remove(); return; }
 
@@ -5057,6 +5660,11 @@ attach dialogue ${treeName} to [npc name]
 }
 
 function showDialoguePreview(treeName) {
+  loadEditorToolsModule().then((mod) => mod.showDialoguePreview(treeName)).catch((err) => {
+    console.warn('[DialogueEditor] Preview failed to load:', err.message);
+    showToast('Dialogue preview failed to load');
+  });
+  return;
   const tree = _dialogueTrees[treeName];
   if (!tree) return;
   let currentNode = tree.nodes.find(n=>n.id===tree.start) || tree.nodes[0];
@@ -5124,6 +5732,11 @@ const PAINT_COLORS = {
 };
 
 function showTerrainPaintUI() {
+  loadEditorToolsModule().then((mod) => mod.showTerrainPaintUI()).catch((err) => {
+    console.warn('[TerrainPainter] Failed to load:', err.message);
+    showToast('Terrain painter failed to load');
+  });
+  return;
   const existing = document.getElementById('terrain-paint-ui');
   if (existing) { existing.remove(); _terrainPaintMode = false; return; }
 
@@ -5228,6 +5841,115 @@ async function parseAndExecute(rawCmd) {
   const cmd = rawCmd; // alias for compatibility
 
   const lower = (rawCmd || "").toLowerCase().trim();
+  await loadModelRegistryModule().catch((err) => {
+    console.warn('[ModelRegistry] Deferred load failed:', err.message);
+  });
+  if (/^(?:build|create|generate) navmesh$/i.test(cmd) || /^navmesh build$/i.test(cmd)) {
+    try {
+      const { buildNavMeshForScene } = await loadNavMeshModule();
+      const result = await buildNavMeshForScene(scene, scene);
+      return `🧭 NavMesh built for ${result.meshCount} meshes`;
+    } catch (err) {
+      return '⚠️ NavMesh build failed: ' + err.message;
+    }
+  }
+  if (/^(?:toggle|show|hide) navmesh$/i.test(cmd) || /^navmesh (on|off)$/i.test(cmd)) {
+    try {
+      const { buildNavMeshForScene, hasNavMesh, toggleNavMeshDebug } = await loadNavMeshModule();
+      if (!hasNavMesh()) await buildNavMeshForScene(scene, scene);
+      const forceVisible = /show| on$/i.test(cmd) ? true : /hide| off$/i.test(cmd) ? false : undefined;
+      const visible = toggleNavMeshDebug(scene, forceVisible);
+      return '🧭 NavMesh debug ' + (visible ? 'visible' : 'hidden');
+    } catch (err) {
+      return '⚠️ NavMesh debug failed: ' + err.message;
+    }
+  }
+  if (/^clear navmesh path$/i.test(cmd)) {
+    const { clearNavMeshPath } = await loadNavMeshModule();
+    clearNavMeshPath(scene);
+    return '🧭 NavMesh path cleared';
+  }
+  if (/^(?:path|pathfind) to (?:selected|target|object)$/i.test(cmd) || /^navmesh path$/i.test(cmd)) {
+    try {
+      const { buildNavMeshForScene, hasNavMesh, computeNavMeshPath } = await loadNavMeshModule();
+      const target = getCurrentSelection();
+      if (!target) return '⚠️ Select an object first';
+      if (!hasNavMesh()) await buildNavMeshForScene(scene, scene);
+      const targetPoint = target.getWorldPosition(new THREE.Vector3());
+      const path = computeNavMeshPath(getNavStartPoint(), targetPoint, scene);
+      return '🧭 Path ready: ' + path.length + ' points to ' + (target.userData?.name || target.name || 'target');
+    } catch (err) {
+      return '⚠️ Pathfinding failed: ' + err.message;
+    }
+  }
+  if (/^(?:semantic search|search assets(?: for| like| about)?|find similar assets(?: for| like| about)?) /i.test(cmd)) {
+    try {
+      const { semanticSearchAssets } = await loadLocalAiToolsModule();
+      const query = cmd.replace(/^(?:semantic search|search assets(?: for| like| about)?|find similar assets(?: for| like| about)?) /i, '').trim();
+      if (!query) return '⚠️ Give me a search query';
+      const results = await semanticSearchAssets(query, getAssetSearchCatalog(), 6);
+      if (!results.length) return '🔎 No semantic asset matches found';
+      window._lastSemanticAssetSearch = results;
+      return '🔎 Semantic matches:\n' + results.map((entry, index) => `${index + 1}. ${entry.label} (${entry.score.toFixed(3)})`).join('\n');
+    } catch (err) {
+      return '⚠️ Semantic search failed: ' + err.message;
+    }
+  }
+  if (/^add semantic result \d+$/i.test(cmd)) {
+    const idx = Math.max(0, parseInt(cmd.match(/\d+/)[0], 10) - 1);
+    const result = window._lastSemanticAssetSearch?.[idx];
+    if (!result) return '⚠️ No semantic result stored at that index';
+    return execSingle('add ' + result.label);
+  }
+  if (/^speak /i.test(cmd)) {
+    try {
+      const { speakTextWithTTS } = await loadSpeechTtsModule();
+      const text = cmd.replace(/^speak /i, '').trim();
+      if (!text) return '⚠️ Give me text to speak';
+      await speakTextWithTTS(text);
+      return '🔊 Speaking locally';
+    } catch (err) {
+      return '⚠️ TTS failed: ' + err.message;
+    }
+  }
+  if (/^(?:gpu debug|debug gpu|spector)$/i.test(cmd)) {
+    try {
+      const { toggleSpectorOverlay } = await loadDebugToolsModule();
+      const visible = await toggleSpectorOverlay();
+      return '🧪 GPU debugger ' + (visible ? 'opened' : 'hidden');
+    } catch (err) {
+      return '⚠️ GPU debugger failed: ' + err.message;
+    }
+  }
+  if (/^(?:capture frame|capture gpu frame|spector capture)$/i.test(cmd)) {
+    try {
+      const { captureFrameWithSpector } = await loadDebugToolsModule();
+      await captureFrameWithSpector(renderer.domElement);
+      return '📸 GPU frame capture requested';
+    } catch (err) {
+      return '⚠️ Frame capture failed: ' + err.message;
+    }
+  }
+  if (/^connect colyseus(?:\s+\S+)?(?:\s+\S+)?$/i.test(cmd)) {
+    try {
+      const parts = cmd.trim().split(/\s+/);
+      const endpoint = parts[2] || DEFAULT_COLYSEUS_ENDPOINT;
+      const roomName = parts[3] || DEFAULT_COLYSEUS_ROOM;
+      const room = await connectColyseusRoom(endpoint, roomName);
+      return '🌐 Colyseus connected: ' + (room.name || roomName) + ' (' + room.roomId + ')';
+    } catch (err) {
+      return '⚠️ Colyseus connect failed: ' + err.message;
+    }
+  }
+  if (/^disconnect colyseus$/i.test(cmd)) {
+    if (!colyseusBridge?.connected) return 'ℹ️ Colyseus is not connected';
+    await colyseusBridge.disconnect();
+    return '🌐 Colyseus disconnected';
+  }
+  if (/^colyseus status$/i.test(cmd)) {
+    if (!colyseusBridge?.connected || !colyseusBridge.room) return 'ℹ️ Colyseus offline';
+    return '🌐 Colyseus room ' + (colyseusBridge.room.name || DEFAULT_COLYSEUS_ROOM) + ' (' + colyseusBridge.room.roomId + ')';
+  }
   // === AI AGENT COMMANDS ===
   if (lower.startsWith('agent build ') || lower.startsWith('ai build ')) {
     const agentPrompt = cmd.replace(/^(agent|ai) build /i, '').trim();
@@ -5255,6 +5977,7 @@ async function parseAndExecute(rawCmd) {
   }
 
   if (/^build (a |the )?(city|full city|the city)$/i.test(cmd)) {
+    const { buildCityWorld3 } = await loadCityBuilderModule();
     buildCityWorld3();
     return '🏙️ Building full city... give it 15-20 seconds to load all assets!';
   }
@@ -5678,7 +6401,8 @@ async function parseAndExecute(rawCmd) {
     return results.filter(Boolean).join('\n');
   }
   // Try natural language matching first (77K+ phrases)
-  const nlMatch = matchIntent(rawCmd);
+  const voiceCommands = await loadVoiceCommandsModule().catch(() => null);
+  const nlMatch = voiceCommands?.matchIntent ? voiceCommands.matchIntent(rawCmd) : null;
   if (nlMatch && nlMatch.id !== 'noop' && nlMatch.id !== 'confirm' && nlMatch.id !== 'cancel') {
     let nlAction = nlMatch.action;
     
@@ -5819,7 +6543,7 @@ let _assetCatalog = null;
 async function _loadAssetCatalog() {
   if (_assetCatalog) return _assetCatalog;
   try {
-    const r = await fetch('asset-catalog.json?v=295');
+    const r = await fetch('asset-catalog.json');
     _assetCatalog = await r.json();
   } catch(e) { _assetCatalog = {}; }
   
@@ -5915,6 +6639,7 @@ const _CAT_META = {
 };
 
 function showGallery(category, options = {}) {
+  return loadAssetBrowserModule().then((mod) => mod.showGallery(category, options));
   console.log('[GALLERY] Opening:', category);
   return new Promise(async (resolve) => {
     const catalog = await _loadAssetCatalog();
@@ -6076,10 +6801,13 @@ function _renderThumb(file, container, fallbackIcon) {
 }
 
 function showCategoryPicker() {
+  return loadAssetBrowserModule().then((mod) => mod.showCategoryPicker());
   return new Promise(async (resolve) => {
     showToast('📦 Opening asset library...');
     let catalog;
     try { catalog = await _loadAssetCatalog(); } catch(e) { catalog = {}; }
+    const characterGallery = await loadCharacterGalleryModule();
+    const characterCount = characterGallery.getCharacterLibrary().length;
     // Remove any existing picker
     const existing = document.getElementById('_catPicker');
     if (existing) existing.remove();
@@ -6100,7 +6828,7 @@ function showCategoryPicker() {
     
     ['characters', ...Object.keys(catalog)].forEach(cat => {
       const m = _CAT_META[cat] || { icon: '📦', color: '#888', label: cat };
-      const count = cat === 'characters' ? CHARACTER_LIBRARY.length : (catalog[cat]?.length || 0);
+      const count = cat === 'characters' ? characterCount : (catalog[cat]?.length || 0);
       if (!count) return;
       const card = document.createElement('div');
       card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + m.color + '30;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s;';
@@ -6108,7 +6836,7 @@ function showCategoryPicker() {
       card.onmouseenter = () => { card.style.borderColor = m.color; card.style.transform = 'scale(1.04)'; };
       card.onmouseleave = () => { card.style.borderColor = m.color + '30'; card.style.transform = 'scale(1)'; };
       card.innerHTML = '<div style="font-size:40px;margin-bottom:8px;">' + m.icon + '</div><div style="font-size:15px;font-weight:bold;color:' + m.color + ';margin-bottom:4px;">' + m.label + '</div><div style="font-size:12px;color:#555;">' + count + ' models</div>';
-      card.onclick = () => { overlay.remove(); if (cat === 'characters') { showCharacterGallery().then(resolve); } else { showGallery(cat).then(resolve); } };
+      card.onclick = () => { overlay.remove(); if (cat === 'characters') { characterGallery.showCharacterGallery().then(resolve); } else { showGallery(cat).then(resolve); } };
       grid.appendChild(card);
     });
     scrollWrap.appendChild(grid);
@@ -6183,7 +6911,7 @@ async function execSingle(cmd) {
   }
   if (cmd.startsWith('add fab ') || cmd.startsWith('spawn fab ')) {
     const fabName = cmd.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_').toLowerCase();
-    const fabAliases = window._fabAliases || {};
+    const fabAliases = await ensureFabAliasesLoaded();
     const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
     if (modelPath) {
       spawnGLB(modelPath, fabName);
@@ -6474,7 +7202,8 @@ async function execSingle(cmd) {
         }
       }
     }
-    const w = createWater(oceanSize); // Always use Gerstner water for preset support
+    const weather = await loadWeatherModule();
+    const w = weather.createWater(oceanSize); // Always use Gerstner water for preset support
     // Ocean sits BELOW ground — terrain/land rises above water naturally
     // Lakes sit slightly above ground for inland water
     w.position.y = isLake ? 0.15 : -0.3;
@@ -6485,19 +7214,7 @@ async function execSingle(cmd) {
     if (!isLake && ambientParticles) { scene.remove(ambientParticles); ambientParticles.geometry.dispose(); ambientParticles.material.dispose(); ambientParticles = null; }
     // Apply pending water preset from map template
     if (window._pendingWaterPreset && w.userData.isGerstnerWater && w.material.uniforms) {
-      const p = WATER_PRESETS[window._pendingWaterPreset];
-      if (p) {
-        w.material.uniforms.waveA.value.set(p.waveA[0], p.waveA[1], p.waveA[2], p.waveA[3]);
-        w.material.uniforms.waveB.value.set(p.waveB[0], p.waveB[1], p.waveB[2], p.waveB[3]);
-        w.material.uniforms.waveC.value.set(p.waveC[0], p.waveC[1], p.waveC[2], p.waveC[3]);
-        w.material.uniforms.waterColor.value.copy(p.color);
-        w.material.uniforms.deepColor.value.copy(p.deepColor);
-        w.material.uniforms.foamIntensity.value = p.foamIntensity;
-        w.material.uniforms.specularPower.value = p.specularPower;
-        w.material.uniforms.fresnelPower.value = p.fresnelPower;
-        w.material.uniforms.opacity.value = p.opacity;
-        w.userData.waterPreset = window._pendingWaterPreset;
-      }
+      await applyWaterPresetToObject(w, window._pendingWaterPreset);
       window._pendingWaterPreset = null;
     }
     // Register water zone for swimming
@@ -6522,7 +7239,8 @@ async function execSingle(cmd) {
         scene.remove(objects[i]); objects.splice(i, 1);
       }
     }
-    const w = createWater(newSize);
+    const weather = await loadWeatherModule();
+    const w = weather.createWater(newSize);
     w.position.y = -0.3;
     addObj('Ocean', w, 0, 0);
     return '🌊 Ocean resized to ' + newSize + 'm';
@@ -6678,1001 +7396,48 @@ function showGameHUD(preset) {
     const mapTheme = lower.replace(/^(generate|create|build|make)\s+(a\s+)?/i, '').trim();
     showToast('🗺️ Generating ' + mapTheme + '...');
 
-    // Route matching map types to Phase 5 world compiler (14 templates)
-    const WORLD_COMPILER_MAP = {
-      city: 'CITY_MODERN', suburban: 'CITY_MODERN', urban: 'CITY_MODERN',
-      town: 'MEDIEVAL_VILLAGE', village: 'MEDIEVAL_VILLAGE', medieval: 'MEDIEVAL_VILLAGE', 'medieval siege': 'MEDIEVAL_VILLAGE',
-      zombie: 'ZOMBIELAND', graveyard: 'ZOMBIELAND',
-      space: 'SPACE_STATION', station: 'SPACE_STATION',
-      island: 'TROPICAL_ISLAND', 'tropical paradise': 'TROPICAL_ISLAND', jungle: 'TROPICAL_ISLAND', tropical: 'TROPICAL_ISLAND',
-      desert: 'DESERT_OUTPOST', outpost: 'DESERT_OUTPOST', volcano: 'DESERT_OUTPOST',
-      pirate: 'PIRATE_COVE', 'pirate cove': 'PIRATE_COVE',
-      haunted: 'HAUNTED_GRAVEYARD',
-      dungeon: 'DUNGEON_CRAWL',
-      cyberpunk: 'CYBERPUNK_CITY',
-      camp: 'FARM_COUNTRY', farm: 'FARM_COUNTRY',
-      kingdom: 'RPG_VILLAGE', rpg: 'RPG_VILLAGE',
-      ruins: 'CASTLE_SIEGE', castle: 'CASTLE_SIEGE', siege: 'CASTLE_SIEGE', frozen: 'CASTLE_SIEGE',
-      underwater: 'UNDERWATER_REEF', reef: 'UNDERWATER_REEF',
-    };
-    const worldTemplate = WORLD_COMPILER_MAP[mapType];
-    // Route city/urban directly to Ultra City builder (all new assets)
+    // Route matching map types and legacy presets via deferred world presets module.
+    const worldPresets = await loadWorldPresetsModule();
+    const worldTemplate = worldPresets.getWorldCompilerTemplate(mapType);
+
+    // Route city/urban directly to Ultra City builder (all new assets).
     if (worldTemplate === 'CITY_MODERN') {
+      const { buildCityWorld3 } = await loadCityBuilderModule();
       buildCityWorld3();
       return '🏙️ Building Ultra City with all new assets...';
     }
+
     if (worldTemplate) {
       try {
         const { buildAndApply } = await import('./runtime/world-client.mjs');
         await buildAndApply({ template: worldTemplate, size: 'medium' });
         return '✅ Built ' + worldTemplate + ' world';
-      } catch(e) {
+      } catch (e) {
         console.warn('[Generate] World compiler failed for ' + worldTemplate + ', falling back to legacy:', e.message);
       }
     }
 
-    // JSON Map Templates — structured layouts with positions (legacy fallback)
+    const legacyPlan = worldPresets.buildLegacyMapPlan(mapType);
+    if (legacyPlan.waterPreset && WEATHER_WATER_PRESET_NAMES.has(legacyPlan.waterPreset)) {
+      window._pendingWaterPreset = legacyPlan.waterPreset;
+    }
+    if (legacyPlan.pendingRotations && Object.keys(legacyPlan.pendingRotations).length) {
+      if (!window._pendingRotations) window._pendingRotations = {};
+      Object.assign(window._pendingRotations, legacyPlan.pendingRotations);
+    }
 
-    // ═══════════════════════════════════════════════════════════════
-    // GAME PRESETS — "make this a zombie game" auto-configures everything
-    // Each preset defines: map template, NPC behavior, objectives, HUD, rules
-    // ═══════════════════════════════════════════════════════════════
-    const MAP_TEMPLATES = {
-      // ===== MEDIEVAL FANTASY =====
-      town: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'grass', env: ['time afternoon'],
-        water: null, weather: null, particles: null,
-        items: [
-          // === TOWN SQUARE — open plaza with well ===
-          { cmd: 'add well', pos: [0, 0] },
-          { cmd: 'add market stall', pos: [-8, 6] }, { cmd: 'add market stall', pos: [8, 6] },
-          { cmd: 'add market stall', pos: [0, -8] },
-          { cmd: 'add barrel', pos: [-10, 8] }, { cmd: 'add barrel', pos: [10, 8] },
-          { cmd: 'add cart', pos: [12, -3] },
-          // === NORTH STREET — wide spacing (15+ units between buildings) ===
-          { cmd: 'add tavern', pos: [-30, 35] },
-          { cmd: 'add blacksmith', pos: [0, 38] },
-          { cmd: 'add modern house', pos: [30, 35] },
-          // === SOUTH STREET ===
-          { cmd: 'add modern house', pos: [-30, -35] },
-          { cmd: 'add modern house', pos: [0, -38] },
-          { cmd: 'add modern house', pos: [30, -35] },
-          // === EAST STREET ===
-          { cmd: 'add modern house', pos: [45, 0] },
-          { cmd: 'add modern house', pos: [45, 25] },
-          // === WEST STREET ===
-          { cmd: 'add modern house', pos: [-45, 0] },
-          { cmd: 'add modern house', pos: [-45, -25] },
-          // === TORCHES — line the wide paths ===
-          { cmd: 'add torch', pos: [-15, 18] }, { cmd: 'add torch', pos: [15, 18] },
-          { cmd: 'add torch', pos: [-15, -18] }, { cmd: 'add torch', pos: [15, -18] },
-          { cmd: 'add torch', pos: [-30, 0] }, { cmd: 'add torch', pos: [30, 0] },
-          { cmd: 'add torch', pos: [0, 18] }, { cmd: 'add torch', pos: [0, -18] },
-          // === ROADS — connecting paths ===
-          { cmd: 'add road at 0 18', pos: [0, 18] },   // center to north
-          { cmd: 'add road at 0 -18', pos: [0, -18] },  // center to south  
-          { cmd: 'add road', pos: [0, 0] },              // center crossroad
-          // === PERIMETER — nature ring far from buildings ===
-          { cmd: 'add tree', scatter: { count: 35, radius: 80, avoidCenter: 50 } },
-          { cmd: 'add bush', scatter: { count: 18, radius: 70, avoidCenter: 45 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 75, avoidCenter: 50 } },
-          // === NPCs — spread around the plaza ===
-          { cmd: 'spawn villager', scatter: { count: 6, radius: 25 } },
-          { cmd: 'spawn guard', pos: [-18, 20] }, { cmd: 'spawn guard', pos: [18, 20] },
-        ]
-      },
-      village: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'grass', env: ['time morning'],
-        items: [
-          { cmd: 'add modern house', pos: [12, -8] }, { cmd: 'add modern house', pos: [-14, 6] },
-          { cmd: 'add modern house', pos: [6, 18] }, { cmd: 'add modern house', pos: [-10, -20] },
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add well', pos: [8, -4] },
-          { cmd: 'add log', pos: [-2, 2] }, { cmd: 'add log', pos: [2, -2] },
-          { cmd: 'add chicken', scatter: { count: 6, radius: 18 } },
-          { cmd: 'add tree', scatter: { count: 25, radius: 60, avoidCenter: 10 } },
-          { cmd: 'add bush', scatter: { count: 15, radius: 45 } },
-          { cmd: 'add flower', scatter: { count: 10, radius: 30 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 50 } },
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 25 } },
-          { cmd: 'spawn farmer', scatter: { count: 2, radius: 20 } },
-        ]
-      },
-      kingdom: {
-        terrain: { type: 'hills', height: 0.4 },
-        ground: 'grass', env: ['time afternoon'],
-        items: [
-          { cmd: 'add castle', pos: [0, -50] },
-          { cmd: 'add tower', pos: [-40, -40] }, { cmd: 'add tower', pos: [40, -40] },
-          { cmd: 'add tower', pos: [-40, 0] }, { cmd: 'add tower', pos: [40, 0] },
-          { cmd: 'add wall', pos: [-20, -45] }, { cmd: 'add wall', pos: [20, -45] },
-          { cmd: 'add gate', pos: [0, -30] },
-          { cmd: 'add tavern', pos: [25, 10] }, { cmd: 'add blacksmith', pos: [-25, 10] },
-          { cmd: 'add modern house', scatter: { count: 10, radius: 40, avoidCenter: 15 } },
-          { cmd: 'add market stall', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add tree', scatter: { count: 15, radius: 70, avoidCenter: 25 } },
-          { cmd: 'add torch', scatter: { count: 15, radius: 45 } },
-          { cmd: 'spawn guard', scatter: { count: 6, radius: 40 } },
-          { cmd: 'spawn knight', scatter: { count: 3, radius: 35 } },
-          { cmd: 'spawn villager', scatter: { count: 8, radius: 35 } },
-        ]
-      },
-      'medieval siege': {
-        terrain: { type: 'hills', height: 0.5 },
-        ground: 'dirt', env: ['time sunset', 'fog on'], weather: 'rain', particles: 'ash',
-        items: [
-          { cmd: 'add castle', pos: [0, -40] },
-          { cmd: 'add tower', pos: [-30, -35] }, { cmd: 'add tower', pos: [30, -35] },
-          { cmd: 'add wall', pos: [-15, -30] }, { cmd: 'add wall', pos: [15, -30] },
-          { cmd: 'add campfire', pos: [20, 20] }, { cmd: 'add campfire', pos: [-20, 20] },
-          { cmd: 'add tent', pos: [25, 25] }, { cmd: 'add tent', pos: [-25, 25] },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 25 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 60 } },
-          { cmd: 'spawn soldier', scatter: { count: 8, radius: 30 } },
-          { cmd: 'spawn knight', scatter: { count: 4, radius: 20 } },
-        ]
-      },
-      dungeon: {
-        terrain: { type: 'flat' },
-        ground: 'stone', env: ['time night', 'fog on'], particles: 'embers',
-        items: [
-          { cmd: 'add castle', pos: [0, 0] },
-          { cmd: 'add torch', scatter: { count: 12, radius: 25 } },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
-          { cmd: 'add chest', scatter: { count: 3, radius: 15 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 30 } },
-          { cmd: 'spawn skeleton', scatter: { count: 5, radius: 25 } },
-          { cmd: 'spawn enemies', scatter: { count: 3, radius: 20 } },
-        ]
-      },
-      
-      // ===== NATURE & WILDERNESS =====
-      forest: {
-        terrain: { type: 'hills', height: 0.4 },
-        ground: 'grass', env: ['time morning'], particles: 'fireflies',
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 40, radius: 80 } },
-          { cmd: 'add tree', scatter: { count: 25, radius: 70 } },
-          { cmd: 'add bush', scatter: { count: 20, radius: 60 } },
-          { cmd: 'add flower', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add mushroom', scatter: { count: 10, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 12, radius: 65 } },
-          { cmd: 'add boulder', scatter: { count: 4, radius: 55 } },
-          { cmd: 'add log', scatter: { count: 6, radius: 50 } },
-          { cmd: 'add deer', scatter: { count: 3, radius: 50 } },
-          { cmd: 'add fox', scatter: { count: 2, radius: 40 } },
-          { cmd: 'add campfire', pos: [0, 0] },
-        ]
-      },
-      'enchanted forest': {
-        terrain: { type: 'hills', height: 0.5 },
-        ground: 'grass', env: ['time night'], particles: 'fireflies',
-        items: [
-          { cmd: 'add cherry blossom', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add tree', scatter: { count: 30, radius: 80 } },
-          { cmd: 'add mushroom', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add flower', scatter: { count: 20, radius: 50 } },
-          { cmd: 'add crystal', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add fountain', pos: [0, 0] },
-          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
-          { cmd: 'spawn witch', scatter: { count: 2, radius: 30 } },
-          { cmd: 'spawn villager', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      mountain: {
-        terrain: { type: 'mountains', height: 1.2 },
-        ground: 'gravel', env: ['time afternoon'], particles: 'dust',
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 20, radius: 60, avoidCenter: 10 } },
-          { cmd: 'add boulder', scatter: { count: 15, radius: 70 } },
-          { cmd: 'add rock', scatter: { count: 20, radius: 80 } },
-          { cmd: 'add eagle', scatter: { count: 2, radius: 40 } },
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add tent', pos: [5, 5] },
-        ]
-      },
-      island: {
-        terrain: { type: 'island', height: 1.0 },
-        ground: 'sand', env: ['time afternoon'],
-        water: 'tropical', particles: null,
-        items: [
-          { cmd: 'add ocean' },
-          { cmd: 'add palm tree', scatter: { count: 20, radius: 40, avoidCenter: 5 } },
-          { cmd: 'add bush', scatter: { count: 10, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add flower', scatter: { count: 8, radius: 30 } },
-          { cmd: 'add boat', pos: [40, 0] },
-          { cmd: 'add campfire', pos: [0, 5] },
-          { cmd: 'add chest', pos: [15, -10] },
-        ]
-      },
-      'tropical paradise': {
-        terrain: { type: 'island', height: 1.0 },
-        ground: 'sand', env: ['time afternoon'],
-        water: 'tropical',
-        items: [
-          { cmd: 'add ocean' },
-          { cmd: 'add palm tree', scatter: { count: 30, radius: 45 } },
-          { cmd: 'add bush', scatter: { count: 15, radius: 40 } },
-          { cmd: 'add flower', scatter: { count: 12, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add boat', pos: [45, 0] }, { cmd: 'add boat', pos: [-40, 15] },
-          { cmd: 'add campfire', pos: [5, 8] },
-          { cmd: 'add tent', pos: [10, 10] },
-          { cmd: 'add chest', pos: [-8, -5] },
-          { cmd: 'add parrot', scatter: { count: 3, radius: 30 } },
-          { cmd: 'spawn villager', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      jungle: {
-        terrain: { type: 'hills', height: 0.6 },
-        ground: 'mud', env: ['time morning'], weather: 'rain', particles: 'spores',
-        items: [
-          { cmd: 'add tree', scatter: { count: 45, radius: 80 } },
-          { cmd: 'add palm tree', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add bush', scatter: { count: 25, radius: 65 } },
-          { cmd: 'add flower', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add mushroom', scatter: { count: 12, radius: 45 } },
-          { cmd: 'add vine', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add boulder', scatter: { count: 6, radius: 55 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add snake', scatter: { count: 3, radius: 30 } },
-          { cmd: 'add parrot', scatter: { count: 4, radius: 40 } },
-          { cmd: 'add campfire', pos: [0, 0] },
-        ]
-      },
-      
-      // ===== HARSH ENVIRONMENTS =====
-      desert: {
-        terrain: { type: 'dunes', height: 0.8 },
-        ground: 'sand', env: ['time noon'], particles: 'dust',
-        items: [
-          { cmd: 'add cactus', scatter: { count: 15, radius: 70 } },
-          { cmd: 'add rock', scatter: { count: 20, radius: 80 } },
-          { cmd: 'add boulder', scatter: { count: 6, radius: 60 } },
-          { cmd: 'add dead tree', scatter: { count: 4, radius: 55 } },
-          { cmd: 'add skull', scatter: { count: 3, radius: 40 } },
-          { cmd: 'add tent', pos: [0, 0] },
-          { cmd: 'add campfire', pos: [5, 0] },
-          { cmd: 'add barrel', pos: [3, 3] },
-          { cmd: 'add camel', scatter: { count: 2, radius: 30 } },
-        ]
-      },
-      'arctic storm': {
-        terrain: { type: 'hills', height: 0.6 },
-        ground: 'snow', env: ['time morning'], weather: 'snow',
-        water: 'arctic', particles: 'snow',
-        items: [
-          { cmd: 'add ocean 300' },
-          { cmd: 'add pine tree', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add rock', scatter: { count: 15, radius: 70 } },
-          { cmd: 'add boulder', scatter: { count: 8, radius: 60 } },
-          { cmd: 'add modern house', pos: [0, 0] },
-          { cmd: 'add campfire', pos: [8, 0] },
-          { cmd: 'add barrel', scatter: { count: 4, radius: 15 } },
-          { cmd: 'add wolf', scatter: { count: 3, radius: 40 } },
-          { cmd: 'add husky', scatter: { count: 2, radius: 20 } },
-        ]
-      },
-      frozen: {
-        terrain: { type: 'plateau', height: 0.7 },
-        ground: 'ice', env: ['time dawn'], weather: 'snow', particles: 'snow',
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add rock', scatter: { count: 20, radius: 70 } },
-          { cmd: 'add boulder', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add crystal', scatter: { count: 5, radius: 30 } },
-          { cmd: 'add chest', pos: [0, 0] },
-          { cmd: 'add wolf', scatter: { count: 4, radius: 45 } },
-        ]
-      },
-      volcano: {
-        terrain: { type: 'volcano', height: 1.5 },
-        ground: 'lava', env: ['time night'], particles: 'embers',
-        items: [
-          { cmd: 'add rock', scatter: { count: 25, radius: 80 } },
-          { cmd: 'add boulder', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 50 } },
-          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
-          { cmd: 'spawn enemies', scatter: { count: 5, radius: 40 } },
-        ]
-      },
-      
-      // ===== WATER WORLDS =====
-      hurricane: {
-        terrain: { type: 'island', height: 0.8 },
-        ground: 'mud', env: ['time night'],
-        water: 'hurricane', weather: 'rain', particles: 'rain',
-        items: [
-          { cmd: 'add ocean 400' },
-          { cmd: 'add palm tree', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 12, radius: 40 } },
-          { cmd: 'add boat', pos: [45, 10] },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 25 } },
-          { cmd: 'add modern house', pos: [0, 0] },
-        ]
-      },
-      'ocean voyage': {
-        terrain: { type: 'flat' },
-        ground: 'sand', env: ['time afternoon'],
-        water: 'ocean',
-        items: [
-          { cmd: 'add ocean 500' },
-          { cmd: 'add boat', pos: [0, 0] }, { cmd: 'add boat', pos: [30, 20] },
-          { cmd: 'add boat', pos: [-25, -15] },
-          { cmd: 'add barrel', pos: [3, 0] },
-          { cmd: 'add chest', pos: [-2, 0] },
-        ]
-      },
-      'dark swamp': {
-        terrain: { type: 'hills', height: 0.15 },
-        ground: 'mud', env: ['time night', 'fog on'],
-        water: 'swamp', particles: 'spores',
-        items: [
-          { cmd: 'add lake 80' },
-          { cmd: 'add dead tree', scatter: { count: 20, radius: 60 } },
-          { cmd: 'add tree', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add bush', scatter: { count: 15, radius: 45 } },
-          { cmd: 'add mushroom', scatter: { count: 12, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add log', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add frog', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add snake', scatter: { count: 3, radius: 25 } },
-          { cmd: 'add torch', scatter: { count: 6, radius: 25 } },
-          { cmd: 'spawn witch', scatter: { count: 2, radius: 30 } },
-        ]
-      },
-      'pirate cove': {
-        terrain: { type: 'island', height: 0.8 },
-        ground: 'sand', env: ['time sunset'],
-        water: 'ocean',
-        items: [
-          { cmd: 'add ocean 400' },
-          { cmd: 'add boat', pos: [50, 0] }, { cmd: 'add boat', pos: [-45, 20] },
-          { cmd: 'add palm tree', scatter: { count: 15, radius: 35 } },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 20 } },
-          { cmd: 'add chest', pos: [0, -10] }, { cmd: 'add chest', pos: [8, -8] },
-          { cmd: 'add campfire', pos: [0, 5] },
-          { cmd: 'add tent', pos: [10, 8] },
-          { cmd: 'add torch', scatter: { count: 6, radius: 20 } },
-          { cmd: 'add skull', scatter: { count: 3, radius: 15 } },
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 20 } },
-        ]
-      },
-      
-      // ===== COMBAT ARENAS =====
-      arena: {
-        terrain: { type: 'flat' },
-        ground: 'sand', env: ['time afternoon'],
-        items: [
-          { cmd: 'add column', pos: [15, 15] }, { cmd: 'add column', pos: [-15, 15] },
-          { cmd: 'add column', pos: [15, -15] }, { cmd: 'add column', pos: [-15, -15] },
-          { cmd: 'add column', pos: [25, 0] }, { cmd: 'add column', pos: [-25, 0] },
-          { cmd: 'add column', pos: [0, 25] }, { cmd: 'add column', pos: [0, -25] },
-          { cmd: 'add torch', scatter: { count: 12, radius: 28 } },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
-          { cmd: 'spawn enemies 5' },
-        ]
-      },
-      battlefield: {
-        terrain: { type: 'hills', height: 0.3 },
-        ground: 'dirt', env: ['time sunset', 'fog on'], particles: 'ash',
-        items: [
-          { cmd: 'add tent', pos: [40, 0] }, { cmd: 'add tent', pos: [45, 10] },
-          { cmd: 'add tent', pos: [-40, 0] }, { cmd: 'add tent', pos: [-45, 10] },
-          { cmd: 'add campfire', pos: [42, 5] }, { cmd: 'add campfire', pos: [-42, 5] },
-          { cmd: 'add barrel', scatter: { count: 10, radius: 30 } },
-          { cmd: 'add rock', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add dead tree', scatter: { count: 5, radius: 40 } },
-          { cmd: 'spawn soldier', scatter: { count: 6, radius: 35 } },
-          { cmd: 'spawn knight', scatter: { count: 4, radius: 30 } },
-        ]
-      },
-      'war zone': {
-        terrain: { type: 'hills', height: 0.4 },
-        ground: 'dirt', env: ['time night'], weather: 'rain', particles: 'embers',
-        items: [
-          { cmd: 'add tank', pos: [20, 0] }, { cmd: 'add tank', pos: [-25, 10] },
-          { cmd: 'add tent', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add barrel', scatter: { count: 10, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add boulder', scatter: { count: 5, radius: 40 } },
-          { cmd: 'add dead tree', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add campfire', scatter: { count: 3, radius: 25 } },
-          { cmd: 'spawn soldier', scatter: { count: 8, radius: 35 } },
-        ]
-      },
-      
-      // ===== FANTASY =====
-      'dragon lair': {
-        terrain: { type: 'volcano', height: 1.0 },
-        ground: 'stone', env: ['time night'], particles: 'embers',
-        items: [
-          { cmd: 'add boulder', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add rock', scatter: { count: 20, radius: 70 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 50 } },
-          { cmd: 'add chest', scatter: { count: 5, radius: 20 } },
-          { cmd: 'add torch', scatter: { count: 10, radius: 30 } },
-          { cmd: 'add crystal', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add dragon', pos: [0, 0] },
-          { cmd: 'spawn enemies', scatter: { count: 4, radius: 35 } },
-        ]
-      },
-      graveyard: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'dirt', env: ['time night', 'fog on'], particles: 'dust',
-        items: [
-          { cmd: 'add tombstone', scatter: { count: 20, radius: 40 } },
-          { cmd: 'add dead tree', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add church', pos: [0, -30] },
-          { cmd: 'add torch', scatter: { count: 6, radius: 30 } },
-          { cmd: 'add fence', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 45 } },
-          { cmd: 'spawn skeleton', scatter: { count: 6, radius: 30 } },
-        ]
-      },
-      haunted: {
-        terrain: { type: 'hills', height: 0.3 },
-        ground: 'stone', env: ['time night', 'fog on'], particles: 'fireflies',
-        items: [
-          { cmd: 'add castle', pos: [0, -35] },
-          { cmd: 'add dead tree', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add tombstone', scatter: { count: 10, radius: 40 } },
-          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
-          { cmd: 'add rock', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add gate', pos: [0, -15] },
-          { cmd: 'add fence', scatter: { count: 10, radius: 35 } },
-          { cmd: 'spawn skeleton', scatter: { count: 5, radius: 35 } },
-          { cmd: 'spawn witch', scatter: { count: 2, radius: 25 } },
-        ]
-      },
-      ruins: {
-        terrain: { type: 'canyon', height: 0.6 },
-        ground: 'gravel', env: ['time sunset'], particles: 'dust',
-        items: [
-          { cmd: 'add column', scatter: { count: 12, radius: 30 } },
-          { cmd: 'add arch', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add wall', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add boulder', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add chest', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add torch', scatter: { count: 6, radius: 25 } },
-          { cmd: 'add bush', scatter: { count: 8, radius: 40 } },
-        ]
-      },
-      
-      // ===== MODERN & SCI-FI =====
-      cyberpunk: {
-        terrain: { type: 'flat' },
-        ground: 'concrete', env: ['time night'], particles: 'embers',
-        items: [
-          { cmd: 'add building', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add tower', scatter: { count: 4, radius: 50 } },
-          { cmd: 'add car', scatter: { count: 6, radius: 40 } },
-          { cmd: 'add motorcycle', scatter: { count: 3, radius: 30 } },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add dumpster', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add light', scatter: { count: 12, radius: 45 } },
-          { cmd: 'spawn scifi', scatter: { count: 5, radius: 35 } },
-        ]
-      },
-      space: {
-        terrain: { type: 'crater', height: 0.8 },
-        ground: 'stone', env: ['time night'], particles: 'dust',
-        items: [
-          { cmd: 'add boulder', scatter: { count: 20, radius: 70 } },
-          { cmd: 'add rock', scatter: { count: 25, radius: 80 } },
-          { cmd: 'add crystal', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add mech', scatter: { count: 2, radius: 30 } },
-          { cmd: 'add console', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add crate', scatter: { count: 6, radius: 25 } },
-          { cmd: 'spawn scifi', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      
-      // ===== PEACEFUL & ZEN =====
-      zen: {
-        terrain: { type: 'hills', height: 0.15 },
-        ground: 'gravel', env: ['time morning'], particles: 'leaves',
-        items: [
-          { cmd: 'add cherry blossom', scatter: { count: 12, radius: 40 } },
-          { cmd: 'add tree', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add bush', scatter: { count: 10, radius: 35 } },
-          { cmd: 'add flower', scatter: { count: 15, radius: 30 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 25 } },
-          { cmd: 'add fountain', pos: [0, 0] },
-          { cmd: 'add bench', pos: [8, 0] }, { cmd: 'add bench', pos: [-8, 0] },
-          { cmd: 'add bridge', pos: [0, 15] },
-          { cmd: 'add lantern', scatter: { count: 6, radius: 25 } },
-        ]
-      },
-      camp: {
-        terrain: { type: 'hills', height: 0.25 },
-        ground: 'grass', env: ['time sunset'], particles: 'fireflies',
-        items: [
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add tent', pos: [8, 5] }, { cmd: 'add tent', pos: [-8, 5] },
-          { cmd: 'add log', pos: [3, -3] }, { cmd: 'add log', pos: [-3, -3] },
-          { cmd: 'add barrel', pos: [10, -2] },
-          { cmd: 'add tree', scatter: { count: 25, radius: 60, avoidCenter: 10 } },
-          { cmd: 'add bush', scatter: { count: 12, radius: 45 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add horse', scatter: { count: 2, radius: 15 } },
-          { cmd: 'spawn villager', scatter: { count: 3, radius: 15 } },
-        ]
-      },
-      
-      // ===== SPECIAL =====
-      western: {
-        terrain: { type: 'dunes', height: 0.4 },
-        ground: 'sand', env: ['time noon'], particles: 'dust',
-        items: [
-          { cmd: 'add modern house', pos: [20, 0] }, { cmd: 'add modern house', pos: [-20, 0] },
-          { cmd: 'add modern house', pos: [0, 20] }, { cmd: 'add tavern', pos: [0, -20] },
-          { cmd: 'add well', pos: [0, 0] },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
-          { cmd: 'add cactus', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add horse', scatter: { count: 3, radius: 25 } },
-          { cmd: 'add dead tree', scatter: { count: 4, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 45 } },
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 20 } },
-          { cmd: 'spawn guard', scatter: { count: 2, radius: 15 } },
-        ]
-      },
-      floating: {
-        terrain: { type: 'plateau', height: 1.0 },
-        ground: 'grass', env: ['time afternoon'], particles: 'leaves',
-        items: [
-          { cmd: 'add tree', scatter: { count: 15, radius: 40 } },
-          { cmd: 'add flower', scatter: { count: 12, radius: 30 } },
-          { cmd: 'add bush', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 45 } },
-          { cmd: 'add crystal', scatter: { count: 5, radius: 25 } },
-          { cmd: 'add fountain', pos: [0, 0] },
-          { cmd: 'add bridge', pos: [20, 0] },
-          { cmd: 'add torch', scatter: { count: 6, radius: 30 } },
-        ]
-      },
-      swamp: {
-        terrain: { type: 'hills', height: 0.1 },
-        ground: 'mud', env: ['time night', 'fog on'],
-        water: 'swamp', particles: 'spores',
-        items: [
-          { cmd: 'add lake 60' },
-          { cmd: 'add dead tree', scatter: { count: 18, radius: 55 } },
-          { cmd: 'add mushroom', scatter: { count: 15, radius: 40 } },
-          { cmd: 'add bush', scatter: { count: 12, radius: 45 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add log', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add frog', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add torch', scatter: { count: 4, radius: 20 } },
-          { cmd: 'spawn witch', scatter: { count: 2, radius: 25 } },
-        ]
-      },
+    const commands = legacyPlan.commands;
+    const ambientSound = legacyPlan.ambientSound;
+    const trafficEnabled = legacyPlan.trafficEnabled;
 
-      city: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'grass', env: ['time afternoon'],
-        items: [
-          { cmd: 'add road', pos: [-200, -280] },
-          { cmd: 'add road', pos: [-200, -240] },
-          { cmd: 'add road', pos: [-200, -160] },
-          { cmd: 'add road', pos: [-200, -120] },
-          { cmd: 'add road', pos: [-200, -80] },
-          { cmd: 'add road', pos: [-200, -40] },
-          { cmd: 'add road', pos: [-200, 40] },
-          { cmd: 'add road', pos: [-200, 80] },
-          { cmd: 'add road', pos: [-200, 120] },
-          { cmd: 'add road', pos: [-200, 160] },
-          { cmd: 'add road', pos: [-200, 240] },
-          { cmd: 'add road', pos: [-100, -280] },
-          { cmd: 'add road', pos: [-100, -240] },
-          { cmd: 'add road', pos: [-100, -160] },
-          { cmd: 'add road', pos: [-100, -120] },
-          { cmd: 'add road', pos: [-100, -80] },
-          { cmd: 'add road', pos: [-100, -40] },
-          { cmd: 'add road', pos: [-100, 40] },
-          { cmd: 'add road', pos: [-100, 80] },
-          { cmd: 'add road', pos: [-100, 120] },
-          { cmd: 'add road', pos: [-100, 160] },
-          { cmd: 'add road', pos: [-100, 240] },
-          { cmd: 'add road', pos: [0, -280] },
-          { cmd: 'add road', pos: [0, -240] },
-          { cmd: 'add road', pos: [0, -160] },
-          { cmd: 'add road', pos: [0, -120] },
-          { cmd: 'add road', pos: [0, -80] },
-          { cmd: 'add road', pos: [0, -40] },
-          { cmd: 'add road', pos: [0, 40] },
-          { cmd: 'add road', pos: [0, 80] },
-          { cmd: 'add road', pos: [0, 120] },
-          { cmd: 'add road', pos: [0, 160] },
-          { cmd: 'add road', pos: [0, 240] },
-          { cmd: 'add road', pos: [100, -280] },
-          { cmd: 'add road', pos: [100, -240] },
-          { cmd: 'add road', pos: [100, -160] },
-          { cmd: 'add road', pos: [100, -120] },
-          { cmd: 'add road', pos: [100, -80] },
-          { cmd: 'add road', pos: [100, -40] },
-          { cmd: 'add road', pos: [100, 40] },
-          { cmd: 'add road', pos: [100, 80] },
-          { cmd: 'add road', pos: [100, 120] },
-          { cmd: 'add road', pos: [100, 160] },
-          { cmd: 'add road', pos: [100, 240] },
-          { cmd: 'add road', pos: [200, -280] },
-          { cmd: 'add road', pos: [200, -240] },
-          { cmd: 'add road', pos: [200, -160] },
-          { cmd: 'add road', pos: [200, -120] },
-          { cmd: 'add road', pos: [200, -80] },
-          { cmd: 'add road', pos: [200, -40] },
-          { cmd: 'add road', pos: [200, 40] },
-          { cmd: 'add road', pos: [200, 80] },
-          { cmd: 'add road', pos: [200, 120] },
-          { cmd: 'add road', pos: [200, 160] },
-          { cmd: 'add road', pos: [200, 240] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [40, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [80, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [120, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [160, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [240, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [40, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [80, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [120, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [160, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [240, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [40, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [80, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [120, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [160, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [240, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [40, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [80, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [120, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [160, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [240, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [40, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [80, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [120, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [160, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [240, 200] },
-          { cmd: 'add intersection', pos: [-200, -200] },
-          { cmd: 'add intersection', pos: [-200, -100] },
-          { cmd: 'add intersection', pos: [-200, 0] },
-          { cmd: 'add intersection', pos: [-200, 100] },
-          { cmd: 'add intersection', pos: [-200, 200] },
-          { cmd: 'add intersection', pos: [-100, -200] },
-          { cmd: 'add intersection', pos: [-100, -100] },
-          { cmd: 'add intersection', pos: [-100, 0] },
-          { cmd: 'add intersection', pos: [-100, 100] },
-          { cmd: 'add intersection', pos: [-100, 200] },
-          { cmd: 'add intersection', pos: [0, -200] },
-          { cmd: 'add intersection', pos: [0, -100] },
-          { cmd: 'add intersection', pos: [0, 0] },
-          { cmd: 'add intersection', pos: [0, 100] },
-          { cmd: 'add intersection', pos: [0, 200] },
-          { cmd: 'add intersection', pos: [100, -200] },
-          { cmd: 'add intersection', pos: [100, -100] },
-          { cmd: 'add intersection', pos: [100, 0] },
-          { cmd: 'add intersection', pos: [100, 100] },
-          { cmd: 'add intersection', pos: [100, 200] },
-          { cmd: 'add intersection', pos: [200, -200] },
-          { cmd: 'add intersection', pos: [200, -100] },
-          { cmd: 'add intersection', pos: [200, 0] },
-          { cmd: 'add intersection', pos: [200, 100] },
-          { cmd: 'add intersection', pos: [200, 200] },
-          { cmd: 'add skyscraper', pos: [-50, -50] },
-          { cmd: 'add apartment', pos: [-20, -50] },
-          { cmd: 'add skyscraper', pos: [50, -50] },
-          { cmd: 'add apartment', pos: [80, -50] },
-          { cmd: 'add skyscraper', pos: [-50, 50] },
-          { cmd: 'add apartment', pos: [-20, 50] },
-          { cmd: 'add skyscraper', pos: [50, 50] },
-          { cmd: 'add apartment', pos: [80, 50] },
-          { cmd: 'add grocery', pos: [-75, -165], rot: 1.5708 },
-          { cmd: 'add restaurant', pos: [-75, -135], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [-50, -150] },
-          { cmd: 'add restaurant', pos: [25, -165], rot: 1.5708 },
-          { cmd: 'add bank', pos: [25, -135], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [50, -150] },
-          { cmd: 'add bank', pos: [-75, 135], rot: 1.5708 },
-          { cmd: 'add cafe', pos: [-75, 165], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [-50, 150] },
-          { cmd: 'add cafe', pos: [25, 135], rot: 1.5708 },
-          { cmd: 'add salon', pos: [25, 165], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [50, 150] },
-          { cmd: 'add salon', pos: [-175, -65], rot: 1.5708 },
-          { cmd: 'add pharmacy', pos: [-175, -35], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [-150, -50] },
-          { cmd: 'add pharmacy', pos: [-175, 35], rot: 1.5708 },
-          { cmd: 'add clothing', pos: [-175, 65], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [-150, 50] },
-          { cmd: 'add clothing', pos: [125, -65], rot: 1.5708 },
-          { cmd: 'add barber', pos: [125, -35], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [150, -50] },
-          { cmd: 'add barber', pos: [125, 35], rot: 1.5708 },
-          { cmd: 'add grocery', pos: [125, 65], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [150, 50] },
-          { cmd: 'add modern house', pos: [-170, -170], rot: 0 },
-          { cmd: 'add modern house 2 floors', pos: [-130, -170], rot: 0 },
-          { cmd: 'add pitched house', pos: [-170, -130], rot: 3.1416 },
-          { cmd: 'add ranch', pos: [-130, -130], rot: 3.1416 },
-          { cmd: 'add fence', pos: [-188, -150] },
-          { cmd: 'add fence', pos: [-112, -150] },
-          { cmd: 'add fence', pos: [-150, -188] },
-          { cmd: 'add fence', pos: [-150, -112] },
-          { cmd: 'add pool', pos: [-138, -140] },
-          { cmd: 'add tree', pos: [-158, -150] },
-          { cmd: 'add tree', pos: [-142, -150] },
-          { cmd: 'add tree', pos: [-150, -158] },
-          { cmd: 'add mansion', pos: [130, -170], rot: 0 },
-          { cmd: 'add duplex', pos: [170, -170], rot: 0 },
-          { cmd: 'add modern house', pos: [130, -130], rot: 3.1416 },
-          { cmd: 'add modern house 2 floors', pos: [170, -130], rot: 3.1416 },
-          { cmd: 'add fence', pos: [112, -150] },
-          { cmd: 'add fence', pos: [188, -150] },
-          { cmd: 'add fence', pos: [150, -188] },
-          { cmd: 'add fence', pos: [150, -112] },
-          { cmd: 'add pool', pos: [162, -140] },
-          { cmd: 'add tree', pos: [142, -150] },
-          { cmd: 'add tree', pos: [158, -150] },
-          { cmd: 'add tree', pos: [150, -158] },
-          { cmd: 'add pitched house', pos: [-170, 130], rot: 0 },
-          { cmd: 'add ranch', pos: [-130, 130], rot: 0 },
-          { cmd: 'add mansion', pos: [-170, 170], rot: 3.1416 },
-          { cmd: 'add duplex', pos: [-130, 170], rot: 3.1416 },
-          { cmd: 'add fence', pos: [-188, 150] },
-          { cmd: 'add fence', pos: [-112, 150] },
-          { cmd: 'add fence', pos: [-150, 112] },
-          { cmd: 'add fence', pos: [-150, 188] },
-          { cmd: 'add pool', pos: [-138, 160] },
-          { cmd: 'add tree', pos: [-158, 150] },
-          { cmd: 'add tree', pos: [-142, 150] },
-          { cmd: 'add tree', pos: [-150, 142] },
-          { cmd: 'add modern house', pos: [130, 130], rot: 0 },
-          { cmd: 'add modern house 2 floors', pos: [170, 130], rot: 0 },
-          { cmd: 'add pitched house', pos: [130, 170], rot: 3.1416 },
-          { cmd: 'add ranch', pos: [170, 170], rot: 3.1416 },
-          { cmd: 'add fence', pos: [112, 150] },
-          { cmd: 'add fence', pos: [188, 150] },
-          { cmd: 'add fence', pos: [150, 112] },
-          { cmd: 'add fence', pos: [150, 188] },
-          { cmd: 'add pool', pos: [162, 160] },
-          { cmd: 'add tree', pos: [142, 150] },
-          { cmd: 'add tree', pos: [158, 150] },
-          { cmd: 'add tree', pos: [150, 142] },
-          { cmd: 'add traffic light', pos: [-108, -8] },
-          { cmd: 'add traffic light', pos: [-92, 8] },
-          { cmd: 'add traffic light', pos: [92, -8] },
-          { cmd: 'add traffic light', pos: [108, 8] },
-          { cmd: 'add traffic light', pos: [-8, -108] },
-          { cmd: 'add traffic light', pos: [8, -92] },
-          { cmd: 'add traffic light', pos: [-8, 92] },
-          { cmd: 'add traffic light', pos: [8, 108] },
-          { cmd: 'add traffic light', pos: [-8, -8] },
-          { cmd: 'add traffic light', pos: [8, 8] },
-          { cmd: 'add stop sign', pos: [-193, -193] },
-          { cmd: 'add stop sign', pos: [-193, 207] },
-          { cmd: 'add stop sign', pos: [207, -193] },
-          { cmd: 'add stop sign', pos: [207, 207] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -250] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -250] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -210] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -210] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -170] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -170] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -130] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -130] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -90] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -90] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -50] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -50] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -10] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -10] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 30] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 30] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 70] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 70] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 110] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 110] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 150] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 150] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 190] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 190] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 230] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 230] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, -200] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, -100] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, 0] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, 100] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, 200] },
-          { cmd: 'add bench', pos: [-9, -150] },
-          { cmd: 'add bench', pos: [-9, -90] },
-          { cmd: 'add bench', pos: [-9, -30] },
-          { cmd: 'add bench', pos: [-9, 30] },
-          { cmd: 'add bench', pos: [-9, 90] },
-          { cmd: 'add bench', pos: [-9, 150] },
-          { cmd: 'add tree', pos: [-165, 135] },
-          { cmd: 'add tree', pos: [-165, 147] },
-          { cmd: 'add tree', pos: [-165, 159] },
-          { cmd: 'add tree', pos: [-155, 135] },
-          { cmd: 'add tree', pos: [-155, 147] },
-          { cmd: 'add tree', pos: [-155, 159] },
-          { cmd: 'add tree', pos: [-145, 135] },
-          { cmd: 'add tree', pos: [-145, 147] },
-          { cmd: 'add tree', pos: [-145, 159] },
-          { cmd: 'add ph_park_bench', pos: [-155, 150] },
-          { cmd: 'add ph_park_bench', pos: [-145, 155] },
-          { cmd: 'add gas station', pos: [150, -150] },
-          { cmd: 'add parking lot', pos: [-150, -150] },
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 100 } },
-          { cmd: 'spawn woman', scatter: { count: 3, radius: 80 } },
-        ]
-      },
-      suburban: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'grass', env: ['time morning'],
-        items: [
-          // Quiet residential street
-          { cmd: 'add road', pos: [0, -40] },
-          { cmd: 'add road', pos: [0, 0] },
-          { cmd: 'add road', pos: [0, 40] },
-          { cmd: 'add road', pos: [0, 80] },
-          // Houses with yards — spaced out
-          { cmd: 'add modern house', pos: [-25, -35], rot: Math.PI/2 },
-          { cmd: 'add pitched house', pos: [-25, -10], rot: Math.PI/2 },
-          { cmd: 'add ranch', pos: [-25, 15], rot: Math.PI/2 },
-          { cmd: 'add modern house 2 floors', pos: [-25, 40], rot: Math.PI/2 },
-          { cmd: 'add mansion', pos: [-25, 65], rot: Math.PI/2 },
-          { cmd: 'add pitched house', pos: [25, -35], rot: -Math.PI/2 },
-          { cmd: 'add modern house 2 floors', pos: [25, -10], rot: -Math.PI/2 },
-          { cmd: 'add duplex', pos: [25, 15], rot: -Math.PI/2 },
-          { cmd: 'add modern house', pos: [25, 40], rot: -Math.PI/2 },
-          { cmd: 'add ranch', pos: [25, 65], rot: -Math.PI/2 },
-          // Pools in backyards
-          { cmd: 'add pool', pos: [-35, -8] },
-          { cmd: 'add pool', pos: [35, 42] },
-          { cmd: 'add pool', pos: [-35, 67] },
-          // Trees in yards
-          { cmd: 'add tree', pos: [-20, -25] }, { cmd: 'add tree', pos: [-20, 5] },
-          { cmd: 'add tree', pos: [20, -20] }, { cmd: 'add tree', pos: [20, 25] },
-          { cmd: 'add tree', pos: [-20, 50] }, { cmd: 'add tree', pos: [20, 55] },
-          { cmd: 'add tree', pos: [-32, -30] }, { cmd: 'add tree', pos: [32, 10] },
-          // Street lamps
-          { cmd: 'add ph_street_lamp_01', pos: [-7, -30] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, -10] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 20] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, 50] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 75] },
-          // Fire hydrants
-          { cmd: 'add ph_fire_hydrant', pos: [-7, -20] },
-          { cmd: 'add ph_fire_hydrant', pos: [7, 30] },
-          // Mailboxes (just small boxes for now)
-          { cmd: 'add trash can', pos: [-14, -34] },
-          { cmd: 'add trash can', pos: [14, -9] },
-          { cmd: 'add trash can', pos: [-14, 16] },
-          // Parked cars
-          // Park at the end
-          { cmd: 'add tree', pos: [0, 90] }, { cmd: 'add tree', pos: [-8, 95] },
-          { cmd: 'add tree', pos: [8, 95] }, { cmd: 'add tree', pos: [-4, 100] },
-          { cmd: 'add tree', pos: [4, 100] },
-          { cmd: 'add ph_park_bench', pos: [0, 92] },
-        ],
-        npcs: { count: 6 },
-      },
-    }
-    
-    const template = MAP_TEMPLATES[mapType] || MAP_TEMPLATES['town'];
-    
-    // Apply water preset if template has one
-    if (template.water && WATER_PRESETS[template.water]) {
-      // Will be applied after ocean/lake is created
-      window._pendingWaterPreset = template.water;
-    }
-    
-    // Build command queue from JSON template
-    const commands = [];
-    
-    // Terrain first
-    if (template.terrain) {
-      const tType = template.terrain.type || 'hills';
-      commands.push('terrain ' + tType);
-      // Set terrain height scale
-      if (template.terrain.height) {
-        // Height is applied via createTerrain params
-      }
-    }
-    
-    // Ground type (color scheme)
-    if (template.ground) {
-      commands.push('ground ' + template.ground);
-    }
-    
-    // Environment commands
-    if (template.env) {
-      template.env.forEach(e => commands.push(e));
-    }
-    
-    // Weather
-    if (template.weather) {
-      commands.push(template.weather);
-    }
-    
-    // Particles
-    if (template.particles) {
-      commands.push('particles ' + template.particles);
-    }
-    
-    // Items with positioning
-    for (const item of (template.items || [])) {
-      if (item.scatter) {
-        const s = item.scatter;
-        const count = s.count || 1;
-        const radius = s.radius || 30;
-        const avoidCenter = s.avoidCenter || 0;
-        for (let j = 0; j < count; j++) {
-          let px, pz, attempts = 0;
-          do {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = avoidCenter + Math.random() * (radius - avoidCenter);
-            px = Math.round(Math.cos(angle) * dist);
-            pz = Math.round(Math.sin(angle) * dist);
-            attempts++;
-          } while (attempts < 10 && avoidCenter > 0 && Math.sqrt(px*px + pz*pz) < avoidCenter);
-          commands.push(item.cmd + ' at ' + px + ' ' + pz);
-        }
-      } else if (item.pos) {
-        commands.push(item.cmd + ' at ' + item.pos[0] + ' ' + item.pos[1]);
-        if (item.rot !== undefined) {
-          // Store rotation to apply after placement
-          if (!window._pendingRotations) window._pendingRotations = {};
-          window._pendingRotations[item.pos[0] + ',' + item.pos[1]] = item.rot;
-        }
-      } else {
-        commands.push(item.cmd);
-      }
-    }
-    
     // Execute all commands sequentially
     let ci = 0;
     const runNext = () => {
       if (ci >= commands.length) {
         showToast('🗺️ ' + mapTheme + ' generated! ' + commands.length + ' elements placed.');
-        if (mapType === 'city') setAmbientSound('city');
+        if (ambientSound) setAmbientSound(ambientSound);
         // Spawn driving cars for city
-        if (mapType === 'city' || mapType === 'cyberpunk') {
+        if (trafficEnabled) {
           setTimeout(function() {
             // Smart traffic cars with GLB models and AI
             console.log("[Traffic] Spawning smart traffic cars on city grid...");
@@ -7755,7 +7520,7 @@ function showGameHUD(preset) {
   const searchMatch = lower.match(/^(?:search|find|browse|look for|show)\s+(.+)/);
   if (searchMatch) {
     const query = searchMatch[1];
-    const results = searchModels(query, 15);
+    const results = searchRegistryModels(query, 15);
     if (results.length === 0) {
       return '🔍 No models found for "' + query + '"';
     }
@@ -7996,25 +7761,39 @@ function showGameHUD(preset) {
   
   // === CUSTOM SCRIPTS ===
   if (lower === 'scripts' || lower === 'script list' || lower === 'custom scripts' || lower === 'game scripts' || lower === 'game logic') {
-    showScriptManager();
-    return '🧠 Opening script manager...';
+    try {
+      const mod = await loadUserScriptsModule();
+      mod.initializeUserScripts?.();
+      mod.showScriptManager();
+      return '🧠 Opening script manager...';
+    } catch (err) {
+      console.error('[AI Sandbox] Failed to open script manager:', err);
+      showToast('❌ Script tools failed to load');
+      return '⚠ Script manager unavailable';
+    }
   }
   if (lower === 'new script' || lower === 'add script' || lower === 'custom code' || lower === 'code editor') {
-    showScriptEditor();
-    return '🧠 Opening script editor...';
+    try {
+      const mod = await loadUserScriptsModule();
+      mod.initializeUserScripts?.();
+      mod.showScriptEditor();
+      return '🧠 Opening script editor...';
+    } catch (err) {
+      console.error('[AI Sandbox] Failed to open script editor:', err);
+      showToast('❌ Script tools failed to load');
+      return '⚠ Script editor unavailable';
+    }
   }
   if (lower.startsWith('script ')) {
     const desc = lower.replace(/^script\s+/, '');
-    generateUserScript(desc).then(code => {
-      if (code) {
-        const s = { id: 'script_' + Date.now(), name: desc.slice(0,30), description: desc, code, enabled: true };
-        window._userScripts.push(s);
-        runUserScript(s);
-        localStorage.setItem('crate-user-scripts', JSON.stringify(window._userScripts.map(x => ({id:x.id,name:x.name,description:x.description,code:x.code,enabled:x.enabled}))));
-      }
+    loadUserScriptsModule().then((mod) => {
+      mod.initializeUserScripts?.();
+      return mod.generateAndRunUserScript?.(desc);
+    }).catch((err) => {
+      console.error('[AI Sandbox] Failed to generate script:', err);
+      showToast('❌ Script generation failed to start');
     });
     return '🤖 Generating custom script: "' + desc + '"...';
-    return '⚠ Not in a vehicle';
   }
 
   // === UNIVERSAL ASSET GALLERY COMMANDS ===
@@ -8193,9 +7972,10 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:characters|show characters|character select|character menu|who can i play|choose character|pick character|select character|change character|switch character|player select)/)) {
     const chosen = await showCharacterGallery();
     if (!chosen) return '↩ Character select cancelled';
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
     if (characterController) {
       if (!characterController.characterModels[chosen]) {
-        var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
+        var lib = await findCharacterLibraryEntry(chosen);
         if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
       }
       await characterController.loadCharacter(chosen);
@@ -8209,7 +7989,9 @@ function showGameHUD(preset) {
   // === SET CHARACTER / PLAY AS ===
   const setCharMatch = lower.match(/^(?:set|change|switch|choose|select)\s+(?:character|char|player|hero)\s+(?:to\s+)?(.+)$/);
   const playAsMatch = lower.match(/^play\s+as\s+(.+)$/);
-  if ((setCharMatch || playAsMatch) && characterController) {
+  if (setCharMatch || playAsMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     const charName = (setCharMatch ? setCharMatch[1] : playAsMatch[1]).trim();
     const validChars = Object.keys(characterController.characterModels);
     if (validChars.includes(charName)) {
@@ -8287,7 +8069,7 @@ function showGameHUD(preset) {
       if (!characterController.model) {
         const charType = selectedCharacterType || 'knight';
         if (!characterController.characterModels[charType]) {
-          const lib = CHARACTER_LIBRARY.find(c => c.id === charType);
+          const lib = await findCharacterLibraryEntry(charType);
           if (lib) characterController.characterModels[charType] = { file: lib.file, animPrefix: '', procedural: true };
         }
         await characterController.loadCharacter(charType);
@@ -8299,12 +8081,14 @@ function showGameHUD(preset) {
   
   // === WEAPON EQUIP COMMANDS ===
   const equipMatch = lower.match(/^(?:equip|give me|use|wield|grab|take)\s+(?:a\s+|an\s+)?(sword|axe|dagger|hammer|spear|katana|pistol|rifle|shotgun|smg|sniper|bow)(?:\s+(?:in\s+)?(?:slot\s+)?(\d))?/);
-  if (equipMatch && characterController) {
+  if (equipMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     // Auto-load character model if none loaded
     if (!characterController.model) {
       const charType = selectedCharacterType || 'knight';
       if (!characterController.characterModels[charType]) {
-        const lib = CHARACTER_LIBRARY.find(c => c.id === charType);
+        const lib = await findCharacterLibraryEntry(charType);
         if (lib) characterController.characterModels[charType] = { file: lib.file, animPrefix: '', procedural: true };
       }
       await characterController.loadCharacter(charType);
@@ -8315,19 +8099,25 @@ function showGameHUD(preset) {
   }
   
   const unequipMatch = lower.match(/^(?:unequip|drop|remove|holster)\s+(?:weapon|current|my weapon)/);
-  if (unequipMatch && characterController) {
+  if (unequipMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     return characterController.unequipWeapon();
   }
   
   const swapMatch = lower.match(/^(?:swap|switch|slot)\s+(\d)/);
-  if (swapMatch && characterController) {
+  if (swapMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     characterController.swapToSlot(parseInt(swapMatch[1]) - 1);
     const w = characterController.weaponSlots[characterController.activeSlot];
     return w ? '🔄 Switched to slot ' + swapMatch[1] + ': ' + (WEAPON_DATABASE[w]?.name || w) : '🔄 Slot ' + swapMatch[1] + ' is empty';
   }
   
   const listWeaponsMatch = lower.match(/^(?:show|list|my)\s+(?:weapons|loadout|slots)/);
-  if (listWeaponsMatch && characterController) {
+  if (listWeaponsMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     const slots = characterController.weaponSlots;
     const lines = slots.map((w, i) => {
       const active = i === characterController.activeSlot ? ' ◄' : '';
@@ -8337,11 +8127,13 @@ function showGameHUD(preset) {
     return '🗡️ Weapon Loadout:\n' + lines.join('\n');
   }
 
-    // === AI AGENT — NPC MODIFICATION ===
+  // === AI AGENT — NPC MODIFICATION ===
   const npcModMatch = lower.match(/(?:give|equip|change|set|swap|remove|take)\s+(?:the\s+)?(?:npc|enemy|enemies|npcs|all npc)\s*(?:'s|s)?\s*(?:weapon\s+)?(?:to\s+|with\s+|a\s+)?(sword|axe|hammer|spear|dagger|rifle|pistol|shotgun|bow|staff|nothing|unarmed|fists)?/i)
     || lower.match(/(?:give|equip)\s+(?:a\s+)?(sword|axe|hammer|spear|dagger|rifle|pistol|shotgun|bow|staff)\s+(?:to\s+)?(?:the\s+)?(?:npc|enemy|enemies|npcs|all)/i)
     || lower.match(/(?:remove|take)\s+(?:the\s+)?(?:sword|axe|weapon|gun|rifle)s?\s+(?:from\s+)?(?:the\s+)?(?:npc|enemy|enemies|npcs|all)/i);
-  if (npcModMatch && npcController && npcController.npcs.length > 0) {
+  if (npcModMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController || npcController.npcs.length === 0) return '⚠ No NPCs to modify';
     const weapon = npcModMatch[1] || null;
     const isRemove = /remove|take|nothing|unarmed|fists/.test(lower);
     
@@ -8407,7 +8199,9 @@ function showGameHUD(preset) {
 
   // === NPC SPAWN ===
   const npcMatch = lower.match(/^(?:spawn|add)\s+(?:npc|villager|citizen|person)\s*(?:at\s+(-?[\d.]+)\s+(-?[\d.]+))?/);
-  if (npcMatch && npcController) {
+  if (npcMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController) return '⚠ NPC system unavailable';
     const nx = parseFloat(npcMatch[1]) || (Math.random()-0.5)*30;
     const nz = parseFloat(npcMatch[2]) || (Math.random()-0.5)*30;
     return npcController.spawnNPC('knight', nx, nz, 'wander');
@@ -8415,7 +8209,9 @@ function showGameHUD(preset) {
   
   // === SPAWN MULTIPLE NPCs ===
   const npcsMatch = lower.match(/^(?:spawn|add)\s+(\d+)\s+(?:(hostile|enemy|aggro|friendly)\s+)?npcs?/);
-  if (npcsMatch && npcController) {
+  if (npcsMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController) return '⚠ NPC system unavailable';
     const n = Math.min(parseInt(npcsMatch[1]), 30);
     const isHostile = npcsMatch[2] && (npcsMatch[2] === 'hostile' || npcsMatch[2] === 'enemy' || npcsMatch[2] === 'aggro');
     const behavior = isHostile ? 'aggro' : 'wander';
@@ -8440,7 +8236,9 @@ function showGameHUD(preset) {
   
   // === SPAWN ENEMIES ===
   const enemyMatch = lower.match(/^(?:spawn|add)\s+(\d+)?\s*(?:enemies|enemy|hostiles?|monsters?|skeletons?|zombies?)/);
-  if (enemyMatch && npcController) {
+  if (enemyMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController || !questSystem) return '⚠ NPC system unavailable';
     const n = Math.min(parseInt(enemyMatch[1]) || 5, 30);
     const promises = [];
     const types = ['knight']; // All same model
@@ -8504,31 +8302,214 @@ function showGameHUD(preset) {
   // Modern house command
 
   const interiorMatch = lower.match(/^(?:add |create |build )?(?:an? )?(interior house|interior shop|interior tavern|walkable house|walkable building|enterable house|enterable building|house with interior|building with interior)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
-  if (interiorMatch) {
-    const type = interiorMatch[1];
-    const floorCount = interiorMatch[2] ? parseInt(interiorMatch[2]) : undefined;
-    let obj;
-    if (type.includes('shop')) {
-      obj = createInteriorShop();
-    } else if (type.includes('tavern')) {
-      obj = createInteriorTavern();
-    } else {
-      obj = createInteriorHouse({ floors: floorCount || 1 });
-    }
-    addObj(obj.userData.name || 'Interior House', obj, px, pz);
-    return '🏠 Interior ' + (type.includes('shop')?'shop':type.includes('tavern')?'tavern':'house') + ' created! Walk inside through the front door.' + (floorCount > 1 ? ' (' + floorCount + ' floors with stairs)' : '');
-  }
-  if (lower === 'add 2 story house' || lower === 'add two story house' || lower === 'add 2-story house') {
-    const obj = createInteriorHouse({ floors: 2 });
-    addObj('Interior House', obj, px, pz);
-    return '🏠 2-story interior house created! Walk upstairs via the built-in staircase.';
-  }
-  if (lower === 'add 3 story house' || lower === 'add three story house') {
-    const obj = createInteriorHouse({ floors: 3 });
-    addObj('Interior House', obj, px, pz);
-    return '🏠 3-story interior house! Stairs connect all floors.';
-  }
+  const twoStoryHouse = lower === 'add 2 story house' || lower === 'add two story house' || lower === 'add 2-story house';
+  const threeStoryHouse = lower === 'add 3 story house' || lower === 'add three story house';
+  const modernMatch = lower.match(/^(?:add |create |build )?(?:an? )?(modern house|modern home|modern building|hd house|furnished house|nice house)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
+  const skyscraperMatch = lower.match(/^(?:add |create |build )?(?:an? )?(skyscraper|highrise|high.?rise|tower|tall building)/);
+  const storeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(salon|barber|grocery|clothing|restaurant|pharmacy|bank|cafe|gym|laundry|store|shop|commercial)/);
+  const pitchedRoofMatch = lower.match(/^(?:add |create |build )?(?:an? )?(pitched|pitched.?roof|suburban|traditional) house/);
+  const mansionMatch = lower.match(/^(?:add |create |build )?(?:an? )?(mansion)/);
+  const duplexMatch = lower.match(/^(?:add |create |build )?(?:an? )?(duplex)/);
+  const ranchMatch = lower.match(/^(?:add |create |build )?(?:an? )?(ranch|ranch house)/);
+  const poolMatch = lower.match(/^(?:add |create |build )?(?:an? )?(swimming ?pool|pool)/);
+  const parkingMatch = lower.match(/^(?:add |create |build )?(?:an? )?(parking lot|parking|carpark)/);
+  const gasStationMatch = lower.match(/^(?:add |create |build )?(?:an? )?(gas station|petrol station|fuel station)/);
+  const bridgeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(bridge)/);
+  const apartmentMatch = lower.match(/^(?:add |create |build )?(?:an? )?(apartment|apartment building|apartments|flat|flats)/);
+  const supermarketMatch = lower.match(/^(?:add |create |build )?(?:an? )?(supermarket|super market|grocery store|megastore)/);
+  const busStopMatch = lower.match(/^(?:add |create |build )?(?:an? )?(bus stop|bus shelter)/);
+  const dumpsterMatch = lower.match(/^(?:add |create |build )?(?:an? )?(dumpster|skip|bin)/);
+  const trashCanMatch = lower.match(/^(?:add |create |build )?(?:an? )?(trash can|rubbish bin|waste bin)/);
+  const stopSignMatch = lower.match(/^(?:add |create )?(?:an? )?(stop ?sign)/);
+  const trafficLightMatch = lower.match(/^(?:add |create )?(?:an? )?(traffic ?light|stoplight|signal)/);
+  const roadMatch = lower.match(/^(?:add |create |build )?(?:an? )?(road|street)/);
+  const intersectionMatch = lower.match(/^(?:add |create )?(?:an? )?(intersection|crossroad)/);
+  const glassOfficeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(glass|office) ?(building|tower)?/);
+  const stadiumMatch = lower.match(/^(?:add |create |build )?(?:an? )?(stadium|arena|field)/);
+  const fenceMatch = lower.match(/^(?:add |create )?(?:an? )?(fence|picket fence)/);
+  const parkMatch = lower.match(/^(?:add |create |build )?(?:an? )?(park)/);
+  if (interiorMatch || twoStoryHouse || threeStoryHouse || modernMatch || skyscraperMatch || storeMatch || pitchedRoofMatch || mansionMatch || duplexMatch || ranchMatch || poolMatch || parkingMatch || gasStationMatch || bridgeMatch || apartmentMatch || supermarketMatch || busStopMatch || dumpsterMatch || trashCanMatch || stopSignMatch || trafficLightMatch || roadMatch || intersectionMatch || glassOfficeMatch || stadiumMatch || fenceMatch || parkMatch) {
+    const {
+      createInteriorShop,
+      createInteriorTavern,
+      createInteriorHouse,
+      createModernHouse,
+      createSkyscraper,
+      createCommercialBuilding,
+      createPitchedRoofHouse,
+      createMansion,
+      createDuplex,
+      createRanchHouse,
+      createSwimmingPool,
+      createParkingLot,
+      createGasStation,
+      createBridge,
+      createApartmentBuilding,
+      createSupermarket,
+      createBusStop,
+      createDumpster,
+      createTrashCan,
+      createStopSign,
+      createTrafficLight,
+      createRoadSegment,
+      createIntersection,
+      createGlassOfficeBuilding,
+      createStadium,
+      createFence,
+      createPark
+    } = await loadBuildingsModule();
 
+    if (interiorMatch) {
+      const type = interiorMatch[1];
+      const floorCount = interiorMatch[2] ? parseInt(interiorMatch[2]) : undefined;
+      let obj;
+      if (type.includes('shop')) {
+        obj = createInteriorShop();
+      } else if (type.includes('tavern')) {
+        obj = createInteriorTavern();
+      } else {
+        obj = createInteriorHouse({ floors: floorCount || 1 });
+      }
+      addObj(obj.userData.name || 'Interior House', obj, px, pz);
+      return '🏠 Interior ' + (type.includes('shop') ? 'shop' : type.includes('tavern') ? 'tavern' : 'house') + ' created! Walk inside through the front door.' + (floorCount > 1 ? ' (' + floorCount + ' floors with stairs)' : '');
+    }
+    if (twoStoryHouse) {
+      const obj = createInteriorHouse({ floors: 2 });
+      addObj('Interior House', obj, px, pz);
+      return '🏠 2-story interior house created! Walk upstairs via the built-in staircase.';
+    }
+    if (threeStoryHouse) {
+      const obj = createInteriorHouse({ floors: 3 });
+      addObj('Interior House', obj, px, pz);
+      return '🏠 3-story interior house! Stairs connect all floors.';
+    }
+    if (modernMatch) {
+      const floorCount = modernMatch[2] ? parseInt(modernMatch[2]) : 1;
+      const obj = createModernHouse({ floors: floorCount });
+      addObj('Modern House', obj, px || 0, pz || 0);
+      return '🏠 Modern furnished house created! Walk inside — HD furniture included.' + (floorCount > 1 ? ' (' + floorCount + ' floors)' : '');
+    }
+    if (skyscraperMatch) {
+      const obj = createSkyscraper();
+      addObj('Skyscraper', obj, px || 0, pz || 0);
+      return '🏙️ Skyscraper created!';
+    }
+    if (storeMatch) {
+      const type = (storeMatch[1] === 'store' || storeMatch[1] === 'shop' || storeMatch[1] === 'commercial') ? undefined : storeMatch[1];
+      const obj = createCommercialBuilding({ type });
+      addObj(obj.userData.name, obj, px || 0, pz || 0);
+      return '🏪 ' + obj.userData.name + ' created!';
+    }
+    if (pitchedRoofMatch) {
+      const obj = createPitchedRoofHouse();
+      addObj('House', obj, px || 0, pz || 0);
+      return '🏡 House with pitched roof created!';
+    }
+    if (mansionMatch) {
+      const obj = createMansion();
+      addObj('Mansion', obj, px || 0, pz || 0);
+      return '🏰 Mansion created!';
+    }
+    if (duplexMatch) {
+      const obj = createDuplex();
+      addObj('Duplex', obj, px || 0, pz || 0);
+      return '🏘️ Duplex created!';
+    }
+    if (ranchMatch) {
+      const obj = createRanchHouse();
+      addObj('Ranch House', obj, px || 0, pz || 0);
+      return '🏡 Ranch house created!';
+    }
+    if (poolMatch) {
+      const obj = createSwimmingPool();
+      addObj('Swimming Pool', obj, px || 0, pz || 0);
+      obj.userData.registerWaterZone();
+      return '🏊 Swimming pool created! Jump in to swim!';
+    }
+    if (parkingMatch) {
+      const obj = createParkingLot();
+      addObj('Parking Lot', obj, px || 0, pz || 0);
+      return '🅿️ Parking lot created!';
+    }
+    if (gasStationMatch) {
+      const obj = createGasStation();
+      addObj('Gas Station', obj, px || 0, pz || 0);
+      return '⛽ Gas station created!';
+    }
+    if (bridgeMatch) {
+      const obj = createBridge();
+      addObj('Bridge', obj, px || 0, pz || 0);
+      if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
+      return '🌉 Bridge created!';
+    }
+    if (apartmentMatch) {
+      const obj = createApartmentBuilding();
+      addObj('Apartment', obj, px || 0, pz || 0);
+      return '🏢 Apartment building created!';
+    }
+    if (supermarketMatch) {
+      const obj = createSupermarket();
+      addObj('Supermarket', obj, px || 0, pz || 0);
+      return '🛒 Supermarket created!';
+    }
+    if (busStopMatch) {
+      const obj = createBusStop();
+      addObj('Bus Stop', obj, px || 0, pz || 0);
+      return '🚏 Bus stop created!';
+    }
+    if (dumpsterMatch) {
+      const obj = createDumpster();
+      addObj('Dumpster', obj, px || 0, pz || 0);
+      return '🗑️ Dumpster created!';
+    }
+    if (trashCanMatch) {
+      const obj = createTrashCan();
+      addObj('Trash Can', obj, px || 0, pz || 0);
+      return '🗑️ Trash can created!';
+    }
+    if (stopSignMatch) {
+      const obj = createStopSign();
+      addObj('Stop Sign', obj, px || 0, pz || 0);
+      return '🛑 Stop sign placed!';
+    }
+    if (trafficLightMatch) {
+      const obj = createTrafficLight();
+      addObj('Traffic Light', obj, px || 0, pz || 0);
+      return '🚦 Traffic light placed!';
+    }
+    if (roadMatch) {
+      const ew = lower.includes(' ew');
+      const obj = createRoadSegment({ direction: ew ? 'ew' : 'ns' });
+      addObj('Road', obj, px || 0, pz || 0);
+      return '🛣️ Road segment created!';
+    }
+    if (intersectionMatch) {
+      const obj = createIntersection();
+      addObj('Intersection', obj, px || 0, pz || 0);
+      return '🚦 Intersection created!';
+    }
+    if (glassOfficeMatch) {
+      const obj = createGlassOfficeBuilding();
+      addObj('Office Building', obj, px || 0, pz || 0);
+      return '🏢 Glass office building created!';
+    }
+    if (stadiumMatch) {
+      const obj = createStadium();
+      addObj('Stadium', obj, px || 0, pz || 0);
+      return '🏟️ Stadium created!';
+    }
+    if (fenceMatch) {
+      const obj = createFence();
+      addObj('Fence', obj, px || 0, pz || 0);
+      return '🏗️ Fence placed!';
+    }
+    if (parkMatch) {
+      const obj = createPark();
+      addObj('Park', obj, px || 0, pz || 0);
+      return '🌳 Park created!';
+    }
+  }
+  
   // === BUILD WORLD (AI Agent world builder) ===
   const buildWorldMatch = lower.match(/^(?:build|create|generate|make|load) (?:a |an |the )?(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|village|city|big city|small city|suburb|downtown|neighborhood|block|dungeon|arena|battlefield|kingdom|island|forest|camp|farm|ranch|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|mountain|volcano|haunted|western|ruins|zen|swamp|floating|beach|coastal|harbor|port|airport|stadium|park|mall|hospital|school|university|prison|military|base|factory|warehouse|parking lot)(?: world| map| scene)?$/);
   if (buildWorldMatch) {
@@ -8673,20 +8654,7 @@ function showGameHUD(preset) {
     }
     for (const obj of objects) {
       if (obj.userData.isGerstnerWater) {
-        const p = WATER_PRESETS[preset];
-        if (p && obj.material.uniforms) {
-          obj.material.uniforms.waveA.value.set(p.waveA[0], p.waveA[1], p.waveA[2], p.waveA[3]);
-          obj.material.uniforms.waveB.value.set(p.waveB[0], p.waveB[1], p.waveB[2], p.waveB[3]);
-          obj.material.uniforms.waveC.value.set(p.waveC[0], p.waveC[1], p.waveC[2], p.waveC[3]);
-          obj.material.uniforms.waterColor.value.copy(p.color);
-          obj.material.uniforms.deepColor.value.copy(p.deepColor);
-          obj.material.uniforms.foamIntensity.value = p.foamIntensity;
-          obj.material.uniforms.specularPower.value = p.specularPower;
-          obj.material.uniforms.fresnelPower.value = p.fresnelPower;
-          obj.material.uniforms.opacity.value = p.opacity;
-          obj.userData.waterPreset = preset;
-          setCurrentWaterPreset(preset);
-        }
+        await applyWaterPresetToObject(obj, preset);
       }
     }
     return '🌊 Water preset: ' + preset.charAt(0).toUpperCase() + preset.slice(1);
@@ -8702,7 +8670,9 @@ function showGameHUD(preset) {
   // === BUILD TOWN/CITY ===
   const townKeywords = /medieval|fantasy|village|town|city|modern|cyberpunk|castle|pirate|port|farm|forest|bandit|camp|desert|fishing|mountain|mining|market|military|fort|harbor|island|space|station|alien|planet|mars|colony|sci.?fi|outpost|zombie|wasteland|apocal|nuclear|frozen|tundra|ice|fortress|winter|arctic|snow|haunted|graveyard|mansion|crypt|catacomb|cathedral|bone.?yard|dungeon|jungle|temple|tropical|dinosaur|dino|prehistoric|underwater|ocean|shipwreck|downtown|suburb|neon|alley|arena|colosseum|gladiator|platformer|obstacle|race|circuit|track|enchanted|dark.?forest|oasis|war.?zone|battlefield|dwarf|dwarven|mine|ranch|cowboy|western|saloon|wild.?west|steampunk|airship|victorian|samurai|shogun|feudal|japan|ninja|aztec|mayan|egyptian|pyramid|pharaoh|roman|greek|olymp|viking|norse|valhalla|moon|lunar|asteroid|saturn|jupiter|nebula|orbit|satellite|space.?dock|star.?base|warp|hyper|galaxy|cosmos|meteor|comet|black.?hole|void|dimension|portal|rift|cyber.?city|hacker|matrix|android|robot|mech|titan|kaiju|monster|beast|dragon.?lair|dragon.?nest|swamp|marsh|bog|bayou|savanna|steppe|tundra|taiga|bamboo|cherry|blossom|zen|garden|pagoda|shrine|torii|volcano|lava|magma|crater|geyser|hot.?spring|crystal|gem|diamond|emerald|ruby|sapphire|amethyst|gold|silver|treasure|vault|bank|heist|prison|jail|asylum|hospital|school|library|museum|theater|circus|carnival|amusement|theme.?park|zoo|aquarium|greenhouse|laboratory|bunker|silo|warehouse|factory|power.?plant|dam|bridge|highway|tunnel|subway|metro|train|airport|spaceport|launch|rocket|shuttle|satellite|orbital|derelict|abandon|ruin|wreck|sunken|lost|forgotten|ancient|cursed|blessed|holy|sacred|divine|infernal|hell|abyss|purgatory|heaven|paradise|cloud|sky|floating|flying/;
   const townMatch = lower.match(/^(?:build|create|generate)\s+(?:a\s+)?(?:(small|medium|large|huge)\s+)?(.+)/);
-  if (townMatch && townKeywords.test(townMatch[2]) && townBuilder) {
+  if (townMatch && townKeywords.test(townMatch[2])) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load town systems';
+    if (!townBuilder) return '⚠ Town builder unavailable';
     const size = townMatch[1] || 'medium';
     const type = townMatch[2];
     // Set biome-appropriate ground, sky, and lighting
@@ -8785,29 +8755,40 @@ function showGameHUD(preset) {
   }
   
   // === LEVEL/SKILL COMMANDS ===
-  if ((lower === 'stats' || lower === 'level' || lower === 'skills' || lower === 'xp') && levelSystem) {
+  if (lower === 'stats' || lower === 'level' || lower === 'skills' || lower === 'xp') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load level systems';
+    if (!levelSystem) return '⚠ Level system unavailable';
     return '📊 ' + levelSystem.getStats();
   }
   const skillMatch = lower.match(/^(?:upgrade|level up|invest|put point in)\s+(strength|vitality|endurance|agility|luck)/);
-  if (skillMatch && levelSystem) {
+  if (skillMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load level systems';
+    if (!levelSystem) return '⚠ Level system unavailable';
     return levelSystem.upgradeSkill(skillMatch[1]);
   }
   
   // === CRAFTING COMMANDS ===
-  if ((lower === 'craft' || lower === 'recipes' || lower === 'crafting') && craftingSystem) {
+  if (lower === 'craft' || lower === 'recipes' || lower === 'crafting') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load crafting systems';
+    if (!craftingSystem) return '⚠ Crafting system unavailable';
     return '🔨 Crafting Recipes:\n' + craftingSystem.listRecipes() + '\n\nMaterials: ' + craftingSystem.getMaterialString();
   }
   const craftMatch = lower.match(/^craft\s+(.+)/);
-  if (craftMatch && craftingSystem) {
+  if (craftMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load crafting systems';
+    if (!craftingSystem) return '⚠ Crafting system unavailable';
     return craftingSystem.craft(craftMatch[1]);
   }
   if (lower === 'materials' || lower === 'inventory materials') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load crafting systems';
     if (!craftingSystem) return '⚠ Enter play mode first';
     return '🧱 Materials: ' + craftingSystem.getMaterialString();
   }
   
   // === QUEST COMMANDS ===
   if (lower === 'quests' || lower === 'quest log') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load quest systems';
+    if (!questSystem) return '⚠ Quest system unavailable';
     const active = questSystem.quests.filter(q => !q.completed);
     const done = questSystem.completedQuests.length;
     if (active.length === 0) return '📜 No active quests. Spawn enemies to get one!';
@@ -8815,7 +8796,9 @@ function showGameHUD(preset) {
   }
   
   // === TALK TO NPC ===
-  if ((lower === 'talk' || lower === 'talk to npc' || lower === 'interact') && npcController) {
+  if (lower === 'talk' || lower === 'talk to npc' || lower === 'interact') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController || !characterController || !dialogueSystem || !questSystem) return '⚠ NPC system unavailable';
     const nearby = npcController.getNearbyNPCs(characterController.position, 5);
     if (nearby.length === 0) return '⚠ No NPCs nearby to talk to';
     const npc = nearby[0];
@@ -8855,12 +8838,16 @@ function showGameHUD(preset) {
 
   // === CHARACTER SPEED ===
   const charSpeedMatch = lower.match(/^(?:set\s+)?(?:character\s+|player\s+)?(walk|run|sprint)\s*speed\s+(\d+\.?\d*)/);
-  if (charSpeedMatch && characterController) {
+  if (charSpeedMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     return characterController.setSpeed(charSpeedMatch[1], parseFloat(charSpeedMatch[2]));
   }
   
   // === ENTER VEHICLE ===
-  if ((lower === 'enter vehicle' || lower === 'get in car' || lower === 'enter car') && characterController) {
+  if (lower === 'enter vehicle' || lower === 'get in car' || lower === 'enter car') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load gameplay systems';
+    if (!characterController) return '⚠ Character system unavailable';
     const vehicle = objects.find(o => o.userData.name && (o.userData.name.includes('car') || o.userData.name.includes('truck')));
     if (vehicle) return characterController.enterVehicle(vehicle);
     return '⚠ No vehicle nearby';
@@ -8869,7 +8856,9 @@ function showGameHUD(preset) {
   // === PLAY MODE (fallback — main handler at line ~8276) ===
   // [REMOVED] Duplicate play handler — use enterPlayMode() only
   // === SPAWN CHARACTER ===
-  if (lower.startsWith('spawn ') && characterController) {
+  if (lower.startsWith('spawn ')) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     const charType = lower.replace('spawn ', '').trim();
     const validTypes = Object.keys(characterController.characterModels);
     const type = validTypes.includes(charType) ? charType : 'woman';
@@ -8912,8 +8901,7 @@ function showGameHUD(preset) {
   }
   // === PLAY MODE ===
   if (lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo' || lower === 'fps' || lower === 'first person' || lower === 'walk') {
-    if (characterController) return enterPlayMode();
-    return '⚠ Character system not loaded yet';
+    return enterPlayMode();
   }
   if (lower === 'edit' || lower === 'edit mode' || lower === 'stop playing' || lower === 'exit play') {
     return exitPlayMode();
@@ -9107,164 +9095,6 @@ function showGameHUD(preset) {
     px = pp.x + (Math.random() - 0.5) * 15;
     pz = pp.z + (Math.random() - 0.5) * 15;
   }
-  
-  
-  // Modern house command
-  const modernMatch = lower.match(/^(?:add |create |build )?(?:an? )?(modern house|modern home|modern building|hd house|furnished house|nice house)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
-  if (modernMatch) {
-    const floorCount = modernMatch[2] ? parseInt(modernMatch[2]) : 1;
-    const obj = createModernHouse({ floors: floorCount });
-    addObj('Modern House', obj, px || 0, pz || 0);
-    return '🏠 Modern furnished house created! Walk inside — HD furniture included.' + (floorCount > 1 ? ' (' + floorCount + ' floors)' : '');
-  }
-  // Skyscraper
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(skyscraper|highrise|high.?rise|tower|tall building)/)) {
-    const obj = createSkyscraper();
-    addObj('Skyscraper', obj, px || 0, pz || 0);
-    return '🏙️ Skyscraper created!';
-  }
-  // Commercial building
-  const storeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(salon|barber|grocery|clothing|restaurant|pharmacy|bank|cafe|gym|laundry|store|shop|commercial)/);
-  if (storeMatch) {
-    const type = (storeMatch[1]==='store'||storeMatch[1]==='shop'||storeMatch[1]==='commercial') ? undefined : storeMatch[1];
-    const obj = createCommercialBuilding({ type });
-    addObj(obj.userData.name, obj, px || 0, pz || 0);
-    return '🏪 ' + obj.userData.name + ' created!';
-  }
-  // Pitched roof house
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(pitched|pitched.?roof|suburban|traditional) house/)) {
-    const obj = createPitchedRoofHouse();
-    addObj('House', obj, px || 0, pz || 0);
-    return '🏡 House with pitched roof created!';
-  }
-  // Mansion
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(mansion)/)) {
-    const obj = createMansion();
-    addObj('Mansion', obj, px || 0, pz || 0);
-    return '🏰 Mansion created!';
-  }
-  // Duplex
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(duplex)/)) {
-    const obj = createDuplex();
-    addObj('Duplex', obj, px || 0, pz || 0);
-    return '🏘️ Duplex created!';
-  }
-  // Ranch house
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(ranch|ranch house)/)) {
-    const obj = createRanchHouse();
-    addObj('Ranch House', obj, px || 0, pz || 0);
-    return '🏡 Ranch house created!';
-  }
-  // Swimming pool
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(swimming ?pool|pool)/)) {
-    const obj = createSwimmingPool();
-    addObj('Swimming Pool', obj, px || 0, pz || 0);
-    obj.userData.registerWaterZone();
-    return '🏊 Swimming pool created! Jump in to swim!';
-  }
-
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(parking lot|parking|carpark)/)) {
-    const obj = createParkingLot();
-    addObj('Parking Lot', obj, px || 0, pz || 0);
-    return '🅿️ Parking lot created!';
-  }
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(gas station|petrol station|fuel station)/)) {
-    const obj = createGasStation();
-    addObj('Gas Station', obj, px || 0, pz || 0);
-    return '⛽ Gas station created!';
-  }
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(bridge)/)) {
-    const obj = createBridge();
-    addObj('Bridge', obj, px || 0, pz || 0);
-    if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
-    return '🌉 Bridge created!';
-  }
-
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(apartment|apartment building|apartments|flat|flats)/)) {
-    const obj = createApartmentBuilding();
-    addObj('Apartment', obj, px || 0, pz || 0);
-    return '🏢 Apartment building created!';
-  }
-
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(supermarket|super market|grocery store|megastore)/)) {
-    const obj = createSupermarket();
-    addObj('Supermarket', obj, px || 0, pz || 0);
-    return '🛒 Supermarket created!';
-  }
-
-
-
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(bus stop|bus shelter)/)) {
-    const obj = createBusStop();
-    addObj('Bus Stop', obj, px || 0, pz || 0);
-    return '🚏 Bus stop created!';
-  }
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(dumpster|skip|bin)/)) {
-    const obj = createDumpster();
-    addObj('Dumpster', obj, px || 0, pz || 0);
-    return '🗑️ Dumpster created!';
-  }
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(trash can|rubbish bin|waste bin)/)) {
-    const obj = createTrashCan();
-    addObj('Trash Can', obj, px || 0, pz || 0);
-    return '🗑️ Trash can created!';
-  }
-
-
-  // Stop sign
-
-
-  if (lower.match(/^(?:add |create )?(?:an? )?(stop ?sign)/)) {
-    const obj = createStopSign();
-    addObj('Stop Sign', obj, px || 0, pz || 0);
-    return '🛑 Stop sign placed!';
-  }
-  // Traffic light
-  if (lower.match(/^(?:add |create )?(?:an? )?(traffic ?light|stoplight|signal)/)) {
-    const obj = createTrafficLight();
-    addObj('Traffic Light', obj, px || 0, pz || 0);
-    return '🚦 Traffic light placed!';
-  }
-  // Road
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(road|street)/)) {
-    const ew = lower.includes(' ew');
-    const obj = createRoadSegment({direction: ew ? 'ew' : 'ns'});
-    addObj('Road', obj, px || 0, pz || 0);
-    return '🛣️ Road segment created!';
-  }
-  // Intersection
-  if (lower.match(/^(?:add |create )?(?:an? )?(intersection|crossroad)/)) {
-    const obj = createIntersection();
-    addObj('Intersection', obj, px || 0, pz || 0);
-    return '🚦 Intersection created!';
-  }
-  // Glass office building
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(glass|office) ?(building|tower)?/)) {
-    const obj = createGlassOfficeBuilding();
-    addObj('Office Building', obj, px || 0, pz || 0);
-    return '🏢 Glass office building created!';
-  }
-  // Stadium
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(stadium|arena|field)/)) {
-    const obj = createStadium();
-    addObj('Stadium', obj, px || 0, pz || 0);
-    return '🏟️ Stadium created!';
-  }
-  // Fence
-  if (lower.match(/^(?:add |create )?(?:an? )?(fence|picket fence)/)) {
-    const obj = createFence();
-    addObj('Fence', obj, px || 0, pz || 0);
-    return '🏗️ Fence placed!';
-  }
-  // Park
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(park)/)) {
-    const obj = createPark();
-    addObj('Park', obj, px || 0, pz || 0);
-    return '🌳 Park created!';
-  }
-
-
-
 // Parse count
   let count = 1;
   const numMatch = lower.match(/(\d+)\s+(cube|sphere|tree|house|rock|bush|flower|avatar|building|pine)/);
@@ -9587,7 +9417,7 @@ function showGameHUD(preset) {
 
       if (!finalGlb) {
         // Try fuzzy search from model catalog
-        const searchResults = typeof searchModels === 'function' ? searchModels(rawInput, 5) : [];
+        const searchResults = searchRegistryModels(rawInput, 5);
         if (searchResults.length > 0) {
           // Pick best match — prefer name containing the search term
           const best = searchResults[0];
@@ -9671,13 +9501,34 @@ function addObj(name, mesh, x, z, scatter) {
 }
 
 function setWeather(type) {
+  const requestToken = ++weatherRequestToken;
   if (rainParticles) { scene.remove(rainParticles); rainParticles=null; }
-  clearRainPuddles();
   if (snowParticles) { scene.remove(snowParticles); snowParticles=null; }
   weatherSystem = type;
-  if (type==='rain') { rainParticles=createRain(); scene.add(rainParticles); createRainPuddles(20); }
-  if (type==='snow') { snowParticles=createSnow(); scene.add(snowParticles); }
-  if (type==='storm') { rainParticles=createRain(); scene.add(rainParticles); createRainPuddles(30); scene.fog = new THREE.FogExp2(0x222233, 0.008); setLightningTimer(2); }
+  loadWeatherModule().then((weather) => {
+    if (requestToken !== weatherRequestToken) return;
+    weather.clearRainPuddles?.();
+    if (type === 'rain') {
+      rainParticles = weather.createRain();
+      scene.add(rainParticles);
+      weather.createRainPuddles?.(20);
+      return;
+    }
+    if (type === 'snow') {
+      snowParticles = weather.createSnow();
+      scene.add(snowParticles);
+      return;
+    }
+    if (type === 'storm') {
+      rainParticles = weather.createRain();
+      scene.add(rainParticles);
+      weather.createRainPuddles?.(30);
+      scene.fog = new THREE.FogExp2(0x222233, 0.008);
+      weather.setLightningTimer?.(2);
+    }
+  }).catch((err) => {
+    console.warn('[Weather] Deferred weather load failed:', err);
+  });
 }
 
 // === UI ===
@@ -9727,50 +9578,73 @@ voiceOverlay.id = 'voice-overlay';
 voiceOverlay.style.cssText = 'display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.9);border:2px solid #7c5cff;border-radius:16px;padding:16px 24px;color:#fff;font-size:16px;z-index:10000;max-width:500px;text-align:center;backdrop-filter:blur(10px);';
 document.body.appendChild(voiceOverlay);
 
-const vcStats = getStats();
-console.log(`[Voice] ${vcStats.totalPhrases} phrases ready across ${vcStats.totalIntents} intents`);
+let voiceRuntime = null;
+let voiceRuntimePromise = null;
 
-const voiceReady = initVoice(
-  // onCommand
-  async (action, transcript, intentId) => {
-    console.log(`[Voice] "${transcript}" → ${action} (${intentId})`);
-    voiceOverlay.innerHTML = `<div style="color:#4ade80;font-size:12px;margin-bottom:4px">✓ Recognized</div><div>"${transcript}"</div><div style="color:#7c5cff;font-size:13px;margin-top:6px">→ ${action}</div>`;
-    setTimeout(() => { voiceOverlay.style.display = 'none'; }, 2000);
-    
-    // Execute through the engine
-    if (intentId === 'godmode_raw') {
-      // Pass raw to the normal command parser
-      input.value = transcript;
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    } else {
-      input.value = action;
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    }
-  },
-  // onTranscript
-  (text, isFinal) => {
-    if (!isFinal) {
-      voiceOverlay.style.display = 'block';
-      voiceOverlay.innerHTML = `<div style="color:#888;font-size:12px;margin-bottom:4px">🎤 Listening...</div><div style="color:#aaa;font-style:italic">${text}</div>`;
-    }
-  }
-);
-
-voiceBtn.addEventListener('click', () => {
-  if (!voiceReady) { alert('Voice recognition not supported in this browser. Try Chrome!'); return; }
-  if (isListening()) {
-    stopListening();
-    voiceBtn.style.borderColor = '#555';
-    voiceBtn.style.color = '#888';
-    voiceBtn.style.boxShadow = 'none';
-    voiceBtn.innerHTML = '🎤';
-    voiceOverlay.style.display = 'none';
-  } else {
-    startListening();
+function setVoiceButtonState(listening) {
+  if (listening) {
     voiceBtn.style.borderColor = '#ff3333';
     voiceBtn.style.color = '#ff3333';
     voiceBtn.style.boxShadow = '0 0 12px rgba(255,51,51,0.4)';
     voiceBtn.innerHTML = '🔴';
+  } else {
+    voiceBtn.style.borderColor = '#555';
+    voiceBtn.style.color = '#888';
+    voiceBtn.style.boxShadow = 'none';
+    voiceBtn.innerHTML = '🎤';
+  }
+}
+
+async function ensureVoiceRuntime() {
+  if (voiceRuntime) return voiceRuntime;
+  if (!voiceRuntimePromise) {
+    voiceRuntimePromise = loadVoiceCommandsModule().then((mod) => {
+      const vcStats = mod.getStats();
+      console.log(`[Voice] ${vcStats.totalPhrases} phrases ready across ${vcStats.totalIntents} intents`);
+      const ready = mod.initVoice(
+        async (action, transcript, intentId) => {
+          console.log(`[Voice] "${transcript}" → ${action} (${intentId})`);
+          voiceOverlay.innerHTML = `<div style="color:#4ade80;font-size:12px;margin-bottom:4px">✓ Recognized</div><div>"${transcript}"</div><div style="color:#7c5cff;font-size:13px;margin-top:6px">→ ${action}</div>`;
+          setTimeout(() => { voiceOverlay.style.display = 'none'; }, 2000);
+
+          if (intentId === 'godmode_raw') {
+            input.value = transcript;
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          } else {
+            input.value = action;
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          }
+        },
+        (text, isFinal) => {
+          if (!isFinal) {
+            voiceOverlay.style.display = 'block';
+            voiceOverlay.innerHTML = `<div style="color:#888;font-size:12px;margin-bottom:4px">🎤 Listening...</div><div style="color:#aaa;font-style:italic">${text}</div>`;
+          }
+        }
+      );
+      voiceRuntime = { ...mod, ready };
+      return voiceRuntime;
+    }).catch((err) => {
+      voiceRuntimePromise = null;
+      console.warn('[Voice] Runtime failed to load:', err.message);
+      return { ready: false, error: err };
+    });
+  }
+  return voiceRuntimePromise;
+}
+
+voiceBtn.addEventListener('click', async () => {
+  voiceBtn.disabled = true;
+  const runtime = await ensureVoiceRuntime();
+  voiceBtn.disabled = false;
+  if (!runtime.ready) { alert('Voice recognition not supported in this browser. Try Chrome!'); return; }
+  if (runtime.isListening()) {
+    runtime.stopListening();
+    setVoiceButtonState(false);
+    voiceOverlay.style.display = 'none';
+  } else {
+    runtime.startListening();
+    setVoiceButtonState(true);
     voiceOverlay.style.display = 'block';
     voiceOverlay.innerHTML = '<div style="color:#ff5555">🎤 Listening... speak a command</div>';
   }
@@ -9951,6 +9825,11 @@ setTimeout(() => {
 
 // === FAB GALLERY ===
 function showFabGallery() {
+  loadEditorToolsModule().then((mod) => mod.showFabGallery()).catch((err) => {
+    console.warn('[FabGallery] Failed to load:', err.message);
+    showToast('Fab tools failed to load');
+  });
+  return;
   const aliases = window._fabAliases || {};
   const names = Object.keys(aliases);
   
@@ -10012,18 +9891,6 @@ function showFabGallery() {
   search.focus();
 }
 window.showFabGallery = showFabGallery;
-
-// Load Fab aliases on startup
-(async function loadFabAliases() {
-  try {
-    const r = await fetch('/models/fab/fab_aliases.json');
-    if (!r.ok) return;
-    const data = await r.json();
-    window._fabAliases = data;
-    Object.assign(GLB_MODELS, data);
-    console.log('[Fab] Loaded', Object.keys(data).length, 'Fab assets');
-  } catch(e) { console.warn('[Fab] Could not load aliases'); }
-})();
 
 
 
@@ -10285,6 +10152,7 @@ const CHARACTER_LIBRARY = [
 ];
 
 function showCharacterGallery(onSelect) {
+  return loadCharacterGalleryModule().then((mod) => mod.showCharacterGallery(onSelect));
   return new Promise((resolve) => {
     // Remove any existing gallery
     const existing = document.getElementById('char-gallery-overlay');
@@ -12699,7 +12567,7 @@ function spawnTrafficCar(roadX, roadZ, dir, laneOffset) {
   
   // Load GLB car
   const modelPath = '/models/' + carModel + '.glb';
-  const loader = window._gltfLoader || new THREE.GLTFLoader();
+  const loader = window._gltfLoader || new GLTFLoader();
   
   loader.load(modelPath, (gltf) => {
     const car = gltf.scene;
@@ -13073,7 +12941,7 @@ function animate() {
   if (!playMode) controls.update();
   if (window._updateEditorCamera) window._updateEditorCamera(dt);
   if (window._updateShadowCascades) window._updateShadowCascades();
-  updateAmbientParticles(clock.getDelta() || 0.016, camera.position);
+  updateAmbientParticles(dt || 0.016, camera.position);
   if (activeVehicle) { updateVehicle(dt); updateVehiclePrompt(); if (activeVehicle) updateVehicleHUD(activeVehicle);
   // Swimming/buoyancy — keep player above water
   const _waterLevel = -0.1; // Just above ocean surface at -0.3
@@ -13102,7 +12970,7 @@ function animate() {
   if (typeof window._updateMiniMap === 'function') window._updateMiniMap(); }
       if (shooterMode) { updateBullets(dt); updateShooterHUD(); }
     updateWaterAnimation(performance.now() * 0.001);
-  updateUserScripts(dt);
+  if (userScriptsModule?.updateUserScripts) userScriptsModule.updateUserScripts(dt);
   
   // Weather follows camera for full-scene coverage
   const _wcam = playMode && characterController && characterController.model ? characterController.position : camera.position;
@@ -13113,7 +12981,7 @@ function animate() {
     const _windX = weatherSystem === 'storm' ? 8 : 2; for (let i=0;i<p.length;i+=3) { p[i+1]-=22*dt; p[i]+=_windX*dt; if(p[i+1]<-2||p[i]>75){p[i+1]=20+Math.random()*8;p[i]=(Math.random()-0.5)*150;p[i+2]=(Math.random()-0.5)*150;} }
     rainParticles.geometry.attributes.position.needsUpdate=true;
   }
-  updateLightning(dt, weatherSystem);
+  if (weatherModule?.updateLightning) weatherModule.updateLightning(dt, weatherSystem);
   updateNightLighting(t);
   // updateDrivingCars replaced by updateSmartTraffic
   if (window._cityCarUpdate) window._cityCarUpdate(dt);
@@ -13127,7 +12995,7 @@ function animate() {
 
   // Update particle effects
   // Update particles every other frame
-  if (!window._particleSkip) updateParticleEffects(0.016);
+  if (!window._particleSkip && weatherModule?.updateParticleEffects) weatherModule.updateParticleEffects(0.016);
   window._particleSkip = !window._particleSkip;
   
   // Water wave (every 3rd frame)
@@ -13167,6 +13035,7 @@ function animate() {
   animationMixers.forEach(mixer => mixer.update(dt));
   // Update multiplayer peer interpolation
   if (window._mp && window._mp.connected) window._mp.update(dt);
+  if (colyseusBridge?.connected) syncColyseusPose();
   // Play mode + triggers
   if (playMode && characterController && characterController.model) {
     // === DEMO AUTO-PLAY ===
@@ -13434,7 +13303,8 @@ function animate() {
   updateHUD();
   // NPC update — runs ALWAYS (editor + play mode)
   const _nc = npcController || window.npcController;
-  if (_nc) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
+  const npcHandledInPlayMode = playMode && characterController && npcController && _nc === npcController;
+  if (_nc && !npcHandledInPlayMode) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
   // If character model was deleted, switch to camera-only mode
   if (characterController && !characterController.model && !characterController._cameraOnlyMode && playMode) {
     characterController._cameraOnlyMode = true;
@@ -13477,7 +13347,7 @@ window._engineBridge = {
   loadGLBModel: loadGLBModel,
   showGallery: showGallery,
   showCategoryPicker: showCategoryPicker,
-  searchModels: searchModels,
+  searchModels: searchRegistryModels,
   
   // Scene
   get scene() { return scene; },
@@ -13497,7 +13367,7 @@ window._engineBridge = {
     if (idx > -1) objects.splice(idx, 1);
     scene.remove(obj);
   },
-  getSelected() { return selectedObject; },
+  getSelected() { return getCurrentSelection(); },
   
   // Player
   enterPlayMode: enterPlayMode,
@@ -13529,7 +13399,7 @@ window._engineBridge = {
   },
   
   // Water
-  setWaterPreset(preset) {
+  async setWaterPreset(preset) {
     // Find ocean in scene
     const ocean = objects.find(o => o.userData && o.userData.isGerstnerWater);
     if (!ocean) {
@@ -13538,18 +13408,8 @@ window._engineBridge = {
       window._pendingWaterPreset = preset;
       return '🌊 Creating ocean with ' + preset + ' preset';
     }
-    const p = typeof WATER_PRESETS !== 'undefined' ? WATER_PRESETS[preset] : null;
-    if (p && ocean.material && ocean.material.uniforms) {
-      const u = ocean.material.uniforms;
-      if (p.waveA) u.waveA.value.set(...p.waveA);
-      if (p.waveB) u.waveB.value.set(...p.waveB);
-      if (p.waveC) u.waveC.value.set(...p.waveC);
-      if (p.waterColor) u.waterColor.value.setHex(p.waterColor);
-      if (p.deepColor) u.deepColor.value.setHex(p.deepColor);
-      if (p.foamIntensity !== undefined) u.foamIntensity.value = p.foamIntensity;
-      if (p.specularPower !== undefined) u.specularPower.value = p.specularPower;
-      if (p.fresnelPower !== undefined) u.fresnelPower.value = p.fresnelPower;
-      if (p.opacity !== undefined) u.opacity.value = p.opacity;
+    const applied = await applyWaterPresetToObject(ocean, preset);
+    if (applied) {
       return '🌊 Water preset: ' + preset;
     }
     return null;
@@ -13559,6 +13419,55 @@ window._engineBridge = {
   async setTerrain(type, options) {
     return await execSingle('terrain ' + type);
   },
+  async buildNavMesh(options) {
+    const { buildNavMeshForScene } = await loadNavMeshModule();
+    return await buildNavMeshForScene(scene, scene, options);
+  },
+  async toggleNavMesh(forceVisible) {
+    const { toggleNavMeshDebug } = await loadNavMeshModule();
+    return toggleNavMeshDebug(scene, forceVisible);
+  },
+  async clearNavPath() {
+    const { clearNavMeshPath } = await loadNavMeshModule();
+    clearNavMeshPath(scene);
+    return true;
+  },
+  async pathfindToTarget(target = null) {
+    const { buildNavMeshForScene, hasNavMesh, computeNavMeshPath } = await loadNavMeshModule();
+    const destination = target || getCurrentSelection();
+    if (!destination) return null;
+    if (!hasNavMesh()) await buildNavMeshForScene(scene, scene);
+    return computeNavMeshPath(getNavStartPoint(), destination.getWorldPosition(new THREE.Vector3()), scene);
+  },
+  async semanticSearch(query, limit) {
+    const { semanticSearchAssets } = await loadLocalAiToolsModule();
+    return semanticSearchAssets(query, getAssetSearchCatalog(), limit || 8);
+  },
+  async speakText(text, options) {
+    const { speakTextWithTTS } = await loadSpeechTtsModule();
+    return speakTextWithTTS(text, options);
+  },
+  async toggleGpuDebugger() {
+    const { toggleSpectorOverlay } = await loadDebugToolsModule();
+    return toggleSpectorOverlay();
+  },
+  async captureGpuFrame() {
+    const { captureFrameWithSpector } = await loadDebugToolsModule();
+    return captureFrameWithSpector(renderer.domElement);
+  },
+  async connectColyseus(endpoint, roomName, options) {
+    const room = await connectColyseusRoom(endpoint, roomName, options);
+    return { roomId: room.roomId, name: room.name || roomName || DEFAULT_COLYSEUS_ROOM };
+  },
+  async disconnectColyseus() {
+    if (!colyseusBridge) return false;
+    await colyseusBridge.disconnect();
+    return true;
+  },
+  get navMesh() {
+    return navMeshModule?.getNavMeshState ? navMeshModule.getNavMeshState() : null;
+  },
+  get colyseus() { return colyseusBridge; },
   
   // Weather
   async setWeather(type) {
@@ -13577,6 +13486,7 @@ window._engineBridge = {
   
   // Interior
   async addInterior(type, options) {
+    const { createInteriorShop, createInteriorTavern, createInteriorHouse } = await loadBuildingsModule();
     const floors = (options && options.floors) || 1;
     let obj;
     if (type === 'shop') obj = createInteriorShop();
@@ -13703,7 +13613,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'setCharacter': result = await bridge.setCharacter(intent.id); break;
         case 'setWater': 
           if (intent.create) await execSingle((intent.preset === 'lake' ? 'add lake' : intent.preset === 'pond' ? 'add pond' : 'add ocean') + (intent.size ? ' ' + intent.size : ''));
-          result = bridge.setWaterPreset(intent.preset);
+          result = await bridge.setWaterPreset(intent.preset);
           break;
         case 'setTerrain': result = await bridge.setTerrain(intent.type); break;
         case 'setWeather': result = await bridge.setWeather(intent.type); break;
@@ -14168,7 +14078,7 @@ window._showCategoryPicker = showCategoryPicker;
 window._execCommand = parseAndExecute;
 // Apply template preset if on a template page
 if (window._templateMode) {
-  applyTemplatePreset(window._templateMode).then(() => {
+  loadCityBuilderModule().then((mod) => mod.applyTemplatePreset(window._templateMode)).then(() => {
     if (window._hideLoader) window._hideLoader();
   });
 } else {
@@ -14495,6 +14405,17 @@ function publishScene() {
   modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
   
   document.getElementById('pub-go').onclick = async function() {
+    let auth = window._crateAuth || null;
+    if (!auth) {
+      try {
+        auth = await loadAuthModule();
+      } catch (err) {
+        logOutput('err', '⚠ Auth tools failed to load');
+        console.error('[Auth] Deferred auth load failed:', err);
+        return;
+      }
+    }
+
     // Check auth & plan
     if (auth.isLoggedIn && auth.isPremium) {
       // Use server-side publish
@@ -14880,6 +14801,12 @@ function updateInspector(obj) {
 // === PHYSICS INSPECTOR FUNCTIONS ===
 window._togglePhysicsOnSelected = async function() {
   if (!selectedObj) return;
+  const physicsRuntime = await loadPhysicsModule().catch((err) => {
+    console.warn('[Physics] Failed to load module:', err);
+    logOutput('err', 'Rapier physics failed to load');
+    return null;
+  });
+  if (!physicsRuntime) return;
   if (selectedObj.userData.hasPhysics) {
     physics.removeRigidbody(selectedObj);
     logOutput('ok', 'Physics removed from ' + (selectedObj.userData.name || 'object'));
@@ -14893,8 +14820,9 @@ window._togglePhysicsOnSelected = async function() {
   updateInspector(selectedObj);
 };
 
-window._launchSelected = function() {
+window._launchSelected = async function() {
   if (!selectedObj || !selectedObj.userData.hasPhysics) return;
+  await loadPhysicsModule().catch(() => null);
   physics.applyImpulse(selectedObj, 0, 15, 0);
   logOutput('ok', 'Launched ' + (selectedObj.userData.name || 'object') + ' upward!');
 };
@@ -15272,8 +15200,6 @@ function createModelBrowser() {
   document.body.appendChild(panel);
   return panel;
 }
-const modelBrowser = createModelBrowser();
-
 // Toggle model browser with Ctrl+B or button
 const browserBtn = document.createElement('button');
 browserBtn.innerHTML = '📦';
@@ -15287,6 +15213,7 @@ Object.assign(browserBtn.style, {
 browserBtn.onmouseenter = () => { browserBtn.style.borderColor = '#ff6b35'; browserBtn.style.transform = 'scale(1.1)'; };
 browserBtn.onmouseleave = () => { browserBtn.style.borderColor = '#252525'; browserBtn.style.transform = 'scale(1)'; };
 browserBtn.onclick = async () => {
+  await loadModelRegistryModule().catch(() => {});
   // Open the full category picker (4,122 models, 26 categories)
   const result = await showCategoryPicker();
   if (result && result.file) {
@@ -15306,17 +15233,12 @@ document.addEventListener('keydown', (e) => {
 });
 
 // AI Agent integration
-import { CrateAgent } from './ai-agent.mjs?v=5';
-import { matchIntent, initVoice, startListening, stopListening, isListening, getStats } from './voice-commands.mjs';
-const agent = new CrateAgent((cmd) => {
-  parseAndExecute(cmd);
-});
-// Keep agent synced with scene objects
-setInterval(() => {
-  const objs = [];
-  scene.traverse(c => { if (c.isMesh || c.isGroup) objs.push(c); });
-  agent.updateObjects(objs);
-}, 2000);
+const warmBuildAgentUi = () => { ensureBuildAgentUi(); };
+if ('requestIdleCallback' in window) {
+  window.requestIdleCallback(warmBuildAgentUi, { timeout: 4000 });
+} else {
+  setTimeout(warmBuildAgentUi, 2500);
+}
 
 // === ENGINE 2.0 BRIDGE ===
 // Expose parseAndExecute for command bus, then initialize the bridge.
@@ -15325,7 +15247,7 @@ window._parseAndExecute = parseAndExecute;
 // === AI AGENT INTEGRATION ===
 // "agent build X" or "ai build X" triggers the learning agent loop
 window._agentReady = false;
-import('./runtime/city-agent.mjs?v=23').then(agent => {
+import('./runtime/city-agent.mjs').then(agent => {
   window._agent = agent;
   window._agentReady = true;
   window._agentMemory = agent.loadMemory;
@@ -15335,8 +15257,8 @@ import('./runtime/city-agent.mjs?v=23').then(agent => {
   console.log('[Agent] Commands: agent build | agent memory | agent stats | agent clear memory');
 }).catch(err => console.warn('[Agent] Agent not loaded:', err.message));
 
-import('./runtime/engine-bridge.mjs').catch(() => null) /* optional */; Promise.resolve().then(bridge => {
-  bridge.initBridge();
+import('./runtime/engine-bridge.mjs').then(({ initBridge }) => {
+  initBridge();
   console.log('[Engine] Command bus bridge loaded.');
 }).catch(err => console.warn('[Engine] Bridge load deferred:', err.message));
 
@@ -15392,328 +15314,6 @@ window.addEventListener('keydown', e => {
 });
 
 
-// === AI CUSTOM CODE SANDBOX (Rosebud-style) ===
-// Users describe game behavior → AI generates JS → runs in sandboxed scope
-// Only affects the user's saved game, never touches engine code
-
-// _userScripts declared at top of file
-window._userScriptScope = {}; // Shared state between user scripts
-
-function createUserScriptSandbox() {
-  // Safe APIs the user script can access
-  return {
-    scene, camera, objects,
-    THREE: THREE,
-    addObj, 
-    showToast: (msg) => { const t = document.createElement('div'); t.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:#4ade80;font-family:monospace;font-size:18px;z-index:10001;pointer-events:none;background:rgba(0,0,0,0.8);padding:10px 20px;border-radius:8px;'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.5s'},2000); setTimeout(()=>t.remove(),2500); },
-    getPlayer: () => characterController,
-    getNPCs: () => npcController ? npcController.npcs : [],
-    getObjects: () => objects,
-    getObjectByName: (name) => objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(name.toLowerCase())),
-    playMode: () => playMode,
-    onUpdate: null, // Set by user script — called every frame with (dt)
-    onKeyPress: null, // Set by user script — called on keydown with (key)
-    onCollision: null, // Set by user script — called when player hits object
-    state: window._userScriptScope, // Persistent state between scripts
-    dt: 0,
-    time: 0,
-    keys: {},
-    console: { log: (...args) => console.log('[UserScript]', ...args) },
-    Math, JSON, Array, Object, String, Number, Boolean, Date,
-    setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 10000)), // Cap at 10s
-    setInterval: (fn, ms) => setInterval(fn, Math.max(ms, 100)), // Min 100ms
-    clearTimeout, clearInterval,
-  };
-}
-
-function runUserScript(scriptObj) {
-  try {
-    const sandbox = createUserScriptSandbox();
-    const wrappedCode = '"use strict";\n' + scriptObj.code;
-    const fn = new Function(...Object.keys(sandbox), wrappedCode);
-    fn(...Object.values(sandbox));
-    // Store update/key callbacks
-    scriptObj._onUpdate = sandbox.onUpdate;
-    scriptObj._onKeyPress = sandbox.onKeyPress;
-    scriptObj._onCollision = sandbox.onCollision;
-    scriptObj._running = true;
-    console.log('[AI Sandbox] ✅ Script "' + scriptObj.name + '" running');
-    return true;
-  } catch (err) {
-    console.error('[AI Sandbox] ❌ Script error:', err.message);
-    showToast('❌ Script error: ' + err.message);
-    scriptObj._running = false;
-    return false;
-  }
-}
-
-// Update user scripts each frame
-function updateUserScripts(dt) {
-  if (!window._userScripts || !Array.isArray(window._userScripts)) return;
-  const time = performance.now() * 0.001;
-  for (const s of window._userScripts) {
-    if (!s.enabled || !s._running) continue;
-    try {
-      if (s._onUpdate) s._onUpdate(dt, time);
-    } catch (err) {
-      console.error('[AI Sandbox] Script "' + s.name + '" update error:', err.message);
-      s._running = false;
-    }
-  }
-}
-
-// Key events for user scripts
-window.addEventListener('keydown', e => {
-  if (!window._userScripts) return;
-  for (const s of window._userScripts) {
-    if (!s.enabled || !s._running || !s._onKeyPress) continue;
-    try { s._onKeyPress(e.key.toLowerCase()); } catch(err) { /* silent */ }
-  }
-});
-
-// Add user script command: "script", "custom code", "game logic"
-// Also: AI generates code from natural language description
-async function generateUserScript(description) {
-  // Check if user has API key configured
-  const settings = JSON.parse(localStorage.getItem('crate-ai-settings') || '{}');
-  const provider = settings.provider || 'openai';
-  const apiKey = settings.apiKey;
-  
-  if (!apiKey) {
-    showToast('⚠ Set your AI API key in Settings (⚙) to use custom code generation');
-    return null;
-  }
-  
-  const systemPrompt = `You are a game scripting AI for Crate Engine (Three.js).
-Generate ONLY executable JavaScript code. No explanations, no markdown.
-Available APIs:
-- scene, camera, objects (Three.js scene)
-- THREE (Three.js library)
-- getPlayer() → character controller with .position, .model
-- getNPCs() → array of NPCs with .model, .behavior, .speed
-- getObjects() → all scene objects
-- getObjectByName(name) → find object
-- showToast(msg) → show message to player
-- state → persistent object to store variables
-- onUpdate = function(dt, time) {} → called every frame
-- onKeyPress = function(key) {} → called on key press
-- Math, setTimeout, setInterval available
-
-Example: Make coins spin
-onUpdate = function(dt) {
-  getObjects().filter(o => o.userData.name && o.userData.name.includes('coin')).forEach(o => {
-    o.rotation.y += dt * 2;
-  });
-};`;
-
-  const userMsg = description;
-  
-  let endpoint, headers, body;
-  if (provider === 'openai' || provider === 'groq' || provider === 'deepseek') {
-    const urls = { openai: 'https://api.openai.com/v1/chat/completions', groq: 'https://api.groq.com/openai/v1/chat/completions', deepseek: 'https://api.deepseek.com/v1/chat/completions' };
-    const models = { openai: 'gpt-4o-mini', groq: 'llama-3.1-8b-instant', deepseek: 'deepseek-chat' };
-    endpoint = urls[provider];
-    headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey };
-    body = JSON.stringify({ model: models[provider], messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], max_tokens: 1000, temperature: 0.3 });
-  } else if (provider === 'claude') {
-    endpoint = 'https://api.anthropic.com/v1/messages';
-    headers = { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
-    body = JSON.stringify({ model: 'claude-3-5-haiku-20241022', system: systemPrompt, messages: [{ role: 'user', content: userMsg }], max_tokens: 1000 });
-  } else if (provider === 'gemini') {
-    endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
-    headers = { 'Content-Type': 'application/json' };
-    body = JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + '\n\nUser request: ' + userMsg }] }] });
-  }
-  
-  try {
-    showToast('🤖 Generating custom game logic...');
-    const resp = await fetch(endpoint, { method: 'POST', headers, body });
-    const data = await resp.json();
-    
-    let generatedCode = '';
-    if (provider === 'claude') {
-      generatedCode = data.content?.[0]?.text || '';
-    } else if (provider === 'gemini') {
-      generatedCode = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else {
-      generatedCode = data.choices?.[0]?.message?.content || '';
-    }
-    
-    // Strip markdown code blocks if present
-    generatedCode = generatedCode.replace(/^```(?:javascript|js)?\n?/gm, '').replace(/```$/gm, '').trim();
-    
-    return generatedCode;
-  } catch (err) {
-    console.error('[AI Sandbox] Generation failed:', err);
-    showToast('❌ AI generation failed: ' + err.message);
-    return null;
-  }
-}
-
-// Script editor modal
-function showScriptEditor(existingScript) {
-  const existing = existingScript || {};
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100000;display:flex;align-items:center;justify-content:center;';
-  
-  overlay.innerHTML = `
-    <div style="background:#111;border:2px solid #7c5cff;border-radius:16px;width:700px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px;font-family:-apple-system,sans-serif;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h2 style="color:#7c5cff;margin:0;font-size:1.2rem;">🧠 AI Game Logic Editor</h2>
-        <button id="script-close" style="background:none;border:none;color:#666;font-size:24px;cursor:pointer;">✕</button>
-      </div>
-      
-      <div style="margin-bottom:12px;">
-        <label style="color:#888;font-size:0.8rem;">Script Name</label>
-        <input id="script-name" value="\${existing.name || ''}" placeholder="e.g. Coin Collector" style="width:100%;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.9rem;margin-top:4px;">
-      </div>
-      
-      <div style="margin-bottom:12px;">
-        <label style="color:#888;font-size:0.8rem;">Describe what you want (AI will generate code)</label>
-        <textarea id="script-prompt" placeholder="e.g. When the player touches a coin, add 10 points and make the coin disappear with a sparkle effect" style="width:100%;height:60px;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.85rem;margin-top:4px;resize:vertical;font-family:inherit;"></textarea>
-        <button id="script-generate" style="margin-top:6px;background:linear-gradient(135deg,#7c5cff,#4a9eff);border:none;color:#fff;padding:6px 16px;border-radius:8px;cursor:pointer;font-size:0.8rem;">🤖 Generate Code</button>
-      </div>
-      
-      <div style="margin-bottom:12px;">
-        <label style="color:#888;font-size:0.8rem;">Code (JavaScript)</label>
-        <textarea id="script-code" style="width:100%;height:200px;background:#0a0a1a;border:1px solid #333;border-radius:8px;padding:12px;color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:0.8rem;margin-top:4px;resize:vertical;tab-size:2;">\${existing.code || '// Your custom game logic here\n// Available: getPlayer(), getNPCs(), getObjects(), showToast()\n// Set onUpdate = function(dt) {} for per-frame logic\n// Set onKeyPress = function(key) {} for input\n'}</textarea>
-      </div>
-      
-      <div style="display:flex;gap:8px;">
-        <button id="script-run" style="flex:1;padding:10px;background:#16a34a;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">▶ Run Script</button>
-        <button id="script-save" style="flex:1;padding:10px;background:#7c5cff;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">💾 Save Script</button>
-        \${existing.id ? '<button id="script-delete" style="padding:10px 16px;background:#ef4444;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">🗑</button>' : ''}
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(overlay);
-  
-  overlay.querySelector('#script-close').onclick = () => overlay.remove();
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  
-  overlay.querySelector('#script-generate').onclick = async () => {
-    const prompt = overlay.querySelector('#script-prompt').value;
-    if (!prompt) return;
-    const generated = await generateUserScript(prompt);
-    if (generated) {
-      overlay.querySelector('#script-code').value = generated;
-    }
-  };
-  
-  overlay.querySelector('#script-run').onclick = () => {
-    const scriptObj = {
-      id: existing.id || 'script_' + Date.now(),
-      name: overlay.querySelector('#script-name').value || 'Untitled Script',
-      description: overlay.querySelector('#script-prompt').value,
-      code: overlay.querySelector('#script-code').value,
-      enabled: true,
-    };
-    // Remove old version if exists
-    window._userScripts = window._userScripts.filter(s => s.id !== scriptObj.id);
-    window._userScripts.push(scriptObj);
-    runUserScript(scriptObj);
-    showToast('▶ Script "' + scriptObj.name + '" running!');
-  };
-  
-  overlay.querySelector('#script-save').onclick = () => {
-    const scriptObj = {
-      id: existing.id || 'script_' + Date.now(),
-      name: overlay.querySelector('#script-name').value || 'Untitled Script',
-      description: overlay.querySelector('#script-prompt').value,
-      code: overlay.querySelector('#script-code').value,
-      enabled: true,
-    };
-    window._userScripts = window._userScripts.filter(s => s.id !== scriptObj.id);
-    window._userScripts.push(scriptObj);
-    // Save to localStorage
-    const saved = window._userScripts.map(s => ({ id: s.id, name: s.name, description: s.description, code: s.code, enabled: s.enabled }));
-    localStorage.setItem('crate-user-scripts', JSON.stringify(saved));
-    showToast('💾 Script "' + scriptObj.name + '" saved!');
-    overlay.remove();
-  };
-  
-  const delBtn = overlay.querySelector('#script-delete');
-  if (delBtn) {
-    delBtn.onclick = () => {
-      window._userScripts = window._userScripts.filter(s => s.id !== existing.id);
-      localStorage.setItem('crate-user-scripts', JSON.stringify(window._userScripts.map(s => ({ id: s.id, name: s.name, description: s.description, code: s.code, enabled: s.enabled }))));
-      showToast('🗑 Script deleted');
-      overlay.remove();
-    };
-  }
-}
-
-// Script list/manager modal
-function showScriptManager() {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100000;display:flex;align-items:center;justify-content:center;';
-  
-  const scripts = window._userScripts;
-  const listHTML = scripts.length ? scripts.map(s => 
-    '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:#1a1a2e;border-radius:8px;margin-bottom:6px;cursor:pointer;" data-id="' + s.id + '">' +
-    '<span style="color:' + (s.enabled && s._running ? '#4ade80' : '#666') + ';font-size:12px;">●</span>' +
-    '<span style="color:#fff;flex:1;font-size:0.85rem;">' + s.name + '</span>' +
-    '<button class="script-toggle" data-id="' + s.id + '" style="background:none;border:1px solid #333;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;">' + (s.enabled ? 'ON' : 'OFF') + '</button>' +
-    '<button class="script-edit" data-id="' + s.id + '" style="background:none;border:1px solid #7c5cff;color:#7c5cff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;">Edit</button>' +
-    '</div>'
-  ).join('') : '<p style="color:#666;text-align:center;">No custom scripts yet</p>';
-  
-  overlay.innerHTML = `
-    <div style="background:#111;border:2px solid #7c5cff;border-radius:16px;width:500px;max-width:95vw;max-height:80vh;overflow-y:auto;padding:24px;font-family:-apple-system,sans-serif;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h2 style="color:#7c5cff;margin:0;font-size:1.1rem;">🧠 Custom Game Scripts</h2>
-        <button id="scripts-close" style="background:none;border:none;color:#666;font-size:24px;cursor:pointer;">✕</button>
-      </div>
-      <div id="scripts-list">\${listHTML}</div>
-      <button id="scripts-new" style="width:100%;margin-top:12px;padding:10px;background:linear-gradient(135deg,#7c5cff,#4a9eff);border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">+ New Script</button>
-    </div>
-  `;
-  
-  document.body.appendChild(overlay);
-  overlay.querySelector('#scripts-close').onclick = () => overlay.remove();
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  overlay.querySelector('#scripts-new').onclick = () => { overlay.remove(); showScriptEditor(); };
-  
-  overlay.querySelectorAll('.script-edit').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      const script = window._userScripts.find(s => s.id === id);
-      if (script) { overlay.remove(); showScriptEditor(script); }
-    };
-  });
-  
-  overlay.querySelectorAll('.script-toggle').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      const script = window._userScripts.find(s => s.id === id);
-      if (script) {
-        script.enabled = !script.enabled;
-        if (script.enabled) runUserScript(script);
-        else script._running = false;
-        overlay.remove();
-        showScriptManager(); // Refresh
-      }
-    };
-  });
-}
-
-// Load saved scripts on boot
-(function loadUserScripts() {
-  try {
-    const saved = JSON.parse(localStorage.getItem('crate-user-scripts') || '[]');
-    for (const s of saved) {
-      window._userScripts.push(s);
-      if (s.enabled) runUserScript(s);
-    }
-    if (saved.length) console.log('[AI Sandbox] Loaded ' + saved.length + ' user scripts');
-  } catch(e) {}
-})();
-
-// === END AI CUSTOM CODE SANDBOX ===
-
 // === DEBUG/TEST EXPORTS ===
 // Init sound on first user interaction
 document.addEventListener('click', function() { if (window._sound && window._sound.init) window._sound.init(); }, { once: true });
@@ -15737,9 +15337,12 @@ window._engine = {
   get levels() { return levelSystem; },
   get dialogue() { return dialogueSystem; },
 };
+window._loadGodmode = loadGodmodeModule;
+window._loadUserScripts = loadUserScriptsModule;
 
 // === CODE EDITOR — opens the custom scripting panel ===
-window._openCodeEditor = () => {
+window._openCodeEditor = async () => {
+  const { showCodeEditor } = await loadCodeEditorModule();
   showCodeEditor({
     scene, camera, objects,
     characterController, npcController, playMode,
@@ -15794,8 +15397,8 @@ window._setMode = function(mode) {
 // Sync mode when enterPlayMode/exitPlayMode are called from elsewhere
 const _origEnterPlay = enterPlayMode;
 const _origExitPlay = exitPlayMode;
-enterPlayMode = function() { _currentMode = 'play'; _updateModeButtons('play'); _origEnterPlay(); };
-exitPlayMode = function() { _currentMode = 'edit'; _updateModeButtons('edit'); _origExitPlay(); };
+enterPlayMode = function() { _currentMode = 'play'; _updateModeButtons('play'); return _origEnterPlay(); };
+exitPlayMode = function() { _currentMode = 'edit'; _updateModeButtons('edit'); return _origExitPlay(); };
 
 // ═══════════════════════════════════════════════════════════════
 // IMPORT / EXPORT UNIFIED MENU
@@ -16094,6 +15697,79 @@ function getSceneCommands(scene) {
   return scenes[scene] || ['add 5 trees', 'add castle', 'add rocks'];
 }
 
+function showLoadModal(saves) {
+  loadProjectToolsModule().then((mod) => mod.showLoadModal(saves)).catch((err) => {
+    console.error('[Project Tools] Load modal failed:', err);
+    showToast('❌ Save tools failed to load');
+  });
+}
+
+function openCreatorMarketplace() {
+  loadProjectToolsModule().then((mod) => mod.openCreatorMarketplace()).catch((err) => {
+    console.error('[Project Tools] Marketplace failed:', err);
+    showToast('❌ Marketplace tools failed to load');
+  });
+}
+
+async function exportForUnity() {
+  const mod = await loadProjectToolsModule();
+  return mod.exportForUnity();
+}
+
+async function exportForUnreal() {
+  const mod = await loadProjectToolsModule();
+  return mod.exportForUnreal();
+}
+
+function exportAsHTML() {
+  loadProjectToolsModule().then((mod) => mod.exportAsHTML()).catch((err) => {
+    console.error('[Project Tools] HTML export failed:', err);
+    logOutput('error', '❌ Export tools failed to load');
+  });
+}
+
+function showProWelcome() {
+  loadProjectToolsModule().then((mod) => mod.showProWelcome()).catch((err) => {
+    console.error('[Project Tools] Pro welcome failed:', err);
+  });
+}
+
+function showUpgradeModal(tier) {
+  loadProjectToolsModule().then((mod) => mod.showUpgradeModal(tier)).catch((err) => {
+    console.error('[Project Tools] Upgrade modal failed:', err);
+    showToast('❌ Billing tools failed to load');
+  });
+}
+
+const legacyMultiplayerProxy = {
+  get connected() {
+    return Boolean(legacyMultiplayerModule?.getLegacyMultiplayerClient?.().connected);
+  },
+  connect(server, room, name) {
+    return loadLegacyMultiplayerModule()
+      .then((mod) => mod.getLegacyMultiplayerClient().connect(server, room, name))
+      .catch((err) => {
+        console.error('[Legacy Multiplayer] Connect failed:', err);
+        showToast('❌ Multiplayer failed to load');
+      });
+  },
+  disconnect() {
+    return loadLegacyMultiplayerModule()
+      .then((mod) => mod.getLegacyMultiplayerClient().disconnect())
+      .catch(() => {});
+  },
+  chat(message) {
+    return loadLegacyMultiplayerModule()
+      .then((mod) => mod.getLegacyMultiplayerClient().chat(message))
+      .catch(() => {});
+  },
+  update(dt) {
+    if (!legacyMultiplayerModule?.getLegacyMultiplayerClient) return;
+    legacyMultiplayerModule.getLegacyMultiplayerClient().update(dt);
+  },
+};
+window._mp = legacyMultiplayerProxy;
+
 // === SHARE + SAVE BUTTONS ===
 (function() {
   // Scene actions - injected into build toolbar as icon buttons
@@ -16149,362 +15825,7 @@ function getSceneCommands(scene) {
   };
 })();
 
-function showLoadModal(saves) {
-  var old = document.getElementById('load-modal');
-  if (old) old.remove();
-  
-  var modal = document.createElement('div');
-  modal.id = 'load-modal';
-  Object.assign(modal.style, {
-    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.7)', zIndex: '10000', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)'
-  });
-  
-  var card = document.createElement('div');
-  Object.assign(card.style, {
-    background: '#0d0d0d', border: '1px solid #252525', borderRadius: '16px',
-    padding: '24px', maxWidth: '400px', width: '90%',
-    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0', maxHeight: '60vh', overflow: 'auto'
-  });
-  
-  var html = '<h3 style="color:#60a5fa;margin:0 0 16px;text-align:center">📂 Saved Scenes</h3>';
-  saves.forEach(function(save, i) {
-    var cmds = save.data.split('|').length;
-    html += '<div class="save-item" data-idx="' + i + '" style="padding:12px;background:#111;border:1px solid #252525;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:all 0.2s">' +
-      '<div style="font-weight:700;color:#fff;font-size:0.85rem">' + save.name + '</div>' +
-      '<div style="color:#555;font-size:0.7rem">' + cmds + ' commands</div>' +
-    '</div>';
-  });
-  html += '<div style="display:flex;gap:8px;margin-top:12px">' +
-    '<button id="load-close" style="flex:1;padding:8px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer;font-family:JetBrains Mono,monospace">Close</button>' +
-    '<button id="load-clear" style="padding:8px 12px;background:#222;color:#ef4444;border:1px solid #ef4444;border-radius:8px;cursor:pointer;font-family:JetBrains Mono,monospace;font-size:0.75rem">🗑 Clear All</button>' +
-  '</div>';
-  
-  card.innerHTML = html;
-  modal.appendChild(card);
-  document.body.appendChild(modal);
-  
-  // Click handlers
-  card.querySelectorAll('.save-item').forEach(function(item) {
-    item.addEventListener('mouseenter', function() { item.style.borderColor = '#60a5fa'; });
-    item.addEventListener('mouseleave', function() { item.style.borderColor = '#252525'; });
-    item.addEventListener('click', function() {
-      var idx = parseInt(item.getAttribute('data-idx'));
-      var save = saves[idx];
-      // Clear and load
-      parseAndExecute('clear');
-      var commands = save.data.split('|');
-      logOutput('info', '📂 Loading "' + save.name + '" (' + commands.length + ' commands)...');
-      commands.forEach(function(cmd, i) {
-        setTimeout(function() { parseAndExecute(cmd); }, 200 + i * 150);
-      });
-      modal.remove();
-    });
-  });
-  
-  document.getElementById('load-close').addEventListener('click', function() { modal.remove(); });
-  document.getElementById('load-clear').addEventListener('click', function() {
-    localStorage.removeItem('crate_saves');
-    modal.remove();
-    logOutput('ok', '🗑 All saves cleared');
-  });
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
-}
-
-// === EXPORT AS STANDALONE HTML ===
-
-// === CREATOR MARKETPLACE ===
-function openCreatorMarketplace() {
-  if (document.getElementById('marketplace-modal')) document.getElementById('marketplace-modal').remove();
-  
-  const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
-  
-  let listingsHTML = '';
-  if (listings.length === 0) {
-    listingsHTML = '<div style="text-align:center;padding:40px;color:#888">No listings yet. Upload a model to get started!</div>';
-  } else {
-    listingsHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;padding:12px">';
-    for (const item of listings) {
-      const date = new Date(item.created).toLocaleDateString();
-      listingsHTML += '<div style="background:#1a1a2e;border:1px solid #333;border-radius:12px;padding:16px;text-align:center;cursor:pointer" onclick="loadMarketplaceItem(\''+item.id+'\',\''+item.name.replace(/'/g,"")+'\')">'+
-        '<div style="font-size:32px;margin-bottom:8px">📦</div>'+
-        '<div style="color:#fff;font-weight:600;font-size:13px">'+item.name+'</div>'+
-        '<div style="color:#888;font-size:11px;margin-top:4px">by '+item.creator+'</div>'+
-        '<div style="color:#4ade80;font-size:11px;margin-top:4px">'+(item.price > 0 ? '$'+item.price : 'Free')+'</div>'+
-        '<div style="color:#555;font-size:10px;margin-top:4px">'+date+'</div>'+
-        '</div>';
-    }
-    listingsHTML += '</div>';
-  }
-  
-  const m = document.createElement('div');
-  m.id = 'marketplace-modal';
-  m.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
-      <div style="background:#111;border:1px solid #333;border-radius:16px;width:90%;max-width:800px;max-height:85vh;overflow-y:auto;color:#fff">
-        <div style="padding:24px 24px 0;display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <h2 style="margin:0;font-size:22px">🏪 Creator Marketplace</h2>
-            <p style="margin:4px 0 0;color:#888;font-size:13px">Upload, sell, and share 3D models</p>
-          </div>
-          <button onclick="this.closest('#marketplace-modal').remove()" style="background:none;border:none;color:#888;font-size:24px;cursor:pointer">✕</button>
-        </div>
-        
-        <div style="padding:16px 24px;display:flex;gap:10px;flex-wrap:wrap">
-          <button onclick="marketplaceUploadModel()" style="padding:10px 20px;border:none;border-radius:8px;background:#4ade80;color:#000;font-weight:600;cursor:pointer;font-size:14px">📤 Upload GLB Model</button>
-          <button onclick="marketplaceUploadAndSell()" style="padding:10px 20px;border:none;border-radius:8px;background:#f59e0b;color:#000;font-weight:600;cursor:pointer;font-size:14px">💰 Upload & Sell</button>
-          <button onclick="window.open('https://crateshipgames.com/marketplace','_blank')" style="padding:10px 20px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;font-size:14px">🌐 Browse Online</button>
-        </div>
-        
-        <div style="padding:0 24px 24px">
-          <h3 style="margin:16px 0 8px;font-size:16px;color:#aaa">📋 Your Listings (${listings.length})</h3>
-          ${listingsHTML}
-        </div>
-      </div>
-    </div>`;
-  document.body.appendChild(m);
-}
-
-function marketplaceUploadModel() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.glb,.gltf';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const name = prompt('Name your model:', file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ')) || 'Uploaded Model';
-    const category = prompt('Category (characters, weapons, buildings, vehicles, furniture, nature, scifi, food):', 'buildings') || 'buildings';
-    
-    const buf = await file.arrayBuffer();
-    const blob = new Blob([buf]);
-    const modelId = 'user_upload_' + Date.now();
-    
-    await _modelDB.save(modelId, name, category.toLowerCase(), blob);
-    _assetCatalog = null;
-    
-    showToast('📚 "' + name + '" saved to your library in "' + category + '"!');
-    // Refresh marketplace modal
-    openCreatorMarketplace();
-  };
-  input.click();
-}
-
-function marketplaceUploadAndSell() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.glb,.gltf';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const name = prompt('Name your model:', file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ')) || 'Uploaded Model';
-    const priceStr = prompt('Price (0 for free):', '0');
-    const price = parseFloat(priceStr) || 0;
-    
-    const buf = await file.arrayBuffer();
-    const blob = new Blob([buf]);
-    const listingId = 'listing_' + Date.now();
-    
-    await _modelDB.save(listingId, name, 'premium', blob);
-    _assetCatalog = null;
-    
-    const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
-    listings.push({
-      id: listingId,
-      name: name,
-      creator: localStorage.getItem('crate-username') || 'Anonymous',
-      price: price,
-      format: 'glb',
-      created: new Date().toISOString(),
-      downloads: 0,
-      fileSize: file.size,
-    });
-    localStorage.setItem('crate-marketplace-listings', JSON.stringify(listings));
-    
-    showToast('💰 "' + name + '" listed on marketplace for ' + (price > 0 ? '$' + price : 'FREE') + '!');
-    openCreatorMarketplace();
-  };
-  input.click();
-}
-
-function loadMarketplaceItem(id, name) {
-  _modelDB.get(id).then(record => {
-    if (!record || !record.blob) { showToast('❌ Model data not found'); return; }
-    const url = URL.createObjectURL(record.blob);
-    loadGLBModel(url, name, null, true);
-    document.getElementById('marketplace-modal')?.remove();
-    showToast('✓ Loading: ' + name);
-  });
-}
-// === END CREATOR MARKETPLACE ===
-
-
-// === EXPORT TO UNITY / UNREAL (GLTF/GLB) ===
-async function exportForUnity() { await _exportGLTF('unity'); }
-async function exportForUnreal() { await _exportGLTF('unreal'); }
-
-async function _exportGLTF(target) {
-  logOutput('info', '📦 Preparing ' + target.charAt(0).toUpperCase() + target.slice(1) + ' export...');
-  
-  try {
-    const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
-    const exporter = new GLTFExporter();
-    
-    // Create export scene with all visible objects
-    const exportScene = new THREE.Scene();
-    
-    // Clone terrain
-    if (window._terrainMesh) {
-      exportScene.add(window._terrainMesh.clone());
-    }
-    
-    // Clone all scene objects
-    const objs = window._sceneObjects || [];
-    for (const obj of objs) {
-      if (obj && obj.visible) {
-        try { exportScene.add(obj.clone()); } catch(e) {}
-      }
-    }
-    
-    // Add lights info as empty nodes (Unity/Unreal will need manual light setup)
-    const lightMarker = new THREE.Object3D();
-    lightMarker.name = 'Sun_DirectionalLight';
-    lightMarker.position.set(30, 40, 20);
-    exportScene.add(lightMarker);
-    
-    const options = {
-      binary: true, // GLB format
-      maxTextureSize: 2048,
-      includeCustomExtensions: true
-    };
-    
-    exporter.parse(exportScene, function(result) {
-      const blob = new Blob([result], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      
-      if (target === 'unity') {
-        a.download = 'crate-scene-unity.glb';
-      } else {
-        a.download = 'crate-scene-unreal.glb';
-      }
-      
-      a.click();
-      URL.revokeObjectURL(url);
-      
-      // Also export a README
-      const readme = target === 'unity' 
-        ? '# Crate Engine → Unity Import Guide\n\n' +
-          '1. Drag `crate-scene-unity.glb` into your Unity Assets folder\n' +
-          '2. Unity auto-imports GLB/GLTF files (2020.3+)\n' +
-          '3. Drag the imported prefab into your scene\n' +
-          '4. Add lights (Sun_DirectionalLight node marks sun position)\n' +
-          '5. Materials may need Standard→URP/HDRP conversion\n' +
-          '6. Scale: 1 unit = 1 meter (matches Unity default)\n\n' +
-          '## Tips\n' +
-          '- Enable "Read/Write" on mesh import settings for runtime modification\n' +
-          '- Set "Animation Type" to Humanoid for characters\n' +
-          '- Textures import alongside the GLB automatically\n'
-        : '# Crate Engine → Unreal Import Guide\n\n' +
-          '1. File → Import into Level (or drag to Content Browser)\n' +
-          '2. Select `crate-scene-unreal.glb`\n' +
-          '3. Choose "Scene" import for full hierarchy\n' +
-          '4. Unreal imports GLTF/GLB natively (UE5)\n' +
-          '5. Add directional light at Sun_DirectionalLight position\n' +
-          '6. Scale: 1 unit = 1 meter = 100 Unreal units (auto-scaled)\n\n' +
-          '## Tips\n' +
-          '- Use Datasmith for better material conversion\n' +
-          '- Check "Combine Meshes" for performance\n' +
-          '- Nanite works with imported static meshes\n';
-      
-      const readmeBlob = new Blob([readme], { type: 'text/markdown' });
-      const readmeUrl = URL.createObjectURL(readmeBlob);
-      const readmeA = document.createElement('a');
-      readmeA.href = readmeUrl;
-      readmeA.download = target === 'unity' ? 'UNITY-IMPORT-GUIDE.md' : 'UNREAL-IMPORT-GUIDE.md';
-      setTimeout(() => { readmeA.click(); URL.revokeObjectURL(readmeUrl); }, 500);
-      
-      logOutput('ok', '📦 Exported for ' + target.charAt(0).toUpperCase() + target.slice(1) + '! GLB + import guide downloaded.');
-    }, function(error) {
-      logOutput('error', '❌ Export failed: ' + error.message);
-    }, options);
-    
-  } catch(e) {
-    logOutput('error', '❌ Export failed: ' + e.message);
-  }
-}
-
-function exportAsHTML() {
-  var data = serializeScene();
-  if (!data) { logOutput('warn', '⚠ Nothing to export — build something first!'); return; }
-  
-  var commands = data.split('|');
-  var cmdStr = JSON.stringify(commands);
-  
-  var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">\n' +
-    '<title>Crate Engine Scene</title>\n' +
-    '<style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style>\n' +
-    '<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}<\/script>\n' +
-    '</head>\n<body>\n<canvas id="viewport"></canvas>\n' +
-    '<div style="position:fixed;bottom:10px;left:10px;color:#555;font-family:monospace;font-size:11px">Built with <a href="https://crateshipgames.com" style="color:#ff6b35">Crate Engine</a></div>\n' +
-    '<script type="module">\n' +
-    'import * as THREE from "three";\nimport {OrbitControls} from "three/addons/controls/OrbitControls.js";\n' +
-    'const canvas=document.getElementById("viewport");\n' +
-    'const renderer=new THREE.WebGLRenderer({canvas,antialias:true});\n' +
-    'renderer.setSize(window.innerWidth,window.innerHeight);\n' +
-    'renderer.shadowMap.enabled=true;\n' +
-    'const scene=new THREE.Scene();\n' +
-    'scene.background=new THREE.Color(0x1a1a2e);\n' +
-    'const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,500);\n' +
-    'camera.position.set(15,12,15);\n' +
-    'const controls=new OrbitControls(camera,canvas);\n' +
-    'controls.enableDamping=true;\n' +
-    'scene.add(new THREE.AmbientLight(0x404050,2));\n' +
-    'const sun=new THREE.DirectionalLight(0xfff5e0,3);\n' +
-    'sun.position.set(30,40,20);sun.castShadow=true;\n' +
-    'scene.add(sun);\n' +
-    '// Ground\nconst ground=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:0x2d5a27,roughness:0.9}));\n' +
-    'ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);\n' +
-    '// Simple object creators\n' +
-    'function makeMat(c){return new THREE.MeshStandardMaterial({color:c,roughness:0.7,metalness:0.1})}\n' +
-    'function addCube(x,z){const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),makeMat(Math.random()*0xffffff));m.position.set(x||Math.random()*10-5,0.5,z||Math.random()*10-5);m.castShadow=true;scene.add(m);}\n' +
-    'function addSphere(x,z){const m=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,16),makeMat(Math.random()*0xffffff));m.position.set(x||Math.random()*10-5,0.5,z||Math.random()*10-5);m.castShadow=true;scene.add(m);}\n' +
-    'function addTree(x,z){const g=new THREE.Group();const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,1.5),makeMat(0x8B4513));trunk.position.y=0.75;const leaves=new THREE.Mesh(new THREE.SphereGeometry(0.8,8,8),makeMat(0x228B22));leaves.position.y=2;g.add(trunk,leaves);g.position.set(x||(Math.random()-0.5)*20,0,z||(Math.random()-0.5)*20);g.castShadow=true;scene.add(g);}\n' +
-    'function addRock(x,z){const m=new THREE.Mesh(new THREE.DodecahedronGeometry(0.5+Math.random()*0.5),makeMat(0x888888));m.position.set(x||(Math.random()-0.5)*15,0.3,z||(Math.random()-0.5)*15);m.castShadow=true;scene.add(m);}\n' +
-    '// Parse commands\nconst cmds=' + cmdStr + ';\n' +
-    'cmds.forEach(function(c){\n' +
-    '  const l=c.toLowerCase();\n' +
-    '  const n=parseInt((l.match(/(\\d+)/)||[0,1])[1]);\n' +
-    '  if(l.includes("cube"))for(let i=0;i<n;i++)addCube();\n' +
-    '  if(l.includes("sphere"))for(let i=0;i<n;i++)addSphere();\n' +
-    '  if(l.includes("tree"))for(let i=0;i<n;i++)addTree();\n' +
-    '  if(l.includes("rock"))for(let i=0;i<n;i++)addRock();\n' +
-    '  if(l.includes("rain")){const rg=new THREE.BufferGeometry();const pos=new Float32Array(3000);for(let i=0;i<3000;i++){pos[i*3]=(Math.random()-0.5)*50;pos[i*3+1]=Math.random()*20;pos[i*3+2]=(Math.random()-0.5)*50;}rg.setAttribute("position",new THREE.BufferAttribute(pos,3));scene.add(new THREE.Points(rg,new THREE.PointsMaterial({color:0x8888ff,size:0.05})));}\n' +
-    '  if(l.includes("night")){scene.background=new THREE.Color(0x050515);sun.intensity=0.08;}\n' +
-    '  if(l.includes("sunset")){scene.background=new THREE.Color(0xff8844);sun.intensity=0.6;}\n' +
-    '  if(l.includes("fog"))scene.fog=new THREE.FogExp2(0x888899,0.02);\n' +
-    '});\n' +
-    'function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}\n' +
-    'animate();\n' +
-    'window.addEventListener("resize",()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});\n' +
-    '<\/script>\n</body>\n</html>';
-  
-  var blob = new Blob([html], {type: 'text/html'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'crate-scene.html';
-  a.click();
-  URL.revokeObjectURL(url);
-  logOutput('ok', '📦 Exported! Open crate-scene.html in any browser.');
-}
-
-
 // === PRO SUBSCRIPTION SYSTEM ===
-var STRIPE_LINKS = { pro: 'https://buy.stripe.com/3cI9AV4Sv6TY15Q1aMffy00', premium: 'https://buy.stripe.com/6oUfZjfx96TY29U4mYffy01' };
-
 function isProUser() {
   return true; // All features free during beta — no paywalls
 }
@@ -16528,79 +15849,6 @@ function setProStatus(val) {
   }
 })();
 
-function showProWelcome() {
-  var banner = document.createElement('div');
-  Object.assign(banner.style, {
-    position: 'fixed', top: '60px', left: '50%', transform: 'translateX(-50%)',
-    background: 'linear-gradient(135deg, #ff6b35, #f7c948)', color: '#000',
-    padding: '12px 24px', borderRadius: '12px', fontFamily: 'JetBrains Mono, monospace',
-    fontWeight: '700', fontSize: '0.9rem', zIndex: '10001', textAlign: 'center',
-    boxShadow: '0 4px 20px rgba(255,107,53,0.4)'
-  });
-  banner.innerHTML = '⚡ Pro Unlocked! Export, premium models, and more are now yours.';
-  document.body.appendChild(banner);
-  setTimeout(function() { banner.style.transition = 'opacity 0.5s'; banner.style.opacity = '0'; setTimeout(function() { banner.remove(); }, 500); }, 5000);
-}
-
-function showUpgradeModal(tier) {
-  tier = tier || 'pro';
-  var old = document.getElementById('upgrade-modal');
-  if (old) old.remove();
-
-  var modal = document.createElement('div');
-  modal.id = 'upgrade-modal';
-  Object.assign(modal.style, {
-    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.8)', zIndex: '10000', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)'
-  });
-
-  var card = document.createElement('div');
-  Object.assign(card.style, {
-    background: '#0d0d0d', border: '2px solid ' + (tier === 'premium' ? '#f7c948' : '#ff6b35'), borderRadius: '20px',
-    padding: '32px', maxWidth: '420px', width: '90%', textAlign: 'center',
-    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0',
-    boxShadow: '0 0 40px rgba(255,107,53,0.2)'
-  });
-
-  card.innerHTML =
-    '<div style="font-size:2.5rem;margin-bottom:8px">⚡</div>' +
-    '<h2 style="color:' + (tier === 'premium' ? '#f7c948' : '#ff6b35') + ';margin:0 0 8px;font-size:1.3rem">' + (tier === 'premium' ? 'Go Premium' : 'Go Pro') + '</h2>' +
-    '<p style="color:#888;font-size:0.85rem;margin-bottom:20px">Unlock the full power of Crate Engine</p>' +
-    '<div style="background:#111;border-radius:12px;padding:16px;margin-bottom:20px;text-align:left;font-size:0.8rem;color:#ccc;line-height:2">' +
-      '✅ Export games (no watermark)<br>' +
-      '✅ 500+ premium 3D models<br>' +
-      '✅ Unlimited AI prompts<br>' +
-      '✅ Publish to crateshipgames.com<br>' +
-      '✅ Priority support<br>' +
-      '✅ Early access to new features' +
-    '</div>' +
-    '<div style="font-size:2rem;font-weight:900;color:#fff;margin-bottom:4px">' + (tier === 'premium' ? '$14.99' : '$4.99') + '<span style="font-size:0.9rem;color:#888">/month</span></div>' +
-    '<p style="color:#555;font-size:0.7rem;margin-bottom:16px">Cancel anytime · No contracts</p>' +
-    '<div style="display:flex;gap:8px;flex-direction:column">' +
-      '<button id="upgrade-stripe-btn" style="padding:14px;background:linear-gradient(135deg,#ff6b35,#f7c948);color:#000;border:none;border-radius:10px;font-weight:700;font-size:1rem;cursor:pointer;font-family:JetBrains Mono,monospace;transition:transform 0.2s">' + (tier === 'premium' ? '💎 Subscribe Premium' : '⚡ Subscribe Pro') + '</button>' +
-      '<button id="upgrade-close-btn" style="padding:10px;background:transparent;color:#555;border:1px solid #252525;border-radius:10px;cursor:pointer;font-family:JetBrains Mono,monospace;font-size:0.8rem">Maybe Later</button>' +
-    '</div>';
-
-  modal.appendChild(card);
-  document.body.appendChild(modal);
-
-  document.getElementById('upgrade-stripe-btn').addEventListener('click', function() {
-    var link = STRIPE_LINKS[tier] || STRIPE_LINKS.pro; if (link) {
-      window.open(link, '_blank');
-    } else {
-      // Fallback - coming soon
-      this.textContent = '🚀 Coming Soon!';
-      this.style.background = '#333';
-      this.style.color = '#888';
-      setTimeout(function() { modal.remove(); }, 2000);
-    }
-  });
-
-  document.getElementById('upgrade-close-btn').addEventListener('click', function() { modal.remove(); });
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
-}
-
 // Expose for pricing section button
 window._showUpgradeModal = showUpgradeModal;
 
@@ -16615,73 +15863,12 @@ window._showUpgradeModal = showUpgradeModal;
   }, 500);
 })();
 function showHelp() {
-window.showHelp = showHelp;
-  var old = document.getElementById('help-modal');
-  if (old) { old.remove(); return; }
-  
-  var modal = document.createElement('div');
-  modal.id = 'help-modal';
-  Object.assign(modal.style, {
-    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.9)', zIndex: '10000', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)',
-    overflow: 'auto'
+  loadUtilityUiModule().then((mod) => mod.showHelpModal()).catch((err) => {
+    console.error('[UI] Help modal failed:', err);
+    showToast('❌ Help failed to load');
   });
-  
-  var card = document.createElement('div');
-  Object.assign(card.style, {
-    background: '#0d0d0d', border: '1px solid #252525', borderRadius: '16px',
-    padding: '24px', maxWidth: '900px', width: '95%', maxHeight: '85vh', overflow: 'auto',
-    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0'
-  });
-  
-  // Header
-  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-    '<h2 style="color:#ff6b35;margin:0">⌨️ All Commands</h2>' +
-    '<button onclick="this.closest(\'#help-modal\').remove()" style="background:none;border:none;color:#555;font-size:1.5rem;cursor:pointer">✕</button></div>';
-  
-  // Build grid from COMMANDS_SHOWCASE
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
-  
-  const colors = ['#4ade80','#60a5fa','#f59e0b','#c084fc','#ef4444','#22d3ee','#fb923c','#a78bfa','#f472b6','#34d399','#fbbf24','#818cf8','#fb7185','#2dd4bf'];
-  ci = 0;
-  
-  for (const [category, commands] of Object.entries(window._COMMANDS_SHOWCASE || {})) {
-    const color = colors[ci % colors.length];
-    ci++;
-    html += '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">';
-    html += '<h4 style="color:' + color + ';margin:0 0 8px">' + category + '</h4>';
-    html += '<div style="color:#888;font-size:0.72rem;line-height:2">';
-    commands.forEach(function(cmd) {
-      html += '<span onclick="document.getElementById(\'help-modal\').remove();if(window._runCommand)window._runCommand(\'' + cmd.replace(/'/g, "\\'") + '\')" style="display:inline-block;background:#1a1a1a;padding:2px 8px;border-radius:4px;margin:2px;cursor:pointer;transition:background 0.2s;border:1px solid #252525" onmouseover="this.style.background=\'#252525\'" onmouseout="this.style.background=\'#1a1a1a\'">' + cmd + '</span>';
-    });
-    html += '</div></div>';
-  }
-  
-  html += '</div>';
-  
-  // Pro tip
-  html += '<div style="margin-top:16px;padding:12px;background:#111;border-radius:8px;border:1px solid #252525;text-align:center">' +
-    '<span style="color:#ff6b35;font-weight:700">💡 Click any command to run it!</span> ' +
-    '<span style="color:#888;font-size:0.8rem">Or combine with "and" — <code style="color:#4ade80">build tropical paradise and equip sword and play</code></span></div>';
-  
-  // Play mode controls
-  html += '<div style="margin-top:8px;padding:12px;background:#111;border-radius:8px;border:1px solid #252525">' +
-    '<h4 style="color:#ff6b35;margin:0 0 8px">🎮 Play Mode Controls</h4>' +
-    '<div style="color:#888;font-size:0.72rem;display:grid;grid-template-columns:1fr 1fr;gap:4px">' +
-    '<span>WASD — Move</span><span>Space — Jump</span>' +
-    '<span>Shift — Run</span><span>Ctrl — Sprint</span>' +
-    '<span>C — Dodge Roll</span><span>E / Click — Attack</span>' +
-    '<span>Q — Heavy Attack</span><span>V — Toggle FPS/TPS</span>' +
-    '<span>T — Swap Shoulder</span><span>F — Interact</span>' +
-    '<span>1/2/3 — Weapon Slots</span><span>ESC — Exit Play</span>' +
-    '</div></div>';
-  
-  card.innerHTML = html;
-  modal.appendChild(card);
-  document.body.appendChild(modal);
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
 }
+window.showHelp = showHelp;
 
 // Add help button to toolbar
 (function() {
@@ -17087,13 +16274,7 @@ let dragCounter = 0;
         const url = URL.createObjectURL(blob);
         const name = file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ');
         
-        // Use the engine's GLB loader
-        const loader = new THREE.GLTFLoader ? new THREE.GLTFLoader() : window._gltfLoader;
-        if (!loader && window.gltfLoader) { window.gltfLoader.load(url, handleLoaded); return; }
-        
-        // Direct Three.js loading
-        const { GLTFLoader } = window;
-        const gl = new (window._GLTFLoaderClass || gltfLoader.constructor)();
+        const gl = window._gltfLoader || new GLTFLoader();
         gl.setDRACOLoader(dracoLoader);
         gl.load(url, (gltf) => {
           const model = gltf.scene;
@@ -17438,6 +16619,7 @@ parseAndExecute = async function(rawCmd) {
     return;
   }
   if (lower === 'old mine world' || lower === 'show old mine' || lower === 'mine world') {
+    const { buildPackShowcase } = await loadCityBuilderModule();
     buildPackShowcase('old_mine', 'Old Mine', 47); return;
   }
     if (/^(space combat|space fighter|space game combat|fight.*space|spaceship.*fight|make.*space.*fight)$/.test(lower)) {
@@ -17452,24 +16634,27 @@ parseAndExecute = async function(rawCmd) {
     if (/^(space combat|space fighter|space shooting|fight in space|fly.*space|spaceship.*fight)$/.test(lower)) {
       if (window.buildSpaceCombatGame) { true; return; }
     }
-    if (lower === 'city 3' || lower === 'city world 3' || lower === 'build city 3' || lower === 'full city') {
-    if (typeof buildCityWorld3 === 'function') buildCityWorld3();
-    else if (window.buildCityWorld3) window.buildCityWorld3();
+  if (lower === 'city 3' || lower === 'city world 3' || lower === 'build city 3' || lower === 'full city') {
+    const { buildCityWorld3 } = await loadCityBuilderModule();
+    buildCityWorld3();
     return '🏙️ Building City 3 — 10x10 grid, all car types, 30 NPCs, fab buildings...';
   }
   if (lower === 'city 2' || lower === 'new city 2' || lower === 'city world 2' || lower === 'build city 2' || lower === 'second city') {
     // [removed] buildCityWorld2 return;
   }
   if (lower === 'city world' || lower === 'build city' || lower === 'new city') {
+    const { buildCityWorld3 } = await loadCityBuilderModule();
     buildCityWorld3(); return;
   }
   if (lower === 'quarry world' || lower === 'african quarry' || lower === 'build quarry' || lower === 'slate quarry') {
     // [removed] buildQuarryWorld return;
   }
   if (lower === 'quarry grid' || lower === 'show quarry') {
+    const { buildPackShowcase } = await loadCityBuilderModule();
     buildPackShowcase('quarry', 'African Slate Quarry', 47); return;
   }
   if (lower === 'building world' || lower === 'unfinished building' || lower === 'show building') {
+    const { buildPackShowcase } = await loadCityBuilderModule();
     buildPackShowcase('building', 'Unfinished Building', 38); return;
   }
 
@@ -17486,12 +16671,14 @@ parseAndExecute = async function(rawCmd) {
     if (pieceName) {
       const px2 = window._cam ? window._cam.position.x + (Math.random()-0.5)*20 : 0;
       const pz2 = window._cam ? window._cam.position.z + (Math.random()-0.5)*20 : 0;
+      const { loadGroupedAsset } = await loadCityBuilderModule();
       loadGroupedAsset('street_props', pieceName, px2, pz2);
       return;
     }
   }
   // List street props pieces
   if (lower === 'street props' || lower === 'list street props' || lower === 'street pieces') {
+    const { listGroupPieces } = await loadCityBuilderModule();
     const pieces = listGroupPieces('street_props');
     showToast('Street props: ' + pieces.slice(0,8).join(', ') + '... (' + pieces.length + ' total)');
     return;
@@ -17545,7 +16732,7 @@ parseAndExecute = async function(rawCmd) {
   }
   if (lower.startsWith('add fab ') || lower.startsWith('spawn fab ')) {
     const fabName = lower.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_');
-    const fabAliases = window._fabAliases || {};
+    const fabAliases = await ensureFabAliasesLoaded();
     const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
     if (modelPath) {
       const fullPath = modelPath.startsWith('http') || modelPath.startsWith('/models/') ? modelPath : '/models/' + modelPath;
@@ -17591,7 +16778,7 @@ parseAndExecute = async function(rawCmd) {
     let search = lower.replace(/^(i need|i want|show me|find|search|browse|library|catalog|get me|give me|what|which|any|list|do you have|do we have)\s*(a |an |the |some |any )?/i, '').replace(/[?!.,]/g, '').trim();
     
     if (search.length >= 2) {
-      const results = searchModels(search);
+      const results = searchRegistryModels(search);
       if (results.length > 0) {
         showSuggestionPanel(search, results);
         return '🤖 Found ' + results.length + ' models matching "' + search + '" — pick one from the panel below!';
@@ -17607,7 +16794,7 @@ parseAndExecute = async function(rawCmd) {
     
     // If it returned an error or "unknown", show suggestions
     if (result && (result.includes('⚠') || result.includes('unknown') || result.includes('not found'))) {
-      const results = searchModels(objName);
+      const results = searchRegistryModels(objName);
       if (results.length > 0) {
         showSuggestionPanel(objName, results);
         return result + '\n🤖 But I found ' + results.length + ' similar models — check the panel below!';
@@ -18476,150 +17663,10 @@ window.showQuickStart = showQuickStart;
 
 // === SETTINGS MENU (v217) ===
 function showSettings() {
-  panel = document.getElementById('settings-panel');
-  if (panel) { panel.remove(); return; }
-  
-  // Load saved settings
-  const saved = JSON.parse(localStorage.getItem('crate-settings') || '{}');
-  const quality = saved.quality || 'high';
-  const shadows = saved.shadows !== false;
-  const fog = saved.fog !== false;
-  const clouds = saved.clouds === true;
-  const music = saved.music !== false;
-  const sfx = saved.sfx !== false;
-  const sensitivity = saved.sensitivity || 1;
-  const fov = saved.fov || 60;
-  
-  panel = document.createElement('div');
-  panel.id = 'settings-panel';
-  panel.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10020;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;backdrop-filter:blur(10px);';
-  
-  panel.innerHTML = `
-    <div style="background:#111;border:1px solid #333;border-radius:16px;padding:32px;width:440px;max-height:80vh;overflow-y:auto;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
-        <h2 style="margin:0;color:#fff;font-size:22px;">⚙️ Settings</h2>
-        <div id="settings-close" style="cursor:pointer;font-size:20px;color:#666;">✕</div>
-      </div>
-      
-      <div style="margin-bottom:20px;">
-        <div style="color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Graphics</div>
-        
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="color:#ccc;font-size:14px;">Quality</span>
-          <select id="s-quality" style="background:#222;color:#fff;border:1px solid #444;padding:4px 12px;border-radius:6px;">
-            <option value="low" ${quality==='low'?'selected':''}>Low</option>
-            <option value="medium" ${quality==='medium'?'selected':''}>Medium</option>
-            <option value="high" ${quality==='high'?'selected':''}>High</option>
-            <option value="ultra" ${quality==='ultra'?'selected':''}>Ultra</option>
-          </select>
-        </div>
-        
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="color:#ccc;font-size:14px;">Shadows</span>
-          <label style="position:relative;width:44px;height:24px;">
-            <input type="checkbox" id="s-shadows" ${shadows?'checked':''} style="opacity:0;width:0;height:0;">
-            <span style="position:absolute;cursor:pointer;inset:0;background:${shadows?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
-            <span style="position:absolute;left:${shadows?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
-          </label>
-        </div>
-        
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="color:#ccc;font-size:14px;">Fog</span>
-          <label style="position:relative;width:44px;height:24px;">
-            <input type="checkbox" id="s-fog" ${fog?'checked':''} style="opacity:0;width:0;height:0;">
-            <span style="position:absolute;cursor:pointer;inset:0;background:${fog?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
-            <span style="position:absolute;left:${fog?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
-          </label>
-        </div>
-        
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="color:#ccc;font-size:14px;">Clouds</span>
-          <label style="position:relative;width:44px;height:24px;">
-            <input type="checkbox" id="s-clouds" ${clouds?'checked':''} style="opacity:0;width:0;height:0;">
-            <span style="position:absolute;cursor:pointer;inset:0;background:${clouds?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
-            <span style="position:absolute;left:${clouds?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
-          </label>
-        </div>
-        
-        <div style="margin-bottom:12px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-            <span style="color:#ccc;font-size:14px;">FOV</span>
-            <span style="color:#666;font-size:13px;" id="s-fov-val">${fov}°</span>
-          </div>
-          <input type="range" id="s-fov" min="40" max="120" value="${fov}" style="width:100%;accent-color:#ff6b35;">
-        </div>
-      </div>
-      
-      <div style="margin-bottom:20px;">
-        <div style="color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Controls</div>
-        <div style="margin-bottom:12px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-            <span style="color:#ccc;font-size:14px;">Mouse Sensitivity</span>
-            <span style="color:#666;font-size:13px;" id="s-sens-val">${sensitivity.toFixed(1)}x</span>
-          </div>
-          <input type="range" id="s-sensitivity" min="0.1" max="3" step="0.1" value="${sensitivity}" style="width:100%;accent-color:#ff6b35;">
-        </div>
-      </div>
-      
-      <button id="s-apply" style="width:100%;padding:12px;background:#ff6b35;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
-        Apply & Save
-      </button>
-    </div>
-  `;
-  
-  document.body.appendChild(panel);
-  
-  // FOV slider
-  document.getElementById('s-fov').oninput = (e) => {
-    document.getElementById('s-fov-val').textContent = e.target.value + '°';
-  };
-  document.getElementById('s-sensitivity').oninput = (e) => {
-    document.getElementById('s-sens-val').textContent = parseFloat(e.target.value).toFixed(1) + 'x';
-  };
-  
-  // Close
-  document.getElementById('settings-close').onclick = () => panel.remove();
-  document.addEventListener('keydown', function esc(e) { 
-    if (e.key === 'Escape') { panel.remove(); document.removeEventListener('keydown', esc); } 
+  loadUtilityUiModule().then((mod) => mod.showSettingsPanel()).catch((err) => {
+    console.error('[UI] Settings panel failed:', err);
+    showToast('❌ Settings failed to load');
   });
-  
-  // Apply
-  document.getElementById('s-apply').onclick = () => {
-    const settings = {
-      quality: document.getElementById('s-quality').value,
-      shadows: document.getElementById('s-shadows').checked,
-      fog: document.getElementById('s-fog').checked,
-      clouds: document.getElementById('s-clouds').checked,
-      sensitivity: parseFloat(document.getElementById('s-sensitivity').value),
-      fov: parseInt(document.getElementById('s-fov').value),
-    };
-    
-    localStorage.setItem('crate-settings', JSON.stringify(settings));
-    
-    // Apply quality
-    const qualityMap = { low: 0.5, medium: 0.75, high: 1, ultra: window.devicePixelRatio || 1 };
-    renderer.setPixelRatio(qualityMap[settings.quality] || 1);
-    
-    // Apply shadows
-    renderer.shadowMap.enabled = settings.shadows;
-    
-    // Apply FOV
-    camera.fov = settings.fov;
-    camera.updateProjectionMatrix();
-    
-    // Apply fog
-    if (!settings.fog) scene.fog = null;
-    
-    // Apply clouds
-    if (!settings.clouds && _cloudGroup) { scene.remove(_cloudGroup); _cloudGroup = null; }
-    else if (settings.clouds && !_cloudGroup) createClouds();
-    
-    // Apply sensitivity (store for mouse handler)
-    window._mouseSensitivity = settings.sensitivity;
-    
-    panel.remove();
-    showToast('⚙️ Settings saved!');
-  };
 }
 window.showSettings = showSettings;
 
@@ -18718,494 +17765,13 @@ document.addEventListener('keydown', (e) => {
 // Text-to-3D and Image-to-3D via api.meshy.ai
 // ═══════════════════════════════════════════════════════════════
 const MESHY_API_BASE = 'https://api.meshy.ai';
-const MESHY_TEST_KEY = 'msy_dummy_api_key_for_test_mode_12345678';
 
 function getMeshyApiKey() {
-  return localStorage.getItem('crate_meshy_api_key') || '';
+  return readSessionValueWithLegacy(MESHY_API_KEY_STORAGE_KEY, true) || '';
 }
 function setMeshyApiKey(key) {
-  localStorage.setItem('crate_meshy_api_key', key);
+  writeSessionValue(MESHY_API_KEY_STORAGE_KEY, key);
 }
-
-// Credit system
-window._userCredits = JSON.parse(localStorage.getItem('crate-credits') || '{"plan":"free","credits":5,"used":0}');
-function saveCredits() { localStorage.setItem('crate-credits', JSON.stringify(window._userCredits)); }
-function getCreditsRemaining() { if (!window._userCredits) window._userCredits = {plan:'free',credits:5,used:0}; return Math.max(0, window._userCredits.credits - window._userCredits.used); }
-function useCredits(amount) { window._userCredits.used += amount; saveCredits(); }
-
-function showGeneratorModal() {
-  if (document.getElementById('gen3d-modal')) { document.getElementById('gen3d-modal').remove(); }
-  
-  const credits = getCreditsRemaining();
-  const modal = document.createElement('div');
-  modal.id = 'gen3d-modal';
-  modal.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif" onclick="if(event.target===this)this.remove()">
-      <div style="background:#1a1a2e;border-radius:16px;width:560px;max-height:90vh;overflow-y:auto;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5)">
-        
-        <div style="padding:24px 28px 0;display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <h2 style="margin:0;font-size:22px">🎨 3D Model Generator</h2>
-            <p style="margin:4px 0 0;color:#888;font-size:13px">Generate 3D models from text or images via Meshy AI</p>
-          </div>
-          <div style="text-align:right">
-            <div style="background:#2a2a4a;padding:6px 14px;border-radius:20px;font-size:13px">
-              <span style="color:#fbbf24">⚡</span> <strong>${credits}</strong> credits left
-            </div>
-          </div>
-        </div>
-
-        <div style="padding:20px 28px">
-          <!-- Tab buttons -->
-          <div style="display:flex;gap:8px;margin-bottom:20px">
-            <button id="gen3d-tab-img" onclick="document.getElementById('gen3d-img-section').style.display='block';document.getElementById('gen3d-txt-section').style.display='none';this.style.background='#6366f1';document.getElementById('gen3d-tab-txt').style.background='#2a2a4a'" style="flex:1;padding:10px;border:none;border-radius:8px;background:#6366f1;color:#fff;cursor:pointer;font-size:14px;font-weight:600">📷 Image to 3D</button>
-            <button id="gen3d-tab-txt" onclick="document.getElementById('gen3d-txt-section').style.display='block';document.getElementById('gen3d-img-section').style.display='none';this.style.background='#6366f1';document.getElementById('gen3d-tab-img').style.background='#2a2a4a'" style="flex:1;padding:10px;border:none;border-radius:8px;background:#2a2a4a;color:#fff;cursor:pointer;font-size:14px;font-weight:600">✏️ Text to 3D</button>
-          </div>
-
-          <!-- Image to 3D -->
-          <div id="gen3d-img-section">
-            <div id="gen3d-dropzone" style="border:2px dashed #444;border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s" 
-                 ondragover="event.preventDefault();this.style.borderColor='#6366f1'" 
-                 ondragleave="this.style.borderColor='#444'"
-                 ondrop="event.preventDefault();this.style.borderColor='#444';handleGen3dDrop(event)"
-                 onclick="document.getElementById('gen3d-file-input').click()">
-              <div id="gen3d-preview" style="display:none;margin-bottom:12px"></div>
-              <div id="gen3d-upload-text">
-                <div style="font-size:36px;margin-bottom:8px">📁</div>
-                <div style="color:#aaa;font-size:14px">Drop an image here or click to upload</div>
-                <div style="color:#666;font-size:12px;margin-top:4px">PNG, JPG — any object, character, prop</div>
-              </div>
-            </div>
-            <input type="file" id="gen3d-file-input" accept="image/*" style="display:none" onchange="handleGen3dFile(this.files[0])">
-          </div>
-
-          <!-- Text to 3D -->
-          <div id="gen3d-txt-section" style="display:none">
-            <textarea id="gen3d-text-prompt" placeholder="Describe the 3D model you want...&#10;e.g. 'A medieval wooden shield with iron bands'&#10;'A cute low-poly dragon'&#10;'Futuristic sci-fi rifle'" style="width:100%;height:100px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#fff;padding:12px;font-size:14px;resize:none;box-sizing:border-box"></textarea>
-            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap" id="gen3d-suggestions">
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">medieval sword</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">low-poly dragon</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">wooden treasure chest</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">sci-fi spaceship</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">stone castle tower</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">cute robot companion</span>
-            </div>
-          </div>
-
-          <!-- Quality selector -->
-          <div style="margin-top:16px;display:flex;gap:8px">
-            <button class="gen3d-quality" data-quality="draft" data-cost="0.5" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#aaa;cursor:pointer;font-size:12px;text-align:center">
-              <div style="font-weight:600">Draft</div>
-              <div style="color:#666;font-size:11px">Preview only · ~30s</div>
-            </button>
-            <button class="gen3d-quality selected" data-quality="standard" data-cost="1" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #6366f1;border-radius:8px;background:#1a1a3e;color:#fff;cursor:pointer;font-size:12px;text-align:center">
-              <div style="font-weight:600">Standard ✓</div>
-              <div style="color:#888;font-size:11px">Full quality · ~60s</div>
-            </button>
-            <button class="gen3d-quality" data-quality="hd" data-cost="2" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#aaa;cursor:pointer;font-size:12px;text-align:center">
-              <div style="font-weight:600">HD</div>
-              <div style="color:#666;font-size:11px">HD + PBR · ~90s</div>
-            </button>
-          </div>
-
-          <!-- Generate button -->
-          <button id="gen3d-btn" onclick="startGeneration()" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:16px;font-weight:700;cursor:pointer;transition:transform 0.1s" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
-            🚀 Generate 3D Model
-          </button>
-
-          <!-- Progress -->
-          <div id="gen3d-progress" style="display:none;margin-top:16px;text-align:center">
-            <div style="width:100%;height:4px;background:#2a2a4a;border-radius:2px;overflow:hidden">
-              <div id="gen3d-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);transition:width 0.3s;border-radius:2px"></div>
-            </div>
-            <div id="gen3d-status" style="color:#888;font-size:13px;margin-top:8px">Preparing...</div>
-          </div>
-
-          <!-- Result -->
-          <div id="gen3d-result" style="display:none;margin-top:16px;background:#0d0d1a;border-radius:12px;padding:16px;text-align:center">
-            <div style="font-size:14px;color:#4ade80;margin-bottom:12px">✅ Model generated!</div>
-            <div style="display:flex;gap:8px">
-              <button onclick="gen3dAddToScene()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#22c55e;color:#fff;font-weight:600;cursor:pointer">➕ Add to Scene</button>
-              <button onclick="gen3dDownload()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer">💾 Download GLB</button>
-              <button onclick="gen3dSellOnMarketplace()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#f59e0b;color:#fff;font-weight:600;cursor:pointer">💰 Sell on Marketplace</button>
-              <button onclick="gen3dSaveToLibrary()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#8b5cf6;color:#fff;font-weight:600;cursor:pointer">📚 Save to Library</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Upgrade banner for free users -->
-        ${window._userCredits.plan === 'free' ? `
-        <div style="padding:16px 28px 24px;border-top:1px solid #2a2a4a">
-          <div style="background:linear-gradient(135deg,#1a1a3e,#2a1a4e);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between">
-            <div>
-              <div style="font-size:14px;font-weight:600">Need more credits?</div>
-              <div style="color:#888;font-size:12px;margin-top:2px">Starting at $4.99/mo for 100 credits</div>
-            </div>
-            <button onclick="showPricingModal()" style="padding:8px 20px;border:none;border-radius:8px;background:#6366f1;color:#fff;font-weight:600;cursor:pointer;font-size:13px">Upgrade</button>
-          </div>
-        </div>` : ''}
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-
-// State
-window._gen3dImage = null;
-window._gen3dQuality = 'standard';
-window._gen3dResultBlob = null;
-
-window.selectGen3dQuality = selectGen3dQuality;
-function selectGen3dQuality(btn) {
-  document.querySelectorAll('.gen3d-quality').forEach(b => {
-    b.style.border = '1px solid #333'; b.style.background = '#0d0d1a'; b.style.color = '#aaa';
-    b.innerHTML = b.innerHTML.replace(' ✓', '');
-  });
-  btn.style.border = '1px solid #6366f1'; btn.style.background = '#1a1a3e'; btn.style.color = '#fff';
-  btn.querySelector('div').textContent += ' ✓';
-  window._gen3dQuality = btn.dataset.quality;
-}
-
-function handleGen3dFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    window._gen3dImage = e.target.result; // data URL
-    const preview = document.getElementById('gen3d-preview');
-    preview.innerHTML = `<img src="${e.target.result}" style="max-width:200px;max-height:200px;border-radius:8px;object-fit:contain">`;
-    preview.style.display = 'block';
-    document.getElementById('gen3d-upload-text').innerHTML = `<div style="color:#4ade80;font-size:13px;margin-top:8px">✓ ${file.name} — click to change</div>`;
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleGen3dDrop(event) {
-  const file = event.dataTransfer.files[0];
-  if (file) handleGen3dFile(file);
-}
-
-window.startGeneration = startGeneration;
-async function startGeneration() {
-  const isTextMode = document.getElementById('gen3d-txt-section').style.display !== 'none';
-  const textPrompt = isTextMode ? (document.getElementById('gen3d-text-prompt')?.value || '').trim() : '';
-  if (!isTextMode && !window._gen3dImage) { showToast('Upload an image first!'); return; }
-  if (isTextMode && !textPrompt) { showToast('Enter a description first!'); return; }
-  
-  const costMap = { draft: 0.5, standard: 1, hd: 2 };
-  const cost = costMap[window._gen3dQuality] || 1;
-  if (getCreditsRemaining() < cost) { showToast('Not enough credits! Upgrade your plan.'); return; }
-  
-  const btn = document.getElementById('gen3d-btn');
-  const progress = document.getElementById('gen3d-progress');
-  const progressBar = document.getElementById('gen3d-progress-bar');
-  const status = document.getElementById('gen3d-status');
-  const result = document.getElementById('gen3d-result');
-  
-  btn.disabled = true; btn.textContent = '⏳ Generating...'; btn.style.opacity = '0.6';
-  progress.style.display = 'block'; result.style.display = 'none';
-  
-  // Animate progress bar
-  let pct = 0;
-  const progressInterval = setInterval(() => {
-    pct = Math.min(pct + (pct < 60 ? 2 : pct < 90 ? 0.5 : 0.1), 95);
-    progressBar.style.width = pct + '%';
-    if (isTextMode) {
-      if (pct < 15) status.textContent = '📝 Processing your description...';
-      else if (pct < 40) status.textContent = '🎨 AI is generating reference image...';
-      else if (pct < 65) status.textContent = '🧠 Building 3D model from image...';
-      else if (pct < 85) status.textContent = '🔨 Extracting mesh & textures...';
-      else status.textContent = '✨ Almost there...';
-    } else {
-      if (pct < 20) status.textContent = '🔄 Uploading image...';
-      else if (pct < 50) status.textContent = '🧠 AI is building your 3D model...';
-      else if (pct < 80) status.textContent = '🔨 Extracting mesh & textures...';
-      else status.textContent = '✨ Almost there...';
-    }
-  }, 500);
-  
-  try {
-    const apiKey = getMeshyApiKey();
-    if (!apiKey) {
-      clearInterval(progressInterval);
-      status.textContent = '🔑 Please set your Meshy API key first!';
-      progressBar.style.width = '0%';
-      btn.disabled = false; btn.textContent = '🚀 Generate 3D Model'; btn.style.opacity = '1';
-      showMeshyKeyModal();
-      return;
-    }
-    
-    const headers = { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' };
-    
-    // ── MESHY API CALL ──
-    let taskId;
-    if (isTextMode) {
-      // Text-to-3D: Preview stage first
-      status.textContent = '📝 Creating preview from your description...';
-      const previewResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d', {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          mode: 'preview',
-          prompt: textPrompt,
-          negative_prompt: 'low quality, low resolution, ugly, blurry',
-          should_remesh: true,
-        })
-      });
-      if (!previewResp.ok) { const err = await previewResp.json().catch(()=>({})); throw new Error(err.message || 'Meshy API error: ' + previewResp.status); }
-      const previewData = await previewResp.json();
-      taskId = previewData.result;
-      
-      // Poll preview
-      let previewTask;
-      let _pollCount1 = 0;
-      while (true) {
-        if (++_pollCount1 > 100) throw new Error('Generation timed out after 5 minutes');
-        await new Promise(r => setTimeout(r, 3000));
-        const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
-        previewTask = await pollResp.json();
-        if (previewTask.status === 'SUCCEEDED') break;
-        if (previewTask.status === 'FAILED') throw new Error('Preview failed: ' + (previewTask.task_error?.message || 'unknown'));
-        pct = Math.min(10 + (previewTask.progress || 0) * 0.4, 50);
-        progressBar.style.width = pct + '%';
-        status.textContent = '🎨 Building preview... ' + (previewTask.progress || 0) + '%';
-      }
-      
-      // Refine stage (if not draft quality)
-      if (window._gen3dQuality !== 'draft') {
-        status.textContent = '✨ Refining with textures...';
-        const refineResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d', {
-          method: 'POST', headers,
-          body: JSON.stringify({ mode: 'refine', preview_task_id: taskId })
-        });
-        if (!refineResp.ok) { const err = await refineResp.json().catch(()=>({})); throw new Error(err.message || 'Refine error: ' + refineResp.status); }
-        const refineData = await refineResp.json();
-        taskId = refineData.result;
-        
-        let _pollCount2 = 0;
-        while (true) {
-          if (++_pollCount2 > 100) throw new Error('Refine timed out after 5 minutes');
-          await new Promise(r => setTimeout(r, 3000));
-          const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
-          const refineTask = await pollResp.json();
-          if (refineTask.status === 'SUCCEEDED') { previewTask = refineTask; break; }
-          if (refineTask.status === 'FAILED') throw new Error('Refine failed: ' + (refineTask.task_error?.message || 'unknown'));
-          pct = Math.min(50 + (refineTask.progress || 0) * 0.45, 95);
-          progressBar.style.width = pct + '%';
-          status.textContent = '✨ Refining... ' + (refineTask.progress || 0) + '%';
-        }
-      }
-      
-      // Download GLB
-      const glbUrl = previewTask.model_urls?.glb;
-      if (!glbUrl) throw new Error('No GLB URL in response');
-      const glbResp = await fetch(glbUrl);
-      const glbBlob = await glbResp.blob();
-      window._gen3dResultBlob = glbBlob;
-      window._gen3dResultUrl = URL.createObjectURL(glbBlob);
-      
-    } else {
-      // Image-to-3D (single step)
-      status.textContent = '🧠 Sending image to Meshy AI...';
-      const imgResp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d', {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          image_url: window._gen3dImage, // data URI works!
-          enable_pbr: true,
-          should_remesh: window._gen3dQuality !== 'draft',
-          should_texture: true,
-        })
-      });
-      if (!imgResp.ok) { const err = await imgResp.json().catch(()=>({})); throw new Error(err.message || 'Meshy API error: ' + imgResp.status); }
-      const imgData = await imgResp.json();
-      taskId = imgData.result;
-      
-      // Poll until done
-      let imgTask;
-      let _pollCount3 = 0;
-      while (true) {
-        if (++_pollCount3 > 100) throw new Error('Image-to-3D timed out after 5 minutes');
-        await new Promise(r => setTimeout(r, 3000));
-        const pollResp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
-        imgTask = await pollResp.json();
-        if (imgTask.status === 'SUCCEEDED') break;
-        if (imgTask.status === 'FAILED') throw new Error('Generation failed: ' + (imgTask.task_error?.message || 'unknown'));
-        pct = Math.min(5 + (imgTask.progress || 0) * 0.9, 95);
-        progressBar.style.width = pct + '%';
-        status.textContent = '🧠 Generating 3D model... ' + (imgTask.progress || 0) + '%';
-      }
-      
-      // Download GLB
-      const glbUrl = imgTask.model_urls?.glb;
-      if (!glbUrl) throw new Error('No GLB URL in response');
-      const glbResp = await fetch(glbUrl);
-      const glbBlob = await glbResp.blob();
-      window._gen3dResultBlob = glbBlob;
-      window._gen3dResultUrl = URL.createObjectURL(glbBlob);
-    }
-    
-    clearInterval(progressInterval);
-    progressBar.style.width = '100%';
-    const sizeMB = window._gen3dResultBlob ? (window._gen3dResultBlob.size / 1048576).toFixed(1) : '?';
-    status.textContent = '✅ Done! ' + sizeMB + 'MB GLB model';
-    result.style.display = 'block';
-  } catch (err) {
-    clearInterval(progressInterval);
-    status.textContent = '❌ Error: ' + err.message;
-    progressBar.style.width = '0%';
-  }
-  
-  btn.disabled = false; btn.textContent = '🚀 Generate 3D Model'; btn.style.opacity = '1';
-}
-
-function gen3dAddToScene() {
-  if (!window._gen3dResultUrl) return;
-  const name = 'generated_' + Date.now();
-  const url = window._gen3dResultUrl;
-  gltfLoader.load(url, (gltf) => {
-    const model = gltf.scene;
-    const box = new THREE.Box3().setFromObject(model);
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (maxDim > 0.001) model.scale.setScalar(2.0 / maxDim);
-    model.castShadow = true;
-    model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-    model.userData.name = name;
-    model.userData.isGLB = true;
-    // Position near player, grounded on terrain
-    const px = (characterController ? characterController.position.x : 0) + (Math.random() - 0.5) * 6;
-    const pz = (characterController ? characterController.position.z : 0) + (Math.random() - 0.5) * 6;
-    addObj(name, model, px, pz);
-    showToast('✓ 3D model added to scene!');
-  });
-  document.getElementById('gen3d-modal').remove();
-}
-
-function gen3dDownload() {
-  if (!window._gen3dResultBlob) return;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(window._gen3dResultBlob);
-  a.download = 'crate-engine-model-' + Date.now() + '.glb';
-  a.click();
-  showToast('💾 GLB downloaded!');
-}
-
-function gen3dSellOnMarketplace() {
-  if (!window._gen3dResultBlob) return;
-  const listingId = 'listing_' + Date.now();
-  const listingName = prompt('Name your model:', 'AI Generated Model') || 'AI Generated Model';
-  
-  // Save blob to IndexedDB
-  _modelDB.save(listingId, listingName, 'premium', window._gen3dResultBlob).then(() => {
-    _assetCatalog = null;
-  });
-  
-  // Save listing metadata to localStorage
-  const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
-  listings.push({
-    id: listingId,
-    name: listingName,
-    creator: localStorage.getItem('crate-username') || 'Anonymous',
-    price: 0,
-    format: 'glb',
-    created: new Date().toISOString(),
-    downloads: 0,
-  });
-  localStorage.setItem('crate-marketplace-listings', JSON.stringify(listings));
-  showToast('💰 Listed on marketplace! Model saved to your library too.');
-  document.getElementById('gen3d-modal').remove();
-}
-
-function gen3dSaveToLibrary() {
-  if (!window._gen3dResultBlob) return;
-  const modelName = prompt('Name this model:', 'AI Model ' + new Date().toLocaleDateString()) || 'AI Model';
-  const category = prompt('Category (characters, weapons, buildings, vehicles, furniture, nature, scifi, food):', 'food') || 'food';
-  
-  const modelId = 'user_' + Date.now();
-  
-  // Save to IndexedDB (persistent, survives cache clear)
-  _modelDB.save(modelId, modelName, category.toLowerCase(), window._gen3dResultBlob).then(() => {
-    // Invalidate catalog cache so it shows in gallery immediately
-    _assetCatalog = null;
-    showToast('📚 Saved to library! Find it in "' + category + '" category.');
-  });
-  
-  // Also save to localStorage as backup
-  const reader = new FileReader();
-  reader.onload = () => {
-    const saved = JSON.parse(localStorage.getItem('crate-user-models') || '[]');
-    saved.push({ id: modelId, name: modelName, category: category.toLowerCase(), data_b64: reader.result.split(',')[1], created: new Date().toISOString() });
-    localStorage.setItem('crate-user-models', JSON.stringify(saved));
-  };
-  reader.readAsDataURL(window._gen3dResultBlob);
-  
-  document.getElementById('gen3d-modal').remove();
-}
-
-// Pricing modal
-function showPricingModal() {
-  if (document.getElementById('pricing-modal')) document.getElementById('pricing-modal').remove();
-  const m = document.createElement('div');
-  m.id = 'pricing-modal';
-  m.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
-      <div style="background:#1a1a2e;border-radius:16px;width:720px;padding:32px;color:#fff">
-        <h2 style="text-align:center;margin:0 0 8px">⚡ Crate Engine Plans</h2>
-        <p style="text-align:center;color:#888;margin:0 0 24px;font-size:14px">Generate 3D models. Sell on marketplace. Build games.</p>
-        <div style="display:flex;gap:16px">
-          ${[
-            { name: 'Starter', price: '4.99', credits: '100', models: '100 standard / 50 HD', color: '#3b82f6' },
-            { name: 'Pro', price: '14.99', credits: '500', models: '500 standard / 250 HD', color: '#8b5cf6', pop: true },
-            { name: 'Studio', price: '39.99', credits: '2,000', models: '2,000 standard / 1,000 HD', color: '#f59e0b' },
-          ].map(p => `
-            <div style="flex:1;background:${p.pop ? '#1a1a4e' : '#0d0d1a'};border:${p.pop ? '2px solid #8b5cf6' : '1px solid #333'};border-radius:12px;padding:20px;text-align:center;position:relative">
-              ${p.pop ? '<div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#8b5cf6;padding:2px 12px;border-radius:10px;font-size:11px;font-weight:600">POPULAR</div>' : ''}
-              <div style="font-size:18px;font-weight:700;color:${p.color}">${p.name}</div>
-              <div style="font-size:32px;font-weight:800;margin:8px 0">$${p.price}<span style="font-size:14px;color:#888">/mo</span></div>
-              <div style="color:#aaa;font-size:13px;margin-bottom:12px">${p.credits} credits/month</div>
-              <div style="color:#888;font-size:12px;margin-bottom:16px">${p.models}</div>
-              <ul style="text-align:left;list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:#aaa">
-                <li style="margin:4px 0">✅ Image to 3D</li>
-                <li style="margin:4px 0">✅ GLB/OBJ export</li>
-                <li style="margin:4px 0">✅ Add to scene</li>
-                <li style="margin:4px 0">✅ Sell on marketplace</li>
-                ${p.name !== 'Starter' ? '<li style="margin:4px 0">✅ HD quality</li>' : ''}
-                ${p.name === 'Studio' ? '<li style="margin:4px 0">✅ API access</li><li style="margin:4px 0">✅ Priority queue</li>' : ''}
-              </ul>
-              <button onclick="selectPlan('${p.name.toLowerCase()}', ${p.credits.replace(',','')}, ${p.price})" style="width:100%;padding:10px;border:none;border-radius:8px;background:${p.color};color:#fff;font-weight:600;cursor:pointer">Choose ${p.name}</button>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(m);
-}
-
-function selectPlan(plan, credits, price) {
-  // For now, just set credits locally (Stripe integration later)
-  window._userCredits = { plan, credits, used: 0 };
-  saveCredits();
-  showToast('✅ Plan activated! ' + credits + ' credits loaded.');
-  if (document.getElementById('pricing-modal')) document.getElementById('pricing-modal').remove();
-  if (document.getElementById('gen3d-modal')) {
-    document.getElementById('gen3d-modal').remove();
-    showGeneratorModal(); // Refresh to show new credits
-  }
-}
-
-// 3D generator button removed
-
-// Hook into AI agent — "generate" commands open the generator
-window._handleGenerateCommand = function(cmd) {
-  const lower = cmd.toLowerCase();
-  if (lower.match(/^(generate|create|make)\s+(a\s+)?3d\s+(model|asset|object)/i) || 
-      lower === '3d generator' || lower === 'generator' || lower === 'generate 3d' || lower === 'generate 3d model') {
-    showGeneratorModal();
-    return '🎨 Opening 3D Generator...';
-  }
-  return null;
-};
-
-console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
 
 
 // === AUTO-RECORD MODE (v218 — orbit camera recording) ===

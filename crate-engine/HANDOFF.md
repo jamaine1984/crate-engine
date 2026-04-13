@@ -16,37 +16,32 @@
   - Custom domain: `crateshipgames.com`
 - **Deploy command:**
   ```bash
-  cd ~/.openclaw/workspace/crate-engine
-  npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true --branch=main
+  cd /Users/jamainemartin/Desktop/crate-engine
+  npm run build
+  npx wrangler pages deploy dist/ --project-name=crateship-games --commit-dirty=true --branch=main
   ```
-- **Build output:** `web/` (static files, no build step)
-- **Models:** `web/models/` (~2GB, NOT tracked in git — already on Cloudflare CDN)
+- **Build output:** `dist/` (Vite build)
+- **Models:** `/models/` via the repo-root `models` symlink (NOT tracked in git)
 
 ### Code Structure
 ```
-web/
+repo root/
 ├── play.html          # Main engine page
 ├── index.html         # Landing page
-├── engine.mjs         # Core engine (~28K lines) — commands, scene, rendering
+├── engine.mjs         # Core engine runtime
 ├── character.mjs      # Player + NPC controllers, animations, weapons, combat
-├── collision.mjs      # Octree physics, capsule collider
-├── voice-commands.mjs # Voice/text command mapping
-├── ai-agent.mjs       # City builder AI agent
-├── sound.mjs          # Audio system
-├── mobile.mjs         # Touch controls
-├── multiplayer-client.mjs  # WebSocket multiplayer
-├── auth.mjs           # Stripe + auth
-├── self-smarter.mjs   # Self-improvement loop (OpenRouter)
-├── savesystem.mjs     # Save/load system
-├── interpreter.mjs    # Command interpreter v2
-├── _headers           # Cloudflare cache/MIME headers
-└── models/            # 3000+ GLB models (NOT in git)
+├── collision.mjs      # Octree physics
+├── physics.mjs        # Rapier physics bridge
+├── ai-agent.mjs       # AI chat agent + build tools
+├── runtime/           # Bridge/client runtime helpers
+├── scripts/           # Checks, legacy sync, deploy prep
+├── models/            # Symlink to local model store (NOT in git)
+└── crate-engine/web/  # Legacy mirror kept for compatibility only
 ```
 
 ### Key Technical Facts
-- **Three.js:** 0.170.0 via CDN importmap in play.html
-- **character.mjs version:** Bump `?v=XXX` in engine.mjs import when editing character.mjs — CDN caches aggressively
-- **engine.mjs version:** Bump `?v=XXX` in play.html `<script>` tag when editing engine.mjs
+- **Three.js:** 0.180.0
+- **Build system:** Vite + Wrangler, no manual `?v=XXX` cache busting in root runtime
 - **1 unit = 1 meter** in world space
 - **Character height:** Currently set to `3.0 / modelHeight` scale (game-scale, ~3 units tall)
 - **Animations:** Quaternius models have built-in anims (idle, walk, run, jump, attack, death, sit, wave)
@@ -79,6 +74,15 @@ web/
 ---
 
 ## Last Changes (MOST RECENT FIRST)
+
+### 2026-04-12 20:54 — Codex
+- Removed dead local modules `multiplayer-client.mjs` and `self-smarter.mjs`
+- Updated docs and deploy notes to point at `multiplayer-colyseus.mjs` and current cleanup rules
+- Trimmed legacy sync so removed modules no longer get copied into `crate-engine/web`
+
+### 2026-04-12 21:02 — Codex
+- Removed stale top-level `web/` docs copy and normalized remaining legacy `web/models/...` aliases in `model-registry.mjs` to `/models/...`
+- Updated handoff deploy instructions from static `web/` uploads to `npm run build` + `dist/` deploy flow
 
 ### 2026-03-31 19:20 — Hermes  
 - **Merged** Za's fresh-main character fixes into main (character.mjs)
@@ -150,10 +154,11 @@ web/
 
 ### Current Setup: Direct Upload via Wrangler
 ```bash
-cd ~/.openclaw/workspace/crate-engine
-npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true --branch=main
+cd /Users/jamainemartin/Desktop/crate-engine
+npm run build
+npx wrangler pages deploy dist/ --project-name=crateship-games --commit-dirty=true --branch=main
 ```
-**Problem:** Cloudflare's content-addressed asset store skips files with matching chunk hashes. If the file content hasn't changed byte-for-byte, it says "0 files uploaded (already uploaded)" and the deploy appears to succeed but serves stale code. This is why cache-busting `?v=XXX` on imports is critical.
+**Note:** The repo now builds from the root app and deploys `dist/`. The legacy `crate-engine/web/` mirror is compatibility output, not the source of truth.
 
 ### Fix: Connect GitHub → Cloudflare Pages (NOT DONE YET)
 This must be done in the **Cloudflare Dashboard** — wrangler CLI cannot do this.
@@ -165,8 +170,8 @@ This must be done in the **Cloudflare Dashboard** — wrangler CLI cannot do thi
 5. Branch: `main`
 6. Configuration:
    - Framework preset: **None**
-   - Build command: **(leave empty)** — static site, no build step
-   - Build output directory: **`web/`**
+   - Build command: **`npm run build`**
+   - Build output directory: **`dist`**
    - Root directory: **`/`** (the repo root, NOT `crate-engine/`)
 7. Save → triggers first build
 
@@ -185,41 +190,19 @@ Wrangler is already authenticated via `npx wrangler whoami`. If auth expires:
 npx wrangler login
 ```
 
-### Cache Busting (CRITICAL)
-Cloudflare CDN + browser caching is aggressive. When editing files:
-
-1. **character.mjs** — bump `?v=XXX` in engine.mjs:
-   ```js
-   import { CharacterController, ... } from './character.mjs?v=134'
-   //                                                        ^^^^^ bump this
-   ```
-
-2. **engine.mjs** — bump `?v=XXX` in play.html:
-   ```html
-   <script type="module" src="engine.mjs?v=900DEPLOY"></script>
-   <!--                                  ^^^^^^^^^^^ bump this -->
-   ```
-
-3. **Other .mjs files** — check their import lines in engine.mjs, bump similarly
-
-4. **After deploy** — always verify with curl:
-   ```bash
-   curl -s "https://crateshipgames.com/engine.mjs?v=NEW" | head -3
-   ```
+### Cache Busting
+Vite now fingerprints output assets in `dist/assets/`, so manual query-string cache busting should not be added to the root runtime.
 
 ### Deploy Verification Checklist
 After any deploy, confirm:
 ```bash
 # 1. Check deploy URL serves new code
-curl -s "https://<hash>.crateship-games.pages.dev/play" | grep "engine.mjs"
+curl -s "https://<hash>.crateship-games.pages.dev/play.html" | grep "/assets/"
 
 # 2. Check engine loads
-curl -s "https://<hash>.crateship-games.pages.dev/engine.mjs" | head -3
+curl -s "https://<hash>.crateship-games.pages.dev/play.html" | head -20
 
-# 3. Check character module loads  
-curl -s "https://<hash>.crateship-games.pages.dev/character.mjs" | head -3
-
-# 4. Open in browser and check console for errors
+# 3. Open in browser and check console for errors
 # Look for: MIME type errors, 404s, module load failures
 ```
 
@@ -228,21 +211,22 @@ curl -s "https://<hash>.crateship-games.pages.dev/character.mjs" | head -3
 # Delete and recreate (WARNING: removes custom domain mapping temporarily)
 npx wrangler pages project delete crateship-games
 npx wrangler pages project create crateship-games --production-branch=main
-npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true --branch=main
+npx wrangler pages deploy dist/ --project-name=crateship-games --commit-dirty=true --branch=main
 # Then re-add custom domain in Cloudflare dashboard
 ```
 
 ### Git Workflow for Deploy
 ```bash
 # 1. Make changes
-# 2. Bump version strings (see Cache Busting above)
-# 3. Test locally or via preview deploy
-# 4. Commit and push
-git add web/
+# 2. Run checks and build
+npm run check
+npm run build
+# 3. Commit and push
+git add .
 git commit -m "description of changes"
 git push origin main
-# 5. If GitHub→Cloudflare connected: auto-deploys
-# 6. If not connected: manual deploy
-npx wrangler pages deploy web/ --project-name=crateship-games --commit-dirty=true --branch=main
-# 7. Verify (see checklist above)
+# 4. If GitHub→Cloudflare connected: auto-deploys
+# 5. If not connected: manual deploy
+npx wrangler pages deploy dist/ --project-name=crateship-games --commit-dirty=true --branch=main
+# 6. Verify (see checklist above)
 ```

@@ -232,7 +232,7 @@ function updateShooterHUD() {
 
 // === Speed HUD for vehicles ===
 function createSpeedHUD() {
-  let hud = document.getElementById('speed-hud');
+  hud = document.getElementById('speed-hud');
   if (hud) return;
   hud = document.createElement('div');
   hud.id = 'speed-hud';
@@ -251,7 +251,6 @@ import * as THREE from 'three';
 console.log('THREE imported', typeof THREE); window.THREE = THREE;
 window._userScripts = window._userScripts || [];
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import auth from './auth.mjs';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
@@ -293,537 +292,1119 @@ async function loadPostProcessingModules() {
 const gltfLoader = new GLTFLoader();
 window._gltfLoader = gltfLoader;
 const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/');
+const THREE_CDN_VERSION = '0.180.0';
+const DEFAULT_OLLAMA_MODEL = 'gemma4:latest';
+const DEFAULT_COLYSEUS_ENDPOINT = 'ws://127.0.0.1:2567';
+const DEFAULT_COLYSEUS_ROOM = 'crate-world';
+const AI_PROVIDER_KEY = 'crate_ai_provider';
+const AI_MODEL_KEY = 'crate_ai_model';
+const AI_API_KEY_KEY = 'crate_ai_api_key';
+const AI_LEGACY_CONFIG_KEY = 'crate_ai_config';
+const MESHY_API_KEY_STORAGE_KEY = 'crate_meshy_api_key';
+const WEATHER_WATER_PRESET_NAMES = new Set(['tropical', 'storm', 'lake', 'ocean', 'swamp', 'river', 'arctic', 'calm', 'hurricane']);
+let colyseusBridge = null;
+let colyseusLastPoseAt = 0;
+
+dracoLoader.setDecoderPath(`https://cdn.jsdelivr.net/npm/three@${THREE_CDN_VERSION}/examples/jsm/libs/draco/`);
 gltfLoader.setDRACOLoader(dracoLoader);
-import { updateBehaviors, parseIntent, executeIntent } from './godmode.mjs';
-import { SFX, init as initSound, updateMusic, updateAmbient, updateFootsteps, setMusicMood, biomeToMood, biomeToAmbient } from './sound.mjs';
 import './savesystem.mjs';
 import './mobile.mjs';
-import { CharacterController, NPCController, TownBuilder, LevelSystem, CraftingSystem, QuestSystem, DialogueSystem, createMinimap, createGameHUD, updateGameHUD, WEAPON_DATABASE, createWeaponMesh, GamepadManager, MobileControls } from './character.mjs?v=350'
-import { collisionWorld } from './collision.mjs?v=5';
-// Tutorials module removed — file was missing, causing engine boot failure
 // Animation system
 const animationMixers = [];
 const clock = new THREE.Clock();
+let voiceCommandsModule = null;
+let voiceCommandsPromise = null;
+let buildAgentUi = null;
+let buildAgentUiPromise = null;
+let codeEditorModule = null;
+let codeEditorPromise = null;
+let buildingsModule = null;
+let buildingsPromise = null;
+let cityBuilderModule = null;
+let cityBuilderPromise = null;
+let modelRegistryModule = null;
+let modelRegistryPromise = null;
+let navMeshModule = null;
+let navMeshPromise = null;
+let localAiToolsModule = null;
+let localAiToolsPromise = null;
+let speechTtsModule = null;
+let speechTtsPromise = null;
+let debugToolsModule = null;
+let debugToolsPromise = null;
+let colyseusModule = null;
+let colyseusPromise = null;
+let godmodeModule = null;
+let godmodePromise = null;
+let userScriptsModule = null;
+let userScriptsPromise = null;
+let projectToolsModule = null;
+let projectToolsPromise = null;
+let legacyMultiplayerModule = null;
+let legacyMultiplayerPromise = null;
+let aiSettingsUiModule = null;
+let aiSettingsUiPromise = null;
+let generatorUiModule = null;
+let generatorUiPromise = null;
+let authModule = null;
+let authPromise = null;
+let weatherModule = null;
+let weatherPromise = null;
+let weatherRequestToken = 0;
+let utilityUiModule = null;
+let utilityUiPromise = null;
+let worldPresetsModule = null;
+let worldPresetsPromise = null;
+let characterGalleryModule = null;
+let characterGalleryPromise = null;
+let editorToolsModule = null;
+let editorToolsPromise = null;
+let assetBrowserModule = null;
+let assetBrowserPromise = null;
+let gameplayModule = null;
+let gameplayPromise = null;
+let collisionModule = null;
+let collisionPromise = null;
+let physicsModule = null;
+let physicsPromise = null;
+let gameplaySystemsReady = false;
+let gameplaySystemsPromise = null;
+let playModeBootPending = false;
+let WEAPON_DATABASE = Object.create(null);
+let createGameHUD = () => document.getElementById('game-hud-full');
+let updateGameHUD = () => {};
+const GLB_MODELS = window.GLB_MODELS || (window.GLB_MODELS = {});
+const MODEL_SCALE_OVERRIDES = window.MODEL_SCALE_OVERRIDES || (window.MODEL_SCALE_OVERRIDES = {});
+
+function createCollisionWorldFallback() {
+  const colliderPosition = new THREE.Vector3();
+  return {
+    built: false,
+    _dirty: false,
+    _scene: null,
+    _collisionGroup: null,
+    build(root, sceneRef) {
+      this.built = !!root;
+      this._scene = sceneRef || null;
+      this._dirty = false;
+    },
+    markDirty() {
+      this._dirty = true;
+    },
+    rebuildFromGroup(group) {
+      this._collisionGroup = group || this._collisionGroup || null;
+      this.built = !!this._collisionGroup;
+      this._dirty = false;
+    },
+    updateIfDirty() {
+      if (this._dirty && this._collisionGroup) this.rebuildFromGroup(this._collisionGroup);
+    },
+    createPlayerCollider() {
+      return {
+        velocity: new THREE.Vector3(),
+        onFloor: true,
+        onSlope: false,
+        lastGroundY: 0,
+        groundNormal: new THREE.Vector3(0, 1, 0),
+        get position() { return colliderPosition; },
+        setPosition(x, y, z) { colliderPosition.set(x, y, z); },
+        teleport(x, y, z) { colliderPosition.set(x, y, z); },
+        update() {},
+      };
+    },
+  };
+}
+
+function createPhysicsFallback() {
+  return {
+    init: async () => false,
+    addRigidbody: () => null,
+    removeRigidbody: () => {},
+    step: () => {},
+    applyImpulse: () => {},
+    applyForce: () => {},
+    wake: () => {},
+    isReady: () => false,
+    getWorld: () => null,
+    getBodies: () => new Map(),
+    bodyCount: () => 0,
+    clear: () => {},
+  };
+}
+
+let collisionWorld = createCollisionWorldFallback();
+let physics = createPhysicsFallback();
+window._collisionWorld = collisionWorld;
+window._physics = physics;
+
+function searchRegistryModels(query, limit = 10) {
+  return modelRegistryModule?.searchModels ? modelRegistryModule.searchModels(query, limit) : [];
+}
+
+function loadModelRegistryModule() {
+  if (modelRegistryModule) return Promise.resolve(modelRegistryModule);
+  if (!modelRegistryPromise) {
+    modelRegistryPromise = import('./model-registry.mjs').then(async (mod) => {
+      modelRegistryModule = mod;
+      Object.assign(GLB_MODELS, mod.GLB_MODELS || {});
+      Object.assign(MODEL_SCALE_OVERRIDES, mod.MODEL_SCALE_OVERRIDES || {});
+      if (typeof mod.loadModelCatalog === 'function') {
+        await mod.loadModelCatalog().catch(() => ({}));
+      }
+      window.GLB_MODELS = GLB_MODELS;
+      window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
+      return mod;
+    }).catch((err) => {
+      modelRegistryPromise = null;
+      throw err;
+    });
+  }
+  return modelRegistryPromise;
+}
+
+function loadCodeEditorModule() {
+  if (codeEditorModule) return Promise.resolve(codeEditorModule);
+  if (!codeEditorPromise) {
+    codeEditorPromise = import('./code-editor.mjs').then((mod) => {
+      codeEditorModule = mod;
+      return mod;
+    }).catch((err) => {
+      codeEditorPromise = null;
+      throw err;
+    });
+  }
+  return codeEditorPromise;
+}
+
+function syncBuildingsModule(mod = buildingsModule) {
+  if (!mod) return;
+  mod.setBuildingsScene?.(scene);
+}
+
+function loadBuildingsModule() {
+  if (buildingsModule) {
+    syncBuildingsModule(buildingsModule);
+    return Promise.resolve(buildingsModule);
+  }
+  if (!buildingsPromise) {
+    buildingsPromise = import('./buildings.mjs').then((mod) => {
+      buildingsModule = mod;
+      syncBuildingsModule(mod);
+      return mod;
+    }).catch((err) => {
+      buildingsPromise = null;
+      throw err;
+    });
+  }
+  return buildingsPromise;
+}
+
+function syncCityBuilderModule(mod = cityBuilderModule) {
+  if (!mod) return;
+  mod.setCityBuilderScene?.(scene);
+  mod.setCityBuilderObjects?.(objects);
+  mod.setCityBuilderRenderer?.(renderer);
+  mod.setCityBuilderCamera?.(camera);
+  mod.setCityBuilderControls?.(controls);
+  mod.setCityBuilderShowToast?.(showToast);
+  mod.setCityBuilderLoadGLBModel?.(loadGLBModel);
+  mod.setCityBuilderParseAndExecute?.((...args) => parseAndExecute(...args));
+  mod.setCityBuilderBloomPass?.(bloomPass);
+  mod.setCityBuilderRGBELoader?.(RGBELoader);
+}
+
+function loadCityBuilderModule() {
+  if (cityBuilderModule) {
+    syncCityBuilderModule(cityBuilderModule);
+    return Promise.resolve(cityBuilderModule);
+  }
+  if (!cityBuilderPromise) {
+    cityBuilderPromise = import('./city-builder.mjs').then((mod) => {
+      cityBuilderModule = mod;
+      syncCityBuilderModule(mod);
+      return mod;
+    }).catch((err) => {
+      cityBuilderPromise = null;
+      throw err;
+    });
+  }
+  return cityBuilderPromise;
+}
+
+function loadNavMeshModule() {
+  if (navMeshModule) return Promise.resolve(navMeshModule);
+  if (!navMeshPromise) {
+    navMeshPromise = import('./navmesh.mjs').then((mod) => {
+      navMeshModule = mod;
+      return mod;
+    }).catch((err) => {
+      navMeshPromise = null;
+      throw err;
+    });
+  }
+  return navMeshPromise;
+}
+
+function loadLocalAiToolsModule() {
+  if (localAiToolsModule) return Promise.resolve(localAiToolsModule);
+  if (!localAiToolsPromise) {
+    localAiToolsPromise = import('./local-ai-tools.mjs').then((mod) => {
+      localAiToolsModule = mod;
+      return mod;
+    }).catch((err) => {
+      localAiToolsPromise = null;
+      throw err;
+    });
+  }
+  return localAiToolsPromise;
+}
+
+function loadSpeechTtsModule() {
+  if (speechTtsModule) return Promise.resolve(speechTtsModule);
+  if (!speechTtsPromise) {
+    speechTtsPromise = import('./speech-tts.mjs').then((mod) => {
+      speechTtsModule = mod;
+      return mod;
+    }).catch((err) => {
+      speechTtsPromise = null;
+      throw err;
+    });
+  }
+  return speechTtsPromise;
+}
+
+function loadDebugToolsModule() {
+  if (debugToolsModule) return Promise.resolve(debugToolsModule);
+  if (!debugToolsPromise) {
+    debugToolsPromise = import('./debug-tools.mjs').then((mod) => {
+      debugToolsModule = mod;
+      return mod;
+    }).catch((err) => {
+      debugToolsPromise = null;
+      throw err;
+    });
+  }
+  return debugToolsPromise;
+}
+
+function loadColyseusModule() {
+  if (colyseusModule) return Promise.resolve(colyseusModule);
+  if (!colyseusPromise) {
+    colyseusPromise = import('./multiplayer-colyseus.mjs').then((mod) => {
+      colyseusModule = mod;
+      return mod;
+    }).catch((err) => {
+      colyseusPromise = null;
+      throw err;
+    });
+  }
+  return colyseusPromise;
+}
+
+function loadGodmodeModule() {
+  if (godmodeModule) return Promise.resolve(godmodeModule);
+  if (!godmodePromise) {
+    godmodePromise = import('./godmode.mjs').then((mod) => {
+      godmodeModule = mod;
+      return mod;
+    }).catch((err) => {
+      godmodePromise = null;
+      throw err;
+    });
+  }
+  return godmodePromise;
+}
+
+function syncUserScriptsModule(mod = userScriptsModule) {
+  if (!mod) return;
+  mod.setUserScriptsContext?.({
+    getScene: () => scene,
+    getCamera: () => camera,
+    getObjects: () => objects,
+    getTHREE: () => THREE,
+    addObj: (...args) => addObj(...args),
+    showToast: (msg, duration) => showToast(msg, duration),
+    getCharacterController: () => characterController,
+    getNpcController: () => npcController,
+    isPlayMode: () => playMode,
+    getUserAIConfig,
+    getDefaultOllamaModel: () => DEFAULT_OLLAMA_MODEL,
+  });
+}
+
+function loadUserScriptsModule() {
+  if (userScriptsModule) {
+    syncUserScriptsModule(userScriptsModule);
+    return Promise.resolve(userScriptsModule);
+  }
+  if (!userScriptsPromise) {
+    userScriptsPromise = import('./user-scripts.mjs').then((mod) => {
+      userScriptsModule = mod;
+      syncUserScriptsModule(mod);
+      return mod;
+    }).catch((err) => {
+      userScriptsPromise = null;
+      throw err;
+    });
+  }
+  return userScriptsPromise;
+}
+
+function syncProjectToolsModule(mod = projectToolsModule) {
+  if (!mod) return;
+  mod.setProjectToolsContext?.({
+    parseAndExecute: (...args) => parseAndExecute(...args),
+    logOutput: (...args) => logOutput(...args),
+    serializeScene: () => serializeScene(),
+    loadGLBModel: (...args) => loadGLBModel(...args),
+    getGLBModels: () => GLB_MODELS,
+    showToast: (msg, duration) => showToast(msg, duration),
+    getModelDB: () => _modelDB,
+    invalidateAssetCatalog: () => {
+      _assetCatalog = null;
+      assetBrowserModule?.invalidateAssetCatalog?.();
+    },
+    getTHREE: () => THREE,
+    getTerrainMesh: () => window._terrainMesh || null,
+    getSceneObjects: () => window._sceneObjects || objects,
+    isProUser: () => isProUser(),
+    setProStatus: (value) => setProStatus(value),
+  });
+}
+
+function loadProjectToolsModule() {
+  if (projectToolsModule) {
+    syncProjectToolsModule(projectToolsModule);
+    return Promise.resolve(projectToolsModule);
+  }
+  if (!projectToolsPromise) {
+    projectToolsPromise = import('./project-tools.mjs').then((mod) => {
+      projectToolsModule = mod;
+      syncProjectToolsModule(mod);
+      return mod;
+    }).catch((err) => {
+      projectToolsPromise = null;
+      throw err;
+    });
+  }
+  return projectToolsPromise;
+}
+
+function syncLegacyMultiplayerModule(mod = legacyMultiplayerModule) {
+  if (!mod) return;
+  mod.setLegacyMultiplayerContext?.({
+    getScene: () => scene,
+    getCamera: () => camera,
+    getTHREE: () => THREE,
+    getGltfLoader: () => gltfLoader,
+    getAnimationMixers: () => animationMixers,
+    showToast: (msg, duration) => showToast(msg, duration),
+    getCharacterController: () => characterController,
+    parseAndExecute: (...args) => parseAndExecute(...args),
+    getHudUpdate: () => window._hudUpdate || null,
+  });
+}
+
+function loadLegacyMultiplayerModule() {
+  if (legacyMultiplayerModule) {
+    syncLegacyMultiplayerModule(legacyMultiplayerModule);
+    return Promise.resolve(legacyMultiplayerModule);
+  }
+  if (!legacyMultiplayerPromise) {
+    legacyMultiplayerPromise = import('./legacy-multiplayer.mjs').then((mod) => {
+      legacyMultiplayerModule = mod;
+      syncLegacyMultiplayerModule(mod);
+      return mod;
+    }).catch((err) => {
+      legacyMultiplayerPromise = null;
+      throw err;
+    });
+  }
+  return legacyMultiplayerPromise;
+}
+
+function syncAiSettingsUiModule(mod = aiSettingsUiModule) {
+  if (!mod) return;
+  mod.setAiSettingsUiContext?.({
+    getUserAIConfig,
+    setUserAIConfig,
+    getDefaultOllamaModel: () => DEFAULT_OLLAMA_MODEL,
+    getMeshyApiKey,
+    setMeshyApiKey,
+    getMeshyApiBase: () => MESHY_API_BASE,
+  });
+}
+
+function loadAiSettingsUiModule() {
+  if (aiSettingsUiModule) {
+    syncAiSettingsUiModule(aiSettingsUiModule);
+    return Promise.resolve(aiSettingsUiModule);
+  }
+  if (!aiSettingsUiPromise) {
+    aiSettingsUiPromise = import('./ai-settings-ui.mjs').then((mod) => {
+      aiSettingsUiModule = mod;
+      syncAiSettingsUiModule(mod);
+      return mod;
+    }).catch((err) => {
+      aiSettingsUiPromise = null;
+      throw err;
+    });
+  }
+  return aiSettingsUiPromise;
+}
+
+function syncGeneratorUiModule(mod = generatorUiModule) {
+  if (!mod) return;
+  mod.setGeneratorUiContext?.({
+    getMeshyApiKey,
+    getMeshyApiBase: () => MESHY_API_BASE,
+    showMeshyKeyModal,
+    showToast: (msg, duration) => showToast(msg, duration),
+    getCharacterController: () => characterController,
+    getGltfLoader: () => gltfLoader,
+    getTHREE: () => THREE,
+    addObj: (...args) => addObj(...args),
+    getModelDB: () => _modelDB,
+    invalidateAssetCatalog: () => {
+      _assetCatalog = null;
+      assetBrowserModule?.invalidateAssetCatalog?.();
+    },
+  });
+}
+
+function loadGeneratorUiModule() {
+  if (generatorUiModule) {
+    syncGeneratorUiModule(generatorUiModule);
+    return Promise.resolve(generatorUiModule);
+  }
+  if (!generatorUiPromise) {
+    generatorUiPromise = import('./generator-ui.mjs').then((mod) => {
+      generatorUiModule = mod;
+      syncGeneratorUiModule(mod);
+      return mod;
+    }).catch((err) => {
+      generatorUiPromise = null;
+      throw err;
+    });
+  }
+  return generatorUiPromise;
+}
+
+function loadAuthModule() {
+  if (window._crateAuth) return Promise.resolve(window._crateAuth);
+  if (authModule) return Promise.resolve(authModule);
+  if (!authPromise) {
+    authPromise = import('./auth.mjs').then((mod) => {
+      authModule = mod.default || mod;
+      return authModule;
+    }).catch((err) => {
+      authPromise = null;
+      throw err;
+    });
+  }
+  return authPromise;
+}
+
+function loadWeatherModule() {
+  if (weatherModule) return Promise.resolve(weatherModule);
+  if (!weatherPromise) {
+    weatherPromise = import('./weather.mjs').then((mod) => {
+      weatherModule = mod;
+      return mod;
+    }).catch((err) => {
+      weatherPromise = null;
+      throw err;
+    });
+  }
+  return weatherPromise;
+}
+
+function syncUtilityUiModule(mod = utilityUiModule) {
+  if (!mod) return;
+  mod.setUtilityUiContext?.({
+    getCommandShowcase: () => window._COMMANDS_SHOWCASE || {},
+    runCommand: (cmd) => window._runCommand?.(cmd),
+    loadSettings: () => {
+      try {
+        return JSON.parse(localStorage.getItem('crate-settings') || '{}');
+      } catch {
+        return {};
+      }
+    },
+    applySettings: (settings) => {
+      const qualityMap = { low: 0.5, medium: 0.75, high: 1, ultra: window.devicePixelRatio || 1 };
+      renderer.setPixelRatio(qualityMap[settings.quality] || 1);
+      renderer.shadowMap.enabled = settings.shadows;
+      camera.fov = settings.fov;
+      camera.updateProjectionMatrix();
+      if (!settings.fog) scene.fog = null;
+      if (!settings.clouds && _cloudGroup) {
+        scene.remove(_cloudGroup);
+        _cloudGroup = null;
+      } else if (settings.clouds && !_cloudGroup) {
+        createClouds();
+      }
+      window._mouseSensitivity = settings.sensitivity;
+    },
+    saveSettings: (settings) => {
+      localStorage.setItem('crate-settings', JSON.stringify(settings));
+    },
+    showToast: (msg, duration) => showToast(msg, duration),
+  });
+}
+
+function loadUtilityUiModule() {
+  if (utilityUiModule) {
+    syncUtilityUiModule(utilityUiModule);
+    return Promise.resolve(utilityUiModule);
+  }
+  if (!utilityUiPromise) {
+    utilityUiPromise = import('./utility-ui.mjs').then((mod) => {
+      utilityUiModule = mod;
+      syncUtilityUiModule(mod);
+      return mod;
+    }).catch((err) => {
+      utilityUiPromise = null;
+      throw err;
+    });
+  }
+  return utilityUiPromise;
+}
+
+function loadWorldPresetsModule() {
+  if (worldPresetsModule) return Promise.resolve(worldPresetsModule);
+  if (!worldPresetsPromise) {
+    worldPresetsPromise = import('./world-presets.mjs').then((mod) => {
+      worldPresetsModule = mod;
+      return mod;
+    }).catch((err) => {
+      worldPresetsPromise = null;
+      throw err;
+    });
+  }
+  return worldPresetsPromise;
+}
+
+function syncCharacterGalleryModule(mod = characterGalleryModule) {
+  if (!mod) return;
+  mod.setCharacterGalleryContext?.({
+    getSelectedCharacterType: () => selectedCharacterType,
+    setSelectedCharacterType: (value) => { selectedCharacterType = value; },
+    getCharacterController: () => characterController,
+    getRenderer: () => renderer,
+    getCanvas: () => canvas,
+    getScene: () => scene,
+    getCamera: () => camera,
+    getDracoLoader: () => dracoLoader,
+  });
+}
+
+function loadCharacterGalleryModule() {
+  if (characterGalleryModule) {
+    syncCharacterGalleryModule(characterGalleryModule);
+    return Promise.resolve(characterGalleryModule);
+  }
+  if (!characterGalleryPromise) {
+    characterGalleryPromise = import('./character-gallery.mjs').then((mod) => {
+      characterGalleryModule = mod;
+      syncCharacterGalleryModule(mod);
+      return mod;
+    }).catch((err) => {
+      characterGalleryPromise = null;
+      throw err;
+    });
+  }
+  return characterGalleryPromise;
+}
+
+async function findCharacterLibraryEntry(id) {
+  const mod = await loadCharacterGalleryModule();
+  return mod.findCharacterLibraryEntry(id);
+}
+
+function syncEditorToolsModule(mod = editorToolsModule) {
+  if (!mod) return;
+  mod.setEditorToolsContext?.({
+    showToast: (msg, duration) => showToast(msg, duration),
+    getScene: () => scene,
+    getRenderer: () => renderer,
+    getCamera: () => camera,
+    getCurrentGround: () => currentGround,
+    loadGroundTexture: (type) => loadGroundTexture(type),
+    loadGLBModel: (...args) => loadGLBModel(...args),
+    runCommand: (cmd) => parseAndExecute(cmd),
+    getGLBModels: () => GLB_MODELS,
+  });
+}
+
+function loadEditorToolsModule() {
+  if (editorToolsModule) {
+    syncEditorToolsModule(editorToolsModule);
+    return Promise.resolve(editorToolsModule);
+  }
+  if (!editorToolsPromise) {
+    editorToolsPromise = import('./editor-tools-ui.mjs').then((mod) => {
+      editorToolsModule = mod;
+      syncEditorToolsModule(mod);
+      return mod;
+    }).catch((err) => {
+      editorToolsPromise = null;
+      throw err;
+    });
+  }
+  return editorToolsPromise;
+}
+
+async function ensureFabAliasesLoaded() {
+  const mod = await loadEditorToolsModule();
+  return mod.ensureFabAliasesLoaded?.() || {};
+}
+
+function syncAssetBrowserModule(mod = assetBrowserModule) {
+  if (!mod) return;
+  mod.setAssetBrowserContext?.({
+    loadAssetCatalog: () => _loadAssetCatalog(),
+    getCharacterCount: async () => (await loadCharacterGalleryModule()).getCharacterLibrary().length,
+    showCharacterGallery: () => showCharacterGallery(),
+    getGltfLoader: () => gltfLoader,
+    showToast: (msg, duration) => showToast(msg, duration),
+  });
+}
+
+function loadAssetBrowserModule() {
+  if (assetBrowserModule) {
+    syncAssetBrowserModule(assetBrowserModule);
+    return Promise.resolve(assetBrowserModule);
+  }
+  if (!assetBrowserPromise) {
+    assetBrowserPromise = import('./asset-browser-ui.mjs').then((mod) => {
+      assetBrowserModule = mod;
+      syncAssetBrowserModule(mod);
+      return mod;
+    }).catch((err) => {
+      assetBrowserPromise = null;
+      throw err;
+    });
+  }
+  return assetBrowserPromise;
+}
+
+async function applyWaterPresetToObject(obj, preset) {
+  if (!obj?.userData?.isGerstnerWater) return null;
+  const mod = await loadWeatherModule();
+  const presetConfig = mod.WATER_PRESETS?.[preset];
+  if (!presetConfig || !obj.material?.uniforms) return null;
+  const uniforms = obj.material.uniforms;
+  uniforms.waveA.value.set(...presetConfig.waveA);
+  uniforms.waveB.value.set(...presetConfig.waveB);
+  uniforms.waveC.value.set(...presetConfig.waveC);
+  uniforms.waterColor.value.copy(presetConfig.color);
+  uniforms.deepColor.value.copy(presetConfig.deepColor);
+  uniforms.foamIntensity.value = presetConfig.foamIntensity;
+  uniforms.specularPower.value = presetConfig.specularPower;
+  uniforms.fresnelPower.value = presetConfig.fresnelPower;
+  uniforms.opacity.value = presetConfig.opacity;
+  obj.userData.waterPreset = preset;
+  mod.setCurrentWaterPreset?.(preset);
+  return presetConfig;
+}
+
+let userScriptsBootScheduled = false;
+function scheduleSavedUserScriptsLoad() {
+  if (userScriptsBootScheduled) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem('crate-user-scripts') || '[]');
+    if (!Array.isArray(saved) || !saved.length) return;
+  } catch {
+    return;
+  }
+  userScriptsBootScheduled = true;
+  const bootSavedScripts = () => {
+    loadUserScriptsModule().then((mod) => {
+      mod.initializeUserScripts?.();
+    }).catch((err) => {
+      console.warn('[AI Sandbox] Deferred script load failed:', err);
+    });
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => bootSavedScripts(), { timeout: 1500 });
+  } else {
+    setTimeout(bootSavedScripts, 400);
+  }
+}
+
+function syncCollisionWorld(mod = collisionModule) {
+  if (!mod?.collisionWorld) return;
+  collisionWorld = mod.collisionWorld;
+  collisionWorld._collisionGroup = collisionGroup || collisionWorld._collisionGroup || null;
+  if (collisionGroup?.children?.length) collisionWorld.rebuildFromGroup(collisionGroup);
+  else if (currentGround && scene) collisionWorld.build(currentGround, scene);
+  window._collisionWorld = collisionWorld;
+}
+
+function loadCollisionModule() {
+  if (collisionModule) {
+    syncCollisionWorld(collisionModule);
+    return Promise.resolve(collisionModule);
+  }
+  if (!collisionPromise) {
+    collisionPromise = import('./collision.mjs').then((mod) => {
+      collisionModule = mod;
+      syncCollisionWorld(mod);
+      return mod;
+    }).catch((err) => {
+      collisionPromise = null;
+      throw err;
+    });
+  }
+  return collisionPromise;
+}
+
+function syncPhysicsModule(mod = physicsModule) {
+  if (!mod?.default) return;
+  physics = mod.default;
+  window._physics = physics;
+}
+
+function loadPhysicsModule() {
+  if (physicsModule) {
+    syncPhysicsModule(physicsModule);
+    return Promise.resolve(physicsModule);
+  }
+  if (!physicsPromise) {
+    physicsPromise = import('./physics.mjs').then((mod) => {
+      physicsModule = mod;
+      syncPhysicsModule(mod);
+      return mod;
+    }).catch((err) => {
+      physicsPromise = null;
+      throw err;
+    });
+  }
+  return physicsPromise;
+}
+
+function syncGameplayModule(mod = gameplayModule) {
+  if (!mod) return;
+  WEAPON_DATABASE = mod.WEAPON_DATABASE || WEAPON_DATABASE;
+  createGameHUD = mod.createGameHUD || createGameHUD;
+  updateGameHUD = mod.updateGameHUD || updateGameHUD;
+}
+
+function loadGameplayModule() {
+  if (gameplayModule) {
+    syncGameplayModule(gameplayModule);
+    return Promise.resolve(gameplayModule);
+  }
+  if (!gameplayPromise) {
+    gameplayPromise = import('./character.mjs').then((mod) => {
+      gameplayModule = mod;
+      syncGameplayModule(mod);
+      return mod;
+    }).catch((err) => {
+      gameplayPromise = null;
+      throw err;
+    });
+  }
+  return gameplayPromise;
+}
+
+function syncGameplayGlobals() {
+  window.characterController = characterController;
+  window._characterController = characterController;
+  window.npcController = npcController;
+}
+
+async function ensureGameSystemsLoaded() {
+  if (gameplaySystemsReady && characterController && npcController) return gameplayModule;
+  if (!gameplaySystemsPromise) {
+    gameplaySystemsPromise = (async () => {
+      const [gameplay] = await Promise.all([
+        loadGameplayModule(),
+        loadCollisionModule(),
+      ]);
+      syncGameplayModule(gameplay);
+      if (!questSystem && gameplay.QuestSystem) questSystem = new gameplay.QuestSystem();
+      if (!dialogueSystem && gameplay.DialogueSystem) dialogueSystem = new gameplay.DialogueSystem();
+      if (!characterController && gameplay.CharacterController) {
+        characterController = new gameplay.CharacterController(scene, camera, objects);
+        characterController._autoSpawned = false;
+      }
+      if (!npcController && gameplay.NPCController && characterController) {
+        npcController = new gameplay.NPCController(scene, camera, objects, characterController);
+      }
+      if (!townBuilder && gameplay.TownBuilder) {
+        townBuilder = new gameplay.TownBuilder(scene, objects, loadGLBModel);
+      }
+      if (!gameHUD && typeof createGameHUD === 'function') {
+        gameHUD = createGameHUD();
+      }
+      if (!levelSystem && gameplay.LevelSystem && characterController) {
+        levelSystem = new gameplay.LevelSystem(characterController);
+      }
+      if (!craftingSystem && gameplay.CraftingSystem && characterController) {
+        craftingSystem = new gameplay.CraftingSystem(characterController);
+      }
+      if (!window._gamepad && gameplay.GamepadManager && characterController) {
+        window._gamepad = new gameplay.GamepadManager(characterController);
+      }
+      if (!window._mobileControls && gameplay.MobileControls && characterController) {
+        window._mobileControls = new gameplay.MobileControls(characterController);
+      }
+      syncGameplayGlobals();
+      gameplaySystemsReady = true;
+      return gameplay;
+    })().catch((err) => {
+      gameplaySystemsPromise = null;
+      throw err;
+    });
+  }
+  return gameplaySystemsPromise;
+}
+
+async function ensureGameplayReadyForCommand() {
+  try {
+    await ensureGameSystemsLoaded();
+    return true;
+  } catch (err) {
+    console.warn('[Gameplay] Command load failed:', err);
+    showToast('⚠ Failed to load gameplay systems');
+    return false;
+  }
+}
+let buildAgentSyncInterval = null;
+
+function readSessionValueWithLegacy(key, migrateLegacy = false) {
+  const sessionValue = sessionStorage.getItem(key);
+  if (sessionValue !== null) return sessionValue;
+  if (!migrateLegacy) return null;
+  const legacyValue = localStorage.getItem(key);
+  if (legacyValue !== null) {
+    sessionStorage.setItem(key, legacyValue);
+    localStorage.removeItem(key);
+    return legacyValue;
+  }
+  return null;
+}
+
+function writeSessionValue(key, value) {
+  if (value === null || value === undefined || value === '') {
+    sessionStorage.removeItem(key);
+  } else {
+    sessionStorage.setItem(key, value);
+  }
+  localStorage.removeItem(key);
+}
+
+function migrateLegacyAIConfig() {
+  try {
+    const legacy = JSON.parse(localStorage.getItem(AI_LEGACY_CONFIG_KEY) || 'null');
+    if (!legacy) return;
+    if (legacy.provider && !localStorage.getItem(AI_PROVIDER_KEY)) localStorage.setItem(AI_PROVIDER_KEY, legacy.provider);
+    if (legacy.model && !localStorage.getItem(AI_MODEL_KEY)) localStorage.setItem(AI_MODEL_KEY, legacy.model);
+    if (legacy.apiKey && !sessionStorage.getItem(AI_API_KEY_KEY)) sessionStorage.setItem(AI_API_KEY_KEY, legacy.apiKey);
+    localStorage.removeItem(AI_LEGACY_CONFIG_KEY);
+  } catch {
+    localStorage.removeItem(AI_LEGACY_CONFIG_KEY);
+  }
+}
+
+async function loadVoiceCommandsModule() {
+  if (voiceCommandsModule) return voiceCommandsModule;
+  if (!voiceCommandsPromise) {
+    voiceCommandsPromise = import('./voice-commands.mjs').then((mod) => {
+      voiceCommandsModule = mod;
+      return mod;
+    }).catch((err) => {
+      voiceCommandsPromise = null;
+      throw err;
+    });
+  }
+  return voiceCommandsPromise;
+}
+
+async function ensureBuildAgentUi() {
+  if (buildAgentUi) return buildAgentUi;
+  if (!buildAgentUiPromise) {
+    buildAgentUiPromise = import('./ai-agent.mjs').then(({ CrateAgent }) => {
+      buildAgentUi = new CrateAgent((cmd) => {
+        parseAndExecute(cmd);
+      });
+      if (!buildAgentSyncInterval) {
+        buildAgentSyncInterval = setInterval(() => {
+          if (!buildAgentUi) return;
+          const objs = [];
+          scene.traverse((child) => { if (child.isMesh || child.isGroup) objs.push(child); });
+          buildAgentUi.updateObjects(objs);
+        }, 2000);
+      }
+      return buildAgentUi;
+    }).catch((err) => {
+      buildAgentUiPromise = null;
+      console.warn('[BuildAgent] UI agent not loaded:', err.message);
+      return null;
+    });
+  }
+  return buildAgentUiPromise;
+}
+
+function getDefaultAIConfig() {
+  return { provider: 'ollama', apiKey: '', model: DEFAULT_OLLAMA_MODEL };
+}
+
+function getCurrentSelection() {
+  const sceneObjects = window._sceneObjects || [];
+  return selectedObj || window._lastPlacedObj || sceneObjects[sceneObjects.length - 1] || null;
+}
+
+function getNavStartPoint() {
+  if (playMode && characterController?.position) return characterController.position.clone();
+  return camera.position.clone();
+}
+
+function getAssetSearchCatalog() {
+  return Object.entries(GLB_MODELS || {}).map(([label, value]) => {
+    if (typeof value === 'string') {
+      return { label, file: value, text: `${label} ${value}` };
+    }
+    return {
+      label,
+      file: value?.file || label,
+      text: `${label} ${JSON.stringify(value || {})}`
+    };
+  });
+}
+
+async function getColyseusBridge() {
+  if (!colyseusBridge) {
+    const { ColyseusBridge } = await loadColyseusModule();
+    colyseusBridge = new ColyseusBridge();
+    window._colyseusBridge = colyseusBridge;
+  }
+  return colyseusBridge;
+}
+
+function getColyseusPose() {
+  const position = playMode && characterController?.position ? characterController.position : camera.position;
+  const yaw = playMode && characterController ? characterController.rotation : camera.rotation.y;
+  return {
+    x: position.x,
+    y: position.y,
+    z: position.z,
+    yaw,
+    name: localStorage.getItem('mp_name') || 'Player_' + Math.floor(Math.random() * 9999)
+  };
+}
+
+async function connectColyseusRoom(endpoint = DEFAULT_COLYSEUS_ENDPOINT, roomName = DEFAULT_COLYSEUS_ROOM, options = {}) {
+  const bridge = await getColyseusBridge();
+  if (bridge.connected) await bridge.disconnect();
+  const room = await bridge.connect(endpoint, roomName, {
+    name: options.name || localStorage.getItem('mp_name') || 'Player_' + Math.floor(Math.random() * 9999)
+  });
+  if (typeof room.onMessage === 'function') {
+    room.onMessage('presence', (payload) => {
+      if (!payload || payload.sessionId === room.sessionId) return;
+      addToLog(`🌐 Colyseus joined: ${payload.name || payload.sessionId}`);
+    });
+    room.onMessage('leave', (payload) => {
+      if (!payload) return;
+      addToLog(`🌐 Colyseus left: ${payload.sessionId}`);
+    });
+    room.onMessage('pose', (payload) => {
+      window._lastColyseusPose = payload;
+    });
+  }
+  colyseusLastPoseAt = 0;
+  return room;
+}
+
+function syncColyseusPose(now = performance.now()) {
+  if (!colyseusBridge?.connected) return;
+  if (now - colyseusLastPoseAt < 120) return;
+  colyseusLastPoseAt = now;
+  try {
+    colyseusBridge.sendPose(getColyseusPose());
+  } catch (err) {
+    console.warn('[Colyseus] Pose sync failed:', err.message);
+  }
+}
 
 
 // ═══ MULTIPLAYER LOBBY UI ═══
 
 // === MULTIPLAYER CLIENT ===
-class MultiplayerClient {
-  constructor() {
-    this.ws = null;
-    this.playerId = null;
-    this.room = null;
-    this.peers = new Map(); // id → { model, name, animation, mixer }
-    this.connected = false;
-    this._sendInterval = null;
-  }
-
-  connect(server, room, name) {
-    if (this.ws) this.disconnect();
-    server = server || localStorage.getItem('mp_server') || 'wss://crate-engine-mp.fly.dev';
-    room = room || 'default';
-    name = name || localStorage.getItem('mp_name') || 'Player_' + Math.floor(Math.random() * 9999);
-    
-    try {
-      this.ws = new WebSocket(server);
-    } catch(e) {
-      showToast('❌ Failed to connect: ' + e.message);
-      return;
-    }
-    
-    this.ws.onopen = () => {
-      this.connected = true;
-      this.ws.send(JSON.stringify({ type: 'join', room, name, character: characterController?.characterType || 'knight' }));
-      showToast('🌐 Connecting to ' + room + '...');
-      
-      // Send position updates at 15Hz
-      this._sendInterval = setInterval(() => {
-        if (!characterController || !this.connected) return;
-        const pos = characterController.position;
-        this.ws.send(JSON.stringify({
-          type: 'move',
-          position: { x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2) },
-          rotation: +(characterController.model?.rotation.y || 0).toFixed(3),
-          animation: characterController.stateMachine?.state || 'idle',
-        }));
-      }, 66);
-    };
-    
-    this.ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        this._handleMessage(msg);
-      } catch(err) {}
-    };
-    
-    this.ws.onclose = () => {
-      this.connected = false;
-      if (this._sendInterval) clearInterval(this._sendInterval);
-      this._removePeers();
-      showToast('🌐 Disconnected from multiplayer');
-    };
-    
-    this.ws.onerror = () => {
-      showToast('❌ Multiplayer connection error');
-    };
-  }
-
-  disconnect() {
-    if (this.ws) { this.ws.close(); this.ws = null; }
-    if (this._sendInterval) { clearInterval(this._sendInterval); this._sendInterval = null; }
-    this.connected = false;
-    this._removePeers();
-  }
-
-  chat(message) {
-    if (this.ws && this.connected) {
-      this.ws.send(JSON.stringify({ type: 'chat', message }));
-    }
-  }
-
-  _handleMessage(msg) {
-    switch (msg.type) {
-      case 'joined':
-        this.playerId = msg.playerId;
-        this.room = msg.room;
-        showToast('🌐 Joined room: ' + (msg.roomName || msg.room) + ' (Player #' + msg.playerId + ')');
-        // Spawn existing players
-        if (msg.players) msg.players.forEach(p => this._spawnPeer(p));
-        break;
-        
-      case 'player_joined':
-        this._spawnPeer(msg.player);
-        showToast('👤 ' + msg.player.name + ' joined');
-        break;
-        
-      case 'player_left':
-        this._removePeer(msg.id);
-        showToast('👤 ' + (msg.name || 'Player') + ' left');
-        break;
-        
-      case 'player_moved':
-        this._updatePeer(msg.id, msg.position, msg.rotation, msg.animation);
-        break;
-        
-      case 'chat':
-        this._showChat(msg.name, msg.message);
-        break;
-        
-      case 'scene_command':
-        // Another player ran a command — execute it locally
-        if (typeof parseAndExecute === 'function') parseAndExecute(msg.command);
-        break;
-        
-      case 'player_attack':
-        // Show attack animation on peer
-        const peer = this.peers.get(msg.id);
-        if (peer && peer.mixer) {
-          // trigger attack anim
-        }
-        break;
-        
-      case 'pong':
-        const ping = Date.now() - (msg.time || 0);
-        if (window._hudUpdate) window._hudUpdate.interact('Ping: ' + ping + 'ms');
-        break;
-    }
-  }
-
-  _spawnPeer(data) {
-    if (this.peers.has(data.id)) return;
-    const charType = data.character || 'knight';
-    const url = 'models/character_' + charType + '.glb';
-    gltfLoader.load(url, (gltf) => {
-      const model = gltf.scene;
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      model.scale.setScalar(1.8 / Math.max(size.y, 0.01));
-      model.position.set(data.position?.x || 0, data.position?.y || 0, data.position?.z || 0);
-      model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-      
-      const nameTag = document.createElement('div');
-      nameTag.style.cssText = 'position:fixed;color:' + (data.color || '#fff') + ';font-size:11px;font-family:system-ui;pointer-events:none;z-index:9990;text-shadow:0 1px 3px rgba(0,0,0,0.8);font-weight:600;';
-      nameTag.textContent = data.name || 'Player';
-      document.body.appendChild(nameTag);
-      
-      let mixer = null;
-      if (gltf.animations?.length) {
-        mixer = new THREE.AnimationMixer(model);
-        const clips = {};
-        gltf.animations.forEach(clip => { clips[clip.name.replace('HumanArmature|', '').toLowerCase()] = mixer.clipAction(clip); });
-        if (clips.idle) clips.idle.play();
-        animationMixers.push(mixer);
-      }
-      
-      scene.add(model);
-      this.peers.set(data.id, { model, nameTag, mixer, name: data.name, targetPos: new THREE.Vector3(), targetRot: 0, currentAnim: 'idle', clips: {} });
-    }, undefined, () => {
-      const geo = new THREE.BoxGeometry(0.5, 1.8, 0.5);
-      const mat = new THREE.MeshStandardMaterial({ color: data.color || '#ff6b35' });
-      const model = new THREE.Mesh(geo, mat);
-      model.position.set(data.position?.x || 0, 0.9, data.position?.z || 0);
-      scene.add(model);
-      this.peers.set(data.id, { model, targetPos: new THREE.Vector3(), targetRot: 0 });
-    });
-  }
-
-  _removePeer(id) {
-    const peer = this.peers.get(id);
-    if (!peer) return;
-    if (peer.model) scene.remove(peer.model);
-    if (peer.nameTag) peer.nameTag.remove();
-    this.peers.delete(id);
-  }
-
-  _removePeers() {
-    for (const [id] of this.peers) this._removePeer(id);
-  }
-
-  _showChat(name, message) {
-    let chatEl = document.getElementById('mp-chat-log');
-    if (!chatEl) {
-      chatEl = document.createElement('div');
-      chatEl.id = 'mp-chat-log';
-      chatEl.style.cssText = 'position:fixed;bottom:60px;left:20px;max-width:350px;max-height:200px;overflow-y:auto;z-index:9999;pointer-events:none;font-family:system-ui;';
-      document.body.appendChild(chatEl);
-    }
-    const line = document.createElement('div');
-    line.style.cssText = 'color:rgba(255,255,255,0.8);font-size:12px;padding:2px 8px;background:rgba(0,0,0,0.5);border-radius:4px;margin-bottom:2px;animation:hud-fade-out 1s ease-in 10s forwards;';
-    line.innerHTML = '<span style="color:#f59e0b;font-weight:600;">' + name + ':</span> ' + message;
-    chatEl.appendChild(line);
-    chatEl.scrollTop = chatEl.scrollHeight;
-    // Clean old messages
-    while (chatEl.children.length > 20) chatEl.removeChild(chatEl.firstChild);
-  }
-
-  // Call each frame to interpolate peer positions
-  update(dt) {
-    for (const [id, peer] of this.peers) {
-      if (!peer.model) continue;
-      // Lerp position
-      peer.model.position.lerp(peer.targetPos, 0.15);
-      // Lerp rotation
-      const diff = peer.targetRot - peer.model.rotation.y;
-      peer.model.rotation.y += diff * 0.15;
-      
-      // Update name tag (world to screen)
-      if (peer.nameTag && camera) {
-        const worldPos = peer.model.position.clone();
-        worldPos.y += 2.2;
-        worldPos.project(camera);
-        if (worldPos.z < 1) {
-          peer.nameTag.style.left = ((worldPos.x * 0.5 + 0.5) * window.innerWidth) + 'px';
-          peer.nameTag.style.top = ((-worldPos.y * 0.5 + 0.5) * window.innerHeight) + 'px';
-          peer.nameTag.style.display = 'block';
-        } else {
-          peer.nameTag.style.display = 'none';
-        }
-      }
-    }
-  }
-}
-window._mp = new MultiplayerClient();
-
 function showMultiplayerLobby() {
-  let existing = document.getElementById('mp-lobby-modal');
-  if (existing) { existing.remove(); return; }
-  
-  const modal = document.createElement('div');
-  modal.id = 'mp-lobby-modal';
-  Object.assign(modal.style, {
-    position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:'500',
-    background:'#0d0d0d', border:'1px solid #333', borderRadius:'16px', padding:'28px',
-    width:'500px', maxHeight:'80vh', overflowY:'auto', color:'#eee',
-    fontFamily:"'Inter',system-ui,sans-serif", boxShadow:'0 20px 60px rgba(0,0,0,0.8)',
+  loadLegacyMultiplayerModule().then((mod) => mod.showMultiplayerLobby()).catch((err) => {
+    console.error('[Legacy Multiplayer] Lobby failed:', err);
+    showToast('❌ Multiplayer tools failed to load');
   });
-  
-  modal.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="margin:0;font-size:1.2rem">🌐 Multiplayer</h2>
-      <button onclick="this.closest('#mp-lobby-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
-    </div>
-    
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <input id="mp-name" value="${localStorage.getItem('mp_name')||'Player'}" placeholder="Your name" style="flex:1;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.85rem">
-      <input id="mp-server" value="${localStorage.getItem('mp_server')||'wss://crate-engine-mp.fly.dev'}" placeholder="Server URL" style="flex:2;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.85rem">
-    </div>
-    
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button id="mp-quick-join" style="flex:1;padding:12px;background:linear-gradient(135deg,#ff6b35,#f7c948);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.9rem">⚡ Quick Match</button>
-      <button id="mp-create" style="flex:1;padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">🏗️ Create Room</button>
-      <button id="mp-refresh" style="padding:12px 16px;background:#111;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">🔄</button>
-    </div>
-    
-    <div id="mp-rooms" style="min-height:100px">
-      <div style="text-align:center;color:#555;padding:20px">Click 🔄 to load rooms or ⚡ Quick Match to jump in</div>
-    </div>
-    
-    <div id="mp-status" style="margin-top:12px;font-size:0.78rem;color:#666"></div>
-    
-    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #1a1a1a">
-      <p style="font-size:0.72rem;color:#555">
-        <strong>Self-host:</strong> Run <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">node server/multiplayer.mjs</code> or deploy to Railway/Render/Fly.io<br>
-        <strong>Commands:</strong> <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">multiplayer</code> / <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">join [room]</code> / <code style="background:#1a1a2e;padding:2px 6px;border-radius:4px;color:#f7c948">chat [message]</code>
-      </p>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  
-  const statusEl = document.getElementById('mp-status');
-  
-  document.getElementById('mp-quick-join').onclick = async () => {
-    const server = document.getElementById('mp-server').value;
-    const name = document.getElementById('mp-name').value;
-    localStorage.setItem('mp_server', server); localStorage.setItem('mp_name', name);
-    statusEl.innerHTML = '<span style="color:#f7c948">Matchmaking...</span>';
-    try {
-      const httpUrl = server.replace('ws://', 'http://').replace('wss://', 'https://');
-      const resp = await fetch(httpUrl.replace(/:\d+.*/, ':' + new URL(server.replace('ws','http')).port) + '/matchmake', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ scene: null }),
-      });
-      const data = await resp.json();
-      if (data.room) {
-        statusEl.innerHTML = '<span style="color:#4ade80">Joining ' + data.room + '...</span>';
-        if (window._mp) { window._mp.connect(server, data.room, name); }
-        setTimeout(() => modal.remove(), 1000);
-      }
-    } catch(e) {
-      statusEl.innerHTML = '<span style="color:#f87171">Could not reach server. Is it running?</span>';
-    }
-  };
-  
-  document.getElementById('mp-create').onclick = () => {
-    const server = document.getElementById('mp-server').value;
-    const name = document.getElementById('mp-name').value;
-    const roomId = 'room_' + Date.now().toString(36);
-    localStorage.setItem('mp_server', server); localStorage.setItem('mp_name', name);
-    if (window._mp) { window._mp.connect(server, roomId, name); }
-    statusEl.innerHTML = '<span style="color:#4ade80">Created room: ' + roomId + '</span>';
-    setTimeout(() => modal.remove(), 1500);
-  };
-  
-  document.getElementById('mp-refresh').onclick = async () => {
-    const server = document.getElementById('mp-server').value;
-    const roomsEl = document.getElementById('mp-rooms');
-    roomsEl.innerHTML = '<div style="text-align:center;color:#f7c948;padding:10px">Loading...</div>';
-    try {
-      const httpUrl = server.replace('ws://', 'http://').replace('wss://', 'https://');
-      const port = new URL(server.replace('ws','http')).port || '8860';
-      const resp = await fetch(httpUrl.split(':' + port)[0] + ':' + port + '/lobby');
-      const data = await resp.json();
-      if (data.rooms.length === 0) {
-        roomsEl.innerHTML = '<div style="text-align:center;color:#555;padding:20px">No rooms yet — create one!</div>';
-      } else {
-        roomsEl.innerHTML = data.rooms.map(r => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#111;border:1px solid #1a1a1a;border-radius:8px;margin-bottom:6px">
-            <div>
-              <strong style="color:#fff">${r.name}</strong>
-              <span style="color:#666;font-size:0.75rem;margin-left:8px">${r.scene || 'custom'}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="color:#888;font-size:0.8rem">${r.players}/${r.maxPlayers}</span>
-              <button onclick="window._mp&&window._mp.connect('${server}','${r.id}',document.getElementById('mp-name').value);this.closest('#mp-lobby-modal').remove()" style="padding:6px 14px;background:#ff6b35;border:none;border-radius:6px;color:#fff;font-size:0.78rem;cursor:pointer;font-weight:600">Join</button>
-            </div>
-          </div>
-        `).join('');
-      }
-    } catch(e) {
-      roomsEl.innerHTML = '<div style="text-align:center;color:#f87171;padding:20px">Could not reach server</div>';
-    }
-  };
 }
 window.showMultiplayerLobby = showMultiplayerLobby;
 
-// ═══ USER AI MODEL CONFIG ═══
-const AI_PROVIDERS = {
-  'claude': { name: 'Claude (Anthropic)', url: 'https://api.anthropic.com/v1/messages', header: 'x-api-key' },
-  'openai': { name: 'OpenAI / GPT', url: 'https://api.openai.com/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
-  'gemini': { name: 'Google Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', param: 'key' },
-  'groq': { name: 'Groq', url: 'https://api.groq.com/openai/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
-  'mistral': { name: 'Mistral AI', url: 'https://api.mistral.ai/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
-  'deepseek': { name: 'DeepSeek', url: 'https://api.deepseek.com/v1/chat/completions', header: 'Authorization', prefix: 'Bearer ' },
-  'ollama': { name: 'Ollama (Local)', url: 'http://localhost:11434/api/generate', header: null },
-};
-
 function getUserAIConfig() {
+  const fallback = getDefaultAIConfig();
+  migrateLegacyAIConfig();
   try {
-    return JSON.parse(localStorage.getItem('crate_ai_config') || 'null') || { provider: null, apiKey: null, model: null };
-  } catch { return { provider: null, apiKey: null, model: null }; }
+    const provider = localStorage.getItem(AI_PROVIDER_KEY) || fallback.provider;
+    const model = localStorage.getItem(AI_MODEL_KEY) || fallback.model;
+    const apiKey = readSessionValueWithLegacy(AI_API_KEY_KEY, true) || '';
+    return { ...fallback, provider, model, apiKey };
+  } catch {
+    return fallback;
+  }
 }
 function setUserAIConfig(provider, apiKey, model) {
-  localStorage.setItem('crate_ai_config', JSON.stringify({ provider, apiKey, model }));
+  localStorage.setItem(AI_PROVIDER_KEY, provider || getDefaultAIConfig().provider);
+  localStorage.setItem(AI_MODEL_KEY, model || (provider === 'ollama' ? DEFAULT_OLLAMA_MODEL : ''));
+  writeSessionValue(AI_API_KEY_KEY, apiKey || '');
+  localStorage.removeItem(AI_LEGACY_CONFIG_KEY);
 }
 
-// AI Settings Modal
+scheduleSavedUserScriptsLoad();
+
 function showAISettingsModal() {
-  let existing = document.getElementById('ai-settings-modal');
-  if (existing) { existing.remove(); return; }
-  
-  const config = getUserAIConfig();
-  const modal = document.createElement('div');
-  modal.id = 'ai-settings-modal';
-  Object.assign(modal.style, {
-    position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:'500',
-    background:'#0d0d0d', border:'1px solid #333', borderRadius:'16px', padding:'28px',
-    width:'420px', maxHeight:'80vh', overflowY:'auto', color:'#eee',
-    fontFamily:"'Inter',system-ui,sans-serif", boxShadow:'0 20px 60px rgba(0,0,0,0.8)',
+  loadAiSettingsUiModule().then((mod) => mod.showAISettingsModal()).catch((err) => {
+    console.error('[AI Settings] Modal failed:', err);
+    showToast('❌ AI settings failed to load');
   });
-  
-  const providers = Object.entries(AI_PROVIDERS).map(([k,v]) => 
-    `<option value="${k}" ${config.provider===k?'selected':''}>${v.name}</option>`
-  ).join('');
-  
-  modal.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="margin:0;font-size:1.2rem">🤖 AI Model Settings</h2>
-      <button onclick="this.closest('#ai-settings-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
-    </div>
-    <p style="color:#888;font-size:0.8rem;margin-bottom:16px">Connect your own AI model for advanced scene generation, code assist, and NPC dialogue.</p>
-    
-    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Provider</label>
-    <select id="ai-provider" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:14px;font-size:0.85rem">
-      <option value="">None (use built-in commands only)</option>
-      ${providers}
-    </select>
-    
-    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">API Key</label>
-    <input id="ai-apikey" type="password" value="${config.apiKey||''}" placeholder="sk-..." style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:14px;font-size:0.85rem;box-sizing:border-box">
-    
-    <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Model (optional)</label>
-    <input id="ai-model" value="${config.model||''}" placeholder="e.g. gpt-4o, claude-3-sonnet, gemini-pro" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:20px;font-size:0.85rem;box-sizing:border-box">
-    
-    <div style="display:flex;gap:10px">
-      <button id="ai-save-btn" style="flex:1;padding:10px;background:linear-gradient(135deg,#ff6b35,#f7c948);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.9rem">Save</button>
-      <button id="ai-test-btn" style="flex:1;padding:10px;background:#1a1a2e;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.9rem">Test Connection</button>
-    </div>
-    <div id="ai-status" style="margin-top:12px;font-size:0.78rem;color:#666"></div>
-  `;
-  document.body.appendChild(modal);
-  
-  document.getElementById('ai-save-btn').onclick = () => {
-    const p = document.getElementById('ai-provider').value;
-    const k = document.getElementById('ai-apikey').value;
-    const m = document.getElementById('ai-model').value;
-    setUserAIConfig(p, k, m);
-    document.getElementById('ai-status').innerHTML = '<span style="color:#4ade80">✓ Saved!</span>';
-    setTimeout(() => modal.remove(), 1000);
-  };
-  
-  document.getElementById('ai-test-btn').onclick = async () => {
-    const p = document.getElementById('ai-provider').value;
-    const k = document.getElementById('ai-apikey').value;
-    const statusEl = document.getElementById('ai-status');
-    if (!p || !k) { statusEl.innerHTML = '<span style="color:#f87171">⚠️ Select provider and enter API key</span>'; return; }
-    statusEl.innerHTML = '<span style="color:#f7c948">Testing...</span>';
-    try {
-      const prov = AI_PROVIDERS[p];
-      const headers = { 'Content-Type': 'application/json' };
-      if (prov.header) headers[prov.header] = (prov.prefix||'') + k;
-      const resp = await fetch(prov.url, { method: 'POST', headers, body: '{}' }).catch(() => null);
-      if (resp && (resp.status < 500)) {
-        statusEl.innerHTML = '<span style="color:#4ade80">✓ Connection OK (status ' + resp.status + ')</span>';
-      } else {
-        statusEl.innerHTML = '<span style="color:#f87171">⚠️ Could not reach API</span>';
-      }
-    } catch(e) {
-      statusEl.innerHTML = '<span style="color:#f87171">⚠️ Error: ' + e.message + '</span>';
-    }
-  };
 }
 window.showAISettingsModal = showAISettingsModal;
 
-// ═══ MESHY API KEY MODAL ═══
 function showMeshyKeyModal() {
-  if (document.getElementById('meshy-key-modal')) document.getElementById('meshy-key-modal').remove();
-  const existingKey = getMeshyApiKey();
-  const m = document.createElement('div');
-  m.id = 'meshy-key-modal';
-  m.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
-      <div style="background:#1a1a2e;border-radius:16px;width:480px;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5);padding:28px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <h2 style="margin:0;font-size:1.3rem">🔑 Connect Meshy AI</h2>
-          <button onclick="this.closest('#meshy-key-modal').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button>
-        </div>
-        <p style="color:#888;font-size:0.85rem;margin-bottom:16px">Generate 3D models from text or images using Meshy AI. Connect your own Meshy account — <a href="https://www.meshy.ai/settings/api" target="_blank" style="color:#6366f1">get an API key here</a>.</p>
-        <p style="color:#666;font-size:0.78rem;margin-bottom:12px">Free tier: 200 credits/month. Pro ($16/mo): 1000 credits. Your key stays in your browser (localStorage).</p>
-        
-        <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Meshy API Key</label>
-        <input id="meshy-key-input" type="password" value="${existingKey}" placeholder="msy-..." style="width:100%;padding:12px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.9rem;box-sizing:border-box;margin-bottom:16px">
-        
-        <div style="display:flex;gap:10px">
-          <button id="meshy-save-btn" style="flex:1;padding:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.95rem">Save Key</button>
-          <button id="meshy-test-btn" style="flex:1;padding:12px;background:#2a2a4a;border:1px solid #333;border-radius:10px;color:#aaa;cursor:pointer;font-size:0.95rem">Test Connection</button>
-        </div>
-        <div id="meshy-key-status" style="margin-top:10px;font-size:0.8rem;color:#666;text-align:center"></div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(m);
-  
-  document.getElementById('meshy-save-btn').onclick = () => {
-    const key = document.getElementById('meshy-key-input').value.trim();
-    setMeshyApiKey(key);
-    document.getElementById('meshy-key-status').innerHTML = '<span style="color:#4ade80">✓ Saved! You can now generate 3D models.</span>';
-    setTimeout(() => m.remove(), 1200);
-  };
-  
-  document.getElementById('meshy-test-btn').onclick = async () => {
-    const key = document.getElementById('meshy-key-input').value.trim();
-    const statusEl = document.getElementById('meshy-key-status');
-    if (!key) { statusEl.innerHTML = '<span style="color:#f87171">Enter your Meshy API key (msy-...)</span>'; return; }
-    statusEl.innerHTML = '<span style="color:#fbbf24">Testing...</span>';
-    try {
-      const resp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d?page_size=1', { headers: { 'Authorization': 'Bearer ' + key } });
-      if (resp.ok) {
-        statusEl.innerHTML = '<span style="color:#4ade80">✓ Connected to Meshy AI!</span>';
-      } else {
-        const err = await resp.json().catch(()=>({}));
-        statusEl.innerHTML = '<span style="color:#f87171">❌ ' + (err.message || 'Auth failed — check your key') + '</span>';
-      }
-    } catch(e) {
-      statusEl.innerHTML = '<span style="color:#f87171">❌ Connection error</span>';
-    }
-  };
+  loadAiSettingsUiModule().then((mod) => mod.showMeshyKeyModal()).catch((err) => {
+    console.error('[Meshy Settings] Modal failed:', err);
+    showToast('❌ Meshy settings failed to load');
+  });
 }
 window.showMeshyKeyModal = showMeshyKeyModal;
 
-// ═══ GAME MODES SELECTOR ═══
-function showGameModesModal() {
-  if (document.getElementById('game-modes-modal')) { document.getElementById('game-modes-modal').remove(); return; }
-  const m = document.createElement('div');
-  m.id = 'game-modes-modal';
-  
-  const presets = {
-    zombie: { icon: '🧟', name: 'Zombie Survival', desc: 'Survive waves of undead in an abandoned city', color: '#dc2626' },
-    racing: { icon: '🏎️', name: 'Street Racing', desc: 'Race through city streets in sports cars', color: '#f59e0b' },
-    rpg: { icon: '⚔️', name: 'Fantasy RPG', desc: 'Medieval world with quests and combat', color: '#8b5cf6' },
-    survival: { icon: '🏕️', name: 'Survival Sandbox', desc: 'Gather, build, survive the night', color: '#22c55e' },
-    fps: { icon: '🔫', name: 'Arena FPS', desc: 'Fast-paced first-person combat', color: '#ef4444' },
-    horror: { icon: '👻', name: 'Horror Exploration', desc: 'Dark abandoned town — something watches', color: '#6b21a8' },
-    city_builder: { icon: '🏗️', name: 'City Builder', desc: 'Build your dream city from scratch', color: '#3b82f6' },
-    sandbox: { icon: '🎨', name: 'Creative Sandbox', desc: 'No rules, infinite freedom', color: '#14b8a6' },
-  };
-  
-  const cards = Object.entries(presets).map(([key, p]) => 
-    '<div onclick="document.getElementById(\'game-modes-modal\').remove();execSingle(\'' + key + ' game\')" style="background:#1a1a2e;border:2px solid #333;border-radius:12px;padding:16px;cursor:pointer;transition:all 0.2s;display:flex;gap:12px;align-items:center" onmouseenter="this.style.borderColor=\'' + p.color + '\';this.style.transform=\'scale(1.02)\'" onmouseleave="this.style.borderColor=\'#333\';this.style.transform=\'scale(1)\'">' +
-    '<div style="font-size:2rem;width:48px;text-align:center">' + p.icon + '</div>' +
-    '<div><div style="font-weight:700;font-size:0.95rem;color:#fff">' + p.name + '</div>' +
-    '<div style="color:#888;font-size:0.78rem;margin-top:2px">' + p.desc + '</div></div></div>'
-  ).join('');
-  
-  m.innerHTML = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">' +
-    '<div style="background:#0d0d1a;border-radius:16px;width:520px;max-height:85vh;overflow-y:auto;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5);padding:28px">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
-    '<div><h2 style="margin:0;font-size:1.4rem">🎮 Game Modes</h2>' +
-    '<p style="margin:4px 0 0;color:#888;font-size:0.8rem">Pick a mode — instant playable game</p></div>' +
-    '<button onclick="this.closest(\'#game-modes-modal\').remove()" style="background:none;border:none;color:#666;font-size:1.5rem;cursor:pointer">✕</button></div>' +
-    '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div></div></div>';
-  document.body.appendChild(m);
+function showGeneratorModal() {
+  loadGeneratorUiModule().then((mod) => mod.showGeneratorModal()).catch((err) => {
+    console.error('[3D Generator] Modal failed:', err);
+    showToast('❌ 3D generator failed to load');
+  });
 }
+window.showGeneratorModal = showGeneratorModal;
+
+function handleGenerateCommand(cmd) {
+  const lower = String(cmd || '').toLowerCase();
+  if (
+    lower.match(/^(generate|create|make)\s+(a\s+)?3d\s+(model|asset|object)/i) ||
+    lower === '3d generator' ||
+    lower === 'generator' ||
+    lower === 'generate 3d' ||
+    lower === 'generate 3d model'
+  ) {
+    showGeneratorModal();
+    return '🎨 Opening 3D Generator...';
+  }
+  return null;
+}
+window._handleGenerateCommand = handleGenerateCommand;
+
+// ═══ GAME MODES SELECTOR ═══
+function showGameModesModal() { true }
 window.showGameModesModal = showGameModesModal;
 
 
@@ -925,41 +1506,118 @@ function _showEditorUI() {
 }
 
 function enterPlayMode() {
+  // Play = camera mode. User spawns NPC separately if they want one.
+  if (!characterController) {
+    if (!playModeBootPending) {
+      playModeBootPending = true;
+      ensureGameSystemsLoaded().then(() => {
+        playModeBootPending = false;
+        if (!playMode) _activatePlayMode();
+      }).catch((err) => {
+        playModeBootPending = false;
+        console.warn('[Gameplay] Failed to load play systems:', err);
+        showToast('⚠ Failed to load gameplay systems');
+      });
+    }
+    return '⏳ Loading gameplay systems...';
+  }
+  _activatePlayMode();
+  return '🎮 Play mode — fly camera! Type "spawn soldier" for a character.';
+}
+
+function _activatePlayMode() {
   startReplayRecording();
   playMode = true; window._playMode = true;
-    if (window._mobileControls && window._mobileControls.show) window._mobileControls.show();
   _hideEditorUI();
-  // Create or find avatar
-  playAvatar = objects.find(o => o.userData.name && o.userData.name.includes('player'));
-  if (!playAvatar) {
-    // Use camera as player
-    playAvatar = null;
-  }
-  // Spawn player on terrain surface
-  let spawnY = 2;
-  if (terrainMesh) {
-    const rc = new THREE.Raycaster(new THREE.Vector3(0, 200, 0), new THREE.Vector3(0, -1, 0));
-    const hits = rc.intersectObject(terrainMesh);
-    if (hits.length > 0) spawnY = hits[0].point.y + 2;
-  }
-  camera.position.set(0, spawnY, 0);
-  // Adjust spawn to safe position — check for nearby collision
-  if (characterController && characterController.position) {
-    characterController.position.set(5, spawnY + 1, 5); // Offset from center to avoid spawning in objects
-  }
-  camera.rotation.set(0, 0, 0);
-  try { controls.enabled = false; } catch(e) {}
-  var pi = document.getElementById('prompt-input'); if (pi) { pi.blur(); pi.parentElement.style.display = "none"; } // Create minimap
-  if (typeof createMiniMap === 'function') createMiniMap();
-  createCompass();
-  createStaminaBar();
+  
+  // ALWAYS start in camera mode — user spawns NPC when ready
+  if (characterController) characterController._cameraOnlyMode = true;
+  
+  // Enable smooth orbit controls (like editor but faster)
+  try { 
+    controls.enabled = true;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.1;
+    controls.rotateSpeed = 0.8;
+    controls.zoomSpeed = 1.5;
+    controls.panSpeed = 1.0;
+  } catch(e) {}
+  
+  // Camera mode — no character spawn needed
+  console.log('[Play] Camera mode active');
+  var pi = document.getElementById('prompt-input'); if (pi) { pi.blur(); pi.parentElement.style.display = "none"; }
+  // HUD elements created by game systems — don't duplicate
   showCrosshair(true);
-  return '🎮 Play mode ON — WASD move, Mouse look, G grapple, P photo, V first/third person, C crouch, E interact';
+  
+  // Add character selection button (bottom center)
+  if (!document.getElementById('char-select-btn')) {
+    const btn = document.createElement('div');
+    btn.id = 'char-select-btn';
+    btn.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:#fff;font-family:monospace;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;z-index:9998;border:1px solid rgba(255,255,255,0.2);';
+    btn.textContent = '👤 Change Character';
+    btn.onclick = () => {
+      const types = characterController ? Object.keys(characterController.characterModels) : [];
+      const menu = document.createElement('div');
+      menu.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);padding:12px;border-radius:8px;z-index:9999;display:flex;gap:8px;flex-wrap:wrap;max-width:400px;';
+      types.forEach(t => {
+        const b = document.createElement('button');
+        b.textContent = t;
+        b.style.cssText = 'padding:6px 12px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;';
+        b.onclick = () => { menu.remove(); if(window._parseAndExecute) window._parseAndExecute('spawn ' + t); };
+        menu.appendChild(b);
+      });
+      const close = document.createElement('button');
+      close.textContent = '✕';
+      close.style.cssText = 'padding:6px 10px;background:#600;color:#fff;border:1px solid #800;border-radius:4px;cursor:pointer;';
+      close.onclick = () => menu.remove();
+      menu.appendChild(close);
+      document.body.appendChild(menu);
+    };
+    document.body.appendChild(btn);
+  }
+  
+  // FPS counter for debugging performance
+  if (!document.getElementById('fps-counter')) {
+    const fpsEl = document.createElement('div');
+    fpsEl.id = 'fps-counter';
+    fpsEl.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font-family:monospace;font-size:14px;z-index:9999;pointer-events:none;text-shadow:0 0 3px #000;';
+    document.body.appendChild(fpsEl);
+    let frames = 0, lastTime = performance.now();
+    (function updateFPS() {
+      requestAnimationFrame(updateFPS);
+      frames++;
+      const now = performance.now();
+      if (now - lastTime >= 1000) {
+        fpsEl.textContent = frames + ' FPS';
+        fpsEl.style.color = frames >= 30 ? '#0f0' : frames >= 15 ? '#ff0' : '#f00';
+        frames = 0;
+        lastTime = now;
+      }
+    })();
+  }
+  
+  // Camera defaults set when user spawns a character
+  
+  // Camera mode — no pointer lock needed, orbit controls handle it
+  
+  // Disable post-processing for play mode FPS
+  window._composerDisabled = true;
+  showToast('🎮 Play mode ON! (fast mode)');
 }
 
 function exitPlayMode() {
   stopReplayRecording();
   playMode = false; window._playMode = false;
+  window._composerDisabled = false;
+  // Clean up play mode HUD elements
+  ['fps-counter','char-select-btn','click-to-play','city-minimap','rain-overlay'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.remove();
+  });
+  // Re-enable orbit controls
+  try { controls.enabled = true; controls.update(); } catch(e) {}
+  // Show editor UI
+  _showEditorUI();
+  showToast('🎮 Back to editor mode');
   _showEditorUI();
   // Hide v215 HUD elements
   ['compass','crosshair','stamina-bar','interact-prompt','damage-vignette','underwater-fx','speed-lines','kill-feed'].forEach(id => {
@@ -1037,7 +1695,8 @@ setTimeout(() => {
 
 window.addEventListener('keydown', e => {
   if (typeof dialogueSystem !== 'undefined' && e.key === ' ' && dialogueSystem && dialogueSystem.active) { dialogueSystem.advance(); e.preventDefault(); return; }
-  if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) { showCommandPage(); return; }
+    if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && playMode) { var on = window._sound?.toggleMute(); var msg = document.createElement('div'); msg.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:white;font-family:monospace;font-size:24px;z-index:10001;pointer-events:none;transition:opacity 1s'; msg.textContent=on?'🔊 Sound ON':'🔇 Sound OFF'; document.body.appendChild(msg); setTimeout(function(){msg.style.opacity='0'},1000); setTimeout(function(){msg.remove()},2000); }
   if ((e.key === 'Tab' || e.key === 'i') && playMode && typeof characterController !== 'undefined' && characterController && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
     characterController.toggleInventoryPanel();
@@ -1123,7 +1782,7 @@ function executeTriggerAction(trig, obj) {
     objects.splice(objects.indexOf(obj), 1);
   } else if (trig.action === 'teleport') {
     // Spawn player on terrain surface
-  let spawnY = 2;
+  spawnY = 2;
   if (terrainMesh) {
     const rc = new THREE.Raycaster(new THREE.Vector3(0, 200, 0), new THREE.Vector3(0, -1, 0));
     const hits = rc.intersectObject(terrainMesh);
@@ -1408,63 +2067,7 @@ function updateObjectCounter() {
 
 
 
-// === QUEST SYSTEM (v218b) ===
-let _activeQuests = [];
-let _completedQuests = [];
-let _questUI = null;
 
-function addQuest(quest) {
-  // quest = { id, title, description, objectives: [{text, count, current}], reward }
-  if (_activeQuests.find(function(q) { return q.id === quest.id; })) return;
-  quest.objectives = quest.objectives.map(function(o) { o.current = o.current || 0; return o; });
-  _activeQuests.push(quest);
-  showNotification('📜 New Quest: ' + quest.title);
-  updateQuestUI();
-}
-
-function completeObjective(questId, objectiveIndex) {
-  var quest = _activeQuests.find(function(q) { return q.id === questId; });
-  if (!quest) return;
-  var obj = quest.objectives[objectiveIndex];
-  if (!obj) return;
-  obj.current = Math.min(obj.current + 1, obj.count);
-  // Check if all objectives complete
-  var allDone = quest.objectives.every(function(o) { return o.current >= o.count; });
-  if (allDone) {
-    _completedQuests.push(quest);
-    _activeQuests = _activeQuests.filter(function(q) { return q.id !== questId; });
-    showNotification('✅ Quest Complete: ' + quest.title + (quest.reward ? ' — ' + quest.reward : ''));
-    recordEvent('quest_complete', { id: questId, title: quest.title });
-  }
-  updateQuestUI();
-}
-
-function updateQuestUI() {
-  if (!playMode) return;
-  var el = document.getElementById('quest-tracker');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'quest-tracker';
-    el.style.cssText = 'position:fixed;top:80px;left:12px;max-width:250px;z-index:9002;font-family:-apple-system,sans-serif;pointer-events:none;';
-    document.body.appendChild(el);
-  }
-  if (_activeQuests.length === 0) { el.innerHTML = ''; return; }
-  var html = '';
-  _activeQuests.forEach(function(q) {
-    html += '<div style="background:rgba(0,0,0,0.6);border-left:3px solid #f59e0b;padding:8px 10px;margin-bottom:6px;border-radius:0 6px 6px 0;">';
-    html += '<div style="color:#f59e0b;font-size:12px;font-weight:600;">' + q.title + '</div>';
-    q.objectives.forEach(function(o) {
-      var done = o.current >= o.count;
-      html += '<div style="color:' + (done ? '#4ade80' : '#ccc') + ';font-size:11px;margin-top:3px;">';
-      html += (done ? '✓ ' : '○ ') + o.text + ' (' + o.current + '/' + o.count + ')</div>';
-    });
-    html += '</div>';
-  });
-  el.innerHTML = html;
-}
-
-window.addQuest = addQuest;
-window.completeObjective = completeObjective;
 
 // === NPC DIALOG SYSTEM (v218b) ===
 let _dialogActive = false;
@@ -1723,4875 +2326,6 @@ function showNotification(msg) {
 }
 
 
-// Model name -> GLB file mapping (53 real 3D models)
-
-// ═══════════════════════════════════════════════════════════════
-// SMART MODEL SEARCH — AI searches library by tags/keywords
-// ═══════════════════════════════════════════════════════════════
-let _modelCatalog = null;
-async function loadModelCatalog() {
-  if (_modelCatalog) return _modelCatalog;
-  try {
-    const resp = await fetch('models/catalog.json');
-    _modelCatalog = await resp.json();
-    console.log('[Catalog] Loaded', Object.keys(_modelCatalog).length, 'models');
-  } catch(e) {
-    _modelCatalog = {};
-  }
-  return _modelCatalog;
-}
-
-function searchModels(query, limit = 10) {
-  if (!_modelCatalog) return [];
-  const terms = query.toLowerCase().split(/\s+/);
-  const results = [];
-  
-  for (const [name, info] of Object.entries(_modelCatalog)) {
-    let score = 0;
-    const nameLower = name.toLowerCase();
-    const allTags = info.tags.join(' ').toLowerCase();
-    
-    for (const term of terms) {
-      if (nameLower.includes(term)) score += 3; // Name match = high score
-      if (allTags.includes(term)) score += 1;   // Tag match
-      if (nameLower === term) score += 5;        // Exact match = highest
-    }
-    
-    if (score > 0) results.push({ name, path: info.path, score, tags: info.tags });
-  }
-  
-  return results.sort((a, b) => b.score - a.score).slice(0, limit);
-}
-
-// Load catalog on startup
-loadModelCatalog();
-
-
-// === MODEL SCALE OVERRIDES ===
-const MODEL_SCALE_OVERRIDES = {
-  'hd_ferrari': 2.5,
-  'kenney_cars/sedan': 2.8,
-  'kenney_cars/sedan-sports': 2.8,
-  'kenney_cars/suv': 2.8,
-  'kenney_cars/suv-luxury': 2.8,
-  'kenney_cars/taxi': 2.8,
-  'kenney_cars/police': 2.8,
-  'kenney_cars/hatchback-sports': 2.8,
-  'kenney_cars/van': 2.8,
-  'kenney_cars/truck': 2.8,
-  'kenney_cars/ambulance': 2.8,
-  'kenney_cars/delivery': 2.8,
-  'kenney_cars/firetruck': 2.8,
-  'kenney_cars/garbage-truck': 2.8,
-  'kenney_cars/race': 2.8,
-  'kenney_cars/race-future': 2.8,
-  'helicopter': 2.0,
-  'milk_truck': 2.0,
-};
-window.MODEL_SCALE_OVERRIDES = MODEL_SCALE_OVERRIDES;
-
-const GLB_MODELS = {
-
-  // ═══ COMMON WORD ALIASES (user-friendly names) ═══
-  'car':'hd_ferrari',
-  'sports_car':'kenney_cars/sedan-sports',
-  'sports car':'kenney_cars/sedan-sports',
-  'race_car':'kenney_cars/race',
-  'racecar':'kenney_cars/race',
-  'police_car':'kenney_cars/police',
-  'house':'buildings_pack_2_house1',
-  'tree':'nature_pack_commontree_1',
-  'bush':'nature_pack_bush_1',
-  'pine':'nature_pack_pinetree_1',
-  'palm':'nature_pack_palmtree_1',
-  'building':'kenney_city/building-a',
-  'skyscraper':'kenney_city/building-skyscraper-a',
-  'streetlamp':'lamp_post_modern',
-  'street_lamp':'lamp_post_modern',
-  'lamp_post':'lamp_post_modern',
-  'lamp':'kenney_fantasy/lantern',
-  'campfire':'campfire',
-  'barrel':'barrel_00',
-  'crate':'crate_00',
-  'sword':'medieval_weapons_pack_sword',
-  'shield':'medieval_weapons_pack_shield_round',
-  'bow':'crossbow_00',
-  'horse':'animals_pack_horse',
-  'wolf':'animals_pack_wolf',
-  'fox':'animals_pack_fox',
-  'cow':'animals_pack_cow',
-  'deer':'animals_pack_deer',
-  'dog':'animals_pack_husky',
-  'chair':'chair_00',
-  'table':'table_01',
-  'bench':'medieval_village_pack_bench_1',
-  'fence':'kenney_city/fence',
-  'road':'kenney_city/path-long',
-  'fountain':'fountain',
-  'cart':'kenney_fantasy/cart',
-  'helicopter':'helicopter',
-  'tank':'tank_pack_tank',
-
-  // ═══ QUATERNIUS CREATURES (CC0, animated) ═══
-  'zombie':'npcs/quat_zombie',
-  'zombie_smooth':'npcs/quat_zombiesmooth',
-  'skeleton':'npcs/quat_skeleton',
-  'dragon':'npcs/quat_dragon',
-  'slime':'npcs/quat_slime',
-  'bat':'npcs/quat_bat',
-  'robot':'npcs/quat_robot',
-
-  // ═══ KENNEY ASSET PACKS (CC0) ═══
-  'ambulance':'kenney_cars/ambulance',
-  'box':'kenney_cars/box',
-  'cone-flat':'kenney_cars/cone-flat',
-  'cone':'kenney_cars/cone',
-  'debris-bolt':'kenney_cars/debris-bolt',
-  'debris-bumper':'kenney_cars/debris-bumper',
-  'debris-door-window':'kenney_cars/debris-door-window',
-  'debris-door':'kenney_cars/debris-door',
-  'debris-drivetrain-axle':'kenney_cars/debris-drivetrain-axle',
-  'debris-drivetrain':'kenney_cars/debris-drivetrain',
-  'debris-nut':'kenney_cars/debris-nut',
-  'debris-plate-a':'kenney_cars/debris-plate-a',
-  'debris-plate-b':'kenney_cars/debris-plate-b',
-  'debris-plate-small-a':'kenney_cars/debris-plate-small-a',
-  'debris-plate-small-b':'kenney_cars/debris-plate-small-b',
-  'debris-spoiler-a':'kenney_cars/debris-spoiler-a',
-  'debris-spoiler-b':'kenney_cars/debris-spoiler-b',
-  'debris-tire':'kenney_cars/debris-tire',
-  'delivery-flat':'kenney_cars/delivery-flat',
-  'delivery':'kenney_cars/delivery',
-  'firetruck':'kenney_cars/firetruck',
-  'garbage-truck':'kenney_cars/garbage-truck',
-  'hatchback-sports':'kenney_cars/hatchback-sports',
-  'kart-oobi':'kenney_cars/kart-oobi',
-  'kart-oodi':'kenney_cars/kart-oodi',
-  'kart-ooli':'kenney_cars/kart-ooli',
-  'kart-oopi':'kenney_cars/kart-oopi',
-  'kart-oozi':'kenney_cars/kart-oozi',
-  'police':'kenney_cars/police',
-  'race-future':'kenney_cars/race-future',
-  'race':'kenney_cars/race',
-  'sedan-sports':'kenney_cars/sedan-sports',
-  'sedan':'kenney_cars/sedan',
-  'suv-luxury':'kenney_cars/suv-luxury',
-  'suv':'kenney_cars/suv',
-  'taxi':'kenney_cars/taxi',
-  'tractor-police':'kenney_cars/tractor-police',
-  'tractor-shovel':'kenney_cars/tractor-shovel',
-  'tractor':'kenney_cars/tractor',
-  'truck-flat':'kenney_cars/truck-flat',
-  'truck':'kenney_cars/truck',
-  'van':'kenney_cars/van',
-  'wheel-dark':'kenney_cars/wheel-dark',
-  'wheel-default':'kenney_cars/wheel-default',
-  'wheel-racing':'kenney_cars/wheel-racing',
-  'wheel-tractor-back':'kenney_cars/wheel-tractor-back',
-  'wheel-tractor-dark-back':'kenney_cars/wheel-tractor-dark-back',
-  'wheel-tractor-dark-front':'kenney_cars/wheel-tractor-dark-front',
-  'wheel-tractor-front':'kenney_cars/wheel-tractor-front',
-  'wheel-truck':'kenney_cars/wheel-truck',
-  'building-a':'kenney_city/building-a',
-  'building-b':'kenney_city/building-b',
-  'building-c':'kenney_city/building-c',
-  'building-d':'kenney_city/building-d',
-  'building-e':'kenney_city/building-e',
-  'building-f':'kenney_city/building-f',
-  'building-g':'kenney_city/building-g',
-  'building-h':'kenney_city/building-h',
-  'building-i':'kenney_city/building-i',
-  'building-j':'kenney_city/building-j',
-  'building-k':'kenney_city/building-k',
-  'building-l':'kenney_city/building-l',
-  'building-m':'kenney_city/building-m',
-  'building-n':'kenney_city/building-n',
-  'building-o':'kenney_city/building-o',
-  'building-p':'kenney_city/building-p',
-  'building-q':'kenney_city/building-q',
-  'building-r':'kenney_city/building-r',
-  'building-s':'kenney_city/building-s',
-  'building-skyscraper-a':'kenney_city/building-skyscraper-a',
-  'building-skyscraper-b':'kenney_city/building-skyscraper-b',
-  'building-skyscraper-c':'kenney_city/building-skyscraper-c',
-  'building-skyscraper-d':'kenney_city/building-skyscraper-d',
-  'building-skyscraper-e':'kenney_city/building-skyscraper-e',
-  'building-t':'kenney_city/building-t',
-  'building-type-a':'kenney_city/building-type-a',
-  'building-type-b':'kenney_city/building-type-b',
-  'building-type-c':'kenney_city/building-type-c',
-  'building-type-d':'kenney_city/building-type-d',
-  'building-type-e':'kenney_city/building-type-e',
-  'building-type-f':'kenney_city/building-type-f',
-  'building-type-g':'kenney_city/building-type-g',
-  'building-type-h':'kenney_city/building-type-h',
-  'building-type-i':'kenney_city/building-type-i',
-  'building-type-j':'kenney_city/building-type-j',
-  'building-type-k':'kenney_city/building-type-k',
-  'building-type-l':'kenney_city/building-type-l',
-  'building-type-m':'kenney_city/building-type-m',
-  'building-type-n':'kenney_city/building-type-n',
-  'building-type-o':'kenney_city/building-type-o',
-  'building-type-p':'kenney_city/building-type-p',
-  'building-type-q':'kenney_city/building-type-q',
-  'building-type-r':'kenney_city/building-type-r',
-  'building-type-s':'kenney_city/building-type-s',
-  'building-type-t':'kenney_city/building-type-t',
-  'building-type-u':'kenney_city/building-type-u',
-  'chimney-basic':'kenney_city/chimney-basic',
-  'chimney-large':'kenney_city/chimney-large',
-  'chimney-medium':'kenney_city/chimney-medium',
-  'chimney-small':'kenney_city/chimney-small',
-  'detail-awning-wide':'kenney_city/detail-awning-wide',
-  'detail-awning':'kenney_city/detail-awning',
-  'detail-overhang-wide':'kenney_city/detail-overhang-wide',
-  'detail-overhang':'kenney_city/detail-overhang',
-  'detail-parasol-a':'kenney_city/detail-parasol-a',
-  'detail-parasol-b':'kenney_city/detail-parasol-b',
-  'detail-tank':'kenney_city/detail-tank',
-  'driveway-long':'kenney_city/driveway-long',
-  'driveway-short':'kenney_city/driveway-short',
-  'fence-1x2':'kenney_city/fence-1x2',
-  'fence-1x3':'kenney_city/fence-1x3',
-  'fence-1x4':'kenney_city/fence-1x4',
-  'fence-2x2':'kenney_city/fence-2x2',
-  'fence-2x3':'kenney_city/fence-2x3',
-  'fence-3x2':'kenney_city/fence-3x2',
-  'fence-3x3':'kenney_city/fence-3x3',
-  'fence-low':'kenney_city/fence-low',
-  'fence':'kenney_city/fence',
-  'low-detail-building-a':'kenney_city/low-detail-building-a',
-  'low-detail-building-b':'kenney_city/low-detail-building-b',
-  'low-detail-building-c':'kenney_city/low-detail-building-c',
-  'low-detail-building-d':'kenney_city/low-detail-building-d',
-  'low-detail-building-e':'kenney_city/low-detail-building-e',
-  'low-detail-building-f':'kenney_city/low-detail-building-f',
-  'low-detail-building-g':'kenney_city/low-detail-building-g',
-  'low-detail-building-h':'kenney_city/low-detail-building-h',
-  'low-detail-building-i':'kenney_city/low-detail-building-i',
-  'low-detail-building-j':'kenney_city/low-detail-building-j',
-  'low-detail-building-k':'kenney_city/low-detail-building-k',
-  'low-detail-building-l':'kenney_city/low-detail-building-l',
-  'low-detail-building-m':'kenney_city/low-detail-building-m',
-  'low-detail-building-n':'kenney_city/low-detail-building-n',
-  'low-detail-building-wide-a':'kenney_city/low-detail-building-wide-a',
-  'low-detail-building-wide-b':'kenney_city/low-detail-building-wide-b',
-  'path-long':'kenney_city/path-long',
-  'path-short':'kenney_city/path-short',
-  'path-stones-long':'kenney_city/path-stones-long',
-  'path-stones-messy':'kenney_city/path-stones-messy',
-  'path-stones-short':'kenney_city/path-stones-short',
-  'planter':'kenney_city/planter',
-  'tree-large':'kenney_city/tree-large',
-  'tree-small':'kenney_city/tree-small',
-  'balcony-wall-fence':'kenney_fantasy/balcony-wall-fence',
-  'balcony-wall':'kenney_fantasy/balcony-wall',
-  'banner-green':'kenney_fantasy/banner-green',
-  'banner-red':'kenney_fantasy/banner-red',
-  'blade':'kenney_fantasy/blade',
-  'cart-high':'kenney_fantasy/cart-high',
-  'cart':'kenney_fantasy/cart',
-  'chimney-base':'kenney_fantasy/chimney-base',
-  'chimney-top':'kenney_fantasy/chimney-top',
-  'chimney':'kenney_fantasy/chimney',
-  'fence-broken':'kenney_fantasy/fence-broken',
-  'fence-curved':'kenney_fantasy/fence-curved',
-  'fence-gate':'kenney_fantasy/fence-gate',
-  'fence':'kenney_fantasy/fence',
-  'fountain-center':'kenney_fantasy/fountain-center',
-  'fountain-corner-inner-square':'kenney_fantasy/fountain-corner-inner-square',
-  'fountain-corner-inner':'kenney_fantasy/fountain-corner-inner',
-  'fountain-corner':'kenney_fantasy/fountain-corner',
-  'fountain-curved':'kenney_fantasy/fountain-curved',
-  'fountain-edge':'kenney_fantasy/fountain-edge',
-  'fountain-round-detail':'kenney_fantasy/fountain-round-detail',
-  'fountain-round':'kenney_fantasy/fountain-round',
-  'fountain-square-detail':'kenney_fantasy/fountain-square-detail',
-  'fountain-square':'kenney_fantasy/fountain-square',
-  'hedge-curved':'kenney_fantasy/hedge-curved',
-  'hedge-gate':'kenney_fantasy/hedge-gate',
-  'hedge-large-curved':'kenney_fantasy/hedge-large-curved',
-  'hedge-large-gate':'kenney_fantasy/hedge-large-gate',
-  'hedge-large':'kenney_fantasy/hedge-large',
-  'hedge':'kenney_fantasy/hedge',
-  'lantern':'kenney_fantasy/lantern',
-  'overhang':'kenney_fantasy/overhang',
-  'pillar-stone':'kenney_fantasy/pillar-stone',
-  'pillar-wood':'kenney_fantasy/pillar-wood',
-  'planks-half':'kenney_fantasy/planks-half',
-  'planks-opening':'kenney_fantasy/planks-opening',
-  'planks':'kenney_fantasy/planks',
-  'poles-horizontal':'kenney_fantasy/poles-horizontal',
-  'poles':'kenney_fantasy/poles',
-  'road-bend':'kenney_fantasy/road-bend',
-  'road-corner-inner':'kenney_fantasy/road-corner-inner',
-  'road-corner':'kenney_fantasy/road-corner',
-  'road-curb-end':'kenney_fantasy/road-curb-end',
-  'road-curb':'kenney_fantasy/road-curb',
-  'road-edge-slope':'kenney_fantasy/road-edge-slope',
-  'road-edge':'kenney_fantasy/road-edge',
-  'road-slope':'kenney_fantasy/road-slope',
-  'road':'kenney_fantasy/road',
-  'rock-large':'kenney_fantasy/rock-large',
-  'rock-small':'kenney_fantasy/rock-small',
-  'rock-wide':'kenney_fantasy/rock-wide',
-  'roof-corner-inner':'kenney_fantasy/roof-corner-inner',
-  'roof-corner-round':'kenney_fantasy/roof-corner-round',
-  'roof-corner':'kenney_fantasy/roof-corner',
-  'roof-flat':'kenney_fantasy/roof-flat',
-  'roof-gable-detail':'kenney_fantasy/roof-gable-detail',
-  'roof-gable-end':'kenney_fantasy/roof-gable-end',
-  'roof-gable-top':'kenney_fantasy/roof-gable-top',
-  'roof-gable':'kenney_fantasy/roof-gable',
-  'roof-high-corner-round':'kenney_fantasy/roof-high-corner-round',
-  'roof-high-corner':'kenney_fantasy/roof-high-corner',
-  'roof-high-cornerinner':'kenney_fantasy/roof-high-cornerinner',
-  'roof-high-flat':'kenney_fantasy/roof-high-flat',
-  'roof-high-gable-detail':'kenney_fantasy/roof-high-gable-detail',
-  'roof-high-gable-end':'kenney_fantasy/roof-high-gable-end',
-  'roof-high-gable-top':'kenney_fantasy/roof-high-gable-top',
-  'roof-high-gable':'kenney_fantasy/roof-high-gable',
-  'roof-high-left':'kenney_fantasy/roof-high-left',
-  'roof-high-point':'kenney_fantasy/roof-high-point',
-  'roof-high-right':'kenney_fantasy/roof-high-right',
-  'roof-high-window':'kenney_fantasy/roof-high-window',
-  'roof-high':'kenney_fantasy/roof-high',
-  'roof-left':'kenney_fantasy/roof-left',
-  'roof-point':'kenney_fantasy/roof-point',
-  'roof-right':'kenney_fantasy/roof-right',
-  'roof-window':'kenney_fantasy/roof-window',
-  'roof':'kenney_fantasy/roof',
-  'stairs-full-corner-inner':'kenney_fantasy/stairs-full-corner-inner',
-  'stairs-full-corner-outer':'kenney_fantasy/stairs-full-corner-outer',
-  'stairs-full':'kenney_fantasy/stairs-full',
-  'stairs-stone-corner':'kenney_fantasy/stairs-stone-corner',
-  'stairs-stone-handrail':'kenney_fantasy/stairs-stone-handrail',
-  'stairs-stone-round':'kenney_fantasy/stairs-stone-round',
-  'stairs-stone':'kenney_fantasy/stairs-stone',
-  'stairs-wide-stone-handrail':'kenney_fantasy/stairs-wide-stone-handrail',
-  'stairs-wide-stone':'kenney_fantasy/stairs-wide-stone',
-  'stairs-wide-wood-handrail':'kenney_fantasy/stairs-wide-wood-handrail',
-  'stairs-wide-wood':'kenney_fantasy/stairs-wide-wood',
-  'stairs-wood-handrail':'kenney_fantasy/stairs-wood-handrail',
-  'stairs-wood':'kenney_fantasy/stairs-wood',
-  'stall-bench':'kenney_fantasy/stall-bench',
-  'stall-green':'kenney_fantasy/stall-green',
-  'stall-red':'kenney_fantasy/stall-red',
-  'stall-stool':'kenney_fantasy/stall-stool',
-  'stall':'kenney_fantasy/stall',
-  'tree-crooked':'kenney_fantasy/tree-crooked',
-  'tree-high-crooked':'kenney_fantasy/tree-high-crooked',
-  'tree-high-round':'kenney_fantasy/tree-high-round',
-  'tree-high':'kenney_fantasy/tree-high',
-  'tree':'kenney_fantasy/tree',
-  'wall-arch-top-detail':'kenney_fantasy/wall-arch-top-detail',
-  'wall-arch-top':'kenney_fantasy/wall-arch-top',
-  'wall-arch':'kenney_fantasy/wall-arch',
-  'wall-block-half':'kenney_fantasy/wall-block-half',
-  'wall-block':'kenney_fantasy/wall-block',
-  'wall-broken':'kenney_fantasy/wall-broken',
-  'wall-corner-detail':'kenney_fantasy/wall-corner-detail',
-  'wall-corner-diagonal-half':'kenney_fantasy/wall-corner-diagonal-half',
-  'wall-corner-diagonal':'kenney_fantasy/wall-corner-diagonal',
-  'wall-corner-edge':'kenney_fantasy/wall-corner-edge',
-  'wall-corner':'kenney_fantasy/wall-corner',
-  'wall-curved':'kenney_fantasy/wall-curved',
-  'wall-detail-cross':'kenney_fantasy/wall-detail-cross',
-  'wall-detail-diagonal':'kenney_fantasy/wall-detail-diagonal',
-  'wall-detail-horizontal':'kenney_fantasy/wall-detail-horizontal',
-  'wall-diagonal':'kenney_fantasy/wall-diagonal',
-  'wall-door':'kenney_fantasy/wall-door',
-  'wall-doorway-base':'kenney_fantasy/wall-doorway-base',
-  'wall-doorway-round':'kenney_fantasy/wall-doorway-round',
-  'wall-doorway-square-wide-curved':'kenney_fantasy/wall-doorway-square-wide-curved',
-  'wall-doorway-square-wide':'kenney_fantasy/wall-doorway-square-wide',
-  'wall-doorway-square':'kenney_fantasy/wall-doorway-square',
-  'wall-half':'kenney_fantasy/wall-half',
-  'wall-rounded':'kenney_fantasy/wall-rounded',
-  'wall-side':'kenney_fantasy/wall-side',
-  'wall-slope':'kenney_fantasy/wall-slope',
-  'wall-window-glass':'kenney_fantasy/wall-window-glass',
-  'wall-window-round':'kenney_fantasy/wall-window-round',
-  'wall-window-shutters':'kenney_fantasy/wall-window-shutters',
-  'wall-window-small':'kenney_fantasy/wall-window-small',
-  'wall-window-stone':'kenney_fantasy/wall-window-stone',
-  'wall-wood-arch-top-detail':'kenney_fantasy/wall-wood-arch-top-detail',
-  'wall-wood-arch-top':'kenney_fantasy/wall-wood-arch-top',
-  'wall-wood-arch':'kenney_fantasy/wall-wood-arch',
-  'wall-wood-block-half':'kenney_fantasy/wall-wood-block-half',
-  'wall-wood-block':'kenney_fantasy/wall-wood-block',
-  'wall-wood-broken':'kenney_fantasy/wall-wood-broken',
-  'wall-wood-corner-diagonal-half':'kenney_fantasy/wall-wood-corner-diagonal-half',
-  'wall-wood-corner-diagonal':'kenney_fantasy/wall-wood-corner-diagonal',
-  'wall-wood-corner-edge':'kenney_fantasy/wall-wood-corner-edge',
-  'wall-wood-corner':'kenney_fantasy/wall-wood-corner',
-  'wall-wood-curved':'kenney_fantasy/wall-wood-curved',
-  'wall-wood-detail-cross':'kenney_fantasy/wall-wood-detail-cross',
-  'wall-wood-detail-diagonal':'kenney_fantasy/wall-wood-detail-diagonal',
-  'wall-wood-detail-horizontal':'kenney_fantasy/wall-wood-detail-horizontal',
-  'wall-wood-diagonal':'kenney_fantasy/wall-wood-diagonal',
-  'wall-wood-door':'kenney_fantasy/wall-wood-door',
-  'wall-wood-doorway-base':'kenney_fantasy/wall-wood-doorway-base',
-  'wall-wood-doorway-round':'kenney_fantasy/wall-wood-doorway-round',
-  'wall-wood-doorway-square-wide-curved':'kenney_fantasy/wall-wood-doorway-square-wide-curved',
-  'wall-wood-doorway-square-wide':'kenney_fantasy/wall-wood-doorway-square-wide',
-  'wall-wood-doorway-square':'kenney_fantasy/wall-wood-doorway-square',
-  'wall-wood-half':'kenney_fantasy/wall-wood-half',
-  'wall-wood-rounded':'kenney_fantasy/wall-wood-rounded',
-  'wall-wood-side':'kenney_fantasy/wall-wood-side',
-  'wall-wood-slope':'kenney_fantasy/wall-wood-slope',
-  'wall-wood-window-glass':'kenney_fantasy/wall-wood-window-glass',
-  'wall-wood-window-round':'kenney_fantasy/wall-wood-window-round',
-  'wall-wood-window-shutters':'kenney_fantasy/wall-wood-window-shutters',
-  'wall-wood-window-small':'kenney_fantasy/wall-wood-window-small',
-  'wall-wood-window-stone':'kenney_fantasy/wall-wood-window-stone',
-  'wall-wood':'kenney_fantasy/wall-wood',
-  'wall':'kenney_fantasy/wall',
-  'watermill-wide':'kenney_fantasy/watermill-wide',
-  'watermill':'kenney_fantasy/watermill',
-  'wheel':'kenney_fantasy/wheel',
-  'windmill':'kenney_fantasy/windmill',
-  'altar-stone':'kenney_graveyard/altar-stone',
-  'altar-wood':'kenney_graveyard/altar-wood',
-  'bench-damaged':'kenney_graveyard/bench-damaged',
-  'bench':'kenney_graveyard/bench',
-  'border-pillar':'kenney_graveyard/border-pillar',
-  'brick-wall-curve-small':'kenney_graveyard/brick-wall-curve-small',
-  'brick-wall-curve':'kenney_graveyard/brick-wall-curve',
-  'brick-wall-end':'kenney_graveyard/brick-wall-end',
-  'brick-wall':'kenney_graveyard/brick-wall',
-  'candle-multiple':'kenney_graveyard/candle-multiple',
-  'candle':'kenney_graveyard/candle',
-  'character-ghost':'kenney_graveyard/character-ghost',
-  'character-keeper':'kenney_graveyard/character-keeper',
-  'character-skeleton':'kenney_graveyard/character-skeleton',
-  'character-vampire':'kenney_graveyard/character-vampire',
-  'character-zombie':'kenney_graveyard/character-zombie',
-  'coffin-old':'kenney_graveyard/coffin-old',
-  'coffin':'kenney_graveyard/coffin',
-  'column-large':'kenney_graveyard/column-large',
-  'cross-column':'kenney_graveyard/cross-column',
-  'cross-wood':'kenney_graveyard/cross-wood',
-  'cross':'kenney_graveyard/cross',
-  'crypt-a':'kenney_graveyard/crypt-a',
-  'crypt-b':'kenney_graveyard/crypt-b',
-  'crypt-door':'kenney_graveyard/crypt-door',
-  'crypt-large-door':'kenney_graveyard/crypt-large-door',
-  'crypt-large-roof':'kenney_graveyard/crypt-large-roof',
-  'crypt-large':'kenney_graveyard/crypt-large',
-  'crypt-small-roof':'kenney_graveyard/crypt-small-roof',
-  'crypt-small':'kenney_graveyard/crypt-small',
-  'crypt':'kenney_graveyard/crypt',
-  'debris-wood':'kenney_graveyard/debris-wood',
-  'debris':'kenney_graveyard/debris',
-  'detail-bowl':'kenney_graveyard/detail-bowl',
-  'detail-chalice':'kenney_graveyard/detail-chalice',
-  'detail-plate':'kenney_graveyard/detail-plate',
-  'fence-damaged':'kenney_graveyard/fence-damaged',
-  'fence-gate':'kenney_graveyard/fence-gate',
-  'fence':'kenney_graveyard/fence',
-  'fire-basket':'kenney_graveyard/fire-basket',
-  'grave-border':'kenney_graveyard/grave-border',
-  'grave':'kenney_graveyard/grave',
-  'gravestone-bevel':'kenney_graveyard/gravestone-bevel',
-  'gravestone-broken':'kenney_graveyard/gravestone-broken',
-  'gravestone-cross-large':'kenney_graveyard/gravestone-cross-large',
-  'gravestone-cross':'kenney_graveyard/gravestone-cross',
-  'gravestone-debris':'kenney_graveyard/gravestone-debris',
-  'gravestone-decorative':'kenney_graveyard/gravestone-decorative',
-  'gravestone-roof':'kenney_graveyard/gravestone-roof',
-  'gravestone-round':'kenney_graveyard/gravestone-round',
-  'gravestone-wide':'kenney_graveyard/gravestone-wide',
-  'hay-bale-bundled':'kenney_graveyard/hay-bale-bundled',
-  'hay-bale':'kenney_graveyard/hay-bale',
-  'iron-fence-bar':'kenney_graveyard/iron-fence-bar',
-  'iron-fence-border-column':'kenney_graveyard/iron-fence-border-column',
-  'iron-fence-border-curve':'kenney_graveyard/iron-fence-border-curve',
-  'iron-fence-border-gate':'kenney_graveyard/iron-fence-border-gate',
-  'iron-fence-border':'kenney_graveyard/iron-fence-border',
-  'iron-fence-curve':'kenney_graveyard/iron-fence-curve',
-  'iron-fence-damaged':'kenney_graveyard/iron-fence-damaged',
-  'iron-fence':'kenney_graveyard/iron-fence',
-  'lantern-candle':'kenney_graveyard/lantern-candle',
-  'lantern-glass':'kenney_graveyard/lantern-glass',
-  'lightpost-all':'kenney_graveyard/lightpost-all',
-  'lightpost-double':'kenney_graveyard/lightpost-double',
-  'lightpost-single':'kenney_graveyard/lightpost-single',
-  'pillar-large':'kenney_graveyard/pillar-large',
-  'pillar-obelisk':'kenney_graveyard/pillar-obelisk',
-  'pillar-small':'kenney_graveyard/pillar-small',
-  'pillar-square':'kenney_graveyard/pillar-square',
-  'pine-crooked':'kenney_graveyard/pine-crooked',
-  'pine-fall-crooked':'kenney_graveyard/pine-fall-crooked',
-  'pine-fall':'kenney_graveyard/pine-fall',
-  'pine':'kenney_graveyard/pine',
-  'pumpkin-carved':'kenney_graveyard/pumpkin-carved',
-  'pumpkin-tall-carved':'kenney_graveyard/pumpkin-tall-carved',
-  'pumpkin-tall':'kenney_graveyard/pumpkin-tall',
-  'pumpkin':'kenney_graveyard/pumpkin',
-  'road':'kenney_graveyard/road',
-  'rocks-tall':'kenney_graveyard/rocks-tall',
-  'rocks':'kenney_graveyard/rocks',
-  'shovel-dirt':'kenney_graveyard/shovel-dirt',
-  'shovel':'kenney_graveyard/shovel',
-  'stone-wall-column':'kenney_graveyard/stone-wall-column',
-  'stone-wall-curve':'kenney_graveyard/stone-wall-curve',
-  'stone-wall-damaged':'kenney_graveyard/stone-wall-damaged',
-  'stone-wall':'kenney_graveyard/stone-wall',
-  'trunk-long':'kenney_graveyard/trunk-long',
-  'trunk':'kenney_graveyard/trunk',
-  'urn-round':'kenney_graveyard/urn-round',
-  'urn-square':'kenney_graveyard/urn-square',
-  'barrels':'kenney_medieval/barrels',
-  'battlement-corner-inner':'kenney_medieval/battlement-corner-inner',
-  'battlement-corner-outer':'kenney_medieval/battlement-corner-outer',
-  'battlement-half':'kenney_medieval/battlement-half',
-  'battlement':'kenney_medieval/battlement',
-  'bricks':'kenney_medieval/bricks',
-  'column-damaged':'kenney_medieval/column-damaged',
-  'column-paint-damaged':'kenney_medieval/column-paint-damaged',
-  'column-paint':'kenney_medieval/column-paint',
-  'column-wood':'kenney_medieval/column-wood',
-  'column':'kenney_medieval/column',
-  'detail-barrel':'kenney_medieval/detail-barrel',
-  'detail-crate-ropes':'kenney_medieval/detail-crate-ropes',
-  'detail-crate-small':'kenney_medieval/detail-crate-small',
-  'detail-crate':'kenney_medieval/detail-crate',
-  'dock-corner':'kenney_medieval/dock-corner',
-  'dock-side':'kenney_medieval/dock-side',
-  'fence-top':'kenney_medieval/fence-top',
-  'fence-wood':'kenney_medieval/fence-wood',
-  'fence':'kenney_medieval/fence',
-  'floor-flat':'kenney_medieval/floor-flat',
-  'floor-stairs-corner-inner':'kenney_medieval/floor-stairs-corner-inner',
-  'floor-stairs-corner-outer':'kenney_medieval/floor-stairs-corner-outer',
-  'floor-stairs':'kenney_medieval/floor-stairs',
-  'floor-steps-corner-inner':'kenney_medieval/floor-steps-corner-inner',
-  'floor-steps-corner-outer':'kenney_medieval/floor-steps-corner-outer',
-  'floor-steps':'kenney_medieval/floor-steps',
-  'floor':'kenney_medieval/floor',
-  'ladder':'kenney_medieval/ladder',
-  'overhang-fence':'kenney_medieval/overhang-fence',
-  'overhang-round-railing':'kenney_medieval/overhang-round-railing',
-  'overhang-round':'kenney_medieval/overhang-round',
-  'overhang':'kenney_medieval/overhang',
-  'pulley-crate':'kenney_medieval/pulley-crate',
-  'pulley':'kenney_medieval/pulley',
-  'roof-corner':'kenney_medieval/roof-corner',
-  'roof-edge':'kenney_medieval/roof-edge',
-  'roof-high-side-corner-inner':'kenney_medieval/roof-high-side-corner-inner',
-  'roof-high-side-corner':'kenney_medieval/roof-high-side-corner',
-  'roof-high-side':'kenney_medieval/roof-high-side',
-  'roof-side-corner-inner':'kenney_medieval/roof-side-corner-inner',
-  'roof-side-corner':'kenney_medieval/roof-side-corner',
-  'roof-side':'kenney_medieval/roof-side',
-  'roof':'kenney_medieval/roof',
-  'stairs-corner':'kenney_medieval/stairs-corner',
-  'stairs-stone':'kenney_medieval/stairs-stone',
-  'stairs-wood':'kenney_medieval/stairs-wood',
-  'structure-cross':'kenney_medieval/structure-cross',
-  'structure-pole':'kenney_medieval/structure-pole',
-  'structure-poles':'kenney_medieval/structure-poles',
-  'structure-wall-cross':'kenney_medieval/structure-wall-cross',
-  'structure-wall':'kenney_medieval/structure-wall',
-  'structure':'kenney_medieval/structure',
-  'tower-base':'kenney_medieval/tower-base',
-  'tower-edge':'kenney_medieval/tower-edge',
-  'tower-paint-base':'kenney_medieval/tower-paint-base',
-  'tower-paint':'kenney_medieval/tower-paint',
-  'tower-top':'kenney_medieval/tower-top',
-  'tower':'kenney_medieval/tower',
-  'tree-large':'kenney_medieval/tree-large',
-  'tree-shrub':'kenney_medieval/tree-shrub',
-  'wall-detail':'kenney_medieval/wall-detail',
-  'wall-door':'kenney_medieval/wall-door',
-  'wall-flat-gate':'kenney_medieval/wall-flat-gate',
-  'wall-fortified-door':'kenney_medieval/wall-fortified-door',
-  'wall-fortified-gate-half':'kenney_medieval/wall-fortified-gate-half',
-  'wall-fortified-gate':'kenney_medieval/wall-fortified-gate',
-  'wall-fortified-half':'kenney_medieval/wall-fortified-half',
-  'wall-fortified-paint-door':'kenney_medieval/wall-fortified-paint-door',
-  'wall-fortified-paint-gate':'kenney_medieval/wall-fortified-paint-gate',
-  'wall-fortified-paint-half':'kenney_medieval/wall-fortified-paint-half',
-  'wall-fortified-paint-window':'kenney_medieval/wall-fortified-paint-window',
-  'wall-fortified-paint':'kenney_medieval/wall-fortified-paint',
-  'wall-fortified-window':'kenney_medieval/wall-fortified-window',
-  'wall-fortified':'kenney_medieval/wall-fortified',
-  'wall-gate-half':'kenney_medieval/wall-gate-half',
-  'wall-gate':'kenney_medieval/wall-gate',
-  'wall-half':'kenney_medieval/wall-half',
-  'wall-low':'kenney_medieval/wall-low',
-  'wall-paint-detail':'kenney_medieval/wall-paint-detail',
-  'wall-paint-door':'kenney_medieval/wall-paint-door',
-  'wall-paint-flat':'kenney_medieval/wall-paint-flat',
-  'wall-paint-gate':'kenney_medieval/wall-paint-gate',
-  'wall-paint-half':'kenney_medieval/wall-paint-half',
-  'wall-paint-window':'kenney_medieval/wall-paint-window',
-  'wall-paint':'kenney_medieval/wall-paint',
-  'wall-pane-door':'kenney_medieval/wall-pane-door',
-  'wall-pane-paint-door':'kenney_medieval/wall-pane-paint-door',
-  'wall-pane-paint-window':'kenney_medieval/wall-pane-paint-window',
-  'wall-pane-paint':'kenney_medieval/wall-pane-paint',
-  'wall-pane-painted-wood-door':'kenney_medieval/wall-pane-painted-wood-door',
-  'wall-pane-painted-wood-window':'kenney_medieval/wall-pane-painted-wood-window',
-  'wall-pane-painted-wood':'kenney_medieval/wall-pane-painted-wood',
-  'wall-pane-window':'kenney_medieval/wall-pane-window',
-  'wall-pane-wood-door':'kenney_medieval/wall-pane-wood-door',
-  'wall-pane-wood-window':'kenney_medieval/wall-pane-wood-window',
-  'wall-pane-wood':'kenney_medieval/wall-pane-wood',
-  'wall-pane':'kenney_medieval/wall-pane',
-  'wall-window':'kenney_medieval/wall-window',
-  'wall':'kenney_medieval/wall',
-  'water':'kenney_medieval/water',
-  'wood-floor-half':'kenney_medieval/wood-floor-half',
-  'wood-floor-quarter':'kenney_medieval/wood-floor-quarter',
-  'wood-floor-railing':'kenney_medieval/wood-floor-railing',
-  'wood-floor':'kenney_medieval/wood-floor',
-  'barrel':'kenney_pirate/barrel',
-  'boat-row-large':'kenney_pirate/boat-row-large',
-  'boat-row-small':'kenney_pirate/boat-row-small',
-  'bottle-large':'kenney_pirate/bottle-large',
-  'bottle':'kenney_pirate/bottle',
-  'cannon-ball':'kenney_pirate/cannon-ball',
-  'cannon-mobile':'kenney_pirate/cannon-mobile',
-  'cannon':'kenney_pirate/cannon',
-  'castle-door':'kenney_pirate/castle-door',
-  'castle-gate':'kenney_pirate/castle-gate',
-  'castle-wall':'kenney_pirate/castle-wall',
-  'castle-window':'kenney_pirate/castle-window',
-  'chest':'kenney_pirate/chest',
-  'crate-bottles':'kenney_pirate/crate-bottles',
-  'crate':'kenney_pirate/crate',
-  'flag-high-pennant':'kenney_pirate/flag-high-pennant',
-  'flag-high':'kenney_pirate/flag-high',
-  'flag-pennant':'kenney_pirate/flag-pennant',
-  'flag-pirate-high-pennant':'kenney_pirate/flag-pirate-high-pennant',
-  'flag-pirate-high':'kenney_pirate/flag-pirate-high',
-  'flag-pirate-pennant':'kenney_pirate/flag-pirate-pennant',
-  'flag-pirate':'kenney_pirate/flag-pirate',
-  'flag':'kenney_pirate/flag',
-  'grass-patch':'kenney_pirate/grass-patch',
-  'grass-plant':'kenney_pirate/grass-plant',
-  'grass':'kenney_pirate/grass',
-  'hole':'kenney_pirate/hole',
-  'mast-ropes':'kenney_pirate/mast-ropes',
-  'mast':'kenney_pirate/mast',
-  'palm-bend':'kenney_pirate/palm-bend',
-  'palm-detailed-bend':'kenney_pirate/palm-detailed-bend',
-  'palm-detailed-straight':'kenney_pirate/palm-detailed-straight',
-  'palm-straight':'kenney_pirate/palm-straight',
-  'patch-grass-foliage':'kenney_pirate/patch-grass-foliage',
-  'patch-grass':'kenney_pirate/patch-grass',
-  'patch-sand-foliage':'kenney_pirate/patch-sand-foliage',
-  'patch-sand':'kenney_pirate/patch-sand',
-  'platform-planks':'kenney_pirate/platform-planks',
-  'platform':'kenney_pirate/platform',
-  'rocks-a':'kenney_pirate/rocks-a',
-  'rocks-b':'kenney_pirate/rocks-b',
-  'rocks-c':'kenney_pirate/rocks-c',
-  'rocks-sand-a':'kenney_pirate/rocks-sand-a',
-  'rocks-sand-b':'kenney_pirate/rocks-sand-b',
-  'rocks-sand-c':'kenney_pirate/rocks-sand-c',
-  'ship-ghost':'kenney_pirate/ship-ghost',
-  'ship-large':'kenney_pirate/ship-large',
-  'ship-medium':'kenney_pirate/ship-medium',
-  'ship-pirate-large':'kenney_pirate/ship-pirate-large',
-  'ship-pirate-medium':'kenney_pirate/ship-pirate-medium',
-  'ship-pirate-small':'kenney_pirate/ship-pirate-small',
-  'ship-small':'kenney_pirate/ship-small',
-  'ship-wreck':'kenney_pirate/ship-wreck',
-  'structure-fence-sides':'kenney_pirate/structure-fence-sides',
-  'structure-fence':'kenney_pirate/structure-fence',
-  'structure-platform-dock-small':'kenney_pirate/structure-platform-dock-small',
-  'structure-platform-dock':'kenney_pirate/structure-platform-dock',
-  'structure-platform-small':'kenney_pirate/structure-platform-small',
-  'structure-platform':'kenney_pirate/structure-platform',
-  'structure-roof':'kenney_pirate/structure-roof',
-  'structure':'kenney_pirate/structure',
-  'tool-paddle':'kenney_pirate/tool-paddle',
-  'tool-shovel':'kenney_pirate/tool-shovel',
-  'tower-base-door':'kenney_pirate/tower-base-door',
-  'tower-base':'kenney_pirate/tower-base',
-  'tower-complete-large':'kenney_pirate/tower-complete-large',
-  'tower-complete-small':'kenney_pirate/tower-complete-small',
-  'tower-middle-windows':'kenney_pirate/tower-middle-windows',
-  'tower-middle':'kenney_pirate/tower-middle',
-  'tower-roof':'kenney_pirate/tower-roof',
-  'tower-top':'kenney_pirate/tower-top',
-  'tower-watch':'kenney_pirate/tower-watch',
-  'banner':'kenney_dungeon/banner',
-  'barrel':'kenney_dungeon/barrel',
-  'character-human':'kenney_dungeon/character-human',
-  'character-orc':'kenney_dungeon/character-orc',
-  'chest':'kenney_dungeon/chest',
-  'coin':'kenney_dungeon/coin',
-  'column':'kenney_dungeon/column',
-  'corridor-corner':'kenney_dungeon/corridor-corner',
-  'corridor-end':'kenney_dungeon/corridor-end',
-  'corridor-intersection':'kenney_dungeon/corridor-intersection',
-  'corridor-junction':'kenney_dungeon/corridor-junction',
-  'corridor-transition':'kenney_dungeon/corridor-transition',
-  'corridor-wide-corner':'kenney_dungeon/corridor-wide-corner',
-  'corridor-wide-end':'kenney_dungeon/corridor-wide-end',
-  'corridor-wide-intersection':'kenney_dungeon/corridor-wide-intersection',
-  'corridor-wide-junction':'kenney_dungeon/corridor-wide-junction',
-  'corridor-wide':'kenney_dungeon/corridor-wide',
-  'corridor':'kenney_dungeon/corridor',
-  'dirt':'kenney_dungeon/dirt',
-  'floor-detail':'kenney_dungeon/floor-detail',
-  'floor':'kenney_dungeon/floor',
-  'gate-door-window':'kenney_dungeon/gate-door-window',
-  'gate-door':'kenney_dungeon/gate-door',
-  'gate-metal-bars':'kenney_dungeon/gate-metal-bars',
-  'gate':'kenney_dungeon/gate',
-  'rocks':'kenney_dungeon/rocks',
-  'room-corner':'kenney_dungeon/room-corner',
-  'room-large-variation':'kenney_dungeon/room-large-variation',
-  'room-large':'kenney_dungeon/room-large',
-  'room-small-variation':'kenney_dungeon/room-small-variation',
-  'room-small':'kenney_dungeon/room-small',
-  'room-wide-variation':'kenney_dungeon/room-wide-variation',
-  'room-wide':'kenney_dungeon/room-wide',
-  'shield-rectangle':'kenney_dungeon/shield-rectangle',
-  'shield-round':'kenney_dungeon/shield-round',
-  'stairs-wide':'kenney_dungeon/stairs-wide',
-  'stairs':'kenney_dungeon/stairs',
-  'stones':'kenney_dungeon/stones',
-  'template-corner':'kenney_dungeon/template-corner',
-  'template-detail':'kenney_dungeon/template-detail',
-  'template-floor-big':'kenney_dungeon/template-floor-big',
-  'template-floor-detail-a':'kenney_dungeon/template-floor-detail-a',
-  'template-floor-detail':'kenney_dungeon/template-floor-detail',
-  'template-floor-layer-hole':'kenney_dungeon/template-floor-layer-hole',
-  'template-floor-layer-raised':'kenney_dungeon/template-floor-layer-raised',
-  'template-floor-layer':'kenney_dungeon/template-floor-layer',
-  'template-floor':'kenney_dungeon/template-floor',
-  'template-wall-corner':'kenney_dungeon/template-wall-corner',
-  'template-wall-detail-a':'kenney_dungeon/template-wall-detail-a',
-  'template-wall-half':'kenney_dungeon/template-wall-half',
-  'template-wall-stairs':'kenney_dungeon/template-wall-stairs',
-  'template-wall-top':'kenney_dungeon/template-wall-top',
-  'template-wall':'kenney_dungeon/template-wall',
-  'trap':'kenney_dungeon/trap',
-  'wall-half':'kenney_dungeon/wall-half',
-  'wall-narrow':'kenney_dungeon/wall-narrow',
-  'wall-opening':'kenney_dungeon/wall-opening',
-  'wall':'kenney_dungeon/wall',
-  'weapon-spear':'kenney_dungeon/weapon-spear',
-  'weapon-sword':'kenney_dungeon/weapon-sword',
-  'wood-structure':'kenney_dungeon/wood-structure',
-  'wood-support':'kenney_dungeon/wood-support',
-  'cables':'kenney_space/cables',
-  'corridor-corner':'kenney_space/corridor-corner',
-  'corridor-end':'kenney_space/corridor-end',
-  'corridor-intersection':'kenney_space/corridor-intersection',
-  'corridor-junction':'kenney_space/corridor-junction',
-  'corridor-transition':'kenney_space/corridor-transition',
-  'corridor-wide-corner':'kenney_space/corridor-wide-corner',
-  'corridor-wide-end':'kenney_space/corridor-wide-end',
-  'corridor-wide-intersection':'kenney_space/corridor-wide-intersection',
-  'corridor-wide-junction':'kenney_space/corridor-wide-junction',
-  'corridor-wide':'kenney_space/corridor-wide',
-  'corridor':'kenney_space/corridor',
-  'gate-door-window':'kenney_space/gate-door-window',
-  'gate-door':'kenney_space/gate-door',
-  'gate-lasers':'kenney_space/gate-lasers',
-  'gate':'kenney_space/gate',
-  'room-corner':'kenney_space/room-corner',
-  'room-large-variation':'kenney_space/room-large-variation',
-  'room-large':'kenney_space/room-large',
-  'room-small-variation':'kenney_space/room-small-variation',
-  'room-small':'kenney_space/room-small',
-  'room-wide-variation':'kenney_space/room-wide-variation',
-  'room-wide':'kenney_space/room-wide',
-  'stairs-wide':'kenney_space/stairs-wide',
-  'stairs':'kenney_space/stairs',
-  'template-corner':'kenney_space/template-corner',
-  'template-detail':'kenney_space/template-detail',
-  'template-floor-big':'kenney_space/template-floor-big',
-  'template-floor-detail-a':'kenney_space/template-floor-detail-a',
-  'template-floor-detail':'kenney_space/template-floor-detail',
-  'template-floor-layer-hole':'kenney_space/template-floor-layer-hole',
-  'template-floor-layer-raised':'kenney_space/template-floor-layer-raised',
-  'template-floor-layer':'kenney_space/template-floor-layer',
-  'template-floor':'kenney_space/template-floor',
-  'template-wall-corner':'kenney_space/template-wall-corner',
-  'template-wall-detail-a':'kenney_space/template-wall-detail-a',
-  'template-wall-half':'kenney_space/template-wall-half',
-  'template-wall-stairs':'kenney_space/template-wall-stairs',
-  'template-wall-top':'kenney_space/template-wall-top',
-  'template-wall':'kenney_space/template-wall',
-  'blaster-a':'kenney_weapons/blaster-a',
-  'blaster-b':'kenney_weapons/blaster-b',
-  'blaster-c':'kenney_weapons/blaster-c',
-  'blaster-d':'kenney_weapons/blaster-d',
-  'blaster-e':'kenney_weapons/blaster-e',
-  'blaster-f':'kenney_weapons/blaster-f',
-  'blaster-g':'kenney_weapons/blaster-g',
-  'blaster-h':'kenney_weapons/blaster-h',
-  'blaster-i':'kenney_weapons/blaster-i',
-  'blaster-j':'kenney_weapons/blaster-j',
-  'blaster-k':'kenney_weapons/blaster-k',
-  'blaster-l':'kenney_weapons/blaster-l',
-  'blaster-m':'kenney_weapons/blaster-m',
-  'blaster-n':'kenney_weapons/blaster-n',
-  'blaster-o':'kenney_weapons/blaster-o',
-  'blaster-p':'kenney_weapons/blaster-p',
-  'blaster-q':'kenney_weapons/blaster-q',
-  'blaster-r':'kenney_weapons/blaster-r',
-  'bullet-foam-thick':'kenney_weapons/bullet-foam-thick',
-  'bullet-foam-tip-thick':'kenney_weapons/bullet-foam-tip-thick',
-  'bullet-foam-tip':'kenney_weapons/bullet-foam-tip',
-  'bullet-foam':'kenney_weapons/bullet-foam',
-  'clip-large':'kenney_weapons/clip-large',
-  'clip-small':'kenney_weapons/clip-small',
-  'crate-medium':'kenney_weapons/crate-medium',
-  'crate-small':'kenney_weapons/crate-small',
-  'crate-wide':'kenney_weapons/crate-wide',
-  'grenade-a':'kenney_weapons/grenade-a',
-  'grenade-b':'kenney_weapons/grenade-b',
-  'scope-large-a':'kenney_weapons/scope-large-a',
-  'scope-large-b':'kenney_weapons/scope-large-b',
-  'scope-small':'kenney_weapons/scope-small',
-  'silencer-larger':'kenney_weapons/silencer-larger',
-  'silencer-small':'kenney_weapons/silencer-small',
-  'smoke':'kenney_weapons/smoke',
-  'target-detail':'kenney_weapons/target-detail',
-  'target-fragment-large':'kenney_weapons/target-fragment-large',
-  'target-fragment-small':'kenney_weapons/target-fragment-small',
-  'target-large':'kenney_weapons/target-large',
-  'target-small':'kenney_weapons/target-small',
-  'arrow':'kenney_platformer/arrow',
-  'arrows':'kenney_platformer/arrows',
-  'barrel':'kenney_platformer/barrel',
-  'block-grass-corner-low':'kenney_platformer/block-grass-corner-low',
-  'block-grass-corner-overhang-low':'kenney_platformer/block-grass-corner-overhang-low',
-  'block-grass-corner-overhang':'kenney_platformer/block-grass-corner-overhang',
-  'block-grass-corner':'kenney_platformer/block-grass-corner',
-  'block-grass-curve-half':'kenney_platformer/block-grass-curve-half',
-  'block-grass-curve-low':'kenney_platformer/block-grass-curve-low',
-  'block-grass-curve':'kenney_platformer/block-grass-curve',
-  'block-grass-edge':'kenney_platformer/block-grass-edge',
-  'block-grass-hexagon':'kenney_platformer/block-grass-hexagon',
-  'block-grass-large-slope-narrow':'kenney_platformer/block-grass-large-slope-narrow',
-  'block-grass-large-slope-steep-narrow':'kenney_platformer/block-grass-large-slope-steep-narrow',
-  'block-grass-large-slope-steep':'kenney_platformer/block-grass-large-slope-steep',
-  'block-grass-large-slope':'kenney_platformer/block-grass-large-slope',
-  'block-grass-large-tall':'kenney_platformer/block-grass-large-tall',
-  'block-grass-large':'kenney_platformer/block-grass-large',
-  'block-grass-long':'kenney_platformer/block-grass-long',
-  'block-grass-low-hexagon':'kenney_platformer/block-grass-low-hexagon',
-  'block-grass-low-large':'kenney_platformer/block-grass-low-large',
-  'block-grass-low-long':'kenney_platformer/block-grass-low-long',
-  'block-grass-low-narrow':'kenney_platformer/block-grass-low-narrow',
-  'block-grass-low':'kenney_platformer/block-grass-low',
-  'block-grass-narrow':'kenney_platformer/block-grass-narrow',
-  'block-grass-overhang-corner':'kenney_platformer/block-grass-overhang-corner',
-  'block-grass-overhang-edge':'kenney_platformer/block-grass-overhang-edge',
-  'block-grass-overhang-hexagon':'kenney_platformer/block-grass-overhang-hexagon',
-  'block-grass-overhang-large-slope-narrow':'kenney_platformer/block-grass-overhang-large-slope-narrow',
-  'block-grass-overhang-large-slope-steep-narrow':'kenney_platformer/block-grass-overhang-large-slope-steep-narrow',
-  'block-grass-overhang-large-slope-steep':'kenney_platformer/block-grass-overhang-large-slope-steep',
-  'block-grass-overhang-large-slope':'kenney_platformer/block-grass-overhang-large-slope',
-  'block-grass-overhang-large-tall':'kenney_platformer/block-grass-overhang-large-tall',
-  'block-grass-overhang-large':'kenney_platformer/block-grass-overhang-large',
-  'block-grass-overhang-long':'kenney_platformer/block-grass-overhang-long',
-  'block-grass-overhang-low-hexagon':'kenney_platformer/block-grass-overhang-low-hexagon',
-  'block-grass-overhang-low-large':'kenney_platformer/block-grass-overhang-low-large',
-  'block-grass-overhang-low-long':'kenney_platformer/block-grass-overhang-low-long',
-  'block-grass-overhang-low-narrow':'kenney_platformer/block-grass-overhang-low-narrow',
-  'block-grass-overhang-low':'kenney_platformer/block-grass-overhang-low',
-  'block-grass-overhang-narrow':'kenney_platformer/block-grass-overhang-narrow',
-  'block-grass':'kenney_platformer/block-grass',
-  'block-moving-blue':'kenney_platformer/block-moving-blue',
-  'block-moving-large':'kenney_platformer/block-moving-large',
-  'block-moving':'kenney_platformer/block-moving',
-  'block-snow-corner-low':'kenney_platformer/block-snow-corner-low',
-  'block-snow-corner-overhang-low':'kenney_platformer/block-snow-corner-overhang-low',
-  'block-snow-corner-overhang':'kenney_platformer/block-snow-corner-overhang',
-  'block-snow-corner':'kenney_platformer/block-snow-corner',
-  'block-snow-curve-half':'kenney_platformer/block-snow-curve-half',
-  'block-snow-curve-low':'kenney_platformer/block-snow-curve-low',
-  'block-snow-curve':'kenney_platformer/block-snow-curve',
-  'block-snow-edge':'kenney_platformer/block-snow-edge',
-  'block-snow-hexagon':'kenney_platformer/block-snow-hexagon',
-  'block-snow-large-slope-narrow':'kenney_platformer/block-snow-large-slope-narrow',
-  'block-snow-large-slope-steep-narrow':'kenney_platformer/block-snow-large-slope-steep-narrow',
-  'block-snow-large-slope-steep':'kenney_platformer/block-snow-large-slope-steep',
-  'block-snow-large-slope':'kenney_platformer/block-snow-large-slope',
-  'block-snow-large-tall':'kenney_platformer/block-snow-large-tall',
-  'block-snow-large':'kenney_platformer/block-snow-large',
-  'block-snow-long':'kenney_platformer/block-snow-long',
-  'block-snow-low-hexagon':'kenney_platformer/block-snow-low-hexagon',
-  'block-snow-low-large':'kenney_platformer/block-snow-low-large',
-  'block-snow-low-long':'kenney_platformer/block-snow-low-long',
-  'block-snow-low-narrow':'kenney_platformer/block-snow-low-narrow',
-  'block-snow-low':'kenney_platformer/block-snow-low',
-  'block-snow-narrow':'kenney_platformer/block-snow-narrow',
-  'block-snow-overhang-corner':'kenney_platformer/block-snow-overhang-corner',
-  'block-snow-overhang-edge':'kenney_platformer/block-snow-overhang-edge',
-  'block-snow-overhang-hexagon':'kenney_platformer/block-snow-overhang-hexagon',
-  'block-snow-overhang-large-slope-narrow':'kenney_platformer/block-snow-overhang-large-slope-narrow',
-  'block-snow-overhang-large-slope-steep-narrow':'kenney_platformer/block-snow-overhang-large-slope-steep-narrow',
-  'block-snow-overhang-large-slope-steep':'kenney_platformer/block-snow-overhang-large-slope-steep',
-  'block-snow-overhang-large-slope':'kenney_platformer/block-snow-overhang-large-slope',
-  'block-snow-overhang-large-tall':'kenney_platformer/block-snow-overhang-large-tall',
-  'block-snow-overhang-large':'kenney_platformer/block-snow-overhang-large',
-  'block-snow-overhang-long':'kenney_platformer/block-snow-overhang-long',
-  'block-snow-overhang-low-hexagon':'kenney_platformer/block-snow-overhang-low-hexagon',
-  'block-snow-overhang-low-large':'kenney_platformer/block-snow-overhang-low-large',
-  'block-snow-overhang-low-long':'kenney_platformer/block-snow-overhang-low-long',
-  'block-snow-overhang-low-narrow':'kenney_platformer/block-snow-overhang-low-narrow',
-  'block-snow-overhang-low':'kenney_platformer/block-snow-overhang-low',
-  'block-snow-overhang-narrow':'kenney_platformer/block-snow-overhang-narrow',
-  'block-snow':'kenney_platformer/block-snow',
-  'bomb':'kenney_platformer/bomb',
-  'brick':'kenney_platformer/brick',
-  'button-round':'kenney_platformer/button-round',
-  'button-square':'kenney_platformer/button-square',
-  'character-oobi':'kenney_platformer/character-oobi',
-  'character-oodi':'kenney_platformer/character-oodi',
-  'character-ooli':'kenney_platformer/character-ooli',
-  'character-oopi':'kenney_platformer/character-oopi',
-  'character-oozi':'kenney_platformer/character-oozi',
-  'chest':'kenney_platformer/chest',
-  'coin-bronze':'kenney_platformer/coin-bronze',
-  'coin-gold':'kenney_platformer/coin-gold',
-  'coin-silver':'kenney_platformer/coin-silver',
-  'conveyor-belt':'kenney_platformer/conveyor-belt',
-  'crate-item-strong':'kenney_platformer/crate-item-strong',
-  'crate-item':'kenney_platformer/crate-item',
-  'crate-strong':'kenney_platformer/crate-strong',
-  'crate':'kenney_platformer/crate',
-  'door-large-open':'kenney_platformer/door-large-open',
-  'door-open':'kenney_platformer/door-open',
-  'door-rotate-large':'kenney_platformer/door-rotate-large',
-  'door-rotate':'kenney_platformer/door-rotate',
-  'fence-broken':'kenney_platformer/fence-broken',
-  'fence-corner-curved':'kenney_platformer/fence-corner-curved',
-  'fence-corner':'kenney_platformer/fence-corner',
-  'fence-low-broken':'kenney_platformer/fence-low-broken',
-  'fence-low-corner-curved':'kenney_platformer/fence-low-corner-curved',
-  'fence-low-corner':'kenney_platformer/fence-low-corner',
-  'fence-low-straight':'kenney_platformer/fence-low-straight',
-  'fence-rope':'kenney_platformer/fence-rope',
-  'fence-straight':'kenney_platformer/fence-straight',
-  'flag':'kenney_platformer/flag',
-  'flowers-tall':'kenney_platformer/flowers-tall',
-  'flowers':'kenney_platformer/flowers',
-  'grass':'kenney_platformer/grass',
-  'heart':'kenney_platformer/heart',
-  'hedge-corner':'kenney_platformer/hedge-corner',
-  'hedge':'kenney_platformer/hedge',
-  'jewel':'kenney_platformer/jewel',
-  'key':'kenney_platformer/key',
-  'ladder-broken':'kenney_platformer/ladder-broken',
-  'ladder-long':'kenney_platformer/ladder-long',
-  'ladder':'kenney_platformer/ladder',
-  'lever':'kenney_platformer/lever',
-  'lock':'kenney_platformer/lock',
-  'mushrooms':'kenney_platformer/mushrooms',
-  'pipe':'kenney_platformer/pipe',
-  'plant':'kenney_platformer/plant',
-  'platform-fortified':'kenney_platformer/platform-fortified',
-  'platform-overhang':'kenney_platformer/platform-overhang',
-  'platform-ramp':'kenney_platformer/platform-ramp',
-  'platform':'kenney_platformer/platform',
-  'poles':'kenney_platformer/poles',
-  'rocks':'kenney_platformer/rocks',
-  'saw':'kenney_platformer/saw',
-  'sign':'kenney_platformer/sign',
-  'spike-block-wide':'kenney_platformer/spike-block-wide',
-  'spike-block':'kenney_platformer/spike-block',
-  'spring':'kenney_platformer/spring',
-  'star':'kenney_platformer/star',
-  'stones':'kenney_platformer/stones',
-  'trap-spikes-large':'kenney_platformer/trap-spikes-large',
-  'trap-spikes':'kenney_platformer/trap-spikes',
-  'tree-pine-small':'kenney_platformer/tree-pine-small',
-  'tree-pine-snow-small':'kenney_platformer/tree-pine-snow-small',
-  'tree-pine-snow':'kenney_platformer/tree-pine-snow',
-  'tree-pine':'kenney_platformer/tree-pine',
-  'tree-snow':'kenney_platformer/tree-snow',
-  'tree':'kenney_platformer/tree',
-  'ball-blue':'kenney_props/ball-blue',
-  'ball-green':'kenney_props/ball-green',
-  'ball-red':'kenney_props/ball-red',
-  'block-borders':'kenney_props/block-borders',
-  'block':'kenney_props/block',
-  'bump-down-walls':'kenney_props/bump-down-walls',
-  'bump-down':'kenney_props/bump-down',
-  'bump-walls':'kenney_props/bump-walls',
-  'bump':'kenney_props/bump',
-  'castle':'kenney_props/castle',
-  'club-blue':'kenney_props/club-blue',
-  'club-green':'kenney_props/club-green',
-  'club-red':'kenney_props/club-red',
-  'corner':'kenney_props/corner',
-  'crest':'kenney_props/crest',
-  'end':'kenney_props/end',
-  'flag-blue':'kenney_props/flag-blue',
-  'flag-green':'kenney_props/flag-green',
-  'flag-large-blue':'kenney_props/flag-large-blue',
-  'flag-large-green':'kenney_props/flag-large-green',
-  'flag-large-red':'kenney_props/flag-large-red',
-  'flag-red':'kenney_props/flag-red',
-  'gap':'kenney_props/gap',
-  'hill-corner':'kenney_props/hill-corner',
-  'hill-round':'kenney_props/hill-round',
-  'hill-square':'kenney_props/hill-square',
-  'hole-open':'kenney_props/hole-open',
-  'hole-round':'kenney_props/hole-round',
-  'hole-square':'kenney_props/hole-square',
-  'inner-corner':'kenney_props/inner-corner',
-  'narrow-block':'kenney_props/narrow-block',
-  'narrow-round':'kenney_props/narrow-round',
-  'narrow-square':'kenney_props/narrow-square',
-  'obstacle-block':'kenney_props/obstacle-block',
-  'obstacle-diamond':'kenney_props/obstacle-diamond',
-  'obstacle-triangle':'kenney_props/obstacle-triangle',
-  'open':'kenney_props/open',
-  'ramp-high':'kenney_props/ramp-high',
-  'ramp-large-side':'kenney_props/ramp-large-side',
-  'ramp-large':'kenney_props/ramp-large',
-  'ramp-low':'kenney_props/ramp-low',
-  'ramp-medium':'kenney_props/ramp-medium',
-  'ramp-sharp':'kenney_props/ramp-sharp',
-  'ramp-side':'kenney_props/ramp-side',
-  'ramp-square':'kenney_props/ramp-square',
-  'ramp':'kenney_props/ramp',
-  'round-corner-a':'kenney_props/round-corner-a',
-  'round-corner-b':'kenney_props/round-corner-b',
-  'round-corner-c':'kenney_props/round-corner-c',
-  'round-large-corner-open':'kenney_props/round-large-corner-open',
-  'round-large-corner':'kenney_props/round-large-corner',
-  'side':'kenney_props/side',
-  'skew-corner':'kenney_props/skew-corner',
-  'skew-large-corner-open':'kenney_props/skew-large-corner-open',
-  'skew-large-corner':'kenney_props/skew-large-corner',
-  'spline-concave-cap-back':'kenney_props/spline-concave-cap-back',
-  'spline-concave-cap-front':'kenney_props/spline-concave-cap-front',
-  'spline-concave-corner-large-ramp':'kenney_props/spline-concave-corner-large-ramp',
-  'spline-concave-corner-large':'kenney_props/spline-concave-corner-large',
-  'spline-concave-corner-small-ramp':'kenney_props/spline-concave-corner-small-ramp',
-  'spline-concave-corner-small':'kenney_props/spline-concave-corner-small',
-  'spline-concave-curve':'kenney_props/spline-concave-curve',
-  'spline-concave-looping':'kenney_props/spline-concave-looping',
-  'spline-concave-straight-bend-large':'kenney_props/spline-concave-straight-bend-large',
-  'spline-concave-straight-bend':'kenney_props/spline-concave-straight-bend',
-  'spline-concave-straight-bump-down':'kenney_props/spline-concave-straight-bump-down',
-  'spline-concave-straight-bump-up':'kenney_props/spline-concave-straight-bump-up',
-  'spline-concave-straight-hill-beginning':'kenney_props/spline-concave-straight-hill-beginning',
-  'spline-concave-straight-hill-complete-half':'kenney_props/spline-concave-straight-hill-complete-half',
-  'spline-concave-straight-hill-complete':'kenney_props/spline-concave-straight-hill-complete',
-  'spline-concave-straight-hill-end':'kenney_props/spline-concave-straight-hill-end',
-  'spline-concave-straight-skew-left-side':'kenney_props/spline-concave-straight-skew-left-side',
-  'spline-concave-straight-skew-left':'kenney_props/spline-concave-straight-skew-left',
-  'spline-concave-straight-skew-right-side':'kenney_props/spline-concave-straight-skew-right-side',
-  'spline-concave-straight-skew-right':'kenney_props/spline-concave-straight-skew-right',
-  'spline-concave-straight':'kenney_props/spline-concave-straight',
-  'spline-concave':'kenney_props/spline-concave',
-  'spline-default-cap-back':'kenney_props/spline-default-cap-back',
-  'spline-default-cap-front':'kenney_props/spline-default-cap-front',
-  'spline-default-corner-large-ramp':'kenney_props/spline-default-corner-large-ramp',
-  'spline-default-corner-large':'kenney_props/spline-default-corner-large',
-  'spline-default-corner-small-ramp':'kenney_props/spline-default-corner-small-ramp',
-  'spline-default-corner-small':'kenney_props/spline-default-corner-small',
-  'spline-default-curve':'kenney_props/spline-default-curve',
-  'spline-default-looping':'kenney_props/spline-default-looping',
-  'spline-default-straight-bend-large':'kenney_props/spline-default-straight-bend-large',
-  'spline-default-straight-bend':'kenney_props/spline-default-straight-bend',
-  'spline-default-straight-bump-down':'kenney_props/spline-default-straight-bump-down',
-  'spline-default-straight-bump-up':'kenney_props/spline-default-straight-bump-up',
-  'spline-default-straight-hill-beginning':'kenney_props/spline-default-straight-hill-beginning',
-  'spline-default-straight-hill-complete-half':'kenney_props/spline-default-straight-hill-complete-half',
-  'spline-default-straight-hill-complete':'kenney_props/spline-default-straight-hill-complete',
-  'spline-default-straight-hill-end':'kenney_props/spline-default-straight-hill-end',
-  'spline-default-straight-skew-left-side':'kenney_props/spline-default-straight-skew-left-side',
-  'spline-default-straight-skew-left':'kenney_props/spline-default-straight-skew-left',
-  'spline-default-straight-skew-right-side':'kenney_props/spline-default-straight-skew-right-side',
-  'spline-default-straight-skew-right':'kenney_props/spline-default-straight-skew-right',
-  'spline-default-straight':'kenney_props/spline-default-straight',
-  'spline-default':'kenney_props/spline-default',
-  'split-start':'kenney_props/split-start',
-  'split-t':'kenney_props/split-t',
-  'split-walls-to-open':'kenney_props/split-walls-to-open',
-  'split':'kenney_props/split',
-  'square-corner-a':'kenney_props/square-corner-a',
-  'start':'kenney_props/start',
-  'straight':'kenney_props/straight',
-  'structure-gate-building':'kenney_props/structure-gate-building',
-  'structure-gate-wide':'kenney_props/structure-gate-wide',
-  'structure-gate':'kenney_props/structure-gate',
-  'structure-gates':'kenney_props/structure-gates',
-  'structure-windmill':'kenney_props/structure-windmill',
-  'support-bottom':'kenney_props/support-bottom',
-  'support-low-bottom':'kenney_props/support-low-bottom',
-  'support-low':'kenney_props/support-low',
-  'support':'kenney_props/support',
-  'supports-bottom':'kenney_props/supports-bottom',
-  'supports-low-bottom':'kenney_props/supports-low-bottom',
-  'supports-low':'kenney_props/supports-low',
-  'supports':'kenney_props/supports',
-  'tunnel-double':'kenney_props/tunnel-double',
-  'tunnel-narrow':'kenney_props/tunnel-narrow',
-  'tunnel-wide':'kenney_props/tunnel-wide',
-  'wall-left':'kenney_props/wall-left',
-  'wall-right':'kenney_props/wall-right',
-  'walls-to-open':'kenney_props/walls-to-open',
-  'windmill':'kenney_props/windmill',
-  'bridge-pillar-wide':'kenney_roads/bridge-pillar-wide',
-  'bridge-pillar':'kenney_roads/bridge-pillar',
-  'construction-barrier':'kenney_roads/construction-barrier',
-  'construction-cone':'kenney_roads/construction-cone',
-  'construction-light':'kenney_roads/construction-light',
-  'light-curved-cross':'kenney_roads/light-curved-cross',
-  'light-curved-double':'kenney_roads/light-curved-double',
-  'light-curved':'kenney_roads/light-curved',
-  'light-square-cross':'kenney_roads/light-square-cross',
-  'light-square-double':'kenney_roads/light-square-double',
-  'light-square':'kenney_roads/light-square',
-  'road-bend-barrier':'kenney_roads/road-bend-barrier',
-  'road-bend-sidewalk':'kenney_roads/road-bend-sidewalk',
-  'road-bend-square-barrier':'kenney_roads/road-bend-square-barrier',
-  'road-bend-square':'kenney_roads/road-bend-square',
-  'road-bend':'kenney_roads/road-bend',
-  'road-bridge':'kenney_roads/road-bridge',
-  'road-crossing':'kenney_roads/road-crossing',
-  'road-crossroad-barrier':'kenney_roads/road-crossroad-barrier',
-  'road-crossroad-line':'kenney_roads/road-crossroad-line',
-  'road-crossroad-path':'kenney_roads/road-crossroad-path',
-  'road-crossroad':'kenney_roads/road-crossroad',
-  'road-curve-barrier':'kenney_roads/road-curve-barrier',
-  'road-curve-intersection-barrier':'kenney_roads/road-curve-intersection-barrier',
-  'road-curve-intersection':'kenney_roads/road-curve-intersection',
-  'road-curve-pavement':'kenney_roads/road-curve-pavement',
-  'road-curve':'kenney_roads/road-curve',
-  'road-driveway-double-barrier':'kenney_roads/road-driveway-double-barrier',
-  'road-driveway-double':'kenney_roads/road-driveway-double',
-  'road-driveway-single-barrier':'kenney_roads/road-driveway-single-barrier',
-  'road-driveway-single':'kenney_roads/road-driveway-single',
-  'road-end-barrier':'kenney_roads/road-end-barrier',
-  'road-end-round-barrier':'kenney_roads/road-end-round-barrier',
-  'road-end-round':'kenney_roads/road-end-round',
-  'road-end':'kenney_roads/road-end',
-  'road-intersection-barrier':'kenney_roads/road-intersection-barrier',
-  'road-intersection-line':'kenney_roads/road-intersection-line',
-  'road-intersection-path':'kenney_roads/road-intersection-path',
-  'road-intersection':'kenney_roads/road-intersection',
-  'road-roundabout-barrier':'kenney_roads/road-roundabout-barrier',
-  'road-roundabout':'kenney_roads/road-roundabout',
-  'road-side-barrier':'kenney_roads/road-side-barrier',
-  'road-side-entry-barrier':'kenney_roads/road-side-entry-barrier',
-  'road-side-entry':'kenney_roads/road-side-entry',
-  'road-side-exit-barrier':'kenney_roads/road-side-exit-barrier',
-  'road-side-exit':'kenney_roads/road-side-exit',
-  'road-side':'kenney_roads/road-side',
-  'road-slant-barrier':'kenney_roads/road-slant-barrier',
-  'road-slant-curve-barrier':'kenney_roads/road-slant-curve-barrier',
-  'road-slant-curve':'kenney_roads/road-slant-curve',
-  'road-slant-flat-curve':'kenney_roads/road-slant-flat-curve',
-  'road-slant-flat-high':'kenney_roads/road-slant-flat-high',
-  'road-slant-flat':'kenney_roads/road-slant-flat',
-  'road-slant-high-barrier':'kenney_roads/road-slant-high-barrier',
-  'road-slant-high':'kenney_roads/road-slant-high',
-  'road-slant':'kenney_roads/road-slant',
-  'road-split-barrier':'kenney_roads/road-split-barrier',
-  'road-split':'kenney_roads/road-split',
-  'road-square-barrier':'kenney_roads/road-square-barrier',
-  'road-square':'kenney_roads/road-square',
-  'road-straight-barrier-end':'kenney_roads/road-straight-barrier-end',
-  'road-straight-barrier-half':'kenney_roads/road-straight-barrier-half',
-  'road-straight-barrier':'kenney_roads/road-straight-barrier',
-  'road-straight-half':'kenney_roads/road-straight-half',
-  'road-straight':'kenney_roads/road-straight',
-  'sign-highway-detailed':'kenney_roads/sign-highway-detailed',
-  'sign-highway-wide':'kenney_roads/sign-highway-wide',
-  'sign-highway':'kenney_roads/sign-highway',
-  'tile-high':'kenney_roads/tile-high',
-  'tile-low':'kenney_roads/tile-low',
-  'tile-slant':'kenney_roads/tile-slant',
-  'tile-slantHigh':'kenney_roads/tile-slantHigh',
-  'character-a':'kenney_characters/character-a',
-  'character-b':'kenney_characters/character-b',
-  'character-c':'kenney_characters/character-c',
-  'character-d':'kenney_characters/character-d',
-  'character-e':'kenney_characters/character-e',
-  'character-f':'kenney_characters/character-f',
-  'character-g':'kenney_characters/character-g',
-  'character-h':'kenney_characters/character-h',
-  'character-i':'kenney_characters/character-i',
-  'character-j':'kenney_characters/character-j',
-  'character-k':'kenney_characters/character-k',
-  'character-l':'kenney_characters/character-l',
-  'character-m':'kenney_characters/character-m',
-  'character-n':'kenney_characters/character-n',
-  'character-o':'kenney_characters/character-o',
-  'character-p':'kenney_characters/character-p',
-  'character-q':'kenney_characters/character-q',
-  'character-r':'kenney_characters/character-r',
-
-// Sketchfab models (61 models)
-'sf_2021_lamborghini_countach_lpi_800-4':'sf_2021_lamborghini_countach_lpi_800-4',
-'2021 lamborghini countach lpi 800 4':'sf_2021_lamborghini_countach_lpi_800-4',
-'sf__free__lamborghini_terzo_millennio':'sf__free__lamborghini_terzo_millennio',
-'free lamborghini terzo millennio':'sf__free__lamborghini_terzo_millennio',
-'sf_aerial_grassy_and_rocky_mountain_1':'sf_aerial_grassy_and_rocky_mountain_1',
-'aerial grassy and rocky mountain 1':'sf_aerial_grassy_and_rocky_mountain_1',
-'sf_aerial_grassy_and_rocky_mountain_2':'sf_aerial_grassy_and_rocky_mountain_2',
-'aerial grassy and rocky mountain 2':'sf_aerial_grassy_and_rocky_mountain_2',
-'sf_aerial_grassy_and_rocky_mountain_3':'sf_aerial_grassy_and_rocky_mountain_3',
-'aerial grassy and rocky mountain 3':'sf_aerial_grassy_and_rocky_mountain_3',
-'sf_aerial_grassy_and_rocky_mountain_4':'sf_aerial_grassy_and_rocky_mountain_4',
-'aerial grassy and rocky mountain 4':'sf_aerial_grassy_and_rocky_mountain_4',
-'sf_aerial_grassy_and_rocky_mountain_5':'sf_aerial_grassy_and_rocky_mountain_5',
-'aerial grassy and rocky mountain 5':'sf_aerial_grassy_and_rocky_mountain_5',
-'sf_aerial_grassy_and_rocky_mountain_6':'sf_aerial_grassy_and_rocky_mountain_6',
-'aerial grassy and rocky mountain 6':'sf_aerial_grassy_and_rocky_mountain_6',
-'sf_aqua_terra_x1':'sf_aqua_terra_x1',
-'aqua terra x1':'sf_aqua_terra_x1',
-'sf_bandai-asahi_national_parkjapan':'sf_bandai-asahi_national_parkjapan',
-'bandai asahi national parkjapan':'sf_bandai-asahi_national_parkjapan',
-'sf_barbie_dodge_pickup_custom_longcar_by_alexka':'sf_barbie_dodge_pickup_custom_longcar_by_alexka',
-'barbie dodge pickup custom longcar by alexka':'sf_barbie_dodge_pickup_custom_longcar_by_alexka',
-'sf_bytebuddy_-_the_rover_bot':'sf_bytebuddy_-_the_rover_bot',
-'bytebuddy the rover bot':'sf_bytebuddy_-_the_rover_bot',
-'sf_cc0_-_stone':'sf_cc0_-_stone',
-'cc0 stone':'sf_cc0_-_stone',
-'sf_cinematic-tropical':'sf_cinematic-tropical',
-'cinematic tropical':'sf_cinematic-tropical',
-'sf_cyberpunk_car':'sf_cyberpunk_car',
-'cyberpunk car':'sf_cyberpunk_car',
-'sf_decorative_tree':'sf_decorative_tree',
-'decorative tree':'sf_decorative_tree',
-'sf_dry_realistic_grass_lods_1':'sf_dry_realistic_grass_lods_1',
-'dry realistic grass lods 1':'sf_dry_realistic_grass_lods_1',
-'sf_fantasy_adventure_map_3d_model__rpg_environment':'sf_fantasy_adventure_map_3d_model__rpg_environment',
-'fantasy adventure map 3d model rpg environment':'sf_fantasy_adventure_map_3d_model__rpg_environment',
-'sf_free_1995_fiat_punto_gt':'sf_free_1995_fiat_punto_gt',
-'free 1995 fiat punto gt':'sf_free_1995_fiat_punto_gt',
-'sf_free_cyberpunk_hovercar':'sf_free_cyberpunk_hovercar',
-'free cyberpunk hovercar':'sf_free_cyberpunk_hovercar',
-'sf_free_gmc_motorhome_reimagined_low_poly':'sf_free_gmc_motorhome_reimagined_low_poly',
-'free gmc motorhome reimagined low poly':'sf_free_gmc_motorhome_reimagined_low_poly',
-'sf_free_żuk_3d_model':'sf_free_żuk_3d_model',
-'free żuk 3d model':'sf_free_żuk_3d_model',
-'sf_future_car':'sf_future_car',
-'future car':'sf_future_car',
-'sf_game_environment_prop__rock':'sf_game_environment_prop__rock',
-'game environment prop rock':'sf_game_environment_prop__rock',
-'sf_generic_passenger_car_pack':'sf_generic_passenger_car_pack',
-'generic passenger car pack':'sf_generic_passenger_car_pack',
-'sf_kagioun_-_fantasy_creature':'sf_kagioun_-_fantasy_creature',
-'kagioun fantasy creature':'sf_kagioun_-_fantasy_creature',
-'sf_large_stylized_japanese_terrain_mesh':'sf_large_stylized_japanese_terrain_mesh',
-'large stylized japanese terrain mesh':'sf_large_stylized_japanese_terrain_mesh',
-'sf_laxton_castle_nottinghamshire':'sf_laxton_castle_nottinghamshire',
-'laxton castle nottinghamshire':'sf_laxton_castle_nottinghamshire',
-'sf_light_terrain':'sf_light_terrain',
-'light terrain':'sf_light_terrain',
-'sf_lost_world_cliff__isolated_rock_formation':'sf_lost_world_cliff__isolated_rock_formation',
-'lost world cliff isolated rock formation':'sf_lost_world_cliff__isolated_rock_formation',
-'sf_low-poly_truck_car_drifter':'sf_low-poly_truck_car_drifter',
-'low poly truck car drifter':'sf_low-poly_truck_car_drifter',
-'sf_low_poly_grass_collection_asset_environment_pack':'sf_low_poly_grass_collection_asset_environment_pack',
-'low poly grass collection asset environment pack':'sf_low_poly_grass_collection_asset_environment_pack',
-'sf_low_poly_mountain_free':'sf_low_poly_mountain_free',
-'low poly mountain free':'sf_low_poly_mountain_free',
-'sf_mclaren_f1_1993_by_alexka':'sf_mclaren_f1_1993_by_alexka',
-'mclaren f1 1993 by alexka':'sf_mclaren_f1_1993_by_alexka',
-'sf_minecraft_world':'sf_minecraft_world',
-'minecraft world':'sf_minecraft_world',
-'sf_nissan_fairlady_z_s30240z_1978':'sf_nissan_fairlady_z_s30240z_1978',
-'nissan fairlady z s30240z 1978':'sf_nissan_fairlady_z_s30240z_1978',
-'sf_nordic_nature_-_natural_flagstone':'sf_nordic_nature_-_natural_flagstone',
-'nordic nature natural flagstone':'sf_nordic_nature_-_natural_flagstone',
-'sf_oldsmobile_cutlass_supreme_sedan_71':'sf_oldsmobile_cutlass_supreme_sedan_71',
-'oldsmobile cutlass supreme sedan 71':'sf_oldsmobile_cutlass_supreme_sedan_71',
-'sf_phoenix_455_71_-_low_poly_model':'sf_phoenix_455_71_-_low_poly_model',
-'phoenix 455 71 low poly model':'sf_phoenix_455_71_-_low_poly_model',
-'sf_pine_tree':'sf_pine_tree',
-'pine tree':'sf_pine_tree',
-'sf_porsche_gt3_rs':'sf_porsche_gt3_rs',
-'porsche gt3 rs':'sf_porsche_gt3_rs',
-'sf_race_track___forest_loop_raceway':'sf_race_track___forest_loop_raceway',
-'race track forest loop raceway':'sf_race_track___forest_loop_raceway',
-'sf_realistic_game-ready_terrain_environment':'sf_realistic_game-ready_terrain_environment',
-'realistic game ready terrain environment':'sf_realistic_game-ready_terrain_environment',
-'sf_realistic_mountain_terrain__game_ready':'sf_realistic_mountain_terrain__game_ready',
-'realistic mountain terrain game ready':'sf_realistic_mountain_terrain__game_ready',
-'sf_rock':'sf_rock',
-'rock':'sf_rock',
-'sf_rock_embedded_in_brick_ground_photoscan':'sf_rock_embedded_in_brick_ground_photoscan',
-'rock embedded in brick ground photoscan':'sf_rock_embedded_in_brick_ground_photoscan',
-'sf_rock_pile_photoscan':'sf_rock_pile_photoscan',
-'rock pile photoscan':'sf_rock_pile_photoscan',
-'sf_sand_01_procedural_material_':'sf_sand_01_procedural_material_',
-'sand 01 procedural material':'sf_sand_01_procedural_material_',
-'sf_sand_04d_procedural_material_':'sf_sand_04d_procedural_material_',
-'sand 04d procedural material':'sf_sand_04d_procedural_material_',
-'sf_shvan_92_-_low_poly_model':'sf_shvan_92_-_low_poly_model',
-'shvan 92 low poly model':'sf_shvan_92_-_low_poly_model',
-'sf_stonehenge_lidar_archaeology_landscape':'sf_stonehenge_lidar_archaeology_landscape',
-'stonehenge lidar archaeology landscape':'sf_stonehenge_lidar_archaeology_landscape',
-'sf_stylized_low-poly_mountain':'sf_stylized_low-poly_mountain',
-'stylized low poly mountain':'sf_stylized_low-poly_mountain',
-'sf_stylized_rocky_environment__game_ready_3d_scene':'sf_stylized_rocky_environment__game_ready_3d_scene',
-'stylized rocky environment game ready 3d scene':'sf_stylized_rocky_environment__game_ready_3d_scene',
-'sf_terrain_low-poly_pbr':'sf_terrain_low-poly_pbr',
-'terrain low poly pbr':'sf_terrain_low-poly_pbr',
-'sf_terrain_test':'sf_terrain_test',
-'terrain test':'sf_terrain_test',
-'sf_water_refraction_with_reflection':'sf_water_refraction_with_reflection',
-'water refraction with reflection':'sf_water_refraction_with_reflection',
-'sf_weathered_mossy_boulder_with_lichen':'sf_weathered_mossy_boulder_with_lichen',
-'weathered mossy boulder with lichen':'sf_weathered_mossy_boulder_with_lichen',
-'sf_west_maui_hawaii_-_terrain_map':'sf_west_maui_hawaii_-_terrain_map',
-'west maui hawaii terrain map':'sf_west_maui_hawaii_-_terrain_map',
-'sf_worldmachine_terrain':'sf_worldmachine_terrain',
-'worldmachine terrain':'sf_worldmachine_terrain',
-'sf_魚止滝あだたら渓谷奥岳自然遊歩道':'sf_魚止滝あだたら渓谷奥岳自然遊歩道',
-'魚止滝あだたら渓谷奥岳自然遊歩道':'sf_魚止滝あだたら渓谷奥岳自然遊歩道',
-
-
-  '1story_gableroof_mat':'buildings_pack_3_1story_gableroof_mat',
-  '1story_mat':'buildings_pack_3_1story_mat',
-  '1story_roundroof_mat':'buildings_pack_3_1story_roundroof_mat',
-  '1story_sign_mat':'buildings_pack_3_1story_sign_mat',
-  '2story_2_mat':'buildings_pack_3_2story_2_mat',
-  '2story_balcony_mat':'buildings_pack_3_2story_balcony_mat',
-  '2story_center_mat':'buildings_pack_3_2story_center_mat',
-  '2story_columns_mat':'buildings_pack_3_2story_columns_mat',
-  '2story_double_mat':'buildings_pack_3_2story_double_mat',
-  '2story_gableroof_mat':'buildings_pack_3_2story_gableroof_mat',
-  '2story_mat':'buildings_pack_3_2story_mat',
-  '2story_roundroof_mat':'buildings_pack_3_2story_roundroof_mat',
-  '2story_sidehouse_mat':'buildings_pack_3_2story_sidehouse_mat',
-  '2story_sign_mat':'buildings_pack_3_2story_sign_mat',
-  '2story_slim_mat':'buildings_pack_3_2story_slim_mat',
-  '2story_stairs_mat':'buildings_pack_3_2story_stairs_mat',
-  '2story_wide_2doors_mat':'buildings_pack_3_2story_wide_2doors_mat',
-  '2story_wide_mat':'buildings_pack_3_2story_wide_mat',
-  '3story_balcony_mat':'buildings_pack_3_3story_balcony_mat',
-  '3story_slim_mat':'buildings_pack_3_3story_slim_mat',
-  '3story_small_mat':'buildings_pack_3_3story_small_mat',
-  '4story_center_mat':'buildings_pack_3_4story_center_mat',
-  '4story_mat':'buildings_pack_3_4story_mat',
-  '4story_wide_2doors_mat':'buildings_pack_3_4story_wide_2doors_mat',
-  '4story_wide_2doors_roof_mat':'buildings_pack_3_4story_wide_2doors_roof_mat',
-  '6story_stack_mat':'buildings_pack_3_6story_stack_mat',
-  'ac':'cyberpunk_pack_ac',
-  'ac_side':'cyberpunk_pack_ac_side',
-  'ac_stacked':'cyberpunk_pack_ac_stacked',
-  'adventurer':'modular_women_adventurer',
-  'alpaca':'animals_pack_alpaca',
-  'anglerfish':'cute_fish_pack_anglerfish',
-  'animals_pack_alpaca':'animals_pack_alpaca',
-  'animals_pack_bull':'animals_pack_bull',
-  'animals_pack_cow':'animals_pack_cow',
-  'animals_pack_deer':'animals_pack_deer',
-  'animals_pack_donkey':'animals_pack_donkey',
-  'animals_pack_fox':'animals_pack_fox',
-  'animals_pack_horse':'animals_pack_horse',
-  'animals_pack_horse_white':'animals_pack_horse_white',
-  'animals_pack_husky':'animals_pack_husky',
-  'animals_pack_shibainu':'animals_pack_shibainu',
-  'animals_pack_stag':'animals_pack_stag',
-  'animals_pack_wolf':'animals_pack_wolf',
-  'antenna_1':'cyberpunk_pack_antenna_1',
-  'antenna_2':'cyberpunk_pack_antenna_2',
-  'apatosaurus':'dinosaurs_pack_apatosaurus',
-  'apple_1':'crops_pack_apple_1',
-  'apple_2':'crops_pack_apple_2',
-  'apple_3':'crops_pack_apple_3',
-  'apple_4':'crops_pack_apple_4',
-  'apple_crop':'crops_pack_apple_crop',
-  'apple_harvested':'crops_pack_apple_harvested',
-  'ar_1':'modular_sci_fi_guns_pack_ar_1',
-  'ar_2':'modular_sci_fi_guns_pack_ar_2',
-  'ar_3':'modular_sci_fi_guns_pack_ar_3',
-  'ar_4':'modular_sci_fi_guns_pack_ar_4',
-  'ar_5':'modular_sci_fi_guns_pack_ar_5',
-  'ar_6':'modular_sci_fi_guns_pack_ar_6',
-  'arch':'modular_dungeon_1_arch',
-  'arch_bars':'modular_dungeon_1_arch_bars',
-  'arch_door':'modular_dungeon_1_arch_door',
-  'arch_door_bottompivot':'modular_dungeon_1_arch_door_bottompivot',
-  'armor_black':'rpg_items_pack_armor_black',
-  'armor_golden':'rpg_items_pack_armor_golden',
-  'armor_leather':'rpg_items_pack_armor_leather',
-  'armor_metal':'rpg_items_pack_armor_metal',
-  'armor_metal2':'rpg_items_pack_armor_metal2',
-  'armoredcatfish':'cute_fish_pack_armoredcatfish',
-  'arrow':'rpg_items_pack_arrow',
-  'arrow_golden':'rpg_items_pack_arrow_golden',
-  'arrow_side':'platformer_game_pack_arrow_side',
-  'arrow_up':'platformer_game_pack_arrow_up',
-  'astronaut_barbarathebee-transformed':'ultimate_space_pack_astronaut_barbarathebee-transformed',
-  'astronaut_fernandotheflamingo-transformed':'ultimate_space_pack_astronaut_fernandotheflamingo-transformed',
-  'astronaut_finnthefrog-transformed':'ultimate_space_pack_astronaut_finnthefrog-transformed',
-  'astronaut_raetheredpanda-transformed':'ultimate_space_pack_astronaut_raetheredpanda-transformed',
-  'automobile':'car',
-  'avatar':'avatar',
-  'axe':'survival_pack_axe',
-  'axe_double':'rpg_items_pack_axe_double',
-  'axe_double_golden':'rpg_items_pack_axe_double_golden',
-  'axe_small':'survival_pack_axe_small',
-  'axe_small_golden':'rpg_items_pack_axe_small_golden',
-  'backpack':'survival_pack_backpack',
-  'bag':'rpg_items_pack_bag',
-  'bag_coins':'modular_dungeon_1_bag_coins',
-  'bag_open':'medieval_village_pack_bag_open',
-  'bag_standing':'modular_dungeon_1_bag_standing',
-  'bags':'medieval_village_pack_bags',
-  'bamboo_1':'crops_pack_bamboo_1',
-  'bamboo_2':'crops_pack_bamboo_2',
-  'bamboo_3':'crops_pack_bamboo_3',
-  'bamboo_4':'crops_pack_bamboo_4',
-  'bamboo_crop':'crops_pack_bamboo_crop',
-  'bandages':'survival_pack_bandages',
-  'banner':'modular_medieval_buildings_pack_banner',
-  'banner_wall':'modular_dungeon_1_banner_wall',
-  'barrel':'medieval_village_pack_barrel',
-  'barrel2':'modular_dungeon_1_barrel2',
-  'barrel_ar_1':'modular_sci_fi_guns_pack_barrel_ar_1',
-  'barrel_ar_3':'modular_sci_fi_guns_pack_barrel_ar_3',
-  'barrel_grenade_1':'modular_sci_fi_guns_pack_barrel_grenade_1',
-  'barrel_pistol_1':'modular_sci_fi_guns_pack_barrel_pistol_1',
-  'barrel_pistol_2':'modular_sci_fi_guns_pack_barrel_pistol_2',
-  'barrel_single':'modular_sci_fi_guns_pack_barrel_single',
-  'barrel_sniper_1':'modular_sci_fi_guns_pack_barrel_sniper_1',
-  'barrel_sniper_2':'modular_sci_fi_guns_pack_barrel_sniper_2',
-  'bars':'modular_dungeon_pack_bars',
-  'base_large-transformed':'ultimate_space_pack_base_large-transformed',
-  'bathroom_bathtub':'house_interior_pack_bathroom_bathtub',
-  'bathroom_mirror1':'house_interior_pack_bathroom_mirror1',
-  'bathroom_mirror2':'house_interior_pack_bathroom_mirror2',
-  'bathroom_shower1':'house_interior_pack_bathroom_shower1',
-  'bathroom_sink':'house_interior_pack_bathroom_sink',
-  'bathroom_toilet':'house_interior_pack_bathroom_toilet',
-  'bathroom_toilet2':'house_interior_pack_bathroom_toilet2',
-  'bathroom_toiletpaper':'house_interior_pack_bathroom_toiletpaper',
-  'bathroom_toiletpaperpile':'house_interior_pack_bathroom_toiletpaperpile',
-  'bathroom_towel':'house_interior_pack_bathroom_towel',
-  'bathroom_washingmachine':'house_interior_pack_bathroom_washingmachine',
-  'battery_big':'survival_pack_battery_big',
-  'battery_small':'survival_pack_battery_small',
-  'beach':'modular_men_beach',
-  'beartrap_closed':'survival_pack_beartrap_closed',
-  'beartrap_open':'survival_pack_beartrap_open',
-  'beast':'dinosaurs_pack_trex',
-  'bed_bunk':'house_interior_pack_bed_bunk',
-  'bed_king':'house_interior_pack_bed_king',
-  'bed_single':'house_interior_pack_bed_single',
-  'bee':'platformer_game_pack_bee',
-  'beet_1':'crops_pack_beet_1',
-  'beet_2':'crops_pack_beet_2',
-  'beet_3':'crops_pack_beet_3',
-  'beet_4':'crops_pack_beet_4',
-  'beet_crop':'crops_pack_beet_crop',
-  'bell':'medieval_village_pack_bell',
-  'bell_tower':'medieval_village_pack_bell_tower',
-  'bench':'medieval_village_pack_bench_1',
-  'bench_1':'medieval_village_pack_bench_1',
-  'bench_2':'medieval_village_pack_bench_2',
-  'betta':'cute_fish_pack_betta',
-  'birchtree_1':'nature_pack_birchtree_1',
-  'birchtree_2':'nature_pack_birchtree_2',
-  'birchtree_3':'nature_pack_birchtree_3',
-  'birchtree_4':'nature_pack_birchtree_4',
-  'birchtree_5':'nature_pack_birchtree_5',
-  'birchtree_autumn_1':'nature_pack_birchtree_autumn_1',
-  'birchtree_autumn_2':'nature_pack_birchtree_autumn_2',
-  'birchtree_autumn_3':'nature_pack_birchtree_autumn_3',
-  'birchtree_autumn_4':'nature_pack_birchtree_autumn_4',
-  'birchtree_autumn_5':'nature_pack_birchtree_autumn_5',
-  'birchtree_dead_1':'nature_pack_birchtree_dead_1',
-  'birchtree_dead_2':'nature_pack_birchtree_dead_2',
-  'birchtree_dead_3':'nature_pack_birchtree_dead_3',
-  'birchtree_dead_4':'nature_pack_birchtree_dead_4',
-  'birchtree_dead_5':'nature_pack_birchtree_dead_5',
-  'birchtree_dead_snow_1':'nature_pack_birchtree_dead_snow_1',
-  'birchtree_dead_snow_2':'nature_pack_birchtree_dead_snow_2',
-  'birchtree_dead_snow_3':'nature_pack_birchtree_dead_snow_3',
-  'birchtree_dead_snow_4':'nature_pack_birchtree_dead_snow_4',
-  'birchtree_dead_snow_5':'nature_pack_birchtree_dead_snow_5',
-  'birchtree_snow_1':'nature_pack_birchtree_snow_1',
-  'birchtree_snow_2':'nature_pack_birchtree_snow_2',
-  'birchtree_snow_3':'nature_pack_birchtree_snow_3',
-  'birchtree_snow_4':'nature_pack_birchtree_snow_4',
-  'birchtree_snow_5':'nature_pack_birchtree_snow_5',
-  'blacklionfish':'cute_fish_pack_blacklionfish',
-  'blacksmith':'medieval_village_pack_blacksmith',
-  'blasterb':'blasterb',
-  'blasterc':'blasterc',
-  'blasterd':'blasterd',
-  'blastere':'blastere',
-  'blasterf':'blasterf',
-  'blasterg':'blasterg',
-  'blasterh':'blasterh',
-  'blasteri':'blasteri',
-  'blasterj':'blasterj',
-  'blasterk':'blasterk',
-  'blasterl':'blasterl',
-  'blasterm':'blasterm',
-  'blastern':'blastern',
-  'blobfish':'cute_fish_pack_blobfish',
-  'bluegoldfish':'cute_fish_pack_bluegoldfish',
-  'bluetang':'cute_fish_pack_bluetang',
-  'boat':'ships_pack_boat',
-  'boatwsail':'ships_pack_boatwsail',
-  'bob':'spaceships_pack_bob',
-  'body_ar4':'modular_sci_fi_guns_pack_body_ar4',
-  'body_ar_1':'modular_sci_fi_guns_pack_body_ar_1',
-  'body_ar_3':'modular_sci_fi_guns_pack_body_ar_3',
-  'body_ar_5':'modular_sci_fi_guns_pack_body_ar_5',
-  'body_ar_6':'modular_sci_fi_guns_pack_body_ar_6',
-  'body_crossbow_1':'modular_sci_fi_guns_pack_body_crossbow_1',
-  'body_crossbow_2':'modular_sci_fi_guns_pack_body_crossbow_2',
-  'body_front_sniper_1':'modular_sci_fi_guns_pack_body_front_sniper_1',
-  'body_front_sniper_3':'modular_sci_fi_guns_pack_body_front_sniper_3',
-  'body_grenade_1':'modular_sci_fi_guns_pack_body_grenade_1',
-  'body_grenade_2':'modular_sci_fi_guns_pack_body_grenade_2',
-  'body_grenade_3':'modular_sci_fi_guns_pack_body_grenade_3',
-  'body_pistol_1':'modular_sci_fi_guns_pack_body_pistol_1',
-  'body_pistol_2':'modular_sci_fi_guns_pack_body_pistol_2',
-  'body_pistol_3':'modular_sci_fi_guns_pack_body_pistol_3',
-  'body_smg_1':'modular_sci_fi_guns_pack_body_smg_1',
-  'body_smg_2':'modular_sci_fi_guns_pack_body_smg_2',
-  'body_sniper_1':'modular_sci_fi_guns_pack_body_sniper_1',
-  'body_sniper_2':'modular_sci_fi_guns_pack_body_sniper_2',
-  'body_sniper_3':'modular_sci_fi_guns_pack_body_sniper_3',
-  'bomb':'platformer_game_pack_bomb',
-  'bone':'rpg_items_pack_bone',
-  'bones':'modular_dungeon_pack_bones',
-  'bones2':'modular_dungeon_pack_bones2',
-  'bonfire':'medieval_village_pack_bonfire_lit',
-  'bonfire_fire':'survival_pack_bonfire_fire',
-  'bonfire_lit':'medieval_village_pack_bonfire_lit',
-  'book1_closed':'rpg_items_pack_book1_closed',
-  'book1_open':'rpg_items_pack_book1_open',
-  'book2':'modular_dungeon_pack_book2',
-  'book2_closed':'rpg_items_pack_book2_closed',
-  'book2_open':'rpg_items_pack_book2_open',
-  'book3':'modular_dungeon_pack_book3',
-  'book3_closed':'rpg_items_pack_book3_closed',
-  'book3_open':'rpg_items_pack_book3_open',
-  'book4_closed':'rpg_items_pack_book4_closed',
-  'book4_open':'rpg_items_pack_book4_open',
-  'book_open':'modular_dungeon_pack_book_open',
-  'bookshelf':'house_interior_pack_bookshelf',
-  'bouncer':'platformer_game_pack_bouncer',
-  'bow_evil':'medieval_weapons_pack_bow_evil',
-  'bow_golden':'rpg_items_pack_bow_golden',
-  'bow_wooden':'rpg_items_pack_bow_wooden',
-  'bow_wooden2':'medieval_weapons_pack_bow_wooden2',
-  'box_animated':'box_animated',
-  'brainstem':'brainstem',
-  'brick':'modular_dungeon_1_brick',
-  'bridge':'modular_medieval_buildings_pack_bridge',
-  'bridge_modular':'platformer_game_pack_bridge_modular',
-  'bridge_modular_center':'platformer_game_pack_bridge_modular_center',
-  'bridge_small':'platformer_game_pack_bridge_small',
-  'bucket':'modular_dungeon_1_bucket',
-  'building1_large':'buildings_pack_2_building1_large',
-  'building1_small':'buildings_pack_2_building1_small',
-  'building2_large':'buildings_pack_2_building2_large',
-  'building2_small':'buildings_pack_2_building2_small',
-  'building3_big':'buildings_pack_2_building3_big',
-  'building3_small':'buildings_pack_2_building3_small',
-  'building4':'buildings_pack_2_building4',
-  'building_l-transformed':'ultimate_space_pack_building_l-transformed',
-  'buildings_pack_2_building1_large':'buildings_pack_2_building1_large',
-  'buildings_pack_2_building1_small':'buildings_pack_2_building1_small',
-  'buildings_pack_2_building2_large':'buildings_pack_2_building2_large',
-  'buildings_pack_2_building2_small':'buildings_pack_2_building2_small',
-  'buildings_pack_2_building3_big':'buildings_pack_2_building3_big',
-  'buildings_pack_2_building3_small':'buildings_pack_2_building3_small',
-  'buildings_pack_2_building4':'buildings_pack_2_building4',
-  'buildings_pack_2_house1':'buildings_pack_2_house1',
-  'buildings_pack_2_house2':'buildings_pack_2_house2',
-  'buildings_pack_3_1story_gableroof_mat':'buildings_pack_3_1story_gableroof_mat',
-  'buildings_pack_3_1story_mat':'buildings_pack_3_1story_mat',
-  'buildings_pack_3_1story_roundroof_mat':'buildings_pack_3_1story_roundroof_mat',
-  'buildings_pack_3_1story_sign_mat':'buildings_pack_3_1story_sign_mat',
-  'buildings_pack_3_2story_2_mat':'buildings_pack_3_2story_2_mat',
-  'buildings_pack_3_2story_balcony_mat':'buildings_pack_3_2story_balcony_mat',
-  'buildings_pack_3_2story_center_mat':'buildings_pack_3_2story_center_mat',
-  'buildings_pack_3_2story_columns_mat':'buildings_pack_3_2story_columns_mat',
-  'buildings_pack_3_2story_double_mat':'buildings_pack_3_2story_double_mat',
-  'buildings_pack_3_2story_gableroof_mat':'buildings_pack_3_2story_gableroof_mat',
-  'buildings_pack_3_2story_mat':'buildings_pack_3_2story_mat',
-  'buildings_pack_3_2story_roundroof_mat':'buildings_pack_3_2story_roundroof_mat',
-  'buildings_pack_3_2story_sidehouse_mat':'buildings_pack_3_2story_sidehouse_mat',
-  'buildings_pack_3_2story_sign_mat':'buildings_pack_3_2story_sign_mat',
-  'buildings_pack_3_2story_slim_mat':'buildings_pack_3_2story_slim_mat',
-  'buildings_pack_3_2story_stairs_mat':'buildings_pack_3_2story_stairs_mat',
-  'buildings_pack_3_2story_wide_2doors_mat':'buildings_pack_3_2story_wide_2doors_mat',
-  'buildings_pack_3_2story_wide_mat':'buildings_pack_3_2story_wide_mat',
-  'buildings_pack_3_3story_balcony_mat':'buildings_pack_3_3story_balcony_mat',
-  'buildings_pack_3_3story_slim_mat':'buildings_pack_3_3story_slim_mat',
-  'buildings_pack_3_3story_small_mat':'buildings_pack_3_3story_small_mat',
-  'buildings_pack_3_4story_center_mat':'buildings_pack_3_4story_center_mat',
-  'buildings_pack_3_4story_mat':'buildings_pack_3_4story_mat',
-  'buildings_pack_3_4story_wide_2doors_mat':'buildings_pack_3_4story_wide_2doors_mat',
-  'buildings_pack_3_4story_wide_2doors_roof_mat':'buildings_pack_3_4story_wide_2doors_roof_mat',
-  'buildings_pack_3_6story_stack_mat':'buildings_pack_3_6story_stack_mat',
-  'bull':'animals_pack_bull',
-  'bush':'simple_nature_pack_bush1',
-  'bush1':'simple_nature_pack_bush1',
-  'bush2':'simple_nature_pack_bush2',
-  'bush3':'simple_nature_pack_bush3',
-  'bush_1':'nature_pack_bush_1',
-  'bush_1-transformed':'ultimate_space_pack_bush_1-transformed',
-  'bush_2':'nature_pack_bush_2',
-  'bush_2-transformed':'ultimate_space_pack_bush_2-transformed',
-  'bush_3-transformed':'ultimate_space_pack_bush_3-transformed',
-  'bush_fruit':'platformer_game_pack_bush_fruit',
-  'bush_snow_1':'nature_pack_bush_snow_1',
-  'bush_snow_2':'nature_pack_bush_snow_2',
-  'bushberries_1':'nature_pack_bushberries_1',
-  'bushberries_2':'nature_pack_bushberries_2',
-  'bushberries_3':'crops_pack_bushberries_3',
-  'bushberries_4':'crops_pack_bushberries_4',
-  'bushberries_crop':'crops_pack_bushberries_crop',
-  'bushberries_harvested':'crops_pack_bushberries_harvested',
-  'butterflyfish':'cute_fish_pack_butterflyfish',
-  'cable_long':'cyberpunk_pack_cable_long',
-  'cable_small':'cyberpunk_pack_cable_small',
-  'cable_thick':'cyberpunk_pack_cable_thick',
-  'cactus':'cactus',
-  'cactus_1':'nature_pack_cactus_1',
-  'cactus_2':'nature_pack_cactus_2',
-  'cactus_3':'nature_pack_cactus_3',
-  'cactus_4':'nature_pack_cactus_4',
-  'cactus_5':'nature_pack_cactus_5',
-  'cactus_crop':'crops_pack_cactus_crop',
-  'cactus_harvested':'crops_pack_cactus_harvested',
-  'cactusflower_1':'nature_pack_cactusflower_1',
-  'cactusflowers_2':'nature_pack_cactusflowers_2',
-  'cactusflowers_3':'nature_pack_cactusflowers_3',
-  'cactusflowers_4':'nature_pack_cactusflowers_4',
-  'cactusflowers_5':'nature_pack_cactusflowers_5',
-  'campfire':'survival_pack_bonfire_fire',
-  'can_broken':'survival_pack_can_broken',
-  'can_closed':'survival_pack_can_closed',
-  'can_open':'survival_pack_can_open',
-  'can_red':'survival_pack_can_red',
-  'candelabrum':'modular_dungeon_pack_candelabrum',
-  'candelabrum_tall':'modular_dungeon_pack_candelabrum_tall',
-  'candle':'modular_dungeon_pack_candle',
-  'cannon':'platformer_game_pack_cannon',
-  'cannonball':'platformer_game_pack_cannonball',
-  'car':'kenney_cars/sedan',
-  'carbon_fibre':'carbon_fibre',
-  'cardinalfish':'cute_fish_pack_cardinalfish',
-  'carpet':'modular_dungeon_pack_carpet',
-  'carpet_1':'house_interior_pack_carpet_1',
-  'carpet_2':'house_interior_pack_carpet_2',
-  'carpet_round':'house_interior_pack_carpet_round',
-  'carrot_1':'crops_pack_carrot_1',
-  'carrot_2':'crops_pack_carrot_2',
-  'carrot_3':'crops_pack_carrot_3',
-  'carrot_4':'crops_pack_carrot_4',
-  'carrot_crop':'crops_pack_carrot_crop',
-  'cart':'medieval_village_pack_cart',
-  'casual':'modular_women_casual',
-  'casual2':'modular_men_casual2',
-  'cauldron':'medieval_village_pack_cauldron',
-  'chair':'house_interior_pack_chair_1',
-  'chair_1':'house_interior_pack_chair_1',
-  'chair_2':'house_interior_pack_chair_2',
-  'chair_3':'house_interior_pack_chair_3',
-  'chair_4':'house_interior_pack_chair_4',
-  'chair_damask':'chair_damask',
-  'chalice':'rpg_items_pack_chalice',
-  'character':'modular_men_adventurer',
-  'character_gun':'platformer_game_pack_character_gun',
-  'character_humanoidrig':'platformer_game_pack_character_humanoidrig',
-  'chest':'modular_dungeon_1_bag_coins',
-  'chest_closed':'rpg_items_pack_chest_closed',
-  'chest_gold':'modular_dungeon_pack_chest_gold',
-  'chest_ingots':'rpg_items_pack_chest_ingots',
-  'chest_open':'rpg_items_pack_chest_open',
-  'chickenleg':'rpg_items_pack_chickenleg',
-  'claymore':'medieval_weapons_pack_claymore',
-  'clearcoat_wicker':'clearcoat_wicker',
-  'cloud_1':'platformer_game_pack_cloud_1',
-  'cloud_2':'platformer_game_pack_cloud_2',
-  'cloud_3':'platformer_game_pack_cloud_3',
-  'clownfish':'cute_fish_pack_clownfish',
-  'club':'single_knight_pack_club',
-  'cobweb':'modular_dungeon_1_cobweb',
-  'cobweb2':'modular_dungeon_1_cobweb2',
-  'coconut_half':'crops_pack_coconut_half',
-  'coin':'rpg_items_pack_coin',
-  'coin_pile':'modular_dungeon_1_coin_pile',
-  'coin_skull':'rpg_items_pack_coin_skull',
-  'coin_star':'rpg_items_pack_coin_star',
-  'collectible_board':'cyberpunk_pack_collectible_board',
-  'collectible_gear':'cyberpunk_pack_collectible_gear',
-  'column':'modular_dungeon_pack_column',
-  'column2':'modular_dungeon_1_column2',
-  'column_broken':'modular_dungeon_pack_column_broken',
-  'column_broken2':'modular_dungeon_pack_column_broken2',
-  'column_round1':'house_interior_pack_column_round1',
-  'column_round2':'house_interior_pack_column_round2',
-  'column_round3':'house_interior_pack_column_round3',
-  'column_squarebig':'house_interior_pack_column_squarebig',
-  'column_squaresmall':'house_interior_pack_column_squaresmall',
-  'commontree_1':'nature_pack_commontree_1',
-  'commontree_2':'nature_pack_commontree_2',
-  'commontree_3':'nature_pack_commontree_3',
-  'commontree_4':'nature_pack_commontree_4',
-  'commontree_5':'nature_pack_commontree_5',
-  'commontree_autumn_1':'nature_pack_commontree_autumn_1',
-  'commontree_autumn_2':'nature_pack_commontree_autumn_2',
-  'commontree_autumn_3':'nature_pack_commontree_autumn_3',
-  'commontree_autumn_4':'nature_pack_commontree_autumn_4',
-  'commontree_autumn_5':'nature_pack_commontree_autumn_5',
-  'commontree_dead_1':'nature_pack_commontree_dead_1',
-  'commontree_dead_2':'nature_pack_commontree_dead_2',
-  'commontree_dead_3':'nature_pack_commontree_dead_3',
-  'commontree_dead_4':'nature_pack_commontree_dead_4',
-  'commontree_dead_5':'nature_pack_commontree_dead_5',
-  'commontree_dead_snow_1':'nature_pack_commontree_dead_snow_1',
-  'commontree_dead_snow_2':'nature_pack_commontree_dead_snow_2',
-  'commontree_dead_snow_3':'nature_pack_commontree_dead_snow_3',
-  'commontree_dead_snow_4':'nature_pack_commontree_dead_snow_4',
-  'commontree_dead_snow_5':'nature_pack_commontree_dead_snow_5',
-  'commontree_snow_1':'nature_pack_commontree_snow_1',
-  'commontree_snow_2':'nature_pack_commontree_snow_2',
-  'commontree_snow_3':'nature_pack_commontree_snow_3',
-  'commontree_snow_4':'nature_pack_commontree_snow_4',
-  'commontree_snow_5':'nature_pack_commontree_snow_5',
-  'compass_closed':'survival_pack_compass_closed',
-  'compass_open':'survival_pack_compass_open',
-  'computer':'cyberpunk_pack_computer',
-  'computer_large':'cyberpunk_pack_computer_large',
-  'connector-transformed':'ultimate_space_pack_connector-transformed',
-  'coralgrouper':'cute_fish_pack_coralgrouper',
-  'corn_1':'nature_pack_corn_1',
-  'corn_2':'nature_pack_corn_2',
-  'corn_3':'crops_pack_corn_3',
-  'corn_4':'crops_pack_corn_4',
-  'corn_crop':'crops_pack_corn_crop',
-  'corn_harvested':'crops_pack_corn_harvested',
-  'couch_l':'house_interior_pack_couch_l',
-  'couch_large1':'house_interior_pack_couch_large1',
-  'couch_large2':'house_interior_pack_couch_large2',
-  'couch_large3':'house_interior_pack_couch_large3',
-  'couch_medium1':'house_interior_pack_couch_medium1',
-  'couch_medium2':'house_interior_pack_couch_medium2',
-  'couch_small1':'house_interior_pack_couch_small1',
-  'couch_small2':'house_interior_pack_couch_small2',
-  'cow':'animals_pack_cow',
-  'cowfish':'cute_fish_pack_cowfish',
-  'crab':'platformer_game_pack_crab',
-  'crate':'modular_dungeon_1_crate',
-  'crops_pack_apple_1':'crops_pack_apple_1',
-  'crops_pack_apple_2':'crops_pack_apple_2',
-  'crops_pack_apple_3':'crops_pack_apple_3',
-  'crops_pack_apple_4':'crops_pack_apple_4',
-  'crops_pack_apple_crop':'crops_pack_apple_crop',
-  'crops_pack_apple_harvested':'crops_pack_apple_harvested',
-  'crops_pack_bamboo_1':'crops_pack_bamboo_1',
-  'crops_pack_bamboo_2':'crops_pack_bamboo_2',
-  'crops_pack_bamboo_3':'crops_pack_bamboo_3',
-  'crops_pack_bamboo_4':'crops_pack_bamboo_4',
-  'crops_pack_bamboo_crop':'crops_pack_bamboo_crop',
-  'crops_pack_beet_1':'crops_pack_beet_1',
-  'crops_pack_beet_2':'crops_pack_beet_2',
-  'crops_pack_beet_3':'crops_pack_beet_3',
-  'crops_pack_beet_4':'crops_pack_beet_4',
-  'crops_pack_beet_crop':'crops_pack_beet_crop',
-  'crops_pack_bushberries_1':'crops_pack_bushberries_1',
-  'crops_pack_bushberries_2':'crops_pack_bushberries_2',
-  'crops_pack_bushberries_3':'crops_pack_bushberries_3',
-  'crops_pack_bushberries_4':'crops_pack_bushberries_4',
-  'crops_pack_bushberries_crop':'crops_pack_bushberries_crop',
-  'crops_pack_bushberries_harvested':'crops_pack_bushberries_harvested',
-  'crops_pack_cactus_1':'crops_pack_cactus_1',
-  'crops_pack_cactus_2':'crops_pack_cactus_2',
-  'crops_pack_cactus_3':'crops_pack_cactus_3',
-  'crops_pack_cactus_4':'crops_pack_cactus_4',
-  'crops_pack_cactus_crop':'crops_pack_cactus_crop',
-  'crops_pack_cactus_harvested':'crops_pack_cactus_harvested',
-  'crops_pack_carrot_1':'crops_pack_carrot_1',
-  'crops_pack_carrot_2':'crops_pack_carrot_2',
-  'crops_pack_carrot_3':'crops_pack_carrot_3',
-  'crops_pack_carrot_4':'crops_pack_carrot_4',
-  'crops_pack_carrot_crop':'crops_pack_carrot_crop',
-  'crops_pack_coconut_half':'crops_pack_coconut_half',
-  'crops_pack_corn_1':'crops_pack_corn_1',
-  'crops_pack_corn_2':'crops_pack_corn_2',
-  'crops_pack_corn_3':'crops_pack_corn_3',
-  'crops_pack_corn_4':'crops_pack_corn_4',
-  'crops_pack_corn_crop':'crops_pack_corn_crop',
-  'crops_pack_corn_harvested':'crops_pack_corn_harvested',
-  'crops_pack_flower_1':'crops_pack_flower_1',
-  'crops_pack_flower_2':'crops_pack_flower_2',
-  'crops_pack_flower_3':'crops_pack_flower_3',
-  'crops_pack_flower_4':'crops_pack_flower_4',
-  'crops_pack_flowers_crop':'crops_pack_flowers_crop',
-  'crops_pack_flowers_harvested':'crops_pack_flowers_harvested',
-  'crops_pack_grass_1':'crops_pack_grass_1',
-  'crops_pack_grass_2':'crops_pack_grass_2',
-  'crops_pack_grass_3':'crops_pack_grass_3',
-  'crops_pack_grass_4':'crops_pack_grass_4',
-  'crops_pack_lettuce_1':'crops_pack_lettuce_1',
-  'crops_pack_lettuce_2':'crops_pack_lettuce_2',
-  'crops_pack_lettuce_3':'crops_pack_lettuce_3',
-  'crops_pack_lettuce_4':'crops_pack_lettuce_4',
-  'crops_pack_lettuce_crop':'crops_pack_lettuce_crop',
-  'crops_pack_lettuce_harvested':'crops_pack_lettuce_harvested',
-  'crops_pack_mushroom_1':'crops_pack_mushroom_1',
-  'crops_pack_mushroom_2':'crops_pack_mushroom_2',
-  'crops_pack_mushroom_3':'crops_pack_mushroom_3',
-  'crops_pack_mushroom_4':'crops_pack_mushroom_4',
-  'crops_pack_mushroom_crop':'crops_pack_mushroom_crop',
-  'crops_pack_mushroom_harvested':'crops_pack_mushroom_harvested',
-  'crops_pack_orange_1':'crops_pack_orange_1',
-  'crops_pack_orange_2':'crops_pack_orange_2',
-  'crops_pack_orange_3':'crops_pack_orange_3',
-  'crops_pack_orange_4':'crops_pack_orange_4',
-  'crops_pack_orange_crop':'crops_pack_orange_crop',
-  'crops_pack_orange_harvested':'crops_pack_orange_harvested',
-  'crops_pack_palmtree_1':'crops_pack_palmtree_1',
-  'crops_pack_palmtree_2':'crops_pack_palmtree_2',
-  'crops_pack_palmtree_3':'crops_pack_palmtree_3',
-  'crops_pack_palmtree_4':'crops_pack_palmtree_4',
-  'crops_pack_palmtree_crop':'crops_pack_palmtree_crop',
-  'crops_pack_palmtree_harvested':'crops_pack_palmtree_harvested',
-  'crops_pack_pumpkin_1':'crops_pack_pumpkin_1',
-  'crops_pack_pumpkin_2':'crops_pack_pumpkin_2',
-  'crops_pack_pumpkin_3':'crops_pack_pumpkin_3',
-  'crops_pack_pumpkin_4':'crops_pack_pumpkin_4',
-  'crops_pack_pumpkin_crop':'crops_pack_pumpkin_crop',
-  'crops_pack_pumpkin_harvested':'crops_pack_pumpkin_harvested',
-  'crops_pack_rice_1':'crops_pack_rice_1',
-  'crops_pack_rice_2':'crops_pack_rice_2',
-  'crops_pack_rice_3':'crops_pack_rice_3',
-  'crops_pack_rice_4':'crops_pack_rice_4',
-  'crops_pack_rice_crop':'crops_pack_rice_crop',
-  'crops_pack_tomato_1':'crops_pack_tomato_1',
-  'crops_pack_tomato_2':'crops_pack_tomato_2',
-  'crops_pack_tomato_3':'crops_pack_tomato_3',
-  'crops_pack_tomato_4':'crops_pack_tomato_4',
-  'crops_pack_tomato_crop':'crops_pack_tomato_crop',
-  'crops_pack_tomato_harvested':'crops_pack_tomato_harvested',
-  'crops_pack_watermelon_1':'crops_pack_watermelon_1',
-  'crops_pack_watermelon_2':'crops_pack_watermelon_2',
-  'crops_pack_watermelon_3':'crops_pack_watermelon_3',
-  'crops_pack_watermelon_4':'crops_pack_watermelon_4',
-  'crops_pack_watermelon_crop':'crops_pack_watermelon_crop',
-  'crops_pack_watermelon_harvested':'crops_pack_watermelon_harvested',
-  'crops_pack_wheat_1':'crops_pack_wheat_1',
-  'crops_pack_wheat_2':'crops_pack_wheat_2',
-  'crops_pack_wheat_3':'crops_pack_wheat_3',
-  'crops_pack_wheat_4':'crops_pack_wheat_4',
-  'crops_pack_wheat_crop':'crops_pack_wheat_crop',
-  'crossbow_1':'modular_sci_fi_guns_pack_crossbow_1',
-  'crossbow_2':'modular_sci_fi_guns_pack_crossbow_2',
-  'crown':'crown',
-  'crown2':'rpg_items_pack_crown2',
-  'cruiseship':'ships_pack_cruiseship',
-  'crystal1':'rpg_items_pack_crystal1',
-  'crystal1_damaged':'rpg_items_pack_crystal1_damaged',
-  'crystal2':'rpg_items_pack_crystal2',
-  'crystal2_damaged':'rpg_items_pack_crystal2_damaged',
-  'crystal3':'rpg_items_pack_crystal3',
-  'crystal3_damaged':'rpg_items_pack_crystal3_damaged',
-  'crystal4':'rpg_items_pack_crystal4',
-  'crystal5':'rpg_items_pack_crystal5',
-  'crystal5_damaged':'rpg_items_pack_crystal5_damaged',
-  'cube_bricks':'platformer_game_pack_cube_bricks',
-  'cube_crate':'platformer_game_pack_cube_crate',
-  'cube_default':'platformer_game_pack_cube_default',
-  'cube_dirt_center_tall':'platformer_game_pack_cube_dirt_center_tall',
-  'cube_dirt_corner_tall':'platformer_game_pack_cube_dirt_corner_tall',
-  'cube_dirt_side_tall':'platformer_game_pack_cube_dirt_side_tall',
-  'cube_dirt_single':'platformer_game_pack_cube_dirt_single',
-  'cube_exclamation':'platformer_game_pack_cube_exclamation',
-  'cube_grass_bottom_tall':'platformer_game_pack_cube_grass_bottom_tall',
-  'cube_grass_center_tall':'platformer_game_pack_cube_grass_center_tall',
-  'cube_grass_corner_tall':'platformer_game_pack_cube_grass_corner_tall',
-  'cube_grass_cornerbottom_tall':'platformer_game_pack_cube_grass_cornerbottom_tall',
-  'cube_grass_cornercenter_tall':'platformer_game_pack_cube_grass_cornercenter_tall',
-  'cube_grass_side_tall':'platformer_game_pack_cube_grass_side_tall',
-  'cube_grass_sidebottom_tall':'platformer_game_pack_cube_grass_sidebottom_tall',
-  'cube_grass_sidecenter_tall':'platformer_game_pack_cube_grass_sidecenter_tall',
-  'cube_grass_single':'platformer_game_pack_cube_grass_single',
-  'cube_question':'platformer_game_pack_cube_question',
-  'cube_spikes':'platformer_game_pack_cube_spikes',
-  'curtains_double':'house_interior_pack_curtains_double',
-  'curtains_single':'house_interior_pack_curtains_single',
-  'cute_fish_pack_anglerfish':'cute_fish_pack_anglerfish',
-  'cute_fish_pack_armoredcatfish':'cute_fish_pack_armoredcatfish',
-  'cute_fish_pack_betta':'cute_fish_pack_betta',
-  'cute_fish_pack_blacklionfish':'cute_fish_pack_blacklionfish',
-  'cute_fish_pack_blobfish':'cute_fish_pack_blobfish',
-  'cute_fish_pack_bluegoldfish':'cute_fish_pack_bluegoldfish',
-  'cute_fish_pack_bluetang':'cute_fish_pack_bluetang',
-  'cute_fish_pack_boat':'cute_fish_pack_boat',
-  'cute_fish_pack_butterflyfish':'cute_fish_pack_butterflyfish',
-  'cute_fish_pack_cardinalfish':'cute_fish_pack_cardinalfish',
-  'cute_fish_pack_clownfish':'cute_fish_pack_clownfish',
-  'cute_fish_pack_coralgrouper':'cute_fish_pack_coralgrouper',
-  'cute_fish_pack_cowfish':'cute_fish_pack_cowfish',
-  'cute_fish_pack_dock_long':'cute_fish_pack_dock_long',
-  'cute_fish_pack_dock_long_norope':'cute_fish_pack_dock_long_norope',
-  'cute_fish_pack_dock_stairs':'cute_fish_pack_dock_stairs',
-  'cute_fish_pack_dock_wide':'cute_fish_pack_dock_wide',
-  'cute_fish_pack_fishingrod_lvl1':'cute_fish_pack_fishingrod_lvl1',
-  'cute_fish_pack_fishingrod_lvl2':'cute_fish_pack_fishingrod_lvl2',
-  'cute_fish_pack_fishingrod_lvl3':'cute_fish_pack_fishingrod_lvl3',
-  'cute_fish_pack_fishingrod_lvl4':'cute_fish_pack_fishingrod_lvl4',
-  'cute_fish_pack_fishingrod_lvl5':'cute_fish_pack_fishingrod_lvl5',
-  'cute_fish_pack_flatfish':'cute_fish_pack_flatfish',
-  'cute_fish_pack_flowerhorn':'cute_fish_pack_flowerhorn',
-  'cute_fish_pack_goblinshark':'cute_fish_pack_goblinshark',
-  'cute_fish_pack_goldfish':'cute_fish_pack_goldfish',
-  'cute_fish_pack_humphead':'cute_fish_pack_humphead',
-  'cute_fish_pack_koi':'cute_fish_pack_koi',
-  'cute_fish_pack_lionfish':'cute_fish_pack_lionfish',
-  'cute_fish_pack_lure_1':'cute_fish_pack_lure_1',
-  'cute_fish_pack_lure_2':'cute_fish_pack_lure_2',
-  'cute_fish_pack_lure_3':'cute_fish_pack_lure_3',
-  'cute_fish_pack_lure_4':'cute_fish_pack_lure_4',
-  'cute_fish_pack_lure_5':'cute_fish_pack_lure_5',
-  'cute_fish_pack_lure_6':'cute_fish_pack_lure_6',
-  'cute_fish_pack_mandarinfish':'cute_fish_pack_mandarinfish',
-  'cute_fish_pack_moorishidol':'cute_fish_pack_moorishidol',
-  'cute_fish_pack_parrotfish':'cute_fish_pack_parrotfish',
-  'cute_fish_pack_piranha':'cute_fish_pack_piranha',
-  'cute_fish_pack_puffer':'cute_fish_pack_puffer',
-  'cute_fish_pack_redsnapper':'cute_fish_pack_redsnapper',
-  'cute_fish_pack_royalgramma':'cute_fish_pack_royalgramma',
-  'cute_fish_pack_shark':'cute_fish_pack_shark',
-  'cute_fish_pack_sunfish':'cute_fish_pack_sunfish',
-  'cute_fish_pack_swordfish':'cute_fish_pack_swordfish',
-  'cute_fish_pack_tang':'cute_fish_pack_tang',
-  'cute_fish_pack_tetra':'cute_fish_pack_tetra',
-  'cute_fish_pack_tuna':'cute_fish_pack_tuna',
-  'cute_fish_pack_turbot':'cute_fish_pack_turbot',
-  'cute_fish_pack_worm':'cute_fish_pack_worm',
-  'cute_fish_pack_yellowtang':'cute_fish_pack_yellowtang',
-  'cute_fish_pack_zebraclownfish':'cute_fish_pack_zebraclownfish',
-  'cyberpunk_pack_ac':'cyberpunk_pack_ac',
-  'cyberpunk_pack_ac_side':'cyberpunk_pack_ac_side',
-  'cyberpunk_pack_ac_stacked':'cyberpunk_pack_ac_stacked',
-  'cyberpunk_pack_antenna_1':'cyberpunk_pack_antenna_1',
-  'cyberpunk_pack_antenna_2':'cyberpunk_pack_antenna_2',
-  'cyberpunk_pack_cable_long':'cyberpunk_pack_cable_long',
-  'cyberpunk_pack_cable_small':'cyberpunk_pack_cable_small',
-  'cyberpunk_pack_cable_thick':'cyberpunk_pack_cable_thick',
-  'cyberpunk_pack_character':'cyberpunk_pack_character',
-  'cyberpunk_pack_collectible_board':'cyberpunk_pack_collectible_board',
-  'cyberpunk_pack_collectible_gear':'cyberpunk_pack_collectible_gear',
-  'cyberpunk_pack_computer':'cyberpunk_pack_computer',
-  'cyberpunk_pack_computer_large':'cyberpunk_pack_computer_large',
-  'cyberpunk_pack_door':'cyberpunk_pack_door',
-  'cyberpunk_pack_enemy_2legs':'cyberpunk_pack_enemy_2legs',
-  'cyberpunk_pack_enemy_2legs_gun':'cyberpunk_pack_enemy_2legs_gun',
-  'cyberpunk_pack_enemy_flying':'cyberpunk_pack_enemy_flying',
-  'cyberpunk_pack_enemy_flying_gun':'cyberpunk_pack_enemy_flying_gun',
-  'cyberpunk_pack_enemy_large':'cyberpunk_pack_enemy_large',
-  'cyberpunk_pack_enemy_large_gun':'cyberpunk_pack_enemy_large_gun',
-  'cyberpunk_pack_fence':'cyberpunk_pack_fence',
-  'cyberpunk_pack_lever':'cyberpunk_pack_lever',
-  'cyberpunk_pack_light_square':'cyberpunk_pack_light_square',
-  'cyberpunk_pack_light_street_1':'cyberpunk_pack_light_street_1',
-  'cyberpunk_pack_light_street_2':'cyberpunk_pack_light_street_2',
-  'cyberpunk_pack_lootbox':'cyberpunk_pack_lootbox',
-  'cyberpunk_pack_pickup_health':'cyberpunk_pack_pickup_health',
-  'cyberpunk_pack_pickup_heart':'cyberpunk_pack_pickup_heart',
-  'cyberpunk_pack_pickup_tank':'cyberpunk_pack_pickup_tank',
-  'cyberpunk_pack_pipe_1':'cyberpunk_pack_pipe_1',
-  'cyberpunk_pack_pipe_2':'cyberpunk_pack_pipe_2',
-  'cyberpunk_pack_pipe_corner':'cyberpunk_pack_pipe_corner',
-  'cyberpunk_pack_pipe_corner_2':'cyberpunk_pack_pipe_corner_2',
-  'cyberpunk_pack_platform_1x1_empty':'cyberpunk_pack_platform_1x1_empty',
-  'cyberpunk_pack_platform_2x1_empty':'cyberpunk_pack_platform_2x1_empty',
-  'cyberpunk_pack_platform_2x2':'cyberpunk_pack_platform_2x2',
-  'cyberpunk_pack_platform_2x2_empty':'cyberpunk_pack_platform_2x2_empty',
-  'cyberpunk_pack_platform_4x1':'cyberpunk_pack_platform_4x1',
-  'cyberpunk_pack_platform_4x1_empty':'cyberpunk_pack_platform_4x1_empty',
-  'cyberpunk_pack_platform_4x2':'cyberpunk_pack_platform_4x2',
-  'cyberpunk_pack_platform_4x4':'cyberpunk_pack_platform_4x4',
-  'cyberpunk_pack_platform_4x4_empty':'cyberpunk_pack_platform_4x4_empty',
-  'cyberpunk_pack_rail_corner':'cyberpunk_pack_rail_corner',
-  'cyberpunk_pack_rail_corner_2':'cyberpunk_pack_rail_corner_2',
-  'cyberpunk_pack_rail_long':'cyberpunk_pack_rail_long',
-  'cyberpunk_pack_rail_short':'cyberpunk_pack_rail_short',
-  'cyberpunk_pack_sign_1':'cyberpunk_pack_sign_1',
-  'cyberpunk_pack_sign_2':'cyberpunk_pack_sign_2',
-  'cyberpunk_pack_sign_3':'cyberpunk_pack_sign_3',
-  'cyberpunk_pack_sign_4':'cyberpunk_pack_sign_4',
-  'cyberpunk_pack_sign_corner_1':'cyberpunk_pack_sign_corner_1',
-  'cyberpunk_pack_sign_corner_2':'cyberpunk_pack_sign_corner_2',
-  'cyberpunk_pack_sign_corner_3':'cyberpunk_pack_sign_corner_3',
-  'cyberpunk_pack_sign_corner_3_fenced':'cyberpunk_pack_sign_corner_3_fenced',
-  'cyberpunk_pack_sign_corner_hazard':'cyberpunk_pack_sign_corner_hazard',
-  'cyberpunk_pack_sign_corner_small1':'cyberpunk_pack_sign_corner_small1',
-  'cyberpunk_pack_sign_corner_small2':'cyberpunk_pack_sign_corner_small2',
-  'cyberpunk_pack_sign_small_1':'cyberpunk_pack_sign_small_1',
-  'cyberpunk_pack_sign_small_2':'cyberpunk_pack_sign_small_2',
-  'cyberpunk_pack_sign_small_3':'cyberpunk_pack_sign_small_3',
-  'cyberpunk_pack_support':'cyberpunk_pack_support',
-  'cyberpunk_pack_support_long':'cyberpunk_pack_support_long',
-  'cyberpunk_pack_support_short':'cyberpunk_pack_support_short',
-  'cyberpunk_pack_tank':'cyberpunk_pack_tank',
-  'cyberpunk_pack_turret_cannon':'cyberpunk_pack_turret_cannon',
-  'cyberpunk_pack_turret_gun':'cyberpunk_pack_turret_gun',
-  'cyberpunk_pack_turret_gundouble':'cyberpunk_pack_turret_gundouble',
-  'cyberpunk_pack_turret_teleporter':'cyberpunk_pack_turret_teleporter',
-  'cyberpunk_pack_tv_1':'cyberpunk_pack_tv_1',
-  'cyberpunk_pack_tv_2':'cyberpunk_pack_tv_2',
-  'cyberpunk_pack_tv_3':'cyberpunk_pack_tv_3',
-  'cylinder_pistol_1':'modular_sci_fi_guns_pack_cylinder_pistol_1',
-  'dagger':'rpg_items_pack_dagger',
-  'dagger_2':'medieval_weapons_pack_dagger_2',
-  'dagger_golden':'rpg_items_pack_dagger_golden',
-  'damaged_helmet':'damaged_helmet',
-  'dart':'rpg_items_pack_dart',
-  'dart_golden':'rpg_items_pack_dart_golden',
-  'decorative_wall':'modular_dungeon_1_decorative_wall',
-  'deer':'animals_pack_deer',
-  'dinosaurs_pack_apatosaurus':'dinosaurs_pack_apatosaurus',
-  'dinosaurs_pack_parasaurolophus':'dinosaurs_pack_parasaurolophus',
-  'dinosaurs_pack_stegosaurus':'dinosaurs_pack_stegosaurus',
-  'dinosaurs_pack_trex':'dinosaurs_pack_trex',
-  'dinosaurs_pack_triceratops':'dinosaurs_pack_triceratops',
-  'dinosaurs_pack_velociraptor':'dinosaurs_pack_velociraptor',
-  'directional_light':'directional_light',
-  'dispatcher':'spaceships_pack_dispatcher',
-  'dock_long':'cute_fish_pack_dock_long',
-  'dock_long_norope':'cute_fish_pack_dock_long_norope',
-  'dock_stairs':'cute_fish_pack_dock_stairs',
-  'dock_wide':'cute_fish_pack_dock_wide',
-  'dolphin':'fish_pack_dolphin',
-  'donkey':'animals_pack_donkey',
-  'door':'platformer_game_pack_door',
-  'door_1':'house_interior_pack_door_1',
-  'door_2':'house_interior_pack_door_2',
-  'door_3':'house_interior_pack_door_3',
-  'door_4':'house_interior_pack_door_4',
-  'door_5':'house_interior_pack_door_5',
-  'door_6':'house_interior_pack_door_6',
-  'door_7':'house_interior_pack_door_7',
-  'door_8':'house_interior_pack_door_8',
-  'door_9':'house_interior_pack_door_9',
-  'door_double':'house_interior_pack_door_double',
-  'door_round':'medieval_village_pack_door_round',
-  'door_straight':'medieval_village_pack_door_straight',
-  'dragon':'dinosaurs_pack_trex',
-  'drawer_1':'house_interior_pack_drawer_1',
-  'drawer_2':'house_interior_pack_drawer_2',
-  'drawer_3':'house_interior_pack_drawer_3',
-  'drawer_4':'house_interior_pack_drawer_4',
-  'drawer_5':'house_interior_pack_drawer_5',
-  'duck':'duck',
-  'dummy':'modular_medieval_buildings_pack_dummy',
-  'easy_enemies_pack_frog':'easy_enemies_pack_frog',
-  'easy_enemies_pack_rat':'easy_enemies_pack_rat',
-  'easy_enemies_pack_snake':'easy_enemies_pack_snake',
-  'easy_enemies_pack_snake_angry':'easy_enemies_pack_snake_angry',
-  'easy_enemies_pack_spider':'easy_enemies_pack_spider',
-  'easy_enemies_pack_wasp':'easy_enemies_pack_wasp',
-  'enemy':'platformer_game_pack_enemy',
-  'enemy_2legs':'cyberpunk_pack_enemy_2legs',
-  'enemy_2legs_gun':'cyberpunk_pack_enemy_2legs_gun',
-  'enemy_extrasmall-transformed':'ultimate_space_pack_enemy_extrasmall-transformed',
-  'enemy_flying':'cyberpunk_pack_enemy_flying',
-  'enemy_flying-transformed':'ultimate_space_pack_enemy_flying-transformed',
-  'enemy_flying_gun':'cyberpunk_pack_enemy_flying_gun',
-  'enemy_large':'cyberpunk_pack_enemy_large',
-  'enemy_large-transformed':'ultimate_space_pack_enemy_large-transformed',
-  'enemy_large_gun':'cyberpunk_pack_enemy_large_gun',
-  'enemy_small-transformed':'ultimate_space_pack_enemy_small-transformed',
-  'entrance':'modular_dungeon_pack_entrance',
-  'entrance2':'modular_dungeon_pack_entrance2',
-  'farmer':'modular_men_farmer',
-  'female':'modular_women_casual',
-  'fence':'fence',
-  'fence_1':'platformer_game_pack_fence_1',
-  'fence_90_modular':'modular_dungeon_1_fence_90_modular',
-  'fence_corner':'platformer_game_pack_fence_corner',
-  'fence_end_modular':'modular_dungeon_1_fence_end_modular',
-  'fence_middle':'platformer_game_pack_fence_middle',
-  'fence_straight_modular':'modular_dungeon_1_fence_straight_modular',
-  'fire':'medieval_village_pack_bonfire_lit',
-  'fireplace':'house_interior_pack_fireplace',
-  'firstaidkit':'survival_pack_firstaidkit',
-  'firstaidkit_hard':'survival_pack_firstaidkit_hard',
-  'fish1':'fish_pack_fish1',
-  'fish2':'fish_pack_fish2',
-  'fish3':'fish_pack_fish3',
-  'fish_pack_dolphin':'fish_pack_dolphin',
-  'fish_pack_fish1':'fish_pack_fish1',
-  'fish_pack_fish2':'fish_pack_fish2',
-  'fish_pack_fish3':'fish_pack_fish3',
-  'fish_pack_manta_ray':'fish_pack_manta_ray',
-  'fish_pack_shark':'fish_pack_shark',
-  'fish_pack_whale':'fish_pack_whale',
-  'fishbone':'rpg_items_pack_fishbone',
-  'fishingrod_lvl1':'cute_fish_pack_fishingrod_lvl1',
-  'fishingrod_lvl2':'cute_fish_pack_fishingrod_lvl2',
-  'fishingrod_lvl3':'cute_fish_pack_fishingrod_lvl3',
-  'fishingrod_lvl4':'cute_fish_pack_fishingrod_lvl4',
-  'fishingrod_lvl5':'cute_fish_pack_fishingrod_lvl5',
-  'flamingo':'flamingo',
-  'flaregun':'survival_pack_flaregun',
-  'flatfish':'cute_fish_pack_flatfish',
-  'floor_bricksseparate':'modular_dungeon_1_floor_bricksseparate',
-  'floor_bricksseparate2':'modular_dungeon_1_floor_bricksseparate2',
-  'floor_modular':'modular_dungeon_1_floor_modular',
-  'flower':'crops_pack_flower_1',
-  'flower_1':'crops_pack_flower_1',
-  'flower_2':'crops_pack_flower_2',
-  'flower_3':'crops_pack_flower_3',
-  'flower_4':'crops_pack_flower_4',
-  'flowerhorn':'cute_fish_pack_flowerhorn',
-  'flowers':'nature_pack_flowers',
-  'flowers_crop':'crops_pack_flowers_crop',
-  'flowers_harvested':'crops_pack_flowers_harvested',
-  'fork':'house_interior_pack_fork',
-  'formal':'modular_women_formal',
-  'fox':'fox',
-  'fox_anim':'fox_anim',
-  'frog':'easy_enemies_pack_frog',
-  'fruit':'platformer_game_pack_fruit',
-  'gascan':'survival_pack_gascan',
-  'gazebo':'medieval_village_pack_gazebo',
-  'gem_blue':'platformer_game_pack_gem_blue',
-  'gem_green':'platformer_game_pack_gem_green',
-  'gem_pink':'platformer_game_pack_gem_pink',
-  'geodesicdome-transformed':'ultimate_space_pack_geodesicdome-transformed',
-  'girl':'modular_women_casual',
-  'glamvelvet_sofa':'glamvelvet_sofa',
-  'glass_vase_flowers':'glass_vase_flowers',
-  'glass_window':'glass_window',
-  'glove':'rpg_items_pack_glove',
-  'goal_flag':'platformer_game_pack_goal_flag',
-  'goblinshark':'cute_fish_pack_goblinshark',
-  'gold_ingots':'rpg_items_pack_gold_ingots',
-  'goldfish':'cute_fish_pack_goldfish',
-  'grass':'nature_pack_grass',
-  'grass1':'simple_nature_pack_grass1',
-  'grass2':'simple_nature_pack_grass2',
-  'grass3':'simple_nature_pack_grass3',
-  'grass_1':'platformer_game_pack_grass_1',
-  'grass_1-transformed':'ultimate_space_pack_grass_1-transformed',
-  'grass_2':'platformer_game_pack_grass_2',
-  'grass_2-transformed':'ultimate_space_pack_grass_2-transformed',
-  'grass_3':'platformer_game_pack_grass_3',
-  'grass_3-transformed':'ultimate_space_pack_grass_3-transformed',
-  'grass_4':'crops_pack_grass_4',
-  'grass_short':'nature_pack_grass_short',
-  'grave':'modular_dungeon_1_skull',
-  'gravestone':'modular_dungeon_1_skull',
-  'grenade':'modular_sci_fi_guns_pack_grenade',
-  'grenade_1':'modular_sci_fi_guns_pack_grenade_1',
-  'grenade_2':'modular_sci_fi_guns_pack_grenade_2',
-  'grenade_3':'modular_sci_fi_guns_pack_grenade_3',
-  'grip_ar_1':'modular_sci_fi_guns_pack_grip_ar_1',
-  'grip_ar_6':'modular_sci_fi_guns_pack_grip_ar_6',
-  'grip_grenade_1':'modular_sci_fi_guns_pack_grip_grenade_1',
-  'grip_grenade_2':'modular_sci_fi_guns_pack_grip_grenade_2',
-  'grip_grenade_3':'modular_sci_fi_guns_pack_grip_grenade_3',
-  'grip_pistol_1':'modular_sci_fi_guns_pack_grip_pistol_1',
-  'grip_pistol_2':'modular_sci_fi_guns_pack_grip_pistol_2',
-  'grip_smg_1':'modular_sci_fi_guns_pack_grip_smg_1',
-  'grip_sniper_1':'modular_sci_fi_guns_pack_grip_sniper_1',
-  'grip_sniper_2':'modular_sci_fi_guns_pack_grip_sniper_2',
-  'hammer_double':'rpg_items_pack_hammer_double',
-  'hammer_double_golden':'rpg_items_pack_hammer_double_golden',
-  'hammer_small':'medieval_weapons_pack_hammer_small',
-  'handguard_pistol_3':'modular_sci_fi_guns_pack_handguard_pistol_3',
-  'hay':'medieval_village_pack_hay',
-  'hazard_cylinder':'platformer_game_pack_hazard_cylinder',
-  'hazard_saw':'platformer_game_pack_hazard_saw',
-  'hazard_spiketrap':'platformer_game_pack_hazard_spiketrap',
-  'heart':'rpg_items_pack_heart',
-  'heart_broken':'rpg_items_pack_heart_broken',
-  'heart_half':'rpg_items_pack_heart_half',
-  'heart_outline':'platformer_game_pack_heart_outline',
-  'helmet':'helmet',
-  'helmet1':'single_knight_pack_helmet1',
-  'helmet2':'single_knight_pack_helmet2',
-  'helmet3':'single_knight_pack_helmet3',
-  'horse':'horse',
-  'horse_anim':'horse_anim',
-  'horse_white':'animals_pack_horse_white',
-  'house1':'buildings_pack_2_house1',
-  'house2':'buildings_pack_2_house2',
-  'house_1':'medieval_village_pack_house_1',
-  'house_2':'medieval_village_pack_house_2',
-  'house_3':'medieval_village_pack_house_3',
-  'house_4':'medieval_village_pack_house_4',
-  'house_cylinder-transformed':'ultimate_space_pack_house_cylinder-transformed',
-  'house_interior_pack_bathroom_bathtub':'house_interior_pack_bathroom_bathtub',
-  'house_interior_pack_bathroom_mirror1':'house_interior_pack_bathroom_mirror1',
-  'house_interior_pack_bathroom_mirror2':'house_interior_pack_bathroom_mirror2',
-  'house_interior_pack_bathroom_shower1':'house_interior_pack_bathroom_shower1',
-  'house_interior_pack_bathroom_sink':'house_interior_pack_bathroom_sink',
-  'house_interior_pack_bathroom_toilet':'house_interior_pack_bathroom_toilet',
-  'house_interior_pack_bathroom_toilet2':'house_interior_pack_bathroom_toilet2',
-  'house_interior_pack_bathroom_toiletpaper':'house_interior_pack_bathroom_toiletpaper',
-  'house_interior_pack_bathroom_toiletpaperpile':'house_interior_pack_bathroom_toiletpaperpile',
-  'house_interior_pack_bathroom_towel':'house_interior_pack_bathroom_towel',
-  'house_interior_pack_bathroom_washingmachine':'house_interior_pack_bathroom_washingmachine',
-  'house_interior_pack_bed_bunk':'house_interior_pack_bed_bunk',
-  'house_interior_pack_bed_king':'house_interior_pack_bed_king',
-  'house_interior_pack_bed_single':'house_interior_pack_bed_single',
-  'house_interior_pack_bookshelf':'house_interior_pack_bookshelf',
-  'house_interior_pack_carpet_1':'house_interior_pack_carpet_1',
-  'house_interior_pack_carpet_2':'house_interior_pack_carpet_2',
-  'house_interior_pack_carpet_round':'house_interior_pack_carpet_round',
-  'house_interior_pack_chair_1':'house_interior_pack_chair_1',
-  'house_interior_pack_chair_2':'house_interior_pack_chair_2',
-  'house_interior_pack_chair_3':'house_interior_pack_chair_3',
-  'house_interior_pack_chair_4':'house_interior_pack_chair_4',
-  'house_interior_pack_column_round1':'house_interior_pack_column_round1',
-  'house_interior_pack_column_round2':'house_interior_pack_column_round2',
-  'house_interior_pack_column_round3':'house_interior_pack_column_round3',
-  'house_interior_pack_column_squarebig':'house_interior_pack_column_squarebig',
-  'house_interior_pack_column_squaresmall':'house_interior_pack_column_squaresmall',
-  'house_interior_pack_couch_l':'house_interior_pack_couch_l',
-  'house_interior_pack_couch_large1':'house_interior_pack_couch_large1',
-  'house_interior_pack_couch_large2':'house_interior_pack_couch_large2',
-  'house_interior_pack_couch_large3':'house_interior_pack_couch_large3',
-  'house_interior_pack_couch_medium1':'house_interior_pack_couch_medium1',
-  'house_interior_pack_couch_medium2':'house_interior_pack_couch_medium2',
-  'house_interior_pack_couch_small1':'house_interior_pack_couch_small1',
-  'house_interior_pack_couch_small2':'house_interior_pack_couch_small2',
-  'house_interior_pack_curtains_double':'house_interior_pack_curtains_double',
-  'house_interior_pack_curtains_single':'house_interior_pack_curtains_single',
-  'house_interior_pack_door_1':'house_interior_pack_door_1',
-  'house_interior_pack_door_2':'house_interior_pack_door_2',
-  'house_interior_pack_door_3':'house_interior_pack_door_3',
-  'house_interior_pack_door_4':'house_interior_pack_door_4',
-  'house_interior_pack_door_5':'house_interior_pack_door_5',
-  'house_interior_pack_door_6':'house_interior_pack_door_6',
-  'house_interior_pack_door_7':'house_interior_pack_door_7',
-  'house_interior_pack_door_8':'house_interior_pack_door_8',
-  'house_interior_pack_door_9':'house_interior_pack_door_9',
-  'house_interior_pack_door_double':'house_interior_pack_door_double',
-  'house_interior_pack_drawer_1':'house_interior_pack_drawer_1',
-  'house_interior_pack_drawer_2':'house_interior_pack_drawer_2',
-  'house_interior_pack_drawer_3':'house_interior_pack_drawer_3',
-  'house_interior_pack_drawer_4':'house_interior_pack_drawer_4',
-  'house_interior_pack_drawer_5':'house_interior_pack_drawer_5',
-  'house_interior_pack_fireplace':'house_interior_pack_fireplace',
-  'house_interior_pack_fork':'house_interior_pack_fork',
-  'house_interior_pack_houseplant_1':'house_interior_pack_houseplant_1',
-  'house_interior_pack_houseplant_2':'house_interior_pack_houseplant_2',
-  'house_interior_pack_houseplant_3':'house_interior_pack_houseplant_3',
-  'house_interior_pack_houseplant_4':'house_interior_pack_houseplant_4',
-  'house_interior_pack_houseplant_5':'house_interior_pack_houseplant_5',
-  'house_interior_pack_houseplant_6':'house_interior_pack_houseplant_6',
-  'house_interior_pack_houseplant_7':'house_interior_pack_houseplant_7',
-  'house_interior_pack_houseplant_8':'house_interior_pack_houseplant_8',
-  'house_interior_pack_kitchen_1drawers':'house_interior_pack_kitchen_1drawers',
-  'house_interior_pack_kitchen_2drawers':'house_interior_pack_kitchen_2drawers',
-  'house_interior_pack_kitchen_3drawers':'house_interior_pack_kitchen_3drawers',
-  'house_interior_pack_kitchen_cabinet1':'house_interior_pack_kitchen_cabinet1',
-  'house_interior_pack_kitchen_cabinet2':'house_interior_pack_kitchen_cabinet2',
-  'house_interior_pack_kitchen_cabinetsmall':'house_interior_pack_kitchen_cabinetsmall',
-  'house_interior_pack_kitchen_fridge':'house_interior_pack_kitchen_fridge',
-  'house_interior_pack_kitchen_oven':'house_interior_pack_kitchen_oven',
-  'house_interior_pack_kitchen_oven_large':'house_interior_pack_kitchen_oven_large',
-  'house_interior_pack_kitchen_sink':'house_interior_pack_kitchen_sink',
-  'house_interior_pack_knife':'house_interior_pack_knife',
-  'house_interior_pack_light_ceiling1':'house_interior_pack_light_ceiling1',
-  'house_interior_pack_light_ceiling2':'house_interior_pack_light_ceiling2',
-  'house_interior_pack_light_ceiling3':'house_interior_pack_light_ceiling3',
-  'house_interior_pack_light_ceiling4':'house_interior_pack_light_ceiling4',
-  'house_interior_pack_light_ceiling5':'house_interior_pack_light_ceiling5',
-  'house_interior_pack_light_ceiling6':'house_interior_pack_light_ceiling6',
-  'house_interior_pack_light_ceilingsingle':'house_interior_pack_light_ceilingsingle',
-  'house_interior_pack_light_chandelier':'house_interior_pack_light_chandelier',
-  'house_interior_pack_light_cube':'house_interior_pack_light_cube',
-  'house_interior_pack_light_cube2':'house_interior_pack_light_cube2',
-  'house_interior_pack_light_desk':'house_interior_pack_light_desk',
-  'house_interior_pack_light_floor1':'house_interior_pack_light_floor1',
-  'house_interior_pack_light_floor2':'house_interior_pack_light_floor2',
-  'house_interior_pack_light_floor3':'house_interior_pack_light_floor3',
-  'house_interior_pack_light_floor4':'house_interior_pack_light_floor4',
-  'house_interior_pack_light_icosahedron':'house_interior_pack_light_icosahedron',
-  'house_interior_pack_light_icosahedron2':'house_interior_pack_light_icosahedron2',
-  'house_interior_pack_light_small':'house_interior_pack_light_small',
-  'house_interior_pack_light_stand1':'house_interior_pack_light_stand1',
-  'house_interior_pack_light_stand2':'house_interior_pack_light_stand2',
-  'house_interior_pack_nightstand_1':'house_interior_pack_nightstand_1',
-  'house_interior_pack_nightstand_2':'house_interior_pack_nightstand_2',
-  'house_interior_pack_nightstand_3':'house_interior_pack_nightstand_3',
-  'house_interior_pack_plate_1':'house_interior_pack_plate_1',
-  'house_interior_pack_plate_2':'house_interior_pack_plate_2',
-  'house_interior_pack_plate_3':'house_interior_pack_plate_3',
-  'house_interior_pack_shelf_1':'house_interior_pack_shelf_1',
-  'house_interior_pack_shelf_2':'house_interior_pack_shelf_2',
-  'house_interior_pack_shelf_large':'house_interior_pack_shelf_large',
-  'house_interior_pack_shelf_small1':'house_interior_pack_shelf_small1',
-  'house_interior_pack_shelf_small2':'house_interior_pack_shelf_small2',
-  'house_interior_pack_shelf_small3':'house_interior_pack_shelf_small3',
-  'house_interior_pack_spoon':'house_interior_pack_spoon',
-  'house_interior_pack_stool':'house_interior_pack_stool',
-  'house_interior_pack_table_roundlarge':'house_interior_pack_table_roundlarge',
-  'house_interior_pack_table_roundsmall':'house_interior_pack_table_roundsmall',
-  'house_interior_pack_table_roundsmall2':'house_interior_pack_table_roundsmall2',
-  'house_interior_pack_trashcan_cylindric':'house_interior_pack_trashcan_cylindric',
-  'house_interior_pack_trashcan_green':'house_interior_pack_trashcan_green',
-  'house_interior_pack_trashcan_large':'house_interior_pack_trashcan_large',
-  'house_interior_pack_trashcan_small1':'house_interior_pack_trashcan_small1',
-  'house_interior_pack_trashcan_small2':'house_interior_pack_trashcan_small2',
-  'house_interior_pack_window_large1':'house_interior_pack_window_large1',
-  'house_interior_pack_window_large2':'house_interior_pack_window_large2',
-  'house_interior_pack_window_round1':'house_interior_pack_window_round1',
-  'house_interior_pack_window_round2':'house_interior_pack_window_round2',
-  'house_interior_pack_window_round3':'house_interior_pack_window_round3',
-  'house_interior_pack_window_small1':'house_interior_pack_window_small1',
-  'house_interior_pack_window_small2':'house_interior_pack_window_small2',
-  'house_interior_pack_window_small3':'house_interior_pack_window_small3',
-  'house_long-transformed':'ultimate_space_pack_house_long-transformed',
-  'house_open-transformed':'ultimate_space_pack_house_open-transformed',
-  'house_openback-transformed':'ultimate_space_pack_house_openback-transformed',
-  'house_single-transformed':'ultimate_space_pack_house_single-transformed',
-  'house_single_support-transformed':'ultimate_space_pack_house_single_support-transformed',
-  'houseplant_1':'house_interior_pack_houseplant_1',
-  'houseplant_2':'house_interior_pack_houseplant_2',
-  'houseplant_3':'house_interior_pack_houseplant_3',
-  'houseplant_4':'house_interior_pack_houseplant_4',
-  'houseplant_5':'house_interior_pack_houseplant_5',
-  'houseplant_6':'house_interior_pack_houseplant_6',
-  'houseplant_7':'house_interior_pack_houseplant_7',
-  'houseplant_8':'house_interior_pack_houseplant_8',
-  'human':'modular_men_casual',
-  'humphead':'cute_fish_pack_humphead',
-  'hurricane_candle':'hurricane_candle',
-  'husky':'animals_pack_husky',
-  'inn':'medieval_village_pack_inn',
-  'insurgent':'spaceships_pack_insurgent',
-  'iridescence_suzanne':'iridescence_suzanne',
-  'katana':'single_knight_pack_katana',
-  'key':'platformer_game_pack_key',
-  'key1':'rpg_items_pack_key1',
-  'key2':'rpg_items_pack_key2',
-  'key3':'rpg_items_pack_key3',
-  'key4':'rpg_items_pack_key4',
-  'king':'modular_men_king',
-  'kitchen_1drawers':'house_interior_pack_kitchen_1drawers',
-  'kitchen_2drawers':'house_interior_pack_kitchen_2drawers',
-  'kitchen_3drawers':'house_interior_pack_kitchen_3drawers',
-  'kitchen_cabinet1':'house_interior_pack_kitchen_cabinet1',
-  'kitchen_cabinet2':'house_interior_pack_kitchen_cabinet2',
-  'kitchen_cabinetsmall':'house_interior_pack_kitchen_cabinetsmall',
-  'kitchen_fridge':'house_interior_pack_kitchen_fridge',
-  'kitchen_oven':'house_interior_pack_kitchen_oven',
-  'kitchen_oven_large':'house_interior_pack_kitchen_oven_large',
-  'kitchen_sink':'house_interior_pack_kitchen_sink',
-  'knife':'survival_pack_knife',
-  'knightcharacter':'single_knight_pack_knightcharacter',
-  'koi':'cute_fish_pack_koi',
-  'lady':'modular_women_medieval',
-  'lamp':'modular_dungeon_pack_candle',
-  'largesimpletower':'modular_medieval_buildings_pack_largesimpletower',
-  'largesquaretower':'modular_medieval_buildings_pack_largesquaretower',
-  'largesquaretowerbricks':'modular_medieval_buildings_pack_largesquaretowerbricks',
-  'largetower':'modular_medieval_buildings_pack_largetower',
-  'lettuce_1':'crops_pack_lettuce_1',
-  'lettuce_2':'crops_pack_lettuce_2',
-  'lettuce_3':'crops_pack_lettuce_3',
-  'lettuce_4':'crops_pack_lettuce_4',
-  'lettuce_crop':'crops_pack_lettuce_crop',
-  'lettuce_harvested':'crops_pack_lettuce_harvested',
-  'lever':'platformer_game_pack_lever',
-  'lifeboat':'ships_pack_lifeboat',
-  'light_ceiling1':'house_interior_pack_light_ceiling1',
-  'light_ceiling2':'house_interior_pack_light_ceiling2',
-  'light_ceiling3':'house_interior_pack_light_ceiling3',
-  'light_ceiling4':'house_interior_pack_light_ceiling4',
-  'light_ceiling5':'house_interior_pack_light_ceiling5',
-  'light_ceiling6':'house_interior_pack_light_ceiling6',
-  'light_ceilingsingle':'house_interior_pack_light_ceilingsingle',
-  'light_chandelier':'house_interior_pack_light_chandelier',
-  'light_cube':'house_interior_pack_light_cube',
-  'light_cube2':'house_interior_pack_light_cube2',
-  'light_desk':'house_interior_pack_light_desk',
-  'light_floor1':'house_interior_pack_light_floor1',
-  'light_floor2':'house_interior_pack_light_floor2',
-  'light_floor3':'house_interior_pack_light_floor3',
-  'light_floor4':'house_interior_pack_light_floor4',
-  'light_icosahedron':'house_interior_pack_light_icosahedron',
-  'light_icosahedron2':'house_interior_pack_light_icosahedron2',
-  'light_small':'house_interior_pack_light_small',
-  'light_square':'cyberpunk_pack_light_square',
-  'light_stand1':'house_interior_pack_light_stand1',
-  'light_stand2':'house_interior_pack_light_stand2',
-  'light_street_1':'cyberpunk_pack_light_street_1',
-  'light_street_2':'cyberpunk_pack_light_street_2',
-  'lilypad':'nature_pack_lilypad',
-  'lionfish':'cute_fish_pack_lionfish',
-  'loot':'chest',
-  'lootbox':'cyberpunk_pack_lootbox',
-  'lorry':'truck',
-  'lure_1':'cute_fish_pack_lure_1',
-  'lure_2':'cute_fish_pack_lure_2',
-  'lure_3':'cute_fish_pack_lure_3',
-  'lure_4':'cute_fish_pack_lure_4',
-  'lure_5':'cute_fish_pack_lure_5',
-  'lure_6':'cute_fish_pack_lure_6',
-  'magazine_ar':'modular_sci_fi_guns_pack_magazine_ar',
-  'magazine_smg_1':'modular_sci_fi_guns_pack_magazine_smg_1',
-  'magazine_sniper_1':'modular_sci_fi_guns_pack_magazine_sniper_1',
-  'man':'man',
-  'mandarinfish':'cute_fish_pack_mandarinfish',
-  'manta_ray':'fish_pack_manta_ray',
-  'marketstand_1':'medieval_village_pack_marketstand_1',
-  'marketstand_2':'medieval_village_pack_marketstand_2',
-  'match':'survival_pack_match',
-  'match_burnt':'survival_pack_match_burnt',
-  'match_fire':'survival_pack_match_fire',
-  'matchbox':'survival_pack_matchbox',
-  'mech_barbarathebee-transformed':'ultimate_space_pack_mech_barbarathebee-transformed',
-  'mech_fernandotheflamingo-transformed':'ultimate_space_pack_mech_fernandotheflamingo-transformed',
-  'mech_finnthefrog-transformed':'ultimate_space_pack_mech_finnthefrog-transformed',
-  'mech_raetheredpanda-transformed':'ultimate_space_pack_mech_raetheredpanda-transformed',
-  'medieval':'modular_women_medieval',
-  'medieval_village_pack_bag':'medieval_village_pack_bag',
-  'medieval_village_pack_bag_open':'medieval_village_pack_bag_open',
-  'medieval_village_pack_bags':'medieval_village_pack_bags',
-  'medieval_village_pack_barrel':'medieval_village_pack_barrel',
-  'medieval_village_pack_bell':'medieval_village_pack_bell',
-  'medieval_village_pack_bell_tower':'medieval_village_pack_bell_tower',
-  'medieval_village_pack_bench_1':'medieval_village_pack_bench_1',
-  'medieval_village_pack_bench_2':'medieval_village_pack_bench_2',
-  'medieval_village_pack_blacksmith':'medieval_village_pack_blacksmith',
-  'medieval_village_pack_bonfire':'medieval_village_pack_bonfire',
-  'medieval_village_pack_bonfire_lit':'medieval_village_pack_bonfire_lit',
-  'medieval_village_pack_cart':'medieval_village_pack_cart',
-  'medieval_village_pack_cauldron':'medieval_village_pack_cauldron',
-  'medieval_village_pack_crate':'medieval_village_pack_crate',
-  'medieval_village_pack_door_round':'medieval_village_pack_door_round',
-  'medieval_village_pack_door_straight':'medieval_village_pack_door_straight',
-  'medieval_village_pack_fence':'medieval_village_pack_fence',
-  'medieval_village_pack_gazebo':'medieval_village_pack_gazebo',
-  'medieval_village_pack_hay':'medieval_village_pack_hay',
-  'medieval_village_pack_house_1':'medieval_village_pack_house_1',
-  'medieval_village_pack_house_2':'medieval_village_pack_house_2',
-  'medieval_village_pack_house_3':'medieval_village_pack_house_3',
-  'medieval_village_pack_house_4':'medieval_village_pack_house_4',
-  'medieval_village_pack_inn':'medieval_village_pack_inn',
-  'medieval_village_pack_marketstand_1':'medieval_village_pack_marketstand_1',
-  'medieval_village_pack_marketstand_2':'medieval_village_pack_marketstand_2',
-  'medieval_village_pack_mill':'medieval_village_pack_mill',
-  'medieval_village_pack_package_1':'medieval_village_pack_package_1',
-  'medieval_village_pack_package_2':'medieval_village_pack_package_2',
-  'medieval_village_pack_path_square':'medieval_village_pack_path_square',
-  'medieval_village_pack_path_straight':'medieval_village_pack_path_straight',
-  'medieval_village_pack_rock_1':'medieval_village_pack_rock_1',
-  'medieval_village_pack_rock_2':'medieval_village_pack_rock_2',
-  'medieval_village_pack_rock_3':'medieval_village_pack_rock_3',
-  'medieval_village_pack_sawmill':'medieval_village_pack_sawmill',
-  'medieval_village_pack_sawmill_saw':'medieval_village_pack_sawmill_saw',
-  'medieval_village_pack_smoke':'medieval_village_pack_smoke',
-  'medieval_village_pack_stable':'medieval_village_pack_stable',
-  'medieval_village_pack_stairs':'medieval_village_pack_stairs',
-  'medieval_village_pack_well':'medieval_village_pack_well',
-  'medieval_village_pack_window_1':'medieval_village_pack_window_1',
-  'medieval_village_pack_window_2':'medieval_village_pack_window_2',
-  'medieval_village_pack_window_3':'medieval_village_pack_window_3',
-  'medieval_village_pack_window_4':'medieval_village_pack_window_4',
-  'medieval_weapons_pack_arrow':'medieval_weapons_pack_arrow',
-  'medieval_weapons_pack_axe':'medieval_weapons_pack_axe',
-  'medieval_weapons_pack_axe_double':'medieval_weapons_pack_axe_double',
-  'medieval_weapons_pack_axe_small':'medieval_weapons_pack_axe_small',
-  'medieval_weapons_pack_bow_evil':'medieval_weapons_pack_bow_evil',
-  'medieval_weapons_pack_bow_golden':'medieval_weapons_pack_bow_golden',
-  'medieval_weapons_pack_bow_wooden':'medieval_weapons_pack_bow_wooden',
-  'medieval_weapons_pack_bow_wooden2':'medieval_weapons_pack_bow_wooden2',
-  'medieval_weapons_pack_claymore':'medieval_weapons_pack_claymore',
-  'medieval_weapons_pack_dagger':'medieval_weapons_pack_dagger',
-  'medieval_weapons_pack_dagger_2':'medieval_weapons_pack_dagger_2',
-  'medieval_weapons_pack_hammer_double':'medieval_weapons_pack_hammer_double',
-  'medieval_weapons_pack_hammer_small':'medieval_weapons_pack_hammer_small',
-  'medieval_weapons_pack_scythe':'medieval_weapons_pack_scythe',
-  'medieval_weapons_pack_shield_celtic_golden':'medieval_weapons_pack_shield_celtic_golden',
-  'medieval_weapons_pack_shield_heater':'medieval_weapons_pack_shield_heater',
-  'medieval_weapons_pack_shield_heater_2':'medieval_weapons_pack_shield_heater_2',
-  'medieval_weapons_pack_shield_round':'medieval_weapons_pack_shield_round',
-  'medieval_weapons_pack_shield_round_2':'medieval_weapons_pack_shield_round_2',
-  'medieval_weapons_pack_spear':'medieval_weapons_pack_spear',
-  'medieval_weapons_pack_sword':'medieval_weapons_pack_sword',
-  'medieval_weapons_pack_sword_2':'medieval_weapons_pack_sword_2',
-  'medieval_weapons_pack_sword_big':'medieval_weapons_pack_sword_big',
-  'medieval_weapons_pack_sword_golden':'medieval_weapons_pack_sword_golden',
-  'metalsupport-transformed':'ultimate_space_pack_metalsupport-transformed',
-  'michelle':'michelle',
-  'milk_truck':'milk_truck',
-  'mill':'medieval_village_pack_mill',
-  'mineral':'rpg_items_pack_mineral',
-  'modular_dungeon_1_arch':'modular_dungeon_1_arch',
-  'modular_dungeon_1_arch_bars':'modular_dungeon_1_arch_bars',
-  'modular_dungeon_1_arch_door':'modular_dungeon_1_arch_door',
-  'modular_dungeon_1_arch_door_bottompivot':'modular_dungeon_1_arch_door_bottompivot',
-  'modular_dungeon_1_bag_coins':'modular_dungeon_1_bag_coins',
-  'modular_dungeon_1_bag_standing':'modular_dungeon_1_bag_standing',
-  'modular_dungeon_1_banner':'modular_dungeon_1_banner',
-  'modular_dungeon_1_banner_wall':'modular_dungeon_1_banner_wall',
-  'modular_dungeon_1_barrel':'modular_dungeon_1_barrel',
-  'modular_dungeon_1_barrel2':'modular_dungeon_1_barrel2',
-  'modular_dungeon_1_brick':'modular_dungeon_1_brick',
-  'modular_dungeon_1_bucket':'modular_dungeon_1_bucket',
-  'modular_dungeon_1_chair':'modular_dungeon_1_chair',
-  'modular_dungeon_1_chest':'modular_dungeon_1_chest',
-  'modular_dungeon_1_chest_gold':'modular_dungeon_1_chest_gold',
-  'modular_dungeon_1_cobweb':'modular_dungeon_1_cobweb',
-  'modular_dungeon_1_cobweb2':'modular_dungeon_1_cobweb2',
-  'modular_dungeon_1_coin_pile':'modular_dungeon_1_coin_pile',
-  'modular_dungeon_1_column':'modular_dungeon_1_column',
-  'modular_dungeon_1_column2':'modular_dungeon_1_column2',
-  'modular_dungeon_1_crate':'modular_dungeon_1_crate',
-  'modular_dungeon_1_decorative_wall':'modular_dungeon_1_decorative_wall',
-  'modular_dungeon_1_fence_90_modular':'modular_dungeon_1_fence_90_modular',
-  'modular_dungeon_1_fence_end_modular':'modular_dungeon_1_fence_end_modular',
-  'modular_dungeon_1_fence_straight_modular':'modular_dungeon_1_fence_straight_modular',
-  'modular_dungeon_1_floor_bricksseparate':'modular_dungeon_1_floor_bricksseparate',
-  'modular_dungeon_1_floor_bricksseparate2':'modular_dungeon_1_floor_bricksseparate2',
-  'modular_dungeon_1_floor_modular':'modular_dungeon_1_floor_modular',
-  'modular_dungeon_1_pedestal':'modular_dungeon_1_pedestal',
-  'modular_dungeon_1_pedestal2':'modular_dungeon_1_pedestal2',
-  'modular_dungeon_1_skull':'modular_dungeon_1_skull',
-  'modular_dungeon_1_spikes':'modular_dungeon_1_spikes',
-  'modular_dungeon_1_stairs_modular':'modular_dungeon_1_stairs_modular',
-  'modular_dungeon_1_stairs_sidecover':'modular_dungeon_1_stairs_sidecover',
-  'modular_dungeon_1_stairs_sidecoverwall':'modular_dungeon_1_stairs_sidecoverwall',
-  'modular_dungeon_1_statue_horse':'modular_dungeon_1_statue_horse',
-  'modular_dungeon_1_sword_wallmount':'modular_dungeon_1_sword_wallmount',
-  'modular_dungeon_1_table_big':'modular_dungeon_1_table_big',
-  'modular_dungeon_1_table_small':'modular_dungeon_1_table_small',
-  'modular_dungeon_1_torch':'modular_dungeon_1_torch',
-  'modular_dungeon_1_trap_empty':'modular_dungeon_1_trap_empty',
-  'modular_dungeon_1_trap_spikes':'modular_dungeon_1_trap_spikes',
-  'modular_dungeon_1_trapdoor':'modular_dungeon_1_trapdoor',
-  'modular_dungeon_1_trapdoor_open':'modular_dungeon_1_trapdoor_open',
-  'modular_dungeon_1_vase':'modular_dungeon_1_vase',
-  'modular_dungeon_1_wall_modular':'modular_dungeon_1_wall_modular',
-  'modular_dungeon_1_wallcover_modular':'modular_dungeon_1_wallcover_modular',
-  'modular_dungeon_1_woodfire':'modular_dungeon_1_woodfire',
-  'modular_dungeon_pack_barrel':'modular_dungeon_pack_barrel',
-  'modular_dungeon_pack_bars':'modular_dungeon_pack_bars',
-  'modular_dungeon_pack_bones':'modular_dungeon_pack_bones',
-  'modular_dungeon_pack_bones2':'modular_dungeon_pack_bones2',
-  'modular_dungeon_pack_book2':'modular_dungeon_pack_book2',
-  'modular_dungeon_pack_book3':'modular_dungeon_pack_book3',
-  'modular_dungeon_pack_book_open':'modular_dungeon_pack_book_open',
-  'modular_dungeon_pack_candelabrum':'modular_dungeon_pack_candelabrum',
-  'modular_dungeon_pack_candelabrum_tall':'modular_dungeon_pack_candelabrum_tall',
-  'modular_dungeon_pack_candle':'modular_dungeon_pack_candle',
-  'modular_dungeon_pack_carpet':'modular_dungeon_pack_carpet',
-  'modular_dungeon_pack_chest':'modular_dungeon_pack_chest',
-  'modular_dungeon_pack_chest_gold':'modular_dungeon_pack_chest_gold',
-  'modular_dungeon_pack_column':'modular_dungeon_pack_column',
-  'modular_dungeon_pack_column_broken':'modular_dungeon_pack_column_broken',
-  'modular_dungeon_pack_column_broken2':'modular_dungeon_pack_column_broken2',
-  'modular_dungeon_pack_entrance':'modular_dungeon_pack_entrance',
-  'modular_dungeon_pack_entrance2':'modular_dungeon_pack_entrance2',
-  'modular_dungeon_pack_modularcolumn_bottom':'modular_dungeon_pack_modularcolumn_bottom',
-  'modular_dungeon_pack_modularcolumn_middle':'modular_dungeon_pack_modularcolumn_middle',
-  'modular_dungeon_pack_modularcolumn_top':'modular_dungeon_pack_modularcolumn_top',
-  'modular_dungeon_pack_modularfloor':'modular_dungeon_pack_modularfloor',
-  'modular_dungeon_pack_modularstonewall':'modular_dungeon_pack_modularstonewall',
-  'modular_dungeon_pack_modularstonewall_entrancetop':'modular_dungeon_pack_modularstonewall_entrancetop',
-  'modular_dungeon_pack_modularstonewall_top':'modular_dungeon_pack_modularstonewall_top',
-  'modular_dungeon_pack_potion':'modular_dungeon_pack_potion',
-  'modular_dungeon_pack_potion2':'modular_dungeon_pack_potion2',
-  'modular_dungeon_pack_potion3':'modular_dungeon_pack_potion3',
-  'modular_dungeon_pack_potion4':'modular_dungeon_pack_potion4',
-  'modular_dungeon_pack_potion5':'modular_dungeon_pack_potion5',
-  'modular_dungeon_pack_potion6':'modular_dungeon_pack_potion6',
-  'modular_dungeon_pack_rock1':'modular_dungeon_pack_rock1',
-  'modular_dungeon_pack_rock2':'modular_dungeon_pack_rock2',
-  'modular_dungeon_pack_rock3':'modular_dungeon_pack_rock3',
-  'modular_dungeon_pack_rock4':'modular_dungeon_pack_rock4',
-  'modular_dungeon_pack_rock5':'modular_dungeon_pack_rock5',
-  'modular_dungeon_pack_stairs':'modular_dungeon_pack_stairs',
-  'modular_dungeon_pack_torch':'modular_dungeon_pack_torch',
-  'modular_dungeon_pack_torch_wall':'modular_dungeon_pack_torch_wall',
-  'modular_dungeon_pack_wallrocks':'modular_dungeon_pack_wallrocks',
-  'modular_dungeon_pack_window':'modular_dungeon_pack_window',
-  'modular_medieval_buildings_pack_banner':'modular_medieval_buildings_pack_banner',
-  'modular_medieval_buildings_pack_bridge':'modular_medieval_buildings_pack_bridge',
-  'modular_medieval_buildings_pack_door':'modular_medieval_buildings_pack_door',
-  'modular_medieval_buildings_pack_dummy':'modular_medieval_buildings_pack_dummy',
-  'modular_medieval_buildings_pack_largesimpletower':'modular_medieval_buildings_pack_largesimpletower',
-  'modular_medieval_buildings_pack_largesquaretower':'modular_medieval_buildings_pack_largesquaretower',
-  'modular_medieval_buildings_pack_largesquaretowerbricks':'modular_medieval_buildings_pack_largesquaretowerbricks',
-  'modular_medieval_buildings_pack_largetower':'modular_medieval_buildings_pack_largetower',
-  'modular_medieval_buildings_pack_pointytower':'modular_medieval_buildings_pack_pointytower',
-  'modular_medieval_buildings_pack_simpletower':'modular_medieval_buildings_pack_simpletower',
-  'modular_medieval_buildings_pack_simpletowerbricks':'modular_medieval_buildings_pack_simpletowerbricks',
-  'modular_medieval_buildings_pack_smallsquaretower':'modular_medieval_buildings_pack_smallsquaretower',
-  'modular_medieval_buildings_pack_smallsquaretowerbricks':'modular_medieval_buildings_pack_smallsquaretowerbricks',
-  'modular_medieval_buildings_pack_smalltower':'modular_medieval_buildings_pack_smalltower',
-  'modular_medieval_buildings_pack_tallwall':'modular_medieval_buildings_pack_tallwall',
-  'modular_medieval_buildings_pack_tallwallbricks':'modular_medieval_buildings_pack_tallwallbricks',
-  'modular_medieval_buildings_pack_tallwallentrance':'modular_medieval_buildings_pack_tallwallentrance',
-  'modular_medieval_buildings_pack_target':'modular_medieval_buildings_pack_target',
-  'modular_medieval_buildings_pack_targetwitharrows':'modular_medieval_buildings_pack_targetwitharrows',
-  'modular_medieval_buildings_pack_tower':'modular_medieval_buildings_pack_tower',
-  'modular_medieval_buildings_pack_tunnel':'modular_medieval_buildings_pack_tunnel',
-  'modular_medieval_buildings_pack_wall':'modular_medieval_buildings_pack_wall',
-  'modular_medieval_buildings_pack_wallbricks':'modular_medieval_buildings_pack_wallbricks',
-  'modular_medieval_buildings_pack_wallentrance':'modular_medieval_buildings_pack_wallentrance',
-  'modular_medieval_buildings_pack_wallentrancebricks':'modular_medieval_buildings_pack_wallentrancebricks',
-  'modular_medieval_buildings_pack_watchtower':'modular_medieval_buildings_pack_watchtower',
-  'modular_medieval_buildings_pack_watchtowerwroof':'modular_medieval_buildings_pack_watchtowerwroof',
-  'modular_medieval_buildings_pack_well':'modular_medieval_buildings_pack_well',
-  'modular_medieval_buildings_pack_windowgothic':'modular_medieval_buildings_pack_windowgothic',
-  'modular_medieval_buildings_pack_windowsquare':'modular_medieval_buildings_pack_windowsquare',
-  'modular_men_adventurer':'modular_men_adventurer',
-  'modular_men_beach':'modular_men_beach',
-  'modular_men_casual':'modular_men_casual',
-  'modular_men_casual2':'modular_men_casual2',
-  'modular_men_farmer':'modular_men_farmer',
-  'modular_men_king':'modular_men_king',
-  'modular_men_punk':'modular_men_punk',
-  'modular_men_spacesuit':'modular_men_spacesuit',
-  'modular_men_suit':'modular_men_suit',
-  'modular_men_swat':'modular_men_swat',
-  'modular_men_worker':'modular_men_worker',
-  'modular_sci_fi_guns_pack_ar_1':'modular_sci_fi_guns_pack_ar_1',
-  'modular_sci_fi_guns_pack_ar_2':'modular_sci_fi_guns_pack_ar_2',
-  'modular_sci_fi_guns_pack_ar_3':'modular_sci_fi_guns_pack_ar_3',
-  'modular_sci_fi_guns_pack_ar_4':'modular_sci_fi_guns_pack_ar_4',
-  'modular_sci_fi_guns_pack_ar_5':'modular_sci_fi_guns_pack_ar_5',
-  'modular_sci_fi_guns_pack_ar_6':'modular_sci_fi_guns_pack_ar_6',
-  'modular_sci_fi_guns_pack_barrel_ar_1':'modular_sci_fi_guns_pack_barrel_ar_1',
-  'modular_sci_fi_guns_pack_barrel_ar_3':'modular_sci_fi_guns_pack_barrel_ar_3',
-  'modular_sci_fi_guns_pack_barrel_grenade_1':'modular_sci_fi_guns_pack_barrel_grenade_1',
-  'modular_sci_fi_guns_pack_barrel_pistol_1':'modular_sci_fi_guns_pack_barrel_pistol_1',
-  'modular_sci_fi_guns_pack_barrel_pistol_2':'modular_sci_fi_guns_pack_barrel_pistol_2',
-  'modular_sci_fi_guns_pack_barrel_single':'modular_sci_fi_guns_pack_barrel_single',
-  'modular_sci_fi_guns_pack_barrel_sniper_1':'modular_sci_fi_guns_pack_barrel_sniper_1',
-  'modular_sci_fi_guns_pack_barrel_sniper_2':'modular_sci_fi_guns_pack_barrel_sniper_2',
-  'modular_sci_fi_guns_pack_body_ar4':'modular_sci_fi_guns_pack_body_ar4',
-  'modular_sci_fi_guns_pack_body_ar_1':'modular_sci_fi_guns_pack_body_ar_1',
-  'modular_sci_fi_guns_pack_body_ar_3':'modular_sci_fi_guns_pack_body_ar_3',
-  'modular_sci_fi_guns_pack_body_ar_5':'modular_sci_fi_guns_pack_body_ar_5',
-  'modular_sci_fi_guns_pack_body_ar_6':'modular_sci_fi_guns_pack_body_ar_6',
-  'modular_sci_fi_guns_pack_body_crossbow_1':'modular_sci_fi_guns_pack_body_crossbow_1',
-  'modular_sci_fi_guns_pack_body_crossbow_2':'modular_sci_fi_guns_pack_body_crossbow_2',
-  'modular_sci_fi_guns_pack_body_front_sniper_1':'modular_sci_fi_guns_pack_body_front_sniper_1',
-  'modular_sci_fi_guns_pack_body_front_sniper_3':'modular_sci_fi_guns_pack_body_front_sniper_3',
-  'modular_sci_fi_guns_pack_body_grenade_1':'modular_sci_fi_guns_pack_body_grenade_1',
-  'modular_sci_fi_guns_pack_body_grenade_2':'modular_sci_fi_guns_pack_body_grenade_2',
-  'modular_sci_fi_guns_pack_body_grenade_3':'modular_sci_fi_guns_pack_body_grenade_3',
-  'modular_sci_fi_guns_pack_body_pistol_1':'modular_sci_fi_guns_pack_body_pistol_1',
-  'modular_sci_fi_guns_pack_body_pistol_2':'modular_sci_fi_guns_pack_body_pistol_2',
-  'modular_sci_fi_guns_pack_body_pistol_3':'modular_sci_fi_guns_pack_body_pistol_3',
-  'modular_sci_fi_guns_pack_body_smg_1':'modular_sci_fi_guns_pack_body_smg_1',
-  'modular_sci_fi_guns_pack_body_smg_2':'modular_sci_fi_guns_pack_body_smg_2',
-  'modular_sci_fi_guns_pack_body_sniper_1':'modular_sci_fi_guns_pack_body_sniper_1',
-  'modular_sci_fi_guns_pack_body_sniper_2':'modular_sci_fi_guns_pack_body_sniper_2',
-  'modular_sci_fi_guns_pack_body_sniper_3':'modular_sci_fi_guns_pack_body_sniper_3',
-  'modular_sci_fi_guns_pack_crossbow_1':'modular_sci_fi_guns_pack_crossbow_1',
-  'modular_sci_fi_guns_pack_crossbow_2':'modular_sci_fi_guns_pack_crossbow_2',
-  'modular_sci_fi_guns_pack_cylinder_pistol_1':'modular_sci_fi_guns_pack_cylinder_pistol_1',
-  'modular_sci_fi_guns_pack_grenade':'modular_sci_fi_guns_pack_grenade',
-  'modular_sci_fi_guns_pack_grenade_1':'modular_sci_fi_guns_pack_grenade_1',
-  'modular_sci_fi_guns_pack_grenade_2':'modular_sci_fi_guns_pack_grenade_2',
-  'modular_sci_fi_guns_pack_grenade_3':'modular_sci_fi_guns_pack_grenade_3',
-  'modular_sci_fi_guns_pack_grip_ar_1':'modular_sci_fi_guns_pack_grip_ar_1',
-  'modular_sci_fi_guns_pack_grip_ar_6':'modular_sci_fi_guns_pack_grip_ar_6',
-  'modular_sci_fi_guns_pack_grip_grenade_1':'modular_sci_fi_guns_pack_grip_grenade_1',
-  'modular_sci_fi_guns_pack_grip_grenade_2':'modular_sci_fi_guns_pack_grip_grenade_2',
-  'modular_sci_fi_guns_pack_grip_grenade_3':'modular_sci_fi_guns_pack_grip_grenade_3',
-  'modular_sci_fi_guns_pack_grip_pistol_1':'modular_sci_fi_guns_pack_grip_pistol_1',
-  'modular_sci_fi_guns_pack_grip_pistol_2':'modular_sci_fi_guns_pack_grip_pistol_2',
-  'modular_sci_fi_guns_pack_grip_smg_1':'modular_sci_fi_guns_pack_grip_smg_1',
-  'modular_sci_fi_guns_pack_grip_sniper_1':'modular_sci_fi_guns_pack_grip_sniper_1',
-  'modular_sci_fi_guns_pack_grip_sniper_2':'modular_sci_fi_guns_pack_grip_sniper_2',
-  'modular_sci_fi_guns_pack_handguard_pistol_3':'modular_sci_fi_guns_pack_handguard_pistol_3',
-  'modular_sci_fi_guns_pack_magazine_ar':'modular_sci_fi_guns_pack_magazine_ar',
-  'modular_sci_fi_guns_pack_magazine_smg_1':'modular_sci_fi_guns_pack_magazine_smg_1',
-  'modular_sci_fi_guns_pack_magazine_sniper_1':'modular_sci_fi_guns_pack_magazine_sniper_1',
-  'modular_sci_fi_guns_pack_pistol_1':'modular_sci_fi_guns_pack_pistol_1',
-  'modular_sci_fi_guns_pack_pistol_2':'modular_sci_fi_guns_pack_pistol_2',
-  'modular_sci_fi_guns_pack_pistol_3':'modular_sci_fi_guns_pack_pistol_3',
-  'modular_sci_fi_guns_pack_scope_1':'modular_sci_fi_guns_pack_scope_1',
-  'modular_sci_fi_guns_pack_scope_2':'modular_sci_fi_guns_pack_scope_2',
-  'modular_sci_fi_guns_pack_sight_1':'modular_sci_fi_guns_pack_sight_1',
-  'modular_sci_fi_guns_pack_sight_2':'modular_sci_fi_guns_pack_sight_2',
-  'modular_sci_fi_guns_pack_sight_3':'modular_sci_fi_guns_pack_sight_3',
-  'modular_sci_fi_guns_pack_smg_1':'modular_sci_fi_guns_pack_smg_1',
-  'modular_sci_fi_guns_pack_smg_2':'modular_sci_fi_guns_pack_smg_2',
-  'modular_sci_fi_guns_pack_sniper_1':'modular_sci_fi_guns_pack_sniper_1',
-  'modular_sci_fi_guns_pack_sniper_2':'modular_sci_fi_guns_pack_sniper_2',
-  'modular_sci_fi_guns_pack_sniper_3':'modular_sci_fi_guns_pack_sniper_3',
-  'modular_sci_fi_guns_pack_stock_2':'modular_sci_fi_guns_pack_stock_2',
-  'modular_sci_fi_guns_pack_stock_ar_1':'modular_sci_fi_guns_pack_stock_ar_1',
-  'modular_sci_fi_guns_pack_stock_ar_4':'modular_sci_fi_guns_pack_stock_ar_4',
-  'modular_sci_fi_guns_pack_stock_ar_6':'modular_sci_fi_guns_pack_stock_ar_6',
-  'modular_sci_fi_guns_pack_stock_grenade_1':'modular_sci_fi_guns_pack_stock_grenade_1',
-  'modular_sci_fi_guns_pack_stock_grenade_2':'modular_sci_fi_guns_pack_stock_grenade_2',
-  'modular_sci_fi_guns_pack_stock_pistol_3':'modular_sci_fi_guns_pack_stock_pistol_3',
-  'modular_sci_fi_guns_pack_stock_smg_1':'modular_sci_fi_guns_pack_stock_smg_1',
-  'modular_sci_fi_guns_pack_stock_sniper_1':'modular_sci_fi_guns_pack_stock_sniper_1',
-  'modular_sci_fi_guns_pack_stock_sniper_3':'modular_sci_fi_guns_pack_stock_sniper_3',
-  'modular_women_adventurer':'modular_women_adventurer',
-  'modular_women_casual':'modular_women_casual',
-  'modular_women_formal':'modular_women_formal',
-  'modular_women_medieval':'modular_women_medieval',
-  'modular_women_punk':'modular_women_punk',
-  'modular_women_scifi':'modular_women_scifi',
-  'modular_women_soldier':'modular_women_soldier',
-  'modular_women_suit':'modular_women_suit',
-  'modular_women_witch':'modular_women_witch',
-  'modular_women_worker':'modular_women_worker',
-  'modularcolumn_bottom':'modular_dungeon_pack_modularcolumn_bottom',
-  'modularcolumn_middle':'modular_dungeon_pack_modularcolumn_middle',
-  'modularcolumn_top':'modular_dungeon_pack_modularcolumn_top',
-  'modularfloor':'modular_dungeon_pack_modularfloor',
-  'modularstonewall':'modular_dungeon_pack_modularstonewall',
-  'modularstonewall_entrancetop':'modular_dungeon_pack_modularstonewall_entrancetop',
-  'modularstonewall_top':'modular_dungeon_pack_modularstonewall_top',
-  'monster':'dinosaurs_pack_trex',
-  'moorishidol':'cute_fish_pack_moorishidol',
-  'morphstress':'morphstress',
-  'mushroom':'crops_pack_mushroom_1',
-  'mushroom_1':'crops_pack_mushroom_1',
-  'mushroom_2':'crops_pack_mushroom_2',
-  'mushroom_3':'crops_pack_mushroom_3',
-  'mushroom_4':'crops_pack_mushroom_4',
-  'mushroom_crop':'crops_pack_mushroom_crop',
-  'mushroom_harvested':'crops_pack_mushroom_harvested',
-  'nature_pack_birchtree_1':'nature_pack_birchtree_1',
-  'nature_pack_birchtree_2':'nature_pack_birchtree_2',
-  'nature_pack_birchtree_3':'nature_pack_birchtree_3',
-  'nature_pack_birchtree_4':'nature_pack_birchtree_4',
-  'nature_pack_birchtree_5':'nature_pack_birchtree_5',
-  'nature_pack_birchtree_autumn_1':'nature_pack_birchtree_autumn_1',
-  'nature_pack_birchtree_autumn_2':'nature_pack_birchtree_autumn_2',
-  'nature_pack_birchtree_autumn_3':'nature_pack_birchtree_autumn_3',
-  'nature_pack_birchtree_autumn_4':'nature_pack_birchtree_autumn_4',
-  'nature_pack_birchtree_autumn_5':'nature_pack_birchtree_autumn_5',
-  'nature_pack_birchtree_dead_1':'nature_pack_birchtree_dead_1',
-  'nature_pack_birchtree_dead_2':'nature_pack_birchtree_dead_2',
-  'nature_pack_birchtree_dead_3':'nature_pack_birchtree_dead_3',
-  'nature_pack_birchtree_dead_4':'nature_pack_birchtree_dead_4',
-  'nature_pack_birchtree_dead_5':'nature_pack_birchtree_dead_5',
-  'nature_pack_birchtree_dead_snow_1':'nature_pack_birchtree_dead_snow_1',
-  'nature_pack_birchtree_dead_snow_2':'nature_pack_birchtree_dead_snow_2',
-  'nature_pack_birchtree_dead_snow_3':'nature_pack_birchtree_dead_snow_3',
-  'nature_pack_birchtree_dead_snow_4':'nature_pack_birchtree_dead_snow_4',
-  'nature_pack_birchtree_dead_snow_5':'nature_pack_birchtree_dead_snow_5',
-  'nature_pack_birchtree_snow_1':'nature_pack_birchtree_snow_1',
-  'nature_pack_birchtree_snow_2':'nature_pack_birchtree_snow_2',
-  'nature_pack_birchtree_snow_3':'nature_pack_birchtree_snow_3',
-  'nature_pack_birchtree_snow_4':'nature_pack_birchtree_snow_4',
-  'nature_pack_birchtree_snow_5':'nature_pack_birchtree_snow_5',
-  'nature_pack_bush_1':'nature_pack_bush_1',
-  'nature_pack_bush_2':'nature_pack_bush_2',
-  'nature_pack_bush_snow_1':'nature_pack_bush_snow_1',
-  'nature_pack_bush_snow_2':'nature_pack_bush_snow_2',
-  'nature_pack_bushberries_1':'nature_pack_bushberries_1',
-  'nature_pack_bushberries_2':'nature_pack_bushberries_2',
-  'nature_pack_cactus_1':'nature_pack_cactus_1',
-  'nature_pack_cactus_2':'nature_pack_cactus_2',
-  'nature_pack_cactus_3':'nature_pack_cactus_3',
-  'nature_pack_cactus_4':'nature_pack_cactus_4',
-  'nature_pack_cactus_5':'nature_pack_cactus_5',
-  'nature_pack_cactusflower_1':'nature_pack_cactusflower_1',
-  'nature_pack_cactusflowers_2':'nature_pack_cactusflowers_2',
-  'nature_pack_cactusflowers_3':'nature_pack_cactusflowers_3',
-  'nature_pack_cactusflowers_4':'nature_pack_cactusflowers_4',
-  'nature_pack_cactusflowers_5':'nature_pack_cactusflowers_5',
-  'nature_pack_commontree_1':'nature_pack_commontree_1',
-  'nature_pack_commontree_2':'nature_pack_commontree_2',
-  'nature_pack_commontree_3':'nature_pack_commontree_3',
-  'nature_pack_commontree_4':'nature_pack_commontree_4',
-  'nature_pack_commontree_5':'nature_pack_commontree_5',
-  'nature_pack_commontree_autumn_1':'nature_pack_commontree_autumn_1',
-  'nature_pack_commontree_autumn_2':'nature_pack_commontree_autumn_2',
-  'nature_pack_commontree_autumn_3':'nature_pack_commontree_autumn_3',
-  'nature_pack_commontree_autumn_4':'nature_pack_commontree_autumn_4',
-  'nature_pack_commontree_autumn_5':'nature_pack_commontree_autumn_5',
-  'nature_pack_commontree_dead_1':'nature_pack_commontree_dead_1',
-  'nature_pack_commontree_dead_2':'nature_pack_commontree_dead_2',
-  'nature_pack_commontree_dead_3':'nature_pack_commontree_dead_3',
-  'nature_pack_commontree_dead_4':'nature_pack_commontree_dead_4',
-  'nature_pack_commontree_dead_5':'nature_pack_commontree_dead_5',
-  'nature_pack_commontree_dead_snow_1':'nature_pack_commontree_dead_snow_1',
-  'nature_pack_commontree_dead_snow_2':'nature_pack_commontree_dead_snow_2',
-  'nature_pack_commontree_dead_snow_3':'nature_pack_commontree_dead_snow_3',
-  'nature_pack_commontree_dead_snow_4':'nature_pack_commontree_dead_snow_4',
-  'nature_pack_commontree_dead_snow_5':'nature_pack_commontree_dead_snow_5',
-  'nature_pack_commontree_snow_1':'nature_pack_commontree_snow_1',
-  'nature_pack_commontree_snow_2':'nature_pack_commontree_snow_2',
-  'nature_pack_commontree_snow_3':'nature_pack_commontree_snow_3',
-  'nature_pack_commontree_snow_4':'nature_pack_commontree_snow_4',
-  'nature_pack_commontree_snow_5':'nature_pack_commontree_snow_5',
-  'nature_pack_corn_1':'nature_pack_corn_1',
-  'nature_pack_corn_2':'nature_pack_corn_2',
-  'nature_pack_flowers':'nature_pack_flowers',
-  'nature_pack_grass':'nature_pack_grass',
-  'nature_pack_grass_2':'nature_pack_grass_2',
-  'nature_pack_grass_short':'nature_pack_grass_short',
-  'nature_pack_lilypad':'nature_pack_lilypad',
-  'nature_pack_palmtree_1':'nature_pack_palmtree_1',
-  'nature_pack_palmtree_2':'nature_pack_palmtree_2',
-  'nature_pack_palmtree_3':'nature_pack_palmtree_3',
-  'nature_pack_palmtree_4':'nature_pack_palmtree_4',
-  'nature_pack_pinetree_1':'nature_pack_pinetree_1',
-  'nature_pack_pinetree_2':'nature_pack_pinetree_2',
-  'nature_pack_pinetree_3':'nature_pack_pinetree_3',
-  'nature_pack_pinetree_4':'nature_pack_pinetree_4',
-  'nature_pack_pinetree_5':'nature_pack_pinetree_5',
-  'nature_pack_pinetree_autumn_1':'nature_pack_pinetree_autumn_1',
-  'nature_pack_pinetree_autumn_2':'nature_pack_pinetree_autumn_2',
-  'nature_pack_pinetree_autumn_3':'nature_pack_pinetree_autumn_3',
-  'nature_pack_pinetree_autumn_4':'nature_pack_pinetree_autumn_4',
-  'nature_pack_pinetree_autumn_5':'nature_pack_pinetree_autumn_5',
-  'nature_pack_pinetree_snow_1':'nature_pack_pinetree_snow_1',
-  'nature_pack_pinetree_snow_2':'nature_pack_pinetree_snow_2',
-  'nature_pack_pinetree_snow_3':'nature_pack_pinetree_snow_3',
-  'nature_pack_pinetree_snow_4':'nature_pack_pinetree_snow_4',
-  'nature_pack_pinetree_snow_5':'nature_pack_pinetree_snow_5',
-  'nature_pack_plant_1':'nature_pack_plant_1',
-  'nature_pack_plant_2':'nature_pack_plant_2',
-  'nature_pack_plant_3':'nature_pack_plant_3',
-  'nature_pack_plant_4':'nature_pack_plant_4',
-  'nature_pack_plant_5':'nature_pack_plant_5',
-  'nature_pack_rock_1':'nature_pack_rock_1',
-  'nature_pack_rock_2':'nature_pack_rock_2',
-  'nature_pack_rock_3':'nature_pack_rock_3',
-  'nature_pack_rock_4':'nature_pack_rock_4',
-  'nature_pack_rock_5':'nature_pack_rock_5',
-  'nature_pack_rock_6':'nature_pack_rock_6',
-  'nature_pack_rock_7':'nature_pack_rock_7',
-  'nature_pack_rock_moss_1':'nature_pack_rock_moss_1',
-  'nature_pack_rock_moss_2':'nature_pack_rock_moss_2',
-  'nature_pack_rock_moss_3':'nature_pack_rock_moss_3',
-  'nature_pack_rock_moss_4':'nature_pack_rock_moss_4',
-  'nature_pack_rock_moss_5':'nature_pack_rock_moss_5',
-  'nature_pack_rock_moss_6':'nature_pack_rock_moss_6',
-  'nature_pack_rock_moss_7':'nature_pack_rock_moss_7',
-  'nature_pack_rock_snow_1':'nature_pack_rock_snow_1',
-  'nature_pack_rock_snow_2':'nature_pack_rock_snow_2',
-  'nature_pack_rock_snow_3':'nature_pack_rock_snow_3',
-  'nature_pack_rock_snow_4':'nature_pack_rock_snow_4',
-  'nature_pack_rock_snow_5':'nature_pack_rock_snow_5',
-  'nature_pack_rock_snow_6':'nature_pack_rock_snow_6',
-  'nature_pack_rock_snow_7':'nature_pack_rock_snow_7',
-  'nature_pack_treestump':'nature_pack_treestump',
-  'nature_pack_treestump_moss':'nature_pack_treestump_moss',
-  'nature_pack_treestump_snow':'nature_pack_treestump_snow',
-  'nature_pack_wheat':'nature_pack_wheat',
-  'nature_pack_willow_1':'nature_pack_willow_1',
-  'nature_pack_willow_2':'nature_pack_willow_2',
-  'nature_pack_willow_3':'nature_pack_willow_3',
-  'nature_pack_willow_4':'nature_pack_willow_4',
-  'nature_pack_willow_5':'nature_pack_willow_5',
-  'nature_pack_willow_autumn_1':'nature_pack_willow_autumn_1',
-  'nature_pack_willow_autumn_2':'nature_pack_willow_autumn_2',
-  'nature_pack_willow_autumn_3':'nature_pack_willow_autumn_3',
-  'nature_pack_willow_autumn_4':'nature_pack_willow_autumn_4',
-  'nature_pack_willow_autumn_5':'nature_pack_willow_autumn_5',
-  'nature_pack_willow_dead_1':'nature_pack_willow_dead_1',
-  'nature_pack_willow_dead_2':'nature_pack_willow_dead_2',
-  'nature_pack_willow_dead_3':'nature_pack_willow_dead_3',
-  'nature_pack_willow_dead_4':'nature_pack_willow_dead_4',
-  'nature_pack_willow_dead_5':'nature_pack_willow_dead_5',
-  'nature_pack_willow_dead_snow_1':'nature_pack_willow_dead_snow_1',
-  'nature_pack_willow_dead_snow_2':'nature_pack_willow_dead_snow_2',
-  'nature_pack_willow_dead_snow_3':'nature_pack_willow_dead_snow_3',
-  'nature_pack_willow_dead_snow_4':'nature_pack_willow_dead_snow_4',
-  'nature_pack_willow_dead_snow_5':'nature_pack_willow_dead_snow_5',
-  'nature_pack_willow_snow_1':'nature_pack_willow_snow_1',
-  'nature_pack_willow_snow_2':'nature_pack_willow_snow_2',
-  'nature_pack_willow_snow_3':'nature_pack_willow_snow_3',
-  'nature_pack_willow_snow_4':'nature_pack_willow_snow_4',
-  'nature_pack_willow_snow_5':'nature_pack_willow_snow_5',
-  'nature_pack_woodlog':'nature_pack_woodlog',
-  'nature_pack_woodlog_moss':'nature_pack_woodlog_moss',
-  'nature_pack_woodlog_snow':'nature_pack_woodlog_snow',
-  'necklace1':'rpg_items_pack_necklace1',
-  'necklace2':'rpg_items_pack_necklace2',
-  'necklace3':'rpg_items_pack_necklace3',
-  'nefertiti':'nefertiti',
-  'nightstand_1':'house_interior_pack_nightstand_1',
-  'nightstand_2':'house_interior_pack_nightstand_2',
-  'nightstand_3':'house_interior_pack_nightstand_3',
-  'numbers_0':'platformer_game_pack_numbers_0',
-  'numbers_1':'platformer_game_pack_numbers_1',
-  'numbers_2':'platformer_game_pack_numbers_2',
-  'numbers_3':'platformer_game_pack_numbers_3',
-  'numbers_4':'platformer_game_pack_numbers_4',
-  'numbers_5':'platformer_game_pack_numbers_5',
-  'numbers_6':'platformer_game_pack_numbers_6',
-  'numbers_7':'platformer_game_pack_numbers_7',
-  'numbers_8':'platformer_game_pack_numbers_8',
-  'numbers_9':'platformer_game_pack_numbers_9',
-  'orange_1':'crops_pack_orange_1',
-  'orange_2':'crops_pack_orange_2',
-  'orange_3':'crops_pack_orange_3',
-  'orange_4':'crops_pack_orange_4',
-  'orange_crop':'crops_pack_orange_crop',
-  'orange_harvested':'crops_pack_orange_harvested',
-  'package_1':'medieval_village_pack_package_1',
-  'package_2':'medieval_village_pack_package_2',
-  'padlock':'rpg_items_pack_padlock',
-  'palm_tree':'crops_pack_palmtree_1',
-  'palmtree_1':'nature_pack_palmtree_1',
-  'palmtree_2':'nature_pack_palmtree_2',
-  'palmtree_3':'nature_pack_palmtree_3',
-  'palmtree_4':'nature_pack_palmtree_4',
-  'palmtree_crop':'crops_pack_palmtree_crop',
-  'palmtree_harvested':'crops_pack_palmtree_harvested',
-  'pan':'survival_pack_pan',
-  'pan_small':'survival_pack_pan_small',
-  'parasaurolophus':'dinosaurs_pack_parasaurolophus',
-  'parchment':'rpg_items_pack_parchment',
-  'parrot':'parrot',
-  'parrotfish':'cute_fish_pack_parrotfish',
-  'path_square':'medieval_village_pack_path_square',
-  'path_straight':'medieval_village_pack_path_straight',
-  'pedestal':'modular_dungeon_1_pedestal',
-  'pedestal2':'modular_dungeon_1_pedestal2',
-  'person':'modular_men_casual',
-  'phone':'survival_pack_phone',
-  'pickup':'truck',
-  'pickup_bullets-transformed':'ultimate_space_pack_pickup_bullets-transformed',
-  'pickup_crate-transformed':'ultimate_space_pack_pickup_crate-transformed',
-  'pickup_health':'cyberpunk_pack_pickup_health',
-  'pickup_health-transformed':'ultimate_space_pack_pickup_health-transformed',
-  'pickup_heart':'cyberpunk_pack_pickup_heart',
-  'pickup_jar-transformed':'ultimate_space_pack_pickup_jar-transformed',
-  'pickup_keycard-transformed':'ultimate_space_pack_pickup_keycard-transformed',
-  'pickup_sphere-transformed':'ultimate_space_pack_pickup_sphere-transformed',
-  'pickup_tank':'cyberpunk_pack_pickup_tank',
-  'pickup_thunder-transformed':'ultimate_space_pack_pickup_thunder-transformed',
-  'pinetree_1':'nature_pack_pinetree_1',
-  'pinetree_2':'nature_pack_pinetree_2',
-  'pinetree_3':'nature_pack_pinetree_3',
-  'pinetree_4':'nature_pack_pinetree_4',
-  'pinetree_5':'nature_pack_pinetree_5',
-  'pinetree_autumn_1':'nature_pack_pinetree_autumn_1',
-  'pinetree_autumn_2':'nature_pack_pinetree_autumn_2',
-  'pinetree_autumn_3':'nature_pack_pinetree_autumn_3',
-  'pinetree_autumn_4':'nature_pack_pinetree_autumn_4',
-  'pinetree_autumn_5':'nature_pack_pinetree_autumn_5',
-  'pinetree_snow_1':'nature_pack_pinetree_snow_1',
-  'pinetree_snow_2':'nature_pack_pinetree_snow_2',
-  'pinetree_snow_3':'nature_pack_pinetree_snow_3',
-  'pinetree_snow_4':'nature_pack_pinetree_snow_4',
-  'pinetree_snow_5':'nature_pack_pinetree_snow_5',
-  'pipe_1':'cyberpunk_pack_pipe_1',
-  'pipe_2':'cyberpunk_pack_pipe_2',
-  'pipe_90':'platformer_game_pack_pipe_90',
-  'pipe_corner':'cyberpunk_pack_pipe_corner',
-  'pipe_corner_2':'cyberpunk_pack_pipe_corner_2',
-  'pipe_end':'platformer_game_pack_pipe_end',
-  'pipe_straight':'platformer_game_pack_pipe_straight',
-  'pipe_t':'platformer_game_pack_pipe_t',
-  'piranha':'cute_fish_pack_piranha',
-  'pistol_1':'survival_pack_pistol_1',
-  'pistol_2':'survival_pack_pistol_2',
-  'pistol_3':'modular_sci_fi_guns_pack_pistol_3',
-  'planet_1-transformed':'ultimate_space_pack_planet_1-transformed',
-  'planet_10-transformed':'ultimate_space_pack_planet_10-transformed',
-  'planet_11-transformed':'ultimate_space_pack_planet_11-transformed',
-  'planet_2-transformed':'ultimate_space_pack_planet_2-transformed',
-  'planet_3-transformed':'ultimate_space_pack_planet_3-transformed',
-  'planet_4-transformed':'ultimate_space_pack_planet_4-transformed',
-  'planet_5-transformed':'ultimate_space_pack_planet_5-transformed',
-  'planet_6-transformed':'ultimate_space_pack_planet_6-transformed',
-  'planet_7-transformed':'ultimate_space_pack_planet_7-transformed',
-  'planet_8-transformed':'ultimate_space_pack_planet_8-transformed',
-  'planet_9-transformed':'ultimate_space_pack_planet_9-transformed',
-  'plant_1':'nature_pack_plant_1',
-  'plant_1-transformed':'ultimate_space_pack_plant_1-transformed',
-  'plant_2':'nature_pack_plant_2',
-  'plant_2-transformed':'ultimate_space_pack_plant_2-transformed',
-  'plant_3':'nature_pack_plant_3',
-  'plant_3-transformed':'ultimate_space_pack_plant_3-transformed',
-  'plant_4':'nature_pack_plant_4',
-  'plant_5':'nature_pack_plant_5',
-  'plant_large':'platformer_game_pack_plant_large',
-  'plant_small':'platformer_game_pack_plant_small',
-  'plate_1':'house_interior_pack_plate_1',
-  'plate_2':'house_interior_pack_plate_2',
-  'plate_3':'house_interior_pack_plate_3',
-  'platform_1x1_empty':'cyberpunk_pack_platform_1x1_empty',
-  'platform_2x1_empty':'cyberpunk_pack_platform_2x1_empty',
-  'platform_2x2':'cyberpunk_pack_platform_2x2',
-  'platform_2x2_empty':'cyberpunk_pack_platform_2x2_empty',
-  'platform_4x1':'cyberpunk_pack_platform_4x1',
-  'platform_4x1_empty':'cyberpunk_pack_platform_4x1_empty',
-  'platform_4x2':'cyberpunk_pack_platform_4x2',
-  'platform_4x4':'cyberpunk_pack_platform_4x4',
-  'platform_4x4_empty':'cyberpunk_pack_platform_4x4_empty',
-  'platformer_game_pack_arrow':'platformer_game_pack_arrow',
-  'platformer_game_pack_arrow_side':'platformer_game_pack_arrow_side',
-  'platformer_game_pack_arrow_up':'platformer_game_pack_arrow_up',
-  'platformer_game_pack_bee':'platformer_game_pack_bee',
-  'platformer_game_pack_bomb':'platformer_game_pack_bomb',
-  'platformer_game_pack_bouncer':'platformer_game_pack_bouncer',
-  'platformer_game_pack_bridge_modular':'platformer_game_pack_bridge_modular',
-  'platformer_game_pack_bridge_modular_center':'platformer_game_pack_bridge_modular_center',
-  'platformer_game_pack_bridge_small':'platformer_game_pack_bridge_small',
-  'platformer_game_pack_bush':'platformer_game_pack_bush',
-  'platformer_game_pack_bush_fruit':'platformer_game_pack_bush_fruit',
-  'platformer_game_pack_cannon':'platformer_game_pack_cannon',
-  'platformer_game_pack_cannonball':'platformer_game_pack_cannonball',
-  'platformer_game_pack_character':'platformer_game_pack_character',
-  'platformer_game_pack_character_gun':'platformer_game_pack_character_gun',
-  'platformer_game_pack_character_humanoidrig':'platformer_game_pack_character_humanoidrig',
-  'platformer_game_pack_chest':'platformer_game_pack_chest',
-  'platformer_game_pack_cloud_1':'platformer_game_pack_cloud_1',
-  'platformer_game_pack_cloud_2':'platformer_game_pack_cloud_2',
-  'platformer_game_pack_cloud_3':'platformer_game_pack_cloud_3',
-  'platformer_game_pack_coin':'platformer_game_pack_coin',
-  'platformer_game_pack_crab':'platformer_game_pack_crab',
-  'platformer_game_pack_cube_bricks':'platformer_game_pack_cube_bricks',
-  'platformer_game_pack_cube_crate':'platformer_game_pack_cube_crate',
-  'platformer_game_pack_cube_default':'platformer_game_pack_cube_default',
-  'platformer_game_pack_cube_dirt_center_tall':'platformer_game_pack_cube_dirt_center_tall',
-  'platformer_game_pack_cube_dirt_corner_tall':'platformer_game_pack_cube_dirt_corner_tall',
-  'platformer_game_pack_cube_dirt_side_tall':'platformer_game_pack_cube_dirt_side_tall',
-  'platformer_game_pack_cube_dirt_single':'platformer_game_pack_cube_dirt_single',
-  'platformer_game_pack_cube_exclamation':'platformer_game_pack_cube_exclamation',
-  'platformer_game_pack_cube_grass_bottom_tall':'platformer_game_pack_cube_grass_bottom_tall',
-  'platformer_game_pack_cube_grass_center_tall':'platformer_game_pack_cube_grass_center_tall',
-  'platformer_game_pack_cube_grass_corner_tall':'platformer_game_pack_cube_grass_corner_tall',
-  'platformer_game_pack_cube_grass_cornerbottom_tall':'platformer_game_pack_cube_grass_cornerbottom_tall',
-  'platformer_game_pack_cube_grass_cornercenter_tall':'platformer_game_pack_cube_grass_cornercenter_tall',
-  'platformer_game_pack_cube_grass_side_tall':'platformer_game_pack_cube_grass_side_tall',
-  'platformer_game_pack_cube_grass_sidebottom_tall':'platformer_game_pack_cube_grass_sidebottom_tall',
-  'platformer_game_pack_cube_grass_sidecenter_tall':'platformer_game_pack_cube_grass_sidecenter_tall',
-  'platformer_game_pack_cube_grass_single':'platformer_game_pack_cube_grass_single',
-  'platformer_game_pack_cube_question':'platformer_game_pack_cube_question',
-  'platformer_game_pack_cube_spikes':'platformer_game_pack_cube_spikes',
-  'platformer_game_pack_door':'platformer_game_pack_door',
-  'platformer_game_pack_enemy':'platformer_game_pack_enemy',
-  'platformer_game_pack_fence_1':'platformer_game_pack_fence_1',
-  'platformer_game_pack_fence_corner':'platformer_game_pack_fence_corner',
-  'platformer_game_pack_fence_middle':'platformer_game_pack_fence_middle',
-  'platformer_game_pack_fruit':'platformer_game_pack_fruit',
-  'platformer_game_pack_gem_blue':'platformer_game_pack_gem_blue',
-  'platformer_game_pack_gem_green':'platformer_game_pack_gem_green',
-  'platformer_game_pack_gem_pink':'platformer_game_pack_gem_pink',
-  'platformer_game_pack_goal_flag':'platformer_game_pack_goal_flag',
-  'platformer_game_pack_grass_1':'platformer_game_pack_grass_1',
-  'platformer_game_pack_grass_2':'platformer_game_pack_grass_2',
-  'platformer_game_pack_grass_3':'platformer_game_pack_grass_3',
-  'platformer_game_pack_hazard_cylinder':'platformer_game_pack_hazard_cylinder',
-  'platformer_game_pack_hazard_saw':'platformer_game_pack_hazard_saw',
-  'platformer_game_pack_hazard_spiketrap':'platformer_game_pack_hazard_spiketrap',
-  'platformer_game_pack_heart':'platformer_game_pack_heart',
-  'platformer_game_pack_heart_half':'platformer_game_pack_heart_half',
-  'platformer_game_pack_heart_outline':'platformer_game_pack_heart_outline',
-  'platformer_game_pack_key':'platformer_game_pack_key',
-  'platformer_game_pack_lever':'platformer_game_pack_lever',
-  'platformer_game_pack_numbers_0':'platformer_game_pack_numbers_0',
-  'platformer_game_pack_numbers_1':'platformer_game_pack_numbers_1',
-  'platformer_game_pack_numbers_2':'platformer_game_pack_numbers_2',
-  'platformer_game_pack_numbers_3':'platformer_game_pack_numbers_3',
-  'platformer_game_pack_numbers_4':'platformer_game_pack_numbers_4',
-  'platformer_game_pack_numbers_5':'platformer_game_pack_numbers_5',
-  'platformer_game_pack_numbers_6':'platformer_game_pack_numbers_6',
-  'platformer_game_pack_numbers_7':'platformer_game_pack_numbers_7',
-  'platformer_game_pack_numbers_8':'platformer_game_pack_numbers_8',
-  'platformer_game_pack_numbers_9':'platformer_game_pack_numbers_9',
-  'platformer_game_pack_pipe_90':'platformer_game_pack_pipe_90',
-  'platformer_game_pack_pipe_end':'platformer_game_pack_pipe_end',
-  'platformer_game_pack_pipe_straight':'platformer_game_pack_pipe_straight',
-  'platformer_game_pack_pipe_t':'platformer_game_pack_pipe_t',
-  'platformer_game_pack_plant_large':'platformer_game_pack_plant_large',
-  'platformer_game_pack_plant_small':'platformer_game_pack_plant_small',
-  'platformer_game_pack_rock_1':'platformer_game_pack_rock_1',
-  'platformer_game_pack_rock_2':'platformer_game_pack_rock_2',
-  'platformer_game_pack_rockplatform_tall':'platformer_game_pack_rockplatform_tall',
-  'platformer_game_pack_rockplatforms_1':'platformer_game_pack_rockplatforms_1',
-  'platformer_game_pack_rockplatforms_2':'platformer_game_pack_rockplatforms_2',
-  'platformer_game_pack_rockplatforms_3':'platformer_game_pack_rockplatforms_3',
-  'platformer_game_pack_rockplatforms_large':'platformer_game_pack_rockplatforms_large',
-  'platformer_game_pack_rockplatforms_medium':'platformer_game_pack_rockplatforms_medium',
-  'platformer_game_pack_skull':'platformer_game_pack_skull',
-  'platformer_game_pack_spikes':'platformer_game_pack_spikes',
-  'platformer_game_pack_spikyball':'platformer_game_pack_spikyball',
-  'platformer_game_pack_stairs':'platformer_game_pack_stairs',
-  'platformer_game_pack_stairs_modular_end':'platformer_game_pack_stairs_modular_end',
-  'platformer_game_pack_stairs_modular_middle':'platformer_game_pack_stairs_modular_middle',
-  'platformer_game_pack_stairs_modular_start':'platformer_game_pack_stairs_modular_start',
-  'platformer_game_pack_stairs_small':'platformer_game_pack_stairs_small',
-  'platformer_game_pack_star':'platformer_game_pack_star',
-  'platformer_game_pack_star_outline':'platformer_game_pack_star_outline',
-  'platformer_game_pack_thunder':'platformer_game_pack_thunder',
-  'platformer_game_pack_tower':'platformer_game_pack_tower',
-  'platformer_game_pack_tree':'platformer_game_pack_tree',
-  'platformer_game_pack_tree_fruit':'platformer_game_pack_tree_fruit',
-  'player':'modular_men_adventurer',
-  'pointytower':'modular_medieval_buildings_pack_pointytower',
-  'pot':'survival_pack_pot',
-  'pot_of_coals':'pot_of_coals',
-  'pot_small':'survival_pack_pot_small',
-  'potion':'modular_dungeon_pack_potion',
-  'potion10_empty':'rpg_items_pack_potion10_empty',
-  'potion10_filled':'rpg_items_pack_potion10_filled',
-  'potion11_empty':'rpg_items_pack_potion11_empty',
-  'potion11_filled':'rpg_items_pack_potion11_filled',
-  'potion1_empty':'rpg_items_pack_potion1_empty',
-  'potion1_filled':'rpg_items_pack_potion1_filled',
-  'potion2':'modular_dungeon_pack_potion2',
-  'potion2_empty':'rpg_items_pack_potion2_empty',
-  'potion2_filled':'rpg_items_pack_potion2_filled',
-  'potion3':'modular_dungeon_pack_potion3',
-  'potion3_empty':'rpg_items_pack_potion3_empty',
-  'potion3_filled':'rpg_items_pack_potion3_filled',
-  'potion4':'modular_dungeon_pack_potion4',
-  'potion4_empty':'rpg_items_pack_potion4_empty',
-  'potion4_filled':'rpg_items_pack_potion4_filled',
-  'potion5':'modular_dungeon_pack_potion5',
-  'potion5_empty':'rpg_items_pack_potion5_empty',
-  'potion5_filled':'rpg_items_pack_potion5_filled',
-  'potion6':'modular_dungeon_pack_potion6',
-  'potion6_empty':'rpg_items_pack_potion6_empty',
-  'potion6_filled':'rpg_items_pack_potion6_filled',
-  'potion7_empty':'rpg_items_pack_potion7_empty',
-  'potion7_filled':'rpg_items_pack_potion7_filled',
-  'potion8_empty':'rpg_items_pack_potion8_empty',
-  'potion8_filled':'rpg_items_pack_potion8_filled',
-  'potion9_empty':'rpg_items_pack_potion9_empty',
-  'potion9_filled':'rpg_items_pack_potion9_filled',
-  'pouch':'rpg_items_pack_pouch',
-  'propanetank':'survival_pack_propanetank',
-  'puffer':'cute_fish_pack_puffer',
-  'pumpkin_1':'crops_pack_pumpkin_1',
-  'pumpkin_2':'crops_pack_pumpkin_2',
-  'pumpkin_3':'crops_pack_pumpkin_3',
-  'pumpkin_4':'crops_pack_pumpkin_4',
-  'pumpkin_crop':'crops_pack_pumpkin_crop',
-  'pumpkin_harvested':'crops_pack_pumpkin_harvested',
-  'punctual_lamp':'punctual_lamp',
-  'punk':'modular_women_punk',
-  'radio':'survival_pack_radio',
-  'raft':'survival_pack_raft',
-  'raft_paddle':'survival_pack_raft_paddle',
-  'rail_corner':'cyberpunk_pack_rail_corner',
-  'rail_corner_2':'cyberpunk_pack_rail_corner_2',
-  'rail_long':'cyberpunk_pack_rail_long',
-  'rail_short':'cyberpunk_pack_rail_short',
-  'ramp-transformed':'ultimate_space_pack_ramp-transformed',
-  'rat':'easy_enemies_pack_rat',
-  'recursive_skeletons':'recursive_skeletons',
-  'redsnapper':'cute_fish_pack_redsnapper',
-  'revolver_1':'survival_pack_revolver_1',
-  'revolver_2':'survival_pack_revolver_2',
-  'revolver_3':'survival_pack_revolver_3',
-  'rice_1':'crops_pack_rice_1',
-  'rice_2':'crops_pack_rice_2',
-  'rice_3':'crops_pack_rice_3',
-  'rice_4':'crops_pack_rice_4',
-  'rice_crop':'crops_pack_rice_crop',
-  'rigged_figure':'rigged_figure',
-  'rigged_simple':'rigged_simple',
-  'ring1':'rpg_items_pack_ring1',
-  'ring2':'rpg_items_pack_ring2',
-  'ring3':'rpg_items_pack_ring3',
-  'ring4':'rpg_items_pack_ring4',
-  'ring5':'rpg_items_pack_ring5',
-  'ring6':'rpg_items_pack_ring6',
-  'ring7':'rpg_items_pack_ring7',
-  'robot':'robot',
-  'rock':'simple_nature_pack_rock1',
-  'rock1':'simple_nature_pack_rock1',
-  'rock2':'simple_nature_pack_rock2',
-  'rock3':'simple_nature_pack_rock3',
-  'rock4':'modular_dungeon_pack_rock4',
-  'rock5':'modular_dungeon_pack_rock5',
-  'rock_1':'platformer_game_pack_rock_1',
-  'rock_1-transformed':'ultimate_space_pack_rock_1-transformed',
-  'rock_2':'platformer_game_pack_rock_2',
-  'rock_2-transformed':'ultimate_space_pack_rock_2-transformed',
-  'rock_3':'nature_pack_rock_3',
-  'rock_3-transformed':'ultimate_space_pack_rock_3-transformed',
-  'rock_4':'nature_pack_rock_4',
-  'rock_4-transformed':'ultimate_space_pack_rock_4-transformed',
-  'rock_5':'nature_pack_rock_5',
-  'rock_6':'nature_pack_rock_6',
-  'rock_7':'nature_pack_rock_7',
-  'rock_large_1-transformed':'ultimate_space_pack_rock_large_1-transformed',
-  'rock_large_2-transformed':'ultimate_space_pack_rock_large_2-transformed',
-  'rock_large_3-transformed':'ultimate_space_pack_rock_large_3-transformed',
-  'rock_moss_1':'nature_pack_rock_moss_1',
-  'rock_moss_2':'nature_pack_rock_moss_2',
-  'rock_moss_3':'nature_pack_rock_moss_3',
-  'rock_moss_4':'nature_pack_rock_moss_4',
-  'rock_moss_5':'nature_pack_rock_moss_5',
-  'rock_moss_6':'nature_pack_rock_moss_6',
-  'rock_moss_7':'nature_pack_rock_moss_7',
-  'rock_snow_1':'nature_pack_rock_snow_1',
-  'rock_snow_2':'nature_pack_rock_snow_2',
-  'rock_snow_3':'nature_pack_rock_snow_3',
-  'rock_snow_4':'nature_pack_rock_snow_4',
-  'rock_snow_5':'nature_pack_rock_snow_5',
-  'rock_snow_6':'nature_pack_rock_snow_6',
-  'rock_snow_7':'nature_pack_rock_snow_7',
-  'rockplatform_tall':'platformer_game_pack_rockplatform_tall',
-  'rockplatforms_1':'platformer_game_pack_rockplatforms_1',
-  'rockplatforms_2':'platformer_game_pack_rockplatforms_2',
-  'rockplatforms_3':'platformer_game_pack_rockplatforms_3',
-  'rockplatforms_large':'platformer_game_pack_rockplatforms_large',
-  'rockplatforms_medium':'platformer_game_pack_rockplatforms_medium',
-  'roof_antenna-transformed':'ultimate_space_pack_roof_antenna-transformed',
-  'roof_opening-transformed':'ultimate_space_pack_roof_opening-transformed',
-  'roof_radar-transformed':'ultimate_space_pack_roof_radar-transformed',
-  'roof_ventl-transformed':'ultimate_space_pack_roof_ventl-transformed',
-  'roof_ventr-transformed':'ultimate_space_pack_roof_ventr-transformed',
-  'rover_1-transformed':'ultimate_space_pack_rover_1-transformed',
-  'rover_2-transformed':'ultimate_space_pack_rover_2-transformed',
-  'rover_round-transformed':'ultimate_space_pack_rover_round-transformed',
-  'royalgramma':'cute_fish_pack_royalgramma',
-  'rpg_items_pack_armor_black':'rpg_items_pack_armor_black',
-  'rpg_items_pack_armor_golden':'rpg_items_pack_armor_golden',
-  'rpg_items_pack_armor_leather':'rpg_items_pack_armor_leather',
-  'rpg_items_pack_armor_metal':'rpg_items_pack_armor_metal',
-  'rpg_items_pack_armor_metal2':'rpg_items_pack_armor_metal2',
-  'rpg_items_pack_arrow':'rpg_items_pack_arrow',
-  'rpg_items_pack_arrow_golden':'rpg_items_pack_arrow_golden',
-  'rpg_items_pack_axe_double':'rpg_items_pack_axe_double',
-  'rpg_items_pack_axe_double_golden':'rpg_items_pack_axe_double_golden',
-  'rpg_items_pack_axe_small':'rpg_items_pack_axe_small',
-  'rpg_items_pack_axe_small_golden':'rpg_items_pack_axe_small_golden',
-  'rpg_items_pack_backpack':'rpg_items_pack_backpack',
-  'rpg_items_pack_bag':'rpg_items_pack_bag',
-  'rpg_items_pack_bone':'rpg_items_pack_bone',
-  'rpg_items_pack_book1_closed':'rpg_items_pack_book1_closed',
-  'rpg_items_pack_book1_open':'rpg_items_pack_book1_open',
-  'rpg_items_pack_book2_closed':'rpg_items_pack_book2_closed',
-  'rpg_items_pack_book2_open':'rpg_items_pack_book2_open',
-  'rpg_items_pack_book3_closed':'rpg_items_pack_book3_closed',
-  'rpg_items_pack_book3_open':'rpg_items_pack_book3_open',
-  'rpg_items_pack_book4_closed':'rpg_items_pack_book4_closed',
-  'rpg_items_pack_book4_open':'rpg_items_pack_book4_open',
-  'rpg_items_pack_bow_golden':'rpg_items_pack_bow_golden',
-  'rpg_items_pack_bow_wooden':'rpg_items_pack_bow_wooden',
-  'rpg_items_pack_chalice':'rpg_items_pack_chalice',
-  'rpg_items_pack_chest_closed':'rpg_items_pack_chest_closed',
-  'rpg_items_pack_chest_ingots':'rpg_items_pack_chest_ingots',
-  'rpg_items_pack_chest_open':'rpg_items_pack_chest_open',
-  'rpg_items_pack_chickenleg':'rpg_items_pack_chickenleg',
-  'rpg_items_pack_coin':'rpg_items_pack_coin',
-  'rpg_items_pack_coin_skull':'rpg_items_pack_coin_skull',
-  'rpg_items_pack_coin_star':'rpg_items_pack_coin_star',
-  'rpg_items_pack_crown':'rpg_items_pack_crown',
-  'rpg_items_pack_crown2':'rpg_items_pack_crown2',
-  'rpg_items_pack_crystal1':'rpg_items_pack_crystal1',
-  'rpg_items_pack_crystal1_damaged':'rpg_items_pack_crystal1_damaged',
-  'rpg_items_pack_crystal2':'rpg_items_pack_crystal2',
-  'rpg_items_pack_crystal2_damaged':'rpg_items_pack_crystal2_damaged',
-  'rpg_items_pack_crystal3':'rpg_items_pack_crystal3',
-  'rpg_items_pack_crystal3_damaged':'rpg_items_pack_crystal3_damaged',
-  'rpg_items_pack_crystal4':'rpg_items_pack_crystal4',
-  'rpg_items_pack_crystal5':'rpg_items_pack_crystal5',
-  'rpg_items_pack_crystal5_damaged':'rpg_items_pack_crystal5_damaged',
-  'rpg_items_pack_dagger':'rpg_items_pack_dagger',
-  'rpg_items_pack_dagger_golden':'rpg_items_pack_dagger_golden',
-  'rpg_items_pack_dart':'rpg_items_pack_dart',
-  'rpg_items_pack_dart_golden':'rpg_items_pack_dart_golden',
-  'rpg_items_pack_fishbone':'rpg_items_pack_fishbone',
-  'rpg_items_pack_glove':'rpg_items_pack_glove',
-  'rpg_items_pack_gold_ingots':'rpg_items_pack_gold_ingots',
-  'rpg_items_pack_hammer_double':'rpg_items_pack_hammer_double',
-  'rpg_items_pack_hammer_double_golden':'rpg_items_pack_hammer_double_golden',
-  'rpg_items_pack_heart':'rpg_items_pack_heart',
-  'rpg_items_pack_heart_broken':'rpg_items_pack_heart_broken',
-  'rpg_items_pack_heart_half':'rpg_items_pack_heart_half',
-  'rpg_items_pack_key1':'rpg_items_pack_key1',
-  'rpg_items_pack_key2':'rpg_items_pack_key2',
-  'rpg_items_pack_key3':'rpg_items_pack_key3',
-  'rpg_items_pack_key4':'rpg_items_pack_key4',
-  'rpg_items_pack_mineral':'rpg_items_pack_mineral',
-  'rpg_items_pack_necklace1':'rpg_items_pack_necklace1',
-  'rpg_items_pack_necklace2':'rpg_items_pack_necklace2',
-  'rpg_items_pack_necklace3':'rpg_items_pack_necklace3',
-  'rpg_items_pack_padlock':'rpg_items_pack_padlock',
-  'rpg_items_pack_parchment':'rpg_items_pack_parchment',
-  'rpg_items_pack_potion10_empty':'rpg_items_pack_potion10_empty',
-  'rpg_items_pack_potion10_filled':'rpg_items_pack_potion10_filled',
-  'rpg_items_pack_potion11_empty':'rpg_items_pack_potion11_empty',
-  'rpg_items_pack_potion11_filled':'rpg_items_pack_potion11_filled',
-  'rpg_items_pack_potion1_empty':'rpg_items_pack_potion1_empty',
-  'rpg_items_pack_potion1_filled':'rpg_items_pack_potion1_filled',
-  'rpg_items_pack_potion2_empty':'rpg_items_pack_potion2_empty',
-  'rpg_items_pack_potion2_filled':'rpg_items_pack_potion2_filled',
-  'rpg_items_pack_potion3_empty':'rpg_items_pack_potion3_empty',
-  'rpg_items_pack_potion3_filled':'rpg_items_pack_potion3_filled',
-  'rpg_items_pack_potion4_empty':'rpg_items_pack_potion4_empty',
-  'rpg_items_pack_potion4_filled':'rpg_items_pack_potion4_filled',
-  'rpg_items_pack_potion5_empty':'rpg_items_pack_potion5_empty',
-  'rpg_items_pack_potion5_filled':'rpg_items_pack_potion5_filled',
-  'rpg_items_pack_potion6_empty':'rpg_items_pack_potion6_empty',
-  'rpg_items_pack_potion6_filled':'rpg_items_pack_potion6_filled',
-  'rpg_items_pack_potion7_empty':'rpg_items_pack_potion7_empty',
-  'rpg_items_pack_potion7_filled':'rpg_items_pack_potion7_filled',
-  'rpg_items_pack_potion8_empty':'rpg_items_pack_potion8_empty',
-  'rpg_items_pack_potion8_filled':'rpg_items_pack_potion8_filled',
-  'rpg_items_pack_potion9_empty':'rpg_items_pack_potion9_empty',
-  'rpg_items_pack_potion9_filled':'rpg_items_pack_potion9_filled',
-  'rpg_items_pack_pouch':'rpg_items_pack_pouch',
-  'rpg_items_pack_ring1':'rpg_items_pack_ring1',
-  'rpg_items_pack_ring2':'rpg_items_pack_ring2',
-  'rpg_items_pack_ring3':'rpg_items_pack_ring3',
-  'rpg_items_pack_ring4':'rpg_items_pack_ring4',
-  'rpg_items_pack_ring5':'rpg_items_pack_ring5',
-  'rpg_items_pack_ring6':'rpg_items_pack_ring6',
-  'rpg_items_pack_ring7':'rpg_items_pack_ring7',
-  'rpg_items_pack_scroll':'rpg_items_pack_scroll',
-  'rpg_items_pack_skull':'rpg_items_pack_skull',
-  'rpg_items_pack_skull2':'rpg_items_pack_skull2',
-  'rpg_items_pack_snowflake1':'rpg_items_pack_snowflake1',
-  'rpg_items_pack_snowflake2':'rpg_items_pack_snowflake2',
-  'rpg_items_pack_snowflake3':'rpg_items_pack_snowflake3',
-  'rpg_items_pack_star':'rpg_items_pack_star',
-  'rpg_items_pack_sword':'rpg_items_pack_sword',
-  'rpg_items_pack_sword_big':'rpg_items_pack_sword_big',
-  'rpg_items_pack_sword_big_golden':'rpg_items_pack_sword_big_golden',
-  'rpg_items_pack_sword_golden':'rpg_items_pack_sword_golden',
-  'sail_ship':'ships_pack_sail_ship',
-  'sawmill':'medieval_village_pack_sawmill',
-  'sawmill_saw':'medieval_village_pack_sawmill_saw',
-  'scifi':'modular_women_scifi',
-  'scope_1':'modular_sci_fi_guns_pack_scope_1',
-  'scope_2':'modular_sci_fi_guns_pack_scope_2',
-  'scroll':'rpg_items_pack_scroll',
-  'scythe':'medieval_weapons_pack_scythe',
-  'shark':'fish_pack_shark',
-  'sheen_test':'rpg_items_pack_crystal1',
-  'shelf_1':'house_interior_pack_shelf_1',
-  'shelf_2':'house_interior_pack_shelf_2',
-  'shelf_large':'house_interior_pack_shelf_large',
-  'shelf_small1':'house_interior_pack_shelf_small1',
-  'shelf_small2':'house_interior_pack_shelf_small2',
-  'shelf_small3':'house_interior_pack_shelf_small3',
-  'shibainu':'animals_pack_shibainu',
-  'shield_celtic_golden':'medieval_weapons_pack_shield_celtic_golden',
-  'shield_heater':'medieval_weapons_pack_shield_heater',
-  'shield_heater_2':'medieval_weapons_pack_shield_heater_2',
-  'shield_round':'medieval_weapons_pack_shield_round',
-  'shield_round_2':'medieval_weapons_pack_shield_round_2',
-  'ships_pack_boat':'ships_pack_boat',
-  'ships_pack_boatwsail':'ships_pack_boatwsail',
-  'ships_pack_cruiseship':'ships_pack_cruiseship',
-  'ships_pack_lifeboat':'ships_pack_lifeboat',
-  'ships_pack_sail_ship':'ships_pack_sail_ship',
-  'ships_pack_viking_boat':'ships_pack_viking_boat',
-  'shortsword':'single_knight_pack_shortsword',
-  'shotgun_1':'survival_pack_shotgun_1',
-  'shotgun_2':'survival_pack_shotgun_2',
-  'shotgun_sawedoff':'survival_pack_shotgun_sawedoff',
-  'shotgun_shortstock':'survival_pack_shotgun_shortstock',
-  'shoulderpads':'single_knight_pack_shoulderpads',
-  'shovel':'survival_pack_shovel',
-  'sight_1':'modular_sci_fi_guns_pack_sight_1',
-  'sight_2':'modular_sci_fi_guns_pack_sight_2',
-  'sight_3':'modular_sci_fi_guns_pack_sight_3',
-  'sign_1':'cyberpunk_pack_sign_1',
-  'sign_2':'cyberpunk_pack_sign_2',
-  'sign_3':'cyberpunk_pack_sign_3',
-  'sign_4':'cyberpunk_pack_sign_4',
-  'sign_corner_1':'cyberpunk_pack_sign_corner_1',
-  'sign_corner_2':'cyberpunk_pack_sign_corner_2',
-  'sign_corner_3':'cyberpunk_pack_sign_corner_3',
-  'sign_corner_3_fenced':'cyberpunk_pack_sign_corner_3_fenced',
-  'sign_corner_hazard':'cyberpunk_pack_sign_corner_hazard',
-  'sign_corner_small1':'cyberpunk_pack_sign_corner_small1',
-  'sign_corner_small2':'cyberpunk_pack_sign_corner_small2',
-  'sign_noparking':'street_pack_sign_noparking',
-  'sign_small_1':'cyberpunk_pack_sign_small_1',
-  'sign_small_2':'cyberpunk_pack_sign_small_2',
-  'sign_small_3':'cyberpunk_pack_sign_small_3',
-  'sign_stop':'street_pack_sign_stop',
-  'sign_triangle':'street_pack_sign_triangle',
-  'silk_pouf':'silk_pouf',
-  'simple_nature_pack_bush1':'simple_nature_pack_bush1',
-  'simple_nature_pack_bush2':'simple_nature_pack_bush2',
-  'simple_nature_pack_bush3':'simple_nature_pack_bush3',
-  'simple_nature_pack_grass1':'simple_nature_pack_grass1',
-  'simple_nature_pack_grass2':'simple_nature_pack_grass2',
-  'simple_nature_pack_grass3':'simple_nature_pack_grass3',
-  'simple_nature_pack_rock1':'simple_nature_pack_rock1',
-  'simple_nature_pack_rock2':'simple_nature_pack_rock2',
-  'simple_nature_pack_rock3':'simple_nature_pack_rock3',
-  'simple_nature_pack_tree1':'simple_nature_pack_tree1',
-  'simple_nature_pack_tree2':'simple_nature_pack_tree2',
-  'simple_nature_pack_tree3':'simple_nature_pack_tree3',
-  'simple_nature_pack_tree4':'simple_nature_pack_tree4',
-  'simpletower':'modular_medieval_buildings_pack_simpletower',
-  'simpletowerbricks':'modular_medieval_buildings_pack_simpletowerbricks',
-  'single_knight_pack_club':'single_knight_pack_club',
-  'single_knight_pack_helmet1':'single_knight_pack_helmet1',
-  'single_knight_pack_helmet2':'single_knight_pack_helmet2',
-  'single_knight_pack_helmet3':'single_knight_pack_helmet3',
-  'single_knight_pack_katana':'single_knight_pack_katana',
-  'single_knight_pack_knightcharacter':'single_knight_pack_knightcharacter',
-  'single_knight_pack_shortsword':'single_knight_pack_shortsword',
-  'single_knight_pack_shoulderpads':'single_knight_pack_shoulderpads',
-  'single_knight_pack_sword':'single_knight_pack_sword',
-  'skull':'rpg_items_pack_skull',
-  'skull2':'rpg_items_pack_skull2',
-  'smallsquaretower':'modular_medieval_buildings_pack_smallsquaretower',
-  'smallsquaretowerbricks':'modular_medieval_buildings_pack_smallsquaretowerbricks',
-  'smalltower':'modular_medieval_buildings_pack_smalltower',
-  'smg_1':'modular_sci_fi_guns_pack_smg_1',
-  'smg_2':'modular_sci_fi_guns_pack_smg_2',
-  'smoke':'medieval_village_pack_smoke',
-  'snake':'easy_enemies_pack_snake',
-  'snake_angry':'easy_enemies_pack_snake_angry',
-  'sniper_1':'modular_sci_fi_guns_pack_sniper_1',
-  'sniper_2':'modular_sci_fi_guns_pack_sniper_2',
-  'sniper_3':'modular_sci_fi_guns_pack_sniper_3',
-  'snowflake1':'rpg_items_pack_snowflake1',
-  'snowflake2':'rpg_items_pack_snowflake2',
-  'snowflake3':'rpg_items_pack_snowflake3',
-  'sofa':'glamvelvet_sofa',
-  'solarpanel_ground-transformed':'ultimate_space_pack_solarpanel_ground-transformed',
-  'solarpanel_roof-transformed':'ultimate_space_pack_solarpanel_roof-transformed',
-  'solarpanel_structure-transformed':'ultimate_space_pack_solarpanel_structure-transformed',
-  'soldier':'soldier',
-  'spaceship_barbarathebee-transformed':'ultimate_space_pack_spaceship_barbarathebee-transformed',
-  'spaceship_fernandotheflamingo-transformed':'ultimate_space_pack_spaceship_fernandotheflamingo-transformed',
-  'spaceship_finnthefrog-transformed':'ultimate_space_pack_spaceship_finnthefrog-transformed',
-  'spaceship_raetheredpanda-transformed':'ultimate_space_pack_spaceship_raetheredpanda-transformed',
-  'spaceships_pack_bob':'spaceships_pack_bob',
-  'spaceships_pack_dispatcher':'spaceships_pack_dispatcher',
-  'spaceships_pack_insurgent':'spaceships_pack_insurgent',
-  'spaceships_pack_striker':'spaceships_pack_striker',
-  'spacesuit':'modular_men_spacesuit',
-  'spear':'medieval_weapons_pack_spear',
-  'spider':'easy_enemies_pack_spider',
-  'spikes':'platformer_game_pack_spikes',
-  'spikyball':'platformer_game_pack_spikyball',
-  'spoon':'house_interior_pack_spoon',
-  'stable':'medieval_village_pack_stable',
-  'stag':'animals_pack_stag',
-  'stairs':'platformer_game_pack_stairs',
-  'stairs-transformed':'ultimate_space_pack_stairs-transformed',
-  'stairs_modular':'modular_dungeon_1_stairs_modular',
-  'stairs_modular_end':'platformer_game_pack_stairs_modular_end',
-  'stairs_modular_middle':'platformer_game_pack_stairs_modular_middle',
-  'stairs_modular_start':'platformer_game_pack_stairs_modular_start',
-  'stairs_sidecover':'modular_dungeon_1_stairs_sidecover',
-  'stairs_sidecoverwall':'modular_dungeon_1_stairs_sidecoverwall',
-  'stairs_small':'platformer_game_pack_stairs_small',
-  'star':'rpg_items_pack_star',
-  'star_outline':'platformer_game_pack_star_outline',
-  'statue_horse':'modular_dungeon_1_statue_horse',
-  'stegosaurus':'dinosaurs_pack_stegosaurus',
-  'stock_2':'modular_sci_fi_guns_pack_stock_2',
-  'stock_ar_1':'modular_sci_fi_guns_pack_stock_ar_1',
-  'stock_ar_4':'modular_sci_fi_guns_pack_stock_ar_4',
-  'stock_ar_6':'modular_sci_fi_guns_pack_stock_ar_6',
-  'stock_grenade_1':'modular_sci_fi_guns_pack_stock_grenade_1',
-  'stock_grenade_2':'modular_sci_fi_guns_pack_stock_grenade_2',
-  'stock_pistol_3':'modular_sci_fi_guns_pack_stock_pistol_3',
-  'stock_smg_1':'modular_sci_fi_guns_pack_stock_smg_1',
-  'stock_sniper_1':'modular_sci_fi_guns_pack_stock_sniper_1',
-  'stock_sniper_3':'modular_sci_fi_guns_pack_stock_sniper_3',
-  'stool':'house_interior_pack_stool',
-  'stork':'stork',
-  'street_3way':'street_pack_street_3way',
-  'street_3way_2':'street_pack_street_3way_2',
-  'street_4way':'street_pack_street_4way',
-  'street_4way_2':'street_pack_street_4way_2',
-  'street_bridge':'street_pack_street_bridge',
-  'street_bridge_ramp':'street_pack_street_bridge_ramp',
-  'street_bridge_underpass':'street_pack_street_bridge_underpass',
-  'street_bridge_water':'street_pack_street_bridge_water',
-  'street_bridge_waterramp':'street_pack_street_bridge_waterramp',
-  'street_curve':'street_pack_street_curve',
-  'street_deadend':'street_pack_street_deadend',
-  'street_elevated':'street_pack_street_elevated',
-  'street_elevated_ramp':'street_pack_street_elevated_ramp',
-  'street_empty':'street_pack_street_empty',
-  'street_empty_water':'street_pack_street_empty_water',
-  'street_pack_sign_noparking':'street_pack_sign_noparking',
-  'street_pack_sign_stop':'street_pack_sign_stop',
-  'street_pack_sign_triangle':'street_pack_sign_triangle',
-  'street_pack_street_3way':'street_pack_street_3way',
-  'street_pack_street_3way_2':'street_pack_street_3way_2',
-  'street_pack_street_4way':'street_pack_street_4way',
-  'street_pack_street_4way_2':'street_pack_street_4way_2',
-  'street_pack_street_bridge':'street_pack_street_bridge',
-  'street_pack_street_bridge_ramp':'street_pack_street_bridge_ramp',
-  'street_pack_street_bridge_underpass':'street_pack_street_bridge_underpass',
-  'street_pack_street_bridge_water':'street_pack_street_bridge_water',
-  'street_pack_street_bridge_waterramp':'street_pack_street_bridge_waterramp',
-  'street_pack_street_curve':'street_pack_street_curve',
-  'street_pack_street_deadend':'street_pack_street_deadend',
-  'street_pack_street_elevated':'street_pack_street_elevated',
-  'street_pack_street_elevated_ramp':'street_pack_street_elevated_ramp',
-  'street_pack_street_empty':'street_pack_street_empty',
-  'street_pack_street_empty_water':'street_pack_street_empty_water',
-  'street_pack_street_straight':'street_pack_street_straight',
-  'street_pack_streetlight_double':'street_pack_streetlight_double',
-  'street_pack_streetlight_single':'street_pack_streetlight_single',
-  'street_pack_streetlight_triple':'street_pack_streetlight_triple',
-  'street_pack_streets_all':'street_pack_streets_all',
-  'street_pack_trafficlight':'street_pack_trafficlight',
-  'street_pack_trafficlight_2':'street_pack_trafficlight_2',
-  'street_straight':'street_pack_street_straight',
-  'streetlight_double':'street_pack_streetlight_double',
-  'streetlight_single':'street_pack_streetlight_single',
-  'streetlight_triple':'street_pack_streetlight_triple',
-  'streets_all':'street_pack_streets_all',
-  'striker':'spaceships_pack_striker',
-  'suit':'modular_women_suit',
-  'sunfish':'cute_fish_pack_sunfish',
-  'sunglasses':'sunglasses',
-  'support':'cyberpunk_pack_support',
-  'support_long':'cyberpunk_pack_support_long',
-  'support_short':'cyberpunk_pack_support_short',
-  'survival_pack_axe':'survival_pack_axe',
-  'survival_pack_axe_small':'survival_pack_axe_small',
-  'survival_pack_backpack':'survival_pack_backpack',
-  'survival_pack_bandages':'survival_pack_bandages',
-  'survival_pack_battery_big':'survival_pack_battery_big',
-  'survival_pack_battery_small':'survival_pack_battery_small',
-  'survival_pack_beartrap_closed':'survival_pack_beartrap_closed',
-  'survival_pack_beartrap_open':'survival_pack_beartrap_open',
-  'survival_pack_bonfire':'survival_pack_bonfire',
-  'survival_pack_bonfire_fire':'survival_pack_bonfire_fire',
-  'survival_pack_can_broken':'survival_pack_can_broken',
-  'survival_pack_can_closed':'survival_pack_can_closed',
-  'survival_pack_can_open':'survival_pack_can_open',
-  'survival_pack_can_red':'survival_pack_can_red',
-  'survival_pack_compass_closed':'survival_pack_compass_closed',
-  'survival_pack_compass_open':'survival_pack_compass_open',
-  'survival_pack_firstaidkit':'survival_pack_firstaidkit',
-  'survival_pack_firstaidkit_hard':'survival_pack_firstaidkit_hard',
-  'survival_pack_flaregun':'survival_pack_flaregun',
-  'survival_pack_gascan':'survival_pack_gascan',
-  'survival_pack_knife':'survival_pack_knife',
-  'survival_pack_match':'survival_pack_match',
-  'survival_pack_match_burnt':'survival_pack_match_burnt',
-  'survival_pack_match_fire':'survival_pack_match_fire',
-  'survival_pack_matchbox':'survival_pack_matchbox',
-  'survival_pack_pan':'survival_pack_pan',
-  'survival_pack_pan_small':'survival_pack_pan_small',
-  'survival_pack_phone':'survival_pack_phone',
-  'survival_pack_pistol_1':'survival_pack_pistol_1',
-  'survival_pack_pistol_2':'survival_pack_pistol_2',
-  'survival_pack_pot':'survival_pack_pot',
-  'survival_pack_pot_small':'survival_pack_pot_small',
-  'survival_pack_propanetank':'survival_pack_propanetank',
-  'survival_pack_radio':'survival_pack_radio',
-  'survival_pack_raft':'survival_pack_raft',
-  'survival_pack_raft_paddle':'survival_pack_raft_paddle',
-  'survival_pack_revolver_1':'survival_pack_revolver_1',
-  'survival_pack_revolver_2':'survival_pack_revolver_2',
-  'survival_pack_revolver_3':'survival_pack_revolver_3',
-  'survival_pack_shotgun_1':'survival_pack_shotgun_1',
-  'survival_pack_shotgun_2':'survival_pack_shotgun_2',
-  'survival_pack_shotgun_sawedoff':'survival_pack_shotgun_sawedoff',
-  'survival_pack_shotgun_shortstock':'survival_pack_shotgun_shortstock',
-  'survival_pack_shovel':'survival_pack_shovel',
-  'survival_pack_tent':'survival_pack_tent',
-  'survival_pack_torch':'survival_pack_torch',
-  'survival_pack_trashcan':'survival_pack_trashcan',
-  'survival_pack_waterbottle_1':'survival_pack_waterbottle_1',
-  'survival_pack_waterbottle_2':'survival_pack_waterbottle_2',
-  'survival_pack_waterbottle_3':'survival_pack_waterbottle_3',
-  'survival_pack_woodentorch':'survival_pack_woodentorch',
-  'survival_pack_woodentorch_fire':'survival_pack_woodentorch_fire',
-  'survival_pack_woodlog':'survival_pack_woodlog',
-  'swat':'modular_men_swat',
-  'sword':'rpg_items_pack_sword',
-  'sword_2':'medieval_weapons_pack_sword_2',
-  'sword_big':'rpg_items_pack_sword_big',
-  'sword_big_golden':'rpg_items_pack_sword_big_golden',
-  'sword_golden':'rpg_items_pack_sword_golden',
-  'pistol':'survival_pack_pistol_1',
-  'pistol_2':'survival_pack_pistol_2',
-  'shotgun':'survival_pack_shotgun_1',
-  'shotgun_2':'survival_pack_shotgun_2',
-  'shotgun_sawed':'survival_pack_shotgun_sawedoff',
-  'rifle':'modular_sci_fi_guns_pack_ar_1',
-  'rifle_2':'modular_sci_fi_guns_pack_ar_2',
-  'rifle_3':'modular_sci_fi_guns_pack_ar_3',
-  'sniper':'modular_sci_fi_guns_pack_sniper_1',
-  'sniper_2':'modular_sci_fi_guns_pack_sniper_2',
-  'smg':'modular_sci_fi_guns_pack_smg_1',
-  'smg_2':'modular_sci_fi_guns_pack_smg_2',
-  'crossbow':'modular_sci_fi_guns_pack_crossbow_1',
-  'blaster':'blasterb',
-  'blaster_2':'blasterc',
-  'blaster_3':'blasterd',
-  'flaregun':'survival_pack_flaregun',
-  'grenade':'modular_sci_fi_guns_pack_grenade',
-  'sword_wallmount':'modular_dungeon_1_sword_wallmount',
-  'swordfish':'cute_fish_pack_swordfish',
-  'table':'house_interior_pack_table_roundlarge',
-  'table_big':'modular_dungeon_1_table_big',
-  'table_roundlarge':'house_interior_pack_table_roundlarge',
-  'table_roundsmall':'house_interior_pack_table_roundsmall',
-  'table_roundsmall2':'house_interior_pack_table_roundsmall2',
-  'table_small':'modular_dungeon_1_table_small',
-  'tallwall':'modular_medieval_buildings_pack_tallwall',
-  'tallwallbricks':'modular_medieval_buildings_pack_tallwallbricks',
-  'tallwallentrance':'modular_medieval_buildings_pack_tallwallentrance',
-  'tang':'cute_fish_pack_tang',
-  'tank':'tank_pack_tank',
-  'tank2':'tank_pack_tank2',
-  'tank3':'tank_pack_tank3',
-  'tank4':'tank_pack_tank4',
-  'tank_pack_tank':'tank_pack_tank',
-  'tank_pack_tank2':'tank_pack_tank2',
-  'tank_pack_tank3':'tank_pack_tank3',
-  'tank_pack_tank4':'tank_pack_tank4',
-  'target':'modular_medieval_buildings_pack_target',
-  'targetwitharrows':'modular_medieval_buildings_pack_targetwitharrows',
-  'teacup':'teacup',
-  'tent':'survival_pack_tent',
-  'tetra':'cute_fish_pack_tetra',
-  'thunder':'platformer_game_pack_thunder',
-  'tomato_1':'crops_pack_tomato_1',
-  'tomato_2':'crops_pack_tomato_2',
-  'tomato_3':'crops_pack_tomato_3',
-  'tomato_4':'crops_pack_tomato_4',
-  'tomato_crop':'crops_pack_tomato_crop',
-  'tomato_harvested':'crops_pack_tomato_harvested',
-  'tombstone':'modular_dungeon_1_skull',
-  'torch':'survival_pack_torch',
-  'torch_wall':'modular_dungeon_pack_torch_wall',
-  'tower':'platformer_game_pack_tower',
-  'trafficlight':'street_pack_trafficlight',
-  'trafficlight_2':'street_pack_trafficlight_2',
-  'trap_empty':'modular_dungeon_1_trap_empty',
-  'trap_spikes':'modular_dungeon_1_trap_spikes',
-  'trapdoor':'modular_dungeon_1_trapdoor',
-  'trapdoor_open':'modular_dungeon_1_trapdoor_open',
-  'trashcan':'survival_pack_trashcan',
-  'trashcan_cylindric':'house_interior_pack_trashcan_cylindric',
-  'trashcan_green':'house_interior_pack_trashcan_green',
-  'trashcan_large':'house_interior_pack_trashcan_large',
-  'trashcan_small1':'house_interior_pack_trashcan_small1',
-  'trashcan_small2':'house_interior_pack_trashcan_small2',
-  'treasure':'chest',
-  'tree':'simple_nature_pack_tree1',
-  'tree1':'simple_nature_pack_tree1',
-  'tree2':'simple_nature_pack_tree2',
-  'tree3':'simple_nature_pack_tree3',
-  'tree4':'simple_nature_pack_tree4',
-  'tree_blob_1-transformed':'ultimate_space_pack_tree_blob_1-transformed',
-  'tree_blob_2-transformed':'ultimate_space_pack_tree_blob_2-transformed',
-  'tree_blob_3-transformed':'ultimate_space_pack_tree_blob_3-transformed',
-  'tree_floating_1-transformed':'ultimate_space_pack_tree_floating_1-transformed',
-  'tree_floating_2-transformed':'ultimate_space_pack_tree_floating_2-transformed',
-  'tree_floating_3-transformed':'ultimate_space_pack_tree_floating_3-transformed',
-  'tree_fruit':'platformer_game_pack_tree_fruit',
-  'tree_lava_1-transformed':'ultimate_space_pack_tree_lava_1-transformed',
-  'tree_lava_2-transformed':'ultimate_space_pack_tree_lava_2-transformed',
-  'tree_lava_3-transformed':'ultimate_space_pack_tree_lava_3-transformed',
-  'tree_light_1-transformed':'ultimate_space_pack_tree_light_1-transformed',
-  'tree_light_2-transformed':'ultimate_space_pack_tree_light_2-transformed',
-  'tree_spikes_1-transformed':'ultimate_space_pack_tree_spikes_1-transformed',
-  'tree_spikes_2-transformed':'ultimate_space_pack_tree_spikes_2-transformed',
-  'tree_spiral_1-transformed':'ultimate_space_pack_tree_spiral_1-transformed',
-  'tree_spiral_2-transformed':'ultimate_space_pack_tree_spiral_2-transformed',
-  'tree_spiral_3-transformed':'ultimate_space_pack_tree_spiral_3-transformed',
-  'tree_swirl_1-transformed':'ultimate_space_pack_tree_swirl_1-transformed',
-  'tree_swirl_2-transformed':'ultimate_space_pack_tree_swirl_2-transformed',
-  'treestump':'nature_pack_treestump',
-  'treestump_moss':'nature_pack_treestump_moss',
-  'treestump_snow':'nature_pack_treestump_snow',
-  'trex':'dinosaurs_pack_trex',
-  'triceratops':'dinosaurs_pack_triceratops',
-  'truck':'truck',
-  'tuna':'cute_fish_pack_tuna',
-  'tunnel':'modular_medieval_buildings_pack_tunnel',
-  'turbot':'cute_fish_pack_turbot',
-  'turret_cannon':'cyberpunk_pack_turret_cannon',
-  'turret_gun':'cyberpunk_pack_turret_gun',
-  'turret_gundouble':'cyberpunk_pack_turret_gundouble',
-  'turret_teleporter':'cyberpunk_pack_turret_teleporter',
-  'tv_1':'cyberpunk_pack_tv_1',
-  'tv_2':'cyberpunk_pack_tv_2',
-  'tv_3':'cyberpunk_pack_tv_3',
-  'ultimate_space_pack_astronaut_barbarathebee-transformed':'ultimate_space_pack_astronaut_barbarathebee-transformed',
-  'ultimate_space_pack_astronaut_fernandotheflamingo-transformed':'ultimate_space_pack_astronaut_fernandotheflamingo-transformed',
-  'ultimate_space_pack_astronaut_finnthefrog-transformed':'ultimate_space_pack_astronaut_finnthefrog-transformed',
-  'ultimate_space_pack_astronaut_raetheredpanda-transformed':'ultimate_space_pack_astronaut_raetheredpanda-transformed',
-  'ultimate_space_pack_base_large-transformed':'ultimate_space_pack_base_large-transformed',
-  'ultimate_space_pack_building_l-transformed':'ultimate_space_pack_building_l-transformed',
-  'ultimate_space_pack_bush_1-transformed':'ultimate_space_pack_bush_1-transformed',
-  'ultimate_space_pack_bush_2-transformed':'ultimate_space_pack_bush_2-transformed',
-  'ultimate_space_pack_bush_3-transformed':'ultimate_space_pack_bush_3-transformed',
-  'ultimate_space_pack_connector-transformed':'ultimate_space_pack_connector-transformed',
-  'ultimate_space_pack_enemy_extrasmall-transformed':'ultimate_space_pack_enemy_extrasmall-transformed',
-  'ultimate_space_pack_enemy_flying-transformed':'ultimate_space_pack_enemy_flying-transformed',
-  'ultimate_space_pack_enemy_large-transformed':'ultimate_space_pack_enemy_large-transformed',
-  'ultimate_space_pack_enemy_small-transformed':'ultimate_space_pack_enemy_small-transformed',
-  'ultimate_space_pack_geodesicdome-transformed':'ultimate_space_pack_geodesicdome-transformed',
-  'ultimate_space_pack_grass_1-transformed':'ultimate_space_pack_grass_1-transformed',
-  'ultimate_space_pack_grass_2-transformed':'ultimate_space_pack_grass_2-transformed',
-  'ultimate_space_pack_grass_3-transformed':'ultimate_space_pack_grass_3-transformed',
-  'ultimate_space_pack_house_cylinder-transformed':'ultimate_space_pack_house_cylinder-transformed',
-  'ultimate_space_pack_house_long-transformed':'ultimate_space_pack_house_long-transformed',
-  'ultimate_space_pack_house_open-transformed':'ultimate_space_pack_house_open-transformed',
-  'ultimate_space_pack_house_openback-transformed':'ultimate_space_pack_house_openback-transformed',
-  'ultimate_space_pack_house_single-transformed':'ultimate_space_pack_house_single-transformed',
-  'ultimate_space_pack_house_single_support-transformed':'ultimate_space_pack_house_single_support-transformed',
-  'ultimate_space_pack_mech_barbarathebee-transformed':'ultimate_space_pack_mech_barbarathebee-transformed',
-  'ultimate_space_pack_mech_fernandotheflamingo-transformed':'ultimate_space_pack_mech_fernandotheflamingo-transformed',
-  'ultimate_space_pack_mech_finnthefrog-transformed':'ultimate_space_pack_mech_finnthefrog-transformed',
-  'ultimate_space_pack_mech_raetheredpanda-transformed':'ultimate_space_pack_mech_raetheredpanda-transformed',
-  'ultimate_space_pack_metalsupport-transformed':'ultimate_space_pack_metalsupport-transformed',
-  'ultimate_space_pack_pickup_bullets-transformed':'ultimate_space_pack_pickup_bullets-transformed',
-  'ultimate_space_pack_pickup_crate-transformed':'ultimate_space_pack_pickup_crate-transformed',
-  'ultimate_space_pack_pickup_health-transformed':'ultimate_space_pack_pickup_health-transformed',
-  'ultimate_space_pack_pickup_jar-transformed':'ultimate_space_pack_pickup_jar-transformed',
-  'ultimate_space_pack_pickup_keycard-transformed':'ultimate_space_pack_pickup_keycard-transformed',
-  'ultimate_space_pack_pickup_sphere-transformed':'ultimate_space_pack_pickup_sphere-transformed',
-  'ultimate_space_pack_pickup_thunder-transformed':'ultimate_space_pack_pickup_thunder-transformed',
-  'ultimate_space_pack_planet_1-transformed':'ultimate_space_pack_planet_1-transformed',
-  'ultimate_space_pack_planet_10-transformed':'ultimate_space_pack_planet_10-transformed',
-  'ultimate_space_pack_planet_11-transformed':'ultimate_space_pack_planet_11-transformed',
-  'ultimate_space_pack_planet_2-transformed':'ultimate_space_pack_planet_2-transformed',
-  'ultimate_space_pack_planet_3-transformed':'ultimate_space_pack_planet_3-transformed',
-  'ultimate_space_pack_planet_4-transformed':'ultimate_space_pack_planet_4-transformed',
-  'ultimate_space_pack_planet_5-transformed':'ultimate_space_pack_planet_5-transformed',
-  'ultimate_space_pack_planet_6-transformed':'ultimate_space_pack_planet_6-transformed',
-  'ultimate_space_pack_planet_7-transformed':'ultimate_space_pack_planet_7-transformed',
-  'ultimate_space_pack_planet_8-transformed':'ultimate_space_pack_planet_8-transformed',
-  'ultimate_space_pack_planet_9-transformed':'ultimate_space_pack_planet_9-transformed',
-  'ultimate_space_pack_plant_1-transformed':'ultimate_space_pack_plant_1-transformed',
-  'ultimate_space_pack_plant_2-transformed':'ultimate_space_pack_plant_2-transformed',
-  'ultimate_space_pack_plant_3-transformed':'ultimate_space_pack_plant_3-transformed',
-  'ultimate_space_pack_ramp-transformed':'ultimate_space_pack_ramp-transformed',
-  'ultimate_space_pack_rock_1-transformed':'ultimate_space_pack_rock_1-transformed',
-  'ultimate_space_pack_rock_2-transformed':'ultimate_space_pack_rock_2-transformed',
-  'ultimate_space_pack_rock_3-transformed':'ultimate_space_pack_rock_3-transformed',
-  'ultimate_space_pack_rock_4-transformed':'ultimate_space_pack_rock_4-transformed',
-  'ultimate_space_pack_rock_large_1-transformed':'ultimate_space_pack_rock_large_1-transformed',
-  'ultimate_space_pack_rock_large_2-transformed':'ultimate_space_pack_rock_large_2-transformed',
-  'ultimate_space_pack_rock_large_3-transformed':'ultimate_space_pack_rock_large_3-transformed',
-  'ultimate_space_pack_roof_antenna-transformed':'ultimate_space_pack_roof_antenna-transformed',
-  'ultimate_space_pack_roof_opening-transformed':'ultimate_space_pack_roof_opening-transformed',
-  'ultimate_space_pack_roof_radar-transformed':'ultimate_space_pack_roof_radar-transformed',
-  'ultimate_space_pack_roof_ventl-transformed':'ultimate_space_pack_roof_ventl-transformed',
-  'ultimate_space_pack_roof_ventr-transformed':'ultimate_space_pack_roof_ventr-transformed',
-  'ultimate_space_pack_rover_1-transformed':'ultimate_space_pack_rover_1-transformed',
-  'ultimate_space_pack_rover_2-transformed':'ultimate_space_pack_rover_2-transformed',
-  'ultimate_space_pack_rover_round-transformed':'ultimate_space_pack_rover_round-transformed',
-  'ultimate_space_pack_solarpanel_ground-transformed':'ultimate_space_pack_solarpanel_ground-transformed',
-  'ultimate_space_pack_solarpanel_roof-transformed':'ultimate_space_pack_solarpanel_roof-transformed',
-  'ultimate_space_pack_solarpanel_structure-transformed':'ultimate_space_pack_solarpanel_structure-transformed',
-  'ultimate_space_pack_spaceship_barbarathebee-transformed':'ultimate_space_pack_spaceship_barbarathebee-transformed',
-  'ultimate_space_pack_spaceship_fernandotheflamingo-transformed':'ultimate_space_pack_spaceship_fernandotheflamingo-transformed',
-  'ultimate_space_pack_spaceship_finnthefrog-transformed':'ultimate_space_pack_spaceship_finnthefrog-transformed',
-  'ultimate_space_pack_spaceship_raetheredpanda-transformed':'ultimate_space_pack_spaceship_raetheredpanda-transformed',
-  'ultimate_space_pack_stairs-transformed':'ultimate_space_pack_stairs-transformed',
-  'ultimate_space_pack_tree_blob_1-transformed':'ultimate_space_pack_tree_blob_1-transformed',
-  'ultimate_space_pack_tree_blob_2-transformed':'ultimate_space_pack_tree_blob_2-transformed',
-  'ultimate_space_pack_tree_blob_3-transformed':'ultimate_space_pack_tree_blob_3-transformed',
-  'ultimate_space_pack_tree_floating_1-transformed':'ultimate_space_pack_tree_floating_1-transformed',
-  'ultimate_space_pack_tree_floating_2-transformed':'ultimate_space_pack_tree_floating_2-transformed',
-  'ultimate_space_pack_tree_floating_3-transformed':'ultimate_space_pack_tree_floating_3-transformed',
-  'ultimate_space_pack_tree_lava_1-transformed':'ultimate_space_pack_tree_lava_1-transformed',
-  'ultimate_space_pack_tree_lava_2-transformed':'ultimate_space_pack_tree_lava_2-transformed',
-  'ultimate_space_pack_tree_lava_3-transformed':'ultimate_space_pack_tree_lava_3-transformed',
-  'ultimate_space_pack_tree_light_1-transformed':'ultimate_space_pack_tree_light_1-transformed',
-  'ultimate_space_pack_tree_light_2-transformed':'ultimate_space_pack_tree_light_2-transformed',
-  'ultimate_space_pack_tree_spikes_1-transformed':'ultimate_space_pack_tree_spikes_1-transformed',
-  'ultimate_space_pack_tree_spikes_2-transformed':'ultimate_space_pack_tree_spikes_2-transformed',
-  'ultimate_space_pack_tree_spiral_1-transformed':'ultimate_space_pack_tree_spiral_1-transformed',
-  'ultimate_space_pack_tree_spiral_2-transformed':'ultimate_space_pack_tree_spiral_2-transformed',
-  'ultimate_space_pack_tree_spiral_3-transformed':'ultimate_space_pack_tree_spiral_3-transformed',
-  'ultimate_space_pack_tree_swirl_1-transformed':'ultimate_space_pack_tree_swirl_1-transformed',
-  'ultimate_space_pack_tree_swirl_2-transformed':'ultimate_space_pack_tree_swirl_2-transformed',
-  'vase':'modular_dungeon_1_vase',
-  'vehicle':'car',
-  'velociraptor':'dinosaurs_pack_velociraptor',
-  'viking_boat':'ships_pack_viking_boat',
-  'virtual_city':'virtual_city',
-  'walking_man':'walking_man',
-  'wall':'modular_medieval_buildings_pack_wall',
-  'wall_modular':'modular_dungeon_1_wall_modular',
-  'wallbricks':'modular_medieval_buildings_pack_wallbricks',
-  'wallcover_modular':'modular_dungeon_1_wallcover_modular',
-  'wallentrance':'modular_medieval_buildings_pack_wallentrance',
-  'wallentrancebricks':'modular_medieval_buildings_pack_wallentrancebricks',
-  'wallrocks':'modular_dungeon_pack_wallrocks',
-  'wasp':'easy_enemies_pack_wasp',
-  'watchtower':'modular_medieval_buildings_pack_watchtower',
-  'watchtowerwroof':'modular_medieval_buildings_pack_watchtowerwroof',
-  'waterbottle_1':'survival_pack_waterbottle_1',
-  'waterbottle_2':'survival_pack_waterbottle_2',
-  'waterbottle_3':'survival_pack_waterbottle_3',
-  'watermelon_1':'crops_pack_watermelon_1',
-  'watermelon_2':'crops_pack_watermelon_2',
-  'watermelon_3':'crops_pack_watermelon_3',
-  'watermelon_4':'crops_pack_watermelon_4',
-  'watermelon_crop':'crops_pack_watermelon_crop',
-  'watermelon_harvested':'crops_pack_watermelon_harvested',
-  'well':'medieval_village_pack_well',
-  'whale':'fish_pack_whale',
-  'wheat':'nature_pack_wheat',
-  'wheat_1':'crops_pack_wheat_1',
-  'wheat_2':'crops_pack_wheat_2',
-  'wheat_3':'crops_pack_wheat_3',
-  'wheat_4':'crops_pack_wheat_4',
-  'wheat_crop':'crops_pack_wheat_crop',
-  'willow_1':'nature_pack_willow_1',
-  'willow_2':'nature_pack_willow_2',
-  'willow_3':'nature_pack_willow_3',
-  'willow_4':'nature_pack_willow_4',
-  'willow_5':'nature_pack_willow_5',
-  'willow_autumn_1':'nature_pack_willow_autumn_1',
-  'willow_autumn_2':'nature_pack_willow_autumn_2',
-  'willow_autumn_3':'nature_pack_willow_autumn_3',
-  'willow_autumn_4':'nature_pack_willow_autumn_4',
-  'willow_autumn_5':'nature_pack_willow_autumn_5',
-  'willow_dead_1':'nature_pack_willow_dead_1',
-  'willow_dead_2':'nature_pack_willow_dead_2',
-  'willow_dead_3':'nature_pack_willow_dead_3',
-  'willow_dead_4':'nature_pack_willow_dead_4',
-  'willow_dead_5':'nature_pack_willow_dead_5',
-  'willow_dead_snow_1':'nature_pack_willow_dead_snow_1',
-  'willow_dead_snow_2':'nature_pack_willow_dead_snow_2',
-  'willow_dead_snow_3':'nature_pack_willow_dead_snow_3',
-  'willow_dead_snow_4':'nature_pack_willow_dead_snow_4',
-  'willow_dead_snow_5':'nature_pack_willow_dead_snow_5',
-  'willow_snow_1':'nature_pack_willow_snow_1',
-  'willow_snow_2':'nature_pack_willow_snow_2',
-  'willow_snow_3':'nature_pack_willow_snow_3',
-  'willow_snow_4':'nature_pack_willow_snow_4',
-  'willow_snow_5':'nature_pack_willow_snow_5',
-  'window':'modular_dungeon_pack_window',
-  'window_1':'medieval_village_pack_window_1',
-  'window_2':'medieval_village_pack_window_2',
-  'window_3':'medieval_village_pack_window_3',
-  'window_4':'medieval_village_pack_window_4',
-  'window_large1':'house_interior_pack_window_large1',
-  'window_large2':'house_interior_pack_window_large2',
-  'window_round1':'house_interior_pack_window_round1',
-  'window_round2':'house_interior_pack_window_round2',
-  'window_round3':'house_interior_pack_window_round3',
-  'window_small1':'house_interior_pack_window_small1',
-  'window_small2':'house_interior_pack_window_small2',
-  'window_small3':'house_interior_pack_window_small3',
-  'windowgothic':'modular_medieval_buildings_pack_windowgothic',
-  'windowsquare':'modular_medieval_buildings_pack_windowsquare',
-  'witch':'modular_women_witch',
-  'wolf':'animals_pack_wolf',
-  'woman':'modular_women_casual',
-  'woodentorch':'survival_pack_woodentorch',
-  'woodentorch_fire':'survival_pack_woodentorch_fire',
-  'woodfire':'modular_dungeon_1_woodfire',
-  'woodlog':'survival_pack_woodlog',
-  'woodlog_moss':'nature_pack_woodlog_moss',
-  'woodlog_snow':'nature_pack_woodlog_snow',
-  'worker':'modular_women_worker',
-  'worm':'cute_fish_pack_worm',
-  'yellowtang':'cute_fish_pack_yellowtang',
-  'zebraclownfish':'cute_fish_pack_zebraclownfish',
-  'alien':'robot',
-  'anchor':'rpg_items_pack_sword',
-  'archer':'soldier',
-  'barn':'buildings_pack_2_building3_big',
-  'barrier':'fence',
-  'bat':'parrot',
-  'bear':'animals_pack_bull',
-  'bird':'parrot',
-  'building':'buildings_pack_2_building1_large',
-  'butterfly':'cute_fish_pack_butterflyfish',
-  'cabin':'buildings_pack_2_house2',
-  'cat':'animals_pack_fox',
-  'catapult':'medieval_village_pack_cart',
-  'chain':'lamp',
-  'chicken':'animals_pack_cow',
-  'church':'medieval_village_pack_bell_tower',
-  'citizen':'man',
-  'clam':'house_interior_pack_plate_1',
-  'cone':'medieval_village_pack_crate',
-  'console':'chest',
-  'coral':'cute_fish_pack_coralgrouper',
-  'corn':'crops_pack_pumpkin_1',
-  'cottage':'buildings_pack_2_house2',
-  'cowboy':'man',
-  'crater':'rock',
-  'crow':'parrot',
-  'dead_tree':'nature_pack_birchtree_dead_1',
-  'dog':'animals_pack_wolf',
-  'drone':'cyberpunk_pack_enemy_flying',
-  'dumpster':'medieval_village_pack_crate',
-  'eagle':'parrot',
-  'egg':'crops_pack_pumpkin_1',
-  'flag':'modular_dungeon_1_banner',
-  'fortress':'medieval_village_pack_bell_tower',
-  'fountain':'medieval_village_pack_well',
-  'gate':'fence',
-  'geyser':'medieval_village_pack_bonfire_lit',
-  'ghost':'recursive_skeletons',
-  'goblin':'man',
-  'guard':'soldier',
-  'guy':'man',
-  'hay_bale':'medieval_village_pack_barrel',
-  'helicopter':'cute_fish_pack_boat',
-  'home':'buildings_pack_2_house1',
-  'house':'buildings_pack_2_house1',
-  'hut':'buildings_pack_2_building1_small',
-  'jellyfish':'cute_fish_pack_anglerfish',
-  'knight':'soldier',
-  'lighthouse':'medieval_village_pack_bell_tower',
-  'monitor':'cyberpunk_pack_computer',
-  'motorcycle':'car',
-  'neon_sign':'lamp',
-  'ninja':'soldier',
-  'npc':'man',
-  'owl':'parrot',
-  'peasant':'man',
-  'pig':'animals_pack_donkey',
-  'pillar':'medieval_village_pack_bell_tower',
-  'pirate':'soldier',
-  'pumpkin':'crops_pack_pumpkin_1',
-  'puppy':'animals_pack_wolf',
-  'queen':'michelle',
-  'rabbit':'duck',
-  'rover':'car',
-  'saloon':'buildings_pack_2_building4',
-  'samurai':'soldier',
-  'satellite_dish':'cyberpunk_pack_computer',
-  'scarecrow':'man',
-  'seaweed':'flower',
-  'shack':'buildings_pack_2_building3_small',
-  'sheep':'animals_pack_alpaca',
-  'shipwreck':'ships_pack_viking_boat',
-  'shop':'buildings_pack_2_building2_small',
-  'skeleton':'recursive_skeletons',
-  'solar_panel':'house_interior_pack_table_roundlarge',
-  'spaceship':'spaceships_pack_dispatcher',
-  'spectator':'man',
-  'squirrel':'duck',
-  'stall':'medieval_village_pack_crate',
-  'starfish':'cute_fish_pack_anglerfish',
-  'statue':'nefertiti',
-  'streetlight':'lamp',
-  'tavern':'buildings_pack_2_building4',
-  'temple':'medieval_village_pack_bell_tower',
-  'tire':'medieval_village_pack_barrel',
-  'tractor':'car',
-  'trash':'medieval_village_pack_barrel',
-  'tumbleweed':'bush',
-  'turtle':'duck',
-  'vending_machine':'medieval_village_pack_crate',
-  'villager':'man',
-  'vine':'flower',
-  'vulture':'parrot',
-  'wagon':'medieval_village_pack_cart',
-  'warrior':'soldier',
-  'windmill':'medieval_village_pack_bell_tower',
-  'wizard':'man',
-  'zombie':'recursive_skeletons',
-  'lantern':'survival_pack_woodentorch_fire',
-  'torch':'modular_dungeon_1_torch',
-
-  // === HD POLY HAVEN MODELS ===
-  'alarm_clock_01':'ph_alarm_clock_01',
-  'alarm clock 01':'ph_alarm_clock_01',
-  'all_purpose_cleaner':'ph_all_purpose_cleaner',
-  'all purpose cleaner':'ph_all_purpose_cleaner',
-  'american_football':'ph_american_football',
-  'american football':'ph_american_football',
-  'anthurium_botany_01':'ph_anthurium_botany_01',
-  'anthurium botany 01':'ph_anthurium_botany_01',
-  'antique_ceramic_vase_01':'ph_antique_ceramic_vase_01',
-  'antique ceramic vase 01':'ph_antique_ceramic_vase_01',
-  'antique_estoc':'ph_antique_estoc',
-  'antique estoc':'ph_antique_estoc',
-  'antique_katana_01':'ph_antique_katana_01',
-  'antique katana 01':'ph_antique_katana_01',
-  'antiquecamera':'hd_AntiqueCamera',
-  'armchair_01':'ph_ArmChair_01',
-  'armchair 01':'ph_ArmChair_01',
-  'avocado':'hd_pbr_avocado',
-  'bar_chair_round_01':'ph_bar_chair_round_01',
-  'bar chair round 01':'ph_bar_chair_round_01',
-  'barbershopchair_01':'ph_BarberShopChair_01',
-  'barbershopchair 01':'ph_BarberShopChair_01',
-  'bark_debris_01':'ph_bark_debris_01',
-  'bark debris 01':'ph_bark_debris_01',
-  'barramundi':'hd_pbr_barramundi',
-  'barrel_01':'ph_Barrel_01',
-  'barrel 01':'ph_Barrel_01',
-  'barrel_02':'ph_Barrel_02',
-  'barrel 02':'ph_Barrel_02',
-  'barrel_03':'ph_barrel_03',
-  'barrel 03':'ph_barrel_03',
-  'barrel_stove':'ph_barrel_stove',
-  'barrel stove':'ph_barrel_stove',
-  'baseball_01':'ph_baseball_01',
-  'baseball 01':'ph_baseball_01',
-  'baseball_bat':'ph_baseball_bat',
-  'baseball bat':'ph_baseball_bat',
-  'bench_vice_01':'ph_bench_vice_01',
-  'bench vice 01':'ph_bench_vice_01',
-  'bleach_bottle':'ph_bleach_bottle',
-  'bleach bottle':'ph_bleach_bottle',
-  'bolt_cutters_01':'ph_bolt_cutters_01',
-  'bolt cutters 01':'ph_bolt_cutters_01',
-  'book_encyclopedia_set_01':'ph_book_encyclopedia_set_01',
-  'book encyclopedia set 01':'ph_book_encyclopedia_set_01',
-  'boombox':'ph_boombox',
-  'boulder_01':'ph_boulder_01',
-  'boulder 01':'ph_boulder_01',
-  'brain_stem':'hd_pbr_brain_stem',
-  'brain stem':'hd_pbr_brain_stem',
-  'brass_blowtorch':'ph_brass_blowtorch',
-  'brass blowtorch':'ph_brass_blowtorch',
-  'brass_candleholders':'ph_brass_candleholders',
-  'brass candleholders':'ph_brass_candleholders',
-  'brass_diya_lantern':'ph_brass_diya_lantern',
-  'brass diya lantern':'ph_brass_diya_lantern',
-  'brass_goblets':'ph_brass_goblets',
-  'brass goblets':'ph_brass_goblets',
-  'brass_pan_01':'ph_brass_pan_01',
-  'brass pan 01':'ph_brass_pan_01',
-  'brass_pot_01':'ph_brass_pot_01',
-  'brass pot 01':'ph_brass_pot_01',
-  'brass_pot_02':'ph_brass_pot_02',
-  'brass pot 02':'ph_brass_pot_02',
-  'brass_vase_01':'ph_brass_vase_01',
-  'brass vase 01':'ph_brass_vase_01',
-  'brass_vase_02':'ph_brass_vase_02',
-  'brass vase 02':'ph_brass_vase_02',
-  'brass_vase_03':'ph_brass_vase_03',
-  'brass vase 03':'ph_brass_vase_03',
-  'brass_vase_04':'ph_brass_vase_04',
-  'brass vase 04':'ph_brass_vase_04',
-  'bull_head':'ph_bull_head',
-  'bull head':'ph_bull_head',
-  'calathea_orbifolia_01':'ph_calathea_orbifolia_01',
-  'calathea orbifolia 01':'ph_calathea_orbifolia_01',
-  'camera':'hd_pbr_camera',
-  'camera_01':'ph_Camera_01',
-  'camera 01':'ph_Camera_01',
-  'can_rusted':'ph_can_rusted',
-  'can rusted':'ph_can_rusted',
-  'cannon_01':'ph_cannon_01',
-  'cannon 01':'ph_cannon_01',
-  'cardboard_box_01':'ph_cardboard_box_01',
-  'cardboard box 01':'ph_cardboard_box_01',
-  'carrot_cake':'ph_carrot_cake',
-  'carrot cake':'ph_carrot_cake',
-  'carved_wooden_elephant':'ph_carved_wooden_elephant',
-  'carved wooden elephant':'ph_carved_wooden_elephant',
-  'carved_wooden_plate':'ph_carved_wooden_plate',
-  'carved wooden plate':'ph_carved_wooden_plate',
-  'cashregister_01':'ph_CashRegister_01',
-  'cashregister 01':'ph_CashRegister_01',
-  'cassette_player':'ph_cassette_player',
-  'cassette player':'ph_cassette_player',
-  'ceiling_fan':'ph_ceiling_fan',
-  'ceiling fan':'ph_ceiling_fan',
-  'celandine_01':'ph_celandine_01',
-  'celandine 01':'ph_celandine_01',
-  'ceramic_vase_01':'ph_ceramic_vase_01',
-  'ceramic vase 01':'ph_ceramic_vase_01',
-  'ceramic_vase_02':'ph_ceramic_vase_02',
-  'ceramic vase 02':'ph_ceramic_vase_02',
-  'ceramic_vase_03':'ph_ceramic_vase_03',
-  'ceramic vase 03':'ph_ceramic_vase_03',
-  'ceramic_vase_04':'ph_ceramic_vase_04',
-  'ceramic vase 04':'ph_ceramic_vase_04',
-  'cesium_man':'hd_pbr_cesium_man',
-  'cesium man':'hd_pbr_cesium_man',
-  'cesium_milk_truck':'hd_pbr_cesium_milk_truck',
-  'cesium milk truck':'hd_pbr_cesium_milk_truck',
-  'chair':'hd_pbr_chair',
-  'chandelier_01':'ph_Chandelier_01',
-  'chandelier 01':'ph_Chandelier_01',
-  'chandelier_02':'ph_Chandelier_02',
-  'chandelier 02':'ph_Chandelier_02',
-  'chandelier_03':'ph_Chandelier_03',
-  'chandelier 03':'ph_Chandelier_03',
-  'char_facecap':'hd_char_facecap',
-  'char facecap':'hd_char_facecap',
-  'char_kira':'hd_char_kira',
-  'char kira':'hd_char_kira',
-  'char_michelle':'hd_char_michelle',
-  'char michelle':'hd_char_michelle',
-  'char_rpm_male':'hd_char_rpm_male',
-  'char rpm male':'hd_char_rpm_male',
-  'char_soldier':'hd_char_soldier',
-  'char soldier':'hd_char_soldier',
-  'char_xbot':'hd_char_xbot',
-  'char xbot':'hd_char_xbot',
-  'character_michelle':'hd_character_michelle',
-  'character michelle':'hd_character_michelle',
-  'cheesebox_01':'ph_CheeseBox_01',
-  'cheesebox 01':'ph_CheeseBox_01',
-  'cheiridopsis_succulent':'ph_cheiridopsis_succulent',
-  'cheiridopsis succulent':'ph_cheiridopsis_succulent',
-  'chess_set':'ph_chess_set',
-  'chess set':'ph_chess_set',
-  'chinese_armchair':'ph_chinese_armchair',
-  'chinese armchair':'ph_chinese_armchair',
-  'chinese_cabinet':'ph_chinese_cabinet',
-  'chinese cabinet':'ph_chinese_cabinet',
-  'chinese_chandelier':'ph_chinese_chandelier',
-  'chinese chandelier':'ph_chinese_chandelier',
-  'chinese_commode':'ph_chinese_commode',
-  'chinese commode':'ph_chinese_commode',
-  'chinese_console_table':'ph_chinese_console_table',
-  'chinese console table':'ph_chinese_console_table',
-  'chinese_screen_panels':'ph_chinese_screen_panels',
-  'chinese screen panels':'ph_chinese_screen_panels',
-  'chinese_sofa':'ph_chinese_sofa',
-  'chinese sofa':'ph_chinese_sofa',
-  'chinese_stool':'ph_chinese_stool',
-  'chinese stool':'ph_chinese_stool',
-  'chinese_tea_table':'ph_chinese_tea_table',
-  'chinese tea table':'ph_chinese_tea_table',
-  'classicconsole_01':'ph_ClassicConsole_01',
-  'classicconsole 01':'ph_ClassicConsole_01',
-  'classicnightstand_01':'ph_ClassicNightstand_01',
-  'classicnightstand 01':'ph_ClassicNightstand_01',
-  'cleaner_tin_01':'ph_cleaner_tin_01',
-  'cleaner tin 01':'ph_cleaner_tin_01',
-  'coast_land_rocks_02':'ph_coast_land_rocks_02',
-  'coast land rocks 02':'ph_coast_land_rocks_02',
-  'coast_land_rocks_03':'ph_coast_land_rocks_03',
-  'coast land rocks 03':'ph_coast_land_rocks_03',
-  'coast_land_rocks_04':'ph_coast_land_rocks_04',
-  'coast land rocks 04':'ph_coast_land_rocks_04',
-  'coast_line_01':'ph_coast_line_01',
-  'coast line 01':'ph_coast_line_01',
-  'coast_line_02':'ph_coast_line_02',
-  'coast line 02':'ph_coast_line_02',
-  'coast_rocks_01':'ph_coast_rocks_01',
-  'coast rocks 01':'ph_coast_rocks_01',
-  'coast_rocks_02':'ph_coast_rocks_02',
-  'coast rocks 02':'ph_coast_rocks_02',
-  'coast_rocks_03':'ph_coast_rocks_03',
-  'coast rocks 03':'ph_coast_rocks_03',
-  'coast_rocks_05':'ph_coast_rocks_05',
-  'coast rocks 05':'ph_coast_rocks_05',
-  'coastal_cliff_01':'ph_coastal_cliff_01',
-  'coastal cliff 01':'ph_coastal_cliff_01',
-  'coastal_cliff_02':'ph_coastal_cliff_02',
-  'coastal cliff 02':'ph_coastal_cliff_02',
-  'coastal_cliff_04':'ph_coastal_cliff_04',
-  'coastal cliff 04':'ph_coastal_cliff_04',
-  'coffee_table_round_01':'ph_coffee_table_round_01',
-  'coffee table round 01':'ph_coffee_table_round_01',
-  'coffeecart_01':'ph_CoffeeCart_01',
-  'coffeecart 01':'ph_CoffeeCart_01',
-  'coffeetable_01':'ph_CoffeeTable_01',
-  'coffeetable 01':'ph_CoffeeTable_01',
-  'compost_bag_02':'ph_compost_bag_02',
-  'compost bag 02':'ph_compost_bag_02',
-  'compost_bags':'ph_compost_bags',
-  'compost bags':'ph_compost_bags',
-  'concrete_cat_statue':'ph_concrete_cat_statue',
-  'concrete cat statue':'ph_concrete_cat_statue',
-  'concrete_road_barrier':'ph_concrete_road_barrier',
-  'concrete road barrier':'ph_concrete_road_barrier',
-  'concrete_road_barrier_02':'ph_concrete_road_barrier_02',
-  'concrete road barrier 02':'ph_concrete_road_barrier_02',
-  'corset':'hd_pbr_corset',
-  'covered_car':'ph_covered_car',
-  'covered car':'ph_covered_car',
-  'croissant':'ph_croissant',
-  'crowbar_01':'ph_crowbar_01',
-  'crowbar 01':'ph_crowbar_01',
-  'crystalline_iceplant':'ph_crystalline_iceplant',
-  'crystalline iceplant':'ph_crystalline_iceplant',
-  'damagedhelmet':'hd_DamagedHelmet',
-  'dandelion_01':'ph_dandelion_01',
-  'dandelion 01':'ph_dandelion_01',
-  'dartboard':'ph_dartboard',
-  'dead_quiver_branch_01':'ph_dead_quiver_branch_01',
-  'dead quiver branch 01':'ph_dead_quiver_branch_01',
-  'dead_quiver_branch_02':'ph_dead_quiver_branch_02',
-  'dead quiver branch 02':'ph_dead_quiver_branch_02',
-  'dead_quiver_trunk':'ph_dead_quiver_trunk',
-  'dead quiver trunk':'ph_dead_quiver_trunk',
-  'dead_tree_trunk':'ph_dead_tree_trunk',
-  'dead tree trunk':'ph_dead_tree_trunk',
-  'dead_tree_trunk_02':'ph_dead_tree_trunk_02',
-  'dead tree trunk 02':'ph_dead_tree_trunk_02',
-  'desk_lamp_arm_01':'ph_desk_lamp_arm_01',
-  'desk lamp arm 01':'ph_desk_lamp_arm_01',
-  'didelta_spinosa':'ph_didelta_spinosa',
-  'didelta spinosa':'ph_didelta_spinosa',
-  'dining_chair_02':'ph_dining_chair_02',
-  'dining chair 02':'ph_dining_chair_02',
-  'dirty_football':'ph_dirty_football',
-  'dirty football':'ph_dirty_football',
-  'dragon':'hd_pbr_dragon',
-  'dragonattenuation':'hd_DragonAttenuation',
-  'drain_cleaner':'ph_drain_cleaner',
-  'drain cleaner':'ph_drain_cleaner',
-  'drawer_cabinet':'ph_drawer_cabinet',
-  'drawer cabinet':'ph_drawer_cabinet',
-  'drill_01':'ph_Drill_01',
-  'drill 01':'ph_Drill_01',
-  'dry_branches_medium_01':'ph_dry_branches_medium_01',
-  'dry branches medium 01':'ph_dry_branches_medium_01',
-  'dry_quiver_leaf':'ph_dry_quiver_leaf',
-  'dry quiver leaf':'ph_dry_quiver_leaf',
-  'duck':'hd_pbr_duck',
-  'dutch_ship_large_01':'ph_dutch_ship_large_01',
-  'dutch ship large 01':'ph_dutch_ship_large_01',
-  'dutch_ship_large_02':'ph_dutch_ship_large_02',
-  'dutch ship large 02':'ph_dutch_ship_large_02',
-  'dutch_ship_medium':'ph_dutch_ship_medium',
-  'dutch ship medium':'ph_dutch_ship_medium',
-  'electric_stove':'ph_electric_stove',
-  'electric stove':'ph_electric_stove',
-  'exterior_aircon_unit':'ph_exterior_aircon_unit',
-  'exterior aircon unit':'ph_exterior_aircon_unit',
-  'fancy_picture_frame_01':'ph_fancy_picture_frame_01',
-  'fancy picture frame 01':'ph_fancy_picture_frame_01',
-  'fancy_picture_frame_02':'ph_fancy_picture_frame_02',
-  'fancy picture frame 02':'ph_fancy_picture_frame_02',
-  'fern_02':'ph_fern_02',
-  'fern 02':'ph_fern_02',
-  'ferrari':'hd_ferrari',
-  'fir_sapling':'ph_fir_sapling',
-  'fir sapling':'ph_fir_sapling',
-  'fir_sapling_medium':'ph_fir_sapling_medium',
-  'fir sapling medium':'ph_fir_sapling_medium',
-  'fir_tree_01':'ph_fir_tree_01',
-  'fir tree 01':'ph_fir_tree_01',
-  'fire_hydrant':'ph_fire_hydrant',
-  'fire hydrant':'ph_fire_hydrant',
-  'flamingo':'hd_flamingo',
-  'flamingo_anim':'hd_flamingo_anim',
-  'flamingo anim':'hd_flamingo_anim',
-  'flathead_screwdriver':'ph_flathead_screwdriver',
-  'flathead screwdriver':'ph_flathead_screwdriver',
-  'flower_empodium':'ph_flower_empodium',
-  'flower empodium':'ph_flower_empodium',
-  'flower_gazania':'ph_flower_gazania',
-  'flower gazania':'ph_flower_gazania',
-  'flower_heliophila':'ph_flower_heliophila',
-  'flower heliophila':'ph_flower_heliophila',
-  'flower_stinkkruid':'ph_flower_stinkkruid',
-  'flower stinkkruid':'ph_flower_stinkkruid',
-  'flower_ursinia':'ph_flower_ursinia',
-  'flower ursinia':'ph_flower_ursinia',
-  'folding_wooden_stool':'ph_folding_wooden_stool',
-  'folding wooden stool':'ph_folding_wooden_stool',
-  'food_apple_01':'ph_food_apple_01',
-  'food apple 01':'ph_food_apple_01',
-  'food_avocado_01':'ph_food_avocado_01',
-  'food avocado 01':'ph_food_avocado_01',
-  'food_ginger_01':'ph_food_ginger_01',
-  'food ginger 01':'ph_food_ginger_01',
-  'food_kiwi_01':'ph_food_kiwi_01',
-  'food kiwi 01':'ph_food_kiwi_01',
-  'food_lime_01':'ph_food_lime_01',
-  'food lime 01':'ph_food_lime_01',
-  'food_lychee_01':'ph_food_lychee_01',
-  'food lychee 01':'ph_food_lychee_01',
-  'food_pears_asian_01':'ph_food_pears_asian_01',
-  'food pears asian 01':'ph_food_pears_asian_01',
-  'food_pomegranate_01':'ph_food_pomegranate_01',
-  'food pomegranate 01':'ph_food_pomegranate_01',
-  'football':'ph_football',
-  'fox':'hd_pbr_fox',
-  'gallinera_chair':'ph_gallinera_chair',
-  'gallinera chair':'ph_gallinera_chair',
-  'gallinera_table':'ph_gallinera_table',
-  'gallinera table':'ph_gallinera_table',
-  'gamepad':'ph_gamepad',
-  'gaming_console':'ph_gaming_console',
-  'gaming console':'ph_gaming_console',
-  'garden_gloves_01':'ph_garden_gloves_01',
-  'garden gloves 01':'ph_garden_gloves_01',
-  'garden_gnome':'ph_garden_gnome',
-  'garden gnome':'ph_garden_gnome',
-  'garden_hose_wall_mounted_01':'ph_garden_hose_wall_mounted_01',
-  'garden hose wall mounted 01':'ph_garden_hose_wall_mounted_01',
-  'garden_sprinkler_01':'ph_garden_sprinkler_01',
-  'garden sprinkler 01':'ph_garden_sprinkler_01',
-  'gate_latch_01':'ph_gate_latch_01',
-  'gate latch 01':'ph_gate_latch_01',
-  'gothic_coffee_table':'ph_gothic_coffee_table',
-  'gothic coffee table':'ph_gothic_coffee_table',
-  'gothicbed_01':'ph_GothicBed_01',
-  'gothicbed 01':'ph_GothicBed_01',
-  'gothiccabinet_01':'ph_GothicCabinet_01',
-  'gothiccabinet 01':'ph_GothicCabinet_01',
-  'gothiccommode_01':'ph_GothicCommode_01',
-  'gothiccommode 01':'ph_GothicCommode_01',
-  'grass_bermuda_01':'ph_grass_bermuda_01',
-  'grass bermuda 01':'ph_grass_bermuda_01',
-  'grass_medium_01':'ph_grass_medium_01',
-  'grass medium 01':'ph_grass_medium_01',
-  'grass_medium_02':'ph_grass_medium_02',
-  'grass medium 02':'ph_grass_medium_02',
-  'greenchair_01':'ph_GreenChair_01',
-  'greenchair 01':'ph_GreenChair_01',
-  'hand_plane_no4':'ph_hand_plane_no4',
-  'hand plane no4':'ph_hand_plane_no4',
-  'handsaw_wood':'ph_handsaw_wood',
-  'handsaw wood':'ph_handsaw_wood',
-  'hanging_industrial_lamp':'ph_hanging_industrial_lamp',
-  'hanging industrial lamp':'ph_hanging_industrial_lamp',
-  'hanging_picture_frame_01':'ph_hanging_picture_frame_01',
-  'hanging picture frame 01':'ph_hanging_picture_frame_01',
-  'hanging_picture_frame_02':'ph_hanging_picture_frame_02',
-  'hanging picture frame 02':'ph_hanging_picture_frame_02',
-  'hanging_picture_frame_03':'ph_hanging_picture_frame_03',
-  'hanging picture frame 03':'ph_hanging_picture_frame_03',
-  'hatchet':'ph_hatchet',
-  'helmet':'hd_pbr_helmet',
-  'horse':'hd_horse',
-  'horse_anim':'hd_horse_anim',
-  'horse anim':'hd_horse_anim',
-  'horse_head':'ph_horse_head',
-  'horse head':'ph_horse_head',
-  'horse_statue_01':'ph_horse_statue_01',
-  'horse statue 01':'ph_horse_statue_01',
-  'industrial_coffee_table':'ph_industrial_coffee_table',
-  'industrial coffee table':'ph_industrial_coffee_table',
-  'industrial_wall_lamp':'ph_industrial_wall_lamp',
-  'industrial wall lamp':'ph_industrial_wall_lamp',
-  'industrial_wall_sconce':'ph_industrial_wall_sconce',
-  'industrial wall sconce':'ph_industrial_wall_sconce',
-  'iridescencelamp':'hd_IridescenceLamp',
-  'island_tree_01':'ph_island_tree_01',
-  'island tree 01':'ph_island_tree_01',
-  'island_tree_02':'ph_island_tree_02',
-  'island tree 02':'ph_island_tree_02',
-  'island_tree_03':'ph_island_tree_03',
-  'island tree 03':'ph_island_tree_03',
-  'jacaranda_tree':'ph_jacaranda_tree',
-  'jacaranda tree':'ph_jacaranda_tree',
-  'jug_01':'ph_jug_01',
-  'jug 01':'ph_jug_01',
-  'katana_stand_01':'ph_katana_stand_01',
-  'katana stand 01':'ph_katana_stand_01',
-  'kite_shield':'ph_kite_shield',
-  'kite shield':'ph_kite_shield',
-  'korean_fire_extinguisher_01':'ph_korean_fire_extinguisher_01',
-  'korean fire extinguisher 01':'ph_korean_fire_extinguisher_01',
-  'korean_public_payphone_01':'ph_korean_public_payphone_01',
-  'korean public payphone 01':'ph_korean_public_payphone_01',
-  'ladder_sectioned_01':'ph_ladder_sectioned_01',
-  'ladder sectioned 01':'ph_ladder_sectioned_01',
-  'lambis_shell':'ph_lambis_shell',
-  'lambis shell':'ph_lambis_shell',
-  'lamp':'hd_pbr_lamp',
-  'lantern':'hd_pbr_lantern',
-  'lantern_01':'ph_Lantern_01',
-  'lantern 01':'ph_Lantern_01',
-  'lantern_chandelier_01':'ph_lantern_chandelier_01',
-  'lantern chandelier 01':'ph_lantern_chandelier_01',
-  'large_castle_door':'ph_large_castle_door',
-  'large castle door':'ph_large_castle_door',
-  'large_iron_gate':'ph_large_iron_gate',
-  'large iron gate':'ph_large_iron_gate',
-  'lateral_sea_marker':'ph_lateral_sea_marker',
-  'lateral sea marker':'ph_lateral_sea_marker',
-  'leather_cleaner_can':'ph_leather_cleaner_can',
-  'leather cleaner can':'ph_leather_cleaner_can',
-  'leipoldtia_schultzei':'ph_leipoldtia_schultzei',
-  'leipoldtia schultzei':'ph_leipoldtia_schultzei',
-  'lemon':'ph_lemon',
-  'lightbulb_01':'ph_lightbulb_01',
-  'lightbulb 01':'ph_lightbulb_01',
-  'lightbulb_led':'ph_lightbulb_led',
-  'lightbulb led':'ph_lightbulb_led',
-  'lion_head':'ph_lion_head',
-  'lion head':'ph_lion_head',
-  'lubricant_spray':'ph_lubricant_spray',
-  'lubricant spray':'ph_lubricant_spray',
-  'machete':'ph_machete',
-  'magnifying_glass_01':'ph_magnifying_glass_01',
-  'magnifying glass 01':'ph_magnifying_glass_01',
-  'mantel_clock_01':'ph_mantel_clock_01',
-  'mantel clock 01':'ph_mantel_clock_01',
-  'marble_bust_01':'ph_marble_bust_01',
-  'marble bust 01':'ph_marble_bust_01',
-  'materialsvariantsshoe':'hd_MaterialsVariantsShoe',
-  'measuring_tape_01':'ph_measuring_tape_01',
-  'measuring tape 01':'ph_measuring_tape_01',
-  'megaphone_01':'ph_Megaphone_01',
-  'megaphone 01':'ph_Megaphone_01',
-  'metal_detector':'ph_metal_detector',
-  'metal detector':'ph_metal_detector',
-  'metal_jug':'ph_metal_jug',
-  'metal jug':'ph_metal_jug',
-  'metal_tool_chest':'ph_metal_tool_chest',
-  'metal tool chest':'ph_metal_tool_chest',
-  'metal_trash_can':'ph_metal_trash_can',
-  'metal trash can':'ph_metal_trash_can',
-  'mid_century_lounge_chair':'ph_mid_century_lounge_chair',
-  'mid century lounge chair':'ph_mid_century_lounge_chair',
-  'modern_arm_chair_01':'ph_modern_arm_chair_01',
-  'modern arm chair 01':'ph_modern_arm_chair_01',
-  'modern_ceiling_lamp_01':'ph_modern_ceiling_lamp_01',
-  'modern ceiling lamp 01':'ph_modern_ceiling_lamp_01',
-  'modern_coffee_table_01':'ph_modern_coffee_table_01',
-  'modern coffee table 01':'ph_modern_coffee_table_01',
-  'modern_coffee_table_02':'ph_modern_coffee_table_02',
-  'modern coffee table 02':'ph_modern_coffee_table_02',
-  'modern_wooden_cabinet':'ph_modern_wooden_cabinet',
-  'modern wooden cabinet':'ph_modern_wooden_cabinet',
-  'modular_airduct_circular_01':'ph_modular_airduct_circular_01',
-  'modular airduct circular 01':'ph_modular_airduct_circular_01',
-  'modular_airduct_rectangular_01':'ph_modular_airduct_rectangular_01',
-  'modular airduct rectangular 01':'ph_modular_airduct_rectangular_01',
-  'modular_chainlink_fence':'ph_modular_chainlink_fence',
-  'modular chainlink fence':'ph_modular_chainlink_fence',
-  'modular_electric_cables':'ph_modular_electric_cables',
-  'modular electric cables':'ph_modular_electric_cables',
-  'modular_electricity_poles':'ph_modular_electricity_poles',
-  'modular electricity poles':'ph_modular_electricity_poles',
-  'modular_factory_facade':'ph_modular_factory_facade',
-  'modular factory facade':'ph_modular_factory_facade',
-  'modular_fire_escape':'ph_modular_fire_escape',
-  'modular fire escape':'ph_modular_fire_escape',
-  'modular_fort_01':'ph_modular_fort_01',
-  'modular fort 01':'ph_modular_fort_01',
-  'modular_industrial_pipes_01':'ph_modular_industrial_pipes_01',
-  'modular industrial pipes 01':'ph_modular_industrial_pipes_01',
-  'modular_metal_gutter':'ph_modular_metal_gutter',
-  'modular metal gutter':'ph_modular_metal_gutter',
-  'modular_pipes':'ph_modular_pipes',
-  'modular pipes':'ph_modular_pipes',
-  'modular_pipes_plastic_01':'ph_modular_pipes_plastic_01',
-  'modular pipes plastic 01':'ph_modular_pipes_plastic_01',
-  'modular_street_seating':'ph_modular_street_seating',
-  'modular street seating':'ph_modular_street_seating',
-  'modular_urban_apartments_facade':'ph_modular_urban_apartments_facade',
-  'modular urban apartments facade':'ph_modular_urban_apartments_facade',
-  'modular_wooden_pier':'ph_modular_wooden_pier',
-  'modular wooden pier':'ph_modular_wooden_pier',
-  'moon_rock_01':'ph_moon_rock_01',
-  'moon rock 01':'ph_moon_rock_01',
-  'moon_rock_02':'ph_moon_rock_02',
-  'moon rock 02':'ph_moon_rock_02',
-  'moon_rock_03':'ph_moon_rock_03',
-  'moon rock 03':'ph_moon_rock_03',
-  'moon_rock_04':'ph_moon_rock_04',
-  'moon rock 04':'ph_moon_rock_04',
-  'moon_rock_05':'ph_moon_rock_05',
-  'moon rock 05':'ph_moon_rock_05',
-  'moon_rock_06':'ph_moon_rock_06',
-  'moon rock 06':'ph_moon_rock_06',
-  'moon_rock_07':'ph_moon_rock_07',
-  'moon rock 07':'ph_moon_rock_07',
-  'moss_01':'ph_moss_01',
-  'moss 01':'ph_moss_01',
-  'mountainside':'ph_mountainside',
-  'mousetrap':'ph_mousetrap',
-  'multi_cleaner_5_litre':'ph_multi_cleaner_5_litre',
-  'multi cleaner 5 litre':'ph_multi_cleaner_5_litre',
-  'multi_cleaner_bottle':'ph_multi_cleaner_bottle',
-  'multi cleaner bottle':'ph_multi_cleaner_bottle',
-  'namaqualand_boulder_02':'ph_namaqualand_boulder_02',
-  'namaqualand boulder 02':'ph_namaqualand_boulder_02',
-  'namaqualand_boulder_03':'ph_namaqualand_boulder_03',
-  'namaqualand boulder 03':'ph_namaqualand_boulder_03',
-  'namaqualand_boulder_04':'ph_namaqualand_boulder_04',
-  'namaqualand boulder 04':'ph_namaqualand_boulder_04',
-  'namaqualand_boulder_05':'ph_namaqualand_boulder_05',
-  'namaqualand boulder 05':'ph_namaqualand_boulder_05',
-  'namaqualand_boulder_06':'ph_namaqualand_boulder_06',
-  'namaqualand boulder 06':'ph_namaqualand_boulder_06',
-  'namaqualand_boulders_01':'ph_namaqualand_boulders_01',
-  'namaqualand boulders 01':'ph_namaqualand_boulders_01',
-  'namaqualand_cliff_01':'ph_namaqualand_cliff_01',
-  'namaqualand cliff 01':'ph_namaqualand_cliff_01',
-  'namaqualand_cliff_02':'ph_namaqualand_cliff_02',
-  'namaqualand cliff 02':'ph_namaqualand_cliff_02',
-  'namaqualand_rocks_01':'ph_namaqualand_rocks_01',
-  'namaqualand rocks 01':'ph_namaqualand_rocks_01',
-  'namaqualand_stones_01':'ph_namaqualand_stones_01',
-  'namaqualand stones 01':'ph_namaqualand_stones_01',
-  'nettle_plant':'ph_nettle_plant',
-  'nettle plant':'ph_nettle_plant',
-  'old_tyre':'ph_old_tyre',
-  'old tyre':'ph_old_tyre',
-  'ornate_medieval_dagger':'ph_ornate_medieval_dagger',
-  'ornate medieval dagger':'ph_ornate_medieval_dagger',
-  'ornate_medieval_mace':'ph_ornate_medieval_mace',
-  'ornate medieval mace':'ph_ornate_medieval_mace',
-  'ornate_mirror_01':'ph_ornate_mirror_01',
-  'ornate mirror 01':'ph_ornate_mirror_01',
-  'ornate_war_hammer':'ph_ornate_war_hammer',
-  'ornate war hammer':'ph_ornate_war_hammer',
-  'othonna_cerarioides':'ph_othonna_cerarioides',
-  'othonna cerarioides':'ph_othonna_cerarioides',
-  'ottoman_01':'ph_Ottoman_01',
-  'ottoman 01':'ph_Ottoman_01',
-  'outdoor_table_chair_set_01':'ph_outdoor_table_chair_set_01',
-  'outdoor table chair set 01':'ph_outdoor_table_chair_set_01',
-  'pachira_aquatica_01':'ph_pachira_aquatica_01',
-  'pachira aquatica 01':'ph_pachira_aquatica_01',
-  'painted_wooden_bench':'ph_painted_wooden_bench',
-  'painted wooden bench':'ph_painted_wooden_bench',
-  'painted_wooden_cabinet':'ph_painted_wooden_cabinet',
-  'painted wooden cabinet':'ph_painted_wooden_cabinet',
-  'painted_wooden_cabinet_02':'ph_painted_wooden_cabinet_02',
-  'painted wooden cabinet 02':'ph_painted_wooden_cabinet_02',
-  'painted_wooden_chair_01':'ph_painted_wooden_chair_01',
-  'painted wooden chair 01':'ph_painted_wooden_chair_01',
-  'painted_wooden_chair_02':'ph_painted_wooden_chair_02',
-  'painted wooden chair 02':'ph_painted_wooden_chair_02',
-  'painted_wooden_nightstand':'ph_painted_wooden_nightstand',
-  'painted wooden nightstand':'ph_painted_wooden_nightstand',
-  'painted_wooden_shelves':'ph_painted_wooden_shelves',
-  'painted wooden shelves':'ph_painted_wooden_shelves',
-  'painted_wooden_sofa':'ph_painted_wooden_sofa',
-  'painted wooden sofa':'ph_painted_wooden_sofa',
-  'painted_wooden_stool':'ph_painted_wooden_stool',
-  'painted wooden stool':'ph_painted_wooden_stool',
-  'painted_wooden_table':'ph_painted_wooden_table',
-  'painted wooden table':'ph_painted_wooden_table',
-  'parrot':'hd_parrot',
-  'parrot_anim':'hd_parrot_anim',
-  'parrot anim':'hd_parrot_anim',
-  'periwinkle_plant':'ph_periwinkle_plant',
-  'periwinkle plant':'ph_periwinkle_plant',
-  'picke_dirty_01':'ph_picke_dirty_01',
-  'picke dirty 01':'ph_picke_dirty_01',
-  'pine_roots':'ph_pine_roots',
-  'pine roots':'ph_pine_roots',
-  'pine_sapling_medium':'ph_pine_sapling_medium',
-  'pine sapling medium':'ph_pine_sapling_medium',
-  'pine_sapling_small':'ph_pine_sapling_small',
-  'pine sapling small':'ph_pine_sapling_small',
-  'pine_tree_01':'ph_pine_tree_01',
-  'pine tree 01':'ph_pine_tree_01',
-  'pipe_wrench':'ph_pipe_wrench',
-  'pipe wrench':'ph_pipe_wrench',
-  'planter_box_01':'ph_planter_box_01',
-  'planter box 01':'ph_planter_box_01',
-  'planter_box_02':'ph_planter_box_02',
-  'planter box 02':'ph_planter_box_02',
-  'planter_box_03':'ph_planter_box_03',
-  'planter box 03':'ph_planter_box_03',
-  'planter_pot_clay':'ph_planter_pot_clay',
-  'planter pot clay':'ph_planter_pot_clay',
-  'plastic_bottle_gallon':'ph_plastic_bottle_gallon',
-  'plastic bottle gallon':'ph_plastic_bottle_gallon',
-  'plastic_monobloc_chair_01':'ph_plastic_monobloc_chair_01',
-  'plastic monobloc chair 01':'ph_plastic_monobloc_chair_01',
-  'plunger':'ph_plunger',
-  'postcard_set_01':'ph_postcard_set_01',
-  'postcard set 01':'ph_postcard_set_01',
-  'pot_enamel_01':'ph_pot_enamel_01',
-  'pot enamel 01':'ph_pot_enamel_01',
-  'potted_plant_01':'ph_potted_plant_01',
-  'potted plant 01':'ph_potted_plant_01',
-  'potted_plant_02':'ph_potted_plant_02',
-  'potted plant 02':'ph_potted_plant_02',
-  'potted_plant_04':'ph_potted_plant_04',
-  'potted plant 04':'ph_potted_plant_04',
-  'power_box_01':'ph_power_box_01',
-  'power box 01':'ph_power_box_01',
-  'pull_chain_light_socket':'ph_pull_chain_light_socket',
-  'pull chain light socket':'ph_pull_chain_light_socket',
-  'quiver_tree_01':'ph_quiver_tree_01',
-  'quiver tree 01':'ph_quiver_tree_01',
-  'quiver_tree_02':'ph_quiver_tree_02',
-  'quiver tree 02':'ph_quiver_tree_02',
-  'ratchet_wrench':'ph_ratchet_wrench',
-  'ratchet wrench':'ph_ratchet_wrench',
-  'robot':'hd_robot',
-  'robot_expressive':'hd_robot_expressive',
-  'robot expressive':'hd_robot_expressive',
-  'rock_07':'ph_rock_07',
-  'rock 07':'ph_rock_07',
-  'rock_09':'ph_rock_09',
-  'rock 09':'ph_rock_09',
-  'rock_face_01':'ph_rock_face_01',
-  'rock face 01':'ph_rock_face_01',
-  'rock_face_02':'ph_rock_face_02',
-  'rock face 02':'ph_rock_face_02',
-  'rock_moss_set_01':'ph_rock_moss_set_01',
-  'rock moss set 01':'ph_rock_moss_set_01',
-  'rock_moss_set_02':'ph_rock_moss_set_02',
-  'rock moss set 02':'ph_rock_moss_set_02',
-  'rockingchair_01':'ph_Rockingchair_01',
-  'rockingchair 01':'ph_Rockingchair_01',
-  'rollershutter_door':'ph_rollershutter_door',
-  'rollershutter door':'ph_rollershutter_door',
-  'rollershutter_window_01':'ph_rollershutter_window_01',
-  'rollershutter window 01':'ph_rollershutter_window_01',
-  'rollershutter_window_02':'ph_rollershutter_window_02',
-  'rollershutter window 02':'ph_rollershutter_window_02',
-  'rollershutter_window_03':'ph_rollershutter_window_03',
-  'rollershutter window 03':'ph_rollershutter_window_03',
-  'root_cluster_01':'ph_root_cluster_01',
-  'root cluster 01':'ph_root_cluster_01',
-  'root_cluster_02':'ph_root_cluster_02',
-  'root cluster 02':'ph_root_cluster_02',
-  'round_wooden_table_01':'ph_round_wooden_table_01',
-  'round wooden table 01':'ph_round_wooden_table_01',
-  'round_wooden_table_02':'ph_round_wooden_table_02',
-  'round wooden table 02':'ph_round_wooden_table_02',
-  'rubber_duck_toy':'ph_rubber_duck_toy',
-  'rubber duck toy':'ph_rubber_duck_toy',
-  'russian_food_cans_01':'ph_russian_food_cans_01',
-  'russian food cans 01':'ph_russian_food_cans_01',
-  'rusted_spade_01':'ph_rusted_spade_01',
-  'rusted spade 01':'ph_rusted_spade_01',
-  'rusted_wheel_rim_01':'ph_rusted_wheel_rim_01',
-  'rusted wheel rim 01':'ph_rusted_wheel_rim_01',
-  'rusted_wheel_rim_02':'ph_rusted_wheel_rim_02',
-  'rusted wheel rim 02':'ph_rusted_wheel_rim_02',
-  'sand_rocks_small_01':'ph_sand_rocks_small_01',
-  'sand rocks small 01':'ph_sand_rocks_small_01',
-  'scandinavian_masonry_heater':'ph_scandinavian_masonry_heater',
-  'scandinavian masonry heater':'ph_scandinavian_masonry_heater',
-  'schoolchair_01':'ph_SchoolChair_01',
-  'schoolchair 01':'ph_SchoolChair_01',
-  'schooldesk_01':'ph_SchoolDesk_01',
-  'schooldesk 01':'ph_SchoolDesk_01',
-  'searsia_burchellii':'ph_searsia_burchellii',
-  'searsia burchellii':'ph_searsia_burchellii',
-  'searsia_lucida':'ph_searsia_lucida',
-  'searsia lucida':'ph_searsia_lucida',
-  'security_camera_01':'ph_security_camera_01',
-  'security camera 01':'ph_security_camera_01',
-  'security_camera_02':'ph_security_camera_02',
-  'security camera 02':'ph_security_camera_02',
-  'security_light':'ph_security_light',
-  'security light':'ph_security_light',
-  'seeding_tray_01':'ph_seeding_tray_01',
-  'seeding tray 01':'ph_seeding_tray_01',
-  'sheenchair':'hd_SheenChair',
-  'shelf_01':'ph_Shelf_01',
-  'shelf 01':'ph_Shelf_01',
-  'ship_pinnace':'ph_ship_pinnace',
-  'ship pinnace':'ph_ship_pinnace',
-  'shoe':'hd_pbr_shoe',
-  'shrub_01':'ph_shrub_01',
-  'shrub 01':'ph_shrub_01',
-  'shrub_02':'ph_shrub_02',
-  'shrub 02':'ph_shrub_02',
-  'shrub_03':'ph_shrub_03',
-  'shrub 03':'ph_shrub_03',
-  'shrub_04':'ph_shrub_04',
-  'shrub 04':'ph_shrub_04',
-  'shrub_sorrel_01':'ph_shrub_sorrel_01',
-  'shrub sorrel 01':'ph_shrub_sorrel_01',
-  'side_table_01':'ph_side_table_01',
-  'side table 01':'ph_side_table_01',
-  'side_table_tall_01':'ph_side_table_tall_01',
-  'side table tall 01':'ph_side_table_tall_01',
-  'single_root':'ph_single_root',
-  'single root':'ph_single_root',
-  'sledgehammer_01':'ph_sledgehammer_01',
-  'sledgehammer 01':'ph_sledgehammer_01',
-  'small_oil_can_01':'ph_small_oil_can_01',
-  'small oil can 01':'ph_small_oil_can_01',
-  'small_wooden_table_01':'ph_small_wooden_table_01',
-  'small wooden table 01':'ph_small_wooden_table_01',
-  'sofa_01':'ph_Sofa_01',
-  'sofa 01':'ph_Sofa_01',
-  'sofa_02':'ph_sofa_02',
-  'sofa 02':'ph_sofa_02',
-  'sofa_03':'ph_sofa_03',
-  'sofa 03':'ph_sofa_03',
-  'soldier':'hd_soldier',
-  'spinning_wheel_01':'ph_spinning_wheel_01',
-  'spinning wheel 01':'ph_spinning_wheel_01',
-  'spray_paint_bottles':'ph_spray_paint_bottles',
-  'spray paint bottles':'ph_spray_paint_bottles',
-  'spray_paint_bottles_02':'ph_spray_paint_bottles_02',
-  'spray paint bottles 02':'ph_spray_paint_bottles_02',
-  'standing_chalkboard_01':'ph_standing_chalkboard_01',
-  'standing chalkboard 01':'ph_standing_chalkboard_01',
-  'standing_picture_frame_01':'ph_standing_picture_frame_01',
-  'standing picture frame 01':'ph_standing_picture_frame_01',
-  'standing_picture_frame_02':'ph_standing_picture_frame_02',
-  'standing picture frame 02':'ph_standing_picture_frame_02',
-  'steel_frame_shelves_01':'ph_steel_frame_shelves_01',
-  'steel frame shelves 01':'ph_steel_frame_shelves_01',
-  'steel_frame_shelves_02':'ph_steel_frame_shelves_02',
-  'steel frame shelves 02':'ph_steel_frame_shelves_02',
-  'steel_frame_shelves_03':'ph_steel_frame_shelves_03',
-  'steel frame shelves 03':'ph_steel_frame_shelves_03',
-  'stone_01':'ph_stone_01',
-  'stone 01':'ph_stone_01',
-  'stone_fire_pit':'ph_stone_fire_pit',
-  'stone fire pit':'ph_stone_fire_pit',
-  'stork':'hd_stork',
-  'stork_anim':'hd_stork_anim',
-  'stork anim':'hd_stork_anim',
-  'strawberry_chocolate_cake':'ph_strawberry_chocolate_cake',
-  'strawberry chocolate cake':'ph_strawberry_chocolate_cake',
-  'street_lamp_01':'ph_street_lamp_01',
-  'street lamp 01':'ph_street_lamp_01',
-  'street_lamp_02':'ph_street_lamp_02',
-  'street lamp 02':'ph_street_lamp_02',
-  'street_rat':'ph_street_rat',
-  'street rat':'ph_street_rat',
-  'sungka_board':'ph_sungka_board',
-  'sungka board':'ph_sungka_board',
-  'sungka_board_02':'ph_sungka_board_02',
-  'sungka board 02':'ph_sungka_board_02',
-  'sweet_potato':'ph_sweet_potato',
-  'sweet potato':'ph_sweet_potato',
-  'tea_set_01':'ph_tea_set_01',
-  'tea set 01':'ph_tea_set_01',
-  'television_01':'ph_Television_01',
-  'television 01':'ph_Television_01',
-  'throw_pillows_01':'ph_throw_pillows_01',
-  'throw pillows 01':'ph_throw_pillows_01',
-  'tire_pump':'ph_tire_pump',
-  'tire pump':'ph_tire_pump',
-  'tokyo_city':'hd_tokyo_city',
-  'tokyo city':'hd_tokyo_city',
-  'tokyo_scene':'hd_tokyo_scene',
-  'tokyo scene':'hd_tokyo_scene',
-  'treasure_chest':'ph_treasure_chest',
-  'treasure chest':'ph_treasure_chest',
-  'tree_small_02':'ph_tree_small_02',
-  'tree small 02':'ph_tree_small_02',
-  'tree_stump_01':'ph_tree_stump_01',
-  'tree stump 01':'ph_tree_stump_01',
-  'tree_stump_02':'ph_tree_stump_02',
-  'tree stump 02':'ph_tree_stump_02',
-  'trowel_01':'ph_trowel_01',
-  'trowel 01':'ph_trowel_01',
-  'ukulele_01':'ph_Ukulele_01',
-  'ukulele 01':'ph_Ukulele_01',
-  'utility_box_01':'ph_utility_box_01',
-  'utility box 01':'ph_utility_box_01',
-  'utility_box_02':'ph_utility_box_02',
-  'utility box 02':'ph_utility_box_02',
-  'vintage_cabinet_01':'ph_vintage_cabinet_01',
-  'vintage cabinet 01':'ph_vintage_cabinet_01',
-  'vintage_crutches_01':'ph_vintage_crutches_01',
-  'vintage crutches 01':'ph_vintage_crutches_01',
-  'vintage_grandfather_clock_01':'ph_vintage_grandfather_clock_01',
-  'vintage grandfather clock 01':'ph_vintage_grandfather_clock_01',
-  'vintage_hand_drill':'ph_vintage_hand_drill',
-  'vintage hand drill':'ph_vintage_hand_drill',
-  'vintage_oil_lamp':'ph_vintage_oil_lamp',
-  'vintage oil lamp':'ph_vintage_oil_lamp',
-  'vintage_pocket_watch':'ph_vintage_pocket_watch',
-  'vintage pocket watch':'ph_vintage_pocket_watch',
-  'vintage_suitcase':'ph_vintage_suitcase',
-  'vintage suitcase':'ph_vintage_suitcase',
-  'vintage_video_camera':'ph_vintage_video_camera',
-  'vintage video camera':'ph_vintage_video_camera',
-  'vintage_wooden_drawer_01':'ph_vintage_wooden_drawer_01',
-  'vintage wooden drawer 01':'ph_vintage_wooden_drawer_01',
-  'water_manhole_cover':'ph_water_manhole_cover',
-  'water manhole cover':'ph_water_manhole_cover',
-  'waterbottle':'hd_pbr_waterbottle',
-  'watering_can_metal_01':'ph_watering_can_metal_01',
-  'watering can metal 01':'ph_watering_can_metal_01',
-  'weed_plant_02':'ph_weed_plant_02',
-  'weed plant 02':'ph_weed_plant_02',
-  'wetfloorsign_01':'ph_WetFloorSign_01',
-  'wetfloorsign 01':'ph_WetFloorSign_01',
-  'wheelchair_01':'ph_wheelchair_01',
-  'wheelchair 01':'ph_wheelchair_01',
-  'wicker_basket_01':'ph_wicker_basket_01',
-  'wicker basket 01':'ph_wicker_basket_01',
-  'wicker_basket_02':'ph_wicker_basket_02',
-  'wicker basket 02':'ph_wicker_basket_02',
-  'wild_rooibos_bush':'ph_wild_rooibos_bush',
-  'wild rooibos bush':'ph_wild_rooibos_bush',
-  'wine_barrel_01':'ph_wine_barrel_01',
-  'wine barrel 01':'ph_wine_barrel_01',
-  'wine_bottles_01':'ph_wine_bottles_01',
-  'wine bottles 01':'ph_wine_bottles_01',
-  'wooden_axe':'ph_wooden_axe',
-  'wooden axe':'ph_wooden_axe',
-  'wooden_axe_02':'ph_wooden_axe_02',
-  'wooden axe 02':'ph_wooden_axe_02',
-  'wooden_axe_03':'ph_wooden_axe_03',
-  'wooden axe 03':'ph_wooden_axe_03',
-  'wooden_barrels_01':'ph_wooden_barrels_01',
-  'wooden barrels 01':'ph_wooden_barrels_01',
-  'wooden_bookshelf_worn':'ph_wooden_bookshelf_worn',
-  'wooden bookshelf worn':'ph_wooden_bookshelf_worn',
-  'wooden_bowl_01':'ph_wooden_bowl_01',
-  'wooden bowl 01':'ph_wooden_bowl_01',
-  'wooden_bowl_02':'ph_wooden_bowl_02',
-  'wooden bowl 02':'ph_wooden_bowl_02',
-  'wooden_bucket_01':'ph_wooden_bucket_01',
-  'wooden bucket 01':'ph_wooden_bucket_01',
-  'wooden_bucket_02':'ph_wooden_bucket_02',
-  'wooden bucket 02':'ph_wooden_bucket_02',
-  'wooden_candlestick':'ph_wooden_candlestick',
-  'wooden candlestick':'ph_wooden_candlestick',
-  'wooden_crate_01':'ph_wooden_crate_01',
-  'wooden crate 01':'ph_wooden_crate_01',
-  'wooden_crate_02':'ph_wooden_crate_02',
-  'wooden crate 02':'ph_wooden_crate_02',
-  'wooden_cutting_board':'ph_wooden_cutting_board',
-  'wooden cutting board':'ph_wooden_cutting_board',
-  'wooden_display_shelves_01':'ph_wooden_display_shelves_01',
-  'wooden display shelves 01':'ph_wooden_display_shelves_01',
-  'wooden_hammer_01':'ph_wooden_hammer_01',
-  'wooden hammer 01':'ph_wooden_hammer_01',
-  'wooden_handle_saber':'ph_wooden_handle_saber',
-  'wooden handle saber':'ph_wooden_handle_saber',
-  'wooden_lantern_01':'ph_wooden_lantern_01',
-  'wooden lantern 01':'ph_wooden_lantern_01',
-  'wooden_picnic_table':'ph_wooden_picnic_table',
-  'wooden picnic table':'ph_wooden_picnic_table',
-  'wooden_spoon':'ph_wooden_spoon',
-  'wooden spoon':'ph_wooden_spoon',
-  'wooden_stool_01':'ph_wooden_stool_01',
-  'wooden stool 01':'ph_wooden_stool_01',
-  'wooden_stool_02':'ph_wooden_stool_02',
-  'wooden stool 02':'ph_wooden_stool_02',
-  'wooden_table_02':'ph_wooden_table_02',
-  'wooden table 02':'ph_wooden_table_02',
-  'woodenchair_01':'ph_WoodenChair_01',
-  'woodenchair 01':'ph_WoodenChair_01',
-  'woodentable_01':'ph_WoodenTable_01',
-  'woodentable 01':'ph_WoodenTable_01',
-  'woodentable_02':'ph_WoodenTable_02',
-  'woodentable 02':'ph_WoodenTable_02',
-  'woodentable_03':'ph_WoodenTable_03',
-  'woodentable 03':'ph_WoodenTable_03',
-  'yellow_onion':'ph_yellow_onion',
-  'yellow onion':'ph_yellow_onion',
-  // === FAB ASSETS (Quixel Megascans + Fab.com) ===
-  'fire_hydrant': 'fab/fire_hydrant.glb',
-  'female_civilian': 'fab/female_civilian.glb',
-  'electrical_substation': 'fab/electrical_substation.glb',
-  'bench': 'fab/bench_bench.glb',
-  'graffiti_wall': 'fab/graffiti_wall_quincy_quarries_graffiti-2k.glb',
-  'city_ruins': 'fab/city_ruins_city_ruins_1.glb',
-  'traffic_light': 'fab/traffic_light_mm_semaforofree.glb',
-  'traffic_sign': 'fab/traffic_light_mm_semaforofree.glb',
-  'forklift': 'fab/forklift_tires2.glb',
-  'wooden_door': 'fab/wooden_door_tires2.glb',
-  'moroccan_building': 'fab/moroccan_urban_7ff168ccf736540a160792e6804da89a.glb',
-  'mailbox': 'fab/mailbox_mailbox.glb',
-  'street_props': 'fab/street_props_streeprops.glb',
-  'junkyard_prop_1': 'fab/junkyard_vb1lafx.glb',
-  'junkyard_prop_2': 'fab/junkyard_wcvodhd.glb',
-  'junkyard_prop_3': 'fab/junkyard_wdljaaqbw.glb',
-  'junkyard_prop_4': 'fab/junkyard_wdlmdexbw.glb',
-  'junkyard_prop_5': 'fab/junkyard_xkzhcih.glb',
-  'junkyard_prop_6': 'fab/junkyard_xiwcfassc.glb',
-  'junkyard_prop_7': 'fab/junkyard_vdjkbfmiw.glb',
-  'junkyard_prop_8': 'fab/junkyard_wcliee1.glb',
-  'junkyard_prop_9': 'fab/junkyard_wcljcaa.glb',
-  'junkyard_prop_10': 'fab/junkyard_xh2kbey.glb',
-};
-
 
 // ═══ VISUAL POLISH — PBR Material Upgrader ═══
 function upgradeMaterials(obj) {
@@ -6688,7 +2422,7 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
   }
   // Strip .glb if already present (catalog entries include extension)
   const cleanFile = glbFile.endsWith('.glb') ? glbFile.slice(0, -4) : glbFile;
-  const url = customPath || ('models/' + cleanFile + '.glb');
+  const url = customPath || ('/models/' + cleanFile + '.glb');
   const statusEl = document.getElementById('engine-status');
   if (statusEl) statusEl.textContent = 'Loading ' + glbFile + '...';
   // Space models apart when multiple added at once
@@ -6711,7 +2445,8 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
       model.userData.animations = gltf.animations.map(a => a.name);
       model.userData.clips = gltf.animations; // Store actual clips for switching
     }
-    // Fix checkerboard/missing textures — replace with solid PBR materials
+    // Fix checkerboard/missing textures + tint white/untextured models
+    const _bldgTints = [0xd8ccb8,0xc8bca8,0xb8b0a0,0xd0c8b8,0xc0b8a8,0xe0d8c8,0xc8c0b0,0xb0a898,0xd4ccc0,0xc0b4a4,0xa8a098,0xd8d0c0,0xc8c4b8,0xb8b4a8];
     model.traverse(child => {
       if (child.isMesh && child.material) {
         const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -6719,6 +2454,35 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
           // If map is a tiny placeholder texture (checkerboard), remove it
           if (mat.map && mat.map.image && mat.map.image.width <= 2) {
             mat.map = null; mat.needsUpdate = true;
+          }
+          // Tint ONLY pure white meshes with no texture — apply realistic building colors
+          if (!mat.map && mat.color) {
+            const _r = mat.color.r, _g = mat.color.g, _b = mat.color.b;
+            // Only tint if nearly white (>0.9 all channels) — leave colored meshes alone
+            if (_r > 0.9 && _g > 0.9 && _b > 0.9) {
+              mat.color.setHex(_bldgTints[Math.floor(Math.random() * _bldgTints.length)]);
+              mat.roughness = 0.7;
+              mat.metalness = 0.02;
+            }
+            // Glass windows — use MeshPhysicalMaterial for realism
+            const _mName = (mat.name || '').toLowerCase();
+            const _nName = (child.name || '').toLowerCase();
+            if (_mName.includes('glass') || _mName.includes('window') || _nName.includes('glass') || _nName.includes('window')) {
+              const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0x88bbdd, metalness: 0.1, roughness: 0.05,
+                transmission: 0.7, thickness: 0.3, ior: 1.5,
+                transparent: true, opacity: 0.6, envMapIntensity: 1.5,
+              });
+              child.material = glassMat;
+            }
+            // Also detect blue-ish parts as windows
+            if (mat.color && mat.color.b > 0.5 && mat.color.b > mat.color.r * 1.4) {
+              child.material = new THREE.MeshPhysicalMaterial({
+                color: 0x99ccee, metalness: 0.1, roughness: 0.08,
+                transmission: 0.6, thickness: 0.2, ior: 1.45,
+                transparent: true, opacity: 0.55,
+              });
+            }
           }
           child.castShadow = true;
           child.receiveShadow = true;
@@ -6781,7 +2545,7 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
     }
     const scale = scaleOverride || autoScale;
     model.scale.setScalar(scale);
-    // Rebind skeleton after scale for animated models
+    // Rebind skeleton after scale so animated models don't T-pose
     model.updateMatrixWorld(true);
     model.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.pose(); });
     // Recompute after scale
@@ -6857,8 +2621,8 @@ scene.add(model);
     if (statusEl) statusEl.textContent = '3D Ready';
     // Show user-visible feedback and try fuzzy search fallback
     const cleanName = (name || glbFile || '').replace(/_/g, ' ');
-    if (typeof searchModels === 'function') {
-      const results = searchModels(cleanName, 3);
+    if (modelRegistryModule?.searchModels) {
+      const results = searchRegistryModels(cleanName, 3);
       if (results.length > 0 && results[0].path !== glbFile) {
         // Auto-load best match
         const best = results[0];
@@ -7178,17 +2942,49 @@ const PlayerAgent = {
 
 window.PlayerAgent = PlayerAgent;
 
-// === SETUP ===
+// === SETUP — WebGPU (experimental) with WebGL2 fallback ===
 const canvas = document.getElementById('crate-canvas');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); // Capped for performance
+const _webgpuAvailable = !!navigator.gpu;
+const _webgpuRequested = localStorage.getItem('crate-webgpu') === 'true' && _webgpuAvailable;
+let renderer;
+
+if (_webgpuRequested) {
+  try {
+    const webgpuUrl = `https://cdn.jsdelivr.net/npm/three@${THREE_CDN_VERSION}/examples/jsm/renderers/webgpu/WebGPURenderer.js`;
+    const { default: WebGPURenderer } = await import(/* @vite-ignore */ webgpuUrl);
+    renderer = new WebGPURenderer({ canvas, antialias: true });
+    await renderer.init();
+    window._isWebGPU = true;
+    console.log('[CRATE] WebGPU renderer active');
+  } catch (e) {
+    console.warn('[CRATE] WebGPU failed, using WebGL:', e.message);
+    renderer = null;
+  }
+}
+if (!renderer) {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true });
+  window._isWebGPU = false;
+}
+
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setSize(canvas.clientWidth, canvas.clientHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.4;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+// Show GPU backend in status bar
+{
+  const _gpuEl = document.getElementById('wasm-status');
+  if (_gpuEl) {
+    if (window._isWebGPU) { _gpuEl.textContent = 'WebGPU ✓'; _gpuEl.style.color = '#4ade80'; }
+    else if (_webgpuAvailable) { _gpuEl.textContent = 'WebGL (WebGPU ready)'; _gpuEl.style.color = '#60a5fa'; }
+    else { _gpuEl.textContent = 'WebGL2'; _gpuEl.style.color = '#d29922'; }
+  }
+}
 const scene = new THREE.Scene();
+syncBuildingsModule();
   // Atmospheric fog for depth perception
   scene.fog = new THREE.FogExp2(0x88aabb, 0.0015);
 if (window._loadProgress) window._loadProgress(20, "Creating scene...");
@@ -7365,7 +3161,7 @@ const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clien
 camera.position.set(15, 10, 20);
 
 const controls = new OrbitControls(camera, canvas);
-window._cam = camera; window._ctrl = controls; window._scene = scene;
+window._cam = camera; window._ctrl = controls; window._scene = scene; window._renderer = renderer;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.target.set(0, 1, 0);
@@ -7428,32 +3224,20 @@ function updateShadowCascades() {
   nearShadowLight.target.position.set(camPos.x, 0, camPos.z);
 }
 window._updateShadowCascades = updateShadowCascades;
-sunLight.shadow.bias = -0.0005;
+sunLight.shadow.bias = -0.001;
+sunLight.shadow.normalBias = 0.04;
 scene.add(sunLight);
 
 // === CHARACTER & TOWN SYSTEMS ===
 let characterController = null;
 let npcController = null;
-let questSystem = new QuestSystem();
+let questSystem = null;
 let craftingSystem = null;
 let levelSystem = null;
-let dialogueSystem = new DialogueSystem();
+let dialogueSystem = null;
 let minimap = null;
 let townBuilder = null;
 let gameHUD = null;
-
-function initGameSystems() {
-  characterController = new CharacterController(scene, camera, objects);
-  window._gamepad = new GamepadManager(characterController);
-  window._mobileControls = new MobileControls(characterController);
-  window.characterController = characterController;
-  characterController._autoSpawned = false; // Don't auto-spawn until "play" 
-  npcController = new NPCController(scene, camera, objects, characterController);
-  window.npcController = npcController;
-  townBuilder = new TownBuilder(scene, objects, loadGLBModel);
-  gameHUD = createGameHUD();
-}
-setTimeout(initGameSystems, 500);
 
 
 const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
@@ -7722,7 +3506,7 @@ function setGraphicsQuality(level) {
       ppEnabled = true;
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
       if (ssaoPass) { ssaoPass.enabled = true; ssaoPass.kernelRadius = 16; }
       if (bloomPass) { bloomPass.strength = 0.5; bloomPass.radius = 0.7; }
       sunLight.shadow.mapSize.set(8192, 8192);
@@ -7787,7 +3571,7 @@ createSun();
 function createGround(type) {
   const colors = { grass: 0x3a7a3a, dirt: 0x6b4a2a, sand: 0xc4a96a, snow: 0xd8dce8, gravel: 0x888888, stone: 0x666666, mud: 0x4a3a2a, lava: 0xcc3300, water: 0x2266aa, wood: 0x7a5530, marble: 0xddddcc, metal: 0x888899, concrete: 0x999999, asphalt: 0x333333, gold: 0xccaa22, obsidian: 0x111115, crystal: 0x8899cc, ice: 0xaaddff, rock: 0x555555 };
   const color = colors[type] || colors.grass;
-  const geo = new THREE.PlaneGeometry(800, 800, 256, 256);
+  const geo = new THREE.PlaneGeometry(800, 800, 64, 64);
   
   // Smooth procedural height — layered sine waves (no visible grid)
   const pos = geo.attributes.position;
@@ -7887,6 +3671,101 @@ function createGround(type) {
 }
 
 let currentGround = createGround('grass');
+
+// ══════════════════════════════════════════════════════
+// TEXTURE PACK SYSTEM — Real ground textures from CDN
+// Uses AmbientCG CC0 textures (no auth, free, public domain)
+// ══════════════════════════════════════════════════════
+const TEXTURE_PACKS = {
+  grass:    { color: '#ambientcg/Grass001',    hex: 0x3a7a3a, repeat: 40, roughness: 0.95 },
+  sand:     { color: '#ambientcg/Sand001',     hex: 0xc4a96a, repeat: 50, roughness: 1.0 },
+  desert:   { color: '#ambientcg/Ground036',   hex: 0xb8924a, repeat: 40, roughness: 1.0 },
+  snow:     { color: '#ambientcg/Snow006',     hex: 0xd8dce8, repeat: 40, roughness: 0.7 },
+  dirt:     { color: '#ambientcg/Ground025',   hex: 0x6b4a2a, repeat: 40, roughness: 0.98 },
+  stone:    { color: '#ambientcg/Rock022',     hex: 0x666666, repeat: 30, roughness: 0.9 },
+  rock:     { color: '#ambientcg/Rock035',     hex: 0x555555, repeat: 30, roughness: 0.95 },
+  mud:      { color: '#ambientcg/Ground037',   hex: 0x4a3a2a, repeat: 35, roughness: 1.0 },
+  gravel:   { color: '#ambientcg/Gravel015',   hex: 0x888888, repeat: 50, roughness: 0.9 },
+  concrete: { color: '#ambientcg/Concrete034', hex: 0x999999, repeat: 20, roughness: 0.85 },
+  asphalt:  { color: '#ambientcg/Asphalt012',  hex: 0x333333, repeat: 15, roughness: 0.85 },
+  lava:     { color: null,                     hex: 0xcc3300, repeat: 10, roughness: 0.6 },
+  ice:      { color: '#ambientcg/Ice002',      hex: 0xaaddff, repeat: 30, roughness: 0.1,  metalness: 0.1 },
+  marble:   { color: '#ambientcg/Marble006',   hex: 0xddddcc, repeat: 20, roughness: 0.3,  metalness: 0.05 },
+  wood:     { color: '#ambientcg/WoodFloor041',hex: 0x7a5530, repeat: 20, roughness: 0.8 },
+  metal:    { color: '#ambientcg/Metal032',    hex: 0x888899, repeat: 15, roughness: 0.4,  metalness: 0.7 },
+  forest:   { color: '#ambientcg/Moss001',     hex: 0x2a5a2a, repeat: 40, roughness: 0.98 },
+  swamp:    { color: null,                     hex: 0x3a4a2a, repeat: 35, roughness: 1.0 },
+  gold:     { color: null,                     hex: 0xccaa22, repeat: 10, roughness: 0.3,  metalness: 0.8 },
+  obsidian: { color: null,                     hex: 0x111115, repeat: 10, roughness: 0.1,  metalness: 0.3 },
+  crystal:  { color: null,                     hex: 0x8899cc, repeat: 10, roughness: 0.05, metalness: 0.2 },
+  water:    { color: null,                     hex: 0x2266aa, repeat: 20, roughness: 0.1,  metalness: 0.1 },
+};
+
+// AmbientCG texture URLs (CC0 - public domain)
+const AMBIENTCG_BASE = 'https://ambientcg.com/get?file=';
+const TEXTURE_URLS = {
+  grass:    'Grass001_1K-JPG_Color.jpg',
+  sand:     'Sand001_1K-JPG_Color.jpg',
+  desert:   'Ground036_1K-JPG_Color.jpg',
+  snow:     'Snow006_1K-JPG_Color.jpg',
+  dirt:     'Ground025_1K-JPG_Color.jpg',
+  stone:    'Rock022_1K-JPG_Color.jpg',
+  rock:     'Rock035_1K-JPG_Color.jpg',
+  mud:      'Ground037_1K-JPG_Color.jpg',
+  gravel:   'Gravel015_1K-JPG_Color.jpg',
+  concrete: 'Concrete034_1K-JPG_Color.jpg',
+  asphalt:  'Asphalt012_1K-JPG_Color.jpg',
+  ice:      'Ice002_1K-JPG_Color.jpg',
+  marble:   'Marble006_1K-JPG_Color.jpg',
+  wood:     'WoodFloor041_1K-JPG_Color.jpg',
+  metal:    'Metal032_1K-JPG_Color.jpg',
+  forest:   'Moss001_1K-JPG_Color.jpg',
+};
+
+const _texCache = {};
+const _texLoader = new THREE.TextureLoader();
+
+async function loadGroundTexture(type) {
+  if (_texCache[type]) return _texCache[type];
+  const filename = TEXTURE_URLS[type];
+  if (!filename) return null;
+  return new Promise((resolve) => {
+    _texLoader.load(
+      AMBIENTCG_BASE + filename,
+      (tex) => {
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        const pack = TEXTURE_PACKS[type] || {};
+        tex.repeat.set(pack.repeat || 40, pack.repeat || 40);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        _texCache[type] = tex;
+        resolve(tex);
+      },
+      undefined,
+      () => resolve(null) // graceful fallback on error
+    );
+  });
+}
+
+async function applyGroundTexture(mesh, type) {
+  const pack = TEXTURE_PACKS[type] || TEXTURE_PACKS.grass;
+  const tex = await loadGroundTexture(type);
+  if (tex) {
+    mesh.material.map = tex;
+    mesh.material.vertexColors = false;
+    mesh.material.color.set(0xffffff);
+  } else {
+    // Fallback to vertex colors
+    mesh.material.map = null;
+    mesh.material.vertexColors = true;
+  }
+  mesh.material.roughness = pack.roughness ?? 0.9;
+  mesh.material.metalness = pack.metalness ?? 0;
+  mesh.material.needsUpdate = true;
+}
+// ══════════════════════════════════════════════════════
+// END TEXTURE PACK SYSTEM
+// ══════════════════════════════════════════════════════
+
 let groundSize = 300; // current ground plane size
 scene.add(currentGround);
 
@@ -7900,6 +3779,7 @@ collisionGroup.add(currentGround.clone()); // Clone so original stays in scene
 scene.add(collisionGroup);
 collisionGroup.visible = false; // invisible collision layer
 collisionWorld._collisionGroup = collisionGroup;
+syncCollisionWorld();
 
 // Helper: add object to collision and mark dirty
 window._addToCollision = function(obj) {
@@ -7961,6 +3841,7 @@ function expandGround(newSize) {
   groundSize = newSize;
   scene.add(currentGround);
   console.log('[CrateEngine] Ground expanded to ' + newSize + 'x' + newSize);
+  applyGroundTexture(currentGround, gType);
   return newSize;
 }
 
@@ -7970,6 +3851,9 @@ function expandGround(newSize) {
 // === OBJECTS LIST ===
 const objects = [];
 window._sceneObjects = objects; // expose for collision system
+setInterval(() => {
+  syncCityBuilderModule();
+}, 2000);
 if (window._loadProgress) window._loadProgress(90, "Almost ready...");
 setTimeout(() => { if (window._hideLoading) window._hideLoading(); }, 500);
 
@@ -8227,2473 +4111,7 @@ function createHouse(color) {
   return g;
 }
 
-// === INTERIOR BUILDING SYSTEM (v82) ===
-// Buildings with walkable interiors — walls with door cutouts, floors, furniture, lighting
-
-function createWallWithDoor(width, height, depth, doorW, doorH, mat) {
-  // Create a wall shape with a rectangular door hole using CSG-like approach (two pieces)
-  const g = new THREE.Group();
-  // Left wall section
-  const leftW = (width - doorW) / 2;
-  if (leftW > 0.01) {
-    const left = new THREE.Mesh(new THREE.BoxGeometry(leftW, height, depth), mat);
-    left.position.set(-(doorW/2 + leftW/2), height/2, 0);
-    left.castShadow = true; left.receiveShadow = true; g.add(left);
-  }
-  // Right wall section
-  const rightW = (width - doorW) / 2;
-  if (rightW > 0.01) {
-    const right = new THREE.Mesh(new THREE.BoxGeometry(rightW, height, depth), mat);
-    right.position.set(doorW/2 + rightW/2, height/2, 0);
-    right.castShadow = true; right.receiveShadow = true; g.add(right);
-  }
-  // Top section (above door)
-  const topH = height - doorH;
-  if (topH > 0.01) {
-    const top = new THREE.Mesh(new THREE.BoxGeometry(doorW, topH, depth), mat);
-    top.position.set(0, doorH + topH/2, 0);
-    top.castShadow = true; top.receiveShadow = true; g.add(top);
-  }
-  // Add actual door mesh (can be opened with E key)
-  const doorMat = makeMat(0x5a3a1a, {rough: 0.85}); // dark wood
-  const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(doorW - 0.05, doorH - 0.05, 0.05), doorMat);
-  // Door pivots from left edge — offset position so rotation looks right
-  const doorPivot = new THREE.Group();
-  doorPivot.position.set(-doorW/2 + 0.025, 0, 0); // hinge at left side
-  doorMesh.position.set(doorW/2 - 0.025, doorH/2, 0);
-  doorMesh.castShadow = true;
-  doorPivot.add(doorMesh);
-  doorPivot.userData.isDoor = true;
-  doorPivot.userData.isOpen = false;
-  doorPivot.userData.isSolid = true;
-  doorPivot.userData.name = 'door';
-  g.add(doorPivot);
-  g.userData.door = doorPivot; // reference for interaction
-  
-  // Door handle
-  const handleMat = makeMat(0xc0a060, {metal: 0.8, rough: 0.3});
-  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.06), handleMat);
-  handle.position.set(doorW/2 - 0.15, doorH * 0.45, 0.04);
-  doorPivot.add(handle);
-  
-  return g;
-}
-
-function createSolidWall(width, height, depth, mat) {
-  const w = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
-  w.position.y = height / 2;
-  w.castShadow = true; w.receiveShadow = true;
-  w.userData.isSolid = true;
-  w.userData.isWall = true;
-  return w;
-}
-
-function createInteriorHouse(opts) {
-  const o = opts || {};
-  const w = o.width || 5;      // interior width
-  const d = o.depth || 5;      // interior depth
-  const h = o.height || 3;     // wall height
-  const wallT = 0.15;          // wall thickness
-  const doorW = o.doorWidth || 1.0;
-  const doorH = o.doorHeight || 2.0;
-  const floors = o.floors || 1;
-  const color = o.color || 0x8B7355;
-  
-  const g = new THREE.Group();
-  g.userData.isInterior = true;
-  g.userData.interiorBounds = { width: w, depth: d, height: h * floors, floors: floors };
-  
-  const wallMat = makeMat(color, {rough: 0.85});
-  const wallMatInner = makeMat(0xd4c9a8, {rough: 0.9}); // lighter interior
-  const floorMat = makeMat(0x6a4a2a, {rough: 0.9});      // wooden floor
-  const roofMat = makeMat(0x8B1A1A, {rough: 0.75});
-  const glassMat = makeMat(0x88ccff, {rough: 0.1, metal: 0.3});
-  const woodMat = makeMat(0x5a3a1a, {rough: 0.9});
-  const ceilingMat = makeMat(0xe8e0d0, {rough: 0.95});
-  
-  for (let floor = 0; floor < floors; floor++) {
-    const baseY = floor * h;
-    
-    // --- FLOOR ---
-    const floorMesh = new THREE.Mesh(new THREE.BoxGeometry(w + wallT*2, 0.1, d + wallT*2), floor === 0 ? makeMat(0x666666, {rough: 0.9}) : floorMat);
-    floorMesh.position.set(0, baseY + 0.05, 0);
-    floorMesh.receiveShadow = true;
-    floorMesh.userData.isFloor = true;
-    floorMesh.userData.isSolid = true;
-    g.add(floorMesh);
-    
-    // --- INTERIOR FLOOR (wooden, slightly above foundation) ---
-    if (floor === 0) {
-      const wood = new THREE.Mesh(new THREE.BoxGeometry(w - 0.05, 0.05, d - 0.05), floorMat);
-      wood.position.set(0, baseY + 0.125, 0);
-      wood.receiveShadow = true; g.add(wood);
-    }
-    
-    // --- FRONT WALL (with door on ground floor) ---
-    if (floor === 0) {
-      const frontDoorWall = createWallWithDoor(w, h, wallT, doorW, doorH, wallMat);
-      frontDoorWall.position.set(0, baseY, d/2 + wallT/2);
-      g.add(frontDoorWall);
-      // Door frame trim
-      const frameMat = woodMat;
-      const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.06, doorH, 0.08), frameMat);
-      leftFrame.position.set(-doorW/2, baseY + doorH/2, d/2 + wallT/2);
-      g.add(leftFrame);
-      const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(0.06, doorH, 0.08), frameMat);
-      rightFrame.position.set(doorW/2, baseY + doorH/2, d/2 + wallT/2);
-      g.add(rightFrame);
-      const topFrame = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.12, 0.06, 0.08), frameMat);
-      topFrame.position.set(0, baseY + doorH, d/2 + wallT/2);
-      g.add(topFrame);
-    } else {
-      // Upper floors: solid front wall with window
-      const fw = createSolidWall(w, h, wallT, wallMat);
-      fw.position.set(0, baseY, d/2 + wallT/2);
-      g.add(fw);
-    }
-    
-    // --- BACK WALL (solid) ---
-    const backWall = createSolidWall(w, h, wallT, wallMat);
-    backWall.position.set(0, baseY, -(d/2 + wallT/2));
-    g.add(backWall);
-    
-    // --- LEFT WALL (solid) ---
-    const leftWall = createSolidWall(wallT, h, d, wallMat);
-    leftWall.position.set(-(w/2 + wallT/2), baseY, 0);
-    g.add(leftWall);
-    
-    // --- RIGHT WALL (solid) ---
-    const rightWall = createSolidWall(wallT, h, d, wallMat);
-    rightWall.position.set(w/2 + wallT/2, baseY, 0);
-    g.add(rightWall);
-    
-    // --- INTERIOR WALLS (inner color panels, Andrew Woan style — lighter inside) ---
-    // Front inner
-    if (floor > 0 || true) {
-      const innerBack = new THREE.Mesh(new THREE.PlaneGeometry(w, h), wallMatInner);
-      innerBack.position.set(0, baseY + h/2, -(d/2));
-      innerBack.receiveShadow = true; g.add(innerBack);
-      // Left inner
-      const innerLeft = new THREE.Mesh(new THREE.PlaneGeometry(d, h), wallMatInner);
-      innerLeft.position.set(-(w/2), baseY + h/2, 0);
-      innerLeft.rotation.y = Math.PI/2;
-      innerLeft.receiveShadow = true; g.add(innerLeft);
-      // Right inner
-      const innerRight = new THREE.Mesh(new THREE.PlaneGeometry(d, h), wallMatInner);
-      innerRight.position.set(w/2, baseY + h/2, 0);
-      innerRight.rotation.y = -Math.PI/2;
-      innerRight.receiveShadow = true; g.add(innerRight);
-    }
-    
-    // --- WINDOWS ---
-    // Back wall windows
-    [-w*0.25, w*0.25].forEach(x => {
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, wallT + 0.04), woodMat);
-      frame.position.set(x, baseY + h * 0.6, -(d/2 + wallT/2));
-      g.add(frame);
-      const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.38), glassMat);
-      glass.position.set(x, baseY + h * 0.6, -(d/2 + wallT + 0.01));
-      g.add(glass);
-    });
-    // Side wall windows
-    [1, -1].forEach(side => {
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(wallT + 0.04, 0.5, 0.6), woodMat);
-      frame.position.set(side * (w/2 + wallT/2), baseY + h * 0.6, 0);
-      g.add(frame);
-    });
-    
-    // --- CEILING / NEXT FLOOR ---
-    if (floor === floors - 1) {
-      const ceiling = new THREE.Mesh(new THREE.BoxGeometry(w + wallT*2, 0.1, d + wallT*2), ceilingMat);
-      ceiling.position.set(0, baseY + h, 0);
-      ceiling.receiveShadow = true;
-      ceiling.userData.isSolid = true;
-      g.add(ceiling);
-    }
-    
-    // --- INTERIOR LIGHT (warm point light per floor) ---
-    const light = new THREE.PointLight(0xffe4b5, 0.8, w * 2.5);
-    light.position.set(0, baseY + h - 0.3, 0);
-    light.castShadow = false; // perf
-    g.add(light);
-    
-    // --- FURNITURE (ground floor) ---
-    if (floor === 0) {
-      // Table
-      const tableTop = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.05, 0.6), woodMat);
-      tableTop.position.set(w*0.2, baseY + 0.75, -d*0.25);
-      tableTop.castShadow = true; g.add(tableTop);
-      // Table legs
-      [[-0.4, -0.25], [0.4, -0.25], [-0.4, 0.25], [0.4, 0.25]].forEach(([lx, lz]) => {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), woodMat);
-        leg.position.set(w*0.2 + lx*0.5, baseY + 0.35, -d*0.25 + lz*0.6);
-        g.add(leg);
-      });
-      
-      // Chair
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.4), woodMat);
-      seat.position.set(w*0.2, baseY + 0.45, -d*0.25 + 0.55);
-      g.add(seat);
-      const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.04), woodMat);
-      chairBack.position.set(w*0.2, baseY + 0.7, -d*0.25 + 0.73);
-      g.add(chairBack);
-      
-      // Bookshelf against back wall
-      const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.3), woodMat);
-      shelf.position.set(-w*0.3, baseY + 0.6, -d/2 + 0.2);
-      shelf.castShadow = true; g.add(shelf);
-      // Books (colored blocks on shelf)
-      [0xcc3333, 0x3333cc, 0x33cc33, 0xcccc33, 0x9933cc].forEach((bc, i) => {
-        const book = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.18), makeMat(bc));
-        book.position.set(-w*0.3 - 0.25 + i*0.13, baseY + 1.05, -d/2 + 0.2);
-        g.add(book);
-      });
-      
-      // Rug (center floor)
-      const rug = new THREE.Mesh(new THREE.PlaneGeometry(2, 1.5), makeMat(0x993333, {rough: 0.95}));
-      rug.rotation.x = -Math.PI/2;
-      rug.position.set(0, baseY + 0.13, 0.3);
-      g.add(rug);
-      
-      // Fireplace (back wall, if wide enough)
-      if (w >= 4) {
-        const fpBase = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.35), makeMat(0x884444, {rough: 0.85}));
-        fpBase.position.set(w*0.3, baseY + 0.4, -d/2 + 0.2);
-        g.add(fpBase);
-        const fpTop = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.1, 0.4), makeMat(0x666666));
-        fpTop.position.set(w*0.3, baseY + 0.85, -d/2 + 0.2);
-        g.add(fpTop);
-        // Fireplace opening (dark)
-        const fpHole = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.5), makeMat(0x111111));
-        fpHole.position.set(w*0.3, baseY + 0.35, -d/2 + 0.39);
-        g.add(fpHole);
-        // Fire light
-        const fireLight = new THREE.PointLight(0xff6622, 0.6, 3);
-        fireLight.position.set(w*0.3, baseY + 0.3, -d/2 + 0.3);
-        g.add(fireLight);
-      }
-    }
-    
-    // --- FURNITURE (upper floors — bedroom) ---
-    if (floor === 1) {
-      // Bed
-      const bedBase = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 2.0), woodMat);
-      bedBase.position.set(-w*0.25, baseY + 0.2, 0);
-      g.add(bedBase);
-      const mattress = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.15, 1.9), makeMat(0xeeeedd, {rough: 0.95}));
-      mattress.position.set(-w*0.25, baseY + 0.425, 0);
-      g.add(mattress);
-      const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.1, 0.3), makeMat(0xffffff, {rough: 0.95}));
-      pillow.position.set(-w*0.25, baseY + 0.55, -0.7);
-      g.add(pillow);
-      
-      // Dresser
-      const dresser = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.4), woodMat);
-      dresser.position.set(w*0.3, baseY + 0.4, -d/2 + 0.25);
-      g.add(dresser);
-    }
-  }
-  
-  // --- STAIRS (multi-floor) ---
-  if (floors > 1) {
-    const stairW = 0.8;
-    const stairSteps = 10;
-    const stepH = h / stairSteps;
-    const stepD = (d * 0.6) / stairSteps;
-    for (let s = 0; s < stairSteps; s++) {
-      const step = new THREE.Mesh(new THREE.BoxGeometry(stairW, stepH, stepD), woodMat);
-      step.position.set(w/2 - stairW/2 - 0.1, s * stepH + stepH/2, d/2 - 0.5 - s * stepD);
-      step.receiveShadow = true;
-      step.userData.isSolid = true;
-      step.userData.isStair = true;
-      g.add(step);
-    }
-    // Stair hole in ceiling (remove ceiling section above stairs)
-    // We'll add a second floor opening
-    const holeFloor = new THREE.Mesh(new THREE.BoxGeometry(stairW + 0.3, 0.12, d * 0.65), floorMat);
-    holeFloor.position.set(w/2 - stairW/2 - 0.1, h - 0.02, d/2 - 0.5 - (stairSteps/2) * stepD);
-    holeFloor.visible = false; // invisible — just creating the gap by NOT placing floor there
-    // (The floor mesh already covers full area, but we'll cut by making stair area transparent)
-  }
-  
-  // --- ROOF ---
-  const roofPeak = 1.5;
-  const roofOverhang = 0.4;
-  const totalH = floors * h;
-  // Roof ridge (simple pitched roof)
-  const roofGeo = new THREE.BufferGeometry();
-  const hw = w/2 + wallT + roofOverhang;
-  const hd = d/2 + wallT + roofOverhang;
-  const rh = roofPeak;
-  // Two triangular planes for pitched roof
-  const roofLeft = new THREE.Mesh(
-    new THREE.PlaneGeometry(Math.sqrt(hw*hw + rh*rh)*2, d + wallT*2 + roofOverhang*2),
-    roofMat
-  );
-  const angle = Math.atan2(rh, hw);
-  roofLeft.rotation.set(0, 0, angle);
-  roofLeft.position.set(-hw/2, totalH + rh/2, 0);
-  roofLeft.castShadow = true; g.add(roofLeft);
-  
-  const roofRight = new THREE.Mesh(
-    new THREE.PlaneGeometry(Math.sqrt(hw*hw + rh*rh)*2, d + wallT*2 + roofOverhang*2),
-    roofMat
-  );
-  roofRight.rotation.set(0, 0, -angle);
-  roofRight.position.set(hw/2, totalH + rh/2, 0);
-  roofRight.castShadow = true; g.add(roofRight);
-  
-  // Roof overhang flat
-  const overhang = new THREE.Mesh(new THREE.BoxGeometry(w + wallT*2 + roofOverhang*2, 0.05, d + wallT*2 + roofOverhang*2), roofMat);
-  overhang.position.set(0, totalH, 0); g.add(overhang);
-  
-  // --- FRONT STEPS ---
-  const step1 = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.4, 0.08, 0.3), makeMat(0x777777));
-  step1.position.set(0, 0.04, d/2 + wallT + 0.15); g.add(step1);
-  const step2 = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.6, 0.08, 0.3), makeMat(0x777777));
-  step2.position.set(0, 0.04, d/2 + wallT + 0.45); g.add(step2);
-  
-  g.userData.name = 'interior house';
-  g.userData.isInterior = true;
-  return g;
-}
-
-
-// === MODERN FURNISHED HOUSE (HD GLB Models) ===
-// === PROCEDURAL BUILDING SYSTEM ===
-
-
-// ═══ KENNEY MODEL HELPERS — Load real GLB models into city generation ═══
-const KENNEY_CITY_BUILDINGS = [
-  'kenney_city/building-a', 'kenney_city/building-b', 'kenney_city/building-c',
-  'kenney_city/building-d', 'kenney_city/building-e', 'kenney_city/building-f',
-  'kenney_city/building-g', 'kenney_city/building-h', 'kenney_city/building-i',
-  'kenney_city/building-j', 'kenney_city/building-k', 'kenney_city/building-l',
-];
-const KENNEY_VEHICLES = [
-  'kenney_cars/sedan', 'kenney_cars/sedan-sports', 'kenney_cars/suv', 
-  'kenney_cars/suv-luxury', 'kenney_cars/taxi', 'kenney_cars/van',
-  'kenney_cars/hatchback-sports', 'kenney_cars/truck', 'kenney_cars/police',
-];
-const KENNEY_ROAD_PIECES = [
-  'kenney_roads/road-straight', 'kenney_roads/road-curve', 
-  'kenney_roads/road-intersection', 'kenney_roads/road-end',
-];
-const KENNEY_FANTASY_PROPS = [
-  'kenney_fantasy/fence', 'kenney_fantasy/cart', 'kenney_fantasy/fountain-center',
-  'kenney_fantasy/banner-red', 'kenney_fantasy/barrel', 'kenney_fantasy/well',
-  'kenney_fantasy/chimney', 'kenney_fantasy/lantern',
-];
-const KENNEY_GRAVEYARD_PROPS = [
-  'kenney_graveyard/grave-cross', 'kenney_graveyard/grave-round',
-  'kenney_graveyard/coffin', 'kenney_graveyard/candle',
-  'kenney_graveyard/character-skeleton', 'kenney_graveyard/character-ghost',
-  'kenney_graveyard/altar-stone', 'kenney_graveyard/bench-damaged',
-];
-
-function loadKenneyModel(modelPath, x, y, z, scale) {
-  const s = scale || 3;
-  gltfLoader.load('models/' + modelPath + '.glb', (gltf) => {
-    const model = gltf.scene;
-    model.scale.setScalar(s);
-    model.position.set(x, y, z);
-    model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-    model.userData.name = modelPath.split('/').pop();
-    scene.add(model);
-    window._sceneObjects = window._sceneObjects || [];
-    window._sceneObjects.push(model);
-  });
-}
-
-function randomKenneyBuilding(x, z) {
-  const model = KENNEY_CITY_BUILDINGS[Math.floor(Math.random() * KENNEY_CITY_BUILDINGS.length)];
-  loadKenneyModel(model, x, 0, z, 4 + Math.random() * 2);
-}
-
-function randomKenneyVehicle(x, z, rotation) {
-  const model = KENNEY_VEHICLES[Math.floor(Math.random() * KENNEY_VEHICLES.length)];
-  gltfLoader.load('models/' + model + '.glb', (gltf) => {
-    const m = gltf.scene;
-    m.scale.setScalar(2.5);
-    m.position.set(x, 0.1, z);
-    if (rotation) m.rotation.y = rotation;
-    m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-    m.userData.name = 'parked_car';
-    scene.add(m);
-    window._sceneObjects = window._sceneObjects || [];
-    window._sceneObjects.push(m);
-  });
-}
-
-
-function createSkyscraper(opts) {
-  const o = opts || {};
-  const floors = o.floors || (8 + Math.floor(Math.random() * 12)); // 8-20 floors (was 10-30)
-  const w = o.width || (10 + Math.random() * 6);
-  const d = o.depth || (10 + Math.random() * 6);
-  const floorH = 3.5;
-  const totalH = floors * floorH;
-  const g = new THREE.Group();
-  g.userData.name = 'Skyscraper (' + floors + 'F)';
-  g.userData.isBuilding = true; g.userData.isSolid = true;
-  const style = Math.floor(Math.random() * 4);
-  const frameColors = [0x334455, 0x444444, 0x553333, 0x222222];
-  const glassColors = [0x88bbdd, 0xaacccc, 0xddccaa, 0x99aabb];
-  const frameMat = makeMat(frameColors[style], {rough: 0.3, metal: 0.7});
-  const glassMat = new THREE.MeshPhysicalMaterial({color: glassColors[style], roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.35, side: THREE.DoubleSide});
-  const floorMat2 = makeMat(0x666666, {rough: 0.6});
-  const ledgeMat = makeMat(0x888888, {rough: 0.4, metal: 0.5});
-  
-  // Main body — single box with frame material
-  const body = new THREE.Mesh(new THREE.BoxGeometry(w, totalH, d), frameMat);
-  body.position.y = totalH/2; body.castShadow = true; body.userData.isSolid = true; g.add(body);
-  
-  // Glass panels — just 4 large panels (one per side) instead of per-floor
-  const glassH = totalH - 1;
-  [1,-1].forEach(side => {
-    const front = new THREE.Mesh(new THREE.PlaneGeometry(w-0.6, glassH), glassMat);
-    front.position.set(0, totalH/2 + 0.2, side*(d/2+0.02));
-    if(side<0) front.rotation.y = Math.PI; g.add(front);
-  });
-  [1,-1].forEach(side => {
-    const sideW = new THREE.Mesh(new THREE.PlaneGeometry(d-0.6, glassH), glassMat);
-    sideW.position.set(side*(w/2+0.02), totalH/2 + 0.2, 0);
-    sideW.rotation.y = side*Math.PI/2; g.add(sideW);
-  });
-  
-  // Horizontal ledges every 5 floors (not every floor)
-  for (let fl = 5; fl < floors; fl += 5) {
-    const y = fl * floorH;
-    const ledge = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.12, d+0.4), ledgeMat);
-    ledge.position.y = y; g.add(ledge);
-  }
-  
-  // A few vertical mullion lines (not per-floor)
-  const mullionCount = Math.floor(w / 3);
-  for (let m = 1; m < mullionCount; m++) {
-    const mx = -w/2 + 0.3 + m*(w-0.6)/mullionCount;
-    [d/2+0.03, -(d/2+0.03)].forEach(z => {
-      const mull = new THREE.Mesh(new THREE.BoxGeometry(0.04, totalH-1, 0.04), frameMat);
-      mull.position.set(mx, totalH/2, z); g.add(mull);
-    });
-  }
-  // Horizontal floor lines on glass
-  for (let fl = 1; fl < floors; fl++) {
-    const y = fl * floorH;
-    [d/2+0.03, -(d/2+0.03)].forEach(z => {
-      const line = new THREE.Mesh(new THREE.BoxGeometry(w-0.4, 0.06, 0.04), frameMat);
-      line.position.set(0, y, z); g.add(line);
-    });
-  }
-  
-  // Roof
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(w+0.3, 0.25, d+0.3), ledgeMat);
-  roof.position.y = totalH+0.12; g.add(roof);
-  // AC + antenna
-  const ac = new THREE.Mesh(new THREE.BoxGeometry(2,1,1.5), makeMat(0x888888,{rough:0.6}));
-  ac.position.set(w*0.2, totalH+0.8, 0); g.add(ac);
-  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,4), makeMat(0xaaaaaa,{rough:0.3,metal:0.8}));
-  antenna.position.set(-w*0.2, totalH+2.3, -d*0.2); g.add(antenna);
-  // Entrance
-  const entrGlass = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), glassMat);
-  entrGlass.position.set(0, 1.5, d/2+0.03); g.add(entrGlass);
-  const awning = new THREE.Mesh(new THREE.BoxGeometry(4, 0.08, 1.5), ledgeMat);
-  awning.position.set(0, 3.2, d/2+0.8); g.add(awning);
-  // Interior light (just 2-3, not per floor)
-  [totalH*0.25, totalH*0.6].forEach(y => {
-    const light = new THREE.PointLight(0xfff5e0, 0.2, w*2);
-    light.position.set(0, y, 0); g.add(light);
-  });
-  return g;
-}
-
-
-function createCommercialBuilding(opts) {
-  const o = opts || {};
-  const type = o.type || ['salon','barber','grocery','clothing','restaurant','pharmacy','bank','cafe','gym','laundry'][Math.floor(Math.random()*10)];
-  const w = o.width || 12; const d = o.depth || 10; const h = o.height || 4.5;
-  const g = new THREE.Group();
-  g.userData.name = type.charAt(0).toUpperCase() + type.slice(1);
-  g.userData.isBuilding = true; g.userData.isInterior = true; g.userData.isSolid = true;
-  const storeColors = {salon:0xdd88aa, barber:0x4466aa, grocery:0x44aa44, clothing:0xaa4488, restaurant:0xcc6633, pharmacy:0x44aaaa, bank:0x555566, cafe:0x886644, gym:0x444444, laundry:0x6688aa};
-  const mainColor = storeColors[type] || 0x888888;
-  const wallMat = makeMat(0xe8e0d5, {rough: 0.7});
-  const glassMat = new THREE.MeshPhysicalMaterial({color:0x88ccee, roughness:0.05, metalness:0.2, transparent:true, opacity:0.25, side: THREE.DoubleSide});
-  const signMat = makeMat(mainColor, {rough: 0.3});
-  const trimMat = makeMat(0x333333, {rough: 0.4});
-  const floorMat2 = makeMat(0x8B6B4A, {rough: 0.75});
-  const intWallMat = makeMat(0xf0ece3, {rough: 0.85});
-  const wallT = 0.18;
-  // Floor
-  const slab = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.15, d+0.4), makeMat(0x888888,{rough:0.7}));
-  slab.position.y=0.075; slab.receiveShadow=true; slab.userData.isSolid=true; g.add(slab);
-  const ifl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), floorMat2);
-  ifl.position.y=0.165; ifl.receiveShadow=true; g.add(ifl);
-  // Walls - front has large store window
-  const dw = 1.2, dh = 2.2;
-  // Front left wall
-  const fL = new THREE.Mesh(new THREE.BoxGeometry(w*0.25, h, wallT), wallMat);
-  fL.position.set(-w*0.375, h/2, d/2+wallT/2); fL.castShadow=true; fL.userData.isSolid=true; g.add(fL);
-  // Front right (door area)
-  const fR = new THREE.Mesh(new THREE.BoxGeometry(w*0.15, h, wallT), wallMat);
-  fR.position.set(w*0.425, h/2, d/2+wallT/2); fR.castShadow=true; fR.userData.isSolid=true; g.add(fR);
-  // Above store window
-  const fT = new THREE.Mesh(new THREE.BoxGeometry(w*0.6, h*0.3, wallT), wallMat);
-  fT.position.set(0, h*0.85, d/2+wallT/2); fT.userData.isSolid=true; g.add(fT);
-  // Below store window
-  const fB = new THREE.Mesh(new THREE.BoxGeometry(w*0.6, 0.5, wallT), wallMat);
-  fB.position.set(0, 0.25, d/2+wallT/2); g.add(fB);
-  // Large glass storefront
-  const storeGlass = new THREE.Mesh(new THREE.PlaneGeometry(w*0.55, h*0.55), glassMat);
-  storeGlass.position.set(-w*0.05, h*0.45, d/2+wallT+0.01); g.add(storeGlass);
-  // Door
-  const door = new THREE.Mesh(new THREE.BoxGeometry(dw, dh, 0.06), makeMat(0x5a3a1a,{rough:0.7}));
-  door.position.set(w*0.32, dh/2, d/2+wallT/2); g.add(door);
-  // Sign band
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(w+0.2, 0.8, 0.15), signMat);
-  sign.position.set(0, h-0.2, d/2+0.15); g.add(sign);
-  // Awning
-  const awn = new THREE.Mesh(new THREE.BoxGeometry(w*0.7, 0.05, 1.8), makeMat(mainColor,{rough:0.6}));
-  awn.position.set(0, h*0.65, d/2+1); awn.rotation.x=-0.12; g.add(awn);
-  // Back + side walls
-  const bw = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), wallMat);
-  bw.position.set(0, h/2, -(d/2+wallT/2)); bw.castShadow=true; bw.userData.isSolid=true; g.add(bw);
-  [-1,1].forEach(side => {
-    const sw = new THREE.Mesh(new THREE.BoxGeometry(wallT, h, d), wallMat);
-    sw.position.set(side*(w/2+wallT/2), h/2, 0); sw.castShadow=true; sw.userData.isSolid=true; g.add(sw);
-  });
-  // Interior walls
-  [[0,h/2,-(d/2-0.01),w,h,0],[0,h/2,d/2-0.01,w,h,Math.PI],
-   [-(w/2-0.01),h/2,0,d,h,Math.PI/2],[w/2-0.01,h/2,0,d,h,-Math.PI/2]].forEach(([x,y,z,sx,sy,ry])=>{
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(sx,sy), intWallMat);
-    p.position.set(x,y,z); p.rotation.y=ry; p.receiveShadow=true; g.add(p);
-  });
-  // Ceiling + roof
-  const ceil = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2, 0.12, d+wallT*2), makeMat(0x888888,{rough:0.6}));
-  ceil.position.y=h; ceil.receiveShadow=true; ceil.userData.isSolid=true; g.add(ceil);
-  const parapet = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.4, d+0.4), makeMat(0x999999,{rough:0.6}));
-  parapet.position.y=h+0.2; g.add(parapet);
-  // Interior light
-  const cL = new THREE.PointLight(0xfff0dd, 1.0, w*2);
-  cL.position.set(0, h-0.2, 0); g.add(cL);
-  // Furniture based on type
-  const furniture = [];
-  if (type==='salon'||type==='barber') {
-    furniture.push({m:'ph_ArmChair_01',p:[-w*0.2,0.18,0],s:1.5},{m:'ph_ArmChair_01',p:[w*0.1,0.18,0],s:1.5});
-    furniture.push({m:'ph_Shelf_01',p:[-w*0.35,0.18,-d*0.35],s:1.3});
-  } else if (type==='grocery') {
-    furniture.push({m:'ph_Shelf_01',p:[-w*0.25,0.18,-d*0.2],s:1.5},{m:'ph_Shelf_01',p:[w*0.1,0.18,-d*0.2],s:1.5});
-    furniture.push({m:'ph_WoodenTable_01',p:[0,0.18,d*0.2],s:1.8});
-  } else if (type==='restaurant'||type==='cafe') {
-    furniture.push({m:'ph_WoodenTable_01',p:[-w*0.2,0.18,0],s:1.8},{m:'ph_WoodenTable_01',p:[w*0.15,0.18,0],s:1.8});
-    furniture.push({m:'ph_WoodenChair_01',p:[-w*0.3,0.18,0.5],r:Math.PI/2,s:1.3},{m:'ph_WoodenChair_01',p:[-w*0.1,0.18,0.5],r:-Math.PI/2,s:1.3});
-    furniture.push({m:'ph_WoodenChair_01',p:[w*0.05,0.18,0.5],r:Math.PI/2,s:1.3},{m:'ph_WoodenChair_01',p:[w*0.25,0.18,0.5],r:-Math.PI/2,s:1.3});
-  } else if (type==='bank') {
-    furniture.push({m:'ph_WoodenTable_01',p:[0,0.18,-d*0.2],s:2.0});
-    furniture.push({m:'ph_ArmChair_01',p:[0,0.18,-d*0.05],r:Math.PI,s:1.5});
-  } else {
-    furniture.push({m:'ph_Shelf_01',p:[-w*0.3,0.18,-d*0.3],s:1.3});
-    furniture.push({m:'ph_WoodenTable_01',p:[0,0.18,d*0.1],s:1.8});
-  }
-  furniture.forEach(f => {
-    gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
-      const obj=gltf.scene; obj.position.set(f.p[0],f.p[1],f.p[2]);
-      if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
-      obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
-    },null,()=>{});
-  });
-  return g;
-}
-
-function createPitchedRoofHouse(opts) {
-  const o = opts || {};
-  const w = o.width || 12; const d = o.depth || 10; const wallH = 3.2;
-  const floors = o.floors || 2; const totalH = wallH * floors;
-  const roofPitch = o.pitch || 0.4; const roofH = (w/2) * roofPitch;
-  const wallT = 0.18;
-  const style = o.style || ['siding','brick','stucco'][Math.floor(Math.random()*3)];
-  const g = new THREE.Group();
-  g.userData.name = (o.name||'House')+' ('+style+')';
-  g.userData.isBuilding=true; g.userData.isInterior=true; g.userData.isSolid=true;
-  g.userData.interiorBounds = {width:w, depth:d, height:totalH, floors};
-  const extColors = {brick:0x8B4513, siding:0xd4c9a8, stucco:0xe0d8c8};
-  const extMat = makeMat(extColors[style]||0xd4c9a8, {rough: style==='brick'?0.85:0.7});
-  const intWallMat = makeMat(0xf0ece3, {rough:0.85});
-  const floorMat2 = makeMat(0x8B6B4A, {rough:0.75});
-  const roofColors = [0x553333,0x444455,0x335533,0x554433];
-  const roofMat = makeMat(roofColors[Math.floor(Math.random()*roofColors.length)], {rough:0.7});
-  const glassMat = new THREE.MeshPhysicalMaterial({color:0x88ccee, roughness:0.05, metalness:0.1, transparent:true, opacity:0.25, side:THREE.DoubleSide});
-  const trimMat = makeMat(0xf0ece3, {rough:0.6});
-  const doorMat = makeMat(0x5a3a1a, {rough:0.7});
-  const stairMat = makeMat(0x5a3a1a, {rough:0.8});
-  for (let fl = 0; fl < floors; fl++) {
-    const by = fl * wallH;
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2+0.2, 0.15, d+wallT*2+0.2), fl===0?makeMat(0x888888,{rough:0.7}):floorMat2);
-    slab.position.set(0,by+0.075,0); slab.receiveShadow=true; slab.userData.isSolid=true; g.add(slab);
-    const ifl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), floorMat2);
-    ifl.position.set(0,by+0.165,0); ifl.receiveShadow=true; g.add(ifl);
-    if (fl === 0) {
-      const dw=1.2, dh=2.2, halfSide=(w-dw)/2;
-      const fL = new THREE.Mesh(new THREE.BoxGeometry(halfSide, wallH, wallT), extMat);
-      fL.position.set(-(dw/2+halfSide/2), by+wallH/2, d/2+wallT/2); fL.castShadow=true; fL.userData.isSolid=true; g.add(fL);
-      const fR = new THREE.Mesh(new THREE.BoxGeometry(halfSide, wallH, wallT), extMat);
-      fR.position.set(dw/2+halfSide/2, by+wallH/2, d/2+wallT/2); fR.castShadow=true; fR.userData.isSolid=true; g.add(fR);
-      const fT = new THREE.Mesh(new THREE.BoxGeometry(dw, wallH-dh, wallT), extMat);
-      fT.position.set(0, by+dh+(wallH-dh)/2, d/2+wallT/2); fT.userData.isSolid=true; g.add(fT);
-      const door = new THREE.Mesh(new THREE.BoxGeometry(dw, dh, 0.06), doorMat);
-      door.position.set(0,by+dh/2,d/2+wallT/2); g.add(door);
-      [[-(dw/2),dh/2,0.06,dh,0.04],[dw/2,dh/2,0.06,dh,0.04],[0,dh,dw+0.12,0.06,0.04]].forEach(([x,y,sx,sy,sz])=>{
-        const fr = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), trimMat); fr.position.set(x,by+y,d/2+wallT/2); g.add(fr);
-      });
-      [-w*0.32, w*0.32].forEach(x => {
-        const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.2), glassMat);
-        gl.position.set(x, by+wallH*0.55, d/2+wallT+0.01); g.add(gl);
-        const wf = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.3, 0.03), trimMat);
-        wf.position.set(x, by+wallH*0.55, d/2+wallT/2); g.add(wf);
-      });
-    } else {
-      const fw = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, wallT), extMat);
-      fw.position.set(0,by+wallH/2,d/2+wallT/2); fw.castShadow=true; fw.userData.isSolid=true; g.add(fw);
-      [-w*0.3,0,w*0.3].forEach(x => {
-        const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), glassMat);
-        gl.position.set(x,by+wallH*0.55,d/2+wallT+0.01); g.add(gl);
-        const wf = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.3, 0.03), trimMat);
-        wf.position.set(x,by+wallH*0.55,d/2+wallT/2); g.add(wf);
-      });
-    }
-    const bw = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, wallT), extMat);
-    bw.position.set(0,by+wallH/2,-(d/2+wallT/2)); bw.castShadow=true; bw.userData.isSolid=true; g.add(bw);
-    [-w*0.25,w*0.25].forEach(x => {
-      const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.2), glassMat);
-      gl.position.set(x,by+wallH*0.55,-(d/2+wallT+0.01)); gl.rotation.y=Math.PI; g.add(gl);
-      const wf = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.3, 0.03), trimMat);
-      wf.position.set(x,by+wallH*0.55,-(d/2+wallT/2)); g.add(wf);
-    });
-    [-1,1].forEach(side => {
-      const sw = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, d), extMat);
-      sw.position.set(side*(w/2+wallT/2),by+wallH/2,0); sw.castShadow=true; sw.userData.isSolid=true; g.add(sw);
-      [-d*0.25,d*0.25].forEach(z => {
-        const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.0), glassMat);
-        gl.position.set(side*(w/2+wallT+0.01),by+wallH*0.55,z); gl.rotation.y=side*Math.PI/2; g.add(gl);
-      });
-    });
-    [[0,wallH/2,-(d/2-0.01),w,wallH,0],[0,wallH/2,d/2-0.01,w,wallH,Math.PI],
-     [-(w/2-0.01),wallH/2,0,d,wallH,Math.PI/2],[w/2-0.01,wallH/2,0,d,wallH,-Math.PI/2]].forEach(([x,y,z,sx,sy,ry])=>{
-      const p = new THREE.Mesh(new THREE.PlaneGeometry(sx,sy), intWallMat);
-      p.position.set(x,by+y,z); p.rotation.y=ry; p.receiveShadow=true; g.add(p);
-    });
-    const ceil = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2, 0.12, d+wallT*2), fl===floors-1?makeMat(0x8B6B4A,{rough:0.8}):makeMat(0xf5f2ee,{rough:0.9}));
-    ceil.position.set(0,by+wallH,0); ceil.receiveShadow=true; ceil.userData.isSolid=true; g.add(ceil);
-    const cL = new THREE.PointLight(0xfff0dd, 1.2, w*2);
-    cL.position.set(0,by+wallH-0.2,0); g.add(cL);
-    const furniture = [];
-    if (fl===0) {
-      furniture.push({m:'ph_Sofa_01',p:[-w*0.2,0.18,d*0.15],r:Math.PI,s:1.8});
-      furniture.push({m:'ph_ArmChair_01',p:[w*0.25,0.18,d*0.2],r:-Math.PI/4,s:1.5});
-      furniture.push({m:'ph_CoffeeTable_01',p:[0,0.18,d*0.1],s:1.5});
-      furniture.push({m:'ph_Television_01',p:[0,0.9,-d*0.35],s:2.0});
-      furniture.push({m:'ph_electric_stove',p:[w*0.3,0.18,-d*0.35],s:1.0});
-      furniture.push({m:'ph_WoodenTable_01',p:[-w*0.3,0.18,-d*0.2],s:2.0});
-      furniture.push({m:'ph_WoodenChair_01',p:[-w*0.4,0.18,-d*0.1],r:Math.PI/2,s:1.3});
-      furniture.push({m:'ph_WoodenChair_01',p:[-w*0.2,0.18,-d*0.1],r:-Math.PI/2,s:1.3});
-    }
-    if (fl===1) {
-      furniture.push({m:'ph_GothicBed_01',p:[-w*0.2,0.18,0],s:1.8});
-      furniture.push({m:'ph_drawer_cabinet',p:[w*0.3,0.18,-d*0.35],s:1.3});
-      furniture.push({m:'ph_desk_lamp_arm_01',p:[w*0.3,0.9,-d*0.35],s:0.8});
-      furniture.push({m:'ph_Rockingchair_01',p:[w*0.25,0.18,d*0.2],r:-Math.PI/3,s:1.3});
-    }
-    furniture.forEach(f => {
-      gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
-        const obj=gltf.scene; obj.position.set(f.p[0],f.p[1]+by,f.p[2]);
-        if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
-        obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
-      },null,()=>{});
-    });
-  }
-  if (floors > 1) {
-    const sw2=1.0, steps=12, stepH=wallH/steps, stepD=(d*0.5)/steps;
-    for (let s=0; s<steps; s++) {
-      const st = new THREE.Mesh(new THREE.BoxGeometry(sw2, stepH, stepD+0.02), stairMat);
-      st.position.set(w/2-sw2/2-0.3, s*stepH+stepH/2, d/2-0.8-s*stepD);
-      st.receiveShadow=true; st.userData.isStair=true; st.userData.isSolid=true; g.add(st);
-    }
-  }
-  const roofShape = new THREE.Shape();
-  roofShape.moveTo(-w/2-0.5, 0); roofShape.lineTo(0, roofH); roofShape.lineTo(w/2+0.5, 0); roofShape.closePath();
-  const roofGeo = new THREE.ExtrudeGeometry(roofShape, {depth:d+1, bevelEnabled:false});
-  const roof = new THREE.Mesh(roofGeo, roofMat);
-  roof.position.set(0, totalH, -d/2-0.5); roof.castShadow=true; g.add(roof);
-  if (Math.random()>0.3) {
-    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.6, roofH+1.5, 0.6), makeMat(0x884444,{rough:0.8}));
-    chimney.position.set(w*0.25, totalH+roofH*0.5+0.5, -d*0.2); chimney.castShadow=true; g.add(chimney);
-  }
-  const porch = new THREE.Mesh(new THREE.BoxGeometry(4, 0.15, 2), makeMat(0x888888,{rough:0.7}));
-  porch.position.set(0,0.075,d/2+1.2); porch.receiveShadow=true; g.add(porch);
-  const porchRoof = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.08, 2.5), roofMat);
-  porchRoof.position.set(0,2.6,d/2+1.3); g.add(porchRoof);
-  [-1.8,1.8].forEach(x => {
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.5), trimMat);
-    col.position.set(x,1.3,d/2+2.2); g.add(col);
-  });
-  return g;
-}
-
-function createMansion(opts) {
-  return createPitchedRoofHouse({width:18, depth:14, floors:2, pitch:0.45, name:'Mansion', style:(opts||{}).style||'brick', ...(opts||{})});
-}
-
-function createDuplex(opts) {
-  const g = new THREE.Group(); g.userData.name='Duplex'; g.userData.isBuilding=true;
-  const left = createPitchedRoofHouse({width:8, depth:8, floors:2, style:'siding'});
-  left.position.x=-4.5; g.add(left);
-  const right = createPitchedRoofHouse({width:8, depth:8, floors:2, style:'siding'});
-  right.position.x=4.5; g.add(right);
-  return g;
-}
-
-function createRanchHouse(opts) {
-  return createPitchedRoofHouse({width:16, depth:10, floors:1, pitch:0.25, name:'Ranch House', style:'siding', ...(opts||{})});
-}
-
-
-function createParkingLot(opts) {
-  const o = opts || {};
-  const w = o.width || 30, d = o.depth || 20;
-  const g = new THREE.Group(); g.userData.name = 'Parking Lot';
-  // Asphalt surface
-  const asphalt = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), makeMat(0x333333, {rough:0.9}));
-  asphalt.receiveShadow = true; g.add(asphalt);
-  // Parking lines
-  const lineMat = makeMat(0xdddddd, {rough:0.5});
-  const spots = Math.floor(w / 3);
-  for (let i = 0; i < spots; i++) {
-    const x = -w/2 + 1.5 + i * 3;
-    // Top row
-    const line = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 5), lineMat);
-    line.position.set(x, 0.04, -d/4); g.add(line);
-    // Bottom row  
-    const line2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 5), lineMat);
-    line2.position.set(x, 0.04, d/4); g.add(line2);
-  }
-  // Horizontal end lines
-  const endLine1 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.08), lineMat);
-  endLine1.position.set(0, 0.04, -d/4 - 2.5); g.add(endLine1);
-  const endLine2 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.08), lineMat);
-  endLine2.position.set(0, 0.04, -d/4 + 2.5); g.add(endLine2);
-  const endLine3 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.08), lineMat);
-  endLine3.position.set(0, 0.04, d/4 - 2.5); g.add(endLine3);
-  const endLine4 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.08), lineMat);
-  endLine4.position.set(0, 0.04, d/4 + 2.5); g.add(endLine4);
-  return g;
-}
-
-function createGasStation(opts) {
-  const o = opts || {};
-  const g = new THREE.Group(); g.userData.name = 'Gas Station';
-  // Main building
-  const wallMat = makeMat(0xdddddd, {rough:0.5});
-  const roofMat = makeMat(0x2244aa, {rough:0.4});
-  const building = new THREE.Mesh(new THREE.BoxGeometry(8, 3, 6), wallMat);
-  building.position.y = 1.5; building.castShadow = true; g.add(building);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.2, 6.5), roofMat);
-  roof.position.y = 3.1; g.add(roof);
-  // Canopy over pumps
-  const canopyMat = makeMat(0xeeeeee, {rough:0.3});
-  const canopy = new THREE.Mesh(new THREE.BoxGeometry(12, 0.15, 8), canopyMat);
-  canopy.position.set(0, 4, -6); canopy.castShadow = true; g.add(canopy);
-  // Canopy pillars
-  const pillarMat = makeMat(0x888888, {rough:0.4, metal:0.5});
-  [[-5, -9], [-5, -3], [5, -9], [5, -3]].forEach(([x, z]) => {
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 4), pillarMat);
-    pillar.position.set(x, 2, z); g.add(pillar);
-  });
-  // Gas pumps
-  const pumpMat = makeMat(0x444444, {rough:0.3});
-  [-2, 2].forEach(x => {
-    const pump = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.4), pumpMat);
-    pump.position.set(x, 0.9, -6); pump.castShadow = true; g.add(pump);
-    // Screen
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.3), makeMat(0x00ff00, {rough:0.2, emissive:0x00ff00, emissiveIntensity:0.3}));
-    screen.position.set(x, 1.4, -5.79); g.add(screen);
-  });
-  // Sign
-  const signPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 6), pillarMat);
-  signPole.position.set(-6, 3, -6); g.add(signPole);
-  const signBoard = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 0.1), roofMat);
-  signBoard.position.set(-6, 6.5, -6); g.add(signBoard);
-  return g;
-}
-
-function createBridge(opts) {
-  const o = opts || {};
-  const length = o.length || 40, width = o.width || 8;
-  const g = new THREE.Group(); g.userData.name = 'Bridge';
-  const concreteMat = makeMat(0x999999, {rough:0.7});
-  const railMat = makeMat(0x666666, {rough:0.4, metal:0.6});
-  // Road deck
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(width, 0.3, length), concreteMat);
-  deck.position.y = 3; deck.receiveShadow = true; deck.castShadow = true; g.add(deck);
-  // Support pillars
-  for (let z = -length/3; z <= length/3; z += length/3) {
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 6, 1.5), concreteMat);
-    pillar.position.set(0, 0, z); pillar.castShadow = true; g.add(pillar);
-  }
-  // Railings
-  for (let z = -length/2; z <= length/2; z += 3) {
-    [-width/2, width/2].forEach(x => {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2), railMat);
-      post.position.set(x, 3.75, z); g.add(post);
-    });
-  }
-  // Top rails
-  [-width/2, width/2].forEach(x => {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, length), railMat);
-    rail.position.set(x, 4.4, 0); g.add(rail);
-  });
-  // Ramps
-  const rampGeo = new THREE.BoxGeometry(width, 0.3, 8);
-  const ramp1 = new THREE.Mesh(rampGeo, concreteMat);
-  ramp1.position.set(0, 1.5, -length/2 - 3); ramp1.rotation.x = 0.35; g.add(ramp1);
-  const ramp2 = new THREE.Mesh(rampGeo, concreteMat);
-  ramp2.position.set(0, 1.5, length/2 + 3); ramp2.rotation.x = -0.35; g.add(ramp2);
-  return g;
-}
-
-
-
-
-function createSupermarket(opts) {
-  const o = opts || {};
-  const g = new THREE.Group(); g.userData.name = 'Supermarket';
-  g.userData.isBuilding = true;
-  const w = 20, d = 14, h = 5;
-  const wallMat = makeMat(0xeeeeee, {rough:0.5});
-  const roofMat = makeMat(0x444444, {rough:0.6});
-  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
-  body.position.y = h/2; body.castShadow = true; g.add(body);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(w+0.5, 0.2, d+0.5), roofMat);
-  roof.position.y = h+0.1; g.add(roof);
-  // Big front windows
-  const glassMat = new THREE.MeshPhysicalMaterial({color: 0x88ccee, roughness: 0.05, transparent: true, opacity: 0.25});
-  const frontGlass = new THREE.Mesh(new THREE.PlaneGeometry(w*0.8, h*0.6), glassMat);
-  frontGlass.position.set(0, h*0.45, d/2+0.01); g.add(frontGlass);
-  // Sign band
-  const signColors = [0x22aa44, 0x2244aa, 0xcc2222, 0xcc8822];
-  const signColor = signColors[Math.floor(Math.random()*signColors.length)];
-  const signMat = makeMat(signColor, {rough:0.3});
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(w, 1.2, 0.15), signMat);
-  sign.position.set(0, h-0.4, d/2+0.08); g.add(sign);
-  // Automatic doors
-  const doorMat = makeMat(0x666666, {rough:0.3, metal:0.5});
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(3, 2.5), doorMat);
-  door.position.set(0, 1.25, d/2+0.02); g.add(door);
-  // Shopping cart corral
-  const cartMat = makeMat(0xaaaaaa, {rough:0.3, metal:0.7});
-  const corral = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 1), cartMat);
-  corral.position.set(-6, 0.3, d/2+2); g.add(corral);
-  // Parking lot in front
-  const asphalt = new THREE.Mesh(new THREE.BoxGeometry(w+4, 0.06, 10), makeMat(0x333333, {rough:0.9}));
-  asphalt.position.set(0, 0, d/2+8); asphalt.receiveShadow = true; g.add(asphalt);
-  // Parking lines
-  const lineMat = makeMat(0xdddddd, {rough:0.5});
-  for (let li = -8; li <= 8; li += 2.5) {
-    const line = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 4), lineMat);
-    line.position.set(li, 0.04, d/2+8); g.add(line);
-  }
-  return g;
-}
-
-function createApartmentBuilding(opts) {
-  const o = opts || {};
-  const floors = o.floors || (3 + Math.floor(Math.random() * 3));
-  const w = o.width || 16, d = o.depth || 10;
-  const floorH = 3;
-  const totalH = floors * floorH;
-  const g = new THREE.Group();
-  g.userData.name = 'Apartment (' + floors + 'F)';
-  g.userData.isBuilding = true;
-  
-  const colors = [0xcc8866, 0xaa7755, 0x998877, 0xbbaa88, 0xddccaa];
-  const wallColor = colors[Math.floor(Math.random() * colors.length)];
-  const wallMat = makeMat(wallColor, {rough:0.7});
-  const roofMat = makeMat(0x555555, {rough:0.6});
-  const windowMat = new THREE.MeshPhysicalMaterial({color: 0x88bbdd, roughness: 0.05, transparent: true, opacity: 0.3});
-  const frameMat = makeMat(0x444444, {rough:0.4});
-  const balconyMat = makeMat(0x777777, {rough:0.5});
-  
-  // Main body
-  const body = new THREE.Mesh(new THREE.BoxGeometry(w, totalH, d), wallMat);
-  body.position.y = totalH/2; body.castShadow = true; body.receiveShadow = true; g.add(body);
-  
-  // Roof
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(w+0.3, 0.2, d+0.3), roofMat);
-  roof.position.y = totalH + 0.1; g.add(roof);
-  
-  // Windows per floor
-  for (let fl = 0; fl < floors; fl++) {
-    const y = fl * floorH + 1.8;
-    const windowsPerSide = Math.floor(w / 3);
-    for (let wi = 0; wi < windowsPerSide; wi++) {
-      const x = -w/2 + 1.5 + wi * 3;
-      // Front windows
-      const win = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.5), windowMat);
-      win.position.set(x, y, d/2 + 0.01); g.add(win);
-      // Back windows
-      const win2 = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.5), windowMat);
-      win2.position.set(x, y, -(d/2 + 0.01)); win2.rotation.y = Math.PI; g.add(win2);
-    }
-    // Balconies on front (every other floor)
-    if (fl > 0 && fl % 2 === 0) {
-      for (let bi = 0; bi < 2; bi++) {
-        const bx = -w/4 + bi * w/2;
-        const balcony = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1.2), balconyMat);
-        balcony.position.set(bx, fl * floorH + 0.05, d/2 + 0.6); g.add(balcony);
-        // Railing
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(3, 0.8, 0.05), frameMat);
-        rail.position.set(bx, fl * floorH + 0.45, d/2 + 1.15); g.add(rail);
-      }
-    }
-  }
-  
-  // Entry door
-  const doorMat = makeMat(0x664422, {rough:0.6});
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.5), doorMat);
-  door.position.set(0, 1.25, d/2 + 0.01); g.add(door);
-  // Entry awning
-  const awning = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1.5), roofMat);
-  awning.position.set(0, 2.8, d/2 + 0.5); g.add(awning);
-  
-  return g;
-}
-
-function createBusStop() {
-  const g = new THREE.Group(); g.userData.name = 'Bus Stop';
-  const poleMat = makeMat(0x666666, {rough:0.3, metal:0.6});
-  const roofMat = makeMat(0x3366aa, {rough:0.4});
-  const glassMat = new THREE.MeshPhysicalMaterial({color: 0x88ccee, roughness: 0.05, transparent: true, opacity: 0.25});
-  // Shelter roof
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1.5), roofMat);
-  roof.position.y = 2.5; roof.castShadow = true; g.add(roof);
-  // Support poles
-  [[-1.3, -0.6], [1.3, -0.6]].forEach(([x, z]) => {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.5), poleMat);
-    pole.position.set(x, 1.25, z); g.add(pole);
-  });
-  // Back panel (glass)
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(3, 2), glassMat);
-  back.position.set(0, 1.5, -0.7); g.add(back);
-  // Bench
-  const benchMat = makeMat(0x885533, {rough:0.7});
-  const bench = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.08, 0.4), benchMat);
-  bench.position.set(0, 0.5, -0.3); g.add(bench);
-  const benchLegs = makeMat(0x555555, {rough:0.4});
-  [-0.9, 0.9].forEach(x => {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.06), benchLegs);
-    leg.position.set(x, 0.25, -0.3); g.add(leg);
-  });
-  // Sign
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.02), roofMat);
-  sign.position.set(1.5, 2.8, 0); g.add(sign);
-  const signPole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 3), poleMat);
-  signPole.position.set(1.5, 1.5, 0); g.add(signPole);
-  return g;
-}
-
-function createDumpster() {
-  const g = new THREE.Group(); g.userData.name = 'Dumpster';
-  const mat = makeMat(0x336633, {rough:0.6, metal:0.3});
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 1.2), mat);
-  body.position.y = 0.6; body.castShadow = true; g.add(body);
-  // Lid
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.08, 1.25), mat);
-  lid.position.y = 1.24; g.add(lid);
-  // Wheels
-  const wheelMat = makeMat(0x222222, {rough:0.8});
-  [[-0.8, -0.55], [0.8, -0.55], [-0.8, 0.55], [0.8, 0.55]].forEach(([x, z]) => {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 8), wheelMat);
-    wheel.rotation.z = Math.PI/2; wheel.position.set(x, 0.12, z); g.add(wheel);
-  });
-  return g;
-}
-
-function createTrashCan() {
-  const g = new THREE.Group(); g.userData.name = 'Trash Can';
-  const mat = makeMat(0x555555, {rough:0.5, metal:0.4});
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.8, 12), mat);
-  body.position.y = 0.4; g.add(body);
-  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.04, 12), mat);
-  lid.position.y = 0.82; g.add(lid);
-  return g;
-}
-
-function createSwimmingPool(opts) {
-  const o = opts || {}; const w = o.width || 8; const d = o.depth || 4;
-  const g = new THREE.Group(); g.userData.name = 'Swimming Pool';
-  // ABOVE-GROUND pool — walls go UP from ground, water visible from any angle
-  const wallH = 1.2; // Wall height above ground
-  const waterH = wallH - 0.15; // Water surface just below rim
-  const wallThick = 0.15;
-  const tileMat = makeMat(0x1a6680, {rough:0.15});
-  const outerMat = makeMat(0x8899aa, {rough:0.4}); // Outer wall color
-  const deckMat = makeMat(0xccbbaa, {rough:0.6});
-  const waterMat = new THREE.MeshPhysicalMaterial({color:0x2299dd, roughness:0.05, transparent:true, opacity:0.7, side: THREE.DoubleSide});
-  // Concrete deck/pad around pool
-  const pad = new THREE.Mesh(new THREE.BoxGeometry(w+3, 0.15, d+3), deckMat);
-  pad.position.y = 0.075; pad.receiveShadow = true; g.add(pad);
-  // Pool walls — rise ABOVE ground
-  // Front wall
-  const fw = new THREE.Mesh(new THREE.BoxGeometry(w + wallThick*2, wallH, wallThick), outerMat);
-  fw.position.set(0, wallH/2, -d/2); fw.castShadow = true; g.add(fw);
-  // Back wall
-  const bw = new THREE.Mesh(new THREE.BoxGeometry(w + wallThick*2, wallH, wallThick), outerMat);
-  bw.position.set(0, wallH/2, d/2); bw.castShadow = true; g.add(bw);
-  // Left wall
-  const lw = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, d), outerMat);
-  lw.position.set(-w/2, wallH/2, 0); lw.castShadow = true; g.add(lw);
-  // Right wall  
-  const rw = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, d), outerMat);
-  rw.position.set(w/2, wallH/2, 0); rw.castShadow = true; g.add(rw);
-  // Inner tile lining (slightly smaller, different color)
-  [[0, wallH/2, -d/2+wallThick/2, w, wallH-0.05, 0.02],
-   [0, wallH/2, d/2-wallThick/2, w, wallH-0.05, 0.02],
-   [-w/2+wallThick/2, wallH/2, 0, 0.02, wallH-0.05, d-wallThick*2],
-   [w/2-wallThick/2, wallH/2, 0, 0.02, wallH-0.05, d-wallThick*2]].forEach(([x,y,z,sx,sy,sz])=>{
-    const tile = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), tileMat); tile.position.set(x,y,z); g.add(tile);
-  });
-  // Pool floor (at ground level, visible through water)
-  const floor = new THREE.Mesh(new THREE.BoxGeometry(w - wallThick*2, 0.1, d - wallThick*2), tileMat);
-  floor.position.y = 0.2; g.add(floor);
-  // WATER SURFACE — clearly visible blue water inside the walls
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(w - wallThick*2 - 0.1, d - wallThick*2 - 0.1), waterMat);
-  water.rotation.x = -Math.PI/2; water.position.y = waterH; water.name = 'poolWater'; g.add(water);
-  // White rim/coping around top edge
-  const rimMat = makeMat(0xffffff, {rough:0.3});
-  const rimH = 0.08; const rimW = 0.25;
-  [[0, wallH + rimH/2, -d/2, w + rimW*2, rimH, rimW],
-   [0, wallH + rimH/2, d/2, w + rimW*2, rimH, rimW],
-   [-w/2, wallH + rimH/2, 0, rimW, rimH, d],
-   [w/2, wallH + rimH/2, 0, rimW, rimH, d]].forEach(([x,y,z,sx,sy,sz])=>{
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), rimMat); rim.position.set(x,y,z); g.add(rim);
-  });
-  // Pool ladders — INSIDE (descend into pool) + OUTSIDE (climb up to pool)
-  const ladderMat = makeMat(0xcccccc, {rough:0.2, metal:0.8});
-  const lr = 0.035;
-  // Inside ladder (hangs into pool from rim) — front wall, offset right
-  const insideX = w/4; const insideZ = -d/2 + wallThick/2;
-  [-1, 1].forEach(side => {
-    const rail = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, wallH + 0.4), ladderMat);
-    rail.position.set(insideX + side*0.2, wallH/2 + 0.1, insideZ + 0.15); g.add(rail);
-  });
-  for (let i = 0; i < 3; i++) {
-    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4), ladderMat);
-    rung.rotation.z = Math.PI/2;
-    rung.position.set(insideX, 0.3 + i*0.35, insideZ + 0.15); g.add(rung);
-  }
-  // Outside ladder (leans against outer wall) — same X, but on outside of front wall
-  const outsideZ = -d/2 - wallThick/2 - 0.1;
-  const outerLadderH = wallH + 0.5; // taller to reach over the rim
-  [-1, 1].forEach(side => {
-    const rail = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, outerLadderH), ladderMat);
-    // Lean slightly outward
-    rail.rotation.x = 0.15;
-    rail.position.set(insideX + side*0.2, outerLadderH/2 - 0.1, outsideZ - 0.1); g.add(rail);
-  });
-  for (let i = 0; i < 4; i++) {
-    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4), ladderMat);
-    rung.rotation.z = Math.PI/2;
-    rung.rotation.x = 0.15;
-    rung.position.set(insideX, 0.15 + i*0.3, outsideZ - 0.05 - i*0.04); g.add(rung);
-  }
-  // Register water zone for swimming detection
-  g.userData.registerWaterZone = function() {
-    const pos = new THREE.Vector3();
-    g.getWorldPosition(pos);
-    const halfW = w/2, halfD = d/2;
-    const box = new THREE.Box3(
-      new THREE.Vector3(pos.x - halfW, pos.y - 1.5, pos.z - halfD),
-      new THREE.Vector3(pos.x + halfW, pos.y + 0.1, pos.z + halfD)
-    );
-    registerWaterZone(box);
-  };
-  return g;
-}
-
-function createStopSign() {
-  const g = new THREE.Group(); g.userData.name='Stop Sign';
-  const poleMat = makeMat(0x888888, {rough:0.3,metal:0.7});
-  const signMat = makeMat(0xcc0000, {rough:0.5});
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,2.5), poleMat);
-  pole.position.y=1.25; g.add(pole);
-  const shape = new THREE.Shape();
-  const r = 0.35;
-  for (let i=0; i<8; i++) {
-    const a = (i/8)*Math.PI*2 - Math.PI/8;
-    if(i===0) shape.moveTo(Math.cos(a)*r, Math.sin(a)*r);
-    else shape.lineTo(Math.cos(a)*r, Math.sin(a)*r);
-  }
-  shape.closePath();
-  const signGeo = new THREE.ExtrudeGeometry(shape, {depth:0.02, bevelEnabled:false});
-  const sign = new THREE.Mesh(signGeo, signMat);
-  sign.position.set(0,2.5,0); g.add(sign);
-  return g;
-}
-
-function createTrafficLight() {
-  const g = new THREE.Group(); g.userData.name='Traffic Light';
-  const poleMat = makeMat(0x555555, {rough:0.3,metal:0.6});
-  const bodyMat = makeMat(0x333333, {rough:0.5});
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,4), poleMat);
-  pole.position.y=2; g.add(pole);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.9, 0.2), bodyMat);
-  body.position.set(0,4.2,0); g.add(body);
-  [[0xcc0000,0.25],[0xcccc00,0],[0x00cc00,-0.25]].forEach(([color,yOff])=>{
-    const light = new THREE.Mesh(new THREE.CircleGeometry(0.08,16), makeMat(color,{rough:0.2,emissive:color,emissiveIntensity:0.3}));
-    light.position.set(0,4.2+yOff,0.11); g.add(light);
-  });
-  return g;
-}
-
-function createRoadSegment(opts) {
-  const o = opts || {}; const length = o.length || 40;
-  const lanes = o.lanes || 2; const laneW = 3.5; const totalW = lanes * laneW;
-  const dir = o.direction || 'ns';
-  const g = new THREE.Group(); g.userData.name='Road';
-  const asphaltMat = makeMat(0x333333, {rough:0.85});
-  const lineMat = makeMat(0xdddddd, {rough:0.5});
-  const yellowMat = makeMat(0xddcc44, {rough:0.5});
-  const sidewalkMat = makeMat(0xaaa898, {rough:0.7});
-  const road = new THREE.Mesh(new THREE.BoxGeometry(totalW, 0.08, length), asphaltMat);
-  road.position.y=0.04; road.receiveShadow=true; g.add(road);
-  [-0.08,0.08].forEach(off => {
-    const cl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.01, length), yellowMat);
-    cl.position.set(off,0.09,0); g.add(cl);
-  });
-  for (let z=-length/2+1; z<length/2; z+=4) {
-    [laneW/2,-laneW/2].forEach(x => {
-      const dash = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.01, 2), lineMat);
-      dash.position.set(x,0.09,z); g.add(dash);
-    });
-  }
-  [-1,1].forEach(side => {
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.01, length), lineMat);
-    edge.position.set(side*(totalW/2-0.3),0.09,0); g.add(edge);
-    const sw = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.12, length), sidewalkMat);
-    sw.position.set(side*(totalW/2+1.5),0.06,0); sw.receiveShadow=true; g.add(sw);
-    const curb = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, length), makeMat(0x999999,{rough:0.6}));
-    curb.position.set(side*(totalW/2+0.08),0.075,0); g.add(curb);
-  });
-  [-length/2+2, length/2-2].forEach(z => {
-    for (let i=0; i<6; i++) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.01, 0.15), lineMat);
-      stripe.position.set(-totalW/2+1+i*(totalW-2)/5,0.09,z); g.add(stripe);
-    }
-  });
-  if (dir==='ew') g.rotation.y = Math.PI/2;
-  return g;
-}
-
-function createIntersection() {
-  const laneW = 3.5; const totalW = 2*laneW; const size = totalW+5;
-  const g = new THREE.Group(); g.userData.name='Intersection';
-  const asphaltMat = makeMat(0x333333, {rough:0.85});
-  const lineMat = makeMat(0xdddddd, {rough:0.5});
-  const sidewalkMat = makeMat(0xaaa898, {rough:0.7});
-  const road = new THREE.Mesh(new THREE.BoxGeometry(size, 0.08, size), asphaltMat);
-  road.position.y=0.04; road.receiveShadow=true; g.add(road);
-  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx,sz])=>{
-    const corner = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.12, 2.5), sidewalkMat);
-    corner.position.set(sx*(size/2+0.5),0.06,sz*(size/2+0.5)); g.add(corner);
-  });
-  // Crosswalk stripes
-  const cwMat = makeMat(0xeeeeee, {rough:0.5});
-  // North crosswalk
-  for (let s = -2; s <= 2; s += 0.8) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 1.5), cwMat);
-    stripe.position.set(s, 0.05, size/2 - 0.5); g.add(stripe);
-  }
-  // South crosswalk
-  for (let s = -2; s <= 2; s += 0.8) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 1.5), cwMat);
-    stripe.position.set(s, 0.05, -(size/2 - 0.5)); g.add(stripe);
-  }
-  // East crosswalk
-  for (let s = -2; s <= 2; s += 0.8) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.09, 0.5), cwMat);
-    stripe.position.set(size/2 - 0.5, 0.05, s); g.add(stripe);
-  }
-  // West crosswalk
-  for (let s = -2; s <= 2; s += 0.8) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.09, 0.5), cwMat);
-    stripe.position.set(-(size/2 - 0.5), 0.05, s); g.add(stripe);
-  }
-  return g;
-}
-
-
-
-
-function createGlassOfficeBuilding(opts) {
-  const o = opts || {};
-  const floors = o.floors || (6 + Math.floor(Math.random() * 8));
-  const w = o.width || 14;
-  const d = o.depth || 12;
-  const floorH = 3.5;
-  const totalH = floors * floorH;
-  const wallT = 0.15;
-  const g = new THREE.Group();
-  g.userData.name = 'Office Building (' + floors + 'F)';
-  g.userData.isBuilding = true; g.userData.isInterior = true; g.userData.isSolid = true;
-  
-  const frameMat = makeMat(0x334455, {rough: 0.3, metal: 0.7});
-  const glassMat = new THREE.MeshPhysicalMaterial({color: 0x88bbdd, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.25, side: THREE.DoubleSide});
-  const floorMat2 = makeMat(0x888888, {rough: 0.6});
-  const carpetMat = makeMat(0x556677, {rough: 0.85});
-  const ceilMat2 = makeMat(0xeeeeee, {rough: 0.9});
-  
-  for (let fl = 0; fl < floors; fl++) {
-    const y = fl * floorH;
-    // Floor slab
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(w+0.3, 0.15, d+0.3), floorMat2);
-    slab.position.y = y+0.075; slab.receiveShadow=true; slab.userData.isSolid=true; g.add(slab);
-    // Carpet
-    const carpet = new THREE.Mesh(new THREE.BoxGeometry(w-0.5, 0.02, d-0.5), carpetMat);
-    carpet.position.y = y+0.16; g.add(carpet);
-    // Glass walls (transparent — see through!)
-    [1,-1].forEach(side => {
-      const gw = new THREE.Mesh(new THREE.PlaneGeometry(w-0.3, floorH-0.3), glassMat);
-      gw.position.set(0, y+floorH/2+0.1, side*(d/2)); if(side<0) gw.rotation.y=Math.PI; g.add(gw);
-    });
-    [1,-1].forEach(side => {
-      const gw = new THREE.Mesh(new THREE.PlaneGeometry(d-0.3, floorH-0.3), glassMat);
-      gw.position.set(side*(w/2), y+floorH/2+0.1, 0); gw.rotation.y=side*Math.PI/2; g.add(gw);
-    });
-    // Frame beams (horizontal at each floor)
-    [d/2,-d/2].forEach(z => {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w+0.3, 0.08, 0.08), frameMat);
-      b.position.set(0, y+floorH, z); g.add(b);
-    });
-    [w/2,-w/2].forEach(x => {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, d+0.3), frameMat);
-      b.position.set(x, y+floorH, 0); g.add(b);
-    });
-    // Corner columns
-    [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx,sz]) => {
-      const col = new THREE.Mesh(new THREE.BoxGeometry(0.2, floorH, 0.2), frameMat);
-      col.position.set(sx*w/2, y+floorH/2, sz*d/2); g.add(col);
-    });
-    // Ceiling
-    const ceil = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), ceilMat2);
-    ceil.position.y = y+floorH-0.04; g.add(ceil);
-    // Interior light
-    const light = new THREE.PointLight(0xfff5e0, 0.6, w*1.5);
-    light.position.set(0, y+floorH-0.2, 0); g.add(light);
-    // Office furniture on each floor
-    const furniture = [
-      {m:'ph_WoodenTable_01', p:[-w*0.25, 0.16, 0], s:1.8},
-      {m:'ph_WoodenTable_01', p:[w*0.25, 0.16, 0], s:1.8},
-      {m:'ph_ArmChair_01', p:[-w*0.25, 0.16, d*0.2], r:Math.PI, s:1.2},
-      {m:'ph_ArmChair_01', p:[w*0.25, 0.16, d*0.2], r:Math.PI, s:1.2},
-      {m:'ph_ArmChair_01', p:[-w*0.25, 0.16, -d*0.2], s:1.2},
-      {m:'ph_ArmChair_01', p:[w*0.25, 0.16, -d*0.2], s:1.2},
-    ];
-    if (fl === 0) {
-      furniture.push({m:'ph_Sofa_01', p:[0, 0.16, d*0.3], r:Math.PI, s:1.5});
-    }
-    furniture.forEach(f => {
-      gltfLoader.load('models/'+f.m+'.glb',(gltf)=>{
-        const obj=gltf.scene; obj.position.set(f.p[0],f.p[1]+y,f.p[2]);
-        if(f.r) obj.rotation.y=f.r; if(f.s) obj.scale.setScalar(f.s);
-        obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
-      },null,()=>{});
-    });
-  }
-  // Entrance
-  const entrGlass = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), glassMat);
-  entrGlass.position.set(0, 1.5, d/2+0.02); g.add(entrGlass);
-  // Stairs (internal)
-  if (floors > 1) {
-    const stairMat = makeMat(0x666666, {rough: 0.6});
-    for (let fl = 0; fl < floors-1; fl++) {
-      const baseY = fl * floorH;
-      const steps = 10;
-      for (let s = 0; s < steps; s++) {
-        const st = new THREE.Mesh(new THREE.BoxGeometry(1, floorH/steps, d*0.4/steps), stairMat);
-        st.position.set(w*0.4, baseY + s*(floorH/steps) + (floorH/steps)/2, d*0.35 - s*(d*0.4/steps));
-        st.userData.isStair=true; st.userData.isSolid=true; g.add(st);
-      }
-    }
-  }
-  return g;
-}
-
-function createStadium(opts) {
-  const o = opts || {};
-  const w = o.width || 40; const d = o.depth || 30; const h = 12;
-  const g = new THREE.Group();
-  g.userData.name = 'Stadium'; g.userData.isBuilding = true;
-  const concreteMat = makeMat(0xaaa898, {rough: 0.7});
-  const seatMat = makeMat(0x2255aa, {rough: 0.5});
-  const fieldMat = makeMat(0x228833, {rough: 0.8});
-  const trackMat = makeMat(0xcc6644, {rough: 0.6});
-  // Outer walls (oval-ish using 4 curved sections)
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(w+2, h, d+2), concreteMat);
-  wall.position.y = h/2; wall.castShadow=true; g.add(wall);
-  // Cut out interior (field)
-  const interior = new THREE.Mesh(new THREE.BoxGeometry(w-4, h+1, d-4), new THREE.MeshBasicMaterial({color:0x000000}));
-  interior.position.y = h/2+2; interior.material.visible = false; // Placeholder
-  // Field (green grass)
-  const field = new THREE.Mesh(new THREE.BoxGeometry(w-10, 0.1, d-10), fieldMat);
-  field.position.y = 0.05; g.add(field);
-  // Track around field
-  const track = new THREE.Mesh(new THREE.BoxGeometry(w-6, 0.08, d-6), trackMat);
-  track.position.y = 0.04; g.add(track);
-  // Seating tiers (4 sides, angled)
-  [[-1,0,d/2-2,w-8,h-2,2,0],
-   [-1,0,-(d/2-2),w-8,h-2,2,0],
-   [-(w/2-2),0,0,2,h-2,d-8,0],
-   [w/2-2,0,0,2,h-2,d-8,0]].forEach(([x,_,z,sw,sh,sd,ry]) => {
-    const tier = new THREE.Mesh(new THREE.BoxGeometry(sw, sh, sd), seatMat);
-    tier.position.set(x === -1 ? 0 : x, sh/2+1, z);
-    tier.receiveShadow=true; g.add(tier);
-  });
-  // Lights (4 tall floodlights)
-  [[-w/2,d/2],[w/2,d/2],[-w/2,-d/2],[w/2,-d/2]].forEach(([x,z]) => {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,h+8), makeMat(0x888888,{rough:0.3,metal:0.6}));
-    pole.position.set(x, (h+8)/2, z); g.add(pole);
-    const light = new THREE.PointLight(0xffffee, 0.5, 60);
-    light.position.set(x, h+8, z); g.add(light);
-  });
-  return g;
-}
-
-function createFence(opts) {
-  const o = opts || {};
-  const length = o.length || 10; const h = o.height || 1.2;
-  const g = new THREE.Group(); g.userData.name = 'Fence';
-  const woodMat = makeMat(0x8B6B4A, {rough: 0.8});
-  // Horizontal rails
-  [h*0.3, h*0.8].forEach(y => {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(length, 0.06, 0.04), woodMat);
-    rail.position.y = y; g.add(rail);
-  });
-  // Vertical pickets
-  const spacing = 0.15;
-  const count = Math.floor(length / spacing);
-  for (let i = 0; i <= count; i++) {
-    const x = -length/2 + i * spacing;
-    const picket = new THREE.Mesh(new THREE.BoxGeometry(0.06, h, 0.03), woodMat);
-    picket.position.set(x, h/2, 0); g.add(picket);
-  }
-  // Posts every 2m
-  for (let x = -length/2; x <= length/2; x += 2) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, h+0.15, 0.08), woodMat);
-    post.position.set(x, (h+0.15)/2, 0); g.add(post);
-  }
-  return g;
-}
-
-function createPark(opts) {
-  const o = opts || {};
-  const size = o.size || 30;
-  const g = new THREE.Group(); g.userData.name = 'Park';
-  // Grass
-  const grass = new THREE.Mesh(new THREE.BoxGeometry(size, 0.08, size), makeMat(0x338833, {rough: 0.85}));
-  grass.position.y = 0.04; grass.receiveShadow=true; g.add(grass);
-  // Walking path (curved)
-  for (let i = -5; i <= 5; i++) {
-    const path = new THREE.Mesh(new THREE.BoxGeometry(2, 0.02, size*0.08), makeMat(0xbbaa88, {rough: 0.7}));
-    path.position.set(i*2, 0.09, i*1.5); g.add(path);
-  }
-  // Pond
-  const pondMat = new THREE.MeshPhysicalMaterial({color:0x2266aa, roughness:0.0, transparent:true, opacity:0.6});
-  const pond = new THREE.Mesh(new THREE.CircleGeometry(4, 24), pondMat);
-  pond.rotation.x = -Math.PI/2; pond.position.set(size*0.2, 0.05, size*0.15); g.add(pond);
-  // Pond edge
-  const edgeMat = makeMat(0x888877, {rough:0.7});
-  const edge = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.2, 24), edgeMat);
-  edge.rotation.x = -Math.PI/2; edge.position.set(size*0.2, 0.06, size*0.15); g.add(edge);
-  // Trees around park
-  for (let i = 0; i < 8; i++) {
-    const angle = (i/8) * Math.PI * 2;
-    const r = size * 0.35;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 3), makeMat(0x5a3a1a, {rough:0.8}));
-    trunk.position.set(Math.cos(angle)*r, 1.5, Math.sin(angle)*r); g.add(trunk);
-    const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 6), makeMat(0x227722, {rough:0.7}));
-    canopy.position.set(Math.cos(angle)*r, 3.8, Math.sin(angle)*r); canopy.castShadow=true; g.add(canopy);
-  }
-  // Benches
-  [[-3,0,0],[3,0,Math.PI],[0,-5,Math.PI/2],[0,5,-Math.PI/2]].forEach(([x,z,ry]) => {
-    gltfLoader.load('models/ph_park_bench.glb',(gltf)=>{
-      const obj=gltf.scene; obj.position.set(x,0.08,z); obj.rotation.y=ry||0; obj.scale.setScalar(1.5);
-      obj.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}}); g.add(obj);
-    },null,()=>{});
-  });
-  return g;
-}
-
-// === PARKING LOT (v218) ===
-function createSidewalk(opts) {
-  opts = opts || {};
-  var length = opts.length || 60, width = opts.width || 2;
-  var g = new THREE.Group();
-  var walk = new THREE.Mesh(
-    new THREE.BoxGeometry(length, 0.15, width),
-    new THREE.MeshStandardMaterial({ color: 0xccccbb, roughness: 0.85 })
-  );
-  walk.position.y = 0.075;
-  walk.receiveShadow = true;
-  g.add(walk);
-  g.userData = { objectType: 'sidewalk', displayName: 'Sidewalk' };
-  return g;
-}
-
-// === BRIDGE/OVERPASS (v218) ===
-function createStreetLamp(opts) {
-  opts = opts || {};
-  var h = opts.height || 5;
-  var g = new THREE.Group();
-  // Pole
-  var pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.08, 0.1, h, 8),
-    new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.3 })
-  );
-  pole.position.y = h/2;
-  pole.castShadow = true;
-  g.add(pole);
-  // Arm
-  var arm = new THREE.Mesh(
-    new THREE.BoxGeometry(1.5, 0.08, 0.08),
-    new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7 })
-  );
-  arm.position.set(0.75, h - 0.2, 0);
-  g.add(arm);
-  // Light housing
-  var housing = new THREE.Mesh(
-    new THREE.BoxGeometry(0.6, 0.15, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.5 })
-  );
-  housing.position.set(1.5, h - 0.3, 0);
-  g.add(housing);
-  // Glow bulb
-  var bulb = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffdd88 })
-  );
-  bulb.position.set(1.5, h - 0.4, 0);
-  g.add(bulb);
-  // Point light
-  var light = new THREE.PointLight(0xffdd88, 0.8, 15);
-  light.position.set(1.5, h - 0.5, 0);
-  light.castShadow = false; // Performance
-  g.add(light);
-  g.userData = { objectType: 'street_lamp', displayName: 'Street Lamp' };
-  return g;
-}
-
-// === DUMPSTER (v218) ===
-function createBench(opts) {
-  var g = new THREE.Group();
-  var seat = new THREE.Mesh(
-    new THREE.BoxGeometry(1.5, 0.08, 0.4),
-    new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 })
-  );
-  seat.position.set(0, 0.45, 0);
-  g.add(seat);
-  var back = new THREE.Mesh(
-    new THREE.BoxGeometry(1.5, 0.5, 0.06),
-    new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 })
-  );
-  back.position.set(0, 0.7, -0.17);
-  g.add(back);
-  for (var ls = -0.6; ls <= 0.6; ls += 1.2) {
-    var leg = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 0.45, 0.35),
-      new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.5 })
-    );
-    leg.position.set(ls, 0.225, 0);
-    g.add(leg);
-  }
-  g.userData = { objectType: 'bench', displayName: 'Park Bench' };
-  return g;
-}
-
-
-
-function createModernHouse(opts) {
-  const o = opts || {};
-  const w = o.width || 8;
-  const d = o.depth || 8;
-  const h = o.height || 3.2;
-  const floors = o.floors || 1;
-  const wallT = 0.18;
-  
-  const g = new THREE.Group();
-  g.userData.isInterior = true;
-  g.userData.isModernHouse = true;
-  g.userData.interiorBounds = { width: w, depth: d, height: h * floors, floors };
-  g.userData.name = 'Modern House';
-  
-  const extWallMat = makeMat(0xd0cec5, {rough: 0.6});
-  const intWallMat = makeMat(0xf0ece3, {rough: 0.85});
-  const floorMat = makeMat(0x8B6B4A, {rough: 0.75});
-  const ceilMat = makeMat(0xf5f2ee, {rough: 0.9});
-  const glassMat = new THREE.MeshPhysicalMaterial({color:0x88ccee, roughness:0.05, metalness:0.2, transparent:true, opacity:0.3});
-  const trimMat = makeMat(0x333333, {rough: 0.4});
-  const roofMat = makeMat(0x444444, {rough: 0.7});
-  const stairMat = makeMat(0x5a3a1a, {rough: 0.8});
-  
-  for (let fl = 0; fl < floors; fl++) {
-    const by = fl * h;
-    
-    // Floor slab
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2+0.2, 0.15, d+wallT*2+0.2), fl===0 ? makeMat(0x888888,{rough:0.7}) : floorMat);
-    slab.position.set(0, by+0.075, 0);
-    slab.receiveShadow = true; slab.userData.isSolid = true; g.add(slab);
-    
-    // Interior hardwood
-    const ifl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), floorMat);
-    ifl.position.set(0, by+0.165, 0); ifl.receiveShadow = true; g.add(ifl);
-    
-    // Front wall with door (ground floor only)
-    if (fl === 0) {
-      const dw = 1.2, dh = 2.2;
-      const halfSide = (w - dw) / 2;
-      // Left of door
-      const fL = new THREE.Mesh(new THREE.BoxGeometry(halfSide, h, wallT), extWallMat);
-      fL.position.set(-(dw/2 + halfSide/2), by+h/2, d/2+wallT/2);
-      fL.castShadow=true; fL.userData.isSolid=true; g.add(fL);
-      // Right of door
-      const fR = new THREE.Mesh(new THREE.BoxGeometry(halfSide, h, wallT), extWallMat);
-      fR.position.set(dw/2 + halfSide/2, by+h/2, d/2+wallT/2);
-      fR.castShadow=true; fR.userData.isSolid=true; g.add(fR);
-      // Above door
-      const fT = new THREE.Mesh(new THREE.BoxGeometry(dw, h-dh, wallT), extWallMat);
-      fT.position.set(0, by+dh+(h-dh)/2, d/2+wallT/2);
-      fT.userData.isSolid=true; g.add(fT);
-      // Door frame trim
-      [[-(dw/2), dh/2, 0.06, dh, 0.04],[dw/2, dh/2, 0.06, dh, 0.04],[0, dh, dw+0.12, 0.06, 0.04]].forEach(([x,y,sx,sy,sz]) => {
-        const fr = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), trimMat);
-        fr.position.set(x, by+y, d/2+wallT/2); g.add(fr);
-      });
-    } else {
-      const fw = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), extWallMat);
-      fw.position.set(0, by+h/2, d/2+wallT/2); fw.castShadow=true; fw.userData.isSolid=true; g.add(fw);
-    }
-    
-    // Back wall
-    const bw = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), extWallMat);
-    bw.position.set(0, by+h/2, -(d/2+wallT/2)); bw.castShadow=true; bw.userData.isSolid=true; g.add(bw);
-    // Back picture windows
-    [-w*0.25, w*0.25].forEach(x => {
-      const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.2), glassMat);
-      gl.position.set(x, by+h*0.55, -(d/2+wallT+0.01)); g.add(gl);
-      const wf = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.3, 0.03), trimMat);
-      wf.position.set(x, by+h*0.55, -(d/2+wallT/2)); g.add(wf);
-    });
-    
-    // Side walls with windows
-    [-1, 1].forEach(side => {
-      const sw = new THREE.Mesh(new THREE.BoxGeometry(wallT, h, d), extWallMat);
-      sw.position.set(side*(w/2+wallT/2), by+h/2, 0); sw.castShadow=true; sw.userData.isSolid=true; g.add(sw);
-      const gl = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.0), glassMat);
-      gl.position.set(side*(w/2+wallT+0.01), by+h*0.55, 0); gl.rotation.y = side*Math.PI/2; g.add(gl);
-    });
-    
-    // Interior wall panels
-    [[0, h/2, -(d/2-0.01), w, h, 0],[0, h/2, d/2-0.01, w, h, Math.PI],
-     [-(w/2-0.01), h/2, 0, d, h, Math.PI/2],[w/2-0.01, h/2, 0, d, h, -Math.PI/2]].forEach(([x,y,z,sx,sy,ry]) => {
-      const p = new THREE.Mesh(new THREE.PlaneGeometry(sx,sy), intWallMat);
-      p.position.set(x, by+y, z); p.rotation.y = ry; p.receiveShadow=true; g.add(p);
-    });
-    
-    // Ceiling
-    const ceil = new THREE.Mesh(new THREE.BoxGeometry(w+wallT*2, 0.12, d+wallT*2), fl===floors-1 ? roofMat : ceilMat);
-    ceil.position.set(0, by+h, 0); ceil.receiveShadow=true; ceil.userData.isSolid=true; g.add(ceil);
-    
-    // Lighting
-    const cL = new THREE.PointLight(0xfff0dd, 1.2, w*2);
-    cL.position.set(0, by+h-0.2, 0); g.add(cL);
-    const fL = new THREE.PointLight(0xffe8cc, 0.4, w*1.5);
-    fL.position.set(w*0.25, by+h-0.2, d*0.25); g.add(fL);
-    
-    // === HD FURNITURE ===
-    const furniture = [];
-    if (fl === 0) {
-      furniture.push({m:'ph_Sofa_01', p:[-w*0.22,0.18,d*0.15], r:Math.PI, s:1.8});
-      furniture.push({m:'ph_ArmChair_01', p:[w*0.25,0.18,d*0.2], r:-Math.PI/4, s:1.5});
-      furniture.push({m:'ph_CoffeeTable_01', p:[0,0.18,d*0.15], s:1.5});
-      furniture.push({m:'ph_Television_01', p:[0,0.9,-d*0.35], s:2.0});
-      furniture.push({m:'ph_Shelf_01', p:[-w*0.35,0.18,-d*0.35], s:1.5});
-      furniture.push({m:'ph_electric_stove', p:[w*0.3,0.18,-d*0.35], s:1.0});
-      furniture.push({m:'ph_bar_chair_round_01', p:[w*0.1,0.18,-d*0.15], s:1.2});
-      furniture.push({m:'ph_WoodenTable_01', p:[-w*0.25,0.18,-d*0.2], s:2.0});
-      furniture.push({m:'ph_WoodenChair_01', p:[-w*0.35,0.18,-d*0.1], r:Math.PI/2, s:1.3});
-      furniture.push({m:'ph_WoodenChair_01', p:[-w*0.15,0.18,-d*0.1], r:-Math.PI/2, s:1.3});
-      furniture.push({m:'ph_alarm_clock_01', p:[w*0.35,0.85,d*0.1], s:0.8});
-    }
-    if (fl === 1) {
-      furniture.push({m:'ph_GothicBed_01', p:[-w*0.2,0.18,0], s:1.8});
-      furniture.push({m:'ph_drawer_cabinet', p:[w*0.3,0.18,-d*0.35], s:1.3});
-      furniture.push({m:'ph_desk_lamp_arm_01', p:[w*0.3,0.9,-d*0.35], s:0.8});
-      furniture.push({m:'ph_Rockingchair_01', p:[w*0.25,0.18,d*0.2], r:-Math.PI/3, s:1.3});
-      furniture.push({m:'ph_GothicCabinet_01', p:[-w*0.35,0.18,-d*0.35], s:1.2});
-    }
-    
-    furniture.forEach(f => {
-      gltfLoader.load('models/' + f.m + '.glb', (gltf) => {
-        const obj = gltf.scene;
-        obj.position.set(f.p[0], f.p[1]+by, f.p[2]);
-        if (f.r) obj.rotation.y = f.r;
-        if (f.s) obj.scale.setScalar(f.s);
-        obj.traverse(c => { if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}});
-        g.add(obj);
-      }, null, (e) => console.warn('Furniture fail:', f.m, e));
-    });
-  }
-  
-  // Stairs
-  if (floors > 1) {
-    const sw = 1.0, steps = 12, stepH = h/steps, stepD = (d*0.5)/steps;
-    for (let s = 0; s < steps; s++) {
-      const st = new THREE.Mesh(new THREE.BoxGeometry(sw, stepH, stepD+0.02), stairMat);
-      st.position.set(w/2-sw/2-0.3, s*stepH+stepH/2, d/2-0.8-s*stepD);
-      st.receiveShadow=true; st.userData.isSolid=true; st.userData.isStair=true; g.add(st);
-    }
-  }
-  
-  // Front porch
-  const porch = new THREE.Mesh(new THREE.BoxGeometry(w*0.6, 0.1, 1.0), makeMat(0x777777,{rough:0.7}));
-  porch.position.set(0, 0.05, d/2+wallT+0.5); porch.receiveShadow=true; porch.userData.isSolid=true; g.add(porch);
-  
-  return g;
-}
-
-
-function createInteriorShop(opts) {
-  const o = opts || {};
-  const g = createInteriorHouse({ width: o.width || 6, depth: o.depth || 5, height: 3.5, floors: 1, color: o.color || 0x7a6a4a });
-  // Add shop counter
-  const woodMat = makeMat(0x5a3a1a, {rough: 0.9});
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 0.5), woodMat);
-  counter.position.set(0, 0.6, -1);
-  counter.castShadow = true;
-  g.add(counter);
-  // Add shelves on walls
-  [-1.5, 0, 1.5].forEach(x => {
-    const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.3), woodMat);
-    shelf.position.set(x, 1.8, -(o.depth || 5)/2 + 0.2);
-    g.add(shelf);
-  });
-  g.userData.name = 'shop';
-  return g;
-}
-
-function createInteriorTavern(opts) {
-  const o = opts || {};
-  const g = createInteriorHouse({ width: o.width || 8, depth: o.depth || 6, height: 3.5, floors: 2, color: o.color || 0x6a4a2a });
-  const woodMat = makeMat(0x5a3a1a, {rough: 0.9});
-  // Bar counter
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(3, 1.1, 0.5), woodMat);
-  bar.position.set(-1, 0.65, -(o.depth||6)/2 + 0.8);
-  bar.castShadow = true; g.add(bar);
-  // Bar stools
-  [-2, -1, 0].forEach(x => {
-    const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.6, 8), woodMat);
-    stool.position.set(x, 0.4, -(o.depth||6)/2 + 1.4);
-    g.add(stool);
-  });
-  // Tables with chairs
-  [[-1.5, 1.5], [1.5, 1.5], [1.5, -0.5]].forEach(([tx, tz]) => {
-    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.35, 0.05, 8), woodMat);
-    table.position.set(tx, 0.75, tz);
-    g.add(table);
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.7, 6), woodMat);
-    leg.position.set(tx, 0.35, tz);
-    g.add(leg);
-  });
-  g.userData.name = 'tavern';
-  return g;
-}
-
-function createCastle() {
-  const g = new THREE.Group();
-  const stoneMat = makeMat(0x8a8a8f, {rough:0.75});
-  const darkStone = makeMat(0x666670, {rough:0.8});
-  const roofMat = makeMat(0x7a2020, {rough:0.6});
-  const woodMat = makeMat(0x5a3a1a, {rough:0.9});
-  // Base/foundation
-  const base = new THREE.Mesh(new THREE.BoxGeometry(7,0.4,7), darkStone);
-  base.position.y = 0.2; base.receiveShadow=true; g.add(base);
-  // Walls (4 sides, individual for detail)
-  [[-3.3,0,0,'x'],[3.3,0,0,'x'],[0,0,-3.3,'z'],[0,0,3.3,'z']].forEach(([x,y,z,axis]) => {
-    const w = axis==='x' ? new THREE.BoxGeometry(0.4,3.2,6.2) : new THREE.BoxGeometry(6.2,3.2,0.4);
-    const wall = new THREE.Mesh(w, stoneMat); wall.position.set(x,1.8,z); wall.castShadow=true; wall.receiveShadow=true; g.add(wall);
-  });
-  // Inner courtyard floor
-  const court = new THREE.Mesh(new THREE.PlaneGeometry(5.5,5.5), makeMat(0x555550, {rough:0.95}));
-  court.rotation.x=-Math.PI/2; court.position.y=0.42; court.receiveShadow=true; g.add(court);
-  // 4 corner towers (high-poly cylinders)
-  [[-3.3,-3.3],[3.3,-3.3],[3.3,3.3],[-3.3,3.3]].forEach(([x,z]) => {
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.8,0.9,5.5,24), stoneMat);
-    tower.position.set(x,2.75,z); tower.castShadow=true; tower.receiveShadow=true; g.add(tower);
-    // Tower cap ring
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.95,0.95,0.2,24), darkStone);
-    ring.position.set(x,5.55,z); g.add(ring);
-    // Conical roof (smooth)
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.1,2,24), roofMat);
-    roof.position.set(x,6.65,z); roof.castShadow=true; g.add(roof);
-    // Tower battlements
-    for (let b=0;b<8;b++) {
-      const a=b/8*Math.PI*2;
-      const bm = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.45,0.25), stoneMat);
-      bm.position.set(x+Math.cos(a)*0.9,5.75,z+Math.sin(a)*0.9); bm.castShadow=true; g.add(bm);
-    }
-  });
-  // Wall battlements (merlons)
-  for (let i=-2;i<=2;i++) {
-    [3.3,-3.3].forEach(z => {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.6,0.5), stoneMat);
-      b.position.set(i*1.3,3.6,z); b.castShadow=true; g.add(b);
-    });
-    [-3.3,3.3].forEach(x => {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.6,0.5), stoneMat);
-      b.position.set(x,3.6,i*1.3); b.castShadow=true; g.add(b);
-    });
-  }
-  // Gatehouse (front)
-  const gh = new THREE.Mesh(new THREE.BoxGeometry(2,4,1.2), stoneMat);
-  gh.position.set(0,2,3.6); gh.castShadow=true; g.add(gh);
-  // Gate arch (dark opening)
-  const gateOpen = new THREE.Mesh(new THREE.BoxGeometry(1,2.2,1.3), makeMat(0x111111));
-  gateOpen.position.set(0,1.1,3.6); g.add(gateOpen);
-  // Portcullis bars
-  for (let i=-2;i<=2;i++) {
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,2.2,6), makeMat(0x444444,{metal:0.8}));
-    bar.position.set(i*0.2,1.1,3.6); g.add(bar);
-  }
-  // Keep (central tower)
-  const keep = new THREE.Mesh(new THREE.BoxGeometry(2.5,4.5,2.5), stoneMat);
-  keep.position.set(0,2.65,0); keep.castShadow=true; keep.receiveShadow=true; g.add(keep);
-  const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(2,1.5,4), roofMat);
-  keepRoof.position.set(0,5.65,0); keepRoof.rotation.y=Math.PI/4; keepRoof.castShadow=true; g.add(keepRoof);
-  // Windows on keep
-  [[-0.8,3.5,1.26],[0.8,3.5,1.26],[-0.8,3.5,-1.26],[0.8,3.5,-1.26]].forEach(([x,y,z]) => {
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.25,0.5), makeMat(0xaaaa55,{rough:0.1}));
-    win.position.set(x,y,z); win.lookAt(x*2,y,z*2); g.add(win);
-  });
-  // Wooden door
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.2,0.08), woodMat);
-  door.position.set(0,1,1.3); g.add(door);
-  return g;
-}
-
-function createRoad(length, dir) {
-  const l = length || 20;
-  const geo = new THREE.PlaneGeometry(2.5, l);
-  const mat = makeMat(0x333333, {rough:0.95});
-  const road = new THREE.Mesh(geo, mat);
-  road.rotation.x = -Math.PI/2;
-  road.position.y = 0.03;
-  road.receiveShadow = true;
-  // Center line
-  const line = new THREE.Mesh(new THREE.PlaneGeometry(0.08, l), makeMat(0xcccc44));
-  line.rotation.x = -Math.PI/2;
-  line.position.y = 0.04;
-  const g = new THREE.Group();
-  g.add(road); g.add(line);
-  if (dir === 'x') g.rotation.y = Math.PI/2;
-  return g;
-}
-
-function createAvatar(gender) {
-  const g = new THREE.Group();
-  const skinTones = [0xc68642, 0x8d5524, 0xe0ac69, 0xf1c27d, 0x6b4226, 0xffdbac, 0xd2946b];
-  const skinColor = skinTones[Math.floor(Math.random()*skinTones.length)];
-  const skinMat = makeMat(skinColor, {rough:0.65});
-  const isFemale = gender === 'f';
-  const clothColor = isFemale ? [0x4444aa, 0xaa2244, 0x44aa88, 0x8844aa][Math.floor(Math.random()*4)] : [0x2a5a2a, 0x3a3a6a, 0x5a3a2a, 0x333344][Math.floor(Math.random()*4)];
-  const clothMat = makeMat(clothColor, {rough:0.8});
-  const pantsMat = makeMat(0x2a2a3a, {rough:0.85});
-  // Torso
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(isFemale?0.18:0.22, isFemale?0.15:0.18, 0.6, 12), clothMat);
-  torso.position.y = 1.0; torso.castShadow=true; g.add(torso);
-  // Shoulders
-  const shoulders = new THREE.Mesh(new THREE.SphereGeometry(isFemale?0.2:0.25, 12, 8), clothMat);
-  shoulders.position.y = 1.3; shoulders.scale.set(1.2, 0.5, 0.8); g.add(shoulders);
-  // Hips
-  const hips = new THREE.Mesh(new THREE.CylinderGeometry(isFemale?0.2:0.18, isFemale?0.18:0.16, 0.15, 12), pantsMat);
-  hips.position.y = 0.65; g.add(hips);
-  // Neck
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 10), skinMat);
-  neck.position.y = 1.38; g.add(neck);
-  // Head (slightly oval)
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 16), skinMat);
-  head.position.y = 1.55; head.scale.set(1, 1.1, 0.95); head.castShadow=true; g.add(head);
-  // Eyes
-  const eyeMat = makeMat(0xffffff);
-  const pupilMat = makeMat(0x222222);
-  [-0.06, 0.06].forEach(x => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), eyeMat);
-    eye.position.set(x, 1.57, 0.15); g.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 8), pupilMat);
-    pupil.position.set(x, 1.57, 0.17); g.add(pupil);
-  });
-  // Nose
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), skinMat);
-  nose.position.set(0, 1.52, 0.17); nose.scale.set(0.7, 1, 1); g.add(nose);
-  // Mouth
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.012, 0.02), makeMat(0x994444));
-  mouth.position.set(0, 1.47, 0.16); g.add(mouth);
-  // Hair
-  const hairColors = [0x1a1a1a, 0x3a2a1a, 0x8B6914, 0xaa4444, 0x222222, 0x664422];
-  const hairMat = makeMat(hairColors[Math.floor(Math.random()*hairColors.length)]);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), hairMat);
-  hair.position.y = 1.6; hair.scale.set(1.05, isFemale?1.15:0.85, 1.05); g.add(hair);
-  if (isFemale && Math.random()>0.3) { // Long hair
-    const long = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.06, 0.5, 10), hairMat);
-    long.position.set(0, 1.3, -0.08); g.add(long);
-  }
-  // Ears
-  [-0.18, 0.18].forEach(x => {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), skinMat);
-    ear.position.set(x, 1.55, 0); g.add(ear);
-  });
-  // Arms (upper + lower)
-  [-1, 1].forEach(side => {
-    const x = side * 0.28;
-    const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.35, 10), side===-1?clothMat:clothMat);
-    upperArm.position.set(x, 1.1, 0); upperArm.rotation.z = side*0.15; upperArm.castShadow=true; g.add(upperArm);
-    const lowerArm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.3, 10), skinMat);
-    lowerArm.position.set(x*1.05, 0.8, 0); lowerArm.castShadow=true; g.add(lowerArm);
-    // Hand
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), skinMat);
-    hand.position.set(x*1.05, 0.63, 0); g.add(hand);
-  });
-  // Legs (upper + lower)
-  [-0.09, 0.09].forEach(x => {
-    const upperLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.4, 10), pantsMat);
-    upperLeg.position.set(x, 0.43, 0); upperLeg.castShadow=true; g.add(upperLeg);
-    const lowerLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.35, 10), pantsMat);
-    lowerLeg.position.set(x, 0.1, 0); lowerLeg.castShadow=true; g.add(lowerLeg);
-    // Shoe
-    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.14), makeMat(0x222222, {rough:0.7}));
-    shoe.position.set(x, -0.02, 0.02); g.add(shoe);
-  });
-  return g;
-}
-
-function createSword() {
-  const g = new THREE.Group();
-  const metalMat = makeMat(0xccccdd, {rough:0.15,metal:0.9});
-  const darkMetal = makeMat(0x555566, {rough:0.3,metal:0.8});
-  const leatherMat = makeMat(0x5a3a1a, {rough:0.9});
-  const goldMat = makeMat(0xccaa22, {rough:0.2,metal:0.7});
-  // Blade
-  const bladeGeo = new THREE.BoxGeometry(0.06, 1.0, 0.015);
-  const blade = new THREE.Mesh(bladeGeo, metalMat);
-  blade.position.y = 0.9; blade.castShadow=true; g.add(blade);
-  // Blade edge taper (triangular tip)
-  const tipGeo = new THREE.ConeGeometry(0.04, 0.2, 4);
-  const tip = new THREE.Mesh(tipGeo, metalMat);
-  tip.position.y = 1.5; tip.rotation.y = Math.PI/4; g.add(tip);
-  // Fuller (groove in blade)
-  const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.7, 0.02), darkMetal);
-  fuller.position.set(0, 0.85, 0); g.add(fuller);
-  // Crossguard
-  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.06), goldMat);
-  guard.position.y = 0.38; guard.castShadow=true; g.add(guard);
-  // Guard ends (decorative)
-  [-0.15, 0.15].forEach(x => {
-    const end = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), goldMat);
-    end.position.set(x, 0.38, 0); g.add(end);
-  });
-  // Grip (wrapped leather)
-  for (let i=0;i<5;i++) {
-    const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.04, 8), i%2===0?leatherMat:makeMat(0x4a2a10,{rough:0.9}));
-    wrap.position.y = 0.17+i*0.04; g.add(wrap);
-  }
-  // Pommel
-  const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 10), goldMat);
-  pommel.position.y = 0.02; g.add(pommel);
-  return g;
-}
-
-// === WATER PRESETS (Gerstner Wave System) ===
-const WATER_PRESETS = {
-  tropical: {
-    color: new THREE.Color(0x0099bb), deepColor: new THREE.Color(0x005577),
-    opacity: 0.88, waveA: [1.0, 0.3, 0.10, 9.0], waveB: [0.3, 1.0, 0.07, 6.0], waveC: [0.7, 0.7, 0.04, 13.0],
-    foamIntensity: 0.2, specularPower: 90.0, fresnelPower: 2.5
-  },
-  storm: {
-    color: new THREE.Color(0x1a3a4a), deepColor: new THREE.Color(0x0a1a24),
-    opacity: 0.92, waveA: [1.0, 0.5, 0.45, 4.0], waveB: [0.7, 1.0, 0.35, 3.0], waveC: [0.5, 0.3, 0.25, 2.5],
-    foamIntensity: 0.7, specularPower: 30.0, fresnelPower: 1.5
-  },
-  hurricane: {
-    color: new THREE.Color(0x0d2a3a), deepColor: new THREE.Color(0x051218),
-    opacity: 0.95, waveA: [1.0, 0.8, 0.65, 3.0], waveB: [0.8, 1.0, 0.55, 2.5], waveC: [0.6, 0.4, 0.45, 2.0],
-    foamIntensity: 0.9, specularPower: 15.0, fresnelPower: 1.2
-  },
-  lake: {
-    color: new THREE.Color(0x2e6e7e), deepColor: new THREE.Color(0x1a4050),
-    opacity: 0.82, waveA: [1.0, 0.0, 0.04, 14.0], waveB: [0.0, 1.0, 0.03, 10.0], waveC: [0.5, 0.5, 0.02, 18.0],
-    foamIntensity: 0.1, specularPower: 100.0, fresnelPower: 3.0
-  },
-  ocean: {
-    color: new THREE.Color(0x006699), deepColor: new THREE.Color(0x002244),
-    opacity: 0.92, waveA: [1.0, 0.2, 0.18, 7.0], waveB: [0.5, 1.0, 0.12, 5.5], waveC: [0.8, 0.4, 0.08, 10.0],
-    foamIntensity: 0.3, specularPower: 80.0, fresnelPower: 3.0
-  },
-  swamp: {
-    color: new THREE.Color(0x3a5a1a), deepColor: new THREE.Color(0x1a3008),
-    opacity: 0.95, waveA: [1.0, 0.0, 0.015, 20.0], waveB: [0.0, 1.0, 0.01, 15.0], waveC: [0.5, 0.5, 0.005, 25.0],
-    foamIntensity: 0.05, specularPower: 20.0, fresnelPower: 1.0
-  },
-  river: {
-    color: new THREE.Color(0x2a7a8a), deepColor: new THREE.Color(0x1a4a5a),
-    opacity: 0.8, waveA: [1.0, 0.0, 0.1, 5.0], waveB: [0.8, 0.2, 0.06, 3.0], waveC: [0.5, 0.1, 0.04, 8.0],
-    foamIntensity: 0.35, specularPower: 70.0, fresnelPower: 2.0
-  },
-  arctic: {
-    color: new THREE.Color(0x6abed8), deepColor: new THREE.Color(0x2a5a7a),
-    opacity: 0.85, waveA: [1.0, 0.3, 0.08, 10.0], waveB: [0.3, 1.0, 0.05, 7.0], waveC: [0.6, 0.6, 0.03, 14.0],
-    foamIntensity: 0.25, specularPower: 120.0, fresnelPower: 3.5
-  },
-  calm: {
-    color: new THREE.Color(0x4dd8f0), deepColor: new THREE.Color(0x29a8cc),
-    opacity: 0.78, waveA: [1.0, 0.2, 0.012, 20.0], waveB: [0.2, 1.0, 0.008, 15.0], waveC: [0.5, 0.5, 0.004, 25.0],
-    foamIntensity: 0.03, specularPower: 140.0, fresnelPower: 2.8
-  }
-};
-
-function createGerstnerWaterMaterial(preset) {
-  const p = WATER_PRESETS[preset] || WATER_PRESETS.ocean;
-  
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      time: { value: 0 },
-      waveA: { value: new THREE.Vector4(p.waveA[0], p.waveA[1], p.waveA[2], p.waveA[3]) },
-      waveB: { value: new THREE.Vector4(p.waveB[0], p.waveB[1], p.waveB[2], p.waveB[3]) },
-      waveC: { value: new THREE.Vector4(p.waveC[0], p.waveC[1], p.waveC[2], p.waveC[3]) },
-      waterColor: { value: p.color },
-      deepColor: { value: p.deepColor },
-      foamIntensity: { value: p.foamIntensity },
-      specularPower: { value: p.specularPower },
-      fresnelPower: { value: p.fresnelPower },
-      sunDirection: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
-      sunColor: { value: new THREE.Color(0xffeedd) },
-      opacity: { value: p.opacity },
-      cameraPos: { value: new THREE.Vector3() }
-    },
-    vertexShader: `
-      uniform float time;
-      uniform vec4 waveA, waveB, waveC;
-      varying vec3 vWorldPos;
-      varying vec3 vNormal;
-      varying float vHeight;
-      varying vec2 vUv;
-      
-      vec3 gerstnerWave(vec4 wave, vec3 p, inout vec3 tangent, inout vec3 binormal) {
-        float steepness = wave.z;
-        float wavelength = wave.w;
-        float k = 6.28318 / wavelength;
-        float c = sqrt(9.8 / k);
-        vec2 d = normalize(wave.xy);
-        float f = k * (dot(d, p.xz) - c * time);
-        float a = steepness / k;
-        tangent += vec3(-d.x * d.x * steepness * sin(f), d.x * steepness * cos(f), -d.x * d.y * steepness * sin(f));
-        binormal += vec3(-d.x * d.y * steepness * sin(f), d.y * steepness * cos(f), -d.y * d.y * steepness * sin(f));
-        return vec3(d.x * a * cos(f), a * sin(f), d.y * a * cos(f));
-      }
-      
-      void main() {
-        vUv = uv;
-        vec3 p = position;
-        vec3 tangent = vec3(1.0, 0.0, 0.0);
-        vec3 binormal = vec3(0.0, 0.0, 1.0);
-        p += gerstnerWave(waveA, position, tangent, binormal);
-        p += gerstnerWave(waveB, position, tangent, binormal);
-        p += gerstnerWave(waveC, position, tangent, binormal);
-        vHeight = p.y;
-        vNormal = normalize(cross(binormal, tangent));
-        vec4 worldPos = modelMatrix * vec4(p, 1.0);
-        vWorldPos = worldPos.xyz;
-        gl_Position = projectionMatrix * viewMatrix * worldPos;
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 waterColor;
-      uniform vec3 deepColor;
-      uniform vec3 sunDirection;
-      uniform vec3 sunColor;
-      uniform float foamIntensity;
-      uniform float specularPower;
-      uniform float fresnelPower;
-      uniform float opacity;
-      uniform float time;
-      uniform vec3 cameraPos;
-      varying vec3 vWorldPos;
-      varying vec3 vNormal;
-      varying float vHeight;
-      varying vec2 vUv;
-      
-      // Simple hash for procedural noise
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-      }
-      float noise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        f = f * f * (3.0 - 2.0 * f);
-        float a = hash(i);
-        float b = hash(i + vec2(1.0, 0.0));
-        float c = hash(i + vec2(0.0, 1.0));
-        float d = hash(i + vec2(1.0, 1.0));
-        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-      }
-      
-      void main() {
-        vec3 normal = normalize(vNormal);
-        vec3 viewDir = normalize(cameraPos - vWorldPos);
-        float NdotV = max(dot(normal, viewDir), 0.0);
-        
-        // Fresnel — Schlick approximation, edges more reflective
-        float fresnel = pow(1.0 - NdotV, fresnelPower);
-        fresnel = mix(0.04, 1.0, fresnel); // F0 = 0.04 for water
-        
-        // Depth-based color mixing
-        float depthFactor = smoothstep(-0.4, 0.4, vHeight);
-        vec3 baseColor = mix(deepColor, waterColor, depthFactor);
-        
-        // Subsurface scattering — light passing through wave peaks
-        float sss = pow(max(dot(viewDir, -sunDirection), 0.0), 4.0) * max(vHeight, 0.0) * 0.8;
-        vec3 sssColor = vec3(0.1, 0.7, 0.6) * sss;
-        
-        // Procedural foam on wave peaks + noise pattern
-        float foamNoise = noise(vWorldPos.xz * 2.0 + time * 0.3) * 0.5 + 
-                          noise(vWorldPos.xz * 5.0 - time * 0.5) * 0.3;
-        float foam = smoothstep(0.08, 0.3, vHeight) * foamIntensity * (0.5 + foamNoise);
-        foam += smoothstep(0.25, 0.4, vHeight) * foamIntensity * 0.5; // Extra foam on peaks
-        vec3 foamColor = vec3(0.85, 0.9, 0.95);
-        
-        // Specular highlight (sun reflection) — dual lobe
-        vec3 halfDir = normalize(sunDirection + viewDir);
-        float spec1 = pow(max(dot(normal, halfDir), 0.0), specularPower);
-        float spec2 = pow(max(dot(normal, halfDir), 0.0), specularPower * 0.25) * 0.15; // Broad lobe
-        vec3 specular = sunColor * (spec1 * 0.8 + spec2);
-        
-        // Sky reflection (fake environment)
-        vec3 reflectDir = reflect(-viewDir, normal);
-        float skyGrad = max(reflectDir.y, 0.0);
-        vec3 skyReflection = mix(vec3(0.2, 0.4, 0.65), vec3(0.3, 0.55, 0.9), skyGrad);
-        // Sun hotspot in reflection
-        float sunRefl = pow(max(dot(reflectDir, sunDirection), 0.0), 256.0) * 2.0;
-        skyReflection += sunColor * sunRefl;
-        
-        // Diffuse lighting
-        float diffuse = max(dot(normal, sunDirection), 0.0) * 0.3 + 0.7;
-        
-        // Combine: base water + subsurface
-        vec3 waterBody = baseColor * diffuse + sssColor;
-        waterBody = mix(waterBody, foamColor, clamp(foam, 0.0, 1.0));
-        
-        // Blend between water body and sky reflection via fresnel
-        vec3 finalColor = mix(waterBody, skyReflection, fresnel * 0.35) + specular;
-        
-        // Slight blue tint at distance (very subtle - don't darken the water)
-        float dist = length(cameraPos - vWorldPos);
-        float fogFactor = 1.0 - exp(-dist * 0.001);
-        finalColor = mix(finalColor, vec3(0.35, 0.60, 0.85), fogFactor * 0.08);
-        
-        gl_FragColor = vec4(finalColor, opacity + foam * 0.2);
-      }
-    `,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-}
-
-let currentWaterPreset = 'ocean';
-
-function createWater(size, preset) {
-  const s = size || 10;
-  const segs = Math.min(Math.max(Math.floor(s * 2), 64), 256);
-  const geo = new THREE.PlaneGeometry(s, s, segs, segs);
-  const presetName = preset || (s >= 50 ? 'ocean' : 'lake');
-  const mat = createGerstnerWaterMaterial(presetName);
-  const water = new THREE.Mesh(geo, mat);
-  water.rotation.x = -Math.PI / 2;
-  water.position.y = -0.3;
-  water.receiveShadow = true;
-  water.userData.isWater = true;
-  water.userData.isGerstnerWater = true;
-  water.userData.isAnimatedWater = true;
-  water.userData.isSolid = true;
-  water.userData.waterPreset = presetName;
-  currentWaterPreset = presetName;
-  return water;
-}
-
-// Weather
-function createRain() {
-  const count = 10000;
-  const geo = new THREE.BufferGeometry();
-  const pos = new Float32Array(count*3);
-  for (let i=0;i<count;i++) { pos[i*3]=(Math.random()-0.5)*150; pos[i*3+1]=Math.random()*28; pos[i*3+2]=(Math.random()-0.5)*150; }
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  return new THREE.Points(geo, new THREE.PointsMaterial({color:0x99bbff, size:0.06, transparent:true, opacity:0.5}));
-}
-
-// === RAIN PUDDLES ===
-let _rainPuddles = [];
-function createRainPuddles(count = 15) {
-  clearRainPuddles();
-  const cam = window._cam || camera;
-  for (let i = 0; i < count; i++) {
-    const geo = new THREE.CircleGeometry(1.5 + Math.random() * 3, 16);
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x335577, transparent: true, opacity: 0.4,
-      roughness: 0.05, metalness: 0.9, side: THREE.DoubleSide
-    });
-    const puddle = new THREE.Mesh(geo, mat);
-    const px = (Math.random() - 0.5) * 80;
-    const pz = (Math.random() - 0.5) * 80;
-    const py = (typeof _getTerrainY === "function") ? _getTerrainY(px, pz) : 0;
-    puddle.position.set(px, py + 0.02, pz);
-    puddle.rotation.x = -Math.PI / 2;
-    puddle.userData.isPuddle = true;
-    scene.add(puddle);
-    _rainPuddles.push(puddle);
-  }
-}
-function clearRainPuddles() {
-  for (const p of _rainPuddles) { scene.remove(p); p.geometry.dispose(); p.material.dispose(); }
-  _rainPuddles = [];
-}
-function updateRainPuddles(dt) {
-  for (const p of _rainPuddles) {
-    // Ripple effect - subtle scale pulse
-    const t = Date.now() * 0.001 + p.position.x;
-    p.material.opacity = 0.3 + Math.sin(t * 2) * 0.1;
-  }
-}
-
-
-
-function createSnow() {
-  const count = 6000;
-  const geo = new THREE.BufferGeometry();
-  const pos = new Float32Array(count*3);
-  for (let i=0;i<count;i++) { pos[i*3]=(Math.random()-0.5)*150; pos[i*3+1]=Math.random()*24; pos[i*3+2]=(Math.random()-0.5)*150; }
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  return new THREE.Points(geo, new THREE.PointsMaterial({color:0xffffff, size:0.1, transparent:true, opacity:0.8}));
-}
-
-// === LIGHTNING & THUNDER SYSTEM ===
-let _lightningLight = null;
-let _lightningTimer = 0;
-let _lightningFlash = 0;
-let _thunderAudio = null;
-
-function triggerLightning() {
-  if (!_lightningLight) {
-    _lightningLight = new THREE.DirectionalLight(0xccccff, 0);
-    _lightningLight.position.set(50, 80, 30);
-    scene.add(_lightningLight);
-  }
-  _lightningFlash = 1.0;
-  _lightningLight.intensity = 8;
-  // Thunder sound after delay (sound travels slower than light)
-  const thunderDelay = 500 + Math.random() * 2000;
-  setTimeout(() => {
-    if (_thunderAudio) { _thunderAudio.pause(); _thunderAudio.currentTime = 0; }
-    // Simple thunder via oscillator
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(60 + Math.random() * 40, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 1.5);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 2);
-    } catch(e) {}
-  }, thunderDelay);
-}
-
-function updateLightning(dt) {
-  if (_lightningFlash > 0) {
-    _lightningFlash -= dt * 4;
-    if (_lightningLight) _lightningLight.intensity = _lightningFlash * 8;
-    if (_lightningFlash <= 0) { _lightningFlash = 0; if (_lightningLight) _lightningLight.intensity = 0; }
-  }
-  if (weatherSystem === 'rain' || weatherSystem === 'storm') {
-    _lightningTimer -= dt;
-    if (_lightningTimer <= 0) {
-      _lightningTimer = 4 + Math.random() * 12; // Random interval 4-16 seconds
-      if (Math.random() < 0.4) triggerLightning(); // 40% chance each interval
-    }
-  }
-}
-
-
-// === PARTICLE EFFECTS SYSTEM ===
-var activeParticleEffects = [];
-
-function createFireEffect(x, y, z, scale) {
-  scale = scale || 1;
-  var count = 200;
-  var geo = new THREE.BufferGeometry();
-  var pos = new Float32Array(count * 3);
-  var vel = new Float32Array(count * 3);
-  var life = new Float32Array(count);
-  for (var i = 0; i < count; i++) {
-    pos[i*3] = (Math.random()-0.5) * 0.5 * scale;
-    pos[i*3+1] = Math.random() * 2 * scale;
-    pos[i*3+2] = (Math.random()-0.5) * 0.5 * scale;
-    vel[i*3] = (Math.random()-0.5) * 0.02;
-    vel[i*3+1] = 0.02 + Math.random() * 0.04;
-    vel[i*3+2] = (Math.random()-0.5) * 0.02;
-    life[i] = Math.random();
-  }
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  var mat = new THREE.PointsMaterial({
-    color: 0xff6600, size: 0.15 * scale, transparent: true, opacity: 0.8,
-    blending: THREE.AdditiveBlending, depthWrite: false
-  });
-  var points = new THREE.Points(geo, mat);
-  points.position.set(x || 0, y || 0, z || 0);
-  points.userData._particleType = 'fire';
-  points.userData._vel = vel;
-  points.userData._life = life;
-  points.userData._scale = scale;
-  scene.add(points);
-  // Add point light for glow
-  var light = new THREE.PointLight(0xff4400, 2 * scale, 8 * scale);
-  light.position.set(x || 0, (y || 0) + 1, z || 0);
-  scene.add(light);
-  points.userData._light = light;
-  activeParticleEffects.push(points);
-  return points;
-}
-
-function createSmokeEffect(x, y, z, scale) {
-  scale = scale || 1;
-  var count = 100;
-  var geo = new THREE.BufferGeometry();
-  var pos = new Float32Array(count * 3);
-  var vel = new Float32Array(count * 3);
-  for (var i = 0; i < count; i++) {
-    pos[i*3] = (Math.random()-0.5) * scale;
-    pos[i*3+1] = Math.random() * 3 * scale;
-    pos[i*3+2] = (Math.random()-0.5) * scale;
-    vel[i*3] = (Math.random()-0.5) * 0.01;
-    vel[i*3+1] = 0.01 + Math.random() * 0.02;
-    vel[i*3+2] = (Math.random()-0.5) * 0.01;
-  }
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  var mat = new THREE.PointsMaterial({
-    color: 0x555555, size: 0.3 * scale, transparent: true, opacity: 0.3,
-    depthWrite: false
-  });
-  var points = new THREE.Points(geo, mat);
-  points.position.set(x || 0, y || 0, z || 0);
-  points.userData._particleType = 'smoke';
-  points.userData._vel = vel;
-  scene.add(points);
-  activeParticleEffects.push(points);
-  return points;
-}
-
-function createMagicEffect(x, y, z, color) {
-  color = color || 0x8844ff;
-  var count = 300;
-  var geo = new THREE.BufferGeometry();
-  var pos = new Float32Array(count * 3);
-  var angles = new Float32Array(count);
-  for (var i = 0; i < count; i++) {
-    var angle = Math.random() * Math.PI * 2;
-    var radius = 0.5 + Math.random() * 2;
-    pos[i*3] = Math.cos(angle) * radius;
-    pos[i*3+1] = (Math.random()-0.5) * 3;
-    pos[i*3+2] = Math.sin(angle) * radius;
-    angles[i] = angle;
-  }
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  var mat = new THREE.PointsMaterial({
-    color: color, size: 0.08, transparent: true, opacity: 0.7,
-    blending: THREE.AdditiveBlending, depthWrite: false
-  });
-  var points = new THREE.Points(geo, mat);
-  points.position.set(x || 0, y || 1, z || 0);
-  points.userData._particleType = 'magic';
-  points.userData._angles = angles;
-  points.userData._time = 0;
-  // Glow light
-  var light = new THREE.PointLight(color, 1.5, 6);
-  light.position.copy(points.position);
-  scene.add(light);
-  points.userData._light = light;
-  scene.add(points);
-  activeParticleEffects.push(points);
-  return points;
-}
-
-function createExplosionFX(x, y, z, scale) {
-  scale = scale || 1;
-  var count = 500;
-  var geo = new THREE.BufferGeometry();
-  var pos = new Float32Array(count * 3);
-  var vel = new Float32Array(count * 3);
-  for (var i = 0; i < count; i++) {
-    pos[i*3] = 0; pos[i*3+1] = 0; pos[i*3+2] = 0;
-    var theta = Math.random() * Math.PI * 2;
-    var phi = Math.random() * Math.PI;
-    var speed = 0.05 + Math.random() * 0.15;
-    vel[i*3] = Math.sin(phi) * Math.cos(theta) * speed * scale;
-    vel[i*3+1] = Math.cos(phi) * speed * scale + 0.02;
-    vel[i*3+2] = Math.sin(phi) * Math.sin(theta) * speed * scale;
-  }
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  var mat = new THREE.PointsMaterial({
-    color: 0xff8800, size: 0.2 * scale, transparent: true, opacity: 1,
-    blending: THREE.AdditiveBlending, depthWrite: false
-  });
-  var points = new THREE.Points(geo, mat);
-  points.position.set(x || 0, y || 1, z || 0);
-  points.userData._particleType = 'explosion';
-  points.userData._vel = vel;
-  points.userData._life = 1.0;
-  // Flash light
-  var light = new THREE.PointLight(0xff6600, 5 * scale, 15 * scale);
-  light.position.set(x || 0, (y || 1) + 1, z || 0);
-  scene.add(light);
-  points.userData._light = light;
-  scene.add(points);
-  activeParticleEffects.push(points);
-  return points;
-}
-
-function createSparkles(x, y, z, color) {
-  color = color || 0xffdd44;
-  var count = 150;
-  var geo = new THREE.BufferGeometry();
-  var pos = new Float32Array(count * 3);
-  for (var i = 0; i < count; i++) {
-    pos[i*3] = (Math.random()-0.5) * 3;
-    pos[i*3+1] = Math.random() * 3;
-    pos[i*3+2] = (Math.random()-0.5) * 3;
-  }
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  var mat = new THREE.PointsMaterial({
-    color: color, size: 0.06, transparent: true, opacity: 0.9,
-    blending: THREE.AdditiveBlending, depthWrite: false
-  });
-  var points = new THREE.Points(geo, mat);
-  points.position.set(x || 0, y || 0, z || 0);
-  points.userData._particleType = 'sparkles';
-  points.userData._time = 0;
-  scene.add(points);
-  activeParticleEffects.push(points);
-  return points;
-}
-
-// Update all particle effects each frame
-function updateParticleEffects(dt) {
-  for (var i = activeParticleEffects.length - 1; i >= 0; i--) {
-    var fx = activeParticleEffects[i];
-    if (!fx.parent) { activeParticleEffects.splice(i, 1); continue; }
-    var p = fx.geometry.attributes.position.array;
-    var type = fx.userData._particleType;
-    
-    if (type === 'fire') {
-      var vel = fx.userData._vel;
-      var life = fx.userData._life;
-      var s = fx.userData._scale;
-      for (var j = 0; j < p.length/3; j++) {
-        p[j*3] += vel[j*3] + (Math.random()-0.5)*0.01;
-        p[j*3+1] += vel[j*3+1];
-        p[j*3+2] += vel[j*3+2] + (Math.random()-0.5)*0.01;
-        life[j] += 0.02;
-        if (life[j] > 1) {
-          p[j*3] = (Math.random()-0.5) * 0.5 * s;
-          p[j*3+1] = 0;
-          p[j*3+2] = (Math.random()-0.5) * 0.5 * s;
-          life[j] = 0;
-        }
-      }
-      fx.material.opacity = 0.6 + Math.sin(Date.now()*0.01) * 0.2;
-      if (fx.userData._light) fx.userData._light.intensity = 1.5 + Math.sin(Date.now()*0.008) * 0.8;
-    }
-    
-    if (type === 'smoke') {
-      var vel = fx.userData._vel;
-      for (var j = 0; j < p.length/3; j++) {
-        p[j*3] += vel[j*3] + (Math.random()-0.5)*0.005;
-        p[j*3+1] += vel[j*3+1];
-        p[j*3+2] += vel[j*3+2] + (Math.random()-0.5)*0.005;
-        if (p[j*3+1] > 5) {
-          p[j*3] = (Math.random()-0.5);
-          p[j*3+1] = 0;
-          p[j*3+2] = (Math.random()-0.5);
-        }
-      }
-    }
-    
-    if (type === 'magic') {
-      fx.userData._time += 0.02;
-      var t = fx.userData._time;
-      var angles = fx.userData._angles;
-      for (var j = 0; j < p.length/3; j++) {
-        var a = angles[j] + t;
-        var r = 0.5 + Math.sin(t + j * 0.1) * 1.5;
-        p[j*3] = Math.cos(a) * r;
-        p[j*3+1] = Math.sin(t * 2 + j * 0.05) * 1.5;
-        p[j*3+2] = Math.sin(a) * r;
-      }
-      if (fx.userData._light) fx.userData._light.intensity = 1 + Math.sin(t * 3) * 0.5;
-    }
-    
-    if (type === 'explosion') {
-      var vel = fx.userData._vel;
-      fx.userData._life -= 0.015;
-      if (fx.userData._life <= 0) {
-        scene.remove(fx);
-        if (fx.userData._light) scene.remove(fx.userData._light);
-        activeParticleEffects.splice(i, 1);
-        continue;
-      }
-      for (var j = 0; j < p.length/3; j++) {
-        p[j*3] += vel[j*3];
-        p[j*3+1] += vel[j*3+1];
-        p[j*3+2] += vel[j*3+2];
-        vel[j*3+1] -= 0.001; // gravity
-      }
-      fx.material.opacity = fx.userData._life;
-      fx.material.color.setHSL(0.05 + (1-fx.userData._life)*0.05, 1, 0.5);
-      if (fx.userData._light) fx.userData._light.intensity = fx.userData._life * 5;
-    }
-    
-    if (type === 'sparkles') {
-      fx.userData._time += 0.03;
-      var t = fx.userData._time;
-      for (var j = 0; j < p.length/3; j++) {
-        p[j*3+1] += Math.sin(t + j * 0.2) * 0.005;
-      }
-      fx.material.opacity = 0.5 + Math.sin(t * 2) * 0.4;
-    }
-    
-    fx.geometry.attributes.position.needsUpdate = true;
-  }
-}
-
+// === BUILDING SYSTEM extracted to buildings.mjs ===
 // === TERRAIN SYSTEM ===
 var terrainMesh = null;
 
@@ -11031,9 +4449,1950 @@ function addSpotLight(x, y, z, targetX, targetY, targetZ, color) {
 
 // === NLP COMMAND PARSER ===
 // Bridge: expose for command bus (Engine 2.0)
+
+
+// ══════════════════════════════════════════════════════
+// COMPREHENSIVE COMMAND REFERENCE PAGE
+// ══════════════════════════════════════════════════════
+function showCommandPage() {
+  showHelp();
+  return;
+  const existing = document.getElementById('cmd-page-modal');
+  if (existing) { existing.remove(); return; }
+
+  const categories = [
+    { icon: '🌍', name: 'World & Terrain', cmds: [
+      'terrain flat / hills / mountains / desert / island / canyon / volcanic / arctic',
+      'ground grass / dirt / sand / snow / stone / concrete / asphalt / lava / mud / forest',
+      'ground rock / marble / metal / wood / ice / obsidian / crystal / gravel',
+      'I want a desert land / grass land / snowy world / forest land / volcanic land / swamp land',
+      'mountains / rolling hills / canyon / volcano / desert dunes / arctic plains',
+      'generate desert city / snow city / jungle city / swamp city',
+      'generate world / auto town / build a town',
+    ]},
+    { icon: '🌅', name: 'Sky & Lighting', cmds: [
+      'time dawn / sunrise / morning / noon / afternoon / sunset / dusk / night / midnight',
+      'aaa sky / realistic sky / sunrise / sunset sky',
+      'set ambient [0-1] / ambient brightness [0-1]',
+      'sun intensity [0-5] / sun color [hex] / shadow softness [0-5]',
+      'bloom on/off / bloom [0-5] / grain [0-1]',
+      'add god rays / disable god rays / add lens flare',
+    ]},
+    { icon: '🌦️', name: 'Weather & Atmosphere', cmds: [
+      'fog on/off / fog [0.001-0.05]',
+      'make it rain / stop rain / heavy rain / drizzle',
+      'make it snow / stop snow / blizzard',
+      'clear weather / storm',
+      'particles dust / fireflies / embers / ash / leaves / snow / spores',
+    ]},
+    { icon: '🏔️', name: 'Water', cmds: [
+      'add water / add ocean / add river / add pool / add lake / add swimming',
+      'water calm / tropical / stormy / arctic / blood / lava / crystal',
+    ]},
+    { icon: '🧑', name: 'Characters', cmds: [
+      'play as knight / swat / soldier / casual / suit / witch / medieval / scifi / beach / spacesuit',
+      'equip sword / axe / rifle / pistol / shotgun / bow / spear / hammer / dagger / katana / staff',
+      'spawn [N] npcs / spawn [N] enemies / spawn [N] guards',
+      'spawn npc zombie / woman / man / knight / soldier',
+      'add npc [type] at [x,y,z] / npc say [text]',
+      'add quest giver npc / add shopkeeper npc / add merchant npc',
+      'npc [name] has quest [name] / add npc dialogue',
+    ]},
+    { icon: '🏗️', name: 'Buildings & Structures', cmds: [
+      'add modern house / add modern house 2 floors',
+      'build a city / build downtown / build residential area',
+      'build a dungeon / build a cave / build interior',
+      'add skyscraper / add tower / add castle / add ruins',
+      'add traffic light / add street lamp / add fire hydrant',
+      'add road / add roads / add park / add commercial area',
+    ]},
+    { icon: '📦', name: 'Models & Props (857 Unity + 3400 base)', cmds: [
+      '── FLOODED/POST-APOC ──',
+      'add unity_villa1_ext_b / add unity_villa2_ext_a / add unity_church1_mid_a / add unity_barn2_mid_a',
+      'add unity_bld_bridge_a / add unity_lo_prop_car_a / add unity_lo_prop_boat_a',
+      '── TOON CITY ──',
+      'add toon_apartment / add toon_city_hall / add helicopter / add toon_park / add toon_ambulance',
+      '── SPACE/SCI-FI ──',
+      'add space_fighter / add spaceship / add unity_capitalship_shield / add space_rifle',
+      '── MEDIEVAL/FANTASY ──',
+      'add knight_character / add dark_knight / add zombie / add unity_sword5_3 / add unity_shield_evo_02_v1',
+      'add unity_pt_pine_tree_03_green / add unity_pt_wooden_bridge_02 / add unity_pt_ore_rock_01',
+      '── FPS WEAPONS ──',
+      'add unity_akm / add unity_revolver / add unity_crossbow / add pistol / add medieval_sword_fps',
+      'add unity_fp_doublebarlshotgun / add unity_fp_huntingrifle / add unity_fp_arms_akm',
+      '── NATURE ──',
+      'add infini_twist_tree / add fern / add infini_mushrooms / add infini_fern / add infini_lily',
+      '── VEHICLES ──',
+      'add touring_race_car / add toon_ambulance / add unity_lo_prop_car_a',
+      '── BASE MODELS (3400+) ──',
+      'add tree / add pine / add palm / add rock / add boulder / add bench / add chair / add table',
+      'add car / add taxi / add police car / add ambulance / add truck / add bus',
+      'add chest / add barrel / add crate / add torch / add campfire',
+    ]},
+    { icon: '🚗', name: 'Vehicles', cmds: [
+      'add car / add vehicle [type] / drive car / enter vehicle / exit vehicle',
+      'add traffic / add ai cars / add pedestrians',
+      'add touring_race_car / add toon_ambulance',
+    ]},
+    { icon: '⚔️', name: 'Combat & Systems', cmds: [
+      'add shooting / add combat system / add melee combat',
+      'add health system / set health [100] / heal / add respawn',
+      'add damage system / add enemy ai / set enemy aggro range [20]',
+      'add knockback / add stagger / add death animation',
+      'zombie game / racing mode / rpg mode / survival mode / fps mode / horror mode',
+    ]},
+    { icon: '🎒', name: 'Inventory & Items', cmds: [
+      'add inventory / open inventory / inventory grid 4x4',
+      'add item [name] to inventory / equip [item] / drop item / use item',
+      'inventory hotbar / show backpack / add loot system',
+      'add health potion / add armor item / add stamina item',
+      'add crafting / add shop / add vendor / add buy menu',
+    ]},
+    { icon: '💬', name: 'Dialogue & Quests', cmds: [
+      'npc say [text] / npc [name] say [text]',
+      'add quest / add quest [name]',
+      'quest objective: kill [N] [type] / collect [N] [item] / reach [location]',
+      'quest reward: [item] / complete quest / fail quest',
+      'add dialogue tree / add dialogue option [text]',
+      'add skill tree / add experience system / add leveling',
+      'gain xp [amount] / unlock achievement [name]',
+    ]},
+    { icon: '📺', name: 'HUD & Menus', cmds: [
+      'add HUD / hide HUD / toggle HUD',
+      'add health bar / add stamina bar / add ammo counter / add minimap / add compass',
+      'add kill counter / add score display / add timer / add wave counter / add xp bar',
+      'add main menu / add pause menu / add settings menu',
+      'add game over screen / add victory screen / add loading screen',
+      'add crosshair / hide crosshair / crosshair dot/cross/circle',
+    ]},
+    { icon: '🎬', name: 'Cutscenes & Cinematics', cmds: [
+      'add cutscene / start cutscene / end cutscene',
+      'cinematic mode / letterbox on/off',
+      'camera pan to [x,y,z] in [seconds] / camera orbit / camera fly through',
+      'add intro cutscene / add outro cutscene',
+      'add slow motion / slow motion [0.1-1.0] / normal speed',
+      'freeze frame / add black fade / add white fade',
+    ]},
+    { icon: '🏆', name: 'Win/Lose Conditions', cmds: [
+      'add win condition / win if kill [N] enemies / win if collect [N] items',
+      'win if reach [location] / win if survive [N] seconds / win if score [N] points',
+      'add lose condition / lose if health 0 / add timer countdown [seconds]',
+      'add checkpoint / add respawn point / add lives system / set lives [N]',
+      'add score system / add high score',
+    ]},
+    { icon: '🔊', name: 'Audio', cmds: [
+      'add background music / play music epic/calm/horror/action/ambient',
+      'add ambient sound / stop music / fade music out',
+      'add footstep sounds / add combat sounds / add explosion sounds',
+      'add spatial audio / audio range [meters]',
+      'add rain sound / add wind sound / add crowd sound',
+      'mute / unmute / volume [0-1]',
+    ]},
+    { icon: '✨', name: 'Polish & Post-Processing', cmds: [
+      '── VISUAL EFFECTS ──',
+      'bloom on/off / bloom [0-5]',
+      'vignette [0-1] (edge darkening)',
+      'chromatic aberration [0-0.01]',
+      'grain [0-1] (film grain)',
+      'depth of field on/off / dof focus [distance]',
+      'motion blur on/off',
+      'ssao on/off (ambient occlusion)',
+      '── COLOR GRADING ──',
+      'color grade cinematic / warm / cool / horror / noir / vivid / neutral',
+      'contrast [0.5-2.0] / saturation [0-2] / brightness [0-2]',
+      '── QUALITY ──',
+      'graphics low / medium / high / ultra',
+      'anti-aliasing on/off / fxaa / smaa',
+      'shadow quality low/medium/high/ultra',
+      'performance mode / quality mode / lod on/off',
+      'add god rays / add lens flare',
+    ]},
+    { icon: '🎮', name: 'Game Presets', cmds: [
+      'zombie game — survival horror with waves',
+      'racing mode — race track, cars, timer',
+      'rpg mode — fantasy world, quests, inventory',
+      'survival mode — hunger, inventory, crafting',
+      'fps mode — shooter with weapons, enemies',
+      'horror mode — dark, fog, jump scares',
+      'city builder mode — construction mechanics',
+      'sandbox mode — free creative mode',
+    ]},
+    { icon: '📷', name: 'Camera', cmds: [
+      'fps mode / tps mode',
+      'add first person camera / add third person camera / add cinematic camera',
+      'camera distance [meters] / camera height [meters]',
+      'camera shake on/off / screen shake [intensity]',
+      'zoom in / zoom out / fov [60-120]',
+    ]},
+    { icon: '🌐', name: 'Multiplayer', cmds: [
+      'multiplayer / join [room] / host game / create room',
+      'chat [message] / broadcast [message]',
+      'sync players / add netcode',
+      'wss://crate-engine-mp.fly.dev (default server)',
+    ]},
+    { icon: '📥', name: 'Import & Save', cmds: [
+      'import model [URL] — load any GLB from web',
+      'import my model — open file picker for local GLB',
+      'use my model as [name] — register with alias',
+      'place my model / place imported model',
+      'save / load / clear / new game',
+      'auto save / add checkpoint / export world',
+    ]},
+    { icon: '🔧', name: 'Utility', cmds: [
+      'clear / reset / help / commands',
+      'stats / show stats / fps counter on',
+      'show buildings / show weapons / show characters / show vehicles / show trees',
+      'heal / respawn / teleport [x,y,z]',
+      'performance mode / optimize scene',
+      'inspect — click any object to select & edit',
+      'clone — duplicate selected object',
+      'delete — remove selected object',
+    ]},
+  ];
+
+  const modal = document.createElement('div');
+  modal.id = 'cmd-page-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99999;display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,sans-serif;overflow:hidden;backdrop-filter:blur(4px)';
+
+  const header = `
+    <div style="padding:16px 20px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <div style="font-size:1.5rem">⌨️</div>
+      <div style="flex:1">
+        <div style="font-size:1.1rem;font-weight:700;color:#fff">Command Reference</div>
+        <div style="font-size:0.7rem;color:#555">All ${categories.reduce((s,c)=>s+c.cmds.length,0)}+ commands — click any command to run it</div>
+      </div>
+      <input id="cmd-search" placeholder="Search commands..." style="background:#111;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.82rem;width:200px;outline:none" oninput="window._filterCmds(this.value)">
+      <button onclick="document.getElementById('cmd-page-modal').remove()" style="background:none;border:1px solid #333;color:#888;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:0.85rem" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">✕ Close</button>
+    </div>`;
+
+  let bodyHtml = '<div id="cmd-body" style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;align-content:start">';
+  
+  for (const cat of categories) {
+    bodyHtml += `<div class="cmd-cat" style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden">`;
+    bodyHtml += `<div style="padding:10px 14px;background:rgba(255,107,53,0.06);border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:8px">`;
+    bodyHtml += `<span style="font-size:1rem">${cat.icon}</span><span style="font-weight:700;color:#ff6b35;font-size:0.82rem;text-transform:uppercase;letter-spacing:1px">${cat.name}</span>`;
+    bodyHtml += `</div><div style="padding:10px">`;
+    for (const cmd of cat.cmds) {
+      if (cmd.startsWith('──') || cmd.startsWith('─')) {
+        bodyHtml += `<div class="cmd-divider" style="color:#444;font-size:0.65rem;margin:6px 0 4px;letter-spacing:2px">${cmd}</div>`;
+      } else {
+        const parts = cmd.split('/').map(p => p.trim());
+        const firstCmd = parts[0].split(' ')[0] === parts[0].split(' ')[0] ? parts[0] : cmd;
+        bodyHtml += `<div class="cmd-line" data-cmd="${cmd.replace(/"/g,"&quot;")}" style="padding:3px 6px;margin:1px 0;border-radius:5px;cursor:pointer;font-size:0.72rem;color:#aaa;transition:all 0.15s;line-height:1.5" onmouseenter="this.style.background='rgba(255,107,53,0.1)';this.style.color='#ff6b35'" onmouseleave="this.style.background='transparent';this.style.color='#aaa'" onclick="window._runCmdFromPage('${cmd.replace(/'/g,"\'").split(' /')[0].trim()}')">${cmd}</div>`;
+      }
+    }
+    bodyHtml += `</div></div>`;
+  }
+  bodyHtml += '</div>';
+
+  modal.innerHTML = header + bodyHtml;
+  document.body.appendChild(modal);
+
+  // Search filter
+  window._filterCmds = (q) => {
+    const lines = modal.querySelectorAll('.cmd-line');
+    const cats = modal.querySelectorAll('.cmd-cat');
+    q = q.toLowerCase();
+    cats.forEach(cat => {
+      const lines2 = cat.querySelectorAll('.cmd-line');
+      let hasMatch = false;
+      lines2.forEach(l => {
+        const match = !q || l.textContent.toLowerCase().includes(q);
+        l.style.display = match ? '' : 'none';
+        if (match) hasMatch = true;
+      });
+      cat.style.display = hasMatch || !q ? '' : 'none';
+    });
+  };
+
+  window._runCmdFromPage = (cmd) => {
+    // Extract just the first command variant
+    const bare = cmd.split('/')[0].replace(/\[.*?\]/g, '1').trim();
+    parseAndExecute(bare);
+    showToast('Running: ' + bare);
+  };
+
+  // Focus search
+  setTimeout(() => document.getElementById('cmd-search')?.focus(), 100);
+}
+
+window.showCommandPage = showCommandPage;
+// ══════════════════════════════════════════════════════
+// END COMMAND REFERENCE PAGE
+// ══════════════════════════════════════════════════════
+
+// ── USER MODEL IMPORT FUNCTIONS ───────────────────────────────────────────────
+async function loadUserModel(url, alias) {
+  try {
+    showNotification('Loading model...');
+    return new Promise((resolve) => {
+      gltfLoader.load(url,
+        (gltf) => {
+          const model = gltf.scene;
+          model.position.set(px || 0, 0, pz || 0);
+          model.scale.setScalar(1);
+          scene.add(model);
+          window._lastImportedModel = url;
+          GLB_MODELS[alias] = url;
+          if (alias !== 'imported_model') GLB_MODELS['my_model'] = url;
+          showNotification('Model imported! Use "place my model" to add more copies.');
+          resolve('Custom model loaded successfully');
+        },
+        (progress) => {},
+        (err) => resolve('Failed to load model: ' + err.message)
+      );
+    });
+  } catch(e) {
+    return 'Import error: ' + e.message;
+  }
+}
+
+function openModelFilePicker() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.glb,.gltf';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    loadUserModel(url, 'my_model');
+    showNotification('Loading ' + file.name + '...');
+  };
+  input.click();
+  return 'File picker opened - select your GLB/GLTF file';
+}
+// ── END USER MODEL IMPORT FUNCTIONS ──────────────────────────────────────────
+
+
+
+
+// ══════════════════════════════════════════════════════
+// AUTOSAVE SYSTEM
+// ══════════════════════════════════════════════════════
+let _autosaveInterval = null;
+let _lastAutosave = 0;
+
+function startAutosave(intervalSec = 60) {
+  if (_autosaveInterval) clearInterval(_autosaveInterval);
+  _autosaveInterval = setInterval(async () => {
+    try {
+      const state = captureWorldState();
+      const json = JSON.stringify(state);
+      localStorage.setItem('crate_autosave', json);
+      localStorage.setItem('crate_autosave_time', Date.now());
+      _lastAutosave = Date.now();
+    } catch(e) {}
+  }, intervalSec * 1000);
+}
+
+function checkAutosaveRestore() {
+  const saved = localStorage.getItem('crate_autosave');
+  const savedTime = localStorage.getItem('crate_autosave_time');
+  if (!saved || !savedTime) return;
+  const age = (Date.now() - parseInt(savedTime)) / 1000 / 60;
+  if (age > 60 * 24) return; // Ignore saves older than 24h
+  const state = JSON.parse(saved);
+  if (!state.objects || state.objects.length === 0) return;
+  // Don't auto-prompt to restore large generated worlds (city/town builds)
+  if (state.objects.length > 80) return;
+
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:46px;left:50%;transform:translateX(-50%);z-index:9997;background:#111;border:1px solid #333;border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:12px;font-family:-apple-system,sans-serif;font-size:0.82rem;box-shadow:0 8px 24px rgba(0,0,0,0.5)';
+  banner.innerHTML = `<span>💾</span><span style="color:#ccc">Autosave from ${Math.round(age)} min ago (${state.objects.length} objects)</span><button onclick="loadWorldFromJSON(JSON.parse(localStorage.getItem('crate_autosave')));this.parentElement.remove()" style="padding:5px 12px;background:#ff6b35;border:none;border-radius:6px;color:#fff;font-weight:700;cursor:pointer">Restore</button><button onclick="this.parentElement.remove()" style="padding:5px 10px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#888;cursor:pointer">Dismiss</button>`;
+  document.body.appendChild(banner);
+  setTimeout(() => banner.remove(), 15000);
+}
+// ══════════════════════════════════════════════════════
+// END AUTOSAVE
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// QUEST / OBJECTIVE SYSTEM
+// ══════════════════════════════════════════════════════
+const _quests = {};
+let _questHUD = null;
+
+function addQuest(name, description = '') {
+  const id = name.toLowerCase().replace(/\s+/g, '_');
+  _quests[id] = { name, description, objectives: [], completed: false, active: true };
+  updateQuestHUD();
+  showToast('📋 Quest added: ' + name);
+  return id;
+}
+
+function addObjective(questId, text) {
+  const id = questId.toLowerCase().replace(/\s+/g, '_');
+  if (!_quests[id]) return;
+  _quests[id].objectives.push({ text, done: false });
+  updateQuestHUD();
+}
+
+function completeObjective(questId, index) {
+  const id = questId.toLowerCase().replace(/\s+/g, '_');
+  if (!_quests[id] || !_quests[id].objectives[index]) return;
+  _quests[id].objectives[index].done = true;
+  updateQuestHUD();
+  showToast('✅ Objective complete!');
+  if (_quests[id].objectives.every(o => o.done)) completeQuest(id);
+}
+
+function completeQuest(questId) {
+  const id = questId.toLowerCase().replace(/\s+/g, '_');
+  if (!_quests[id]) return;
+  _quests[id].completed = true;
+  updateQuestHUD();
+  showWinScreen(_quests[id].name);
+}
+
+function showWinScreen(questName) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+  overlay.innerHTML = `<div style="text-align:center;padding:40px"><div style="font-size:4rem;margin-bottom:16px">🏆</div><div style="font-size:2.5rem;font-weight:900;color:#f7c948;margin-bottom:8px">Quest Complete!</div><div style="color:#888;font-size:1.1rem;margin-bottom:28px">${questName}</div><div style="display:flex;gap:12px;justify-content:center"><button onclick="this.closest('[style*=fixed]').remove()" style="padding:12px 28px;background:#ff6b35;border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:1rem">Continue</button><button onclick="if(window.saveWorld)saveWorld()" style="padding:12px 28px;background:#1a1a1a;border:1px solid #333;border-radius:10px;color:#ccc;cursor:pointer;font-size:1rem">Save World</button></div></div>`;
+  document.body.appendChild(overlay);
+}
+
+function showGameOver(reason = 'You died.') {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+  overlay.innerHTML = `<div style="text-align:center;padding:40px"><div style="font-size:4rem;margin-bottom:16px">💀</div><div style="font-size:2.5rem;font-weight:900;color:#ef4444;margin-bottom:8px">GAME OVER</div><div style="color:#666;font-size:1.1rem;margin-bottom:28px">${reason}</div><button onclick="location.reload()" style="padding:12px 28px;background:#ef4444;border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:1rem">Try Again</button></div>`;
+  document.body.appendChild(overlay);
+}
+
+function updateQuestHUD() {
+  if (!_questHUD) {
+    _questHUD = document.createElement('div');
+    _questHUD.id = 'quest-hud';
+    _questHUD.style.cssText = 'position:fixed;top:46px;right:16px;z-index:300;width:220px;font-family:-apple-system,sans-serif;display:flex;flex-direction:column;gap:6px;pointer-events:none';
+    document.body.appendChild(_questHUD);
+  }
+  const active = Object.values(_quests).filter(q => q.active && !q.completed);
+  _questHUD.innerHTML = active.map(q => `
+    <div style="background:rgba(10,10,10,0.85);border:1px solid #1a1a1a;border-radius:8px;padding:10px;backdrop-filter:blur(8px)">
+      <div style="color:#f7c948;font-weight:700;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">📋 ${q.name}</div>
+      ${q.objectives.map(o => `<div style="color:${o.done?'#4ade80':'#888'};font-size:0.7rem;padding:2px 0;display:flex;gap:5px"><span>${o.done?'✅':'○'}</span><span style="${o.done?'text-decoration:line-through':''}">${o.text}</span></div>`).join('')}
+      ${q.objectives.length===0?`<div style="color:#555;font-size:0.7rem">Active quest</div>`:''}
+    </div>`).join('');
+}
+
+window.addQuest = addQuest;
+window.addObjective = addObjective;
+window.completeObjective = completeObjective;
+window.completeQuest = completeQuest;
+window.showWinScreen = showWinScreen;
+window.showGameOver = showGameOver;
+// ══════════════════════════════════════════════════════
+// END QUEST SYSTEM
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// WEATHER SYSTEM
+// ══════════════════════════════════════════════════════
+const _weatherParticles = { rain: null, snow: null };
+let _weatherActive = null;
+let _lightningTimerInterval = null;
+
+function startRain(heavy = false) {
+  stopWeather();
+  _weatherActive = 'rain';
+  const count = heavy ? 2000 : 800;
+  const geo = new THREE.BufferGeometry();
+  const verts = new Float32Array(count * 3);
+  for (let i = 0; i < count * 3; i += 3) {
+    verts[i]   = (Math.random() - 0.5) * 200;
+    verts[i+1] = Math.random() * 80;
+    verts[i+2] = (Math.random() - 0.5) * 200;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xaaaaff, size: heavy ? 0.3 : 0.2, transparent: true, opacity: 0.6 });
+  const rain = new THREE.Points(geo, mat);
+  rain.userData.isWeather = true;
+  scene.add(rain);
+  _weatherParticles.rain = rain;
+
+  // Animate rain fall
+  rain._tick = () => {
+    const pos = rain.geometry.attributes.position.array;
+    for (let i = 1; i < pos.length; i += 3) {
+      pos[i] -= heavy ? 1.2 : 0.7;
+      if (pos[i] < -5) pos[i] = 80;
+    }
+    rain.geometry.attributes.position.needsUpdate = true;
+  };
+  if (!window._weatherTickAdded) {
+    window._weatherTickAdded = true;
+    const origAnimate = window._animateHook;
+    window._animateHook = () => {
+      if (origAnimate) origAnimate();
+      if (_weatherParticles.rain?._tick) _weatherParticles.rain._tick();
+      if (_weatherParticles.snow?._tick) _weatherParticles.snow._tick();
+    };
+  }
+  showToast(heavy ? '⛈️ Heavy rain' : '🌧️ Rain started');
+}
+
+function startSnow() {
+  stopWeather();
+  _weatherActive = 'snow';
+  const geo = new THREE.BufferGeometry();
+  const verts = new Float32Array(1200 * 3);
+  for (let i = 0; i < 1200 * 3; i += 3) {
+    verts[i]   = (Math.random() - 0.5) * 200;
+    verts[i+1] = Math.random() * 60;
+    verts[i+2] = (Math.random() - 0.5) * 200;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.8 });
+  const snow = new THREE.Points(geo, mat);
+  snow.userData.isWeather = true;
+  scene.add(snow);
+  _weatherParticles.snow = snow;
+  snow._tick = () => {
+    const pos = snow.geometry.attributes.position.array;
+    for (let i = 1; i < pos.length; i += 3) {
+      pos[i] -= 0.15;
+      pos[i-1] += Math.sin(Date.now() * 0.001 + i) * 0.02;
+      if (pos[i] < -5) pos[i] = 60;
+    }
+    snow.geometry.attributes.position.needsUpdate = true;
+  };
+  showToast('❄️ Snow started');
+}
+
+function startLightning() {
+  if (_lightningTimerInterval) clearInterval(_lightningTimerInterval);
+  _lightningTimerInterval = setInterval(() => {
+    const orig = renderer.getClearColor(new THREE.Color()).clone();
+    renderer.setClearColor(0xaaaaff);
+    setTimeout(() => renderer.setClearColor(orig), 80);
+    setTimeout(() => {
+      renderer.setClearColor(0xaaaaff);
+      setTimeout(() => renderer.setClearColor(0x0a0a0a), 60);
+    }, 150);
+  }, 3000 + Math.random() * 4000);
+  showToast('⚡ Lightning storm');
+}
+
+function stopWeather() {
+  if (_weatherParticles.rain) { scene.remove(_weatherParticles.rain); _weatherParticles.rain = null; }
+  if (_weatherParticles.snow) { scene.remove(_weatherParticles.snow); _weatherParticles.snow = null; }
+  if (_lightningTimerInterval) { clearInterval(_lightningTimerInterval); _lightningTimerInterval = null; }
+  _weatherActive = null;
+}
+
+window.startRain = startRain;
+window.startSnow = startSnow;
+window.startLightning = startLightning;
+window.stopWeather = stopWeather;
+// ══════════════════════════════════════════════════════
+// END WEATHER SYSTEM
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// DAY/NIGHT AUTO-CYCLE
+// ══════════════════════════════════════════════════════
+let _dayNightCycle = null;
+ // 0-1: 0=dawn, 0.25=noon, 0.5=dusk, 0.75=midnight
+
+const DAY_CYCLE_COLORS = [
+  { t: 0,    sky: 0x1a0a2e, ambient: 0.2, sun: 0x221133 }, // midnight
+  { t: 0.2,  sky: 0xff7043, ambient: 0.5, sun: 0xff9966 }, // dawn
+  { t: 0.35, sky: 0x87ceeb, ambient: 1.0, sun: 0xffffff }, // noon
+  { t: 0.6,  sky: 0xff6b35, ambient: 0.6, sun: 0xff8844 }, // sunset
+  { t: 0.75, sky: 0x0d0d2e, ambient: 0.3, sun: 0x334455 }, // dusk
+  { t: 1.0,  sky: 0x1a0a2e, ambient: 0.2, sun: 0x221133 }, // midnight again
+];
+
+function startDayNightCycle(speedMultiplier = 1) {
+  if (_dayNightCycle) clearInterval(_dayNightCycle);
+  _dayNightCycle = setInterval(() => {
+    _cycleTime = (_cycleTime + 0.0002 * speedMultiplier) % 1;
+    // Interpolate sky color
+    let a, b;
+    for (let i = 0; i < DAY_CYCLE_COLORS.length - 1; i++) {
+      if (_cycleTime >= DAY_CYCLE_COLORS[i].t && _cycleTime < DAY_CYCLE_COLORS[i+1].t) {
+        a = DAY_CYCLE_COLORS[i]; b = DAY_CYCLE_COLORS[i+1]; break;
+      }
+    }
+    if (!a || !b) return;
+    const f = (_cycleTime - a.t) / (b.t - a.t);
+    const sky = new THREE.Color(a.sky).lerp(new THREE.Color(b.sky), f);
+    renderer.setClearColor(sky);
+    if (scene.fog) scene.fog.color.copy(sky);
+    // Update ambient light
+    const ambientLight = scene.children.find(c => c.isAmbientLight);
+    if (ambientLight) ambientLight.intensity = a.ambient + (b.ambient - a.ambient) * f;
+  }, 33);
+  showToast('🌅 Day/night cycle started');
+}
+
+function stopDayNightCycle() {
+  if (_dayNightCycle) { clearInterval(_dayNightCycle); _dayNightCycle = null; }
+  showToast('⏸️ Day/night cycle stopped');
+}
+
+window.startDayNightCycle = startDayNightCycle;
+window.stopDayNightCycle = stopDayNightCycle;
+// ══════════════════════════════════════════════════════
+// END DAY/NIGHT CYCLE
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// NPC PROXIMITY TRIGGER — approach NPC to open dialogue
+// ══════════════════════════════════════════════════════
+let _proximityCheckInterval = null;
+const _proximityTriggers = [];  // { mesh, radius, onEnter, onExit, triggered }
+
+function addProximityTrigger(mesh, radius, onEnter, onExit) {
+  _proximityTriggers.push({ mesh, radius, onEnter, onExit, triggered: false });
+  if (!_proximityCheckInterval) {
+    _proximityCheckInterval = setInterval(() => {
+      const playerPos = camera.position;
+      for (const t of _proximityTriggers) {
+        if (!t.mesh.parent) continue;
+        const dist = playerPos.distanceTo(t.mesh.position);
+        if (!t.triggered && dist < t.radius) {
+          t.triggered = true;
+          if (t.onEnter) t.onEnter(t.mesh, dist);
+        } else if (t.triggered && dist > t.radius * 1.3) {
+          t.triggered = false;
+          if (t.onExit) t.onExit(t.mesh, dist);
+        }
+      }
+    }, 500);
+  }
+}
+
+// Auto-attach proximity to any object tagged as NPC with dialogue
+function attachDialogueProximity(mesh, treeName, radius = 8) {
+  addProximityTrigger(mesh, radius, () => {
+    if (window._dialogueTrees?.[treeName]) {
+      showDialoguePreview(treeName);
+    } else {
+      showToast(`💬 Press E to talk to ${mesh.userData.name || 'NPC'}`);
+    }
+  });
+}
+
+window.addProximityTrigger = addProximityTrigger;
+window.attachDialogueProximity = attachDialogueProximity;
+// ══════════════════════════════════════════════════════
+// END NPC PROXIMITY TRIGGER
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// NPC BEHAVIOR SYSTEM — Patrol / Chase / Follow
+// ══════════════════════════════════════════════════════
+const _npcAgents = [];   // { mesh, mode, waypoints, waypointIdx, speed, target, state }
+let _npcUpdateInterval = null;
+
+function spawnBehaviorNPC(opts = {}) {
+  const {
+    glbKey = 'human_walk',
+    mode = 'patrol',         // 'patrol'|'chase'|'follow'|'idle'
+    pos = { x: 0, y: 0, z: 0 },
+    speed = 3,
+    waypointRadius = 20,
+    numWaypoints = 4,
+  } = opts;
+
+  const _rawGLB = GLB_MODELS[glbKey] || glbKey;
+  const _cleanGLB = _rawGLB.endsWith('.glb') ? _rawGLB.slice(0,-4) : _rawGLB;
+  const glbPath = '/models/' + _cleanGLB + '.glb';
+  gltfLoader.load(glbPath, (gltf) => {
+    const mesh = gltf.scene;
+    mesh.position.set(pos.x, pos.y, pos.z);
+    mesh.scale.setScalar(opts.scale || 1);
+    mesh.userData = { isNPC: true, npcMode: mode, glbPath, name: opts.name || glbKey };
+
+    // Generate patrol waypoints
+    const waypoints = [];
+    for (let i = 0; i < numWaypoints; i++) {
+      const angle = (i / numWaypoints) * Math.PI * 2;
+      waypoints.push(new THREE.Vector3(
+        pos.x + Math.cos(angle) * waypointRadius,
+        pos.y,
+        pos.z + Math.sin(angle) * waypointRadius
+      ));
+    }
+
+    const agent = { mesh, mode, waypoints, waypointIdx: 0, speed, state: 'moving',
+                    chaseRange: opts.chaseRange || 30, loseRange: opts.loseRange || 50,
+                    originalMode: mode };
+    _npcAgents.push(agent);
+    scene.add(mesh);
+    // Rebind skeleton after scale for animated NPCs
+    mesh.updateMatrixWorld(true);
+    mesh.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.pose(); });
+    objects.push(mesh);
+
+    if (!_npcUpdateInterval) startNPCLoop();
+  });
+}
+
+function startNPCLoop() {
+  if (_npcUpdateInterval) return;
+  const clock2 = new THREE.Clock();
+  _npcUpdateInterval = setInterval(() => {
+    const dt = Math.min(clock2.getDelta(), 0.1);
+    const playerPos = camera.position;
+
+    for (const agent of _npcAgents) {
+      if (!agent.mesh.parent) continue;
+      const m = agent.mesh;
+
+      // Chase detection — switch mode if player is close
+      const distToPlayer = m.position.distanceTo(playerPos);
+      if (agent.originalMode === 'chase' || agent.mode === 'chase') {
+        if (distToPlayer < agent.chaseRange) {
+          agent.mode = 'chase';
+        } else if (distToPlayer > agent.loseRange) {
+          agent.mode = agent.originalMode === 'chase' ? 'patrol' : agent.originalMode;
+        }
+      }
+
+      let target = null;
+      if (agent.mode === 'patrol') {
+        target = agent.waypoints[agent.waypointIdx];
+        const dist = m.position.distanceTo(target);
+        if (dist < 1.5) {
+          agent.waypointIdx = (agent.waypointIdx + 1) % agent.waypoints.length;
+          target = agent.waypoints[agent.waypointIdx];
+        }
+      } else if (agent.mode === 'chase' || agent.mode === 'follow') {
+        target = playerPos;
+        if (m.position.distanceTo(target) < 2.5) continue; // close enough
+      } else if (agent.mode === 'idle') {
+        continue;
+      }
+
+      if (!target) continue;
+
+      // Move toward target
+      const dir = new THREE.Vector3().subVectors(target, m.position).normalize();
+      dir.y = 0;
+      const spd = agent.mode === 'chase' ? agent.speed * 1.8 : agent.speed;
+      m.position.addScaledVector(dir, spd * dt);
+      m.position.y = 0; // stay on ground
+
+      // Face direction of movement
+      if (dir.lengthSq() > 0.01) {
+        const angle = Math.atan2(dir.x, dir.z);
+        m.rotation.y = THREE.MathUtils.lerp(m.rotation.y, angle, 0.12);
+      }
+    }
+  }, 1000 / 30); // 30fps update
+}
+
+function setNPCMode(index, mode) {
+  if (!_npcAgents[index]) return false;
+  _npcAgents[index].mode = mode;
+  _npcAgents[index].originalMode = mode;
+  return true;
+}
+
+function clearAllNPCAgents() {
+  for (const a of _npcAgents) { scene.remove(a.mesh); }
+  _npcAgents.length = 0;
+  if (_npcUpdateInterval) { clearInterval(_npcUpdateInterval); _npcUpdateInterval = null; }
+}
+
+window._npcAgents = _npcAgents;
+window.spawnBehaviorNPC = spawnBehaviorNPC;
+window.setNPCMode = setNPCMode;
+// ══════════════════════════════════════════════════════
+// END NPC BEHAVIOR SYSTEM
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// MOBILE POLISH — Better touch controls
+// ══════════════════════════════════════════════════════
+(function patchMobileControls(){
+  if (!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) return;
+  document.addEventListener('DOMContentLoaded', () => {
+    // Increase joystick size for phones
+    const joyWrap = document.getElementById('joystick-wrapper') || document.querySelector('[id*="joystick"]');
+    if (joyWrap) {
+      joyWrap.style.width = '110px';
+      joyWrap.style.height = '110px';
+      joyWrap.style.bottom = '24px';
+      joyWrap.style.left = '24px';
+    }
+
+    // Pinch-to-zoom (adjust camera FOV)
+    let lastPinchDist = null;
+    document.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 2) { lastPinchDist = null; return; }
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (lastPinchDist !== null) {
+        const delta = lastPinchDist - dist;
+        if (camera) {
+          camera.fov = Math.min(100, Math.max(30, camera.fov + delta * 0.08));
+          camera.updateProjectionMatrix();
+        }
+      }
+      lastPinchDist = dist;
+    }, { passive: true });
+
+    // Double-tap to interact / select object
+    let lastTap = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTap < 300 && e.touches.length === 0) {
+        // Double tap — raycast to select nearest object
+        const touch = e.changedTouches[0];
+        if (!touch) return;
+        const rc = new THREE.Raycaster();
+        const rect = renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((touch.clientX - rect.left) / rect.width) * 2 - 1,
+          -((touch.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        rc.setFromCamera(mouse, camera);
+        const hits = rc.intersectObjects(objects, true);
+        if (hits.length > 0) {
+          const obj = hits[0].object;
+          const name = obj.userData?.name || 'Object';
+          showToast('👆 ' + name);
+        }
+      }
+      lastTap = now;
+    });
+
+    // Swipe-to-look (right side of screen)
+    let lookTouch = null, lastLookX = 0, lastLookY = 0;
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.clientX > window.innerWidth * 0.5) {
+          lookTouch = t.identifier; lastLookX = t.clientX; lastLookY = t.clientY;
+        }
+      }
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== lookTouch) continue;
+        const dx = t.clientX - lastLookX;
+        const dy = t.clientY - lastLookY;
+        lastLookX = t.clientX; lastLookY = t.clientY;
+        if (window._camYaw !== undefined) {
+          window._camYaw -= dx * 0.003;
+          window._camPitch = Math.max(-1.2, Math.min(0.5, (window._camPitch||0) - dy * 0.003));
+        } else if (camera) {
+          camera.rotation.y -= dx * 0.003;
+          camera.rotation.x = Math.max(-0.8, Math.min(0.4, camera.rotation.x - dy * 0.003));
+        }
+      }
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchend', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === lookTouch) lookTouch = null;
+      }
+    });
+
+    // Overlay action buttons for mobile
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:500;display:flex;flex-direction:column;gap:8px';
+    const mkBtn = (label, cmd, color='#ff6b35') => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = `width:52px;height:52px;border-radius:50%;background:rgba(10,10,10,0.9);border:2px solid ${color};color:${color};font-size:1.2rem;cursor:pointer;backdrop-filter:blur(8px)`;
+      b.addEventListener('touchend', (e) => { e.preventDefault(); if(window.parseAndExecute)parseAndExecute(cmd); });
+      return b;
+    };
+    bar.appendChild(mkBtn('⚔️', 'attack'));
+    bar.appendChild(mkBtn('💊', 'add medkit', '#4ade80'));
+    bar.appendChild(mkBtn('🔦', 'play flashlight_on', '#f7c948'));
+    document.body.appendChild(bar);
+  });
+})();
+// ══════════════════════════════════════════════════════
+// END MOBILE POLISH
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// WORLD SAVE / EXPORT / LOAD SYSTEM
+// ══════════════════════════════════════════════════════
+const WORLD_VERSION = 2;
+
+function captureWorldState() {
+  const state = {
+    version: WORLD_VERSION,
+    timestamp: Date.now(),
+    name: window._worldName || 'My World',
+    terrain: { type: currentGroundType || 'grass', heightmap: null },
+    sky: { time: window._currentTimeOfDay || 'afternoon' },
+    fog: { enabled: scene.fog !== null, density: scene.fog?.density || 0 },
+    objects: [],
+    npcs: [],
+    audio: { music: window._currentMusic || null },
+    postfx: {
+      bloom: bloomPass?.strength || 0.3,
+      vignette: window._colorPass?.uniforms.vignetteStrength?.value || 0.35,
+      grain: window._colorPass?.uniforms.filmGrain?.value || 0.03,
+    }
+  };
+
+  // Capture all placed objects
+  for (const obj of objects) {
+    if (!obj || !obj.userData) continue;
+    const entry = {
+      name: obj.userData.name || 'Object',
+      glb: obj.userData.glbPath || null,
+      primitive: obj.userData.primitive || null,
+      pos: { x: +obj.position.x.toFixed(2), y: +obj.position.y.toFixed(2), z: +obj.position.z.toFixed(2) },
+      rot: { y: +(obj.rotation.y * 180 / Math.PI).toFixed(1) },
+      scale: +obj.scale.x.toFixed(3),
+      color: obj.userData.color || null,
+    };
+    if (obj.userData.isNPC) state.npcs.push(entry);
+    else state.objects.push(entry);
+  }
+  return state;
+}
+
+async function saveWorld(name) {
+  window._worldName = name || window._worldName || 'My World';
+  const state = captureWorldState();
+  const json = JSON.stringify(state, null, 2);
+  // Save to localStorage
+  try {
+    localStorage.setItem('crate_world_' + state.name, json);
+    localStorage.setItem('crate_world_last', json);
+  } catch(e) {}
+  // Also trigger download
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (state.name || 'world') + '.crate.json';
+  a.click(); URL.revokeObjectURL(url);
+  showToast('🌍 World saved: ' + state.name + ' (' + state.objects.length + ' objects)');
+  return 'World saved as ' + state.name + '.crate.json';
+}
+
+async function loadWorldFromJSON(json) {
+  let state;
+  try { state = typeof json === 'string' ? JSON.parse(json) : json; }
+  catch(e) { return 'Invalid world file: ' + e.message; }
+
+  showToast('Loading world: ' + (state.name || 'unknown') + '...');
+
+  // Apply terrain
+  if (state.terrain?.type) {
+    currentGroundType = state.terrain.type;
+    await applyGroundTexture(currentGround, currentGroundType);
+  }
+
+  // Apply sky
+  if (state.sky?.time) await parseAndExecute('time ' + state.sky.time);
+
+  // Apply fog
+  if (state.fog?.enabled) {
+    scene.fog = new THREE.FogExp2(0x8899aa, state.fog.density || 0.01);
+  } else { scene.fog = null; }
+
+  // Restore post-fx
+  if (state.postfx && window._colorPass) {
+    if (state.postfx.bloom !== undefined && bloomPass) bloomPass.strength = state.postfx.bloom;
+    if (state.postfx.vignette !== undefined) window._colorPass.uniforms.vignetteStrength.value = state.postfx.vignette;
+    if (state.postfx.grain !== undefined) window._colorPass.uniforms.filmGrain.value = state.postfx.grain;
+  }
+
+  // Restore objects
+  let placed = 0;
+  for (const entry of [...(state.objects||[]), ...(state.npcs||[])]) {
+    try {
+      if (entry.glb) {
+        await new Promise((resolve) => {
+          gltfLoader.load(entry.glb, (gltf) => {
+            const m = gltf.scene;
+            m.position.set(entry.pos.x, entry.pos.y, entry.pos.z);
+            m.rotation.y = (entry.rot?.y || 0) * Math.PI / 180;
+            m.scale.setScalar(entry.scale || 1);
+            m.userData = { name: entry.name, glbPath: entry.glb, isGLB: true };
+            scene.add(m); objects.push(m); placed++;
+            resolve();
+          }, undefined, resolve);
+        });
+      }
+    } catch(e) {}
+  }
+
+  window._worldName = state.name;
+  showToast('🌍 World loaded: ' + placed + ' objects restored');
+  return 'World loaded: ' + state.name;
+}
+
+function openWorldFilePicker() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json,.crate.json';
+  inp.onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const text = await file.text();
+    loadWorldFromJSON(text);
+  };
+  inp.click();
+  return 'File picker opened — select your .crate.json world file';
+}
+
+window.saveWorld = saveWorld;
+window.loadWorldFromJSON = loadWorldFromJSON;
+// ══════════════════════════════════════════════════════
+// END WORLD SAVE / EXPORT / LOAD
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// AUDIO SYSTEM — Horror SFX + Music + Ambient
+// ══════════════════════════════════════════════════════
+const HORROR_AUDIO = {
+  // Music
+  menu_music:       '/audio/horror/menumusic01.wav',
+  event_music:      '/audio/horror/eventmusic01.wav',
+  horror_music:     '/audio/horror/eventmusic01.wav',
+  // Ambient / atmosphere
+  heartbeat:        '/audio/horror/heartbeat.wav',
+  vision_ambient:   '/audio/horror/visionsound1.wav',
+  street_light_hum: '/audio/horror/streetlightsoundloop.wav',
+  police_siren:     '/audio/horror/policesiren.wav',
+  // Killer / hunter
+  chainsaw_idle:    '/audio/horror/chainsawidle.wav',
+  chainsaw_attack:  '/audio/horror/chainsawattack.wav',
+  chainsaw_on:      '/audio/horror/chainsawturnon.wav',
+  hunter_chase:     '/audio/horror/hunter01chase01loop.wav',
+  hunter_vision:    '/audio/horror/huntersvisionsound.wav',
+  // Footsteps
+  footstep_1:       '/audio/horror/player_footstep_01.wav',
+  footstep_land:    '/audio/horror/player_land.wav',
+  // Props
+  door_open:        '/audio/horror/dooropen.wav',
+  door_close:       '/audio/horror/closecardoor.wav',
+  door_unlock:      '/audio/horror/doorunlockingsoundloop.wav',
+  flashlight_on:    '/audio/horror/flashlightturnonsound.wav',
+  flashlight_off:   '/audio/horror/flashlightturnoffsound.wav',
+  light_on:         '/audio/horror/lightturnonsound.wav',
+  light_off:        '/audio/horror/lightturnoffsound.wav',
+  match_start:      '/audio/horror/matchstartsound.wav',
+  street_break:     '/audio/horror/streetlightbreaksound.wav',
+  // Combat
+  sword_swing:      '/audio/horror/swordswing01.wav',
+  sword_hit_flesh:  '/audio/horror/swordfleshhit01.wav',
+  sword_equip:      '/audio/horror/swordequip01.wav',
+  knife_hit:        '/audio/horror/knifecharacterhit.wav',
+  shotgun:          '/audio/horror/shotgunsound.wav',
+  // Vehicles
+  car_start:        '/audio/horror/carturnonsound.wav',
+  car_accel:        '/audio/horror/accelerationhigh.wav',
+  car_skid:         '/audio/horror/skid.wav',
+  firecracker:      '/audio/horror/firecrackersound.wav',
+};
+
+const _audioCtx = { ctx: null, nodes: {}, music: null };
+
+function getAudioCtx() {
+  if (!_audioCtx.ctx) _audioCtx.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx.ctx;
+}
+
+async function playSound(key, loop=false, volume=1.0) {
+  const src = HORROR_AUDIO[key];
+  if (!src) return false;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const resp = await fetch(src);
+    const buf = await ctx.decodeAudioData(await resp.arrayBuffer());
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buf;
+    source.loop = loop;
+    gain.gain.value = volume;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(0);
+    if (loop) _audioCtx.nodes[key] = { source, gain };
+    return true;
+  } catch(e) { return false; }
+}
+
+function stopSound(key) {
+  const node = _audioCtx.nodes[key];
+  if (node) { try { node.source.stop(); } catch(e) {} delete _audioCtx.nodes[key]; }
+}
+
+function stopAllSounds() {
+  Object.keys(_audioCtx.nodes).forEach(stopSound);
+  if (_audioCtx.ctx) { _audioCtx.ctx.close(); _audioCtx.ctx = null; }
+}
+
+window._playHorrorSound = playSound;
+window._stopSound = stopSound;
+window._stopAllSounds = stopAllSounds;
+window._HORROR_AUDIO = HORROR_AUDIO;
+// ══════════════════════════════════════════════════════
+// END AUDIO SYSTEM
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// NPC DIALOGUE EDITOR — Visual Conversation Tree Builder
+// ══════════════════════════════════════════════════════
+const _dialogueTrees = {};   // name -> { nodes: [], start: 'node_0' }
+let   _activeDialogue = null;
+
+function showDialogueEditor(npcName) {
+  loadEditorToolsModule().then((mod) => mod.showDialogueEditor(npcName)).catch((err) => {
+    console.warn('[DialogueEditor] Failed to load:', err.message);
+    showToast('Dialogue tools failed to load');
+  });
+  return;
+  const existing = document.getElementById('dialogue-editor-modal');
+  if (existing) { existing.remove(); return; }
+
+  const treeName = npcName || 'NPC_1';
+  if (!_dialogueTrees[treeName]) {
+    _dialogueTrees[treeName] = {
+      nodes: [
+        { id: 'node_0', text: 'Hello traveler, what do you seek?', options: [
+          { text: 'Tell me about this place', next: 'node_1' },
+          { text: 'I need supplies', next: 'node_2' },
+          { text: 'Goodbye', next: null }
+        ]},
+        { id: 'node_1', text: 'This is a dangerous land. Beware the creatures at night.', options: [
+          { text: 'Thank you for the warning', next: null },
+          { text: 'What creatures?', next: null }
+        ]},
+        { id: 'node_2', text: 'I have potions and weapons for sale.', options: [
+          { text: 'Show me your wares', next: null },
+          { text: 'Never mind', next: null }
+        ]}
+      ],
+      start: 'node_0'
+    };
+  }
+
+  const tree = _dialogueTrees[treeName];
+
+  const modal = document.createElement('div');
+  modal.id = 'dialogue-editor-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99998;display:flex;flex-direction:column;font-family:-apple-system,sans-serif;overflow:hidden';
+
+  function renderEditor() {
+    const nodeList = tree.nodes.map((node, ni) => `
+      <div style="background:#0d0d0d;border:1px solid ${node.id===tree.start?'#ff6b35':'#222'};border-radius:10px;padding:12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="color:#555;font-size:0.7rem;font-family:monospace">${node.id}</span>
+          ${node.id===tree.start?'<span style="background:#ff6b35;color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px">START</span>':''}
+          <button onclick="window._dlgSetStart('${node.id}')" style="margin-left:auto;background:#111;border:1px solid #333;color:#888;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.65rem">Set Start</button>
+          <button onclick="window._dlgDeleteNode(${ni})" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.65rem">Delete</button>
+        </div>
+        <textarea id="node-text-${ni}" style="width:100%;background:#111;border:1px solid #333;border-radius:6px;padding:8px;color:#fff;font-size:0.82rem;resize:vertical;min-height:60px;box-sizing:border-box" onchange="window._dlgUpdateText(${ni},this.value)">${node.text}</textarea>
+        <div style="margin-top:8px">
+          <div style="color:#555;font-size:0.65rem;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Response Options</div>
+          ${node.options.map((opt,oi)=>`
+            <div style="display:flex;gap:6px;margin-bottom:4px;align-items:center">
+              <input value="${opt.text}" onchange="window._dlgUpdateOpt(${ni},${oi},'text',this.value)" style="flex:1;background:#111;border:1px solid #333;border-radius:4px;padding:5px 8px;color:#ccc;font-size:0.75rem">
+              <select onchange="window._dlgUpdateOpt(${ni},${oi},'next',this.value||null)" style="background:#111;border:1px solid #333;border-radius:4px;padding:5px;color:#ccc;font-size:0.75rem">
+                <option value="">→ End</option>
+                ${tree.nodes.map(n=>`<option value="${n.id}" ${opt.next===n.id?'selected':''}>${n.id}</option>`).join('')}
+              </select>
+              <button onclick="window._dlgDeleteOpt(${ni},${oi})" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem">✕</button>
+            </div>`).join('')}
+          <button onclick="window._dlgAddOpt(${ni})" style="background:#111;border:1px solid #4ade80;color:#4ade80;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.7rem;margin-top:2px">+ Add Option</button>
+        </div>
+      </div>`).join('');
+
+    modal.innerHTML = `
+      <div style="padding:14px 18px;background:#0a0a0a;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <span style="font-size:1.2rem">💬</span>
+        <div style="flex:1">
+          <div style="font-weight:700;color:#fff">Dialogue Editor — <span style="color:#ff6b35">${treeName}</span></div>
+          <div style="font-size:0.65rem;color:#555">${tree.nodes.length} nodes • Click node to preview</div>
+        </div>
+        <button onclick="window._dlgPreview()" style="background:#1a1a2e;border:1px solid #4ade80;color:#4ade80;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.8rem">▶ Preview</button>
+        <button onclick="window._dlgExport('${treeName}')" style="background:#1a1a2e;border:1px solid #ff6b35;color:#ff6b35;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.8rem">💾 Save</button>
+        <button onclick="document.getElementById('dialogue-editor-modal').remove()" style="background:none;border:1px solid #333;color:#888;padding:6px 12px;border-radius:8px;cursor:pointer">✕</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start">
+        <div>
+          <div style="color:#ff6b35;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Dialogue Nodes</div>
+          ${nodeList}
+          <button onclick="window._dlgAddNode()" style="width:100%;padding:10px;background:#111;border:2px dashed #333;border-radius:8px;color:#555;cursor:pointer;font-size:0.8rem;margin-top:4px" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#555'">+ Add Node</button>
+        </div>
+        <div>
+          <div style="color:#4ade80;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Flow Preview</div>
+          <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:10px;padding:12px;font-size:0.75rem;color:#888;font-family:monospace;white-space:pre-wrap">${
+            tree.nodes.map(n=>`[${n.id}] "${n.text.substring(0,40)}..."\n${n.options.map(o=>`  → "${o.text}" → ${o.next||'END'}`).join('\n')}`).join('\n\n')
+          }</div>
+          <div style="margin-top:12px;color:#555;font-size:0.7rem">Commands:</div>
+          <div style="font-family:monospace;font-size:0.7rem;color:#888;background:#0d0d0d;padding:8px;border-radius:6px;margin-top:4px">
+npc ${treeName} say Hello traveler<br>
+add npc dialogue<br>
+show dialogue ${treeName}<br>
+attach dialogue ${treeName} to [npc name]
+          </div>
+        </div>
+      </div>`;
+
+    // Wire handlers
+    window._dlgAddNode = () => {
+      const id = 'node_' + tree.nodes.length;
+      tree.nodes.push({ id, text: 'New dialogue node', options: [{ text: 'Continue', next: null }] });
+      renderEditor();
+    };
+    window._dlgDeleteNode = (i) => { tree.nodes.splice(i,1); renderEditor(); };
+    window._dlgSetStart = (id) => { tree.start = id; renderEditor(); };
+    window._dlgUpdateText = (i, v) => { tree.nodes[i].text = v; };
+    window._dlgAddOpt = (ni) => { tree.nodes[ni].options.push({text:'New option',next:null}); renderEditor(); };
+    window._dlgDeleteOpt = (ni,oi) => { tree.nodes[ni].options.splice(oi,1); renderEditor(); };
+    window._dlgUpdateOpt = (ni,oi,k,v) => { tree.nodes[ni].options[oi][k] = v||null; };
+    window._dlgPreview = () => showDialoguePreview(treeName);
+    window._dlgExport = (name) => {
+      const json = JSON.stringify(_dialogueTrees[name], null, 2);
+      localStorage.setItem('crate_dialogue_' + name, json);
+      showToast('💬 Dialogue "' + name + '" saved');
+    };
+  }
+
+  document.body.appendChild(modal);
+  renderEditor();
+}
+
+function showDialoguePreview(treeName) {
+  loadEditorToolsModule().then((mod) => mod.showDialoguePreview(treeName)).catch((err) => {
+    console.warn('[DialogueEditor] Preview failed to load:', err.message);
+    showToast('Dialogue preview failed to load');
+  });
+  return;
+  const tree = _dialogueTrees[treeName];
+  if (!tree) return;
+  let currentNode = tree.nodes.find(n=>n.id===tree.start) || tree.nodes[0];
+  if (!currentNode) return;
+
+  const overlay = document.getElementById('dlg-preview-overlay') || (() => {
+    const el = document.createElement('div');
+    el.id = 'dlg-preview-overlay';
+    el.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);width:500px;max-width:92vw;background:rgba(10,10,10,0.95);border:1px solid #333;border-radius:14px;z-index:100000;padding:20px;font-family:-apple-system,sans-serif;backdrop-filter:blur(10px)';
+    document.body.appendChild(el);
+    return el;
+  })();
+
+  function render(node) {
+    overlay.innerHTML = `
+      <div style="color:#888;font-size:0.65rem;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">💬 ${treeName}</div>
+      <div style="color:#fff;font-size:0.95rem;line-height:1.5;margin-bottom:14px">${node.text}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${node.options.map((opt,i)=>`
+          <button onclick="window._dlgPickOpt(${i})" style="text-align:left;padding:8px 14px;background:#111;border:1px solid #333;border-radius:8px;color:#ccc;cursor:pointer;font-size:0.82rem;transition:all 0.15s" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#333';this.style.color='#ccc'">
+            [${i+1}] ${opt.text}
+          </button>`).join('')}
+      </div>
+      <button onclick="document.getElementById('dlg-preview-overlay').remove()" style="margin-top:10px;background:none;border:none;color:#444;cursor:pointer;font-size:0.75rem">Close preview</button>`;
+
+    window._dlgPickOpt = (i) => {
+      const next = node.options[i]?.next;
+      if (!next) { overlay.remove(); return; }
+      const nextNode = tree.nodes.find(n=>n.id===next);
+      if (nextNode) render(nextNode); else overlay.remove();
+    };
+  }
+  render(currentNode);
+}
+
+window.showDialogueEditor = showDialogueEditor;
+window._dialogueTrees = _dialogueTrees;
+// ══════════════════════════════════════════════════════
+// END NPC DIALOGUE EDITOR
+// ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// TERRAIN PAINT UI — Click to paint texture zones
+// ══════════════════════════════════════════════════════
+let _terrainPaintMode = false;
+let _terrainPaintType = 'grass';
+let _terrainPaintRadius = 15;
+const _paintedZones = [];
+
+const PAINT_COLORS = {
+  grass:    0x3a7a3a,
+  sand:     0xc4a96a,
+  desert:   0xb8924a,
+  snow:     0xd8dce8,
+  dirt:     0x6b4a2a,
+  stone:    0x666666,
+  rock:     0x555555,
+  mud:      0x4a3a2a,
+  lava:     0xcc3300,
+  forest:   0x2a5a2a,
+  concrete: 0x999999,
+  asphalt:  0x333333,
+  ice:      0xaaddff,
+};
+
+function showTerrainPaintUI() {
+  loadEditorToolsModule().then((mod) => mod.showTerrainPaintUI()).catch((err) => {
+    console.warn('[TerrainPainter] Failed to load:', err.message);
+    showToast('Terrain painter failed to load');
+  });
+  return;
+  const existing = document.getElementById('terrain-paint-ui');
+  if (existing) { existing.remove(); _terrainPaintMode = false; return; }
+
+  const panel = document.createElement('div');
+  panel.id = 'terrain-paint-ui';
+  panel.style.cssText = 'position:fixed;top:60px;left:20px;z-index:300;width:220px;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden;font-family:-apple-system,sans-serif';
+
+  const texTypes = ['grass','sand','desert','snow','dirt','stone','rock','mud','lava','forest','concrete','asphalt','ice'];
+
+  panel.innerHTML = `
+    <div style="padding:10px 12px;background:rgba(255,107,53,0.08);border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:8px">
+      <span>🖌️</span>
+      <div style="flex:1;font-weight:700;color:#ff6b35;font-size:0.8rem">Terrain Painter</div>
+      <button onclick="document.getElementById('terrain-paint-ui').remove();window._terrainPaintMode=false" style="background:none;border:none;color:#555;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:10px">
+      <div style="color:#555;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Texture</div>
+      <div id="paint-texture-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px">
+        ${texTypes.map(t=>`
+          <div onclick="window._setPaintType('${t}')" id="paint-btn-${t}" style="aspect-ratio:1;border-radius:6px;cursor:pointer;border:2px solid ${t===_terrainPaintType?'#ff6b35':'transparent'};background:${('#' + PAINT_COLORS[t]?.toString(16).padStart(6,'0'))||'#333'};position:relative;transition:all 0.15s" title="${t}">
+            <span style="position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:0.45rem;color:rgba(255,255,255,0.8)">${t}</span>
+          </div>`).join('')}
+      </div>
+      <div style="color:#555;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Brush Radius: <span id="paint-radius-val">${_terrainPaintRadius}</span></div>
+      <input type="range" min="2" max="50" value="${_terrainPaintRadius}" id="paint-radius" oninput="window._setPaintRadius(+this.value)" style="width:100%;accent-color:#ff6b35;margin-bottom:10px">
+      <button onclick="window._terrainPaintMode=!window._terrainPaintMode;this.style.background=window._terrainPaintMode?'rgba(255,107,53,0.2)':'#111';this.style.color=window._terrainPaintMode?'#ff6b35':'#888';this.textContent=window._terrainPaintMode?'🖌️ Painting...':'🖌️ Start Painting'" 
+        style="width:100%;padding:8px;background:#111;border:1px solid #333;border-radius:8px;color:#888;cursor:pointer;font-size:0.8rem;margin-bottom:6px">🖌️ Start Painting</button>
+      <button onclick="window._clearPaintZones()" style="width:100%;padding:6px;background:#111;border:1px solid #ef4444;border-radius:8px;color:#ef4444;cursor:pointer;font-size:0.75rem">Clear All Zones</button>
+      <div style="color:#555;font-size:0.65rem;margin-top:8px">Click terrain to paint • Painted zones show colored circles</div>
+    </div>`;
+
+  document.body.appendChild(panel);
+  _terrainPaintMode = false;
+
+  window._setPaintType = (t) => {
+    _terrainPaintType = t;
+    document.querySelectorAll('[id^="paint-btn-"]').forEach(el => el.style.borderColor='transparent');
+    const btn = document.getElementById('paint-btn-' + t);
+    if (btn) btn.style.borderColor = '#ff6b35';
+  };
+  window._setPaintRadius = (r) => {
+    _terrainPaintRadius = r;
+    const el = document.getElementById('paint-radius-val');
+    if (el) el.textContent = r;
+  };
+  window._clearPaintZones = () => {
+    _paintedZones.forEach(z => scene.remove(z));
+    _paintedZones.length = 0;
+    showToast('Paint zones cleared');
+  };
+
+  // Paint on canvas click when in paint mode
+  window._terrainPaintMode = false;
+  if (!window._paintClickHandler) {
+    window._paintClickHandler = (e) => {
+      if (!window._terrainPaintMode) return;
+      const rc = new THREE.Raycaster();
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      rc.setFromCamera(mouse, camera);
+      const hits = rc.intersectObject(currentGround);
+      if (hits.length > 0) {
+        const pt = hits[0].point;
+        // Spawn a paint zone disc
+        const geo = new THREE.CircleGeometry(_terrainPaintRadius, 32);
+        const col = new THREE.Color(PAINT_COLORS[_terrainPaintType] || 0x3a7a3a);
+        const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55, depthWrite: false });
+        const disc = new THREE.Mesh(geo, mat);
+        disc.rotation.x = -Math.PI/2;
+        disc.position.set(pt.x, 0.05, pt.z);
+        disc.userData = { isPaintZone: true, paintType: _terrainPaintType };
+        scene.add(disc);
+        _paintedZones.push(disc);
+        // Also queue texture load for this zone (visual feedback)
+        loadGroundTexture(_terrainPaintType).then(tex => {
+          if (tex) {
+            const tTex = tex.clone();
+            tTex.wrapS = tTex.wrapT = THREE.RepeatWrapping;
+            tTex.repeat.set(4, 4);
+            mat.map = tTex;
+            mat.color.set(0xffffff);
+            mat.needsUpdate = true;
+          }
+        });
+        showToast('Painted ' + _terrainPaintType + ' zone at (' + pt.x.toFixed(0) + ',' + pt.z.toFixed(0) + ')');
+      }
+    };
+    renderer.domElement.addEventListener('click', window._paintClickHandler);
+  }
+}
+
+window.showTerrainPaintUI = showTerrainPaintUI;
+window._terrainPaintMode = false;
+// ══════════════════════════════════════════════════════
+// END TERRAIN PAINT UI
+// ══════════════════════════════════════════════════════
+
 async function parseAndExecute(rawCmd) {
+  const cmd = rawCmd; // alias for compatibility
+
+  const lower = (rawCmd || "").toLowerCase().trim();
+  await loadModelRegistryModule().catch((err) => {
+    console.warn('[ModelRegistry] Deferred load failed:', err.message);
+  });
+  if (/^(?:build|create|generate) navmesh$/i.test(cmd) || /^navmesh build$/i.test(cmd)) {
+    try {
+      const { buildNavMeshForScene } = await loadNavMeshModule();
+      const result = await buildNavMeshForScene(scene, scene);
+      return `🧭 NavMesh built for ${result.meshCount} meshes`;
+    } catch (err) {
+      return '⚠️ NavMesh build failed: ' + err.message;
+    }
+  }
+  if (/^(?:toggle|show|hide) navmesh$/i.test(cmd) || /^navmesh (on|off)$/i.test(cmd)) {
+    try {
+      const { buildNavMeshForScene, hasNavMesh, toggleNavMeshDebug } = await loadNavMeshModule();
+      if (!hasNavMesh()) await buildNavMeshForScene(scene, scene);
+      const forceVisible = /show| on$/i.test(cmd) ? true : /hide| off$/i.test(cmd) ? false : undefined;
+      const visible = toggleNavMeshDebug(scene, forceVisible);
+      return '🧭 NavMesh debug ' + (visible ? 'visible' : 'hidden');
+    } catch (err) {
+      return '⚠️ NavMesh debug failed: ' + err.message;
+    }
+  }
+  if (/^clear navmesh path$/i.test(cmd)) {
+    const { clearNavMeshPath } = await loadNavMeshModule();
+    clearNavMeshPath(scene);
+    return '🧭 NavMesh path cleared';
+  }
+  if (/^(?:path|pathfind) to (?:selected|target|object)$/i.test(cmd) || /^navmesh path$/i.test(cmd)) {
+    try {
+      const { buildNavMeshForScene, hasNavMesh, computeNavMeshPath } = await loadNavMeshModule();
+      const target = getCurrentSelection();
+      if (!target) return '⚠️ Select an object first';
+      if (!hasNavMesh()) await buildNavMeshForScene(scene, scene);
+      const targetPoint = target.getWorldPosition(new THREE.Vector3());
+      const path = computeNavMeshPath(getNavStartPoint(), targetPoint, scene);
+      return '🧭 Path ready: ' + path.length + ' points to ' + (target.userData?.name || target.name || 'target');
+    } catch (err) {
+      return '⚠️ Pathfinding failed: ' + err.message;
+    }
+  }
+  if (/^(?:semantic search|search assets(?: for| like| about)?|find similar assets(?: for| like| about)?) /i.test(cmd)) {
+    try {
+      const { semanticSearchAssets } = await loadLocalAiToolsModule();
+      const query = cmd.replace(/^(?:semantic search|search assets(?: for| like| about)?|find similar assets(?: for| like| about)?) /i, '').trim();
+      if (!query) return '⚠️ Give me a search query';
+      const results = await semanticSearchAssets(query, getAssetSearchCatalog(), 6);
+      if (!results.length) return '🔎 No semantic asset matches found';
+      window._lastSemanticAssetSearch = results;
+      return '🔎 Semantic matches:\n' + results.map((entry, index) => `${index + 1}. ${entry.label} (${entry.score.toFixed(3)})`).join('\n');
+    } catch (err) {
+      return '⚠️ Semantic search failed: ' + err.message;
+    }
+  }
+  if (/^add semantic result \d+$/i.test(cmd)) {
+    const idx = Math.max(0, parseInt(cmd.match(/\d+/)[0], 10) - 1);
+    const result = window._lastSemanticAssetSearch?.[idx];
+    if (!result) return '⚠️ No semantic result stored at that index';
+    return execSingle('add ' + result.label);
+  }
+  if (/^speak /i.test(cmd)) {
+    try {
+      const { speakTextWithTTS } = await loadSpeechTtsModule();
+      const text = cmd.replace(/^speak /i, '').trim();
+      if (!text) return '⚠️ Give me text to speak';
+      await speakTextWithTTS(text);
+      return '🔊 Speaking locally';
+    } catch (err) {
+      return '⚠️ TTS failed: ' + err.message;
+    }
+  }
+  if (/^(?:gpu debug|debug gpu|spector)$/i.test(cmd)) {
+    try {
+      const { toggleSpectorOverlay } = await loadDebugToolsModule();
+      const visible = await toggleSpectorOverlay();
+      return '🧪 GPU debugger ' + (visible ? 'opened' : 'hidden');
+    } catch (err) {
+      return '⚠️ GPU debugger failed: ' + err.message;
+    }
+  }
+  if (/^(?:capture frame|capture gpu frame|spector capture)$/i.test(cmd)) {
+    try {
+      const { captureFrameWithSpector } = await loadDebugToolsModule();
+      await captureFrameWithSpector(renderer.domElement);
+      return '📸 GPU frame capture requested';
+    } catch (err) {
+      return '⚠️ Frame capture failed: ' + err.message;
+    }
+  }
+  if (/^connect colyseus(?:\s+\S+)?(?:\s+\S+)?$/i.test(cmd)) {
+    try {
+      const parts = cmd.trim().split(/\s+/);
+      const endpoint = parts[2] || DEFAULT_COLYSEUS_ENDPOINT;
+      const roomName = parts[3] || DEFAULT_COLYSEUS_ROOM;
+      const room = await connectColyseusRoom(endpoint, roomName);
+      return '🌐 Colyseus connected: ' + (room.name || roomName) + ' (' + room.roomId + ')';
+    } catch (err) {
+      return '⚠️ Colyseus connect failed: ' + err.message;
+    }
+  }
+  if (/^disconnect colyseus$/i.test(cmd)) {
+    if (!colyseusBridge?.connected) return 'ℹ️ Colyseus is not connected';
+    await colyseusBridge.disconnect();
+    return '🌐 Colyseus disconnected';
+  }
+  if (/^colyseus status$/i.test(cmd)) {
+    if (!colyseusBridge?.connected || !colyseusBridge.room) return 'ℹ️ Colyseus offline';
+    return '🌐 Colyseus room ' + (colyseusBridge.room.name || DEFAULT_COLYSEUS_ROOM) + ' (' + colyseusBridge.room.roomId + ')';
+  }
+  // === AI AGENT COMMANDS ===
+  if (lower.startsWith('agent build ') || lower.startsWith('ai build ')) {
+    const agentPrompt = cmd.replace(/^(agent|ai) build /i, '').trim();
+    if (!window._agentReady) return '⚠️ Agent not loaded yet. Try again in a few seconds.';
+    window._agent.agentBuildLoop(agentPrompt, 3);
+    return '🤖 Agent building: "' + agentPrompt + '" (with screenshot learning loop)';
+  }
+  if (lower === 'agent memory' || lower === 'ai memory') {
+    if (window._agentShowMemory) window._agentShowMemory();
+    const mem = window._agentMemory ? window._agentMemory() : [];
+    if (mem.length === 0) return '🧠 Agent memory is empty — no lessons learned yet.';
+    return '🧠 Agent memory (' + mem.length + ' lessons):\n' + mem.slice(-10).map(l => '• [' + (l.type||'?') + ' s:' + (l.score||'?') + '] ' + l.summary).join('\n');
+  }
+  if (lower === 'agent stats' || lower === 'ai stats') {
+    if (window._agentStats) {
+      const s = window._agentStats();
+      return '📊 Agent stats: ' + s.total + ' lessons | avg score: ' + s.avgScore + ' | refs: ' + s.refs + ' categories | types: ' + JSON.stringify(s.types);
+    }
+    return '⚠️ Agent not loaded.';
+  }
+  if (lower === 'agent clear memory' || lower === 'ai clear memory') {
+    if (window._agent?.clearMemory) window._agent.clearMemory();
+    else localStorage.removeItem('crate_agent_memory');
+    return '🧹 Agent memory cleared.';
+  }
+
+  if (/^build (a |the )?(city|full city|the city)$/i.test(cmd)) {
+    const { buildCityWorld3 } = await loadCityBuilderModule();
+    buildCityWorld3();
+    return '🏙️ Building full city... give it 15-20 seconds to load all assets!';
+  }
   // Skip NL rewrite for gallery keywords — let gallery commands handle directly
   const _galBypass = /^(?:show |browse |open |pick |choose |select )?(characters?|weapons?|swords?|axes?|guns?|buildings?|houses?|vehicles?|cars?|animals?|trees?|plants?|rocks?|stones?|furniture|tables?|chairs?|food|items?|potions?|dungeon|sci-?fi|space|nature|survival|animations?|library|asset library|browse all|all assets|all models|model library|browse$)$/i;
+
+  // ── USER MODEL IMPORT SYSTEM ──────────────────────────────────────────────
+  if (/^import model (.+)/i.test(cmd)) {
+    const url = cmd.match(/^import model (.+)/i)[1].trim();
+    return loadUserModel(url, 'imported_model');
+  }
+  if (/^load model from (.+)/i.test(cmd)) {
+    const url = cmd.match(/^load model from (.+)/i)[1].trim();
+    return loadUserModel(url, 'imported_model');
+  }
+  if (/^import my model$/i.test(cmd) || /^load my model$/i.test(cmd)) {
+    return openModelFilePicker();
+  }
+  if (/^use my model as (.+)/i.test(cmd)) {
+    const alias = cmd.match(/^use my model as (.+)/i)[1].trim();
+    if (window._lastImportedModel) {
+      GLB_MODELS[alias] = window._lastImportedModel;
+      return `Model registered as "${alias}" - use "add ${alias}" to place it`;
+    }
+    return 'No model imported yet. Use "import model [URL]" first.';
+  }
+  if (/^place (my model|imported model|my imported model)$/i.test(cmd)) {
+    if (window._lastImportedModel) {
+      return execSingle(`add ${window._lastImportedModel}`);
+    }
+    return 'No model imported yet. Use "import model [URL]" first.';
+  }
+  // ── END USER MODEL IMPORT ─────────────────────────────────────────────────
+
+  // ── NATURAL LANGUAGE TERRAIN COMMANDS ────────────────────────────────────
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(desert|sandy) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain desert');
+    await parseAndExecute('ground sand');
+    await parseAndExecute('time noon');
+    await parseAndExecute('fog off');
+    return 'Desert land created — sandy terrain, harsh noon sun';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(grass|green|lush) (land|terrain|world|ground|area|meadow)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground grass');
+    await parseAndExecute('time afternoon');
+    return 'Grassy land created — rolling green hills';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(snow|snowy|arctic|winter|frozen) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain arctic');
+    await parseAndExecute('ground snow');
+    await parseAndExecute('time morning');
+    await parseAndExecute('make it snow');
+    return 'Snowy land created — arctic terrain with snowfall';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(forest|woodland|jungle|tropical) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground forest');
+    await parseAndExecute('time morning');
+    await parseAndExecute('fog 0.008');
+    return 'Forest land created — wooded hills with morning mist';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(volcanic|lava|hellscape|infernal) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain volcanic');
+    await parseAndExecute('ground lava');
+    await parseAndExecute('time night');
+    await parseAndExecute('particles embers');
+    return 'Volcanic land created — lava ground, ember particles, night sky';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(stone|rocky|mountain|mountainous) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain mountains');
+    await parseAndExecute('ground rock');
+    await parseAndExecute('time noon');
+    return 'Mountain land created — rocky terrain with stone ground';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(swamp|muddy|dark forest|bayou) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground mud');
+    await parseAndExecute('time dusk');
+    await parseAndExecute('fog 0.015');
+    await parseAndExecute('particles fireflies');
+    return 'Swamp land created — murky, foggy with fireflies';
+  }
+  if (/^(i want a?|make|create|generate)?\s*(a\s+)?(dirt|earthy|wasteland) (land|terrain|world|ground|area|scene)$/i.test(cmd)) {
+    await parseAndExecute('terrain hills');
+    await parseAndExecute('ground dirt');
+    await parseAndExecute('time afternoon');
+    return 'Wasteland created — dry dirt ground, barren hills';
+  }
+  if (/^ground (forest|swamp|desert|all grass|all sand|all snow)$/i.test(cmd)) {
+    const t = cmd.match(/^ground (.+)$/i)[1].toLowerCase();
+    const map = {'forest':'forest','swamp':'mud','all grass':'grass','all sand':'sand','all snow':'snow','desert':'sand'};
+    const gType = map[t] || t;
+    currentGroundType = gType;
+    setTimeout(() => applyGroundTexture(currentGround, gType), 100);
+    return `Ground texture set to ${gType}`;
+  }
+  // ── END NATURAL LANGUAGE TERRAIN ─────────────────────────────────────────
+
+  // ── POLISH COMMANDS ───────────────────────────────────────────────────────
+  if (/^dof (on|off)$/i.test(cmd) || /^depth of field (on|off)$/i.test(cmd)) {
+    const on = /on/i.test(cmd);
+    if (on && BokehPass && !bokehPass) {
+      bokehPass = new BokehPass(scene, camera, { focus: 20, aperture: 0.001, maxblur: 0.015 });
+      if (composer) composer.addPass(bokehPass);
+    }
+    if (bokehPass) bokehPass.enabled = on;
+    return `Depth of field ${on ? 'enabled' : 'disabled'}`;
+  }
+  if (/^dof focus (\d+\.?\d*)$/i.test(cmd)) {
+    const dist = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (bokehPass) bokehPass.uniforms['focus'].value = dist;
+    return `DOF focus set to ${dist}`;
+  }
+  if (/^motion blur (on|off)$/i.test(cmd)) {
+    const on = /on/i.test(cmd);
+    if (window._colorPass) window._colorPass.uniforms.chromaticAberration.value = on ? 0.002 : 0;
+    return `Motion blur ${on ? 'on' : 'off'}`;
+  }
+  if (/^chromatic aberration ([\d.]+)$/i.test(cmd) || /^chroma ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.chromaticAberration.value = Math.min(val, 0.02);
+    return `Chromatic aberration: ${val}`;
+  }
+  if (/^contrast ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.contrast.value = val;
+    return `Contrast: ${val}`;
+  }
+  if (/^saturation ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.saturation.value = val;
+    return `Saturation: ${val}`;
+  }
+  if (/^brightness ([\d.]+)$/i.test(cmd)) {
+    const val = parseFloat(cmd.match(/([\d.]+)/)[1]);
+    if (window._colorPass) window._colorPass.uniforms.brightness.value = val;
+    return `Brightness: ${val}`;
+  }
+  if (/^color grade (cinematic|warm|cool|horror|noir|vivid|neutral|default)$/i.test(cmd)) {
+    const style = cmd.split(' ').pop().toLowerCase();
+    const grades = {
+      cinematic: { contrast: 1.15, saturation: 0.9, brightness: 0.95, vignette: 0.5 },
+      warm:      { contrast: 1.05, saturation: 1.2, brightness: 1.05, vignette: 0.2 },
+      cool:      { contrast: 1.08, saturation: 0.85, brightness: 0.98, vignette: 0.25 },
+      horror:    { contrast: 1.3,  saturation: 0.4, brightness: 0.75, vignette: 0.7 },
+      noir:      { contrast: 1.4,  saturation: 0.0, brightness: 0.85, vignette: 0.6 },
+      vivid:     { contrast: 1.1,  saturation: 1.5, brightness: 1.05, vignette: 0.15 },
+      neutral:   { contrast: 1.0,  saturation: 1.0, brightness: 1.0,  vignette: 0.2 },
+      default:   { contrast: 1.08, saturation: 1.12, brightness: 1.02, vignette: 0.35 },
+    };
+    const g = grades[style] || grades.default;
+    if (window._colorPass) {
+      window._colorPass.uniforms.contrast.value = g.contrast;
+      window._colorPass.uniforms.saturation.value = g.saturation;
+      window._colorPass.uniforms.brightness.value = g.brightness;
+      window._colorPass.uniforms.vignetteStrength.value = g.vignette;
+    }
+    return `Color grade: ${style}`;
+  }
+  if (/^commands?$|^help commands?$|^command (page|list|reference|browser)$/i.test(cmd)) {
+    showCommandPage();
+    return 'Command reference opened';
+  }
+
+  if (/^(what.*next|polish.*guide|finish.*game|game.*done|ship.*game|publish.*game|export.*game)$/i.test(cmd)) {
+    return `🏁 **GAME POLISH CHECKLIST** — Here\'s what to do after your world is built:
+
+**VISUAL POLISH:**
+• color grade cinematic — cinematic look
+• bloom 1.5 — soft glow on lights
+• vignette 0.4 — edge darkening
+• ssao on — contact shadows
+• shadow quality ultra
+
+**ATMOSPHERE:**
+• Adjust fog density for your scene
+• Set the perfect time of day
+• Add ambient particles (fireflies, dust, embers)
+• Add god rays for sunlight
+
+**GAME FEEL:**
+• Add win condition — what does the player work toward?
+• Add main menu — first thing players see
+• Add game over screen — what happens on death?
+• Add background music — sets the tone
+• Add checkpoint — so players don\'t lose progress
+
+**PERFORMANCE:**
+• performance mode — if targeting mobile/low-end
+• lod on — reduces polygon count at distance
+• limit fps 60 — consistent frame rate
+
+**SHARE:**
+• Your game runs at: https://crateshipgames.com
+• Share the URL — anyone can play instantly, no install`;
+  }
+  // ── END POLISH COMMANDS ───────────────────────────────────────────────────
+
+
+  // ── NPC BEHAVIOR COMMANDS ──────────────────────────────────────────────────
+  if (/^add patrol(?:ling)? npc$/i.test(cmd) || /^add walking npc$/i.test(cmd)) {
+    spawnBehaviorNPC({ glbKey:'human_walk', mode:'patrol', pos:{x:px,y:0,z:pz}, speed:3, waypointRadius:18 });
+    return 'Patrolling NPC spawned';
+  }
+  if (/^add chasing? npc$/i.test(cmd) || /^spawn killer$/i.test(cmd)) {
+    spawnBehaviorNPC({ glbKey:'killer_character', mode:'chase', pos:{x:px+20,y:0,z:pz+20}, speed:4, chaseRange:35, waypointRadius:15 });
+    return 'Killer NPC spawned — will chase you within 35 units';
+  }
+  if (/^add following? npc$/i.test(cmd) || /^add companion$/i.test(cmd)) {
+    spawnBehaviorNPC({ glbKey:'human_walk', mode:'follow', pos:{x:px+3,y:0,z:pz+3}, speed:4 });
+    return 'Companion NPC spawned — follows you';
+  }
+  if (/^add zombie patrol$/i.test(cmd) || /^add roaming zombie$/i.test(cmd)) {
+    spawnBehaviorNPC({ glbKey:'zombie', mode:'patrol', pos:{x:px,y:0,z:pz}, speed:1.5, waypointRadius:12 });
+    return 'Roaming zombie spawned';
+  }
+  if (/^add zombie horde$/i.test(cmd)) {
+    for(let i=0;i<5;i++) spawnBehaviorNPC({ glbKey:'zombie', mode:'chase', pos:{x:px+(Math.random()-0.5)*30,y:0,z:pz+20+(Math.random()*15)}, speed:2+Math.random(), chaseRange:40 });
+    return 'Zombie horde (5) spawned — they will chase you!';
+  }
+  if (/^clear npcs?$/i.test(cmd) || /^remove all npcs?$/i.test(cmd)) {
+    clearAllNPCAgents();
+    return 'All NPC agents cleared';
+  }
+
+  // ── SHARE WORLD COMMAND ───────────────────────────────────────────────────
+  if (/^share world$/i.test(cmd) || /^share game$/i.test(cmd) || /^get share link$/i.test(cmd)) {
+    showToast('📡 Saving world to cloud...');
+    try {
+      const state = captureWorldState();
+      const resp = await fetch('https://crate-engine-ai.koikes2021.workers.dev/save-world', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state)
+      });
+      const data = await resp.json();
+      if (data.url) {
+        await navigator.clipboard.writeText(data.url).catch(()=>{});
+        // Show share modal
+        const modal = document.createElement('div');
+        modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+        modal.innerHTML='<div style="background:#111;border:1px solid #1a1a1a;border-radius:16px;padding:28px;max-width:480px;width:92vw;text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">🌍</div><div style="font-weight:700;color:#fff;font-size:1.2rem;margin-bottom:6px">World Shared!</div><div style="color:#888;font-size:0.82rem;margin-bottom:18px">Anyone with this link can play your world</div><div style="background:#0a0a0a;border:1px solid #333;border-radius:8px;padding:12px;font-family:monospace;font-size:0.78rem;color:#4ade80;word-break:break-all;margin-bottom:16px">'+data.url+'</div><div style="display:flex;gap:8px"><button onclick="navigator.clipboard.writeText(\'' + data.url + '\');this.textContent=\'✅ Copied!\'" style="flex:1;padding:10px;background:#ff6b35;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer">📋 Copy Link</button><button onclick="this.closest(\'[style*=fixed]\').remove()" style="padding:10px 16px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#888;cursor:pointer">Close</button></div></div>';
+        document.body.appendChild(modal);
+        modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+        return '🔗 World shared! Link copied to clipboard: ' + data.url;
+      }
+      return 'Share failed: ' + (data.error || 'Unknown error');
+    } catch(e) {
+      return 'Share failed: ' + e.message;
+    }
+  }
+  // ── END SHARE WORLD ───────────────────────────────────────────────────────
+
+  // ── EMBED COMMANDS ─────────────────────────────────────────────────────────
+  if (/^embed code$/i.test(cmd) || /^get embed$/i.test(cmd) || /^iframe code$/i.test(cmd)) {
+    const tmpl = window._templateMode || 'play';
+    const eurl = 'https://crateshipgames.com/' + (tmpl==='play'?'play.html':tmpl+'/');
+    const code = '<iframe src="' + eurl + '" width="800" height="600" frameborder="0" allowfullscreen style="border-radius:12px"></iframe>';
+    const modal = document.createElement('div');
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+    modal.innerHTML='<div style="background:#111;border:1px solid #222;border-radius:16px;padding:28px;max-width:560px;width:92vw"><div style="font-weight:700;color:#ff6b35;margin-bottom:12px;font-size:1.1rem">📋 Embed Your Game</div><div style="color:#888;font-size:0.8rem;margin-bottom:10px">Paste this into any webpage:</div><textarea id="emb-box" style="width:100%;background:#0a0a0a;border:1px solid #333;border-radius:8px;padding:12px;color:#4ade80;font-family:monospace;font-size:0.75rem;resize:none;height:80px" readonly>'+code+'</textarea><div style="display:flex;gap:8px;margin-top:12px"><button onclick="navigator.clipboard.writeText(document.getElementById(\'emb-box\').value);this.textContent=\'✅ Copied!\'" style="flex:1;padding:10px;background:#ff6b35;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer">📋 Copy Code</button><button onclick="this.closest(\'[style*=fixed]\').remove()" style="padding:10px 16px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#888;cursor:pointer">Close</button></div></div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+    return 'Embed code generated';
+  }
+  // ── END NPC + EMBED COMMANDS ───────────────────────────────────────────────
+
+  // ── WORLD SAVE / LOAD ────────────────────────────────────────────────────
+  if (/^save world$/i.test(cmd) || /^save game$/i.test(cmd)) {
+    return await saveWorld(window._worldName || 'My World');
+  }
+  if (/^save world (.+)$/i.test(cmd) || /^save as (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:save world|save as) (.+)/i)[1].trim();
+    return await saveWorld(name);
+  }
+  if (/^load world$/i.test(cmd) || /^load game$/i.test(cmd) || /^open world$/i.test(cmd)) {
+    return openWorldFilePicker();
+  }
+  if (/^export world$/i.test(cmd)) {
+    return await saveWorld(window._worldName || 'My World');
+  }
+  if (/^world name (.+)$/i.test(cmd)) {
+    window._worldName = cmd.match(/world name (.+)/i)[1].trim();
+    return 'World named: ' + window._worldName;
+  }
+
+
+  // ── WEATHER COMMANDS ──────────────────────────────────────────────────────
+  if (/^rain$/i.test(cmd) || /^start rain$/i.test(cmd)) { startRain(false); return 'Rain started'; }
+  if (/^heavy rain$/i.test(cmd) || /^storm$/i.test(cmd)) { startRain(true); return 'Heavy rain/storm'; }
+  if (/^snow$/i.test(cmd) || /^start snow$/i.test(cmd)) { startSnow(); return 'Snow started'; }
+  if (/^lightning$/i.test(cmd) || /^thunder(storm)?$/i.test(cmd)) { startLightning(); return 'Lightning storm started'; }
+  if (/^(stop|clear) weather$/i.test(cmd) || /^no rain$/i.test(cmd) || /^no snow$/i.test(cmd)) { stopWeather(); return 'Weather cleared'; }
+  if (/^horror weather$/i.test(cmd)) { startRain(true); startLightning(); return 'Horror storm: heavy rain + lightning'; }
+
+  // ── DAY/NIGHT CYCLE COMMANDS ───────────────────────────────────────────────
+  if (/^(start |enable )?day.?night( cycle)?$/i.test(cmd) || /^auto time$/i.test(cmd)) {
+    startDayNightCycle(1); return 'Day/night cycle started (1x speed)';
+  }
+  if (/^day.?night (fast|2x|3x|5x)$/i.test(cmd)) {
+    const speed = cmd.match(/(\d+)x/i)?.[1] || 3;
+    startDayNightCycle(+speed); return `Day/night cycle at ${speed}x speed`;
+  }
+  if (/^stop (day.?night|cycle|auto time)$/i.test(cmd)) { stopDayNightCycle(); return 'Day/night cycle stopped'; }
+
+  // ── QUEST COMMANDS ─────────────────────────────────────────────────────────
+  if (/^add quest (.+)$/i.test(cmd)) {
+    const name = cmd.match(/add quest (.+)/i)[1].trim();
+    addQuest(name);
+    return 'Quest added: ' + name;
+  }
+  if (/^complete quest (.+)$/i.test(cmd) || /^finish quest (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:complete|finish) quest (.+)/i)[1].trim();
+    const id = name.toLowerCase().replace(/\s+/g,'_');
+    if (_quests[id]) { completeQuest(id); return 'Quest completed: ' + name; }
+    return 'Quest not found: ' + name;
+  }
+  if (/^game over$/i.test(cmd) || /^you died$/i.test(cmd)) {
+    showGameOver('You were caught.'); return 'Game over screen shown';
+  }
+  if (/^win( game)?$/i.test(cmd) || /^you win$/i.test(cmd)) {
+    showWinScreen('Victory!'); return 'Win screen shown';
+  }
+  if (/^(show |list )?quests?$/i.test(cmd)) {
+    const qs = Object.values(_quests);
+    if (!qs.length) return 'No active quests';
+    return qs.map(q => `${q.completed?'✅':'📋'} ${q.name}`).join('\n');
+  }
+
+  // ── AUTOSAVE COMMANDS ─────────────────────────────────────────────────────
+  if (/^autosave( on)?$/i.test(cmd)) { startAutosave(60); return 'Autosave enabled (every 60s)'; }
+  if (/^autosave off$/i.test(cmd)) { if(_autosaveInterval){clearInterval(_autosaveInterval);_autosaveInterval=null;} return 'Autosave disabled'; }
+
+  // ── END NEW COMMANDS ───────────────────────────────────────────────────────
+
+  // ── AUDIO COMMANDS ────────────────────────────────────────────────────────
+  if (/^play (chainsaw|chainsaw_idle|chainsaw idle)$/i.test(cmd)) {
+    await playSound('chainsaw_idle', true, 0.6);
+    return 'Chainsaw sound playing (looping)';
+  }
+  if (/^play heartbeat$/i.test(cmd)) {
+    await playSound('heartbeat', true, 0.5);
+    return 'Heartbeat sound playing';
+  }
+  if (/^play (horror music|horror_music|scary music)$/i.test(cmd)) {
+    await playSound('event_music', true, 0.4);
+    return 'Horror music playing';
+  }
+  if (/^play (menu music|menumusic)$/i.test(cmd)) {
+    await playSound('menu_music', true, 0.4);
+    return 'Menu music playing';
+  }
+  if (/^play (police siren|siren)$/i.test(cmd)) {
+    await playSound('police_siren', false, 0.7);
+    return 'Police siren playing';
+  }
+  if (/^play (door open|dooropen)$/i.test(cmd)) {
+    await playSound('door_open', false, 0.8);
+    return 'Door opening sound';
+  }
+  if (/^play hunter$/i.test(cmd)) {
+    await playSound('hunter_chase', true, 0.5);
+    return 'Hunter chase music playing';
+  }
+  if (/^play (sword|sword swing)$/i.test(cmd)) {
+    await playSound('sword_swing', false, 0.9);
+    return 'Sword swing sound';
+  }
+  if (/^play (shotgun|gunshot)$/i.test(cmd)) {
+    await playSound('shotgun', false, 0.9);
+    return 'Shotgun sound';
+  }
+  if (/^stop (music|audio|sound|all sounds?)$/i.test(cmd)) {
+    stopAllSounds();
+    return 'All sounds stopped';
+  }
+  if (/^play sound (.+)$/i.test(cmd)) {
+    const key = cmd.match(/play sound (.+)/i)[1].trim().replace(/ /g,'_');
+    const ok = await playSound(key, false, 0.8);
+    return ok ? `Playing: ${key}` : `Sound not found: ${key}. Available: ${Object.keys(HORROR_AUDIO).join(', ')}`;
+  }
+  if (/^list (sounds?|audio)$/i.test(cmd)) {
+    return 'Available sounds: ' + Object.keys(HORROR_AUDIO).join(', ');
+  }
+
+  // ── DIALOGUE EDITOR ───────────────────────────────────────────────────────
+  if (/^(dialogue editor|npc editor|open dialogue)$/i.test(cmd)) {
+    showDialogueEditor('NPC_1');
+    return 'Dialogue editor opened';
+  }
+  if (/^dialogue editor (.+)$/i.test(cmd) || /^edit dialogue (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:dialogue editor|edit dialogue) (.+)/i)[1].trim();
+    showDialogueEditor(name);
+    return 'Dialogue editor opened for ' + name;
+  }
+  if (/^show dialogue (.+)$/i.test(cmd) || /^preview dialogue (.+)$/i.test(cmd)) {
+    const name = cmd.match(/(?:show|preview) dialogue (.+)/i)[1].trim();
+    showDialoguePreview(name);
+    return 'Dialogue preview: ' + name;
+  }
+
+  // ── TERRAIN PAINTER ───────────────────────────────────────────────────────
+  if (/^(terrain paint|paint terrain|terrain painter|open painter)$/i.test(cmd)) {
+    showTerrainPaintUI();
+    return 'Terrain painter opened — click ground to paint texture zones';
+  }
+  if (/^paint (mode|brush)$/i.test(cmd)) {
+    showTerrainPaintUI();
+    return 'Terrain painter opened';
+  }
+  // ── END NEW COMMANDS ──────────────────────────────────────────────────────
+
+
+
   if (_galBypass.test(rawCmd.toLowerCase().trim())) {
     console.log('[GALLERY] Bypassing NL for gallery command:', rawCmd);
     const parts = rawCmd.split(/\s+(?:and|with|plus|,|\+)\s+/i).map(s => s.trim()).filter(Boolean);
@@ -11042,7 +6401,8 @@ async function parseAndExecute(rawCmd) {
     return results.filter(Boolean).join('\n');
   }
   // Try natural language matching first (77K+ phrases)
-  const nlMatch = matchIntent(rawCmd);
+  const voiceCommands = await loadVoiceCommandsModule().catch(() => null);
+  const nlMatch = voiceCommands?.matchIntent ? voiceCommands.matchIntent(rawCmd) : null;
   if (nlMatch && nlMatch.id !== 'noop' && nlMatch.id !== 'confirm' && nlMatch.id !== 'cancel') {
     let nlAction = nlMatch.action;
     
@@ -11096,6 +6456,10 @@ async function parseAndExecute(rawCmd) {
         rawLower.startsWith('water ') || rawLower === 'water' ||
         rawLower.startsWith('equip ') || rawLower === 'unequip' || rawLower.startsWith('swap ') ||
         rawLower === 'play' || rawLower === 'edit' || rawLower === 'play mode' || rawLower === 'edit mode' ||
+        rawLower === 'city 3' || rawLower === 'full city' || rawLower === 'city world 3' ||
+        rawLower === 'build city 3' || rawLower === 'generate city' || rawLower === 'build city' ||
+        rawLower === 'horror' || rawLower === 'horror game' || rawLower === 'horror world' || rawLower === 'build horror' ||
+        rawLower === 'space' || rawLower === 'space game' || rawLower === 'space world' || rawLower === 'space station' || rawLower === 'build space' ||
         rawLower === 'inventory' || rawLower === 'help' || rawLower === 'stats' ||
         rawLower.startsWith('generate ') || rawLower === 'generator' || rawLower === '3d generator' ||
         rawLower.startsWith('interior ') || rawLower.endsWith('story house') ||
@@ -11240,6 +6604,24 @@ const _CAT_META = {
   characters: { icon: '🧑', color: '#ffd700', label: 'Characters' },
   weapons: { icon: '⚔️', color: '#ef4444', label: 'Weapons' },
   buildings: { icon: '🏠', color: '#8b5cf6', label: 'Buildings' },
+  vehicles: { icon: '🚗', color: '#f97316', label: 'Cars & Vehicles' },
+  roads: { icon: '🛣️', color: '#6b7280', label: 'Roads & Bridges' },
+  'city-props': { icon: '🏙️', color: '#06b6d4', label: 'City Props' },
+  medieval: { icon: '🏰', color: '#b45309', label: 'Medieval' },
+  horror: { icon: '💀', color: '#7c3aed', label: 'Horror & Graveyard' },
+  dungeon: { icon: '🗝️', color: '#4b5563', label: 'Dungeon' },
+  fantasy: { icon: '🧙', color: '#a855f7', label: 'Fantasy & RPG' },
+  pirate: { icon: '🏴‍☠️', color: '#0891b2', label: 'Pirate' },
+  cyberpunk: { icon: '🤖', color: '#22d3ee', label: 'Cyberpunk' },
+  survival: { icon: '🪓', color: '#65a30d', label: 'Survival' },
+  farming: { icon: '🌾', color: '#84cc16', label: 'Crops & Farming' },
+  animals: { icon: '🦊', color: '#fb923c', label: 'Animals & Creatures' },
+  ships: { icon: '⛵', color: '#0ea5e9', label: 'Ships & Boats' },
+  platformer: { icon: '🎮', color: '#ec4899', label: 'Platformer' },
+  rocks: { icon: '🪨', color: '#78716c', label: 'Rocks & Terrain' },
+  'unity-assets': { icon: '🎯', color: '#16a34a', label: 'Unity Assets' },
+  'hd-assets': { icon: '💎', color: '#e11d48', label: 'HD Assets' },
+  misc: { icon: '📦', color: '#64748b', label: 'Misc' },
   vehicles: { icon: '🚗', color: '#3b82f6', label: 'Vehicles' },
   animals: { icon: '🐾', color: '#22c55e', label: 'Animals' },
   trees: { icon: '🌳', color: '#16a34a', label: 'Trees & Plants' },
@@ -11257,6 +6639,7 @@ const _CAT_META = {
 };
 
 function showGallery(category, options = {}) {
+  return loadAssetBrowserModule().then((mod) => mod.showGallery(category, options));
   console.log('[GALLERY] Opening:', category);
   return new Promise(async (resolve) => {
     const catalog = await _loadAssetCatalog();
@@ -11393,7 +6776,7 @@ function _renderThumb(file, container, fallbackIcon) {
   dl.position.set(2, 4, 3);
   s.add(dl);
 
-  gltfLoader.load('models/' + (file.endsWith('.glb') ? file : file + '.glb'), (gltf) => {
+  gltfLoader.load('/models/' + (file.endsWith('.glb') ? file : file + '.glb'), (gltf) => {
     const m = gltf.scene;
     const box = new THREE.Box3().setFromObject(m);
     const sz = box.getSize(new THREE.Vector3());
@@ -11418,32 +6801,61 @@ function _renderThumb(file, container, fallbackIcon) {
 }
 
 function showCategoryPicker() {
+  return loadAssetBrowserModule().then((mod) => mod.showCategoryPicker());
   return new Promise(async (resolve) => {
-    const catalog = await _loadAssetCatalog();
+    showToast('📦 Opening asset library...');
+    let catalog;
+    try { catalog = await _loadAssetCatalog(); } catch(e) { catalog = {}; }
+    const characterGallery = await loadCharacterGalleryModule();
+    const characterCount = characterGallery.getCharacterLibrary().length;
+    // Remove any existing picker
+    const existing = document.getElementById('_catPicker');
+    if (existing) existing.remove();
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:10005;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
-    overlay.innerHTML = '<div style="font-size:28px;color:#ffd700;margin-bottom:8px;">📂 ASSET LIBRARY</div><div style="font-size:13px;color:#666;margin-bottom:30px;">Choose a category to browse 3D models</div>';
-    
+    overlay.id = '_catPicker';
+    // Use maximum possible z-index to avoid stacking context issues
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.96);z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+    // Header stays fixed, grid scrolls
+    const header = document.createElement('div');
+    header.style.cssText = 'text-align:center;padding:24px 24px 16px;flex-shrink:0;width:100%;';
+    header.innerHTML = '<div style="font-size:28px;color:#ffd700;margin-bottom:6px;">📦 ASSET LIBRARY</div><div style="font-size:13px;color:#555;margin-bottom:16px;">4,122 models across 26 categories</div><input id="_catSearch" placeholder="🔍  Search categories..." style="background:#111;border:1px solid #333;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;width:260px;outline:none;" />';
+    overlay.appendChild(header);
+    // Scrollable grid wrapper
+    const scrollWrap = document.createElement('div');
+    scrollWrap.style.cssText = 'flex:1;overflow-y:auto;width:100%;padding:0 24px 24px;box-sizing:border-box;';
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,180px);gap:16px;justify-content:center;max-width:900px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,180px);gap:16px;justify-content:center;max-width:960px;margin:0 auto;';
     
     ['characters', ...Object.keys(catalog)].forEach(cat => {
       const m = _CAT_META[cat] || { icon: '📦', color: '#888', label: cat };
-      const count = cat === 'characters' ? CHARACTER_LIBRARY.length : (catalog[cat]?.length || 0);
+      const count = cat === 'characters' ? characterCount : (catalog[cat]?.length || 0);
       if (!count) return;
       const card = document.createElement('div');
       card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + m.color + '30;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s;';
+      card.dataset.cat = (cat + ' ' + m.label).toLowerCase();
       card.onmouseenter = () => { card.style.borderColor = m.color; card.style.transform = 'scale(1.04)'; };
       card.onmouseleave = () => { card.style.borderColor = m.color + '30'; card.style.transform = 'scale(1)'; };
       card.innerHTML = '<div style="font-size:40px;margin-bottom:8px;">' + m.icon + '</div><div style="font-size:15px;font-weight:bold;color:' + m.color + ';margin-bottom:4px;">' + m.label + '</div><div style="font-size:12px;color:#555;">' + count + ' models</div>';
-      card.onclick = () => { overlay.remove(); if (cat === 'characters') { showCharacterGallery().then(resolve); } else { showGallery(cat).then(resolve); } };
+      card.onclick = () => { overlay.remove(); if (cat === 'characters') { characterGallery.showCharacterGallery().then(resolve); } else { showGallery(cat).then(resolve); } };
       grid.appendChild(card);
     });
-    overlay.appendChild(grid);
-    
+    scrollWrap.appendChild(grid);
+    overlay.appendChild(scrollWrap);
+
+    // Category search filter
+    setTimeout(() => {
+      const si = document.getElementById('_catSearch');
+      if (si) si.addEventListener('input', () => {
+        const q = si.value.toLowerCase();
+        grid.querySelectorAll('[data-cat]').forEach(card => {
+          card.style.display = card.dataset.cat.includes(q) || !q ? '' : 'none';
+        });
+      });
+    }, 50);
+
     const closeBtn = document.createElement('div');
     closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = () => { overlay.remove(); resolve(null); };
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
@@ -11480,7 +6892,7 @@ function showAnimationGallery(targetName) {
     });
     overlay.appendChild(grid);
     const closeBtn = document.createElement('div'); closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = () => { overlay.remove(); resolve(null); };
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
@@ -11499,7 +6911,7 @@ async function execSingle(cmd) {
   }
   if (cmd.startsWith('add fab ') || cmd.startsWith('spawn fab ')) {
     const fabName = cmd.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_').toLowerCase();
-    const fabAliases = window._fabAliases || {};
+    const fabAliases = await ensureFabAliasesLoaded();
     const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
     if (modelPath) {
       spawnGLB(modelPath, fabName);
@@ -11790,7 +7202,8 @@ async function execSingle(cmd) {
         }
       }
     }
-    const w = createWater(oceanSize); // Always use Gerstner water for preset support
+    const weather = await loadWeatherModule();
+    const w = weather.createWater(oceanSize); // Always use Gerstner water for preset support
     // Ocean sits BELOW ground — terrain/land rises above water naturally
     // Lakes sit slightly above ground for inland water
     w.position.y = isLake ? 0.15 : -0.3;
@@ -11801,19 +7214,7 @@ async function execSingle(cmd) {
     if (!isLake && ambientParticles) { scene.remove(ambientParticles); ambientParticles.geometry.dispose(); ambientParticles.material.dispose(); ambientParticles = null; }
     // Apply pending water preset from map template
     if (window._pendingWaterPreset && w.userData.isGerstnerWater && w.material.uniforms) {
-      const p = WATER_PRESETS[window._pendingWaterPreset];
-      if (p) {
-        w.material.uniforms.waveA.value.set(p.waveA[0], p.waveA[1], p.waveA[2], p.waveA[3]);
-        w.material.uniforms.waveB.value.set(p.waveB[0], p.waveB[1], p.waveB[2], p.waveB[3]);
-        w.material.uniforms.waveC.value.set(p.waveC[0], p.waveC[1], p.waveC[2], p.waveC[3]);
-        w.material.uniforms.waterColor.value.copy(p.color);
-        w.material.uniforms.deepColor.value.copy(p.deepColor);
-        w.material.uniforms.foamIntensity.value = p.foamIntensity;
-        w.material.uniforms.specularPower.value = p.specularPower;
-        w.material.uniforms.fresnelPower.value = p.fresnelPower;
-        w.material.uniforms.opacity.value = p.opacity;
-        w.userData.waterPreset = window._pendingWaterPreset;
-      }
+      await applyWaterPresetToObject(w, window._pendingWaterPreset);
       window._pendingWaterPreset = null;
     }
     // Register water zone for swimming
@@ -11838,7 +7239,8 @@ async function execSingle(cmd) {
         scene.remove(objects[i]); objects.splice(i, 1);
       }
     }
-    const w = createWater(newSize);
+    const weather = await loadWeatherModule();
+    const w = weather.createWater(newSize);
     w.position.y = -0.3;
     addObj('Ocean', w, 0, 0);
     return '🌊 Ocean resized to ' + newSize + 'm';
@@ -11875,170 +7277,10 @@ async function execSingle(cmd) {
     return '🔫 Shooter mode enabled! 5 enemies spawned. Click to fire!';
   }
   
-  // === Driving Demo (v61) ===
-  if (lower === 'playground' || lower === 'test world' || lower === 'demo world') {
-    // Quick test world with everything
-    const cmds = [
-      'generate town',
-    ];
-    cmds.forEach((cmd, i) => setTimeout(() => execSingle(cmd), i * 200));
-    setTimeout(() => {
-      execSingle('add car');
-      execSingle('add interior house 2');
-      execSingle('play');
-      showToast('🎮 Playground loaded! Explore, drive, enter buildings.');
-    }, 3000);
-    return '🎮 Loading playground — town with car, house, and play mode...';
-  }
-  
-  if (lower === 'driving demo' || lower === 'drive demo' || lower === 'car demo') {
-    // Create road circuit
-    execSingle('add road');
-    setTimeout(() => {
-      execSingle('add car');
-      setTimeout(() => {
-        if (typeof showToast === 'function') showToast('🏎️ Press F near car to drive! WASD to steer.');
-      }, 500);
-    }, 500);
-    return '🏎️ Driving demo! Road + car added. Press F near the car!';
-  }
+
 
   // ═══ MAP / LEVEL GENERATOR (JSON Template System v67) ═══
-const GAME_PRESETS = {
-  'zombie': {
-    name: 'Zombie Survival',
-    description: 'Survive waves of zombies in an abandoned city',
-    map: 'city',
-    env: ['time night', 'fog on'],
-    commands: [
-      'flat height:0',
-      'generate city',
-      'add npc zombie at 30,0,30',
-      'add npc zombie at -20,0,40',
-      'add npc zombie at 50,0,-10',
-      'add npc zombie at -40,0,20',
-      'add npc zombie at 10,0,-50',
-      'add npc zombie at 60,0,60',
-      'add npc zombie at -30,0,-30',
-      'add npc zombie at 0,0,70',
-      'equip sword',
-    ],
-    hud: { showHealth: true, showWaves: true, showKills: true },
-    rules: { hostile: true, respawn: true, waveInterval: 45, maxWave: 10 },
-    music: 'horror',
-  },
-  'racing': {
-    name: 'Street Racing',
-    description: 'Race through city streets in sports cars',
-    map: 'city',
-    env: ['time sunset'],
-    commands: [
-      'flat height:0',
-      'generate city',
-      'add ferrari at 0,0,5',
-      'add ferrari at 5,0,5',
-      'add ferrari at -5,0,5',
-    ],
-    hud: { showSpeed: true, showLap: true, showPosition: true },
-    rules: { laps: 3, checkpoints: true },
-    music: 'electronic',
-  },
-  'rpg': {
-    name: 'Fantasy RPG',
-    description: 'Explore a medieval world with quests and combat',
-    map: 'medieval',
-    env: ['time day'],
-    commands: [
-      'flat height:0',
-      'generate medieval village',
-      'add npc guard at 10,0,10',
-      'add npc guard at -10,0,10',
-      'add npc at 20,0,5',
-      'add npc at -15,0,15',
-      'add npc at 5,0,25',
-      'equip sword',
-    ],
-    hud: { showHealth: true, showXP: true, showQuests: true },
-    rules: { quests: true, levelUp: true },
-    music: 'fantasy',
-  },
-  'survival': {
-    name: 'Survival Sandbox',
-    description: 'Gather resources, build shelter, survive the night',
-    map: 'forest',
-    env: ['time dawn'],
-    commands: [
-      'terrain hills',
-      'add 20 trees',
-      'add 10 rocks',
-      'add campfire at 5,0,5',
-      'equip axe',
-    ],
-    hud: { showHealth: true, showHunger: true, showInventory: true },
-    rules: { dayNightCycle: true, crafting: true },
-    music: 'ambient',
-  },
-  'fps': {
-    name: 'First Person Shooter',
-    description: 'Fast-paced arena combat',
-    map: 'arena',
-    env: ['time noon'],
-    commands: [
-      'flat height:0',
-      'generate arena',
-      'camera first_person',
-      'add npc enemy at 30,0,0',
-      'add npc enemy at -30,0,0',
-      'add npc enemy at 0,0,30',
-      'add npc enemy at 0,0,-30',
-      'equip rifle',
-    ],
-    hud: { showHealth: true, showAmmo: true, showKills: true },
-    rules: { hostile: true, respawn: true },
-    music: 'action',
-  },
-  'sandbox': {
-    name: 'Creative Sandbox',
-    description: 'Build anything — no rules, infinite freedom',
-    map: 'flat',
-    env: ['time day'],
-    commands: [
-      'flat height:0',
-    ],
-    hud: {},
-    rules: {},
-    music: 'chill',
-  },
-  'horror': {
-    name: 'Horror Exploration',
-    description: 'Explore a dark abandoned town — something is watching',
-    map: 'abandoned',
-    env: ['time midnight', 'fog on'],
-    commands: [
-      'flat height:0',
-      'generate abandoned town',
-      'add streetlamp at 10,0,0',
-      'add streetlamp at -10,0,20',
-      'add npc at 50,0,50',
-    ],
-    hud: { showHealth: true, showFlashlight: true },
-    rules: { hostile: true, ambiance: 'creepy' },
-    music: 'horror',
-  },
-  'city_builder': {
-    name: 'City Builder',
-    description: 'Build your dream city from scratch',
-    map: 'flat',
-    env: ['time day'],
-    commands: [
-      'flat height:0',
-      'add road at 0,0,0',
-    ],
-    hud: { showMoney: true, showPopulation: true },
-    rules: { economy: true, building: true },
-    music: 'chill',
-  },
-};
+const GAME_PRESETS = {}; // removed game presets
 
 // ═══ GAME PRESET COMMAND HANDLER ═══
 // Matches: "make this a zombie game", "zombie mode", "start zombie survival", etc.
@@ -12096,7 +7338,7 @@ async function applyGamePreset(key, preset) {
 
 // ═══ GAME HUD OVERLAY ═══
 function showGameHUD(preset) {
-  let hud = document.getElementById('game-hud');
+  hud = document.getElementById('game-hud');
   if (hud) hud.remove();
   
   hud = document.createElement('div');
@@ -12154,996 +7396,48 @@ function showGameHUD(preset) {
     const mapTheme = lower.replace(/^(generate|create|build|make)\s+(a\s+)?/i, '').trim();
     showToast('🗺️ Generating ' + mapTheme + '...');
 
-    // Route matching map types to Phase 5 world compiler (14 templates)
-    const WORLD_COMPILER_MAP = {
-      city: 'CITY_MODERN', suburban: 'CITY_MODERN', urban: 'CITY_MODERN',
-      town: 'MEDIEVAL_VILLAGE', village: 'MEDIEVAL_VILLAGE', medieval: 'MEDIEVAL_VILLAGE', 'medieval siege': 'MEDIEVAL_VILLAGE',
-      zombie: 'ZOMBIELAND', graveyard: 'ZOMBIELAND',
-      space: 'SPACE_STATION', station: 'SPACE_STATION',
-      island: 'TROPICAL_ISLAND', 'tropical paradise': 'TROPICAL_ISLAND', jungle: 'TROPICAL_ISLAND', tropical: 'TROPICAL_ISLAND',
-      desert: 'DESERT_OUTPOST', outpost: 'DESERT_OUTPOST', volcano: 'DESERT_OUTPOST',
-      pirate: 'PIRATE_COVE', 'pirate cove': 'PIRATE_COVE',
-      haunted: 'HAUNTED_GRAVEYARD',
-      dungeon: 'DUNGEON_CRAWL',
-      cyberpunk: 'CYBERPUNK_CITY',
-      camp: 'FARM_COUNTRY', farm: 'FARM_COUNTRY',
-      kingdom: 'RPG_VILLAGE', rpg: 'RPG_VILLAGE',
-      ruins: 'CASTLE_SIEGE', castle: 'CASTLE_SIEGE', siege: 'CASTLE_SIEGE', frozen: 'CASTLE_SIEGE',
-      underwater: 'UNDERWATER_REEF', reef: 'UNDERWATER_REEF',
-    };
-    const worldTemplate = WORLD_COMPILER_MAP[mapType];
+    // Route matching map types and legacy presets via deferred world presets module.
+    const worldPresets = await loadWorldPresetsModule();
+    const worldTemplate = worldPresets.getWorldCompilerTemplate(mapType);
+
+    // Route city/urban directly to Ultra City builder (all new assets).
+    if (worldTemplate === 'CITY_MODERN') {
+      const { buildCityWorld3 } = await loadCityBuilderModule();
+      buildCityWorld3();
+      return '🏙️ Building Ultra City with all new assets...';
+    }
+
     if (worldTemplate) {
       try {
         const { buildAndApply } = await import('./runtime/world-client.mjs');
         await buildAndApply({ template: worldTemplate, size: 'medium' });
         return '✅ Built ' + worldTemplate + ' world';
-      } catch(e) {
+      } catch (e) {
         console.warn('[Generate] World compiler failed for ' + worldTemplate + ', falling back to legacy:', e.message);
       }
     }
 
-    // JSON Map Templates — structured layouts with positions (legacy fallback)
+    const legacyPlan = worldPresets.buildLegacyMapPlan(mapType);
+    if (legacyPlan.waterPreset && WEATHER_WATER_PRESET_NAMES.has(legacyPlan.waterPreset)) {
+      window._pendingWaterPreset = legacyPlan.waterPreset;
+    }
+    if (legacyPlan.pendingRotations && Object.keys(legacyPlan.pendingRotations).length) {
+      if (!window._pendingRotations) window._pendingRotations = {};
+      Object.assign(window._pendingRotations, legacyPlan.pendingRotations);
+    }
 
-    // ═══════════════════════════════════════════════════════════════
-    // GAME PRESETS — "make this a zombie game" auto-configures everything
-    // Each preset defines: map template, NPC behavior, objectives, HUD, rules
-    // ═══════════════════════════════════════════════════════════════
-    const MAP_TEMPLATES = {
-      // ===== MEDIEVAL FANTASY =====
-      town: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'grass', env: ['time afternoon'],
-        water: null, weather: null, particles: null,
-        items: [
-          // === TOWN SQUARE — open plaza with well ===
-          { cmd: 'add well', pos: [0, 0] },
-          { cmd: 'add market stall', pos: [-8, 6] }, { cmd: 'add market stall', pos: [8, 6] },
-          { cmd: 'add market stall', pos: [0, -8] },
-          { cmd: 'add barrel', pos: [-10, 8] }, { cmd: 'add barrel', pos: [10, 8] },
-          { cmd: 'add cart', pos: [12, -3] },
-          // === NORTH STREET — wide spacing (15+ units between buildings) ===
-          { cmd: 'add tavern', pos: [-30, 35] },
-          { cmd: 'add blacksmith', pos: [0, 38] },
-          { cmd: 'add modern house', pos: [30, 35] },
-          // === SOUTH STREET ===
-          { cmd: 'add modern house', pos: [-30, -35] },
-          { cmd: 'add modern house', pos: [0, -38] },
-          { cmd: 'add modern house', pos: [30, -35] },
-          // === EAST STREET ===
-          { cmd: 'add modern house', pos: [45, 0] },
-          { cmd: 'add modern house', pos: [45, 25] },
-          // === WEST STREET ===
-          { cmd: 'add modern house', pos: [-45, 0] },
-          { cmd: 'add modern house', pos: [-45, -25] },
-          // === TORCHES — line the wide paths ===
-          { cmd: 'add torch', pos: [-15, 18] }, { cmd: 'add torch', pos: [15, 18] },
-          { cmd: 'add torch', pos: [-15, -18] }, { cmd: 'add torch', pos: [15, -18] },
-          { cmd: 'add torch', pos: [-30, 0] }, { cmd: 'add torch', pos: [30, 0] },
-          { cmd: 'add torch', pos: [0, 18] }, { cmd: 'add torch', pos: [0, -18] },
-          // === ROADS — connecting paths ===
-          { cmd: 'add road at 0 18', pos: [0, 18] },   // center to north
-          { cmd: 'add road at 0 -18', pos: [0, -18] },  // center to south  
-          { cmd: 'add road', pos: [0, 0] },              // center crossroad
-          // === PERIMETER — nature ring far from buildings ===
-          { cmd: 'add tree', scatter: { count: 35, radius: 80, avoidCenter: 50 } },
-          { cmd: 'add bush', scatter: { count: 18, radius: 70, avoidCenter: 45 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 75, avoidCenter: 50 } },
-          // === NPCs — spread around the plaza ===
-          { cmd: 'spawn villager', scatter: { count: 6, radius: 25 } },
-          { cmd: 'spawn guard', pos: [-18, 20] }, { cmd: 'spawn guard', pos: [18, 20] },
-        ]
-      },
-      village: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'grass', env: ['time morning'],
-        items: [
-          { cmd: 'add modern house', pos: [12, -8] }, { cmd: 'add modern house', pos: [-14, 6] },
-          { cmd: 'add modern house', pos: [6, 18] }, { cmd: 'add modern house', pos: [-10, -20] },
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add well', pos: [8, -4] },
-          { cmd: 'add log', pos: [-2, 2] }, { cmd: 'add log', pos: [2, -2] },
-          { cmd: 'add chicken', scatter: { count: 6, radius: 18 } },
-          { cmd: 'add tree', scatter: { count: 25, radius: 60, avoidCenter: 10 } },
-          { cmd: 'add bush', scatter: { count: 15, radius: 45 } },
-          { cmd: 'add flower', scatter: { count: 10, radius: 30 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 50 } },
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 25 } },
-          { cmd: 'spawn farmer', scatter: { count: 2, radius: 20 } },
-        ]
-      },
-      kingdom: {
-        terrain: { type: 'hills', height: 0.4 },
-        ground: 'grass', env: ['time afternoon'],
-        items: [
-          { cmd: 'add castle', pos: [0, -50] },
-          { cmd: 'add tower', pos: [-40, -40] }, { cmd: 'add tower', pos: [40, -40] },
-          { cmd: 'add tower', pos: [-40, 0] }, { cmd: 'add tower', pos: [40, 0] },
-          { cmd: 'add wall', pos: [-20, -45] }, { cmd: 'add wall', pos: [20, -45] },
-          { cmd: 'add gate', pos: [0, -30] },
-          { cmd: 'add tavern', pos: [25, 10] }, { cmd: 'add blacksmith', pos: [-25, 10] },
-          { cmd: 'add modern house', scatter: { count: 10, radius: 40, avoidCenter: 15 } },
-          { cmd: 'add market stall', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add tree', scatter: { count: 15, radius: 70, avoidCenter: 25 } },
-          { cmd: 'add torch', scatter: { count: 15, radius: 45 } },
-          { cmd: 'spawn guard', scatter: { count: 6, radius: 40 } },
-          { cmd: 'spawn knight', scatter: { count: 3, radius: 35 } },
-          { cmd: 'spawn villager', scatter: { count: 8, radius: 35 } },
-        ]
-      },
-      'medieval siege': {
-        terrain: { type: 'hills', height: 0.5 },
-        ground: 'dirt', env: ['time sunset', 'fog on'], weather: 'rain', particles: 'ash',
-        items: [
-          { cmd: 'add castle', pos: [0, -40] },
-          { cmd: 'add tower', pos: [-30, -35] }, { cmd: 'add tower', pos: [30, -35] },
-          { cmd: 'add wall', pos: [-15, -30] }, { cmd: 'add wall', pos: [15, -30] },
-          { cmd: 'add campfire', pos: [20, 20] }, { cmd: 'add campfire', pos: [-20, 20] },
-          { cmd: 'add tent', pos: [25, 25] }, { cmd: 'add tent', pos: [-25, 25] },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 25 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 60 } },
-          { cmd: 'spawn soldier', scatter: { count: 8, radius: 30 } },
-          { cmd: 'spawn knight', scatter: { count: 4, radius: 20 } },
-        ]
-      },
-      dungeon: {
-        terrain: { type: 'flat' },
-        ground: 'stone', env: ['time night', 'fog on'], particles: 'embers',
-        items: [
-          { cmd: 'add castle', pos: [0, 0] },
-          { cmd: 'add torch', scatter: { count: 12, radius: 25 } },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
-          { cmd: 'add chest', scatter: { count: 3, radius: 15 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 30 } },
-          { cmd: 'spawn skeleton', scatter: { count: 5, radius: 25 } },
-          { cmd: 'spawn enemies', scatter: { count: 3, radius: 20 } },
-        ]
-      },
-      
-      // ===== NATURE & WILDERNESS =====
-      forest: {
-        terrain: { type: 'hills', height: 0.4 },
-        ground: 'grass', env: ['time morning'], particles: 'fireflies',
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 40, radius: 80 } },
-          { cmd: 'add tree', scatter: { count: 25, radius: 70 } },
-          { cmd: 'add bush', scatter: { count: 20, radius: 60 } },
-          { cmd: 'add flower', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add mushroom', scatter: { count: 10, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 12, radius: 65 } },
-          { cmd: 'add boulder', scatter: { count: 4, radius: 55 } },
-          { cmd: 'add log', scatter: { count: 6, radius: 50 } },
-          { cmd: 'add deer', scatter: { count: 3, radius: 50 } },
-          { cmd: 'add fox', scatter: { count: 2, radius: 40 } },
-          { cmd: 'add campfire', pos: [0, 0] },
-        ]
-      },
-      'enchanted forest': {
-        terrain: { type: 'hills', height: 0.5 },
-        ground: 'grass', env: ['time night'], particles: 'fireflies',
-        items: [
-          { cmd: 'add cherry blossom', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add tree', scatter: { count: 30, radius: 80 } },
-          { cmd: 'add mushroom', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add flower', scatter: { count: 20, radius: 50 } },
-          { cmd: 'add crystal', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add fountain', pos: [0, 0] },
-          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
-          { cmd: 'spawn witch', scatter: { count: 2, radius: 30 } },
-          { cmd: 'spawn villager', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      mountain: {
-        terrain: { type: 'mountains', height: 1.2 },
-        ground: 'gravel', env: ['time afternoon'], particles: 'dust',
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 20, radius: 60, avoidCenter: 10 } },
-          { cmd: 'add boulder', scatter: { count: 15, radius: 70 } },
-          { cmd: 'add rock', scatter: { count: 20, radius: 80 } },
-          { cmd: 'add eagle', scatter: { count: 2, radius: 40 } },
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add tent', pos: [5, 5] },
-        ]
-      },
-      island: {
-        terrain: { type: 'island', height: 1.0 },
-        ground: 'sand', env: ['time afternoon'],
-        water: 'tropical', particles: null,
-        items: [
-          { cmd: 'add ocean' },
-          { cmd: 'add palm tree', scatter: { count: 20, radius: 40, avoidCenter: 5 } },
-          { cmd: 'add bush', scatter: { count: 10, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add flower', scatter: { count: 8, radius: 30 } },
-          { cmd: 'add boat', pos: [40, 0] },
-          { cmd: 'add campfire', pos: [0, 5] },
-          { cmd: 'add chest', pos: [15, -10] },
-        ]
-      },
-      'tropical paradise': {
-        terrain: { type: 'island', height: 1.0 },
-        ground: 'sand', env: ['time afternoon'],
-        water: 'tropical',
-        items: [
-          { cmd: 'add ocean' },
-          { cmd: 'add palm tree', scatter: { count: 30, radius: 45 } },
-          { cmd: 'add bush', scatter: { count: 15, radius: 40 } },
-          { cmd: 'add flower', scatter: { count: 12, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add boat', pos: [45, 0] }, { cmd: 'add boat', pos: [-40, 15] },
-          { cmd: 'add campfire', pos: [5, 8] },
-          { cmd: 'add tent', pos: [10, 10] },
-          { cmd: 'add chest', pos: [-8, -5] },
-          { cmd: 'add parrot', scatter: { count: 3, radius: 30 } },
-          { cmd: 'spawn villager', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      jungle: {
-        terrain: { type: 'hills', height: 0.6 },
-        ground: 'mud', env: ['time morning'], weather: 'rain', particles: 'spores',
-        items: [
-          { cmd: 'add tree', scatter: { count: 45, radius: 80 } },
-          { cmd: 'add palm tree', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add bush', scatter: { count: 25, radius: 65 } },
-          { cmd: 'add flower', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add mushroom', scatter: { count: 12, radius: 45 } },
-          { cmd: 'add vine', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add boulder', scatter: { count: 6, radius: 55 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add snake', scatter: { count: 3, radius: 30 } },
-          { cmd: 'add parrot', scatter: { count: 4, radius: 40 } },
-          { cmd: 'add campfire', pos: [0, 0] },
-        ]
-      },
-      
-      // ===== HARSH ENVIRONMENTS =====
-      desert: {
-        terrain: { type: 'dunes', height: 0.8 },
-        ground: 'sand', env: ['time noon'], particles: 'dust',
-        items: [
-          { cmd: 'add cactus', scatter: { count: 15, radius: 70 } },
-          { cmd: 'add rock', scatter: { count: 20, radius: 80 } },
-          { cmd: 'add boulder', scatter: { count: 6, radius: 60 } },
-          { cmd: 'add dead tree', scatter: { count: 4, radius: 55 } },
-          { cmd: 'add skull', scatter: { count: 3, radius: 40 } },
-          { cmd: 'add tent', pos: [0, 0] },
-          { cmd: 'add campfire', pos: [5, 0] },
-          { cmd: 'add barrel', pos: [3, 3] },
-          { cmd: 'add camel', scatter: { count: 2, radius: 30 } },
-        ]
-      },
-      'arctic storm': {
-        terrain: { type: 'hills', height: 0.6 },
-        ground: 'snow', env: ['time morning'], weather: 'snow',
-        water: 'arctic', particles: 'snow',
-        items: [
-          { cmd: 'add ocean 300' },
-          { cmd: 'add pine tree', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add rock', scatter: { count: 15, radius: 70 } },
-          { cmd: 'add boulder', scatter: { count: 8, radius: 60 } },
-          { cmd: 'add modern house', pos: [0, 0] },
-          { cmd: 'add campfire', pos: [8, 0] },
-          { cmd: 'add barrel', scatter: { count: 4, radius: 15 } },
-          { cmd: 'add wolf', scatter: { count: 3, radius: 40 } },
-          { cmd: 'add husky', scatter: { count: 2, radius: 20 } },
-        ]
-      },
-      frozen: {
-        terrain: { type: 'plateau', height: 0.7 },
-        ground: 'ice', env: ['time dawn'], weather: 'snow', particles: 'snow',
-        items: [
-          { cmd: 'add pine tree', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add rock', scatter: { count: 20, radius: 70 } },
-          { cmd: 'add boulder', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add crystal', scatter: { count: 5, radius: 30 } },
-          { cmd: 'add chest', pos: [0, 0] },
-          { cmd: 'add wolf', scatter: { count: 4, radius: 45 } },
-        ]
-      },
-      volcano: {
-        terrain: { type: 'volcano', height: 1.5 },
-        ground: 'lava', env: ['time night'], particles: 'embers',
-        items: [
-          { cmd: 'add rock', scatter: { count: 25, radius: 80 } },
-          { cmd: 'add boulder', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 50 } },
-          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
-          { cmd: 'spawn enemies', scatter: { count: 5, radius: 40 } },
-        ]
-      },
-      
-      // ===== WATER WORLDS =====
-      hurricane: {
-        terrain: { type: 'island', height: 0.8 },
-        ground: 'mud', env: ['time night'],
-        water: 'hurricane', weather: 'rain', particles: 'rain',
-        items: [
-          { cmd: 'add ocean 400' },
-          { cmd: 'add palm tree', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 12, radius: 40 } },
-          { cmd: 'add boat', pos: [45, 10] },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 25 } },
-          { cmd: 'add modern house', pos: [0, 0] },
-        ]
-      },
-      'ocean voyage': {
-        terrain: { type: 'flat' },
-        ground: 'sand', env: ['time afternoon'],
-        water: 'ocean',
-        items: [
-          { cmd: 'add ocean 500' },
-          { cmd: 'add boat', pos: [0, 0] }, { cmd: 'add boat', pos: [30, 20] },
-          { cmd: 'add boat', pos: [-25, -15] },
-          { cmd: 'add barrel', pos: [3, 0] },
-          { cmd: 'add chest', pos: [-2, 0] },
-        ]
-      },
-      'dark swamp': {
-        terrain: { type: 'hills', height: 0.15 },
-        ground: 'mud', env: ['time night', 'fog on'],
-        water: 'swamp', particles: 'spores',
-        items: [
-          { cmd: 'add lake 80' },
-          { cmd: 'add dead tree', scatter: { count: 20, radius: 60 } },
-          { cmd: 'add tree', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add bush', scatter: { count: 15, radius: 45 } },
-          { cmd: 'add mushroom', scatter: { count: 12, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add log', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add frog', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add snake', scatter: { count: 3, radius: 25 } },
-          { cmd: 'add torch', scatter: { count: 6, radius: 25 } },
-          { cmd: 'spawn witch', scatter: { count: 2, radius: 30 } },
-        ]
-      },
-      'pirate cove': {
-        terrain: { type: 'island', height: 0.8 },
-        ground: 'sand', env: ['time sunset'],
-        water: 'ocean',
-        items: [
-          { cmd: 'add ocean 400' },
-          { cmd: 'add boat', pos: [50, 0] }, { cmd: 'add boat', pos: [-45, 20] },
-          { cmd: 'add palm tree', scatter: { count: 15, radius: 35 } },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 20 } },
-          { cmd: 'add chest', pos: [0, -10] }, { cmd: 'add chest', pos: [8, -8] },
-          { cmd: 'add campfire', pos: [0, 5] },
-          { cmd: 'add tent', pos: [10, 8] },
-          { cmd: 'add torch', scatter: { count: 6, radius: 20 } },
-          { cmd: 'add skull', scatter: { count: 3, radius: 15 } },
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 20 } },
-        ]
-      },
-      
-      // ===== COMBAT ARENAS =====
-      arena: {
-        terrain: { type: 'flat' },
-        ground: 'sand', env: ['time afternoon'],
-        items: [
-          { cmd: 'add column', pos: [15, 15] }, { cmd: 'add column', pos: [-15, 15] },
-          { cmd: 'add column', pos: [15, -15] }, { cmd: 'add column', pos: [-15, -15] },
-          { cmd: 'add column', pos: [25, 0] }, { cmd: 'add column', pos: [-25, 0] },
-          { cmd: 'add column', pos: [0, 25] }, { cmd: 'add column', pos: [0, -25] },
-          { cmd: 'add torch', scatter: { count: 12, radius: 28 } },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
-          { cmd: 'spawn enemies 5' },
-        ]
-      },
-      battlefield: {
-        terrain: { type: 'hills', height: 0.3 },
-        ground: 'dirt', env: ['time sunset', 'fog on'], particles: 'ash',
-        items: [
-          { cmd: 'add tent', pos: [40, 0] }, { cmd: 'add tent', pos: [45, 10] },
-          { cmd: 'add tent', pos: [-40, 0] }, { cmd: 'add tent', pos: [-45, 10] },
-          { cmd: 'add campfire', pos: [42, 5] }, { cmd: 'add campfire', pos: [-42, 5] },
-          { cmd: 'add barrel', scatter: { count: 10, radius: 30 } },
-          { cmd: 'add rock', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add dead tree', scatter: { count: 5, radius: 40 } },
-          { cmd: 'spawn soldier', scatter: { count: 6, radius: 35 } },
-          { cmd: 'spawn knight', scatter: { count: 4, radius: 30 } },
-        ]
-      },
-      'war zone': {
-        terrain: { type: 'hills', height: 0.4 },
-        ground: 'dirt', env: ['time night'], weather: 'rain', particles: 'embers',
-        items: [
-          { cmd: 'add tank', pos: [20, 0] }, { cmd: 'add tank', pos: [-25, 10] },
-          { cmd: 'add tent', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add barrel', scatter: { count: 10, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add boulder', scatter: { count: 5, radius: 40 } },
-          { cmd: 'add dead tree', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add campfire', scatter: { count: 3, radius: 25 } },
-          { cmd: 'spawn soldier', scatter: { count: 8, radius: 35 } },
-        ]
-      },
-      
-      // ===== FANTASY =====
-      'dragon lair': {
-        terrain: { type: 'volcano', height: 1.0 },
-        ground: 'stone', env: ['time night'], particles: 'embers',
-        items: [
-          { cmd: 'add boulder', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add rock', scatter: { count: 20, radius: 70 } },
-          { cmd: 'add dead tree', scatter: { count: 6, radius: 50 } },
-          { cmd: 'add chest', scatter: { count: 5, radius: 20 } },
-          { cmd: 'add torch', scatter: { count: 10, radius: 30 } },
-          { cmd: 'add crystal', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add dragon', pos: [0, 0] },
-          { cmd: 'spawn enemies', scatter: { count: 4, radius: 35 } },
-        ]
-      },
-      graveyard: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'dirt', env: ['time night', 'fog on'], particles: 'dust',
-        items: [
-          { cmd: 'add tombstone', scatter: { count: 20, radius: 40 } },
-          { cmd: 'add dead tree', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add church', pos: [0, -30] },
-          { cmd: 'add torch', scatter: { count: 6, radius: 30 } },
-          { cmd: 'add fence', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 45 } },
-          { cmd: 'spawn skeleton', scatter: { count: 6, radius: 30 } },
-        ]
-      },
-      haunted: {
-        terrain: { type: 'hills', height: 0.3 },
-        ground: 'stone', env: ['time night', 'fog on'], particles: 'fireflies',
-        items: [
-          { cmd: 'add castle', pos: [0, -35] },
-          { cmd: 'add dead tree', scatter: { count: 15, radius: 60 } },
-          { cmd: 'add tombstone', scatter: { count: 10, radius: 40 } },
-          { cmd: 'add torch', scatter: { count: 8, radius: 30 } },
-          { cmd: 'add rock', scatter: { count: 12, radius: 50 } },
-          { cmd: 'add gate', pos: [0, -15] },
-          { cmd: 'add fence', scatter: { count: 10, radius: 35 } },
-          { cmd: 'spawn skeleton', scatter: { count: 5, radius: 35 } },
-          { cmd: 'spawn witch', scatter: { count: 2, radius: 25 } },
-        ]
-      },
-      ruins: {
-        terrain: { type: 'canyon', height: 0.6 },
-        ground: 'gravel', env: ['time sunset'], particles: 'dust',
-        items: [
-          { cmd: 'add column', scatter: { count: 12, radius: 30 } },
-          { cmd: 'add arch', scatter: { count: 4, radius: 25 } },
-          { cmd: 'add wall', scatter: { count: 6, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 15, radius: 50 } },
-          { cmd: 'add boulder', scatter: { count: 8, radius: 45 } },
-          { cmd: 'add chest', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add torch', scatter: { count: 6, radius: 25 } },
-          { cmd: 'add bush', scatter: { count: 8, radius: 40 } },
-        ]
-      },
-      
-      // ===== MODERN & SCI-FI =====
-      cyberpunk: {
-        terrain: { type: 'flat' },
-        ground: 'concrete', env: ['time night'], particles: 'embers',
-        items: [
-          { cmd: 'add building', scatter: { count: 10, radius: 60 } },
-          { cmd: 'add tower', scatter: { count: 4, radius: 50 } },
-          { cmd: 'add car', scatter: { count: 6, radius: 40 } },
-          { cmd: 'add motorcycle', scatter: { count: 3, radius: 30 } },
-          { cmd: 'add barrel', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add dumpster', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add light', scatter: { count: 12, radius: 45 } },
-          { cmd: 'spawn scifi', scatter: { count: 5, radius: 35 } },
-        ]
-      },
-      space: {
-        terrain: { type: 'crater', height: 0.8 },
-        ground: 'stone', env: ['time night'], particles: 'dust',
-        items: [
-          { cmd: 'add boulder', scatter: { count: 20, radius: 70 } },
-          { cmd: 'add rock', scatter: { count: 25, radius: 80 } },
-          { cmd: 'add crystal', scatter: { count: 8, radius: 40 } },
-          { cmd: 'add mech', scatter: { count: 2, radius: 30 } },
-          { cmd: 'add console', scatter: { count: 3, radius: 20 } },
-          { cmd: 'add crate', scatter: { count: 6, radius: 25 } },
-          { cmd: 'spawn scifi', scatter: { count: 3, radius: 25 } },
-        ]
-      },
-      
-      // ===== PEACEFUL & ZEN =====
-      zen: {
-        terrain: { type: 'hills', height: 0.15 },
-        ground: 'gravel', env: ['time morning'], particles: 'leaves',
-        items: [
-          { cmd: 'add cherry blossom', scatter: { count: 12, radius: 40 } },
-          { cmd: 'add tree', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add bush', scatter: { count: 10, radius: 35 } },
-          { cmd: 'add flower', scatter: { count: 15, radius: 30 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 25 } },
-          { cmd: 'add fountain', pos: [0, 0] },
-          { cmd: 'add bench', pos: [8, 0] }, { cmd: 'add bench', pos: [-8, 0] },
-          { cmd: 'add bridge', pos: [0, 15] },
-          { cmd: 'add lantern', scatter: { count: 6, radius: 25 } },
-        ]
-      },
-      camp: {
-        terrain: { type: 'hills', height: 0.25 },
-        ground: 'grass', env: ['time sunset'], particles: 'fireflies',
-        items: [
-          { cmd: 'add campfire', pos: [0, 0] },
-          { cmd: 'add tent', pos: [8, 5] }, { cmd: 'add tent', pos: [-8, 5] },
-          { cmd: 'add log', pos: [3, -3] }, { cmd: 'add log', pos: [-3, -3] },
-          { cmd: 'add barrel', pos: [10, -2] },
-          { cmd: 'add tree', scatter: { count: 25, radius: 60, avoidCenter: 10 } },
-          { cmd: 'add bush', scatter: { count: 12, radius: 45 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 50 } },
-          { cmd: 'add horse', scatter: { count: 2, radius: 15 } },
-          { cmd: 'spawn villager', scatter: { count: 3, radius: 15 } },
-        ]
-      },
-      
-      // ===== SPECIAL =====
-      western: {
-        terrain: { type: 'dunes', height: 0.4 },
-        ground: 'sand', env: ['time noon'], particles: 'dust',
-        items: [
-          { cmd: 'add modern house', pos: [20, 0] }, { cmd: 'add modern house', pos: [-20, 0] },
-          { cmd: 'add modern house', pos: [0, 20] }, { cmd: 'add tavern', pos: [0, -20] },
-          { cmd: 'add well', pos: [0, 0] },
-          { cmd: 'add barrel', scatter: { count: 6, radius: 20 } },
-          { cmd: 'add cactus', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add horse', scatter: { count: 3, radius: 25 } },
-          { cmd: 'add dead tree', scatter: { count: 4, radius: 40 } },
-          { cmd: 'add rock', scatter: { count: 8, radius: 45 } },
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 20 } },
-          { cmd: 'spawn guard', scatter: { count: 2, radius: 15 } },
-        ]
-      },
-      floating: {
-        terrain: { type: 'plateau', height: 1.0 },
-        ground: 'grass', env: ['time afternoon'], particles: 'leaves',
-        items: [
-          { cmd: 'add tree', scatter: { count: 15, radius: 40 } },
-          { cmd: 'add flower', scatter: { count: 12, radius: 30 } },
-          { cmd: 'add bush', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 45 } },
-          { cmd: 'add crystal', scatter: { count: 5, radius: 25 } },
-          { cmd: 'add fountain', pos: [0, 0] },
-          { cmd: 'add bridge', pos: [20, 0] },
-          { cmd: 'add torch', scatter: { count: 6, radius: 30 } },
-        ]
-      },
-      swamp: {
-        terrain: { type: 'hills', height: 0.1 },
-        ground: 'mud', env: ['time night', 'fog on'],
-        water: 'swamp', particles: 'spores',
-        items: [
-          { cmd: 'add lake 60' },
-          { cmd: 'add dead tree', scatter: { count: 18, radius: 55 } },
-          { cmd: 'add mushroom', scatter: { count: 15, radius: 40 } },
-          { cmd: 'add bush', scatter: { count: 12, radius: 45 } },
-          { cmd: 'add rock', scatter: { count: 10, radius: 50 } },
-          { cmd: 'add log', scatter: { count: 8, radius: 35 } },
-          { cmd: 'add frog', scatter: { count: 4, radius: 30 } },
-          { cmd: 'add torch', scatter: { count: 4, radius: 20 } },
-          { cmd: 'spawn witch', scatter: { count: 2, radius: 25 } },
-        ]
-      },
+    const commands = legacyPlan.commands;
+    const ambientSound = legacyPlan.ambientSound;
+    const trafficEnabled = legacyPlan.trafficEnabled;
 
-      city: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'grass', env: ['time afternoon'],
-        items: [
-          { cmd: 'add road', pos: [-200, -280] },
-          { cmd: 'add road', pos: [-200, -240] },
-          { cmd: 'add road', pos: [-200, -160] },
-          { cmd: 'add road', pos: [-200, -120] },
-          { cmd: 'add road', pos: [-200, -80] },
-          { cmd: 'add road', pos: [-200, -40] },
-          { cmd: 'add road', pos: [-200, 40] },
-          { cmd: 'add road', pos: [-200, 80] },
-          { cmd: 'add road', pos: [-200, 120] },
-          { cmd: 'add road', pos: [-200, 160] },
-          { cmd: 'add road', pos: [-200, 240] },
-          { cmd: 'add road', pos: [-100, -280] },
-          { cmd: 'add road', pos: [-100, -240] },
-          { cmd: 'add road', pos: [-100, -160] },
-          { cmd: 'add road', pos: [-100, -120] },
-          { cmd: 'add road', pos: [-100, -80] },
-          { cmd: 'add road', pos: [-100, -40] },
-          { cmd: 'add road', pos: [-100, 40] },
-          { cmd: 'add road', pos: [-100, 80] },
-          { cmd: 'add road', pos: [-100, 120] },
-          { cmd: 'add road', pos: [-100, 160] },
-          { cmd: 'add road', pos: [-100, 240] },
-          { cmd: 'add road', pos: [0, -280] },
-          { cmd: 'add road', pos: [0, -240] },
-          { cmd: 'add road', pos: [0, -160] },
-          { cmd: 'add road', pos: [0, -120] },
-          { cmd: 'add road', pos: [0, -80] },
-          { cmd: 'add road', pos: [0, -40] },
-          { cmd: 'add road', pos: [0, 40] },
-          { cmd: 'add road', pos: [0, 80] },
-          { cmd: 'add road', pos: [0, 120] },
-          { cmd: 'add road', pos: [0, 160] },
-          { cmd: 'add road', pos: [0, 240] },
-          { cmd: 'add road', pos: [100, -280] },
-          { cmd: 'add road', pos: [100, -240] },
-          { cmd: 'add road', pos: [100, -160] },
-          { cmd: 'add road', pos: [100, -120] },
-          { cmd: 'add road', pos: [100, -80] },
-          { cmd: 'add road', pos: [100, -40] },
-          { cmd: 'add road', pos: [100, 40] },
-          { cmd: 'add road', pos: [100, 80] },
-          { cmd: 'add road', pos: [100, 120] },
-          { cmd: 'add road', pos: [100, 160] },
-          { cmd: 'add road', pos: [100, 240] },
-          { cmd: 'add road', pos: [200, -280] },
-          { cmd: 'add road', pos: [200, -240] },
-          { cmd: 'add road', pos: [200, -160] },
-          { cmd: 'add road', pos: [200, -120] },
-          { cmd: 'add road', pos: [200, -80] },
-          { cmd: 'add road', pos: [200, -40] },
-          { cmd: 'add road', pos: [200, 40] },
-          { cmd: 'add road', pos: [200, 80] },
-          { cmd: 'add road', pos: [200, 120] },
-          { cmd: 'add road', pos: [200, 160] },
-          { cmd: 'add road', pos: [200, 240] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [40, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [80, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [120, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [160, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [240, -200] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [40, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [80, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [120, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [160, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [240, -100] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [40, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [80, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [120, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [160, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [240, 0] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [40, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [80, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [120, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [160, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [240, 100] },
-          { cmd: 'add road at 0 0 ew', pos: [-280, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-240, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-160, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-120, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-80, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [-40, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [40, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [80, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [120, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [160, 200] },
-          { cmd: 'add road at 0 0 ew', pos: [240, 200] },
-          { cmd: 'add intersection', pos: [-200, -200] },
-          { cmd: 'add intersection', pos: [-200, -100] },
-          { cmd: 'add intersection', pos: [-200, 0] },
-          { cmd: 'add intersection', pos: [-200, 100] },
-          { cmd: 'add intersection', pos: [-200, 200] },
-          { cmd: 'add intersection', pos: [-100, -200] },
-          { cmd: 'add intersection', pos: [-100, -100] },
-          { cmd: 'add intersection', pos: [-100, 0] },
-          { cmd: 'add intersection', pos: [-100, 100] },
-          { cmd: 'add intersection', pos: [-100, 200] },
-          { cmd: 'add intersection', pos: [0, -200] },
-          { cmd: 'add intersection', pos: [0, -100] },
-          { cmd: 'add intersection', pos: [0, 0] },
-          { cmd: 'add intersection', pos: [0, 100] },
-          { cmd: 'add intersection', pos: [0, 200] },
-          { cmd: 'add intersection', pos: [100, -200] },
-          { cmd: 'add intersection', pos: [100, -100] },
-          { cmd: 'add intersection', pos: [100, 0] },
-          { cmd: 'add intersection', pos: [100, 100] },
-          { cmd: 'add intersection', pos: [100, 200] },
-          { cmd: 'add intersection', pos: [200, -200] },
-          { cmd: 'add intersection', pos: [200, -100] },
-          { cmd: 'add intersection', pos: [200, 0] },
-          { cmd: 'add intersection', pos: [200, 100] },
-          { cmd: 'add intersection', pos: [200, 200] },
-          { cmd: 'add skyscraper', pos: [-50, -50] },
-          { cmd: 'add apartment', pos: [-20, -50] },
-          { cmd: 'add skyscraper', pos: [50, -50] },
-          { cmd: 'add apartment', pos: [80, -50] },
-          { cmd: 'add skyscraper', pos: [-50, 50] },
-          { cmd: 'add apartment', pos: [-20, 50] },
-          { cmd: 'add skyscraper', pos: [50, 50] },
-          { cmd: 'add apartment', pos: [80, 50] },
-          { cmd: 'add grocery', pos: [-75, -165], rot: 1.5708 },
-          { cmd: 'add restaurant', pos: [-75, -135], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [-50, -150] },
-          { cmd: 'add restaurant', pos: [25, -165], rot: 1.5708 },
-          { cmd: 'add bank', pos: [25, -135], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [50, -150] },
-          { cmd: 'add bank', pos: [-75, 135], rot: 1.5708 },
-          { cmd: 'add cafe', pos: [-75, 165], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [-50, 150] },
-          { cmd: 'add cafe', pos: [25, 135], rot: 1.5708 },
-          { cmd: 'add salon', pos: [25, 165], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [50, 150] },
-          { cmd: 'add salon', pos: [-175, -65], rot: 1.5708 },
-          { cmd: 'add pharmacy', pos: [-175, -35], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [-150, -50] },
-          { cmd: 'add pharmacy', pos: [-175, 35], rot: 1.5708 },
-          { cmd: 'add clothing', pos: [-175, 65], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [-150, 50] },
-          { cmd: 'add clothing', pos: [125, -65], rot: 1.5708 },
-          { cmd: 'add barber', pos: [125, -35], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [150, -50] },
-          { cmd: 'add barber', pos: [125, 35], rot: 1.5708 },
-          { cmd: 'add grocery', pos: [125, 65], rot: 1.5708 },
-          { cmd: 'add apartment', pos: [150, 50] },
-          { cmd: 'add modern house', pos: [-170, -170], rot: 0 },
-          { cmd: 'add modern house 2 floors', pos: [-130, -170], rot: 0 },
-          { cmd: 'add pitched house', pos: [-170, -130], rot: 3.1416 },
-          { cmd: 'add ranch', pos: [-130, -130], rot: 3.1416 },
-          { cmd: 'add fence', pos: [-188, -150] },
-          { cmd: 'add fence', pos: [-112, -150] },
-          { cmd: 'add fence', pos: [-150, -188] },
-          { cmd: 'add fence', pos: [-150, -112] },
-          { cmd: 'add pool', pos: [-138, -140] },
-          { cmd: 'add tree', pos: [-158, -150] },
-          { cmd: 'add tree', pos: [-142, -150] },
-          { cmd: 'add tree', pos: [-150, -158] },
-          { cmd: 'add mansion', pos: [130, -170], rot: 0 },
-          { cmd: 'add duplex', pos: [170, -170], rot: 0 },
-          { cmd: 'add modern house', pos: [130, -130], rot: 3.1416 },
-          { cmd: 'add modern house 2 floors', pos: [170, -130], rot: 3.1416 },
-          { cmd: 'add fence', pos: [112, -150] },
-          { cmd: 'add fence', pos: [188, -150] },
-          { cmd: 'add fence', pos: [150, -188] },
-          { cmd: 'add fence', pos: [150, -112] },
-          { cmd: 'add pool', pos: [162, -140] },
-          { cmd: 'add tree', pos: [142, -150] },
-          { cmd: 'add tree', pos: [158, -150] },
-          { cmd: 'add tree', pos: [150, -158] },
-          { cmd: 'add pitched house', pos: [-170, 130], rot: 0 },
-          { cmd: 'add ranch', pos: [-130, 130], rot: 0 },
-          { cmd: 'add mansion', pos: [-170, 170], rot: 3.1416 },
-          { cmd: 'add duplex', pos: [-130, 170], rot: 3.1416 },
-          { cmd: 'add fence', pos: [-188, 150] },
-          { cmd: 'add fence', pos: [-112, 150] },
-          { cmd: 'add fence', pos: [-150, 112] },
-          { cmd: 'add fence', pos: [-150, 188] },
-          { cmd: 'add pool', pos: [-138, 160] },
-          { cmd: 'add tree', pos: [-158, 150] },
-          { cmd: 'add tree', pos: [-142, 150] },
-          { cmd: 'add tree', pos: [-150, 142] },
-          { cmd: 'add modern house', pos: [130, 130], rot: 0 },
-          { cmd: 'add modern house 2 floors', pos: [170, 130], rot: 0 },
-          { cmd: 'add pitched house', pos: [130, 170], rot: 3.1416 },
-          { cmd: 'add ranch', pos: [170, 170], rot: 3.1416 },
-          { cmd: 'add fence', pos: [112, 150] },
-          { cmd: 'add fence', pos: [188, 150] },
-          { cmd: 'add fence', pos: [150, 112] },
-          { cmd: 'add fence', pos: [150, 188] },
-          { cmd: 'add pool', pos: [162, 160] },
-          { cmd: 'add tree', pos: [142, 150] },
-          { cmd: 'add tree', pos: [158, 150] },
-          { cmd: 'add tree', pos: [150, 142] },
-          { cmd: 'add traffic light', pos: [-108, -8] },
-          { cmd: 'add traffic light', pos: [-92, 8] },
-          { cmd: 'add traffic light', pos: [92, -8] },
-          { cmd: 'add traffic light', pos: [108, 8] },
-          { cmd: 'add traffic light', pos: [-8, -108] },
-          { cmd: 'add traffic light', pos: [8, -92] },
-          { cmd: 'add traffic light', pos: [-8, 92] },
-          { cmd: 'add traffic light', pos: [8, 108] },
-          { cmd: 'add traffic light', pos: [-8, -8] },
-          { cmd: 'add traffic light', pos: [8, 8] },
-          { cmd: 'add stop sign', pos: [-193, -193] },
-          { cmd: 'add stop sign', pos: [-193, 207] },
-          { cmd: 'add stop sign', pos: [207, -193] },
-          { cmd: 'add stop sign', pos: [207, 207] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -250] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -250] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -210] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -210] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -170] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -170] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -130] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -130] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -90] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -90] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -50] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -50] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, -10] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, -10] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 30] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 30] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 70] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 70] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 110] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 110] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 150] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 150] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 190] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 190] },
-          { cmd: 'add ph_street_lamp_01', pos: [-9, 230] },
-          { cmd: 'add ph_street_lamp_01', pos: [9, 230] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, -200] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, -100] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, 0] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, 100] },
-          { cmd: 'add ph_fire_hydrant', pos: [-9, 200] },
-          { cmd: 'add bench', pos: [-9, -150] },
-          { cmd: 'add bench', pos: [-9, -90] },
-          { cmd: 'add bench', pos: [-9, -30] },
-          { cmd: 'add bench', pos: [-9, 30] },
-          { cmd: 'add bench', pos: [-9, 90] },
-          { cmd: 'add bench', pos: [-9, 150] },
-          { cmd: 'add tree', pos: [-165, 135] },
-          { cmd: 'add tree', pos: [-165, 147] },
-          { cmd: 'add tree', pos: [-165, 159] },
-          { cmd: 'add tree', pos: [-155, 135] },
-          { cmd: 'add tree', pos: [-155, 147] },
-          { cmd: 'add tree', pos: [-155, 159] },
-          { cmd: 'add tree', pos: [-145, 135] },
-          { cmd: 'add tree', pos: [-145, 147] },
-          { cmd: 'add tree', pos: [-145, 159] },
-          { cmd: 'add ph_park_bench', pos: [-155, 150] },
-          { cmd: 'add ph_park_bench', pos: [-145, 155] },
-          { cmd: 'add gas station', pos: [150, -150] },
-          { cmd: 'add parking lot', pos: [-150, -150] },
-          { cmd: 'spawn villager', scatter: { count: 4, radius: 100 } },
-          { cmd: 'spawn woman', scatter: { count: 3, radius: 80 } },
-        ]
-      },
-      suburban: {
-        terrain: { type: 'flat', height: 0 },
-        ground: 'grass', env: ['time morning'],
-        items: [
-          // Quiet residential street
-          { cmd: 'add road', pos: [0, -40] },
-          { cmd: 'add road', pos: [0, 0] },
-          { cmd: 'add road', pos: [0, 40] },
-          { cmd: 'add road', pos: [0, 80] },
-          // Houses with yards — spaced out
-          { cmd: 'add modern house', pos: [-25, -35], rot: Math.PI/2 },
-          { cmd: 'add pitched house', pos: [-25, -10], rot: Math.PI/2 },
-          { cmd: 'add ranch', pos: [-25, 15], rot: Math.PI/2 },
-          { cmd: 'add modern house 2 floors', pos: [-25, 40], rot: Math.PI/2 },
-          { cmd: 'add mansion', pos: [-25, 65], rot: Math.PI/2 },
-          { cmd: 'add pitched house', pos: [25, -35], rot: -Math.PI/2 },
-          { cmd: 'add modern house 2 floors', pos: [25, -10], rot: -Math.PI/2 },
-          { cmd: 'add duplex', pos: [25, 15], rot: -Math.PI/2 },
-          { cmd: 'add modern house', pos: [25, 40], rot: -Math.PI/2 },
-          { cmd: 'add ranch', pos: [25, 65], rot: -Math.PI/2 },
-          // Pools in backyards
-          { cmd: 'add pool', pos: [-35, -8] },
-          { cmd: 'add pool', pos: [35, 42] },
-          { cmd: 'add pool', pos: [-35, 67] },
-          // Trees in yards
-          { cmd: 'add tree', pos: [-20, -25] }, { cmd: 'add tree', pos: [-20, 5] },
-          { cmd: 'add tree', pos: [20, -20] }, { cmd: 'add tree', pos: [20, 25] },
-          { cmd: 'add tree', pos: [-20, 50] }, { cmd: 'add tree', pos: [20, 55] },
-          { cmd: 'add tree', pos: [-32, -30] }, { cmd: 'add tree', pos: [32, 10] },
-          // Street lamps
-          { cmd: 'add ph_street_lamp_01', pos: [-7, -30] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, -10] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 20] },
-          { cmd: 'add ph_street_lamp_01', pos: [7, 50] },
-          { cmd: 'add ph_street_lamp_01', pos: [-7, 75] },
-          // Fire hydrants
-          { cmd: 'add ph_fire_hydrant', pos: [-7, -20] },
-          { cmd: 'add ph_fire_hydrant', pos: [7, 30] },
-          // Mailboxes (just small boxes for now)
-          { cmd: 'add trash can', pos: [-14, -34] },
-          { cmd: 'add trash can', pos: [14, -9] },
-          { cmd: 'add trash can', pos: [-14, 16] },
-          // Parked cars
-          // Park at the end
-          { cmd: 'add tree', pos: [0, 90] }, { cmd: 'add tree', pos: [-8, 95] },
-          { cmd: 'add tree', pos: [8, 95] }, { cmd: 'add tree', pos: [-4, 100] },
-          { cmd: 'add tree', pos: [4, 100] },
-          { cmd: 'add ph_park_bench', pos: [0, 92] },
-        ],
-        npcs: { count: 6 },
-      },
-    }
-    
-    const template = MAP_TEMPLATES[mapType] || MAP_TEMPLATES['town'];
-    
-    // Apply water preset if template has one
-    if (template.water && WATER_PRESETS[template.water]) {
-      // Will be applied after ocean/lake is created
-      window._pendingWaterPreset = template.water;
-    }
-    
-    // Build command queue from JSON template
-    const commands = [];
-    
-    // Terrain first
-    if (template.terrain) {
-      const tType = template.terrain.type || 'hills';
-      commands.push('terrain ' + tType);
-      // Set terrain height scale
-      if (template.terrain.height) {
-        // Height is applied via createTerrain params
-      }
-    }
-    
-    // Ground type (color scheme)
-    if (template.ground) {
-      commands.push('ground ' + template.ground);
-    }
-    
-    // Environment commands
-    if (template.env) {
-      template.env.forEach(e => commands.push(e));
-    }
-    
-    // Weather
-    if (template.weather) {
-      commands.push(template.weather);
-    }
-    
-    // Particles
-    if (template.particles) {
-      commands.push('particles ' + template.particles);
-    }
-    
-    // Items with positioning
-    for (const item of (template.items || [])) {
-      if (item.scatter) {
-        const s = item.scatter;
-        const count = s.count || 1;
-        const radius = s.radius || 30;
-        const avoidCenter = s.avoidCenter || 0;
-        for (let j = 0; j < count; j++) {
-          let px, pz, attempts = 0;
-          do {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = avoidCenter + Math.random() * (radius - avoidCenter);
-            px = Math.round(Math.cos(angle) * dist);
-            pz = Math.round(Math.sin(angle) * dist);
-            attempts++;
-          } while (attempts < 10 && avoidCenter > 0 && Math.sqrt(px*px + pz*pz) < avoidCenter);
-          commands.push(item.cmd + ' at ' + px + ' ' + pz);
-        }
-      } else if (item.pos) {
-        commands.push(item.cmd + ' at ' + item.pos[0] + ' ' + item.pos[1]);
-        if (item.rot !== undefined) {
-          // Store rotation to apply after placement
-          if (!window._pendingRotations) window._pendingRotations = {};
-          window._pendingRotations[item.pos[0] + ',' + item.pos[1]] = item.rot;
-        }
-      } else {
-        commands.push(item.cmd);
-      }
-    }
-    
     // Execute all commands sequentially
     let ci = 0;
     const runNext = () => {
       if (ci >= commands.length) {
         showToast('🗺️ ' + mapTheme + ' generated! ' + commands.length + ' elements placed.');
-        if (mapType === 'city') setAmbientSound('city');
+        if (ambientSound) setAmbientSound(ambientSound);
         // Spawn driving cars for city
-        if (mapType === 'city' || mapType === 'cyberpunk') {
+        if (trafficEnabled) {
           setTimeout(function() {
             // Smart traffic cars with GLB models and AI
             console.log("[Traffic] Spawning smart traffic cars on city grid...");
@@ -13177,7 +7471,7 @@ function showGameHUD(preset) {
         // Spawn GPU instanced grass for any generated world
         try {
           if (window._grassSystem) { window._grassSystem.dispose(); window._grassSystem = null; }
-          import('./runtime/grass-system.mjs').then(({ createGrassForWorld }) => {
+          Promise.resolve() /* grass-system disabled */.then(({ createGrassForWorld }) => {
             if (window._scene) {
               const manifest = { spawn: { position: [0, 0, 0] }, world_size: [200, 200] };
               window._grassSystem = createGrassForWorld(window._scene, manifest);
@@ -13226,7 +7520,7 @@ function showGameHUD(preset) {
   const searchMatch = lower.match(/^(?:search|find|browse|look for|show)\s+(.+)/);
   if (searchMatch) {
     const query = searchMatch[1];
-    const results = searchModels(query, 15);
+    const results = searchRegistryModels(query, 15);
     if (results.length === 0) {
       return '🔍 No models found for "' + query + '"';
     }
@@ -13240,7 +7534,7 @@ function showGameHUD(preset) {
   }
 
   
-  if (lower === "models" || lower === "model count" || lower === "how many models" || lower === "library") {
+  if (lower === "models" || lower === "model count" || lower === "how many models") {
     const count = Object.keys(GLB_MODELS).length;
     return "📚 Crate Engine Model Library: " + count + "+ models\n\nCategories:\n  🚗 Vehicles: sedan, SUV, taxi, ambulance, ferrari, truck\n  🏢 Buildings: houses, offices, shops, skyscrapers\n  🛋️ Furniture: tables, chairs, sofas, beds, shelves\n  ⚔️ Weapons: swords, axes, bows, blasters, shields\n  🌿 Nature: trees, rocks, plants, flowers\n  🛤️ Roads: straight, curved, intersections\n  🧟 Characters: NPCs, zombies, skeletons, dragons\n  🏴‍☠️ Themed: pirate, medieval, dungeon, sci-fi, horror\n\nUse: search [keyword] to find specific models\nUse: add [name] to place in scene";
   }
@@ -13350,7 +7644,7 @@ function showGameHUD(preset) {
     const match = resizeMatch || biggerMatch || smallerMatch || scaleMultMatch;
     const objName = match[1].toLowerCase();
     const arg = match[2];
-    let found = null;
+    found = null;
     scene.traverse(child => {
       if (child.userData && child.userData.name && child.userData.name.toLowerCase().includes(objName)) {
         found = child;
@@ -13467,25 +7761,39 @@ function showGameHUD(preset) {
   
   // === CUSTOM SCRIPTS ===
   if (lower === 'scripts' || lower === 'script list' || lower === 'custom scripts' || lower === 'game scripts' || lower === 'game logic') {
-    showScriptManager();
-    return '🧠 Opening script manager...';
+    try {
+      const mod = await loadUserScriptsModule();
+      mod.initializeUserScripts?.();
+      mod.showScriptManager();
+      return '🧠 Opening script manager...';
+    } catch (err) {
+      console.error('[AI Sandbox] Failed to open script manager:', err);
+      showToast('❌ Script tools failed to load');
+      return '⚠ Script manager unavailable';
+    }
   }
   if (lower === 'new script' || lower === 'add script' || lower === 'custom code' || lower === 'code editor') {
-    showScriptEditor();
-    return '🧠 Opening script editor...';
+    try {
+      const mod = await loadUserScriptsModule();
+      mod.initializeUserScripts?.();
+      mod.showScriptEditor();
+      return '🧠 Opening script editor...';
+    } catch (err) {
+      console.error('[AI Sandbox] Failed to open script editor:', err);
+      showToast('❌ Script tools failed to load');
+      return '⚠ Script editor unavailable';
+    }
   }
   if (lower.startsWith('script ')) {
     const desc = lower.replace(/^script\s+/, '');
-    generateUserScript(desc).then(code => {
-      if (code) {
-        const s = { id: 'script_' + Date.now(), name: desc.slice(0,30), description: desc, code, enabled: true };
-        window._userScripts.push(s);
-        runUserScript(s);
-        localStorage.setItem('crate-user-scripts', JSON.stringify(window._userScripts.map(x => ({id:x.id,name:x.name,description:x.description,code:x.code,enabled:x.enabled}))));
-      }
+    loadUserScriptsModule().then((mod) => {
+      mod.initializeUserScripts?.();
+      return mod.generateAndRunUserScript?.(desc);
+    }).catch((err) => {
+      console.error('[AI Sandbox] Failed to generate script:', err);
+      showToast('❌ Script generation failed to start');
     });
     return '🤖 Generating custom script: "' + desc + '"...';
-    return '⚠ Not in a vehicle';
   }
 
   // === UNIVERSAL ASSET GALLERY COMMANDS ===
@@ -13664,9 +7972,10 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:characters|show characters|character select|character menu|who can i play|choose character|pick character|select character|change character|switch character|player select)/)) {
     const chosen = await showCharacterGallery();
     if (!chosen) return '↩ Character select cancelled';
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
     if (characterController) {
       if (!characterController.characterModels[chosen]) {
-        var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
+        var lib = await findCharacterLibraryEntry(chosen);
         if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
       }
       await characterController.loadCharacter(chosen);
@@ -13680,7 +7989,9 @@ function showGameHUD(preset) {
   // === SET CHARACTER / PLAY AS ===
   const setCharMatch = lower.match(/^(?:set|change|switch|choose|select)\s+(?:character|char|player|hero)\s+(?:to\s+)?(.+)$/);
   const playAsMatch = lower.match(/^play\s+as\s+(.+)$/);
-  if ((setCharMatch || playAsMatch) && characterController) {
+  if (setCharMatch || playAsMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     const charName = (setCharMatch ? setCharMatch[1] : playAsMatch[1]).trim();
     const validChars = Object.keys(characterController.characterModels);
     if (validChars.includes(charName)) {
@@ -13688,11 +7999,15 @@ function showGameHUD(preset) {
       try { localStorage.setItem('crate_character', charName); } catch(e) {}
       await characterController.loadCharacter(charName);
       if (playAsMatch) {
-        // Also enter play mode
-        playMode = true;
-        _hideEditorUI();
-        try { controls.enabled = false; } catch(e) {}
-        { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.position.set(0, _sy, 0); } }
+        enterPlayMode();
+        // Spawn at current camera position (stay in current world)
+    {
+      const cx = camera.position.x || 0;
+      const cz = camera.position.z || 0;
+      const _sy = Math.max(0, getTerrainY(cx, cz)) + 2;
+      characterController.position.set(cx, _sy, cz);
+      if (characterController.collider) characterController.collider.teleport(cx, _sy, cz);
+    }
         // Apply player agent profile
     const _agentProfile = PlayerAgent.load();
     PlayerAgent.apply(_agentProfile, characterController);
@@ -13711,105 +8026,15 @@ function showGameHUD(preset) {
     try { localStorage.setItem('crate_character', charName); } catch(e) {}
     await characterController.loadCharacter(charName);
     if (playAsMatch) {
-      playMode = true;
-      _hideEditorUI();
-      try { controls.enabled = false; } catch(e) {}
-      { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) characterController.position.set(0, _sy, 0); }
+      enterPlayMode();
       return '⚔️ Playing as ' + charName + '! WASD to move, mouse to look, ESC to exit.';
     }
     return '✅ Character set to ' + charName + '. Available: ' + validChars.join(', ');
   }
 
-  // === PLAY WITH CHARACTER ===
-  if ((lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo') && characterController) {
-    var isDemoMode = lower === 'demo' || window._isAutoDemo;
-    playMode = true;
-    _hideEditorUI();
-    try { controls.enabled = isDemoMode ? true : false; } catch(e) {}
-    if (!characterController.model) {
-      // Show character select if user hasn't chosen yet (skip for demo mode)
-      try {
-        if (!isDemoMode && !selectedCharacterType) {
-          var chosen = await showCharacterGallery();
-          if (!chosen) { playMode = false; _showEditorUI(); return '↩ Character select cancelled'; }
-          if (!characterController.characterModels[chosen]) {
-            var lib = CHARACTER_LIBRARY.find(c => c.id === chosen);
-            if (lib) characterController.characterModels[chosen] = { file: lib.file, animPrefix: '', procedural: true };
-          }
-          await characterController.loadCharacter(chosen);
-        } else {
-          await characterController.loadCharacter(selectedCharacterType || 'knight');
-        }
-      } catch (charErr) {
-        console.warn('[Play] Character load failed, using fallback:', charErr.message);
-        // Force fallback capsule if loadCharacter threw
-        if (!characterController.model) {
-          const capsuleGeo = new THREE.CapsuleGeometry(0.3, 1.2, 8, 16);
-          const capsuleMat = new THREE.MeshStandardMaterial({ color: 0x4488ff });
-          characterController.model = new THREE.Mesh(capsuleGeo, capsuleMat);
-          characterController.model.castShadow = true;
-          characterController.modelContainer = new THREE.Group();
-          characterController.modelContainer.add(characterController.model);
-          characterController.modelContainer.userData.isPlayer = true;
-          characterController.modelContainer.userData.name = 'player_fallback';
-          characterController.modelContainer.position.copy(characterController.position);
-          scene.add(characterController.modelContainer);
-          objects.push(characterController.modelContainer);
-          characterController.proceduralAnim = true;
-        }
-      }
-    }
-    // Spawn at origin ON TOP of terrain
-    { const _sy = getTerrainY(0, 0) + 1; characterController.position.set(0, _sy, 0); if (characterController.model) { characterController.position.set(0, _sy, 0); } }
-    characterController.health = characterController.maxHealth;
-    characterController.stamina = characterController.maxStamina;
-    
-    if (isDemoMode) {
-      // FORCE bright daylight for demo
-      setSky('#3388dd', '#99ddff');
-      sunLight.color.set(0xffffff); sunLight.intensity = 4; sunLight.position.set(30,50,20);
-      scene.fog = null;
-      ambientLight.color.set(0xffffff); ambientLight.intensity = 1.2;
-      createSun();
-      // Demo: start outside the town, walk in
-      characterController.position.set(-20, 0, -20);
-      if (characterController.model) {
-        characterController.position.set(-20, 0, -20);
-      }
-      characterController.cameraMode = '3rd';
-      characterController.cameraDistance = 10;
-      characterController.cameraHeight = 5;
-      characterController.cameraPitch = 0.3;
-      window._demoMode = true;
-      window._demoTime = 0;
-      window._demoPhase = 0;
-    } else {
-      const canvas = document.querySelector('canvas');
-      // Show click-to-play overlay (browsers require user gesture for pointer lock)
-      if (canvas && !document.pointerLockElement) {
-        const overlay = document.createElement('div');
-        overlay.id = 'click-to-play';
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);cursor:pointer;';
-        overlay.innerHTML = '<div style="text-align:center;color:white;font-family:monospace;"><div style="font-size:48px;margin-bottom:16px;">🎮</div><div style="font-size:24px;">Click to Play</div><div style="font-size:14px;opacity:0.7;margin-top:8px;">WASD move · Shift run · Mouse look</div></div>';
-        overlay.addEventListener('click', () => {
-          overlay.remove();
-          canvas.requestPointerLock();
-        });
-        document.body.appendChild(overlay);
-      }
-    }
-    // Init crafting
-    if (!craftingSystem) craftingSystem = new CraftingSystem(characterController);
-    if (!levelSystem) levelSystem = new LevelSystem(characterController);
-    // Init minimap
-    if (!minimap) {
-      minimap = createMinimap(scene, camera, characterController, objects);
-    }
-    minimap.el.style.display = 'block';
-    const xpBar = document.getElementById('xp-bar-container');
-    if (xpBar) xpBar.style.display = 'block';
-    return '🎮 Play mode ON — WASD move, Shift run, Space jump, C roll, E attack, V toggle camera, ESC exit';
-  }
+  // === PLAY === (redirects to enterPlayMode)
+  // Handled above — enterPlayMode() is the single entry point
+
   
   // === CAMERA TOGGLE ===
   if ((lower === 'toggle camera' || lower === 'v' || lower === '1st person' || lower === '3rd person' || lower === 'first person' || lower === 'third person') && characterController) {
@@ -13832,11 +8057,8 @@ function showGameHUD(preset) {
   if (agentChanges.length > 0) {
     PlayerAgent.save(agentProfile);
     if (characterController) PlayerAgent.apply(agentProfile, characterController);
-    // Handle world building from AI agent
-    if (window._agentBuildWorld) {
-      const w = window._agentBuildWorld; window._agentBuildWorld = null;
-      setTimeout(() => parseAndExecute('generate ' + w), 100);
-    }
+    // World building disabled in play mode — keep current world as-is
+    // if (window._agentBuildWorld) { ... }
     // Handle water preset from AI agent
     if (window._agentWaterPreset) {
       const wp = window._agentWaterPreset; window._agentWaterPreset = null;
@@ -13847,7 +8069,7 @@ function showGameHUD(preset) {
       if (!characterController.model) {
         const charType = selectedCharacterType || 'knight';
         if (!characterController.characterModels[charType]) {
-          const lib = CHARACTER_LIBRARY.find(c => c.id === charType);
+          const lib = await findCharacterLibraryEntry(charType);
           if (lib) characterController.characterModels[charType] = { file: lib.file, animPrefix: '', procedural: true };
         }
         await characterController.loadCharacter(charType);
@@ -13859,12 +8081,14 @@ function showGameHUD(preset) {
   
   // === WEAPON EQUIP COMMANDS ===
   const equipMatch = lower.match(/^(?:equip|give me|use|wield|grab|take)\s+(?:a\s+|an\s+)?(sword|axe|dagger|hammer|spear|katana|pistol|rifle|shotgun|smg|sniper|bow)(?:\s+(?:in\s+)?(?:slot\s+)?(\d))?/);
-  if (equipMatch && characterController) {
+  if (equipMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     // Auto-load character model if none loaded
     if (!characterController.model) {
       const charType = selectedCharacterType || 'knight';
       if (!characterController.characterModels[charType]) {
-        const lib = CHARACTER_LIBRARY.find(c => c.id === charType);
+        const lib = await findCharacterLibraryEntry(charType);
         if (lib) characterController.characterModels[charType] = { file: lib.file, animPrefix: '', procedural: true };
       }
       await characterController.loadCharacter(charType);
@@ -13875,19 +8099,25 @@ function showGameHUD(preset) {
   }
   
   const unequipMatch = lower.match(/^(?:unequip|drop|remove|holster)\s+(?:weapon|current|my weapon)/);
-  if (unequipMatch && characterController) {
+  if (unequipMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     return characterController.unequipWeapon();
   }
   
   const swapMatch = lower.match(/^(?:swap|switch|slot)\s+(\d)/);
-  if (swapMatch && characterController) {
+  if (swapMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     characterController.swapToSlot(parseInt(swapMatch[1]) - 1);
     const w = characterController.weaponSlots[characterController.activeSlot];
     return w ? '🔄 Switched to slot ' + swapMatch[1] + ': ' + (WEAPON_DATABASE[w]?.name || w) : '🔄 Slot ' + swapMatch[1] + ' is empty';
   }
   
   const listWeaponsMatch = lower.match(/^(?:show|list|my)\s+(?:weapons|loadout|slots)/);
-  if (listWeaponsMatch && characterController) {
+  if (listWeaponsMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     const slots = characterController.weaponSlots;
     const lines = slots.map((w, i) => {
       const active = i === characterController.activeSlot ? ' ◄' : '';
@@ -13897,11 +8127,13 @@ function showGameHUD(preset) {
     return '🗡️ Weapon Loadout:\n' + lines.join('\n');
   }
 
-    // === AI AGENT — NPC MODIFICATION ===
+  // === AI AGENT — NPC MODIFICATION ===
   const npcModMatch = lower.match(/(?:give|equip|change|set|swap|remove|take)\s+(?:the\s+)?(?:npc|enemy|enemies|npcs|all npc)\s*(?:'s|s)?\s*(?:weapon\s+)?(?:to\s+|with\s+|a\s+)?(sword|axe|hammer|spear|dagger|rifle|pistol|shotgun|bow|staff|nothing|unarmed|fists)?/i)
     || lower.match(/(?:give|equip)\s+(?:a\s+)?(sword|axe|hammer|spear|dagger|rifle|pistol|shotgun|bow|staff)\s+(?:to\s+)?(?:the\s+)?(?:npc|enemy|enemies|npcs|all)/i)
     || lower.match(/(?:remove|take)\s+(?:the\s+)?(?:sword|axe|weapon|gun|rifle)s?\s+(?:from\s+)?(?:the\s+)?(?:npc|enemy|enemies|npcs|all)/i);
-  if (npcModMatch && npcController && npcController.npcs.length > 0) {
+  if (npcModMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController || npcController.npcs.length === 0) return '⚠ No NPCs to modify';
     const weapon = npcModMatch[1] || null;
     const isRemove = /remove|take|nothing|unarmed|fists/.test(lower);
     
@@ -13967,7 +8199,9 @@ function showGameHUD(preset) {
 
   // === NPC SPAWN ===
   const npcMatch = lower.match(/^(?:spawn|add)\s+(?:npc|villager|citizen|person)\s*(?:at\s+(-?[\d.]+)\s+(-?[\d.]+))?/);
-  if (npcMatch && npcController) {
+  if (npcMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController) return '⚠ NPC system unavailable';
     const nx = parseFloat(npcMatch[1]) || (Math.random()-0.5)*30;
     const nz = parseFloat(npcMatch[2]) || (Math.random()-0.5)*30;
     return npcController.spawnNPC('knight', nx, nz, 'wander');
@@ -13975,7 +8209,9 @@ function showGameHUD(preset) {
   
   // === SPAWN MULTIPLE NPCs ===
   const npcsMatch = lower.match(/^(?:spawn|add)\s+(\d+)\s+(?:(hostile|enemy|aggro|friendly)\s+)?npcs?/);
-  if (npcsMatch && npcController) {
+  if (npcsMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController) return '⚠ NPC system unavailable';
     const n = Math.min(parseInt(npcsMatch[1]), 30);
     const isHostile = npcsMatch[2] && (npcsMatch[2] === 'hostile' || npcsMatch[2] === 'enemy' || npcsMatch[2] === 'aggro');
     const behavior = isHostile ? 'aggro' : 'wander';
@@ -14000,7 +8236,9 @@ function showGameHUD(preset) {
   
   // === SPAWN ENEMIES ===
   const enemyMatch = lower.match(/^(?:spawn|add)\s+(\d+)?\s*(?:enemies|enemy|hostiles?|monsters?|skeletons?|zombies?)/);
-  if (enemyMatch && npcController) {
+  if (enemyMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController || !questSystem) return '⚠ NPC system unavailable';
     const n = Math.min(parseInt(enemyMatch[1]) || 5, 30);
     const promises = [];
     const types = ['knight']; // All same model
@@ -14064,33 +8302,216 @@ function showGameHUD(preset) {
   // Modern house command
 
   const interiorMatch = lower.match(/^(?:add |create |build )?(?:an? )?(interior house|interior shop|interior tavern|walkable house|walkable building|enterable house|enterable building|house with interior|building with interior)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
-  if (interiorMatch) {
-    const type = interiorMatch[1];
-    const floorCount = interiorMatch[2] ? parseInt(interiorMatch[2]) : undefined;
-    let obj;
-    if (type.includes('shop')) {
-      obj = createInteriorShop();
-    } else if (type.includes('tavern')) {
-      obj = createInteriorTavern();
-    } else {
-      obj = createInteriorHouse({ floors: floorCount || 1 });
-    }
-    addObj(obj.userData.name || 'Interior House', obj, px, pz);
-    return '🏠 Interior ' + (type.includes('shop')?'shop':type.includes('tavern')?'tavern':'house') + ' created! Walk inside through the front door.' + (floorCount > 1 ? ' (' + floorCount + ' floors with stairs)' : '');
-  }
-  if (lower === 'add 2 story house' || lower === 'add two story house' || lower === 'add 2-story house') {
-    const obj = createInteriorHouse({ floors: 2 });
-    addObj('Interior House', obj, px, pz);
-    return '🏠 2-story interior house created! Walk upstairs via the built-in staircase.';
-  }
-  if (lower === 'add 3 story house' || lower === 'add three story house') {
-    const obj = createInteriorHouse({ floors: 3 });
-    addObj('Interior House', obj, px, pz);
-    return '🏠 3-story interior house! Stairs connect all floors.';
-  }
+  const twoStoryHouse = lower === 'add 2 story house' || lower === 'add two story house' || lower === 'add 2-story house';
+  const threeStoryHouse = lower === 'add 3 story house' || lower === 'add three story house';
+  const modernMatch = lower.match(/^(?:add |create |build )?(?:an? )?(modern house|modern home|modern building|hd house|furnished house|nice house)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
+  const skyscraperMatch = lower.match(/^(?:add |create |build )?(?:an? )?(skyscraper|highrise|high.?rise|tower|tall building)/);
+  const storeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(salon|barber|grocery|clothing|restaurant|pharmacy|bank|cafe|gym|laundry|store|shop|commercial)/);
+  const pitchedRoofMatch = lower.match(/^(?:add |create |build )?(?:an? )?(pitched|pitched.?roof|suburban|traditional) house/);
+  const mansionMatch = lower.match(/^(?:add |create |build )?(?:an? )?(mansion)/);
+  const duplexMatch = lower.match(/^(?:add |create |build )?(?:an? )?(duplex)/);
+  const ranchMatch = lower.match(/^(?:add |create |build )?(?:an? )?(ranch|ranch house)/);
+  const poolMatch = lower.match(/^(?:add |create |build )?(?:an? )?(swimming ?pool|pool)/);
+  const parkingMatch = lower.match(/^(?:add |create |build )?(?:an? )?(parking lot|parking|carpark)/);
+  const gasStationMatch = lower.match(/^(?:add |create |build )?(?:an? )?(gas station|petrol station|fuel station)/);
+  const bridgeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(bridge)/);
+  const apartmentMatch = lower.match(/^(?:add |create |build )?(?:an? )?(apartment|apartment building|apartments|flat|flats)/);
+  const supermarketMatch = lower.match(/^(?:add |create |build )?(?:an? )?(supermarket|super market|grocery store|megastore)/);
+  const busStopMatch = lower.match(/^(?:add |create |build )?(?:an? )?(bus stop|bus shelter)/);
+  const dumpsterMatch = lower.match(/^(?:add |create |build )?(?:an? )?(dumpster|skip|bin)/);
+  const trashCanMatch = lower.match(/^(?:add |create |build )?(?:an? )?(trash can|rubbish bin|waste bin)/);
+  const stopSignMatch = lower.match(/^(?:add |create )?(?:an? )?(stop ?sign)/);
+  const trafficLightMatch = lower.match(/^(?:add |create )?(?:an? )?(traffic ?light|stoplight|signal)/);
+  const roadMatch = lower.match(/^(?:add |create |build )?(?:an? )?(road|street)/);
+  const intersectionMatch = lower.match(/^(?:add |create )?(?:an? )?(intersection|crossroad)/);
+  const glassOfficeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(glass|office) ?(building|tower)?/);
+  const stadiumMatch = lower.match(/^(?:add |create |build )?(?:an? )?(stadium|arena|field)/);
+  const fenceMatch = lower.match(/^(?:add |create )?(?:an? )?(fence|picket fence)/);
+  const parkMatch = lower.match(/^(?:add |create |build )?(?:an? )?(park)/);
+  if (interiorMatch || twoStoryHouse || threeStoryHouse || modernMatch || skyscraperMatch || storeMatch || pitchedRoofMatch || mansionMatch || duplexMatch || ranchMatch || poolMatch || parkingMatch || gasStationMatch || bridgeMatch || apartmentMatch || supermarketMatch || busStopMatch || dumpsterMatch || trashCanMatch || stopSignMatch || trafficLightMatch || roadMatch || intersectionMatch || glassOfficeMatch || stadiumMatch || fenceMatch || parkMatch) {
+    const {
+      createInteriorShop,
+      createInteriorTavern,
+      createInteriorHouse,
+      createModernHouse,
+      createSkyscraper,
+      createCommercialBuilding,
+      createPitchedRoofHouse,
+      createMansion,
+      createDuplex,
+      createRanchHouse,
+      createSwimmingPool,
+      createParkingLot,
+      createGasStation,
+      createBridge,
+      createApartmentBuilding,
+      createSupermarket,
+      createBusStop,
+      createDumpster,
+      createTrashCan,
+      createStopSign,
+      createTrafficLight,
+      createRoadSegment,
+      createIntersection,
+      createGlassOfficeBuilding,
+      createStadium,
+      createFence,
+      createPark
+    } = await loadBuildingsModule();
 
+    if (interiorMatch) {
+      const type = interiorMatch[1];
+      const floorCount = interiorMatch[2] ? parseInt(interiorMatch[2]) : undefined;
+      let obj;
+      if (type.includes('shop')) {
+        obj = createInteriorShop();
+      } else if (type.includes('tavern')) {
+        obj = createInteriorTavern();
+      } else {
+        obj = createInteriorHouse({ floors: floorCount || 1 });
+      }
+      addObj(obj.userData.name || 'Interior House', obj, px, pz);
+      return '🏠 Interior ' + (type.includes('shop') ? 'shop' : type.includes('tavern') ? 'tavern' : 'house') + ' created! Walk inside through the front door.' + (floorCount > 1 ? ' (' + floorCount + ' floors with stairs)' : '');
+    }
+    if (twoStoryHouse) {
+      const obj = createInteriorHouse({ floors: 2 });
+      addObj('Interior House', obj, px, pz);
+      return '🏠 2-story interior house created! Walk upstairs via the built-in staircase.';
+    }
+    if (threeStoryHouse) {
+      const obj = createInteriorHouse({ floors: 3 });
+      addObj('Interior House', obj, px, pz);
+      return '🏠 3-story interior house! Stairs connect all floors.';
+    }
+    if (modernMatch) {
+      const floorCount = modernMatch[2] ? parseInt(modernMatch[2]) : 1;
+      const obj = createModernHouse({ floors: floorCount });
+      addObj('Modern House', obj, px || 0, pz || 0);
+      return '🏠 Modern furnished house created! Walk inside — HD furniture included.' + (floorCount > 1 ? ' (' + floorCount + ' floors)' : '');
+    }
+    if (skyscraperMatch) {
+      const obj = createSkyscraper();
+      addObj('Skyscraper', obj, px || 0, pz || 0);
+      return '🏙️ Skyscraper created!';
+    }
+    if (storeMatch) {
+      const type = (storeMatch[1] === 'store' || storeMatch[1] === 'shop' || storeMatch[1] === 'commercial') ? undefined : storeMatch[1];
+      const obj = createCommercialBuilding({ type });
+      addObj(obj.userData.name, obj, px || 0, pz || 0);
+      return '🏪 ' + obj.userData.name + ' created!';
+    }
+    if (pitchedRoofMatch) {
+      const obj = createPitchedRoofHouse();
+      addObj('House', obj, px || 0, pz || 0);
+      return '🏡 House with pitched roof created!';
+    }
+    if (mansionMatch) {
+      const obj = createMansion();
+      addObj('Mansion', obj, px || 0, pz || 0);
+      return '🏰 Mansion created!';
+    }
+    if (duplexMatch) {
+      const obj = createDuplex();
+      addObj('Duplex', obj, px || 0, pz || 0);
+      return '🏘️ Duplex created!';
+    }
+    if (ranchMatch) {
+      const obj = createRanchHouse();
+      addObj('Ranch House', obj, px || 0, pz || 0);
+      return '🏡 Ranch house created!';
+    }
+    if (poolMatch) {
+      const obj = createSwimmingPool();
+      addObj('Swimming Pool', obj, px || 0, pz || 0);
+      obj.userData.registerWaterZone();
+      return '🏊 Swimming pool created! Jump in to swim!';
+    }
+    if (parkingMatch) {
+      const obj = createParkingLot();
+      addObj('Parking Lot', obj, px || 0, pz || 0);
+      return '🅿️ Parking lot created!';
+    }
+    if (gasStationMatch) {
+      const obj = createGasStation();
+      addObj('Gas Station', obj, px || 0, pz || 0);
+      return '⛽ Gas station created!';
+    }
+    if (bridgeMatch) {
+      const obj = createBridge();
+      addObj('Bridge', obj, px || 0, pz || 0);
+      if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
+      return '🌉 Bridge created!';
+    }
+    if (apartmentMatch) {
+      const obj = createApartmentBuilding();
+      addObj('Apartment', obj, px || 0, pz || 0);
+      return '🏢 Apartment building created!';
+    }
+    if (supermarketMatch) {
+      const obj = createSupermarket();
+      addObj('Supermarket', obj, px || 0, pz || 0);
+      return '🛒 Supermarket created!';
+    }
+    if (busStopMatch) {
+      const obj = createBusStop();
+      addObj('Bus Stop', obj, px || 0, pz || 0);
+      return '🚏 Bus stop created!';
+    }
+    if (dumpsterMatch) {
+      const obj = createDumpster();
+      addObj('Dumpster', obj, px || 0, pz || 0);
+      return '🗑️ Dumpster created!';
+    }
+    if (trashCanMatch) {
+      const obj = createTrashCan();
+      addObj('Trash Can', obj, px || 0, pz || 0);
+      return '🗑️ Trash can created!';
+    }
+    if (stopSignMatch) {
+      const obj = createStopSign();
+      addObj('Stop Sign', obj, px || 0, pz || 0);
+      return '🛑 Stop sign placed!';
+    }
+    if (trafficLightMatch) {
+      const obj = createTrafficLight();
+      addObj('Traffic Light', obj, px || 0, pz || 0);
+      return '🚦 Traffic light placed!';
+    }
+    if (roadMatch) {
+      const ew = lower.includes(' ew');
+      const obj = createRoadSegment({ direction: ew ? 'ew' : 'ns' });
+      addObj('Road', obj, px || 0, pz || 0);
+      return '🛣️ Road segment created!';
+    }
+    if (intersectionMatch) {
+      const obj = createIntersection();
+      addObj('Intersection', obj, px || 0, pz || 0);
+      return '🚦 Intersection created!';
+    }
+    if (glassOfficeMatch) {
+      const obj = createGlassOfficeBuilding();
+      addObj('Office Building', obj, px || 0, pz || 0);
+      return '🏢 Glass office building created!';
+    }
+    if (stadiumMatch) {
+      const obj = createStadium();
+      addObj('Stadium', obj, px || 0, pz || 0);
+      return '🏟️ Stadium created!';
+    }
+    if (fenceMatch) {
+      const obj = createFence();
+      addObj('Fence', obj, px || 0, pz || 0);
+      return '🏗️ Fence placed!';
+    }
+    if (parkMatch) {
+      const obj = createPark();
+      addObj('Park', obj, px || 0, pz || 0);
+      return '🌳 Park created!';
+    }
+  }
+  
   // === BUILD WORLD (AI Agent world builder) ===
-  const buildWorldMatch = lower.match(/^(?:build|create|generate|make|load) (?:a |an |the )?(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|village|city|dungeon|arena|battlefield|kingdom|island|forest|camp|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|mountain|volcano|haunted|western|ruins|zen|swamp|floating)(?: world| map| scene)?$/);
+  const buildWorldMatch = lower.match(/^(?:build|create|generate|make|load) (?:a |an |the )?(hurricane|tropical paradise|arctic storm|dark swamp|war zone|enchanted forest|pirate cove|dragon lair|medieval siege|ocean voyage|town|village|city|big city|small city|suburb|downtown|neighborhood|block|dungeon|arena|battlefield|kingdom|island|forest|camp|farm|ranch|graveyard|pirate|cyberpunk|desert|frozen|jungle|space|mountain|volcano|haunted|western|ruins|zen|swamp|floating|beach|coastal|harbor|port|airport|stadium|park|mall|hospital|school|university|prison|military|base|factory|warehouse|parking lot)(?: world| map| scene)?$/);
   if (buildWorldMatch) {
     // Redirect as 'generate <worldType>' — line 6580 handler now catches multi-word types
     return parseAndExecute('generate ' + buildWorldMatch[1]);
@@ -14233,20 +8654,7 @@ function showGameHUD(preset) {
     }
     for (const obj of objects) {
       if (obj.userData.isGerstnerWater) {
-        const p = WATER_PRESETS[preset];
-        if (p && obj.material.uniforms) {
-          obj.material.uniforms.waveA.value.set(p.waveA[0], p.waveA[1], p.waveA[2], p.waveA[3]);
-          obj.material.uniforms.waveB.value.set(p.waveB[0], p.waveB[1], p.waveB[2], p.waveB[3]);
-          obj.material.uniforms.waveC.value.set(p.waveC[0], p.waveC[1], p.waveC[2], p.waveC[3]);
-          obj.material.uniforms.waterColor.value.copy(p.color);
-          obj.material.uniforms.deepColor.value.copy(p.deepColor);
-          obj.material.uniforms.foamIntensity.value = p.foamIntensity;
-          obj.material.uniforms.specularPower.value = p.specularPower;
-          obj.material.uniforms.fresnelPower.value = p.fresnelPower;
-          obj.material.uniforms.opacity.value = p.opacity;
-          obj.userData.waterPreset = preset;
-          currentWaterPreset = preset;
-        }
+        await applyWaterPresetToObject(obj, preset);
       }
     }
     return '🌊 Water preset: ' + preset.charAt(0).toUpperCase() + preset.slice(1);
@@ -14262,7 +8670,9 @@ function showGameHUD(preset) {
   // === BUILD TOWN/CITY ===
   const townKeywords = /medieval|fantasy|village|town|city|modern|cyberpunk|castle|pirate|port|farm|forest|bandit|camp|desert|fishing|mountain|mining|market|military|fort|harbor|island|space|station|alien|planet|mars|colony|sci.?fi|outpost|zombie|wasteland|apocal|nuclear|frozen|tundra|ice|fortress|winter|arctic|snow|haunted|graveyard|mansion|crypt|catacomb|cathedral|bone.?yard|dungeon|jungle|temple|tropical|dinosaur|dino|prehistoric|underwater|ocean|shipwreck|downtown|suburb|neon|alley|arena|colosseum|gladiator|platformer|obstacle|race|circuit|track|enchanted|dark.?forest|oasis|war.?zone|battlefield|dwarf|dwarven|mine|ranch|cowboy|western|saloon|wild.?west|steampunk|airship|victorian|samurai|shogun|feudal|japan|ninja|aztec|mayan|egyptian|pyramid|pharaoh|roman|greek|olymp|viking|norse|valhalla|moon|lunar|asteroid|saturn|jupiter|nebula|orbit|satellite|space.?dock|star.?base|warp|hyper|galaxy|cosmos|meteor|comet|black.?hole|void|dimension|portal|rift|cyber.?city|hacker|matrix|android|robot|mech|titan|kaiju|monster|beast|dragon.?lair|dragon.?nest|swamp|marsh|bog|bayou|savanna|steppe|tundra|taiga|bamboo|cherry|blossom|zen|garden|pagoda|shrine|torii|volcano|lava|magma|crater|geyser|hot.?spring|crystal|gem|diamond|emerald|ruby|sapphire|amethyst|gold|silver|treasure|vault|bank|heist|prison|jail|asylum|hospital|school|library|museum|theater|circus|carnival|amusement|theme.?park|zoo|aquarium|greenhouse|laboratory|bunker|silo|warehouse|factory|power.?plant|dam|bridge|highway|tunnel|subway|metro|train|airport|spaceport|launch|rocket|shuttle|satellite|orbital|derelict|abandon|ruin|wreck|sunken|lost|forgotten|ancient|cursed|blessed|holy|sacred|divine|infernal|hell|abyss|purgatory|heaven|paradise|cloud|sky|floating|flying/;
   const townMatch = lower.match(/^(?:build|create|generate)\s+(?:a\s+)?(?:(small|medium|large|huge)\s+)?(.+)/);
-  if (townMatch && townKeywords.test(townMatch[2]) && townBuilder) {
+  if (townMatch && townKeywords.test(townMatch[2])) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load town systems';
+    if (!townBuilder) return '⚠ Town builder unavailable';
     const size = townMatch[1] || 'medium';
     const type = townMatch[2];
     // Set biome-appropriate ground, sky, and lighting
@@ -14345,29 +8755,40 @@ function showGameHUD(preset) {
   }
   
   // === LEVEL/SKILL COMMANDS ===
-  if ((lower === 'stats' || lower === 'level' || lower === 'skills' || lower === 'xp') && levelSystem) {
+  if (lower === 'stats' || lower === 'level' || lower === 'skills' || lower === 'xp') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load level systems';
+    if (!levelSystem) return '⚠ Level system unavailable';
     return '📊 ' + levelSystem.getStats();
   }
   const skillMatch = lower.match(/^(?:upgrade|level up|invest|put point in)\s+(strength|vitality|endurance|agility|luck)/);
-  if (skillMatch && levelSystem) {
+  if (skillMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load level systems';
+    if (!levelSystem) return '⚠ Level system unavailable';
     return levelSystem.upgradeSkill(skillMatch[1]);
   }
   
   // === CRAFTING COMMANDS ===
-  if ((lower === 'craft' || lower === 'recipes' || lower === 'crafting') && craftingSystem) {
+  if (lower === 'craft' || lower === 'recipes' || lower === 'crafting') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load crafting systems';
+    if (!craftingSystem) return '⚠ Crafting system unavailable';
     return '🔨 Crafting Recipes:\n' + craftingSystem.listRecipes() + '\n\nMaterials: ' + craftingSystem.getMaterialString();
   }
   const craftMatch = lower.match(/^craft\s+(.+)/);
-  if (craftMatch && craftingSystem) {
+  if (craftMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load crafting systems';
+    if (!craftingSystem) return '⚠ Crafting system unavailable';
     return craftingSystem.craft(craftMatch[1]);
   }
   if (lower === 'materials' || lower === 'inventory materials') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load crafting systems';
     if (!craftingSystem) return '⚠ Enter play mode first';
     return '🧱 Materials: ' + craftingSystem.getMaterialString();
   }
   
   // === QUEST COMMANDS ===
   if (lower === 'quests' || lower === 'quest log') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load quest systems';
+    if (!questSystem) return '⚠ Quest system unavailable';
     const active = questSystem.quests.filter(q => !q.completed);
     const done = questSystem.completedQuests.length;
     if (active.length === 0) return '📜 No active quests. Spawn enemies to get one!';
@@ -14375,7 +8796,9 @@ function showGameHUD(preset) {
   }
   
   // === TALK TO NPC ===
-  if ((lower === 'talk' || lower === 'talk to npc' || lower === 'interact') && npcController) {
+  if (lower === 'talk' || lower === 'talk to npc' || lower === 'interact') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load NPC systems';
+    if (!npcController || !characterController || !dialogueSystem || !questSystem) return '⚠ NPC system unavailable';
     const nearby = npcController.getNearbyNPCs(characterController.position, 5);
     if (nearby.length === 0) return '⚠ No NPCs nearby to talk to';
     const npc = nearby[0];
@@ -14415,39 +8838,69 @@ function showGameHUD(preset) {
 
   // === CHARACTER SPEED ===
   const charSpeedMatch = lower.match(/^(?:set\s+)?(?:character\s+|player\s+)?(walk|run|sprint)\s*speed\s+(\d+\.?\d*)/);
-  if (charSpeedMatch && characterController) {
+  if (charSpeedMatch) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
     return characterController.setSpeed(charSpeedMatch[1], parseFloat(charSpeedMatch[2]));
   }
   
   // === ENTER VEHICLE ===
-  if ((lower === 'enter vehicle' || lower === 'get in car' || lower === 'enter car') && characterController) {
+  if (lower === 'enter vehicle' || lower === 'get in car' || lower === 'enter car') {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load gameplay systems';
+    if (!characterController) return '⚠ Character system unavailable';
     const vehicle = objects.find(o => o.userData.name && (o.userData.name.includes('car') || o.userData.name.includes('truck')));
     if (vehicle) return characterController.enterVehicle(vehicle);
     return '⚠ No vehicle nearby';
   }
   
   // === PLAY MODE (fallback — main handler at line ~8276) ===
-  if (lower === 'play' || lower === 'play mode' || lower === 'fps' || lower === 'first person' || lower === 'walk') {
-    // If characterController exists, redirect to the full play handler above
-    if (characterController) {
-      // This shouldn't normally be reached, but just in case:
-      if (!characterController.model) {
-        try {
-          await characterController.loadCharacter('knight');
-        } catch(e) {
-          console.warn('[Play] Fallback character load failed:', e.message);
-        }
-      }
-      playMode = true;
-      _hideEditorUI();
-      try { controls.enabled = false; } catch(e) {}
-      const _sy = getTerrainY(0, 0) + 1;
-      characterController.position.set(0, _sy, 0);
-      if (characterController.collider) characterController.collider.teleport(0, _sy, 0);
+  // [REMOVED] Duplicate play handler — use enterPlayMode() only
+  // === SPAWN CHARACTER ===
+  if (lower.startsWith('spawn ')) {
+    if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load character systems';
+    if (!characterController) return '⚠ Character system unavailable';
+    const charType = lower.replace('spawn ', '').trim();
+    const validTypes = Object.keys(characterController.characterModels);
+    const type = validTypes.includes(charType) ? charType : 'woman';
+    try {
+      await characterController.loadCharacter(type);
+      // Auto-enter play mode if not already
+      if (!playMode) _activatePlayMode();
+      // Switch from camera mode to character mode
+      characterController._cameraOnlyMode = false;
+      // Spawn at camera look target (where user is looking)
+      const spawnPos = controls && controls.target ? controls.target.clone() : new THREE.Vector3(0, 0, 0);
+      spawnPos.y = Math.max(0.5, spawnPos.y);
+      characterController.position.set(spawnPos.x, spawnPos.y + 1, spawnPos.z);
+      if (characterController.collider) characterController.collider.teleport(spawnPos.x, spawnPos.y + 1, spawnPos.z);
       characterController.health = characterController.maxHealth;
       characterController.stamina = characterController.maxStamina;
-      return '🎮 Play mode ON — WASD move, Shift run, Space jump, ESC exit';
+      // Set up 3rd person camera
+      characterController.cameraMode = '3rd';
+      characterController.cameraDistance = 8;
+      characterController.cameraHeight = 4.0;
+      characterController.cameraPitch = 0.15;
+      if (characterController.model) characterController.model.visible = true;
+      // Disable orbit controls, character controller takes over camera
+      try { controls.enabled = false; } catch(e) {}
+      // Request pointer lock for mouse look
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const overlay = document.createElement('div');
+        overlay.id = 'click-to-play';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);cursor:pointer;';
+        overlay.innerHTML = '<div style="text-align:center;color:white;font-family:monospace;"><div style="font-size:48px;margin-bottom:16px;">🎮</div><div style="font-size:24px;">Click to Play as ' + type + '</div><div style="font-size:14px;opacity:0.7;margin-top:8px;">WASD move · Shift run · Mouse look · E interact</div></div>';
+        overlay.addEventListener('click', () => { overlay.remove(); canvas.requestPointerLock(); });
+        document.body.appendChild(overlay);
+      }
+      showToast('🎮 ' + type + ' spawned! Click to play.');
+      return '🎮 ' + type + ' spawned at camera target!';
+    } catch(e) {
+      return '⚠ Failed to spawn: ' + e.message;
     }
+  }
+  // === PLAY MODE ===
+  if (lower === 'play' || lower === 'play mode' || lower === 'start game' || lower === 'demo' || lower === 'fps' || lower === 'first person' || lower === 'walk') {
     return enterPlayMode();
   }
   if (lower === 'edit' || lower === 'edit mode' || lower === 'stop playing' || lower === 'exit play') {
@@ -14642,164 +9095,6 @@ function showGameHUD(preset) {
     px = pp.x + (Math.random() - 0.5) * 15;
     pz = pp.z + (Math.random() - 0.5) * 15;
   }
-  
-  
-  // Modern house command
-  const modernMatch = lower.match(/^(?:add |create |build )?(?:an? )?(modern house|modern home|modern building|hd house|furnished house|nice house)(?: (\d+)(?:\s*(?:floors?|stories?))?)?/);
-  if (modernMatch) {
-    const floorCount = modernMatch[2] ? parseInt(modernMatch[2]) : 1;
-    const obj = createModernHouse({ floors: floorCount });
-    addObj('Modern House', obj, px || 0, pz || 0);
-    return '🏠 Modern furnished house created! Walk inside — HD furniture included.' + (floorCount > 1 ? ' (' + floorCount + ' floors)' : '');
-  }
-  // Skyscraper
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(skyscraper|highrise|high.?rise|tower|tall building)/)) {
-    const obj = createSkyscraper();
-    addObj('Skyscraper', obj, px || 0, pz || 0);
-    return '🏙️ Skyscraper created!';
-  }
-  // Commercial building
-  const storeMatch = lower.match(/^(?:add |create |build )?(?:an? )?(salon|barber|grocery|clothing|restaurant|pharmacy|bank|cafe|gym|laundry|store|shop|commercial)/);
-  if (storeMatch) {
-    const type = (storeMatch[1]==='store'||storeMatch[1]==='shop'||storeMatch[1]==='commercial') ? undefined : storeMatch[1];
-    const obj = createCommercialBuilding({ type });
-    addObj(obj.userData.name, obj, px || 0, pz || 0);
-    return '🏪 ' + obj.userData.name + ' created!';
-  }
-  // Pitched roof house
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(pitched|pitched.?roof|suburban|traditional) house/)) {
-    const obj = createPitchedRoofHouse();
-    addObj('House', obj, px || 0, pz || 0);
-    return '🏡 House with pitched roof created!';
-  }
-  // Mansion
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(mansion)/)) {
-    const obj = createMansion();
-    addObj('Mansion', obj, px || 0, pz || 0);
-    return '🏰 Mansion created!';
-  }
-  // Duplex
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(duplex)/)) {
-    const obj = createDuplex();
-    addObj('Duplex', obj, px || 0, pz || 0);
-    return '🏘️ Duplex created!';
-  }
-  // Ranch house
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(ranch|ranch house)/)) {
-    const obj = createRanchHouse();
-    addObj('Ranch House', obj, px || 0, pz || 0);
-    return '🏡 Ranch house created!';
-  }
-  // Swimming pool
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(swimming ?pool|pool)/)) {
-    const obj = createSwimmingPool();
-    addObj('Swimming Pool', obj, px || 0, pz || 0);
-    obj.userData.registerWaterZone();
-    return '🏊 Swimming pool created! Jump in to swim!';
-  }
-
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(parking lot|parking|carpark)/)) {
-    const obj = createParkingLot();
-    addObj('Parking Lot', obj, px || 0, pz || 0);
-    return '🅿️ Parking lot created!';
-  }
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(gas station|petrol station|fuel station)/)) {
-    const obj = createGasStation();
-    addObj('Gas Station', obj, px || 0, pz || 0);
-    return '⛽ Gas station created!';
-  }
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(bridge)/)) {
-    const obj = createBridge();
-    addObj('Bridge', obj, px || 0, pz || 0);
-    if (window._collisionWorld) window._collisionWorld.needsRebuild = true;
-    return '🌉 Bridge created!';
-  }
-
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(apartment|apartment building|apartments|flat|flats)/)) {
-    const obj = createApartmentBuilding();
-    addObj('Apartment', obj, px || 0, pz || 0);
-    return '🏢 Apartment building created!';
-  }
-
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(supermarket|super market|grocery store|megastore)/)) {
-    const obj = createSupermarket();
-    addObj('Supermarket', obj, px || 0, pz || 0);
-    return '🛒 Supermarket created!';
-  }
-
-
-
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(bus stop|bus shelter)/)) {
-    const obj = createBusStop();
-    addObj('Bus Stop', obj, px || 0, pz || 0);
-    return '🚏 Bus stop created!';
-  }
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(dumpster|skip|bin)/)) {
-    const obj = createDumpster();
-    addObj('Dumpster', obj, px || 0, pz || 0);
-    return '🗑️ Dumpster created!';
-  }
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(trash can|rubbish bin|waste bin)/)) {
-    const obj = createTrashCan();
-    addObj('Trash Can', obj, px || 0, pz || 0);
-    return '🗑️ Trash can created!';
-  }
-
-
-  // Stop sign
-
-
-  if (lower.match(/^(?:add |create )?(?:an? )?(stop ?sign)/)) {
-    const obj = createStopSign();
-    addObj('Stop Sign', obj, px || 0, pz || 0);
-    return '🛑 Stop sign placed!';
-  }
-  // Traffic light
-  if (lower.match(/^(?:add |create )?(?:an? )?(traffic ?light|stoplight|signal)/)) {
-    const obj = createTrafficLight();
-    addObj('Traffic Light', obj, px || 0, pz || 0);
-    return '🚦 Traffic light placed!';
-  }
-  // Road
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(road|street)/)) {
-    const ew = lower.includes(' ew');
-    const obj = createRoadSegment({direction: ew ? 'ew' : 'ns'});
-    addObj('Road', obj, px || 0, pz || 0);
-    return '🛣️ Road segment created!';
-  }
-  // Intersection
-  if (lower.match(/^(?:add |create )?(?:an? )?(intersection|crossroad)/)) {
-    const obj = createIntersection();
-    addObj('Intersection', obj, px || 0, pz || 0);
-    return '🚦 Intersection created!';
-  }
-  // Glass office building
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(glass|office) ?(building|tower)?/)) {
-    const obj = createGlassOfficeBuilding();
-    addObj('Office Building', obj, px || 0, pz || 0);
-    return '🏢 Glass office building created!';
-  }
-  // Stadium
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(stadium|arena|field)/)) {
-    const obj = createStadium();
-    addObj('Stadium', obj, px || 0, pz || 0);
-    return '🏟️ Stadium created!';
-  }
-  // Fence
-  if (lower.match(/^(?:add |create )?(?:an? )?(fence|picket fence)/)) {
-    const obj = createFence();
-    addObj('Fence', obj, px || 0, pz || 0);
-    return '🏗️ Fence placed!';
-  }
-  // Park
-  if (lower.match(/^(?:add |create |build )?(?:an? )?(park)/)) {
-    const obj = createPark();
-    addObj('Park', obj, px || 0, pz || 0);
-    return '🌳 Park created!';
-  }
-
-
-
 // Parse count
   let count = 1;
   const numMatch = lower.match(/(\d+)\s+(cube|sphere|tree|house|rock|bush|flower|avatar|building|pine)/);
@@ -14871,7 +9166,7 @@ function showGameHUD(preset) {
     for (const [cn, cv] of Object.entries(colorMap)) { if (lower.includes(cn)) { foundColor = cv; colorName = cn; break; } }
     if (foundColor !== null) {
       const clean = lower.replace(/^(turn|make|paint|set|color)\s+/,'').replace(/(the|a|it|to)\s/g,'').replace(colorName,'').trim();
-      let target = clean ? objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(clean)) : (selectedObj || objects[objects.length-1]);
+      target = clean ? objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(clean)) : (selectedObj || objects[objects.length-1]);
       if (target) {
         const setColor = (o) => { if (o.isMesh && o.material) o.material.color.setHex(foundColor); if (o.children) o.children.forEach(setColor); };
         setColor(target);
@@ -14890,7 +9185,7 @@ function showGameHUD(preset) {
   // EXPAND GROUND: "expand ground" / "bigger map" / "extend level" / "double floor"
   if (lower.match(/\b(expand|extend|enlarge|bigger|larger|grow|double|widen|stretch)\b/) && lower.match(/\b(ground|floor|map|level|board|terrain|area|space)\b/) && !lower.includes('world') && !lower.includes('platform')) {
     const numMatch = lower.match(/(\d+)/);
-    let newSize = numMatch ? parseInt(numMatch[1]) : groundSize + 300;
+    newSize = numMatch ? parseInt(numMatch[1]) : groundSize + 300;
     if (newSize < groundSize) newSize = groundSize + 300;
     expandGround(newSize);
     return '✓ Ground expanded to ' + groundSize + 'x' + groundSize + '! More room to build.';
@@ -14926,7 +9221,7 @@ function showGameHUD(preset) {
     const gType = _groundMatch[1];
     if (currentGround) { scene.remove(currentGround); currentGround.geometry.dispose(); currentGround.material.dispose(); }
     currentGround = createGround(gType);
-    currentGroundType = gType;
+    currentGroundType = gType; setTimeout(() => applyGroundTexture(currentGround, gType), 100);
     scene.add(currentGround);
     return addToLog('✓ Ground: ' + gType);
   }
@@ -15087,12 +9382,27 @@ function showGameHUD(preset) {
     return '🌳 Added ' + count + ' ' + treeType + (count > 1 ? ' trees' : ' tree') + ' (mixed varieties)';
   }
 
-  const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+))?$/);
+  const addGenMatch = lower.match(/^(?:add|place|put|create|spawn)\s+(.+?)(?:\s+at\s+(-?[\d.,]+)\s*,?\s*(-?[\d.,]+)(?:\s*,?\s*(-?[\d.,]+))?)?(?:\s+scale\s+(-?[\d.,]+))?(?:\s+ry\s+(-?[\d.,]+))?$/);
     if (addGenMatch) {
       const rawInput = addGenMatch[1].trim();
       const rawName = rawInput.replace(/\s+/g, '_');
-      const ax = addGenMatch[2] !== undefined ? parseFloat(addGenMatch[2]) : (Math.random() - 0.5) * 20;
-      const az = addGenMatch[3] !== undefined ? parseFloat(addGenMatch[3]) : (Math.random() - 0.5) * 20;
+      // Support both "add X at X Z" (2 coords) and "add X at X Y Z" (3 coords)
+      let ax, ay = 0, az;
+      if (addGenMatch[4] !== undefined) {
+        // 3 coords: X Y Z
+        ax = parseFloat(addGenMatch[2]);
+        ay = parseFloat(addGenMatch[3]);
+        az = parseFloat(addGenMatch[4]);
+      } else if (addGenMatch[2] !== undefined) {
+        // 2 coords: X Z
+        ax = parseFloat(addGenMatch[2]);
+        az = parseFloat(addGenMatch[3] || '0');
+      } else {
+        ax = (Math.random() - 0.5) * 20;
+        az = (Math.random() - 0.5) * 20;
+      }
+      const scaleOverride = addGenMatch[5] ? parseFloat(addGenMatch[5]) : undefined;
+      const ryOverride = addGenMatch[6] ? parseFloat(addGenMatch[6]) : undefined;
 
       // 1. Try GLB_MODELS alias map (exact match)
       const glb = GLB_MODELS[rawName] || GLB_MODELS[rawName.replace(/_/g, '-')] || GLB_MODELS[rawInput] || null;
@@ -15107,7 +9417,7 @@ function showGameHUD(preset) {
 
       if (!finalGlb) {
         // Try fuzzy search from model catalog
-        const searchResults = typeof searchModels === 'function' ? searchModels(rawInput, 5) : [];
+        const searchResults = searchRegistryModels(rawInput, 5);
         if (searchResults.length > 0) {
           // Pick best match — prefer name containing the search term
           const best = searchResults[0];
@@ -15122,7 +9432,21 @@ function showGameHUD(preset) {
         finalGlb = rawName;
       }
 
-      loadGLBModel(displayName, finalGlb, ax, az);
+      loadGLBModel(displayName, finalGlb, ax, az, scaleOverride);
+      // Set Y position after load if not 0
+      if (ay !== 0) {
+        setTimeout(() => {
+          const obj = objects[objects.length - 1];
+          if (obj) obj.position.y = ay;
+        }, 2000);
+      }
+      // Set rotation if specified
+      if (ryOverride !== undefined) {
+        setTimeout(() => {
+          const obj = objects[objects.length - 1];
+          if (obj) obj.rotation.y = ryOverride;
+        }, 2000);
+      }
       return '✅ Adding ' + displayName + '...';
     }
   }
@@ -15177,13 +9501,34 @@ function addObj(name, mesh, x, z, scatter) {
 }
 
 function setWeather(type) {
+  const requestToken = ++weatherRequestToken;
   if (rainParticles) { scene.remove(rainParticles); rainParticles=null; }
-  clearRainPuddles();
   if (snowParticles) { scene.remove(snowParticles); snowParticles=null; }
   weatherSystem = type;
-  if (type==='rain') { rainParticles=createRain(); scene.add(rainParticles); createRainPuddles(20); }
-  if (type==='snow') { snowParticles=createSnow(); scene.add(snowParticles); }
-  if (type==='storm') { rainParticles=createRain(); scene.add(rainParticles); createRainPuddles(30); scene.fog = new THREE.FogExp2(0x222233, 0.008); _lightningTimer = 2; }
+  loadWeatherModule().then((weather) => {
+    if (requestToken !== weatherRequestToken) return;
+    weather.clearRainPuddles?.();
+    if (type === 'rain') {
+      rainParticles = weather.createRain();
+      scene.add(rainParticles);
+      weather.createRainPuddles?.(20);
+      return;
+    }
+    if (type === 'snow') {
+      snowParticles = weather.createSnow();
+      scene.add(snowParticles);
+      return;
+    }
+    if (type === 'storm') {
+      rainParticles = weather.createRain();
+      scene.add(rainParticles);
+      weather.createRainPuddles?.(30);
+      scene.fog = new THREE.FogExp2(0x222233, 0.008);
+      weather.setLightningTimer?.(2);
+    }
+  }).catch((err) => {
+    console.warn('[Weather] Deferred weather load failed:', err);
+  });
 }
 
 // === UI ===
@@ -15233,50 +9578,73 @@ voiceOverlay.id = 'voice-overlay';
 voiceOverlay.style.cssText = 'display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.9);border:2px solid #7c5cff;border-radius:16px;padding:16px 24px;color:#fff;font-size:16px;z-index:10000;max-width:500px;text-align:center;backdrop-filter:blur(10px);';
 document.body.appendChild(voiceOverlay);
 
-const vcStats = getStats();
-console.log(`[Voice] ${vcStats.totalPhrases} phrases ready across ${vcStats.totalIntents} intents`);
+let voiceRuntime = null;
+let voiceRuntimePromise = null;
 
-const voiceReady = initVoice(
-  // onCommand
-  async (action, transcript, intentId) => {
-    console.log(`[Voice] "${transcript}" → ${action} (${intentId})`);
-    voiceOverlay.innerHTML = `<div style="color:#4ade80;font-size:12px;margin-bottom:4px">✓ Recognized</div><div>"${transcript}"</div><div style="color:#7c5cff;font-size:13px;margin-top:6px">→ ${action}</div>`;
-    setTimeout(() => { voiceOverlay.style.display = 'none'; }, 2000);
-    
-    // Execute through the engine
-    if (intentId === 'godmode_raw') {
-      // Pass raw to the normal command parser
-      input.value = transcript;
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    } else {
-      input.value = action;
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    }
-  },
-  // onTranscript
-  (text, isFinal) => {
-    if (!isFinal) {
-      voiceOverlay.style.display = 'block';
-      voiceOverlay.innerHTML = `<div style="color:#888;font-size:12px;margin-bottom:4px">🎤 Listening...</div><div style="color:#aaa;font-style:italic">${text}</div>`;
-    }
-  }
-);
-
-voiceBtn.addEventListener('click', () => {
-  if (!voiceReady) { alert('Voice recognition not supported in this browser. Try Chrome!'); return; }
-  if (isListening()) {
-    stopListening();
-    voiceBtn.style.borderColor = '#555';
-    voiceBtn.style.color = '#888';
-    voiceBtn.style.boxShadow = 'none';
-    voiceBtn.innerHTML = '🎤';
-    voiceOverlay.style.display = 'none';
-  } else {
-    startListening();
+function setVoiceButtonState(listening) {
+  if (listening) {
     voiceBtn.style.borderColor = '#ff3333';
     voiceBtn.style.color = '#ff3333';
     voiceBtn.style.boxShadow = '0 0 12px rgba(255,51,51,0.4)';
     voiceBtn.innerHTML = '🔴';
+  } else {
+    voiceBtn.style.borderColor = '#555';
+    voiceBtn.style.color = '#888';
+    voiceBtn.style.boxShadow = 'none';
+    voiceBtn.innerHTML = '🎤';
+  }
+}
+
+async function ensureVoiceRuntime() {
+  if (voiceRuntime) return voiceRuntime;
+  if (!voiceRuntimePromise) {
+    voiceRuntimePromise = loadVoiceCommandsModule().then((mod) => {
+      const vcStats = mod.getStats();
+      console.log(`[Voice] ${vcStats.totalPhrases} phrases ready across ${vcStats.totalIntents} intents`);
+      const ready = mod.initVoice(
+        async (action, transcript, intentId) => {
+          console.log(`[Voice] "${transcript}" → ${action} (${intentId})`);
+          voiceOverlay.innerHTML = `<div style="color:#4ade80;font-size:12px;margin-bottom:4px">✓ Recognized</div><div>"${transcript}"</div><div style="color:#7c5cff;font-size:13px;margin-top:6px">→ ${action}</div>`;
+          setTimeout(() => { voiceOverlay.style.display = 'none'; }, 2000);
+
+          if (intentId === 'godmode_raw') {
+            input.value = transcript;
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          } else {
+            input.value = action;
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          }
+        },
+        (text, isFinal) => {
+          if (!isFinal) {
+            voiceOverlay.style.display = 'block';
+            voiceOverlay.innerHTML = `<div style="color:#888;font-size:12px;margin-bottom:4px">🎤 Listening...</div><div style="color:#aaa;font-style:italic">${text}</div>`;
+          }
+        }
+      );
+      voiceRuntime = { ...mod, ready };
+      return voiceRuntime;
+    }).catch((err) => {
+      voiceRuntimePromise = null;
+      console.warn('[Voice] Runtime failed to load:', err.message);
+      return { ready: false, error: err };
+    });
+  }
+  return voiceRuntimePromise;
+}
+
+voiceBtn.addEventListener('click', async () => {
+  voiceBtn.disabled = true;
+  const runtime = await ensureVoiceRuntime();
+  voiceBtn.disabled = false;
+  if (!runtime.ready) { alert('Voice recognition not supported in this browser. Try Chrome!'); return; }
+  if (runtime.isListening()) {
+    runtime.stopListening();
+    setVoiceButtonState(false);
+    voiceOverlay.style.display = 'none';
+  } else {
+    runtime.startListening();
+    setVoiceButtonState(true);
     voiceOverlay.style.display = 'block';
     voiceOverlay.innerHTML = '<div style="color:#ff5555">🎤 Listening... speak a command</div>';
   }
@@ -15450,13 +9818,18 @@ canvas.addEventListener('pointerup', () => {
 
 // Fix stuck WASM loading text
 setTimeout(() => {
-  const wasmEl = document.getElementById('wasm-status') ||
-    document.querySelector('[data-wasm-status]');
-  if (wasmEl) { wasmEl.textContent = '✓ Ready'; wasmEl.style.color = '#4ade80'; }
-}, 3000);
+  const wasmEl = document.querySelector('[data-wasm-status]') || 
+    [...document.querySelectorAll('*')].find(el => el.textContent === 'WASM: loading...' && el.children.length === 0);
+  if (wasmEl) wasmEl.textContent = '✓ Ready';
+}, 5000);
 
 // === FAB GALLERY ===
 function showFabGallery() {
+  loadEditorToolsModule().then((mod) => mod.showFabGallery()).catch((err) => {
+    console.warn('[FabGallery] Failed to load:', err.message);
+    showToast('Fab tools failed to load');
+  });
+  return;
   const aliases = window._fabAliases || {};
   const names = Object.keys(aliases);
   
@@ -15519,18 +9892,6 @@ function showFabGallery() {
 }
 window.showFabGallery = showFabGallery;
 
-// Load Fab aliases on startup
-(async function loadFabAliases() {
-  try {
-    const r = await fetch('/models/fab/fab_aliases.json');
-    if (!r.ok) return;
-    const data = await r.json();
-    window._fabAliases = data;
-    Object.assign(GLB_MODELS, data);
-    console.log('[Fab] Loaded', Object.keys(data).length, 'Fab assets');
-  } catch(e) { console.warn('[Fab] Could not load aliases'); }
-})();
-
 
 
 // === GLB DECOMPOSER — extract individual named pieces from a grouped GLB ===
@@ -15586,13 +9947,13 @@ window._decomposedPieces = _decomposedPieces;
 // Auto-decompose the street props pack on load
 (function autoDecomposeStreetProps() {
   setTimeout(() => {
-    decomposeGLB('models/fab/street_props_streeprops.glb', 'street_props');
-    decomposeGLB('models/fab/Street_Props_GLB_StreeProps.glb', 'street_props');
+    decomposeGLB('/models/fab/street_props_streeprops.glb', 'street_props');
+    decomposeGLB('/models/fab/Street_Props_GLB_StreeProps.glb', 'street_props');
   }, 2000); // wait for engine init
 })();
 
 // === FOREST LAKE WORLD ===
-window.buildForestLakeWorld = buildForestLakeWorld;
+// [removed] buildForestLakeWorld
 
 
 // === FREE-FLY EDITOR CAMERA (WASD + Q/E + mouse) ===
@@ -15693,7 +10054,7 @@ function buildGrassField(opts = {}) {
     0x276020, 0x4a8c28, 0x3e7830, 0x62b840,
   ];
 
-  let placed = 0;
+  placed = 0;
   let attempts = 0;
   while (placed < count && attempts < count * 4) {
     attempts++;
@@ -15791,6 +10152,7 @@ const CHARACTER_LIBRARY = [
 ];
 
 function showCharacterGallery(onSelect) {
+  return loadCharacterGalleryModule().then((mod) => mod.showCharacterGallery(onSelect));
   return new Promise((resolve) => {
     // Remove any existing gallery
     const existing = document.getElementById('char-gallery-overlay');
@@ -15981,7 +10343,7 @@ function showCharacterGallery(onSelect) {
             const miniLoader = new GLTFLoader();
             miniLoader.setDRACOLoader(dracoLoader);
             
-            miniLoader.load('models/' + (ch.file.endsWith('.glb') ? ch.file : ch.file + '.glb'), (gltf) => {
+            miniLoader.load('/models/' + (ch.file.endsWith('.glb') ? ch.file : ch.file + '.glb'), (gltf) => {
               spinner.remove();
               const model = gltf.scene;
               const box = new THREE.Box3().setFromObject(model);
@@ -16204,8 +10566,7 @@ function enterVehicle(veh) {
   showVehicleHUD(true);
   // Auto-enable play mode so vehicle controls work
   if (!playMode) {
-    playMode = true;
-    _hideEditorUI();
+    _activatePlayMode();
     console.log('[CrateEngine] ▶ Play mode enabled for driving');
   }
   activeVehicle = {
@@ -16416,7 +10777,7 @@ function addInstancedObject(glbFile, positions) {
   }
   
   // Load model and create InstancedMesh
-  gltfLoader.load('models/' + glbFile + '.glb', (gltf) => {
+  gltfLoader.load('/models/' + glbFile + '.glb', (gltf) => {
     const original = gltf.scene;
     // Find first mesh in the loaded model
     let sourceMesh = null;
@@ -16428,7 +10789,7 @@ function addInstancedObject(glbFile, positions) {
     instMesh.castShadow = true;
     instMesh.receiveShadow = true;
     
-    let count = 0;
+    count = 0;
     for (const pos of positions) {
       const matrix = new THREE.Matrix4();
       const scale = pos.scale || 1;
@@ -16691,11 +11052,11 @@ function autoParticlesForScene(sceneName) {
 }
 
 // Start default particles
-setTimeout(() => createAmbientParticles('dust', 200), 1500);
+setTimeout(() => createAmbientParticles('dust', 0), 1500);
 
 
 // === DAY/NIGHT CYCLE ===
-let _dayNightCycle = false;
+
 let _dayTime = 12; // 0-24 hours, start at noon
 window._toggleDayNight = function() { _dayNightCycle = !_dayNightCycle; return _dayNightCycle; };
 window._setDayTime = function(h) { _dayTime = h % 24; };
@@ -17245,7 +11606,8 @@ function updateInteractionPrompt() {
 
 // === CROSSHAIR (v215) ===
 function showCrosshair(show) {
-  let ch = document.getElementById('crosshair');
+  let
+  ch = document.getElementById('crosshair');
   if (!ch) {
     ch = document.createElement('div');
     ch.id = 'crosshair';
@@ -17307,7 +11669,7 @@ window.updateStaminaBar = updateStaminaBar;
 
 // === KILL FEED / EVENT LOG (v215) ===
 function showKillFeed(text, color) {
-  let feed = document.getElementById('kill-feed');
+  feed = document.getElementById('kill-feed');
   if (!feed) {
     feed = document.createElement('div');
     feed.id = 'kill-feed';
@@ -17696,7 +12058,7 @@ function setAmbientSound(type) {
     const bufferSize = ctx.sampleRate * 2;
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
-    let last = 0;
+    last = 0;
     for (let i = 0; i < bufferSize; i++) {
       const white = Math.random() * 2 - 1;
       data[i] = (last + (0.02 * white)) / 1.02;
@@ -17935,7 +12297,7 @@ function createMuzzleFlash(position, direction) {
   light.position.copy(flash.position);
   scene.add(light);
   
-  let t = 0;
+  t = 0;
   const tick = () => {
     t += 0.016;
     flash.material.opacity = Math.max(0, 1 - t * 15);
@@ -18204,8 +12566,8 @@ function spawnTrafficCar(roadX, roadZ, dir, laneOffset) {
   const carColor = TRAFFIC_CAR_COLORS[Math.floor(Math.random() * TRAFFIC_CAR_COLORS.length)];
   
   // Load GLB car
-  const modelPath = 'models/' + carModel + '.glb';
-  const loader = window._gltfLoader || new THREE.GLTFLoader();
+  const modelPath = '/models/' + carModel + '.glb';
+  const loader = window._gltfLoader || new GLTFLoader();
   
   loader.load(modelPath, (gltf) => {
     const car = gltf.scene;
@@ -18579,7 +12941,7 @@ function animate() {
   if (!playMode) controls.update();
   if (window._updateEditorCamera) window._updateEditorCamera(dt);
   if (window._updateShadowCascades) window._updateShadowCascades();
-  updateAmbientParticles(clock.getDelta() || 0.016, camera.position);
+  updateAmbientParticles(dt || 0.016, camera.position);
   if (activeVehicle) { updateVehicle(dt); updateVehiclePrompt(); if (activeVehicle) updateVehicleHUD(activeVehicle);
   // Swimming/buoyancy — keep player above water
   const _waterLevel = -0.1; // Just above ocean surface at -0.3
@@ -18608,7 +12970,7 @@ function animate() {
   if (typeof window._updateMiniMap === 'function') window._updateMiniMap(); }
       if (shooterMode) { updateBullets(dt); updateShooterHUD(); }
     updateWaterAnimation(performance.now() * 0.001);
-  updateUserScripts(dt);
+  if (userScriptsModule?.updateUserScripts) userScriptsModule.updateUserScripts(dt);
   
   // Weather follows camera for full-scene coverage
   const _wcam = playMode && characterController && characterController.model ? characterController.position : camera.position;
@@ -18619,7 +12981,7 @@ function animate() {
     const _windX = weatherSystem === 'storm' ? 8 : 2; for (let i=0;i<p.length;i+=3) { p[i+1]-=22*dt; p[i]+=_windX*dt; if(p[i+1]<-2||p[i]>75){p[i+1]=20+Math.random()*8;p[i]=(Math.random()-0.5)*150;p[i+2]=(Math.random()-0.5)*150;} }
     rainParticles.geometry.attributes.position.needsUpdate=true;
   }
-  updateLightning(dt);
+  if (weatherModule?.updateLightning) weatherModule.updateLightning(dt, weatherSystem);
   updateNightLighting(t);
   // updateDrivingCars replaced by updateSmartTraffic
   if (window._cityCarUpdate) window._cityCarUpdate(dt);
@@ -18633,7 +12995,7 @@ function animate() {
 
   // Update particle effects
   // Update particles every other frame
-  if (!window._particleSkip) updateParticleEffects(0.016);
+  if (!window._particleSkip && weatherModule?.updateParticleEffects) weatherModule.updateParticleEffects(0.016);
   window._particleSkip = !window._particleSkip;
   
   // Water wave (every 3rd frame)
@@ -18653,10 +13015,27 @@ function animate() {
   }
   
   if (sunMesh) { sunMesh.position.copy(sunLight.position); }
+  // === RAPIER PHYSICS STEP ===
+  if (window._physicsEnabled && physics.isReady()) physics.step(dt);
+
+  // === DISTANCE-BASED SHADOW CULLING (LOD) — saves GPU on large scenes ===
+  if (!window._shadowCullFrame) window._shadowCullFrame = 0;
+  if (++window._shadowCullFrame % 30 === 0) {
+    const _camP = camera.position;
+    for (let _i = 0; _i < objects.length; _i++) {
+      const _o = objects[_i];
+      if (!_o.userData.isGLB) continue;
+      const _d = _camP.distanceTo(_o.position);
+      const _castShadow = _d < 80;
+      _o.traverse(c => { if (c.isMesh) c.castShadow = _castShadow; });
+    }
+  }
+
   // Update animations
   animationMixers.forEach(mixer => mixer.update(dt));
   // Update multiplayer peer interpolation
   if (window._mp && window._mp.connected) window._mp.update(dt);
+  if (colyseusBridge?.connected) syncColyseusPose();
   // Play mode + triggers
   if (playMode && characterController && characterController.model) {
     // === DEMO AUTO-PLAY ===
@@ -18855,7 +13234,7 @@ function animate() {
           for (let k = 0; k < kills; k++) window._killFeed('☠️ Enemy eliminated +100');
         }
         // Kill message
-        let msg = document.getElementById('pickup-msg');
+        msg = document.getElementById('pickup-msg');
         if (!msg) {
           msg = document.createElement('div');
           msg.id = 'pickup-msg';
@@ -18881,7 +13260,7 @@ function animate() {
         if (parts && craftingSystem) craftingSystem.addMaterial(parts[1], parseInt(parts[2]));
       }
       // Flash pickup message
-      let msg = document.getElementById('pickup-msg');
+      msg = document.getElementById('pickup-msg');
       if (!msg) {
         msg = document.createElement('div');
         msg.id = 'pickup-msg';
@@ -18924,9 +13303,25 @@ function animate() {
   updateHUD();
   // NPC update — runs ALWAYS (editor + play mode)
   const _nc = npcController || window.npcController;
-  if (_nc) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
+  const npcHandledInPlayMode = playMode && characterController && npcController && _nc === npcController;
+  if (_nc && !npcHandledInPlayMode) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
+  // If character model was deleted, switch to camera-only mode
+  if (characterController && !characterController.model && !characterController._cameraOnlyMode && playMode) {
+    characterController._cameraOnlyMode = true;
+    try { controls.enabled = true; } catch(e) {}
+    showToast('📷 Character removed — camera mode');
+  }
+  // Hard floor — prevent character from falling through world
+  if (characterController && characterController.position && characterController.position.y < -2) {
+    characterController.position.y = 2;
+    if (characterController.collider && characterController.collider.teleport) {
+      characterController.collider.teleport(characterController.position.x, 2, characterController.position.z);
+    }
+    characterController.jumpVelocity = 0;
+    characterController.isGrounded = true;
+  }
 
-  if (ppEnabled && composer) {
+  if (ppEnabled && composer && !window._composerDisabled) {
       if (window._colorPass) window._colorPass.uniforms.time.value = performance.now() * 0.001;
       composer.render();
     } else {
@@ -18952,7 +13347,7 @@ window._engineBridge = {
   loadGLBModel: loadGLBModel,
   showGallery: showGallery,
   showCategoryPicker: showCategoryPicker,
-  searchModels: searchModels,
+  searchModels: searchRegistryModels,
   
   // Scene
   get scene() { return scene; },
@@ -18972,7 +13367,7 @@ window._engineBridge = {
     if (idx > -1) objects.splice(idx, 1);
     scene.remove(obj);
   },
-  getSelected() { return selectedObject; },
+  getSelected() { return getCurrentSelection(); },
   
   // Player
   enterPlayMode: enterPlayMode,
@@ -19004,7 +13399,7 @@ window._engineBridge = {
   },
   
   // Water
-  setWaterPreset(preset) {
+  async setWaterPreset(preset) {
     // Find ocean in scene
     const ocean = objects.find(o => o.userData && o.userData.isGerstnerWater);
     if (!ocean) {
@@ -19013,18 +13408,8 @@ window._engineBridge = {
       window._pendingWaterPreset = preset;
       return '🌊 Creating ocean with ' + preset + ' preset';
     }
-    const p = typeof WATER_PRESETS !== 'undefined' ? WATER_PRESETS[preset] : null;
-    if (p && ocean.material && ocean.material.uniforms) {
-      const u = ocean.material.uniforms;
-      if (p.waveA) u.waveA.value.set(...p.waveA);
-      if (p.waveB) u.waveB.value.set(...p.waveB);
-      if (p.waveC) u.waveC.value.set(...p.waveC);
-      if (p.waterColor) u.waterColor.value.setHex(p.waterColor);
-      if (p.deepColor) u.deepColor.value.setHex(p.deepColor);
-      if (p.foamIntensity !== undefined) u.foamIntensity.value = p.foamIntensity;
-      if (p.specularPower !== undefined) u.specularPower.value = p.specularPower;
-      if (p.fresnelPower !== undefined) u.fresnelPower.value = p.fresnelPower;
-      if (p.opacity !== undefined) u.opacity.value = p.opacity;
+    const applied = await applyWaterPresetToObject(ocean, preset);
+    if (applied) {
       return '🌊 Water preset: ' + preset;
     }
     return null;
@@ -19034,6 +13419,55 @@ window._engineBridge = {
   async setTerrain(type, options) {
     return await execSingle('terrain ' + type);
   },
+  async buildNavMesh(options) {
+    const { buildNavMeshForScene } = await loadNavMeshModule();
+    return await buildNavMeshForScene(scene, scene, options);
+  },
+  async toggleNavMesh(forceVisible) {
+    const { toggleNavMeshDebug } = await loadNavMeshModule();
+    return toggleNavMeshDebug(scene, forceVisible);
+  },
+  async clearNavPath() {
+    const { clearNavMeshPath } = await loadNavMeshModule();
+    clearNavMeshPath(scene);
+    return true;
+  },
+  async pathfindToTarget(target = null) {
+    const { buildNavMeshForScene, hasNavMesh, computeNavMeshPath } = await loadNavMeshModule();
+    const destination = target || getCurrentSelection();
+    if (!destination) return null;
+    if (!hasNavMesh()) await buildNavMeshForScene(scene, scene);
+    return computeNavMeshPath(getNavStartPoint(), destination.getWorldPosition(new THREE.Vector3()), scene);
+  },
+  async semanticSearch(query, limit) {
+    const { semanticSearchAssets } = await loadLocalAiToolsModule();
+    return semanticSearchAssets(query, getAssetSearchCatalog(), limit || 8);
+  },
+  async speakText(text, options) {
+    const { speakTextWithTTS } = await loadSpeechTtsModule();
+    return speakTextWithTTS(text, options);
+  },
+  async toggleGpuDebugger() {
+    const { toggleSpectorOverlay } = await loadDebugToolsModule();
+    return toggleSpectorOverlay();
+  },
+  async captureGpuFrame() {
+    const { captureFrameWithSpector } = await loadDebugToolsModule();
+    return captureFrameWithSpector(renderer.domElement);
+  },
+  async connectColyseus(endpoint, roomName, options) {
+    const room = await connectColyseusRoom(endpoint, roomName, options);
+    return { roomId: room.roomId, name: room.name || roomName || DEFAULT_COLYSEUS_ROOM };
+  },
+  async disconnectColyseus() {
+    if (!colyseusBridge) return false;
+    await colyseusBridge.disconnect();
+    return true;
+  },
+  get navMesh() {
+    return navMeshModule?.getNavMeshState ? navMeshModule.getNavMeshState() : null;
+  },
+  get colyseus() { return colyseusBridge; },
   
   // Weather
   async setWeather(type) {
@@ -19052,6 +13486,7 @@ window._engineBridge = {
   
   // Interior
   async addInterior(type, options) {
+    const { createInteriorShop, createInteriorTavern, createInteriorHouse } = await loadBuildingsModule();
     const floors = (options && options.floors) || 1;
     let obj;
     if (type === 'shop') obj = createInteriorShop();
@@ -19101,7 +13536,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
     const bridge = window._engineBridge;
     
     // Execute based on intent
-    let result = null;
+    result = null;
     try {
       // execRaw = pass directly to parseAndExecute (specific structures, etc.)
       if (intent.action === 'execRaw') {
@@ -19178,7 +13613,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'setCharacter': result = await bridge.setCharacter(intent.id); break;
         case 'setWater': 
           if (intent.create) await execSingle((intent.preset === 'lake' ? 'add lake' : intent.preset === 'pond' ? 'add pond' : 'add ocean') + (intent.size ? ' ' + intent.size : ''));
-          result = bridge.setWaterPreset(intent.preset);
+          result = await bridge.setWaterPreset(intent.preset);
           break;
         case 'setTerrain': result = await bridge.setTerrain(intent.type); break;
         case 'setWeather': result = await bridge.setWeather(intent.type); break;
@@ -19213,7 +13648,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
               for (const item of items) {
                 const name = item.name.toLowerCase();
                 const file = item.file.toLowerCase();
-                let score = 0;
+                score = 0;
                 
                 if (name === query || file.replace('.glb','') === query) score = 100;
                 else if (name.startsWith(query)) score = 80;
@@ -19306,7 +13741,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             const cat = await _loadAssetCatalog();
             if (cat) {
               const q = intent.query.toLowerCase();
-              let best = null, bestS = 0;
+              best = null, bestS = 0;
               for (const [c, items] of Object.entries(cat)) {
                 for (const item of items) {
                   const n = item.name.toLowerCase();
@@ -19342,7 +13777,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'delete':
           {
             const q = intent.query.toLowerCase();
-            let found = false;
+            found = false;
             for (let i = objects.length - 1; i >= 0; i--) {
               const o = objects[i];
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
@@ -19376,7 +13811,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             const q = intent.target.toLowerCase();
             const colorMap = {red:0xff0000,blue:0x0044ff,green:0x00ff44,yellow:0xffff00,white:0xffffff,black:0x111111,orange:0xff8800,purple:0x8800ff,pink:0xff44aa,cyan:0x00ffff,gold:0xffd700,silver:0xc0c0c0,brown:0x8b4513,gray:0x888888,grey:0x888888};
             let c = colorMap[intent.color] || parseInt(intent.color.replace('#',''), 16);
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 o.traverse(ch => { if (ch.isMesh && ch.material) { ch.material = ch.material.clone(); ch.material.color.setHex(c); } });
@@ -19390,7 +13825,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'scaleObject':
           {
             const q = intent.target.toLowerCase();
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 o.scale.setScalar(intent.scale);
@@ -19404,7 +13839,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'moveObject':
           {
             const q = intent.target.toLowerCase();
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 o.position.set(intent.x, intent.y || o.position.y, intent.z !== undefined ? intent.z : o.position.z);
@@ -19418,7 +13853,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'rotateObject':
           {
             const q = intent.target.toLowerCase();
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 o.rotation.y += (intent.degrees * Math.PI / 180);
@@ -19459,7 +13894,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
         case 'stopAnimation':
           {
             const q = intent.target.toLowerCase();
-            let found = false;
+            found = false;
             for (const o of objects) {
               if (o && o.userData && o.userData.name && o.userData.name.toLowerCase().includes(q)) {
                 if (o.userData.mixer) { o.userData.mixer.stopAllAction(); }
@@ -19494,7 +13929,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             }
             // Equip and play
             if (characterController) {
-              await characterController.loadCharacter('knight');
+              await characterController.loadCharacter('soldier');
               characterController.equipWeapon('sword', 0);
             }
             enterPlayMode();
@@ -19507,7 +13942,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             await bridge.setTerrain('flat');
             await bridge.setTime('night');
             if (characterController) {
-              await characterController.loadCharacter('knight');
+              await characterController.loadCharacter('soldier');
               characterController.equipWeapon('sword', 0);
               characterController.equipWeapon('pistol', 1);
             }
@@ -19527,7 +13962,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
           {
             await bridge.buildWorld('tropical paradise');
             if (characterController) {
-              await characterController.loadCharacter('knight');
+              await characterController.loadCharacter('soldier');
             }
             if (npcController) {
               for (let i = 0; i < 5; i++) {
@@ -19543,7 +13978,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             bridge.clearScene();
             await bridge.buildWorld('medieval siege');
             if (characterController) {
-              await characterController.loadCharacter('knight');
+              await characterController.loadCharacter('soldier');
               characterController.equipWeapon('sword', 0);
               characterController.equipWeapon('bow', 1);
             }
@@ -19595,6 +14030,10 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
   };
   
   console.log('[Crate Engine] ✅ New interpreter active — Phase 2 ready');
+  // Show quick-start help for new users
+  setTimeout(() => {
+    showToast('🎮 Try: "build a city" → "play" | Or: "help"', 5000);
+  }, 2000);
 }).catch(err => {
   console.warn('[Crate Engine] Interpreter not loaded, using legacy parser:', err.message);
 });
@@ -19609,7 +14048,7 @@ window._runCommand = async function(cmd) {
   cmdEl.className = 'entry cmd';
   cmdEl.textContent = '❯ ' + cmd;
   log.appendChild(cmdEl);
-  let response = '';
+  response = '';
   try {
     response = await parseAndExecute(cmd);
     const text = (response || '').toString();
@@ -19634,31 +14073,24 @@ window._runCommand = async function(cmd) {
 };
 
 window._engineReady = true;
-if (window._hideLoader) window._hideLoader();
+window.parseAndExecute = parseAndExecute;
+window._showCategoryPicker = showCategoryPicker;
+window._execCommand = parseAndExecute;
+// Apply template preset if on a template page
+if (window._templateMode) {
+  loadCityBuilderModule().then((mod) => mod.applyTemplatePreset(window._templateMode)).then(() => {
+    if (window._hideLoader) window._hideLoader();
+  });
+} else {
+  if (window._hideLoader) window._hideLoader();
+}
 
 // === COMMAND PALETTE DROPDOWN ===
 (function initCommandPalette() {
   const menu = document.getElementById('cmd-dropdown-menu');
   if (!menu) return;
   const COMMAND_PALETTE = {
-    'Build World': [
-      { label: 'Modern City', cmd: 'generate city' },
-      { label: 'Medieval Town', cmd: 'generate town' },
-      { label: 'Suburban', cmd: 'generate suburban' },
-      { label: 'Tropical Island', cmd: 'generate island' },
-      { label: 'Desert', cmd: 'generate desert' },
-      { label: 'Space Station', cmd: 'generate space' },
-      { label: 'Dungeon', cmd: 'generate dungeon' },
-      { label: 'Pirate Cove', cmd: 'generate pirate' },
-      { label: 'Cyberpunk City', cmd: 'generate cyberpunk' },
-      { label: 'Haunted', cmd: 'generate haunted' },
-      { label: 'Jungle', cmd: 'generate jungle' },
-      { label: 'Kingdom', cmd: 'generate kingdom' },
-      { label: 'Arena', cmd: 'generate arena' },
-      { label: 'Zen Garden', cmd: 'generate zen' },
-      { label: 'Volcano', cmd: 'generate volcano' },
-      { label: 'Western', cmd: 'generate western' },
-    ],
+
     'Add Objects': [
       { label: 'Car', cmd: 'add sedan', glb: 'kenney_cars/sedan' },
       { label: 'Truck', cmd: 'add truck', glb: 'truck' },
@@ -19762,7 +14194,7 @@ setTimeout(() => {
     console.log('[Engine] Canvas resized to', w, 'x', h);
   }
 }, 100);
-if (window._autoDemoQueued) { window._autoDemoQueued = false; setTimeout(function() { if (window._autoDemo) window._autoDemo(); }, 500); }
+// demo autorun removed
 
 window.addEventListener('resize', () => {
   camera.aspect = canvas.clientWidth / canvas.clientHeight;
@@ -19773,7 +14205,7 @@ window.addEventListener('resize', () => {
 
 // Stats
 function animateCount(el, target, dur) {
-  let s=0;const step=target/(dur/16);const t=setInterval(()=>{s+=step;if(s>=target){el.textContent=target.toLocaleString();clearInterval(t);return;}el.textContent=Math.floor(s).toLocaleString();},16);
+  s=0;const step=target/(dur/16);const t=setInterval(()=>{s+=step;if(s>=target){el.textContent=target.toLocaleString();clearInterval(t);return;}el.textContent=Math.floor(s).toLocaleString();},16);
 }
 
 
@@ -19973,6 +14405,17 @@ function publishScene() {
   modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
   
   document.getElementById('pub-go').onclick = async function() {
+    let auth = window._crateAuth || null;
+    if (!auth) {
+      try {
+        auth = await loadAuthModule();
+      } catch (err) {
+        logOutput('err', '⚠ Auth tools failed to load');
+        console.error('[Auth] Deferred auth load failed:', err);
+        return;
+      }
+    }
+
     // Check auth & plan
     if (auth.isLoggedIn && auth.isPremium) {
       // Use server-side publish
@@ -20216,13 +14659,23 @@ document.addEventListener('keydown', (e) => {
 const inspectorPanel = document.createElement('div');
 inspectorPanel.id = 'inspector';
 Object.assign(inspectorPanel.style, {
-  position: 'fixed', top: '60px', right: '20px', zIndex: '240',
-  width: '260px', borderRadius: '12px',
-  background: '#0a0a0a', border: '1px solid #1f1f1f',
-  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+  position: 'fixed', top: '50px', right: '12px', zIndex: '240',
+  width: '220px', borderRadius: '10px',
+  background: 'rgba(10,10,10,0.92)', border: '1px solid #2a2a2a',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
   display: 'none', flexDirection: 'column', overflow: 'hidden',
-  fontFamily: "'Inter', -apple-system, sans-serif", fontSize: '0.78rem',
+  fontFamily: "'Inter', -apple-system, sans-serif", fontSize: '0.75rem',
+  backdropFilter: 'blur(8px)',
 });
+// Make inspector draggable so it never blocks the scene
+let _inspDragging=false,_inspDx=0,_inspDy=0;
+inspectorPanel.addEventListener('mousedown', e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON'||e.target.tagName==='SELECT') return;
+  _inspDragging=true; _inspDx=e.clientX-inspectorPanel.getBoundingClientRect().left;
+  _inspDy=e.clientY-inspectorPanel.getBoundingClientRect().top; e.preventDefault();
+});
+document.addEventListener('mousemove',e=>{ if(!_inspDragging)return; inspectorPanel.style.left=Math.max(0,e.clientX-_inspDx)+'px'; inspectorPanel.style.top=Math.max(0,e.clientY-_inspDy)+'px'; inspectorPanel.style.bottom='auto'; });
+document.addEventListener('mouseup',()=>_inspDragging=false);
 document.body.appendChild(inspectorPanel);
 
 function updateInspector(obj) {
@@ -20231,51 +14684,86 @@ function updateInspector(obj) {
   const name = obj.userData.name || 'Object';
   const pos = obj.position;
   const scl = obj.scale.x;
-  const rot = (obj.rotation.y * 180 / Math.PI).toFixed(0);
+  const rotY = (obj.rotation.y * 180 / Math.PI).toFixed(0);
   const isGLB = obj.userData.isGLB ? '📦 GLB Model' : '🔷 Primitive';
   const anims = obj.userData.animations ? obj.userData.animations.join(', ') : 'None';
-  
+
+  // Count triangles for optimization awareness
+  let triCount = 0;
+  obj.traverse(c => {
+    if (c.isMesh && c.geometry) {
+      triCount += c.geometry.index ? c.geometry.index.count / 3 : (c.geometry.attributes.position ? c.geometry.attributes.position.count / 3 : 0);
+    }
+  });
+  const triLabel = triCount > 1000 ? (triCount / 1000).toFixed(1) + 'K' : Math.round(triCount);
+
+  // Get material color for inline picker
+  let hexColor = '#888888';
+  obj.traverse(c => {
+    if (c.isMesh && c.material && c.material.color && hexColor === '#888888') {
+      hexColor = '#' + c.material.color.getHexString();
+    }
+  });
+
+  const hasPhys = obj.userData.hasPhysics;
+  const physType = obj.userData.physicsType || 'dynamic';
+  const inputStyle = "background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace";
+  const btnStyle = "flex:1;min-width:70px;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.7rem;transition:all 0.2s";
+
   inspectorPanel.innerHTML = `
     <div style="padding:12px;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:8px;background:rgba(255,107,53,0.05)">
       <span style="font-size:1rem">${obj.userData.isGLB ? '📦' : '🔷'}</span>
       <div style="flex:1">
         <div style="font-weight:700;color:#fff;font-size:0.85rem">${name}</div>
-        <div style="color:#555;font-size:0.65rem">${isGLB}</div>
+        <div style="color:#555;font-size:0.65rem">${isGLB} | ${triLabel} tris${hasPhys ? ' | <span style="color:#f7c948">⚡ Physics</span>' : ''}</div>
       </div>
       <button onclick="document.getElementById('inspector').style.display='none'" style="background:none;border:none;color:#555;cursor:pointer;font-size:1rem">✕</button>
     </div>
-    <div style="padding:12px;display:flex;flex-direction:column;gap:8px">
+    <div style="padding:12px;display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto">
       <div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Transform</div>
       <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr;gap:4px;align-items:center">
         <span style="color:#ef4444;font-weight:600">X</span>
-        <input type="number" value="${pos.x.toFixed(1)}" step="0.5" id="insp-x" style="background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace">
+        <input type="number" value="${pos.x.toFixed(1)}" step="0.5" id="insp-x" style="${inputStyle}">
         <span style="color:#4ade80;font-weight:600">Y</span>
-        <input type="number" value="${pos.y.toFixed(1)}" step="0.5" id="insp-y" style="background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace">
+        <input type="number" value="${pos.y.toFixed(1)}" step="0.5" id="insp-y" style="${inputStyle}">
       </div>
       <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr;gap:4px;align-items:center">
         <span style="color:#60a5fa;font-weight:600">Z</span>
-        <input type="number" value="${pos.z.toFixed(1)}" step="0.5" id="insp-z" style="background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace">
+        <input type="number" value="${pos.z.toFixed(1)}" step="0.5" id="insp-z" style="${inputStyle}">
         <span style="color:#f7c948;font-weight:600">S</span>
-        <input type="number" value="${scl.toFixed(2)}" step="0.1" min="0.01" id="insp-s" style="background:#111;border:1px solid #252525;border-radius:4px;padding:4px 6px;color:#e0e0e0;font-size:0.75rem;width:100%;font-family:JetBrains Mono,monospace">
+        <input type="number" value="${scl.toFixed(2)}" step="0.1" min="0.01" id="insp-s" style="${inputStyle}">
       </div>
       <div style="display:grid;grid-template-columns:40px 1fr;gap:4px;align-items:center">
         <span style="color:#c084fc;font-weight:600">R°</span>
-        <input type="range" min="0" max="360" value="${rot}" id="insp-r" style="width:100%;accent-color:#ff6b35">
+        <input type="range" min="0" max="360" value="${rotY}" id="insp-r" style="width:100%;accent-color:#ff6b35">
       </div>
+
+      <div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-top:4px">Material</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="color" value="${hexColor}" id="insp-color" style="width:36px;height:24px;border:1px solid #333;border-radius:4px;cursor:pointer;background:none;padding:0">
+        <span id="insp-color-hex" style="color:#666;font-size:0.65rem;font-family:JetBrains Mono,monospace">${hexColor}</span>
+      </div>
+
+      <div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-top:4px">Physics</div>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button id="insp-physics-btn" onclick="window._togglePhysicsOnSelected()" style="${btnStyle};border-color:${hasPhys ? '#f7c948' : '#252525'};color:${hasPhys ? '#f7c948' : '#aaa'}">${hasPhys ? '🔴 Remove Physics' : '⚡ Add Physics'}</button>
+        ${hasPhys ? '<button onclick="window._launchSelected()" style="' + btnStyle + '" onmouseenter="this.style.borderColor=\'#60a5fa\';this.style.color=\'#60a5fa\'" onmouseleave="this.style.borderColor=\'#252525\';this.style.color=\'#aaa\'">🚀 Launch</button>' : ''}
+      </div>
+
       ${obj.userData.animations ? '<div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-top:4px">Animations</div><div style="color:#4ade80;font-size:0.7rem">' + anims + '</div>' : ''}
-      
+
       <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-        <button onclick="window._equipWeapon()" style="flex:1;min-width:70px;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.7rem;transition:all 0.2s" onmouseenter="this.style.borderColor='#ef4444';this.style.color='#ef4444'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">⚔️ Equip</button>
-        <button onclick="window._animateSelected()" style="flex:1;min-width:70px;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.7rem;transition:all 0.2s" onmouseenter="this.style.borderColor='#ec4899';this.style.color='#ec4899'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">🎬 Animate</button>
-        <button onclick="window._colorSelected()" style="flex:1;min-width:70px;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.7rem;transition:all 0.2s" onmouseenter="this.style.borderColor='#4ade80';this.style.color='#4ade80'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">🎨 Color</button>
+        <button onclick="window._equipWeapon()" style="${btnStyle}" onmouseenter="this.style.borderColor='#ef4444';this.style.color='#ef4444'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">⚔️ Equip</button>
+        <button onclick="window._animateSelected()" style="${btnStyle}" onmouseenter="this.style.borderColor='#ec4899';this.style.color='#ec4899'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">🎬 Animate</button>
+        <button onclick="window._colorSelected()" style="${btnStyle}" onmouseenter="this.style.borderColor='#4ade80';this.style.color='#4ade80'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">🎨 Gallery</button>
       </div>
       <div style="display:flex;gap:4px;margin-top:2px">
-        <button onclick="window._duplicateSelected()" style="flex:1;padding:6px;background:#111;border:1px solid #252525;border-radius:6px;color:#aaa;cursor:pointer;font-size:0.72rem;transition:all 0.2s" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">📋 Clone</button>
+        <button onclick="window._duplicateSelected()" style="${btnStyle}" onmouseenter="this.style.borderColor='#ff6b35';this.style.color='#ff6b35'" onmouseleave="this.style.borderColor='#252525';this.style.color='#aaa'">📋 Clone</button>
         <button onclick="window._deleteSelected()" style="flex:1;padding:6px;background:#111;border:1px solid #ef4444;border-radius:6px;color:#ef4444;cursor:pointer;font-size:0.72rem;transition:all 0.2s" onmouseenter="this.style.background='rgba(239,68,68,0.1)'" onmouseleave="this.style.background='#111'">🗑 Delete</button>
       </div>
     </div>
   `;
-  
+
   // Wire up live editing
   const applyTransform = () => {
     const x = parseFloat(document.getElementById('insp-x')?.value || 0);
@@ -20292,8 +14780,55 @@ function updateInspector(obj) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', applyTransform);
     });
+    // Live color picker
+    const colorEl = document.getElementById('insp-color');
+    if (colorEl) colorEl.addEventListener('input', () => {
+      const hex = colorEl.value;
+      const lbl = document.getElementById('insp-color-hex');
+      if (lbl) lbl.textContent = hex;
+      if (selectedObj) {
+        selectedObj.traverse(c => {
+          if (c.isMesh && c.material && c.material.color) {
+            c.material.color.set(hex);
+            c.material.needsUpdate = true;
+          }
+        });
+      }
+    });
   }, 50);
 }
+
+// === PHYSICS INSPECTOR FUNCTIONS ===
+window._togglePhysicsOnSelected = async function() {
+  if (!selectedObj) return;
+  const physicsRuntime = await loadPhysicsModule().catch((err) => {
+    console.warn('[Physics] Failed to load module:', err);
+    logOutput('err', 'Rapier physics failed to load');
+    return null;
+  });
+  if (!physicsRuntime) return;
+  if (selectedObj.userData.hasPhysics) {
+    physics.removeRigidbody(selectedObj);
+    logOutput('ok', 'Physics removed from ' + (selectedObj.userData.name || 'object'));
+  } else {
+    const ok = await physics.init();
+    if (!ok) { logOutput('err', 'Rapier physics failed to load'); return; }
+    window._physicsEnabled = true;
+    physics.addRigidbody(selectedObj, 'dynamic');
+    logOutput('ok', 'Physics added to ' + (selectedObj.userData.name || 'object') + ' — it will fall and collide!');
+  }
+  updateInspector(selectedObj);
+};
+
+window._launchSelected = async function() {
+  if (!selectedObj || !selectedObj.userData.hasPhysics) return;
+  await loadPhysicsModule().catch(() => null);
+  physics.applyImpulse(selectedObj, 0, 15, 0);
+  logOutput('ok', 'Launched ' + (selectedObj.userData.name || 'object') + ' upward!');
+};
+
+// Expose physics module globally for advanced users
+window._physics = physics;
 
 window._autoFrame = autoFrameScene;
 window._deleteSelected = function() {
@@ -20327,7 +14862,7 @@ window._equipWeapon = function() {
   showGallery('weapons', { hint: 'Choose a weapon to equip on ' + (selectedObj.userData.name || 'character') }).then(result => {
     if (!result || !selectedObj) return;
     const glb = GLB_MODELS[result.file] || result.file;
-    gltfLoader.load('models/' + glb + '.glb', (gltf) => {
+    gltfLoader.load('/models/' + glb + '.glb', (gltf) => {
       const weapon = gltf.scene;
       // Scale weapon to reasonable size relative to character
       const charBox = new THREE.Box3().setFromObject(selectedObj);
@@ -20490,7 +15025,7 @@ window._animateSelected = function() {
     
     const closeBtn = document.createElement('div');
     closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+    closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = () => overlay.remove();
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
@@ -20570,7 +15105,7 @@ window._colorSelected = function() {
   
   const closeBtn = document.createElement('div');
   closeBtn.textContent = '✕';
-  closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#666;cursor:pointer;z-index:10006;';
+  closeBtn.style.cssText = 'position:fixed;top:15px;right:20px;font-size:28px;color:#fff;cursor:pointer;z-index:2147483647;background:rgba(0,0,0,0.5);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;';
   closeBtn.onclick = () => overlay.remove();
   overlay.appendChild(closeBtn);
   document.body.appendChild(overlay);
@@ -20635,7 +15170,7 @@ function createModelBrowser() {
     list.innerHTML = '';
     const filtered = filter ? modelNames.filter(n => n.toLowerCase().includes(filter.toLowerCase())) : modelNames.slice(0, 50);
     const countEl = document.getElementById('browser-count');
-    if (countEl) countEl.textContent = filter ? filtered.length + ' found' : '1,339 models';
+    if (countEl) countEl.textContent = filter ? filtered.length + ' found' : '4,122 models';
     
     filtered.slice(0, 60).forEach(name => {
       const item = document.createElement('div');
@@ -20665,8 +15200,6 @@ function createModelBrowser() {
   document.body.appendChild(panel);
   return panel;
 }
-const modelBrowser = createModelBrowser();
-
 // Toggle model browser with Ctrl+B or button
 const browserBtn = document.createElement('button');
 browserBtn.innerHTML = '📦';
@@ -20679,9 +15212,20 @@ Object.assign(browserBtn.style, {
 });
 browserBtn.onmouseenter = () => { browserBtn.style.borderColor = '#ff6b35'; browserBtn.style.transform = 'scale(1.1)'; };
 browserBtn.onmouseleave = () => { browserBtn.style.borderColor = '#252525'; browserBtn.style.transform = 'scale(1)'; };
-browserBtn.onclick = () => {
-  const showing = modelBrowser.style.display === 'flex';
-  modelBrowser.style.display = showing ? 'none' : 'flex';
+browserBtn.onclick = async () => {
+  await loadModelRegistryModule().catch(() => {});
+  // Open the full category picker (4,122 models, 26 categories)
+  const result = await showCategoryPicker();
+  if (result && result.file) {
+    loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+    sceneHistory.push('add ' + result.file);
+    showToast('✅ Added ' + (result.name||result.file));
+  } else if (result && typeof result === 'string') {
+    if (characterController) {
+      if (!characterController.characterModels[result]) characterController.characterModels[result] = { file: result, animPrefix: '', procedural: true };
+      await characterController.loadCharacter(result);
+    }
+  }
 };
 document.body.appendChild(browserBtn);
 document.addEventListener('keydown', (e) => {
@@ -20689,23 +15233,32 @@ document.addEventListener('keydown', (e) => {
 });
 
 // AI Agent integration
-import { CrateAgent } from './ai-agent.mjs?v=4';
-import { matchIntent, initVoice, startListening, stopListening, isListening, getStats } from './voice-commands.mjs';
-const agent = new CrateAgent((cmd) => {
-  parseAndExecute(cmd);
-});
-// Keep agent synced with scene objects
-setInterval(() => {
-  const objs = [];
-  scene.traverse(c => { if (c.isMesh || c.isGroup) objs.push(c); });
-  agent.updateObjects(objs);
-}, 2000);
+const warmBuildAgentUi = () => { ensureBuildAgentUi(); };
+if ('requestIdleCallback' in window) {
+  window.requestIdleCallback(warmBuildAgentUi, { timeout: 4000 });
+} else {
+  setTimeout(warmBuildAgentUi, 2500);
+}
 
 // === ENGINE 2.0 BRIDGE ===
 // Expose parseAndExecute for command bus, then initialize the bridge.
 window._parseAndExecute = parseAndExecute;
-import('./runtime/engine-bridge.mjs').then(bridge => {
-  bridge.initBridge();
+
+// === AI AGENT INTEGRATION ===
+// "agent build X" or "ai build X" triggers the learning agent loop
+window._agentReady = false;
+import('./runtime/city-agent.mjs').then(agent => {
+  window._agent = agent;
+  window._agentReady = true;
+  window._agentMemory = agent.loadMemory;
+  window._agentStats = agent.getStats;
+  window._agentShowMemory = agent.showMemory;
+  console.log('[Agent] City agent v4 loaded. Memory:', agent.loadMemory().length, 'lessons');
+  console.log('[Agent] Commands: agent build | agent memory | agent stats | agent clear memory');
+}).catch(err => console.warn('[Agent] Agent not loaded:', err.message));
+
+import('./runtime/engine-bridge.mjs').then(({ initBridge }) => {
+  initBridge();
   console.log('[Engine] Command bus bridge loaded.');
 }).catch(err => console.warn('[Engine] Bridge load deferred:', err.message));
 
@@ -20761,328 +15314,6 @@ window.addEventListener('keydown', e => {
 });
 
 
-// === AI CUSTOM CODE SANDBOX (Rosebud-style) ===
-// Users describe game behavior → AI generates JS → runs in sandboxed scope
-// Only affects the user's saved game, never touches engine code
-
-// _userScripts declared at top of file
-window._userScriptScope = {}; // Shared state between user scripts
-
-function createUserScriptSandbox() {
-  // Safe APIs the user script can access
-  return {
-    scene, camera, objects,
-    THREE: THREE,
-    addObj, 
-    showToast: (msg) => { const t = document.createElement('div'); t.style.cssText='position:fixed;top:20%;left:50%;transform:translateX(-50%);color:#4ade80;font-family:monospace;font-size:18px;z-index:10001;pointer-events:none;background:rgba(0,0,0,0.8);padding:10px 20px;border-radius:8px;'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.5s'},2000); setTimeout(()=>t.remove(),2500); },
-    getPlayer: () => characterController,
-    getNPCs: () => npcController ? npcController.npcs : [],
-    getObjects: () => objects,
-    getObjectByName: (name) => objects.find(o => o.userData.name && o.userData.name.toLowerCase().includes(name.toLowerCase())),
-    playMode: () => playMode,
-    onUpdate: null, // Set by user script — called every frame with (dt)
-    onKeyPress: null, // Set by user script — called on keydown with (key)
-    onCollision: null, // Set by user script — called when player hits object
-    state: window._userScriptScope, // Persistent state between scripts
-    dt: 0,
-    time: 0,
-    keys: {},
-    console: { log: (...args) => console.log('[UserScript]', ...args) },
-    Math, JSON, Array, Object, String, Number, Boolean, Date,
-    setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 10000)), // Cap at 10s
-    setInterval: (fn, ms) => setInterval(fn, Math.max(ms, 100)), // Min 100ms
-    clearTimeout, clearInterval,
-  };
-}
-
-function runUserScript(scriptObj) {
-  try {
-    const sandbox = createUserScriptSandbox();
-    const wrappedCode = '"use strict";\n' + scriptObj.code;
-    const fn = new Function(...Object.keys(sandbox), wrappedCode);
-    fn(...Object.values(sandbox));
-    // Store update/key callbacks
-    scriptObj._onUpdate = sandbox.onUpdate;
-    scriptObj._onKeyPress = sandbox.onKeyPress;
-    scriptObj._onCollision = sandbox.onCollision;
-    scriptObj._running = true;
-    console.log('[AI Sandbox] ✅ Script "' + scriptObj.name + '" running');
-    return true;
-  } catch (err) {
-    console.error('[AI Sandbox] ❌ Script error:', err.message);
-    showToast('❌ Script error: ' + err.message);
-    scriptObj._running = false;
-    return false;
-  }
-}
-
-// Update user scripts each frame
-function updateUserScripts(dt) {
-  if (!window._userScripts || !Array.isArray(window._userScripts)) return;
-  const time = performance.now() * 0.001;
-  for (const s of window._userScripts) {
-    if (!s.enabled || !s._running) continue;
-    try {
-      if (s._onUpdate) s._onUpdate(dt, time);
-    } catch (err) {
-      console.error('[AI Sandbox] Script "' + s.name + '" update error:', err.message);
-      s._running = false;
-    }
-  }
-}
-
-// Key events for user scripts
-window.addEventListener('keydown', e => {
-  if (!window._userScripts) return;
-  for (const s of window._userScripts) {
-    if (!s.enabled || !s._running || !s._onKeyPress) continue;
-    try { s._onKeyPress(e.key.toLowerCase()); } catch(err) { /* silent */ }
-  }
-});
-
-// Add user script command: "script", "custom code", "game logic"
-// Also: AI generates code from natural language description
-async function generateUserScript(description) {
-  // Check if user has API key configured
-  const settings = JSON.parse(localStorage.getItem('crate-ai-settings') || '{}');
-  const provider = settings.provider || 'openai';
-  const apiKey = settings.apiKey;
-  
-  if (!apiKey) {
-    showToast('⚠ Set your AI API key in Settings (⚙) to use custom code generation');
-    return null;
-  }
-  
-  const systemPrompt = `You are a game scripting AI for Crate Engine (Three.js).
-Generate ONLY executable JavaScript code. No explanations, no markdown.
-Available APIs:
-- scene, camera, objects (Three.js scene)
-- THREE (Three.js library)
-- getPlayer() → character controller with .position, .model
-- getNPCs() → array of NPCs with .model, .behavior, .speed
-- getObjects() → all scene objects
-- getObjectByName(name) → find object
-- showToast(msg) → show message to player
-- state → persistent object to store variables
-- onUpdate = function(dt, time) {} → called every frame
-- onKeyPress = function(key) {} → called on key press
-- Math, setTimeout, setInterval available
-
-Example: Make coins spin
-onUpdate = function(dt) {
-  getObjects().filter(o => o.userData.name && o.userData.name.includes('coin')).forEach(o => {
-    o.rotation.y += dt * 2;
-  });
-};`;
-
-  const userMsg = description;
-  
-  let endpoint, headers, body;
-  if (provider === 'openai' || provider === 'groq' || provider === 'deepseek') {
-    const urls = { openai: 'https://api.openai.com/v1/chat/completions', groq: 'https://api.groq.com/openai/v1/chat/completions', deepseek: 'https://api.deepseek.com/v1/chat/completions' };
-    const models = { openai: 'gpt-4o-mini', groq: 'llama-3.1-8b-instant', deepseek: 'deepseek-chat' };
-    endpoint = urls[provider];
-    headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey };
-    body = JSON.stringify({ model: models[provider], messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], max_tokens: 1000, temperature: 0.3 });
-  } else if (provider === 'claude') {
-    endpoint = 'https://api.anthropic.com/v1/messages';
-    headers = { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
-    body = JSON.stringify({ model: 'claude-3-5-haiku-20241022', system: systemPrompt, messages: [{ role: 'user', content: userMsg }], max_tokens: 1000 });
-  } else if (provider === 'gemini') {
-    endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
-    headers = { 'Content-Type': 'application/json' };
-    body = JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + '\n\nUser request: ' + userMsg }] }] });
-  }
-  
-  try {
-    showToast('🤖 Generating custom game logic...');
-    const resp = await fetch(endpoint, { method: 'POST', headers, body });
-    const data = await resp.json();
-    
-    let generatedCode = '';
-    if (provider === 'claude') {
-      generatedCode = data.content?.[0]?.text || '';
-    } else if (provider === 'gemini') {
-      generatedCode = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else {
-      generatedCode = data.choices?.[0]?.message?.content || '';
-    }
-    
-    // Strip markdown code blocks if present
-    generatedCode = generatedCode.replace(/^```(?:javascript|js)?\n?/gm, '').replace(/```$/gm, '').trim();
-    
-    return generatedCode;
-  } catch (err) {
-    console.error('[AI Sandbox] Generation failed:', err);
-    showToast('❌ AI generation failed: ' + err.message);
-    return null;
-  }
-}
-
-// Script editor modal
-function showScriptEditor(existingScript) {
-  const existing = existingScript || {};
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100000;display:flex;align-items:center;justify-content:center;';
-  
-  overlay.innerHTML = `
-    <div style="background:#111;border:2px solid #7c5cff;border-radius:16px;width:700px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px;font-family:-apple-system,sans-serif;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h2 style="color:#7c5cff;margin:0;font-size:1.2rem;">🧠 AI Game Logic Editor</h2>
-        <button id="script-close" style="background:none;border:none;color:#666;font-size:24px;cursor:pointer;">✕</button>
-      </div>
-      
-      <div style="margin-bottom:12px;">
-        <label style="color:#888;font-size:0.8rem;">Script Name</label>
-        <input id="script-name" value="\${existing.name || ''}" placeholder="e.g. Coin Collector" style="width:100%;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.9rem;margin-top:4px;">
-      </div>
-      
-      <div style="margin-bottom:12px;">
-        <label style="color:#888;font-size:0.8rem;">Describe what you want (AI will generate code)</label>
-        <textarea id="script-prompt" placeholder="e.g. When the player touches a coin, add 10 points and make the coin disappear with a sparkle effect" style="width:100%;height:60px;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.85rem;margin-top:4px;resize:vertical;font-family:inherit;"></textarea>
-        <button id="script-generate" style="margin-top:6px;background:linear-gradient(135deg,#7c5cff,#4a9eff);border:none;color:#fff;padding:6px 16px;border-radius:8px;cursor:pointer;font-size:0.8rem;">🤖 Generate Code</button>
-      </div>
-      
-      <div style="margin-bottom:12px;">
-        <label style="color:#888;font-size:0.8rem;">Code (JavaScript)</label>
-        <textarea id="script-code" style="width:100%;height:200px;background:#0a0a1a;border:1px solid #333;border-radius:8px;padding:12px;color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:0.8rem;margin-top:4px;resize:vertical;tab-size:2;">\${existing.code || '// Your custom game logic here\n// Available: getPlayer(), getNPCs(), getObjects(), showToast()\n// Set onUpdate = function(dt) {} for per-frame logic\n// Set onKeyPress = function(key) {} for input\n'}</textarea>
-      </div>
-      
-      <div style="display:flex;gap:8px;">
-        <button id="script-run" style="flex:1;padding:10px;background:#16a34a;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">▶ Run Script</button>
-        <button id="script-save" style="flex:1;padding:10px;background:#7c5cff;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">💾 Save Script</button>
-        \${existing.id ? '<button id="script-delete" style="padding:10px 16px;background:#ef4444;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">🗑</button>' : ''}
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(overlay);
-  
-  overlay.querySelector('#script-close').onclick = () => overlay.remove();
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  
-  overlay.querySelector('#script-generate').onclick = async () => {
-    const prompt = overlay.querySelector('#script-prompt').value;
-    if (!prompt) return;
-    const generated = await generateUserScript(prompt);
-    if (generated) {
-      overlay.querySelector('#script-code').value = generated;
-    }
-  };
-  
-  overlay.querySelector('#script-run').onclick = () => {
-    const scriptObj = {
-      id: existing.id || 'script_' + Date.now(),
-      name: overlay.querySelector('#script-name').value || 'Untitled Script',
-      description: overlay.querySelector('#script-prompt').value,
-      code: overlay.querySelector('#script-code').value,
-      enabled: true,
-    };
-    // Remove old version if exists
-    window._userScripts = window._userScripts.filter(s => s.id !== scriptObj.id);
-    window._userScripts.push(scriptObj);
-    runUserScript(scriptObj);
-    showToast('▶ Script "' + scriptObj.name + '" running!');
-  };
-  
-  overlay.querySelector('#script-save').onclick = () => {
-    const scriptObj = {
-      id: existing.id || 'script_' + Date.now(),
-      name: overlay.querySelector('#script-name').value || 'Untitled Script',
-      description: overlay.querySelector('#script-prompt').value,
-      code: overlay.querySelector('#script-code').value,
-      enabled: true,
-    };
-    window._userScripts = window._userScripts.filter(s => s.id !== scriptObj.id);
-    window._userScripts.push(scriptObj);
-    // Save to localStorage
-    const saved = window._userScripts.map(s => ({ id: s.id, name: s.name, description: s.description, code: s.code, enabled: s.enabled }));
-    localStorage.setItem('crate-user-scripts', JSON.stringify(saved));
-    showToast('💾 Script "' + scriptObj.name + '" saved!');
-    overlay.remove();
-  };
-  
-  const delBtn = overlay.querySelector('#script-delete');
-  if (delBtn) {
-    delBtn.onclick = () => {
-      window._userScripts = window._userScripts.filter(s => s.id !== existing.id);
-      localStorage.setItem('crate-user-scripts', JSON.stringify(window._userScripts.map(s => ({ id: s.id, name: s.name, description: s.description, code: s.code, enabled: s.enabled }))));
-      showToast('🗑 Script deleted');
-      overlay.remove();
-    };
-  }
-}
-
-// Script list/manager modal
-function showScriptManager() {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100000;display:flex;align-items:center;justify-content:center;';
-  
-  const scripts = window._userScripts;
-  const listHTML = scripts.length ? scripts.map(s => 
-    '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:#1a1a2e;border-radius:8px;margin-bottom:6px;cursor:pointer;" data-id="' + s.id + '">' +
-    '<span style="color:' + (s.enabled && s._running ? '#4ade80' : '#666') + ';font-size:12px;">●</span>' +
-    '<span style="color:#fff;flex:1;font-size:0.85rem;">' + s.name + '</span>' +
-    '<button class="script-toggle" data-id="' + s.id + '" style="background:none;border:1px solid #333;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;">' + (s.enabled ? 'ON' : 'OFF') + '</button>' +
-    '<button class="script-edit" data-id="' + s.id + '" style="background:none;border:1px solid #7c5cff;color:#7c5cff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;">Edit</button>' +
-    '</div>'
-  ).join('') : '<p style="color:#666;text-align:center;">No custom scripts yet</p>';
-  
-  overlay.innerHTML = `
-    <div style="background:#111;border:2px solid #7c5cff;border-radius:16px;width:500px;max-width:95vw;max-height:80vh;overflow-y:auto;padding:24px;font-family:-apple-system,sans-serif;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h2 style="color:#7c5cff;margin:0;font-size:1.1rem;">🧠 Custom Game Scripts</h2>
-        <button id="scripts-close" style="background:none;border:none;color:#666;font-size:24px;cursor:pointer;">✕</button>
-      </div>
-      <div id="scripts-list">\${listHTML}</div>
-      <button id="scripts-new" style="width:100%;margin-top:12px;padding:10px;background:linear-gradient(135deg,#7c5cff,#4a9eff);border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">+ New Script</button>
-    </div>
-  `;
-  
-  document.body.appendChild(overlay);
-  overlay.querySelector('#scripts-close').onclick = () => overlay.remove();
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  overlay.querySelector('#scripts-new').onclick = () => { overlay.remove(); showScriptEditor(); };
-  
-  overlay.querySelectorAll('.script-edit').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      const script = window._userScripts.find(s => s.id === id);
-      if (script) { overlay.remove(); showScriptEditor(script); }
-    };
-  });
-  
-  overlay.querySelectorAll('.script-toggle').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      const script = window._userScripts.find(s => s.id === id);
-      if (script) {
-        script.enabled = !script.enabled;
-        if (script.enabled) runUserScript(script);
-        else script._running = false;
-        overlay.remove();
-        showScriptManager(); // Refresh
-      }
-    };
-  });
-}
-
-// Load saved scripts on boot
-(function loadUserScripts() {
-  try {
-    const saved = JSON.parse(localStorage.getItem('crate-user-scripts') || '[]');
-    for (const s of saved) {
-      window._userScripts.push(s);
-      if (s.enabled) runUserScript(s);
-    }
-    if (saved.length) console.log('[AI Sandbox] Loaded ' + saved.length + ' user scripts');
-  } catch(e) {}
-})();
-
-// === END AI CUSTOM CODE SANDBOX ===
-
 // === DEBUG/TEST EXPORTS ===
 // Init sound on first user interaction
 document.addEventListener('click', function() { if (window._sound && window._sound.init) window._sound.init(); }, { once: true });
@@ -21105,6 +15336,293 @@ window._engine = {
   get crafting() { return craftingSystem; },
   get levels() { return levelSystem; },
   get dialogue() { return dialogueSystem; },
+};
+window._loadGodmode = loadGodmodeModule;
+window._loadUserScripts = loadUserScriptsModule;
+
+// === CODE EDITOR — opens the custom scripting panel ===
+window._openCodeEditor = async () => {
+  const { showCodeEditor } = await loadCodeEditorModule();
+  showCodeEditor({
+    scene, camera, objects,
+    characterController, npcController, playMode,
+  });
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MODE SYSTEM — Edit / Play / View with toolbar toggle
+// ═══════════════════════════════════════════════════════════════
+let _currentMode = 'edit'; // 'edit' | 'play' | 'view'
+let _viewMode = false;
+
+function _updateModeButtons(mode) {
+  ['edit','play','view'].forEach(m => {
+    const btn = document.getElementById('mode-' + m);
+    if (!btn) return;
+    if (m === mode) {
+      btn.style.background = m === 'edit' ? '#ff6b35' : m === 'play' ? '#16a34a' : '#4a9eff';
+      btn.style.color = '#fff'; btn.style.fontWeight = '600';
+    } else {
+      btn.style.background = 'transparent'; btn.style.color = '#666'; btn.style.fontWeight = '400';
+    }
+  });
+}
+
+window._setMode = function(mode) {
+  if (mode === _currentMode) return;
+  const prev = _currentMode;
+  _currentMode = mode;
+
+  // Exit previous mode
+  if (prev === 'play') { exitPlayMode(); document.exitPointerLock(); }
+  if (prev === 'view') { _viewMode = false; controls.enabled = true; document.exitPointerLock(); }
+
+  // Enter new mode
+  if (mode === 'edit') {
+    _viewMode = false;
+    controls.enabled = true;
+    logOutput('ok', 'Edit Mode — click objects to inspect, type commands below');
+  } else if (mode === 'play') {
+    enterPlayMode();
+  } else if (mode === 'view') {
+    _viewMode = true;
+    controls.enabled = true;
+    logOutput('ok', 'View Mode — WASD + Q/E to fly, Shift for speed');
+  }
+
+  _updateModeButtons(mode);
+  window._currentMode = mode;
+};
+
+// Sync mode when enterPlayMode/exitPlayMode are called from elsewhere
+const _origEnterPlay = enterPlayMode;
+const _origExitPlay = exitPlayMode;
+enterPlayMode = function() { _currentMode = 'play'; _updateModeButtons('play'); return _origEnterPlay(); };
+exitPlayMode = function() { _currentMode = 'edit'; _updateModeButtons('edit'); return _origExitPlay(); };
+
+// ═══════════════════════════════════════════════════════════════
+// IMPORT / EXPORT UNIFIED MENU
+// ═══════════════════════════════════════════════════════════════
+window._showImportExport = function(tab) {
+  const existing = document.getElementById('ie-modal');
+  if (existing) existing.remove();
+
+  const isExport = tab === 'export';
+  const overlay = document.createElement('div');
+  overlay.id = 'ie-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.innerHTML = `
+    <div style="background:#111;border:1px solid #333;border-radius:12px;width:460px;max-width:95vw;padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="color:#fff;margin:0;font-size:1.1rem">${isExport ? '📤 Export Scene' : '📥 Import Assets'}</h2>
+        <button onclick="this.closest('#ie-modal').remove()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer">✕</button>
+      </div>
+      ${isExport ? `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button onclick="if(window._runCommand)window._runCommand('share');this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>🔗 Share URL</strong><br><span style="color:#666;font-size:0.75rem">Compressed scene in a link — anyone can open and remix</span>
+          </button>
+          <button onclick="if(window._exportCrateFile)window._exportCrateFile();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>📦 Download .crate File</strong><br><span style="color:#666;font-size:0.75rem">JSON scene file — share with other Crate Engine users</span>
+          </button>
+          <button onclick="if(typeof exportAsHTML==='function')exportAsHTML();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>🌐 Standalone HTML</strong><br><span style="color:#666;font-size:0.75rem">Self-contained HTML file with Three.js — runs anywhere</span>
+          </button>
+          <button onclick="if(typeof exportForUnity==='function')exportForUnity();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>🎮 GLTF for Unity</strong><br><span style="color:#666;font-size:0.75rem">Export scene as GLTF — import directly into Unity</span>
+          </button>
+          <button onclick="if(typeof exportForUnreal==='function')exportForUnreal();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>🎮 GLTF for Unreal</strong><br><span style="color:#666;font-size:0.75rem">Export scene as GLTF — import directly into Unreal Engine</span>
+          </button>
+          <button onclick="if(typeof takeScreenshot==='function')takeScreenshot();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>📸 Screenshot</strong><br><span style="color:#666;font-size:0.75rem">PNG capture of the current viewport</span>
+          </button>
+        </div>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button id="ie-import-glb" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>📦 Import GLB/GLTF Model</strong><br><span style="color:#666;font-size:0.75rem">Load a 3D model file into the scene</span>
+          </button>
+          <button id="ie-import-crate" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>📋 Import .crate Scene</strong><br><span style="color:#666;font-size:0.75rem">Load a scene file saved from Crate Engine</span>
+          </button>
+          <div style="border:2px dashed #333;border-radius:8px;padding:24px;text-align:center;color:#555;font-size:0.8rem" id="ie-dropzone">
+            Or drag & drop files here<br><span style="font-size:0.7rem">.glb, .gltf, .crate</span>
+          </div>
+        </div>
+      `}
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  if (!isExport) {
+    // Import GLB
+    overlay.querySelector('#ie-import-glb').onclick = () => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.glb,.gltf';
+      inp.onchange = () => { if (inp.files[0]) _importGLBFile(inp.files[0]); overlay.remove(); };
+      inp.click();
+    };
+    // Import .crate
+    overlay.querySelector('#ie-import-crate').onclick = () => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.crate,.json';
+      inp.onchange = () => { if (inp.files[0]) _importCrateFile(inp.files[0]); overlay.remove(); };
+      inp.click();
+    };
+    // Drag and drop
+    const dz = overlay.querySelector('#ie-dropzone');
+    dz.ondragover = (e) => { e.preventDefault(); dz.style.borderColor = '#ff6b35'; dz.style.color = '#ff6b35'; };
+    dz.ondragleave = () => { dz.style.borderColor = '#333'; dz.style.color = '#555'; };
+    dz.ondrop = (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      if (file.name.endsWith('.crate') || file.name.endsWith('.json')) _importCrateFile(file);
+      else if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) _importGLBFile(file);
+      overlay.remove();
+    };
+  }
+};
+
+function _importGLBFile(file) {
+  const url = URL.createObjectURL(file);
+  const name = file.name.replace(/\.\w+$/, '');
+  if (typeof _loadGLBFromUrl === 'function') {
+    _loadGLBFromUrl(name, url, 0, 0, null, file.name, () => URL.revokeObjectURL(url));
+    logOutput('ok', 'Imported model: ' + file.name);
+  }
+}
+
+function _importCrateFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (data.commands && Array.isArray(data.commands)) {
+        logOutput('info', 'Loading .crate scene (' + data.commands.length + ' commands)...');
+        if (window._parseAndExecute) {
+          window._parseAndExecute('clear');
+          data.commands.forEach((cmd, i) => {
+            setTimeout(() => window._parseAndExecute(cmd), i * 50);
+          });
+        }
+        logOutput('ok', 'Scene loaded from ' + file.name);
+      }
+    } catch (e) { logOutput('err', 'Invalid .crate file: ' + e.message); }
+  };
+  reader.readAsText(file);
+}
+
+window._exportCrateFile = function() {
+  const data = {
+    format: 'crate-engine-scene',
+    version: 1,
+    name: 'My Scene',
+    date: new Date().toISOString(),
+    commands: (window._sceneHistory || sceneHistory || []).slice(),
+    objectCount: objects.length,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'scene_' + Date.now() + '.crate';
+  a.click();
+  URL.revokeObjectURL(url);
+  logOutput('ok', 'Scene exported as .crate file');
+};
+
+// ═══════════════════════════════════════════════════════════════
+// SAVE / LOAD — Named slots with timestamps
+// ═══════════════════════════════════════════════════════════════
+window._showSaveLoad = function() {
+  const existing = document.getElementById('sl-modal');
+  if (existing) existing.remove();
+
+  const saves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'sl-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  function renderSaves() {
+    const currentSaves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
+    const listEl = overlay.querySelector('#sl-list');
+    if (!listEl) return;
+    if (!currentSaves.length) {
+      listEl.innerHTML = '<div style="color:#555;text-align:center;padding:20px">No saved scenes yet</div>';
+      return;
+    }
+    listEl.innerHTML = currentSaves.map((s, i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:10px;background:#1a1a2e;border-radius:8px;margin-bottom:6px">
+        <div style="flex:1">
+          <div style="color:#fff;font-size:0.85rem;font-weight:600">${s.name || 'Untitled'}</div>
+          <div style="color:#555;font-size:0.7rem">${new Date(s.date).toLocaleString()} | ${s.objectCount || '?'} objects</div>
+        </div>
+        <button onclick="window._loadSaveSlot(${i});document.getElementById('sl-modal').remove()" style="padding:4px 12px;background:#16a34a;border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:0.75rem">Load</button>
+        <button onclick="window._deleteSaveSlot(${i})" style="padding:4px 8px;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:6px;cursor:pointer;font-size:0.75rem">✕</button>
+      </div>
+    `).join('');
+  }
+
+  overlay.innerHTML = `
+    <div style="background:#111;border:1px solid #333;border-radius:12px;width:460px;max-width:95vw;padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="color:#fff;margin:0;font-size:1.1rem">💾 Save / Load</h2>
+        <button onclick="this.closest('#sl-modal').remove()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        <input id="sl-name" placeholder="Save name..." value="Scene ${saves.length + 1}" style="flex:1;background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:8px;color:#fff;font-size:0.85rem">
+        <button id="sl-save-btn" style="padding:8px 16px;background:#ff6b35;border:none;color:#fff;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.85rem">Save</button>
+      </div>
+      <div id="sl-list" style="max-height:300px;overflow-y:auto"></div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  renderSaves();
+
+  overlay.querySelector('#sl-save-btn').onclick = () => {
+    const name = overlay.querySelector('#sl-name').value || 'Untitled';
+    const allSaves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
+    allSaves.push({
+      name,
+      date: new Date().toISOString(),
+      objectCount: objects.length,
+      commands: (window._sceneHistory || sceneHistory || []).slice(),
+    });
+    localStorage.setItem('crate-saves', JSON.stringify(allSaves));
+    logOutput('ok', 'Saved "' + name + '"');
+    renderSaves();
+    overlay.querySelector('#sl-name').value = 'Scene ' + (allSaves.length + 1);
+  };
+};
+
+window._loadSaveSlot = function(idx) {
+  const saves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
+  const save = saves[idx];
+  if (!save || !save.commands) return;
+  if (window._parseAndExecute) {
+    window._parseAndExecute('clear');
+    save.commands.forEach((cmd, i) => {
+      setTimeout(() => window._parseAndExecute(cmd), i * 50);
+    });
+  }
+  logOutput('ok', 'Loaded "' + save.name + '" (' + save.commands.length + ' commands)');
+};
+
+window._deleteSaveSlot = function(idx) {
+  const saves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
+  const name = saves[idx]?.name || 'save';
+  saves.splice(idx, 1);
+  localStorage.setItem('crate-saves', JSON.stringify(saves));
+  logOutput('ok', 'Deleted "' + name + '"');
+  // Re-render
+  if (window._showSaveLoad) { document.getElementById('sl-modal')?.remove(); window._showSaveLoad(); }
 };
 
 // === SCENE CARD CLICK HANDLERS ===
@@ -21179,10 +15697,110 @@ function getSceneCommands(scene) {
   return scenes[scene] || ['add 5 trees', 'add castle', 'add rocks'];
 }
 
+function showLoadModal(saves) {
+  loadProjectToolsModule().then((mod) => mod.showLoadModal(saves)).catch((err) => {
+    console.error('[Project Tools] Load modal failed:', err);
+    showToast('❌ Save tools failed to load');
+  });
+}
+
+function openCreatorMarketplace() {
+  loadProjectToolsModule().then((mod) => mod.openCreatorMarketplace()).catch((err) => {
+    console.error('[Project Tools] Marketplace failed:', err);
+    showToast('❌ Marketplace tools failed to load');
+  });
+}
+
+async function exportForUnity() {
+  const mod = await loadProjectToolsModule();
+  return mod.exportForUnity();
+}
+
+async function exportForUnreal() {
+  const mod = await loadProjectToolsModule();
+  return mod.exportForUnreal();
+}
+
+function exportAsHTML() {
+  loadProjectToolsModule().then((mod) => mod.exportAsHTML()).catch((err) => {
+    console.error('[Project Tools] HTML export failed:', err);
+    logOutput('error', '❌ Export tools failed to load');
+  });
+}
+
+function showProWelcome() {
+  loadProjectToolsModule().then((mod) => mod.showProWelcome()).catch((err) => {
+    console.error('[Project Tools] Pro welcome failed:', err);
+  });
+}
+
+function showUpgradeModal(tier) {
+  loadProjectToolsModule().then((mod) => mod.showUpgradeModal(tier)).catch((err) => {
+    console.error('[Project Tools] Upgrade modal failed:', err);
+    showToast('❌ Billing tools failed to load');
+  });
+}
+
+const legacyMultiplayerProxy = {
+  get connected() {
+    return Boolean(legacyMultiplayerModule?.getLegacyMultiplayerClient?.().connected);
+  },
+  connect(server, room, name) {
+    return loadLegacyMultiplayerModule()
+      .then((mod) => mod.getLegacyMultiplayerClient().connect(server, room, name))
+      .catch((err) => {
+        console.error('[Legacy Multiplayer] Connect failed:', err);
+        showToast('❌ Multiplayer failed to load');
+      });
+  },
+  disconnect() {
+    return loadLegacyMultiplayerModule()
+      .then((mod) => mod.getLegacyMultiplayerClient().disconnect())
+      .catch(() => {});
+  },
+  chat(message) {
+    return loadLegacyMultiplayerModule()
+      .then((mod) => mod.getLegacyMultiplayerClient().chat(message))
+      .catch(() => {});
+  },
+  update(dt) {
+    if (!legacyMultiplayerModule?.getLegacyMultiplayerClient) return;
+    legacyMultiplayerModule.getLegacyMultiplayerClient().update(dt);
+  },
+};
+window._mp = legacyMultiplayerProxy;
+
 // === SHARE + SAVE BUTTONS ===
 (function() {
   // Scene actions - injected into build toolbar as icon buttons
   window._sceneActions = {
+    play: function() {
+      if (window.parseAndExecute) parseAndExecute('play');
+    },
+    worlds: function() {
+      const existing=document.getElementById('_worldPicker'); if(existing){existing.remove();return;}
+      const d=document.createElement('div'); d.id='_worldPicker';
+      d.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#111;border:1px solid #333;border-radius:12px;padding:28px;z-index:9999;font-family:monospace;min-width:340px;box-shadow:0 8px 40px #000;';
+      d.innerHTML=`<div style="color:#fff;font-size:18px;font-weight:bold;margin-bottom:20px;text-align:center;">🌍 Choose World</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+  // [REMOVED] buildSpaceCombatGame button
+  // [REMOVED] buildCityWorld2 button
+  // [REMOVED] buildHorrorWorld button
+  <button onclick="document.getElementById('_worldPicker').remove();" style="background:#0d0d0d;border:1px solid #222;color:#555;padding:22px 12px;border-radius:8px;cursor:pointer;font-family:monospace;font-size:13px;line-height:1.8;width:100%;">✖<br><b>CANCEL</b></button>
+</div>`;
+      document.body.appendChild(d);
+    },
+    library: function() {
+      if (window._showCategoryPicker) {
+        window._showCategoryPicker().then(function(result) {
+          if (result && result.file) {
+            loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+            sceneHistory.push('add ' + result.file);
+            showToast('\u2705 Added ' + (result.name||result.file));
+          }
+        });
+      }
+    },
     save: function() {
       var data = serializeScene();
       if (!data) { logOutput('warn', 'Nothing to save'); return; }
@@ -21207,362 +15825,7 @@ function getSceneCommands(scene) {
   };
 })();
 
-function showLoadModal(saves) {
-  var old = document.getElementById('load-modal');
-  if (old) old.remove();
-  
-  var modal = document.createElement('div');
-  modal.id = 'load-modal';
-  Object.assign(modal.style, {
-    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.7)', zIndex: '10000', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)'
-  });
-  
-  var card = document.createElement('div');
-  Object.assign(card.style, {
-    background: '#0d0d0d', border: '1px solid #252525', borderRadius: '16px',
-    padding: '24px', maxWidth: '400px', width: '90%',
-    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0', maxHeight: '60vh', overflow: 'auto'
-  });
-  
-  var html = '<h3 style="color:#60a5fa;margin:0 0 16px;text-align:center">📂 Saved Scenes</h3>';
-  saves.forEach(function(save, i) {
-    var cmds = save.data.split('|').length;
-    html += '<div class="save-item" data-idx="' + i + '" style="padding:12px;background:#111;border:1px solid #252525;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:all 0.2s">' +
-      '<div style="font-weight:700;color:#fff;font-size:0.85rem">' + save.name + '</div>' +
-      '<div style="color:#555;font-size:0.7rem">' + cmds + ' commands</div>' +
-    '</div>';
-  });
-  html += '<div style="display:flex;gap:8px;margin-top:12px">' +
-    '<button id="load-close" style="flex:1;padding:8px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer;font-family:JetBrains Mono,monospace">Close</button>' +
-    '<button id="load-clear" style="padding:8px 12px;background:#222;color:#ef4444;border:1px solid #ef4444;border-radius:8px;cursor:pointer;font-family:JetBrains Mono,monospace;font-size:0.75rem">🗑 Clear All</button>' +
-  '</div>';
-  
-  card.innerHTML = html;
-  modal.appendChild(card);
-  document.body.appendChild(modal);
-  
-  // Click handlers
-  card.querySelectorAll('.save-item').forEach(function(item) {
-    item.addEventListener('mouseenter', function() { item.style.borderColor = '#60a5fa'; });
-    item.addEventListener('mouseleave', function() { item.style.borderColor = '#252525'; });
-    item.addEventListener('click', function() {
-      var idx = parseInt(item.getAttribute('data-idx'));
-      var save = saves[idx];
-      // Clear and load
-      parseAndExecute('clear');
-      var commands = save.data.split('|');
-      logOutput('info', '📂 Loading "' + save.name + '" (' + commands.length + ' commands)...');
-      commands.forEach(function(cmd, i) {
-        setTimeout(function() { parseAndExecute(cmd); }, 200 + i * 150);
-      });
-      modal.remove();
-    });
-  });
-  
-  document.getElementById('load-close').addEventListener('click', function() { modal.remove(); });
-  document.getElementById('load-clear').addEventListener('click', function() {
-    localStorage.removeItem('crate_saves');
-    modal.remove();
-    logOutput('ok', '🗑 All saves cleared');
-  });
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
-}
-
-// === EXPORT AS STANDALONE HTML ===
-
-// === CREATOR MARKETPLACE ===
-function openCreatorMarketplace() {
-  if (document.getElementById('marketplace-modal')) document.getElementById('marketplace-modal').remove();
-  
-  const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
-  
-  let listingsHTML = '';
-  if (listings.length === 0) {
-    listingsHTML = '<div style="text-align:center;padding:40px;color:#888">No listings yet. Upload a model to get started!</div>';
-  } else {
-    listingsHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;padding:12px">';
-    for (const item of listings) {
-      const date = new Date(item.created).toLocaleDateString();
-      listingsHTML += '<div style="background:#1a1a2e;border:1px solid #333;border-radius:12px;padding:16px;text-align:center;cursor:pointer" onclick="loadMarketplaceItem(\''+item.id+'\',\''+item.name.replace(/'/g,"")+'\')">'+
-        '<div style="font-size:32px;margin-bottom:8px">📦</div>'+
-        '<div style="color:#fff;font-weight:600;font-size:13px">'+item.name+'</div>'+
-        '<div style="color:#888;font-size:11px;margin-top:4px">by '+item.creator+'</div>'+
-        '<div style="color:#4ade80;font-size:11px;margin-top:4px">'+(item.price > 0 ? '$'+item.price : 'Free')+'</div>'+
-        '<div style="color:#555;font-size:10px;margin-top:4px">'+date+'</div>'+
-        '</div>';
-    }
-    listingsHTML += '</div>';
-  }
-  
-  const m = document.createElement('div');
-  m.id = 'marketplace-modal';
-  m.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
-      <div style="background:#111;border:1px solid #333;border-radius:16px;width:90%;max-width:800px;max-height:85vh;overflow-y:auto;color:#fff">
-        <div style="padding:24px 24px 0;display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <h2 style="margin:0;font-size:22px">🏪 Creator Marketplace</h2>
-            <p style="margin:4px 0 0;color:#888;font-size:13px">Upload, sell, and share 3D models</p>
-          </div>
-          <button onclick="this.closest('#marketplace-modal').remove()" style="background:none;border:none;color:#888;font-size:24px;cursor:pointer">✕</button>
-        </div>
-        
-        <div style="padding:16px 24px;display:flex;gap:10px;flex-wrap:wrap">
-          <button onclick="marketplaceUploadModel()" style="padding:10px 20px;border:none;border-radius:8px;background:#4ade80;color:#000;font-weight:600;cursor:pointer;font-size:14px">📤 Upload GLB Model</button>
-          <button onclick="marketplaceUploadAndSell()" style="padding:10px 20px;border:none;border-radius:8px;background:#f59e0b;color:#000;font-weight:600;cursor:pointer;font-size:14px">💰 Upload & Sell</button>
-          <button onclick="window.open('https://crateshipgames.com/marketplace','_blank')" style="padding:10px 20px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;font-size:14px">🌐 Browse Online</button>
-        </div>
-        
-        <div style="padding:0 24px 24px">
-          <h3 style="margin:16px 0 8px;font-size:16px;color:#aaa">📋 Your Listings (${listings.length})</h3>
-          ${listingsHTML}
-        </div>
-      </div>
-    </div>`;
-  document.body.appendChild(m);
-}
-
-function marketplaceUploadModel() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.glb,.gltf';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const name = prompt('Name your model:', file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ')) || 'Uploaded Model';
-    const category = prompt('Category (characters, weapons, buildings, vehicles, furniture, nature, scifi, food):', 'buildings') || 'buildings';
-    
-    const buf = await file.arrayBuffer();
-    const blob = new Blob([buf]);
-    const modelId = 'user_upload_' + Date.now();
-    
-    await _modelDB.save(modelId, name, category.toLowerCase(), blob);
-    _assetCatalog = null;
-    
-    showToast('📚 "' + name + '" saved to your library in "' + category + '"!');
-    // Refresh marketplace modal
-    openCreatorMarketplace();
-  };
-  input.click();
-}
-
-function marketplaceUploadAndSell() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.glb,.gltf';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const name = prompt('Name your model:', file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ')) || 'Uploaded Model';
-    const priceStr = prompt('Price (0 for free):', '0');
-    const price = parseFloat(priceStr) || 0;
-    
-    const buf = await file.arrayBuffer();
-    const blob = new Blob([buf]);
-    const listingId = 'listing_' + Date.now();
-    
-    await _modelDB.save(listingId, name, 'premium', blob);
-    _assetCatalog = null;
-    
-    const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
-    listings.push({
-      id: listingId,
-      name: name,
-      creator: localStorage.getItem('crate-username') || 'Anonymous',
-      price: price,
-      format: 'glb',
-      created: new Date().toISOString(),
-      downloads: 0,
-      fileSize: file.size,
-    });
-    localStorage.setItem('crate-marketplace-listings', JSON.stringify(listings));
-    
-    showToast('💰 "' + name + '" listed on marketplace for ' + (price > 0 ? '$' + price : 'FREE') + '!');
-    openCreatorMarketplace();
-  };
-  input.click();
-}
-
-function loadMarketplaceItem(id, name) {
-  _modelDB.get(id).then(record => {
-    if (!record || !record.blob) { showToast('❌ Model data not found'); return; }
-    const url = URL.createObjectURL(record.blob);
-    loadGLBModel(url, name, null, true);
-    document.getElementById('marketplace-modal')?.remove();
-    showToast('✓ Loading: ' + name);
-  });
-}
-// === END CREATOR MARKETPLACE ===
-
-
-// === EXPORT TO UNITY / UNREAL (GLTF/GLB) ===
-async function exportForUnity() { await _exportGLTF('unity'); }
-async function exportForUnreal() { await _exportGLTF('unreal'); }
-
-async function _exportGLTF(target) {
-  logOutput('info', '📦 Preparing ' + target.charAt(0).toUpperCase() + target.slice(1) + ' export...');
-  
-  try {
-    const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
-    const exporter = new GLTFExporter();
-    
-    // Create export scene with all visible objects
-    const exportScene = new THREE.Scene();
-    
-    // Clone terrain
-    if (window._terrainMesh) {
-      exportScene.add(window._terrainMesh.clone());
-    }
-    
-    // Clone all scene objects
-    const objs = window._sceneObjects || [];
-    for (const obj of objs) {
-      if (obj && obj.visible) {
-        try { exportScene.add(obj.clone()); } catch(e) {}
-      }
-    }
-    
-    // Add lights info as empty nodes (Unity/Unreal will need manual light setup)
-    const lightMarker = new THREE.Object3D();
-    lightMarker.name = 'Sun_DirectionalLight';
-    lightMarker.position.set(30, 40, 20);
-    exportScene.add(lightMarker);
-    
-    const options = {
-      binary: true, // GLB format
-      maxTextureSize: 2048,
-      includeCustomExtensions: true
-    };
-    
-    exporter.parse(exportScene, function(result) {
-      const blob = new Blob([result], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      
-      if (target === 'unity') {
-        a.download = 'crate-scene-unity.glb';
-      } else {
-        a.download = 'crate-scene-unreal.glb';
-      }
-      
-      a.click();
-      URL.revokeObjectURL(url);
-      
-      // Also export a README
-      const readme = target === 'unity' 
-        ? '# Crate Engine → Unity Import Guide\n\n' +
-          '1. Drag `crate-scene-unity.glb` into your Unity Assets folder\n' +
-          '2. Unity auto-imports GLB/GLTF files (2020.3+)\n' +
-          '3. Drag the imported prefab into your scene\n' +
-          '4. Add lights (Sun_DirectionalLight node marks sun position)\n' +
-          '5. Materials may need Standard→URP/HDRP conversion\n' +
-          '6. Scale: 1 unit = 1 meter (matches Unity default)\n\n' +
-          '## Tips\n' +
-          '- Enable "Read/Write" on mesh import settings for runtime modification\n' +
-          '- Set "Animation Type" to Humanoid for characters\n' +
-          '- Textures import alongside the GLB automatically\n'
-        : '# Crate Engine → Unreal Import Guide\n\n' +
-          '1. File → Import into Level (or drag to Content Browser)\n' +
-          '2. Select `crate-scene-unreal.glb`\n' +
-          '3. Choose "Scene" import for full hierarchy\n' +
-          '4. Unreal imports GLTF/GLB natively (UE5)\n' +
-          '5. Add directional light at Sun_DirectionalLight position\n' +
-          '6. Scale: 1 unit = 1 meter = 100 Unreal units (auto-scaled)\n\n' +
-          '## Tips\n' +
-          '- Use Datasmith for better material conversion\n' +
-          '- Check "Combine Meshes" for performance\n' +
-          '- Nanite works with imported static meshes\n';
-      
-      const readmeBlob = new Blob([readme], { type: 'text/markdown' });
-      const readmeUrl = URL.createObjectURL(readmeBlob);
-      const readmeA = document.createElement('a');
-      readmeA.href = readmeUrl;
-      readmeA.download = target === 'unity' ? 'UNITY-IMPORT-GUIDE.md' : 'UNREAL-IMPORT-GUIDE.md';
-      setTimeout(() => { readmeA.click(); URL.revokeObjectURL(readmeUrl); }, 500);
-      
-      logOutput('ok', '📦 Exported for ' + target.charAt(0).toUpperCase() + target.slice(1) + '! GLB + import guide downloaded.');
-    }, function(error) {
-      logOutput('error', '❌ Export failed: ' + error.message);
-    }, options);
-    
-  } catch(e) {
-    logOutput('error', '❌ Export failed: ' + e.message);
-  }
-}
-
-function exportAsHTML() {
-  var data = serializeScene();
-  if (!data) { logOutput('warn', '⚠ Nothing to export — build something first!'); return; }
-  
-  var commands = data.split('|');
-  var cmdStr = JSON.stringify(commands);
-  
-  var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">\n' +
-    '<title>Crate Engine Scene</title>\n' +
-    '<style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style>\n' +
-    '<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}<\/script>\n' +
-    '</head>\n<body>\n<canvas id="viewport"></canvas>\n' +
-    '<div style="position:fixed;bottom:10px;left:10px;color:#555;font-family:monospace;font-size:11px">Built with <a href="https://crateshipgames.com" style="color:#ff6b35">Crate Engine</a></div>\n' +
-    '<script type="module">\n' +
-    'import * as THREE from "three";\nimport {OrbitControls} from "three/addons/controls/OrbitControls.js";\n' +
-    'const canvas=document.getElementById("viewport");\n' +
-    'const renderer=new THREE.WebGLRenderer({canvas,antialias:true});\n' +
-    'renderer.setSize(window.innerWidth,window.innerHeight);\n' +
-    'renderer.shadowMap.enabled=true;\n' +
-    'const scene=new THREE.Scene();\n' +
-    'scene.background=new THREE.Color(0x1a1a2e);\n' +
-    'const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,500);\n' +
-    'camera.position.set(15,12,15);\n' +
-    'const controls=new OrbitControls(camera,canvas);\n' +
-    'controls.enableDamping=true;\n' +
-    'scene.add(new THREE.AmbientLight(0x404050,2));\n' +
-    'const sun=new THREE.DirectionalLight(0xfff5e0,3);\n' +
-    'sun.position.set(30,40,20);sun.castShadow=true;\n' +
-    'scene.add(sun);\n' +
-    '// Ground\nconst ground=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:0x2d5a27,roughness:0.9}));\n' +
-    'ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);\n' +
-    '// Simple object creators\n' +
-    'function makeMat(c){return new THREE.MeshStandardMaterial({color:c,roughness:0.7,metalness:0.1})}\n' +
-    'function addCube(x,z){const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),makeMat(Math.random()*0xffffff));m.position.set(x||Math.random()*10-5,0.5,z||Math.random()*10-5);m.castShadow=true;scene.add(m);}\n' +
-    'function addSphere(x,z){const m=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,16),makeMat(Math.random()*0xffffff));m.position.set(x||Math.random()*10-5,0.5,z||Math.random()*10-5);m.castShadow=true;scene.add(m);}\n' +
-    'function addTree(x,z){const g=new THREE.Group();const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,1.5),makeMat(0x8B4513));trunk.position.y=0.75;const leaves=new THREE.Mesh(new THREE.SphereGeometry(0.8,8,8),makeMat(0x228B22));leaves.position.y=2;g.add(trunk,leaves);g.position.set(x||(Math.random()-0.5)*20,0,z||(Math.random()-0.5)*20);g.castShadow=true;scene.add(g);}\n' +
-    'function addRock(x,z){const m=new THREE.Mesh(new THREE.DodecahedronGeometry(0.5+Math.random()*0.5),makeMat(0x888888));m.position.set(x||(Math.random()-0.5)*15,0.3,z||(Math.random()-0.5)*15);m.castShadow=true;scene.add(m);}\n' +
-    '// Parse commands\nconst cmds=' + cmdStr + ';\n' +
-    'cmds.forEach(function(c){\n' +
-    '  const l=c.toLowerCase();\n' +
-    '  const n=parseInt((l.match(/(\\d+)/)||[0,1])[1]);\n' +
-    '  if(l.includes("cube"))for(let i=0;i<n;i++)addCube();\n' +
-    '  if(l.includes("sphere"))for(let i=0;i<n;i++)addSphere();\n' +
-    '  if(l.includes("tree"))for(let i=0;i<n;i++)addTree();\n' +
-    '  if(l.includes("rock"))for(let i=0;i<n;i++)addRock();\n' +
-    '  if(l.includes("rain")){const rg=new THREE.BufferGeometry();const pos=new Float32Array(3000);for(let i=0;i<3000;i++){pos[i*3]=(Math.random()-0.5)*50;pos[i*3+1]=Math.random()*20;pos[i*3+2]=(Math.random()-0.5)*50;}rg.setAttribute("position",new THREE.BufferAttribute(pos,3));scene.add(new THREE.Points(rg,new THREE.PointsMaterial({color:0x8888ff,size:0.05})));}\n' +
-    '  if(l.includes("night")){scene.background=new THREE.Color(0x050515);sun.intensity=0.08;}\n' +
-    '  if(l.includes("sunset")){scene.background=new THREE.Color(0xff8844);sun.intensity=0.6;}\n' +
-    '  if(l.includes("fog"))scene.fog=new THREE.FogExp2(0x888899,0.02);\n' +
-    '});\n' +
-    'function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}\n' +
-    'animate();\n' +
-    'window.addEventListener("resize",()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});\n' +
-    '<\/script>\n</body>\n</html>';
-  
-  var blob = new Blob([html], {type: 'text/html'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'crate-scene.html';
-  a.click();
-  URL.revokeObjectURL(url);
-  logOutput('ok', '📦 Exported! Open crate-scene.html in any browser.');
-}
-
-
 // === PRO SUBSCRIPTION SYSTEM ===
-var STRIPE_LINKS = { pro: 'https://buy.stripe.com/3cI9AV4Sv6TY15Q1aMffy00', premium: 'https://buy.stripe.com/6oUfZjfx96TY29U4mYffy01' };
-
 function isProUser() {
   return true; // All features free during beta — no paywalls
 }
@@ -21586,79 +15849,6 @@ function setProStatus(val) {
   }
 })();
 
-function showProWelcome() {
-  var banner = document.createElement('div');
-  Object.assign(banner.style, {
-    position: 'fixed', top: '60px', left: '50%', transform: 'translateX(-50%)',
-    background: 'linear-gradient(135deg, #ff6b35, #f7c948)', color: '#000',
-    padding: '12px 24px', borderRadius: '12px', fontFamily: 'JetBrains Mono, monospace',
-    fontWeight: '700', fontSize: '0.9rem', zIndex: '10001', textAlign: 'center',
-    boxShadow: '0 4px 20px rgba(255,107,53,0.4)'
-  });
-  banner.innerHTML = '⚡ Pro Unlocked! Export, premium models, and more are now yours.';
-  document.body.appendChild(banner);
-  setTimeout(function() { banner.style.transition = 'opacity 0.5s'; banner.style.opacity = '0'; setTimeout(function() { banner.remove(); }, 500); }, 5000);
-}
-
-function showUpgradeModal(tier) {
-  tier = tier || 'pro';
-  var old = document.getElementById('upgrade-modal');
-  if (old) old.remove();
-
-  var modal = document.createElement('div');
-  modal.id = 'upgrade-modal';
-  Object.assign(modal.style, {
-    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.8)', zIndex: '10000', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)'
-  });
-
-  var card = document.createElement('div');
-  Object.assign(card.style, {
-    background: '#0d0d0d', border: '2px solid ' + (tier === 'premium' ? '#f7c948' : '#ff6b35'), borderRadius: '20px',
-    padding: '32px', maxWidth: '420px', width: '90%', textAlign: 'center',
-    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0',
-    boxShadow: '0 0 40px rgba(255,107,53,0.2)'
-  });
-
-  card.innerHTML =
-    '<div style="font-size:2.5rem;margin-bottom:8px">⚡</div>' +
-    '<h2 style="color:' + (tier === 'premium' ? '#f7c948' : '#ff6b35') + ';margin:0 0 8px;font-size:1.3rem">' + (tier === 'premium' ? 'Go Premium' : 'Go Pro') + '</h2>' +
-    '<p style="color:#888;font-size:0.85rem;margin-bottom:20px">Unlock the full power of Crate Engine</p>' +
-    '<div style="background:#111;border-radius:12px;padding:16px;margin-bottom:20px;text-align:left;font-size:0.8rem;color:#ccc;line-height:2">' +
-      '✅ Export games (no watermark)<br>' +
-      '✅ 500+ premium 3D models<br>' +
-      '✅ Unlimited AI prompts<br>' +
-      '✅ Publish to crateshipgames.com<br>' +
-      '✅ Priority support<br>' +
-      '✅ Early access to new features' +
-    '</div>' +
-    '<div style="font-size:2rem;font-weight:900;color:#fff;margin-bottom:4px">' + (tier === 'premium' ? '$14.99' : '$4.99') + '<span style="font-size:0.9rem;color:#888">/month</span></div>' +
-    '<p style="color:#555;font-size:0.7rem;margin-bottom:16px">Cancel anytime · No contracts</p>' +
-    '<div style="display:flex;gap:8px;flex-direction:column">' +
-      '<button id="upgrade-stripe-btn" style="padding:14px;background:linear-gradient(135deg,#ff6b35,#f7c948);color:#000;border:none;border-radius:10px;font-weight:700;font-size:1rem;cursor:pointer;font-family:JetBrains Mono,monospace;transition:transform 0.2s">' + (tier === 'premium' ? '💎 Subscribe Premium' : '⚡ Subscribe Pro') + '</button>' +
-      '<button id="upgrade-close-btn" style="padding:10px;background:transparent;color:#555;border:1px solid #252525;border-radius:10px;cursor:pointer;font-family:JetBrains Mono,monospace;font-size:0.8rem">Maybe Later</button>' +
-    '</div>';
-
-  modal.appendChild(card);
-  document.body.appendChild(modal);
-
-  document.getElementById('upgrade-stripe-btn').addEventListener('click', function() {
-    var link = STRIPE_LINKS[tier] || STRIPE_LINKS.pro; if (link) {
-      window.open(link, '_blank');
-    } else {
-      // Fallback - coming soon
-      this.textContent = '🚀 Coming Soon!';
-      this.style.background = '#333';
-      this.style.color = '#888';
-      setTimeout(function() { modal.remove(); }, 2000);
-    }
-  });
-
-  document.getElementById('upgrade-close-btn').addEventListener('click', function() { modal.remove(); });
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
-}
-
 // Expose for pricing section button
 window._showUpgradeModal = showUpgradeModal;
 
@@ -21673,73 +15863,12 @@ window._showUpgradeModal = showUpgradeModal;
   }, 500);
 })();
 function showHelp() {
-window.showHelp = showHelp;
-  var old = document.getElementById('help-modal');
-  if (old) { old.remove(); return; }
-  
-  var modal = document.createElement('div');
-  modal.id = 'help-modal';
-  Object.assign(modal.style, {
-    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.9)', zIndex: '10000', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)',
-    overflow: 'auto'
+  loadUtilityUiModule().then((mod) => mod.showHelpModal()).catch((err) => {
+    console.error('[UI] Help modal failed:', err);
+    showToast('❌ Help failed to load');
   });
-  
-  var card = document.createElement('div');
-  Object.assign(card.style, {
-    background: '#0d0d0d', border: '1px solid #252525', borderRadius: '16px',
-    padding: '24px', maxWidth: '900px', width: '95%', maxHeight: '85vh', overflow: 'auto',
-    fontFamily: 'JetBrains Mono, monospace', color: '#e0e0e0'
-  });
-  
-  // Header
-  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-    '<h2 style="color:#ff6b35;margin:0">⌨️ All Commands</h2>' +
-    '<button onclick="this.closest(\'#help-modal\').remove()" style="background:none;border:none;color:#555;font-size:1.5rem;cursor:pointer">✕</button></div>';
-  
-  // Build grid from COMMANDS_SHOWCASE
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
-  
-  const colors = ['#4ade80','#60a5fa','#f59e0b','#c084fc','#ef4444','#22d3ee','#fb923c','#a78bfa','#f472b6','#34d399','#fbbf24','#818cf8','#fb7185','#2dd4bf'];
-  let ci = 0;
-  
-  for (const [category, commands] of Object.entries(window._COMMANDS_SHOWCASE || {})) {
-    const color = colors[ci % colors.length];
-    ci++;
-    html += '<div style="background:#111;border-radius:8px;padding:12px;border:1px solid #1a1a1a">';
-    html += '<h4 style="color:' + color + ';margin:0 0 8px">' + category + '</h4>';
-    html += '<div style="color:#888;font-size:0.72rem;line-height:2">';
-    commands.forEach(function(cmd) {
-      html += '<span onclick="document.getElementById(\'help-modal\').remove();if(window._runCommand)window._runCommand(\'' + cmd.replace(/'/g, "\\'") + '\')" style="display:inline-block;background:#1a1a1a;padding:2px 8px;border-radius:4px;margin:2px;cursor:pointer;transition:background 0.2s;border:1px solid #252525" onmouseover="this.style.background=\'#252525\'" onmouseout="this.style.background=\'#1a1a1a\'">' + cmd + '</span>';
-    });
-    html += '</div></div>';
-  }
-  
-  html += '</div>';
-  
-  // Pro tip
-  html += '<div style="margin-top:16px;padding:12px;background:#111;border-radius:8px;border:1px solid #252525;text-align:center">' +
-    '<span style="color:#ff6b35;font-weight:700">💡 Click any command to run it!</span> ' +
-    '<span style="color:#888;font-size:0.8rem">Or combine with "and" — <code style="color:#4ade80">build tropical paradise and equip sword and play</code></span></div>';
-  
-  // Play mode controls
-  html += '<div style="margin-top:8px;padding:12px;background:#111;border-radius:8px;border:1px solid #252525">' +
-    '<h4 style="color:#ff6b35;margin:0 0 8px">🎮 Play Mode Controls</h4>' +
-    '<div style="color:#888;font-size:0.72rem;display:grid;grid-template-columns:1fr 1fr;gap:4px">' +
-    '<span>WASD — Move</span><span>Space — Jump</span>' +
-    '<span>Shift — Run</span><span>Ctrl — Sprint</span>' +
-    '<span>C — Dodge Roll</span><span>E / Click — Attack</span>' +
-    '<span>Q — Heavy Attack</span><span>V — Toggle FPS/TPS</span>' +
-    '<span>T — Swap Shoulder</span><span>F — Interact</span>' +
-    '<span>1/2/3 — Weapon Slots</span><span>ESC — Exit Play</span>' +
-    '</div></div>';
-  
-  card.innerHTML = html;
-  modal.appendChild(card);
-  document.body.appendChild(modal);
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
 }
+window.showHelp = showHelp;
 
 // Add help button to toolbar
 (function() {
@@ -22067,7 +16196,7 @@ document.addEventListener('keydown', function(e) {
       _paintUI.id = 'terrain-paint-ui';
       _paintUI.style.cssText = 'position:fixed;top:50%;left:16px;transform:translateY(-50%);background:rgba(0,0,0,0.9);border:1px solid #8b5cf6;border-radius:12px;padding:12px;z-index:10000;font-family:-apple-system,sans-serif;width:140px;';
       
-      let html = '<div style="color:#8b5cf6;font-weight:700;font-size:12px;margin-bottom:8px">🎨 PAINT BRUSH</div>';
+      html = '<div style="color:#8b5cf6;font-weight:700;font-size:12px;margin-bottom:8px">🎨 PAINT BRUSH</div>';
       for (const [key, preset] of Object.entries(PAINT_PRESETS)) {
         const hex = '#' + new THREE.Color(preset.color).getHexString();
         html += '<button onclick="window._terrainPaint.setColor(\''+key+'\');document.querySelectorAll(\'.paint-swatch\').forEach(s=>s.style.outline=\'none\');this.style.outline=\'2px solid #fff\'" class="paint-swatch" style="display:inline-block;width:28px;height:28px;margin:2px;border:none;border-radius:6px;background:'+hex+';cursor:pointer" title="'+preset.label+'"></button>';
@@ -22145,13 +16274,7 @@ let dragCounter = 0;
         const url = URL.createObjectURL(blob);
         const name = file.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]/g, ' ');
         
-        // Use the engine's GLB loader
-        const loader = new THREE.GLTFLoader ? new THREE.GLTFLoader() : window._gltfLoader;
-        if (!loader && window.gltfLoader) { window.gltfLoader.load(url, handleLoaded); return; }
-        
-        // Direct Three.js loading
-        const { GLTFLoader } = window;
-        const gl = new (window._GLTFLoaderClass || gltfLoader.constructor)();
+        const gl = window._gltfLoader || new GLTFLoader();
         gl.setDRACOLoader(dracoLoader);
         gl.load(url, (gltf) => {
           const model = gltf.scene;
@@ -22316,11 +16439,6 @@ let dragCounter = 0;
 })();
 // === END TUTORIAL ===
 
-// === INTERACTIVE TUTORIALS MODULE ===
-// Tutorials class was in missing ../runtime/tutorials.mjs — stubbed out
-window._tutorials = { init(){}, start(){}, stop(){} };
-// === END INTERACTIVE TUTORIALS ===
-
 
 // Model catalog system moved to top of file (see loadModelCatalog)
 
@@ -22336,7 +16454,7 @@ function showSuggestionPanel(query, results) {
   
   if (!results.length) { panel.style.display = 'none'; return; }
   
-  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
   html += '<div style="color:#7c5cff;font-size:14px;font-weight:700;">🤖 AI Agent — Found ' + results.length + ' models for "' + query + '"</div>';
   html += '<button onclick="document.getElementById(\'ai-suggest-panel\').style.display=\'none\'" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;">✕</button>';
   html += '</div>';
@@ -22437,8 +16555,14 @@ parseAndExecute = async function(rawCmd) {
   const _directCat = _directGalleryMap[lower];
   if (_directCat !== undefined) {
     if (_directCat === null) {
-      // Open main library
-      execSingle('models');
+      // Open full category picker
+      showCategoryPicker().then(result => {
+        if (result && result.file) {
+          loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
+          sceneHistory.push('add ' + result.file);
+          showToast('✅ Added ' + (result.name||result.file));
+        }
+      });
     } else {
       execSingle(_directCat);
     }
@@ -22495,18 +16619,42 @@ parseAndExecute = async function(rawCmd) {
     return;
   }
   if (lower === 'old mine world' || lower === 'show old mine' || lower === 'mine world') {
+    const { buildPackShowcase } = await loadCityBuilderModule();
     buildPackShowcase('old_mine', 'Old Mine', 47); return;
   }
-  if (lower === 'city world' || lower === 'build city' || lower === 'city demo' || lower === 'new city') {
-    buildCityWorld(); return;
+    if (/^(space combat|space fighter|space game combat|fight.*space|spaceship.*fight|make.*space.*fight)$/.test(lower)) {
+      if (window.buildSpaceCombatGame) { true; return; }
+    }
+    if (/^(horror|horror game|horror world|build horror|graveyard)$/.test(lower)) {
+      if (window.buildHorrorWorld) { true; return; }
+    }
+    if (/^(space|space game|space world|space station|build space|build space game)$/.test(lower)) {
+      if (window.buildSpaceWorld) { true; return; }
+    }
+    if (/^(space combat|space fighter|space shooting|fight in space|fly.*space|spaceship.*fight)$/.test(lower)) {
+      if (window.buildSpaceCombatGame) { true; return; }
+    }
+  if (lower === 'city 3' || lower === 'city world 3' || lower === 'build city 3' || lower === 'full city') {
+    const { buildCityWorld3 } = await loadCityBuilderModule();
+    buildCityWorld3();
+    return '🏙️ Building City 3 — 10x10 grid, all car types, 30 NPCs, fab buildings...';
+  }
+  if (lower === 'city 2' || lower === 'new city 2' || lower === 'city world 2' || lower === 'build city 2' || lower === 'second city') {
+    // [removed] buildCityWorld2 return;
+  }
+  if (lower === 'city world' || lower === 'build city' || lower === 'new city') {
+    const { buildCityWorld3 } = await loadCityBuilderModule();
+    buildCityWorld3(); return;
   }
   if (lower === 'quarry world' || lower === 'african quarry' || lower === 'build quarry' || lower === 'slate quarry') {
-    buildQuarryWorld(); return;
+    // [removed] buildQuarryWorld return;
   }
   if (lower === 'quarry grid' || lower === 'show quarry') {
+    const { buildPackShowcase } = await loadCityBuilderModule();
     buildPackShowcase('quarry', 'African Slate Quarry', 47); return;
   }
   if (lower === 'building world' || lower === 'unfinished building' || lower === 'show building') {
+    const { buildPackShowcase } = await loadCityBuilderModule();
     buildPackShowcase('building', 'Unfinished Building', 38); return;
   }
 
@@ -22523,12 +16671,14 @@ parseAndExecute = async function(rawCmd) {
     if (pieceName) {
       const px2 = window._cam ? window._cam.position.x + (Math.random()-0.5)*20 : 0;
       const pz2 = window._cam ? window._cam.position.z + (Math.random()-0.5)*20 : 0;
+      const { loadGroupedAsset } = await loadCityBuilderModule();
       loadGroupedAsset('street_props', pieceName, px2, pz2);
       return;
     }
   }
   // List street props pieces
   if (lower === 'street props' || lower === 'list street props' || lower === 'street pieces') {
+    const { listGroupPieces } = await loadCityBuilderModule();
     const pieces = listGroupPieces('street_props');
     showToast('Street props: ' + pieces.slice(0,8).join(', ') + '... (' + pieces.length + ' total)');
     return;
@@ -22536,7 +16686,7 @@ parseAndExecute = async function(rawCmd) {
 
   if (lower === 'forest world' || lower === 'build forest' || lower === 'forest lake' || 
       lower === 'make forest' || lower === 'create forest' || lower === 'forest') {
-    buildForestLakeWorld();
+    // [removed] buildForestLakeWorld
     return;
   }
 
@@ -22582,10 +16732,10 @@ parseAndExecute = async function(rawCmd) {
   }
   if (lower.startsWith('add fab ') || lower.startsWith('spawn fab ')) {
     const fabName = lower.replace(/^(add|spawn) fab /, '').trim().replace(/ /g, '_');
-    const fabAliases = window._fabAliases || {};
+    const fabAliases = await ensureFabAliasesLoaded();
     const modelPath = fabAliases[fabName] || GLB_MODELS[fabName];
     if (modelPath) {
-      const fullPath = modelPath.startsWith('http') || modelPath.startsWith('models/') ? modelPath : 'models/' + modelPath;
+      const fullPath = modelPath.startsWith('http') || modelPath.startsWith('/models/') ? modelPath : '/models/' + modelPath;
       loadGLBModel(fabName, fabName, 0, 0, null, fullPath); showToast('✅ Spawned: ' + fabName);
     } else if (window._decomposedPieces && window._decomposedPieces[fabName]) {
       placeDecomposedPiece(fabName, 0, 0); showToast('✅ Placed piece: ' + fabName);
@@ -22628,7 +16778,7 @@ parseAndExecute = async function(rawCmd) {
     let search = lower.replace(/^(i need|i want|show me|find|search|browse|library|catalog|get me|give me|what|which|any|list|do you have|do we have)\s*(a |an |the |some |any )?/i, '').replace(/[?!.,]/g, '').trim();
     
     if (search.length >= 2) {
-      const results = searchModels(search);
+      const results = searchRegistryModels(search);
       if (results.length > 0) {
         showSuggestionPanel(search, results);
         return '🤖 Found ' + results.length + ' models matching "' + search + '" — pick one from the panel below!';
@@ -22644,7 +16794,7 @@ parseAndExecute = async function(rawCmd) {
     
     // If it returned an error or "unknown", show suggestions
     if (result && (result.includes('⚠') || result.includes('unknown') || result.includes('not found'))) {
-      const results = searchModels(objName);
+      const results = searchRegistryModels(objName);
       if (results.length > 0) {
         showSuggestionPanel(objName, results);
         return result + '\n🤖 But I found ' + results.length + ' similar models — check the panel below!';
@@ -23456,7 +17606,7 @@ function showQuickStart() {
   modal.id = 'quick-start-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10010;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;backdrop-filter:blur(10px);';
   
-  let html = '<div style="text-align:center;margin-bottom:32px;"><div style="font-size:40px;margin-bottom:8px;">🎮</div><h1 style="color:#fff;font-size:28px;margin:0;">What do you want to build?</h1><p style="color:#888;font-size:14px;margin:8px 0 0 0;">Pick a preset or start from scratch</p></div>';
+  html = '<div style="text-align:center;margin-bottom:32px;"><div style="font-size:40px;margin-bottom:8px;">🎮</div><h1 style="color:#fff;font-size:28px;margin:0;">What do you want to build?</h1><p style="color:#888;font-size:14px;margin:8px 0 0 0;">Pick a preset or start from scratch</p></div>';
   html += '<div style="display:grid;grid-template-columns:repeat(4,180px);gap:12px;max-width:760px;">';
   
   for (const s of scenes) {
@@ -23513,150 +17663,10 @@ window.showQuickStart = showQuickStart;
 
 // === SETTINGS MENU (v217) ===
 function showSettings() {
-  let panel = document.getElementById('settings-panel');
-  if (panel) { panel.remove(); return; }
-  
-  // Load saved settings
-  const saved = JSON.parse(localStorage.getItem('crate-settings') || '{}');
-  const quality = saved.quality || 'high';
-  const shadows = saved.shadows !== false;
-  const fog = saved.fog !== false;
-  const clouds = saved.clouds === true;
-  const music = saved.music !== false;
-  const sfx = saved.sfx !== false;
-  const sensitivity = saved.sensitivity || 1;
-  const fov = saved.fov || 60;
-  
-  panel = document.createElement('div');
-  panel.id = 'settings-panel';
-  panel.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10020;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;backdrop-filter:blur(10px);';
-  
-  panel.innerHTML = `
-    <div style="background:#111;border:1px solid #333;border-radius:16px;padding:32px;width:440px;max-height:80vh;overflow-y:auto;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
-        <h2 style="margin:0;color:#fff;font-size:22px;">⚙️ Settings</h2>
-        <div id="settings-close" style="cursor:pointer;font-size:20px;color:#666;">✕</div>
-      </div>
-      
-      <div style="margin-bottom:20px;">
-        <div style="color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Graphics</div>
-        
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="color:#ccc;font-size:14px;">Quality</span>
-          <select id="s-quality" style="background:#222;color:#fff;border:1px solid #444;padding:4px 12px;border-radius:6px;">
-            <option value="low" ${quality==='low'?'selected':''}>Low</option>
-            <option value="medium" ${quality==='medium'?'selected':''}>Medium</option>
-            <option value="high" ${quality==='high'?'selected':''}>High</option>
-            <option value="ultra" ${quality==='ultra'?'selected':''}>Ultra</option>
-          </select>
-        </div>
-        
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="color:#ccc;font-size:14px;">Shadows</span>
-          <label style="position:relative;width:44px;height:24px;">
-            <input type="checkbox" id="s-shadows" ${shadows?'checked':''} style="opacity:0;width:0;height:0;">
-            <span style="position:absolute;cursor:pointer;inset:0;background:${shadows?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
-            <span style="position:absolute;left:${shadows?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
-          </label>
-        </div>
-        
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="color:#ccc;font-size:14px;">Fog</span>
-          <label style="position:relative;width:44px;height:24px;">
-            <input type="checkbox" id="s-fog" ${fog?'checked':''} style="opacity:0;width:0;height:0;">
-            <span style="position:absolute;cursor:pointer;inset:0;background:${fog?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
-            <span style="position:absolute;left:${fog?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
-          </label>
-        </div>
-        
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="color:#ccc;font-size:14px;">Clouds</span>
-          <label style="position:relative;width:44px;height:24px;">
-            <input type="checkbox" id="s-clouds" ${clouds?'checked':''} style="opacity:0;width:0;height:0;">
-            <span style="position:absolute;cursor:pointer;inset:0;background:${clouds?'#4ade80':'#333'};border-radius:24px;transition:0.3s;"></span>
-            <span style="position:absolute;left:${clouds?'22px':'2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;"></span>
-          </label>
-        </div>
-        
-        <div style="margin-bottom:12px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-            <span style="color:#ccc;font-size:14px;">FOV</span>
-            <span style="color:#666;font-size:13px;" id="s-fov-val">${fov}°</span>
-          </div>
-          <input type="range" id="s-fov" min="40" max="120" value="${fov}" style="width:100%;accent-color:#ff6b35;">
-        </div>
-      </div>
-      
-      <div style="margin-bottom:20px;">
-        <div style="color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Controls</div>
-        <div style="margin-bottom:12px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-            <span style="color:#ccc;font-size:14px;">Mouse Sensitivity</span>
-            <span style="color:#666;font-size:13px;" id="s-sens-val">${sensitivity.toFixed(1)}x</span>
-          </div>
-          <input type="range" id="s-sensitivity" min="0.1" max="3" step="0.1" value="${sensitivity}" style="width:100%;accent-color:#ff6b35;">
-        </div>
-      </div>
-      
-      <button id="s-apply" style="width:100%;padding:12px;background:#ff6b35;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
-        Apply & Save
-      </button>
-    </div>
-  `;
-  
-  document.body.appendChild(panel);
-  
-  // FOV slider
-  document.getElementById('s-fov').oninput = (e) => {
-    document.getElementById('s-fov-val').textContent = e.target.value + '°';
-  };
-  document.getElementById('s-sensitivity').oninput = (e) => {
-    document.getElementById('s-sens-val').textContent = parseFloat(e.target.value).toFixed(1) + 'x';
-  };
-  
-  // Close
-  document.getElementById('settings-close').onclick = () => panel.remove();
-  document.addEventListener('keydown', function esc(e) { 
-    if (e.key === 'Escape') { panel.remove(); document.removeEventListener('keydown', esc); } 
+  loadUtilityUiModule().then((mod) => mod.showSettingsPanel()).catch((err) => {
+    console.error('[UI] Settings panel failed:', err);
+    showToast('❌ Settings failed to load');
   });
-  
-  // Apply
-  document.getElementById('s-apply').onclick = () => {
-    const settings = {
-      quality: document.getElementById('s-quality').value,
-      shadows: document.getElementById('s-shadows').checked,
-      fog: document.getElementById('s-fog').checked,
-      clouds: document.getElementById('s-clouds').checked,
-      sensitivity: parseFloat(document.getElementById('s-sensitivity').value),
-      fov: parseInt(document.getElementById('s-fov').value),
-    };
-    
-    localStorage.setItem('crate-settings', JSON.stringify(settings));
-    
-    // Apply quality
-    const qualityMap = { low: 0.5, medium: 0.75, high: 1, ultra: window.devicePixelRatio || 1 };
-    renderer.setPixelRatio(qualityMap[settings.quality] || 1);
-    
-    // Apply shadows
-    renderer.shadowMap.enabled = settings.shadows;
-    
-    // Apply FOV
-    camera.fov = settings.fov;
-    camera.updateProjectionMatrix();
-    
-    // Apply fog
-    if (!settings.fog) scene.fog = null;
-    
-    // Apply clouds
-    if (!settings.clouds && _cloudGroup) { scene.remove(_cloudGroup); _cloudGroup = null; }
-    else if (settings.clouds && !_cloudGroup) createClouds();
-    
-    // Apply sensitivity (store for mouse handler)
-    window._mouseSensitivity = settings.sensitivity;
-    
-    panel.remove();
-    showToast('⚙️ Settings saved!');
-  };
 }
 window.showSettings = showSettings;
 
@@ -23667,7 +17677,8 @@ window.showSettings = showSettings;
   toolbar.style.cssText = 'position:fixed;bottom:42px;left:50%;transform:translateX(-50%);z-index:9997;display:flex;flex-direction:row;gap:4px;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);padding:6px 10px;border-radius:12px;border:1px solid #252525;max-width:80vw;overflow-x:auto;';
   
   const cats = [
-    { cmd: 'play', icon: '▶️', tip: 'Play / Stop', color: '#22c55e', isPlay: true },
+    { action: 'play', icon: '▶️', tip: 'Play / First Person', color: '#22c55e', isPlay: true },
+    { action: 'worlds', icon: '🌍', tip: 'Switch World', color: '#a855f7' },
     { cmd: 'edit', icon: '⏹️', tip: 'Stop', color: '#ef4444', isStop: true },
     { cmd: '_sep1', icon: '|', tip: '', isSep: true },
     { action: 'save', icon: '💾', tip: 'Save', color: '#4ade80' },
@@ -23675,8 +17686,7 @@ window.showSettings = showSettings;
     { action: 'share', icon: '🔗', tip: 'Share', color: '#ff6b35' },
     { action: 'export_html', icon: '📦', tip: 'Export', color: '#c084fc' },
     { cmd: '_sep2', icon: '|', tip: '', isSep: true },
-    { cmd: 'library', icon: '🗂️', tip: 'All Assets', color: '#ffd700' },
-    { cmd: 'scripts', icon: '🧠', tip: 'Custom Scripts', color: '#7c5cff' },
+    { action: 'library', icon: '🗂️', tip: 'All Assets', color: '#ffd700' },
   ];
   
   cats.forEach(c => {
@@ -23755,512 +17765,13 @@ document.addEventListener('keydown', (e) => {
 // Text-to-3D and Image-to-3D via api.meshy.ai
 // ═══════════════════════════════════════════════════════════════
 const MESHY_API_BASE = 'https://api.meshy.ai';
-const MESHY_TEST_KEY = 'msy_dummy_api_key_for_test_mode_12345678';
 
 function getMeshyApiKey() {
-  return localStorage.getItem('crate_meshy_api_key') || '';
+  return readSessionValueWithLegacy(MESHY_API_KEY_STORAGE_KEY, true) || '';
 }
 function setMeshyApiKey(key) {
-  localStorage.setItem('crate_meshy_api_key', key);
+  writeSessionValue(MESHY_API_KEY_STORAGE_KEY, key);
 }
-
-// Credit system
-window._userCredits = JSON.parse(localStorage.getItem('crate-credits') || '{"plan":"free","credits":5,"used":0}');
-function saveCredits() { localStorage.setItem('crate-credits', JSON.stringify(window._userCredits)); }
-function getCreditsRemaining() { if (!window._userCredits) window._userCredits = {plan:'free',credits:5,used:0}; return Math.max(0, window._userCredits.credits - window._userCredits.used); }
-function useCredits(amount) { window._userCredits.used += amount; saveCredits(); }
-
-function showGeneratorModal() {
-  if (document.getElementById('gen3d-modal')) { document.getElementById('gen3d-modal').remove(); }
-  
-  const credits = getCreditsRemaining();
-  const modal = document.createElement('div');
-  modal.id = 'gen3d-modal';
-  modal.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif" onclick="if(event.target===this)this.remove()">
-      <div style="background:#1a1a2e;border-radius:16px;width:560px;max-height:90vh;overflow-y:auto;color:#fff;box-shadow:0 25px 60px rgba(0,0,0,0.5)">
-        
-        <div style="padding:24px 28px 0;display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <h2 style="margin:0;font-size:22px">🎨 3D Model Generator</h2>
-            <p style="margin:4px 0 0;color:#888;font-size:13px">Generate 3D models from text or images via Meshy AI</p>
-          </div>
-          <div style="text-align:right">
-            <div style="background:#2a2a4a;padding:6px 14px;border-radius:20px;font-size:13px">
-              <span style="color:#fbbf24">⚡</span> <strong>${credits}</strong> credits left
-            </div>
-          </div>
-        </div>
-
-        <div style="padding:20px 28px">
-          <!-- Tab buttons -->
-          <div style="display:flex;gap:8px;margin-bottom:20px">
-            <button id="gen3d-tab-img" onclick="document.getElementById('gen3d-img-section').style.display='block';document.getElementById('gen3d-txt-section').style.display='none';this.style.background='#6366f1';document.getElementById('gen3d-tab-txt').style.background='#2a2a4a'" style="flex:1;padding:10px;border:none;border-radius:8px;background:#6366f1;color:#fff;cursor:pointer;font-size:14px;font-weight:600">📷 Image to 3D</button>
-            <button id="gen3d-tab-txt" onclick="document.getElementById('gen3d-txt-section').style.display='block';document.getElementById('gen3d-img-section').style.display='none';this.style.background='#6366f1';document.getElementById('gen3d-tab-img').style.background='#2a2a4a'" style="flex:1;padding:10px;border:none;border-radius:8px;background:#2a2a4a;color:#fff;cursor:pointer;font-size:14px;font-weight:600">✏️ Text to 3D</button>
-          </div>
-
-          <!-- Image to 3D -->
-          <div id="gen3d-img-section">
-            <div id="gen3d-dropzone" style="border:2px dashed #444;border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s" 
-                 ondragover="event.preventDefault();this.style.borderColor='#6366f1'" 
-                 ondragleave="this.style.borderColor='#444'"
-                 ondrop="event.preventDefault();this.style.borderColor='#444';handleGen3dDrop(event)"
-                 onclick="document.getElementById('gen3d-file-input').click()">
-              <div id="gen3d-preview" style="display:none;margin-bottom:12px"></div>
-              <div id="gen3d-upload-text">
-                <div style="font-size:36px;margin-bottom:8px">📁</div>
-                <div style="color:#aaa;font-size:14px">Drop an image here or click to upload</div>
-                <div style="color:#666;font-size:12px;margin-top:4px">PNG, JPG — any object, character, prop</div>
-              </div>
-            </div>
-            <input type="file" id="gen3d-file-input" accept="image/*" style="display:none" onchange="handleGen3dFile(this.files[0])">
-          </div>
-
-          <!-- Text to 3D -->
-          <div id="gen3d-txt-section" style="display:none">
-            <textarea id="gen3d-text-prompt" placeholder="Describe the 3D model you want...&#10;e.g. 'A medieval wooden shield with iron bands'&#10;'A cute low-poly dragon'&#10;'Futuristic sci-fi rifle'" style="width:100%;height:100px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#fff;padding:12px;font-size:14px;resize:none;box-sizing:border-box"></textarea>
-            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap" id="gen3d-suggestions">
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">medieval sword</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">low-poly dragon</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">wooden treasure chest</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">sci-fi spaceship</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">stone castle tower</span>
-              <span onclick="document.getElementById('gen3d-text-prompt').value=this.textContent" style="padding:4px 10px;background:#2a2a4a;border-radius:12px;color:#aaa;font-size:12px;cursor:pointer;border:1px solid #333">cute robot companion</span>
-            </div>
-          </div>
-
-          <!-- Quality selector -->
-          <div style="margin-top:16px;display:flex;gap:8px">
-            <button class="gen3d-quality" data-quality="draft" data-cost="0.5" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#aaa;cursor:pointer;font-size:12px;text-align:center">
-              <div style="font-weight:600">Draft</div>
-              <div style="color:#666;font-size:11px">Preview only · ~30s</div>
-            </button>
-            <button class="gen3d-quality selected" data-quality="standard" data-cost="1" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #6366f1;border-radius:8px;background:#1a1a3e;color:#fff;cursor:pointer;font-size:12px;text-align:center">
-              <div style="font-weight:600">Standard ✓</div>
-              <div style="color:#888;font-size:11px">Full quality · ~60s</div>
-            </button>
-            <button class="gen3d-quality" data-quality="hd" data-cost="2" onclick="selectGen3dQuality(this)" style="flex:1;padding:8px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#aaa;cursor:pointer;font-size:12px;text-align:center">
-              <div style="font-weight:600">HD</div>
-              <div style="color:#666;font-size:11px">HD + PBR · ~90s</div>
-            </button>
-          </div>
-
-          <!-- Generate button -->
-          <button id="gen3d-btn" onclick="startGeneration()" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:16px;font-weight:700;cursor:pointer;transition:transform 0.1s" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
-            🚀 Generate 3D Model
-          </button>
-
-          <!-- Progress -->
-          <div id="gen3d-progress" style="display:none;margin-top:16px;text-align:center">
-            <div style="width:100%;height:4px;background:#2a2a4a;border-radius:2px;overflow:hidden">
-              <div id="gen3d-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);transition:width 0.3s;border-radius:2px"></div>
-            </div>
-            <div id="gen3d-status" style="color:#888;font-size:13px;margin-top:8px">Preparing...</div>
-          </div>
-
-          <!-- Result -->
-          <div id="gen3d-result" style="display:none;margin-top:16px;background:#0d0d1a;border-radius:12px;padding:16px;text-align:center">
-            <div style="font-size:14px;color:#4ade80;margin-bottom:12px">✅ Model generated!</div>
-            <div style="display:flex;gap:8px">
-              <button onclick="gen3dAddToScene()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#22c55e;color:#fff;font-weight:600;cursor:pointer">➕ Add to Scene</button>
-              <button onclick="gen3dDownload()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer">💾 Download GLB</button>
-              <button onclick="gen3dSellOnMarketplace()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#f59e0b;color:#fff;font-weight:600;cursor:pointer">💰 Sell on Marketplace</button>
-              <button onclick="gen3dSaveToLibrary()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#8b5cf6;color:#fff;font-weight:600;cursor:pointer">📚 Save to Library</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Upgrade banner for free users -->
-        ${window._userCredits.plan === 'free' ? `
-        <div style="padding:16px 28px 24px;border-top:1px solid #2a2a4a">
-          <div style="background:linear-gradient(135deg,#1a1a3e,#2a1a4e);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between">
-            <div>
-              <div style="font-size:14px;font-weight:600">Need more credits?</div>
-              <div style="color:#888;font-size:12px;margin-top:2px">Starting at $4.99/mo for 100 credits</div>
-            </div>
-            <button onclick="showPricingModal()" style="padding:8px 20px;border:none;border-radius:8px;background:#6366f1;color:#fff;font-weight:600;cursor:pointer;font-size:13px">Upgrade</button>
-          </div>
-        </div>` : ''}
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-
-// State
-window._gen3dImage = null;
-window._gen3dQuality = 'standard';
-window._gen3dResultBlob = null;
-
-window.selectGen3dQuality = selectGen3dQuality;
-function selectGen3dQuality(btn) {
-  document.querySelectorAll('.gen3d-quality').forEach(b => {
-    b.style.border = '1px solid #333'; b.style.background = '#0d0d1a'; b.style.color = '#aaa';
-    b.innerHTML = b.innerHTML.replace(' ✓', '');
-  });
-  btn.style.border = '1px solid #6366f1'; btn.style.background = '#1a1a3e'; btn.style.color = '#fff';
-  btn.querySelector('div').textContent += ' ✓';
-  window._gen3dQuality = btn.dataset.quality;
-}
-
-function handleGen3dFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    window._gen3dImage = e.target.result; // data URL
-    const preview = document.getElementById('gen3d-preview');
-    preview.innerHTML = `<img src="${e.target.result}" style="max-width:200px;max-height:200px;border-radius:8px;object-fit:contain">`;
-    preview.style.display = 'block';
-    document.getElementById('gen3d-upload-text').innerHTML = `<div style="color:#4ade80;font-size:13px;margin-top:8px">✓ ${file.name} — click to change</div>`;
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleGen3dDrop(event) {
-  const file = event.dataTransfer.files[0];
-  if (file) handleGen3dFile(file);
-}
-
-window.startGeneration = startGeneration;
-async function startGeneration() {
-  const isTextMode = document.getElementById('gen3d-txt-section').style.display !== 'none';
-  const textPrompt = isTextMode ? (document.getElementById('gen3d-text-prompt')?.value || '').trim() : '';
-  if (!isTextMode && !window._gen3dImage) { showToast('Upload an image first!'); return; }
-  if (isTextMode && !textPrompt) { showToast('Enter a description first!'); return; }
-  
-  const costMap = { draft: 0.5, standard: 1, hd: 2 };
-  const cost = costMap[window._gen3dQuality] || 1;
-  if (getCreditsRemaining() < cost) { showToast('Not enough credits! Upgrade your plan.'); return; }
-  
-  const btn = document.getElementById('gen3d-btn');
-  const progress = document.getElementById('gen3d-progress');
-  const progressBar = document.getElementById('gen3d-progress-bar');
-  const status = document.getElementById('gen3d-status');
-  const result = document.getElementById('gen3d-result');
-  
-  btn.disabled = true; btn.textContent = '⏳ Generating...'; btn.style.opacity = '0.6';
-  progress.style.display = 'block'; result.style.display = 'none';
-  
-  // Animate progress bar
-  let pct = 0;
-  const progressInterval = setInterval(() => {
-    pct = Math.min(pct + (pct < 60 ? 2 : pct < 90 ? 0.5 : 0.1), 95);
-    progressBar.style.width = pct + '%';
-    if (isTextMode) {
-      if (pct < 15) status.textContent = '📝 Processing your description...';
-      else if (pct < 40) status.textContent = '🎨 AI is generating reference image...';
-      else if (pct < 65) status.textContent = '🧠 Building 3D model from image...';
-      else if (pct < 85) status.textContent = '🔨 Extracting mesh & textures...';
-      else status.textContent = '✨ Almost there...';
-    } else {
-      if (pct < 20) status.textContent = '🔄 Uploading image...';
-      else if (pct < 50) status.textContent = '🧠 AI is building your 3D model...';
-      else if (pct < 80) status.textContent = '🔨 Extracting mesh & textures...';
-      else status.textContent = '✨ Almost there...';
-    }
-  }, 500);
-  
-  try {
-    const apiKey = getMeshyApiKey();
-    if (!apiKey) {
-      clearInterval(progressInterval);
-      status.textContent = '🔑 Please set your Meshy API key first!';
-      progressBar.style.width = '0%';
-      btn.disabled = false; btn.textContent = '🚀 Generate 3D Model'; btn.style.opacity = '1';
-      showMeshyKeyModal();
-      return;
-    }
-    
-    const headers = { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' };
-    
-    // ── MESHY API CALL ──
-    let taskId;
-    if (isTextMode) {
-      // Text-to-3D: Preview stage first
-      status.textContent = '📝 Creating preview from your description...';
-      const previewResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d', {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          mode: 'preview',
-          prompt: textPrompt,
-          negative_prompt: 'low quality, low resolution, ugly, blurry',
-          should_remesh: true,
-        })
-      });
-      if (!previewResp.ok) { const err = await previewResp.json().catch(()=>({})); throw new Error(err.message || 'Meshy API error: ' + previewResp.status); }
-      const previewData = await previewResp.json();
-      taskId = previewData.result;
-      
-      // Poll preview
-      let previewTask;
-      let _pollCount1 = 0;
-      while (true) {
-        if (++_pollCount1 > 100) throw new Error('Generation timed out after 5 minutes');
-        await new Promise(r => setTimeout(r, 3000));
-        const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
-        previewTask = await pollResp.json();
-        if (previewTask.status === 'SUCCEEDED') break;
-        if (previewTask.status === 'FAILED') throw new Error('Preview failed: ' + (previewTask.task_error?.message || 'unknown'));
-        pct = Math.min(10 + (previewTask.progress || 0) * 0.4, 50);
-        progressBar.style.width = pct + '%';
-        status.textContent = '🎨 Building preview... ' + (previewTask.progress || 0) + '%';
-      }
-      
-      // Refine stage (if not draft quality)
-      if (window._gen3dQuality !== 'draft') {
-        status.textContent = '✨ Refining with textures...';
-        const refineResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d', {
-          method: 'POST', headers,
-          body: JSON.stringify({ mode: 'refine', preview_task_id: taskId })
-        });
-        if (!refineResp.ok) { const err = await refineResp.json().catch(()=>({})); throw new Error(err.message || 'Refine error: ' + refineResp.status); }
-        const refineData = await refineResp.json();
-        taskId = refineData.result;
-        
-        let _pollCount2 = 0;
-        while (true) {
-          if (++_pollCount2 > 100) throw new Error('Refine timed out after 5 minutes');
-          await new Promise(r => setTimeout(r, 3000));
-          const pollResp = await fetch(MESHY_API_BASE + '/openapi/v2/text-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
-          const refineTask = await pollResp.json();
-          if (refineTask.status === 'SUCCEEDED') { previewTask = refineTask; break; }
-          if (refineTask.status === 'FAILED') throw new Error('Refine failed: ' + (refineTask.task_error?.message || 'unknown'));
-          pct = Math.min(50 + (refineTask.progress || 0) * 0.45, 95);
-          progressBar.style.width = pct + '%';
-          status.textContent = '✨ Refining... ' + (refineTask.progress || 0) + '%';
-        }
-      }
-      
-      // Download GLB
-      const glbUrl = previewTask.model_urls?.glb;
-      if (!glbUrl) throw new Error('No GLB URL in response');
-      const glbResp = await fetch(glbUrl);
-      const glbBlob = await glbResp.blob();
-      window._gen3dResultBlob = glbBlob;
-      window._gen3dResultUrl = URL.createObjectURL(glbBlob);
-      
-    } else {
-      // Image-to-3D (single step)
-      status.textContent = '🧠 Sending image to Meshy AI...';
-      const imgResp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d', {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          image_url: window._gen3dImage, // data URI works!
-          enable_pbr: true,
-          should_remesh: window._gen3dQuality !== 'draft',
-          should_texture: true,
-        })
-      });
-      if (!imgResp.ok) { const err = await imgResp.json().catch(()=>({})); throw new Error(err.message || 'Meshy API error: ' + imgResp.status); }
-      const imgData = await imgResp.json();
-      taskId = imgData.result;
-      
-      // Poll until done
-      let imgTask;
-      let _pollCount3 = 0;
-      while (true) {
-        if (++_pollCount3 > 100) throw new Error('Image-to-3D timed out after 5 minutes');
-        await new Promise(r => setTimeout(r, 3000));
-        const pollResp = await fetch(MESHY_API_BASE + '/openapi/v1/image-to-3d/' + taskId, { headers: { 'Authorization': 'Bearer ' + apiKey } });
-        imgTask = await pollResp.json();
-        if (imgTask.status === 'SUCCEEDED') break;
-        if (imgTask.status === 'FAILED') throw new Error('Generation failed: ' + (imgTask.task_error?.message || 'unknown'));
-        pct = Math.min(5 + (imgTask.progress || 0) * 0.9, 95);
-        progressBar.style.width = pct + '%';
-        status.textContent = '🧠 Generating 3D model... ' + (imgTask.progress || 0) + '%';
-      }
-      
-      // Download GLB
-      const glbUrl = imgTask.model_urls?.glb;
-      if (!glbUrl) throw new Error('No GLB URL in response');
-      const glbResp = await fetch(glbUrl);
-      const glbBlob = await glbResp.blob();
-      window._gen3dResultBlob = glbBlob;
-      window._gen3dResultUrl = URL.createObjectURL(glbBlob);
-    }
-    
-    clearInterval(progressInterval);
-    progressBar.style.width = '100%';
-    const sizeMB = window._gen3dResultBlob ? (window._gen3dResultBlob.size / 1048576).toFixed(1) : '?';
-    status.textContent = '✅ Done! ' + sizeMB + 'MB GLB model';
-    result.style.display = 'block';
-  } catch (err) {
-    clearInterval(progressInterval);
-    status.textContent = '❌ Error: ' + err.message;
-    progressBar.style.width = '0%';
-  }
-  
-  btn.disabled = false; btn.textContent = '🚀 Generate 3D Model'; btn.style.opacity = '1';
-}
-
-function gen3dAddToScene() {
-  if (!window._gen3dResultUrl) return;
-  const name = 'generated_' + Date.now();
-  const url = window._gen3dResultUrl;
-  gltfLoader.load(url, (gltf) => {
-    const model = gltf.scene;
-    const box = new THREE.Box3().setFromObject(model);
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (maxDim > 0.001) model.scale.setScalar(2.0 / maxDim);
-    model.castShadow = true;
-    model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-    model.userData.name = name;
-    model.userData.isGLB = true;
-    // Position near player, grounded on terrain
-    const px = (characterController ? characterController.position.x : 0) + (Math.random() - 0.5) * 6;
-    const pz = (characterController ? characterController.position.z : 0) + (Math.random() - 0.5) * 6;
-    addObj(name, model, px, pz);
-    showToast('✓ 3D model added to scene!');
-  });
-  document.getElementById('gen3d-modal').remove();
-}
-
-function gen3dDownload() {
-  if (!window._gen3dResultBlob) return;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(window._gen3dResultBlob);
-  a.download = 'crate-engine-model-' + Date.now() + '.glb';
-  a.click();
-  showToast('💾 GLB downloaded!');
-}
-
-function gen3dSellOnMarketplace() {
-  if (!window._gen3dResultBlob) return;
-  const listingId = 'listing_' + Date.now();
-  const listingName = prompt('Name your model:', 'AI Generated Model') || 'AI Generated Model';
-  
-  // Save blob to IndexedDB
-  _modelDB.save(listingId, listingName, 'premium', window._gen3dResultBlob).then(() => {
-    _assetCatalog = null;
-  });
-  
-  // Save listing metadata to localStorage
-  const listings = JSON.parse(localStorage.getItem('crate-marketplace-listings') || '[]');
-  listings.push({
-    id: listingId,
-    name: listingName,
-    creator: localStorage.getItem('crate-username') || 'Anonymous',
-    price: 0,
-    format: 'glb',
-    created: new Date().toISOString(),
-    downloads: 0,
-  });
-  localStorage.setItem('crate-marketplace-listings', JSON.stringify(listings));
-  showToast('💰 Listed on marketplace! Model saved to your library too.');
-  document.getElementById('gen3d-modal').remove();
-}
-
-function gen3dSaveToLibrary() {
-  if (!window._gen3dResultBlob) return;
-  const modelName = prompt('Name this model:', 'AI Model ' + new Date().toLocaleDateString()) || 'AI Model';
-  const category = prompt('Category (characters, weapons, buildings, vehicles, furniture, nature, scifi, food):', 'food') || 'food';
-  
-  const modelId = 'user_' + Date.now();
-  
-  // Save to IndexedDB (persistent, survives cache clear)
-  _modelDB.save(modelId, modelName, category.toLowerCase(), window._gen3dResultBlob).then(() => {
-    // Invalidate catalog cache so it shows in gallery immediately
-    _assetCatalog = null;
-    showToast('📚 Saved to library! Find it in "' + category + '" category.');
-  });
-  
-  // Also save to localStorage as backup
-  const reader = new FileReader();
-  reader.onload = () => {
-    const saved = JSON.parse(localStorage.getItem('crate-user-models') || '[]');
-    saved.push({ id: modelId, name: modelName, category: category.toLowerCase(), data_b64: reader.result.split(',')[1], created: new Date().toISOString() });
-    localStorage.setItem('crate-user-models', JSON.stringify(saved));
-  };
-  reader.readAsDataURL(window._gen3dResultBlob);
-  
-  document.getElementById('gen3d-modal').remove();
-}
-
-// Pricing modal
-function showPricingModal() {
-  if (document.getElementById('pricing-modal')) document.getElementById('pricing-modal').remove();
-  const m = document.createElement('div');
-  m.id = 'pricing-modal';
-  m.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100001;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif" onclick="if(event.target===this)this.remove()">
-      <div style="background:#1a1a2e;border-radius:16px;width:720px;padding:32px;color:#fff">
-        <h2 style="text-align:center;margin:0 0 8px">⚡ Crate Engine Plans</h2>
-        <p style="text-align:center;color:#888;margin:0 0 24px;font-size:14px">Generate 3D models. Sell on marketplace. Build games.</p>
-        <div style="display:flex;gap:16px">
-          ${[
-            { name: 'Starter', price: '4.99', credits: '100', models: '100 standard / 50 HD', color: '#3b82f6' },
-            { name: 'Pro', price: '14.99', credits: '500', models: '500 standard / 250 HD', color: '#8b5cf6', pop: true },
-            { name: 'Studio', price: '39.99', credits: '2,000', models: '2,000 standard / 1,000 HD', color: '#f59e0b' },
-          ].map(p => `
-            <div style="flex:1;background:${p.pop ? '#1a1a4e' : '#0d0d1a'};border:${p.pop ? '2px solid #8b5cf6' : '1px solid #333'};border-radius:12px;padding:20px;text-align:center;position:relative">
-              ${p.pop ? '<div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#8b5cf6;padding:2px 12px;border-radius:10px;font-size:11px;font-weight:600">POPULAR</div>' : ''}
-              <div style="font-size:18px;font-weight:700;color:${p.color}">${p.name}</div>
-              <div style="font-size:32px;font-weight:800;margin:8px 0">$${p.price}<span style="font-size:14px;color:#888">/mo</span></div>
-              <div style="color:#aaa;font-size:13px;margin-bottom:12px">${p.credits} credits/month</div>
-              <div style="color:#888;font-size:12px;margin-bottom:16px">${p.models}</div>
-              <ul style="text-align:left;list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:#aaa">
-                <li style="margin:4px 0">✅ Image to 3D</li>
-                <li style="margin:4px 0">✅ GLB/OBJ export</li>
-                <li style="margin:4px 0">✅ Add to scene</li>
-                <li style="margin:4px 0">✅ Sell on marketplace</li>
-                ${p.name !== 'Starter' ? '<li style="margin:4px 0">✅ HD quality</li>' : ''}
-                ${p.name === 'Studio' ? '<li style="margin:4px 0">✅ API access</li><li style="margin:4px 0">✅ Priority queue</li>' : ''}
-              </ul>
-              <button onclick="selectPlan('${p.name.toLowerCase()}', ${p.credits.replace(',','')}, ${p.price})" style="width:100%;padding:10px;border:none;border-radius:8px;background:${p.color};color:#fff;font-weight:600;cursor:pointer">Choose ${p.name}</button>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(m);
-}
-
-function selectPlan(plan, credits, price) {
-  // For now, just set credits locally (Stripe integration later)
-  window._userCredits = { plan, credits, used: 0 };
-  saveCredits();
-  showToast('✅ Plan activated! ' + credits + ' credits loaded.');
-  if (document.getElementById('pricing-modal')) document.getElementById('pricing-modal').remove();
-  if (document.getElementById('gen3d-modal')) {
-    document.getElementById('gen3d-modal').remove();
-    showGeneratorModal(); // Refresh to show new credits
-  }
-}
-
-// Add 🎨 button to build toolbar
-(function addGen3dButton() {
-  const tryAdd = () => {
-    const toolbar = document.getElementById('build-toolbar');
-    if (!toolbar) { setTimeout(tryAdd, 1000); return; }
-    // Check if already added
-    if (document.getElementById('gen3d-toolbar-btn')) return;
-    const btn = document.createElement('button');
-    btn.id = 'gen3d-toolbar-btn';
-    btn.textContent = '🎨';
-    btn.title = '3D Model Generator';
-    btn.style.cssText = 'font-size:20px;padding:8px 12px;border:none;border-radius:8px;background:#6366f1;cursor:pointer;margin-left:4px;transition:transform 0.1s';
-    btn.onmouseenter = () => btn.style.transform = 'scale(1.1)';
-    btn.onmouseleave = () => btn.style.transform = 'scale(1)';
-    btn.onclick = showGeneratorModal;
-    toolbar.appendChild(btn);
-  };
-  tryAdd();
-})();
-
-// Hook into AI agent — "generate" commands open the generator
-window._handleGenerateCommand = function(cmd) {
-  const lower = cmd.toLowerCase();
-  if (lower.match(/^(generate|create|make)\s+(a\s+)?3d\s+(model|asset|object)/i) || 
-      lower === '3d generator' || lower === 'generator' || lower === 'generate 3d' || lower === 'generate 3d model') {
-    showGeneratorModal();
-    return '🎨 Opening 3D Generator...';
-  }
-  return null;
-};
-
-console.log('[CRATE ENGINE] 3D Generator module loaded ✓');
 
 
 // === AUTO-RECORD MODE (v218 — orbit camera recording) ===
@@ -24645,1460 +18156,9 @@ void main() {
   gl_FragColor = vec4(waterCol + specular, 0.88);
 }`;
 
-function buildGerstnerLake(radius, preset) {
-  // Use the WATER_PRESETS system for consistent, good-looking water
-  const presetName = preset || 'calm';
-  const segs = 128;
-  const geo = new THREE.PlaneGeometry(radius * 2, radius * 2, segs, segs);
-  // Clip to circle by masking vertices outside radius
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = pos.getY(i); // PlaneGeometry uses Y as Z before rotation
-    if (Math.sqrt(x*x + z*z) > radius) {
-      pos.setXYZ(i, 0, 0, 0); // collapse outside verts to center (hidden under shore ring)
-    }
-  }
-  geo.attributes.position.needsUpdate = true;
-  // Use the existing preset material system — calm is clear, low-wave, beautiful
-  const mat = createGerstnerWaterMaterial(presetName);
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 0.08;
-  mesh.userData.isWater = true;
-  mesh.userData.isLake = true;
-  mesh.userData.isGerstnerWater = true;
-  mesh.userData.isAnimatedWater = true;
-  mesh.userData.waterPreset = presetName;
-  return mesh;
-}
-window.buildGerstnerLake = buildGerstnerLake;
-
-
-
-// ============================================================
-// AFRICAN SLATE QUARRY WORLD — v3 (proper engine clear)
-// ============================================================
-async function buildQuarryWorld() {
-  try {
-    showToast('⛏ Building African Slate Quarry...');
-
-    // ── PROPER ENGINE CLEAR ───────────────────────────────
-    // 1. Remove all user-placed objects
-    for (let i = objects.length - 1; i >= 0; i--) {
-      scene.remove(objects[i]); objects.splice(i, 1);
-    }
-    // 2. Remove engine ground plane (replace with ours)
-    if (typeof currentGround !== 'undefined' && currentGround) {
-      scene.remove(currentGround);
-      if (currentGround.geometry) currentGround.geometry.dispose();
-      if (currentGround.material) currentGround.material.dispose();
-      currentGround = null;
-      window._currentGround = null;
-    }
-    // 3. Remove existing terrain mesh
-    if (typeof terrainMesh !== 'undefined' && terrainMesh) {
-      scene.remove(terrainMesh);
-      terrainMesh.geometry.dispose(); terrainMesh.material.dispose();
-      terrainMesh = null;
-      window._terrainMesh = null;
-    }
-    // 4. Kill water zones
-    if (window._waterZones) window._waterZones.length = 0;
-    window._lakeAnimators = [];
-    // 5. Clear fog/scene decorations
-    scene.fog = null;
-
-    // Remove ANY remaining meshes/groups not caught above
-    const extras = [];
-    scene.children.forEach(o => {
-      if (!o.isLight && !o.isCamera && !(o instanceof THREE.AxesHelper) && !(o instanceof THREE.GridHelper)) {
-        extras.push(o);
-      }
-    });
-    extras.forEach(o => scene.remove(o));
-    sceneHistory.length = 0;
-
-    // ── COLORS ───────────────────────────────────────────
-    const C_FLOOR  = 0x7a5535;
-    const C_DIRT2  = 0x5c3d22;
-    const C_ROCK1  = 0x3a2510;
-    const C_ROCK2  = 0x5c3d22;
-    const C_ROCK3  = 0x7a5535;
-    const C_SLATE  = 0x3d342a;
-    const C_STRAT1 = 0x4a3018;
-    const C_STRAT2 = 0x8a6040;
-    const C_STRAT3 = 0x6b4a28;
-
-    // ── SINGLE FLAT GROUND ───────────────────────────────
-    // ONE PlaneGeometry — no overlap, no z-fighting
-    const GROUND_SIZE = 1400;
-    const groundMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
-      new THREE.MeshStandardMaterial({ color: C_FLOOR, roughness: 1.0 })
-    );
-    groundMesh.rotation.x = -Math.PI / 2;
-    groundMesh.position.y = 0;
-    groundMesh.receiveShadow = true;
-    groundMesh.userData.isGround = true;
-    scene.add(groundMesh);
-    // Register as engine ground so future 'clear' removes it correctly
-    currentGround = groundMesh;
-    window._currentGround = groundMesh;
-
-    // ── QUARRY CLIFF WALLS ────────────────────────────────
-    const PIT_W = 440;
-    const PIT_D = 400;
-    const WALL_H = 90;
-    const WALL_T = 30;
-
-    function buildCliffWall(cx, cz, wallWidth, rotY) {
-      const group = new THREE.Group();
-      const strata = [
-        { yBot: 0,  h: 14, c: C_ROCK1 },
-        { yBot: 14, h: 7,  c: C_STRAT1 },
-        { yBot: 21, h: 18, c: C_ROCK2 },
-        { yBot: 39, h: 5,  c: C_STRAT2 },
-        { yBot: 44, h: 20, c: C_STRAT3 },
-        { yBot: 64, h: 6,  c: C_SLATE },
-        { yBot: 70, h: 20, c: C_ROCK3 },
-      ];
-      strata.forEach(s => {
-        const seg = new THREE.Mesh(
-          new THREE.BoxGeometry(wallWidth, s.h, WALL_T),
-          new THREE.MeshStandardMaterial({ color: s.c, roughness: 1.0, flatShading: true })
-        );
-        seg.position.y = s.yBot + s.h / 2;
-        seg.castShadow = true; seg.receiveShadow = true;
-        group.add(seg);
-        // Rock debris ledge at each strata break
-        if (s.yBot > 0) {
-          const ledge = new THREE.Mesh(
-            new THREE.BoxGeometry(wallWidth + 8, 2, WALL_T + 12),
-            new THREE.MeshStandardMaterial({ color: s.c, roughness: 1.0 })
-          );
-          ledge.position.set(0, s.yBot + 1, 4);
-          ledge.castShadow = true;
-          group.add(ledge);
-        }
-      });
-      // Cap (ground above wall)
-      const cap = new THREE.Mesh(
-        new THREE.BoxGeometry(wallWidth + 20, 12, WALL_T + 60),
-        new THREE.MeshStandardMaterial({ color: C_FLOOR, roughness: 1.0 })
-      );
-      cap.position.set(0, WALL_H + 6, WALL_T / 2 + 30);
-      group.add(cap);
-      group.position.set(cx, 0, cz);
-      group.rotation.y = rotY;
-      scene.add(group);
-    }
-
-    buildCliffWall(0,        -PIT_D/2, PIT_W + 60, 0);
-    buildCliffWall(0,         PIT_D/2, PIT_W + 60, Math.PI);
-    buildCliffWall(-PIT_W/2, 0,        PIT_D,       Math.PI/2);
-    buildCliffWall( PIT_W/2, 0,        PIT_D,      -Math.PI/2);
-
-    // Corner fills
-    [[-PIT_W/2,-PIT_D/2],[PIT_W/2,-PIT_D/2],[-PIT_W/2,PIT_D/2],[PIT_W/2,PIT_D/2]].forEach(([cx,cz]) => {
-      const c = new THREE.Mesh(
-        new THREE.BoxGeometry(70, WALL_H + 10, 70),
-        new THREE.MeshStandardMaterial({ color: C_ROCK2, roughness: 1.0 })
-      );
-      c.position.set(cx, WALL_H/2, cz);
-      c.castShadow = true; scene.add(c);
-    });
-
-    // ── LIGHTING ────────────────────────────────────────
-    // Add fresh lights (scene was fully cleared)
-    const sun = new THREE.DirectionalLight(0xffe0a0, 3.5);
-    sun.position.set(200, 350, -100);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
-    sun.shadow.camera.left = -800; sun.shadow.camera.right = 800;
-    sun.shadow.camera.top  =  800; sun.shadow.camera.bottom = -800;
-    sun.shadow.camera.far  = 2000; sun.shadow.bias = -0.0003;
-    scene.add(sun);
-    const amb = new THREE.AmbientLight(0xb88850, 0.35);
-    scene.add(amb);
-    renderer.shadowMap.enabled = true;
-
-    // Warm African dust haze
-    scene.fog = new THREE.FogExp2(0xc0945a, 0.0010);
-    renderer.setClearColor(0x8aa8cc, 1);
-
-    // ── QUARRY ASSET CLUSTERS ────────────────────────────
-    showToast('✅ Walls built — loading rocks...');
-
-    const waitForAliases = (cb) => {
-      if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
-      setTimeout(() => waitForAliases(cb), 200);
-    };
-
-    waitForAliases((aliases) => {
-      const items = Object.entries(aliases)
-        .filter(([k]) => k.startsWith('quarry_') && /\d+$/.test(k))
-        .sort(([a],[b]) => a.localeCompare(b));
-
-      if (!items.length) { showToast('⚠ No quarry assets found'); return; }
-
-      // 14 clusters — against walls and on the floor
-      const clusters = [
-        { cx:  -60, cz: -PIT_D/2+40, n:6, sMin:14, sMax:24 },
-        { cx:   80, cz: -PIT_D/2+38, n:5, sMin:12, sMax:20 },
-        { cx:  180, cz: -PIT_D/2+42, n:4, sMin:10, sMax:18 },
-        { cx: -160, cz: -PIT_D/2+36, n:4, sMin:12, sMax:22 },
-        { cx: -100, cz:  PIT_D/2-42, n:6, sMin:14, sMax:24 },
-        { cx:   60, cz:  PIT_D/2-38, n:5, sMin:12, sMax:20 },
-        { cx:  170, cz:  PIT_D/2-40, n:4, sMin:10, sMax:18 },
-        { cx:  PIT_W/2-42, cz:  -60, n:5, sMin:12, sMax:22 },
-        { cx:  PIT_W/2-38, cz:   80, n:4, sMin:10, sMax:18 },
-        { cx: -PIT_W/2+42, cz:  -40, n:5, sMin:12, sMax:20 },
-        { cx: -PIT_W/2+38, cz:   80, n:4, sMin:10, sMax:18 },
-        { cx:    0, cz:   40, n:7, sMin:8, sMax:16 },
-        { cx:  120, cz:  -80, n:5, sMin:8, sMax:14 },
-        { cx: -140, cz:   90, n:5, sMin:8, sMax:14 },
-      ];
-
-      let idx = 0, delay = 0;
-      clusters.forEach(cl => {
-        for (let i = 0; i < cl.n; i++) {
-          const [, relPath] = items[idx % items.length]; idx++;
-          const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
-          const tScale = cl.sMin + Math.random() * (cl.sMax - cl.sMin);
-          const ang = (i / cl.n) * Math.PI * 2 + Math.random();
-          const dist = 1.5 + Math.random() * 4; // tight cluster
-          const rx = cl.cx + Math.cos(ang) * dist;
-          const rz = cl.cz + Math.sin(ang) * dist;
-          setTimeout(() => {
-            gltfLoader.load(fullPath, (gltf) => {
-              const m = gltf.scene;
-              m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-              const box = new THREE.Box3().setFromObject(m);
-              const dim = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).y, box.getSize(new THREE.Vector3()).z, 0.01);
-              m.scale.setScalar(tScale / dim);
-              const b2 = new THREE.Box3().setFromObject(m);
-              m.position.set(rx, -b2.min.y, rz); // sit on y=0
-              m.rotation.y = Math.random() * Math.PI * 2;
-              m.userData.isPlaced = true;
-              scene.add(m); objects.push(m);
-            }, null, () => {});
-          }, delay);
-          delay += 80;
-        }
-      });
-
-      setTimeout(() => {
-        showToast('✅ Quarry complete! Building mine cave...');
-        const caveInfo = buildMineInterior();
-        window._quarryCaveInfo = caveInfo;
-        const waitMine = (cb) => {
-          if (window._fabAliases && Object.keys(window._fabAliases).length > 100) { cb(window._fabAliases); return; }
-          setTimeout(() => waitMine(cb), 200);
-        };
-        waitMine((al) => { populateMineAssets(caveInfo, al); showToast('⛏ Mine cave ready — "enter mine" to explore!'); });
-      }, delay + 400);
-    });
-
-    // ── SPARSE TREES ON RIM ─────────────────────────────
-    for (let i = 0; i < 40; i++) {
-      const side = i % 4;
-      let tx, tz;
-      const spread = 80;
-      if (side===0) { tx=(Math.random()-0.5)*PIT_W; tz=-PIT_D/2-20-Math.random()*spread; }
-      else if (side===1) { tx=(Math.random()-0.5)*PIT_W; tz= PIT_D/2+20+Math.random()*spread; }
-      else if (side===2) { tx=-PIT_W/2-20-Math.random()*spread; tz=(Math.random()-0.5)*PIT_D; }
-      else              { tx= PIT_W/2+20+Math.random()*spread; tz=(Math.random()-0.5)*PIT_D; }
-      const h = 3 + Math.random() * 5;
-      const tg = new THREE.Group();
-      tg.add(Object.assign(
-        new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.22,h,5),
-          new THREE.MeshStandardMaterial({color:0x3d2510,roughness:1.0})),
-        {position:new THREE.Vector3(0,h/2,0)}
-      ));
-      for (let b = 0; b < 3; b++) {
-        const ba = (b/3)*Math.PI*2;
-        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.5+Math.random()*0.5,5,3),
-          new THREE.MeshStandardMaterial({color:0x3a5515,roughness:1.0,flatShading:true}));
-        leaf.position.set(Math.cos(ba)*(1.2+Math.random()), h+Math.random()*0.5, Math.sin(ba)*(1.2+Math.random()));
-        tg.add(leaf);
-      }
-      tg.position.set(tx, WALL_H, tz);
-      scene.add(tg);
-    }
-
-    // ── CAMERA — ground level ────────────────────────────
-    if (window._cam) {
-      window._cam.position.set(-80, 10, -20);
-      window._cam.lookAt(80, 8, 60);
-    }
-    if (window._ctrl) {
-      window._ctrl.target.set(80, 8, 60);
-      window._ctrl.update();
-    }
-
-  } catch(err) {
-    console.error('[QUARRY]', err);
-    showToast('❌ ' + err.message);
-  }
-}
-window.buildQuarryWorld = buildQuarryWorld;
-
-
-
-// ============================================================
-// CITY WORLD v2 — Downtown + Residential + AI Traffic
-// ============================================================
-async function buildCityWorld() {
-  try {
-    showToast('🏙 Building City World...');
-
-    // ── FULL CLEAR ────────────────────────────────────────
-    for (let i = objects.length - 1; i >= 0; i--) { scene.remove(objects[i]); objects.splice(i, 1); }
-    if (typeof currentGround !== 'undefined' && currentGround) {
-      scene.remove(currentGround);
-      if (currentGround.geometry) currentGround.geometry.dispose();
-      if (currentGround.material) currentGround.material.dispose();
-      currentGround = null; window._currentGround = null;
-    }
-    if (typeof terrainMesh !== 'undefined' && terrainMesh) { scene.remove(terrainMesh); terrainMesh = null; }
-    clearDrivingCars();
-    if (window._waterZones) window._waterZones.length = 0;
-    window._lakeAnimators = [];
-    window._cityCarUpdate = null;
-    scene.fog = null;
-    const extras = [];
-    scene.children.forEach(o => { if (!o.isLight && !o.isCamera) extras.push(o); });
-    extras.forEach(o => scene.remove(o));
-    if (window.npcController) window.npcController.npcs.length = 0;
-
-    // ── GRID CONFIG ───────────────────────────────────────
-    const BLOCK  = 64;   // plot width/depth
-    const ROAD   = 16;   // road width
-    const STEP   = BLOCK + ROAD;   // 80 per cell
-    const COLS   = 5;
-    const HALF   = (COLS - 1) / 2; // 2
-
-    // Road centerline X/Z positions
-    const rp = [];
-    for (let i = 0; i <= COLS; i++) rp.push(-HALF * STEP - ROAD/2 + i * STEP);
-    // Block center X/Z positions (inside each cell, away from roads)
-    const bp = [];
-    for (let i = 0; i < COLS; i++) bp.push(rp[i] + ROAD/2 + BLOCK/2);
-
-    const zone = (c, r) => {
-      const dc = Math.abs(c - HALF), dr = Math.abs(r - HALF);
-      if (dc <= 1 && dr <= 1) return 'downtown';
-      if (dc <= 2 && dr <= 2) return 'commercial';
-      return 'residential';
-    };
-
-    // ── GROUND ───────────────────────────────────────────
-    const GSIZE = COLS * STEP + ROAD + 500;
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(GSIZE, GSIZE),
-      new THREE.MeshStandardMaterial({ color: 0x4a7040, roughness: 1.0 })
-    );
-    ground.rotation.x = -Math.PI/2; ground.position.y = 0;
-    ground.receiveShadow = true; ground.userData.isGround = true;
-    scene.add(ground);
-    currentGround = ground; window._currentGround = ground;
-
-    // ── ROAD SURFACE ─────────────────────────────────────
-    const roadMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.95 });
-    const swMat    = new THREE.MeshStandardMaterial({ color: 0x999888, roughness: 1.0 });
-    const lineMat  = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, emissive: 0x444444 });
-    const ylwMat   = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 1.0 });
-
-    const CITY_SPAN = COLS * STEP + ROAD;
-
-    // Horizontal roads (E-W, at each rp[j] Z)
-    rp.forEach(rz => {
-      const road = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.12, ROAD), roadMat);
-      road.position.set(0, 0.06, rz); road.receiveShadow = true; scene.add(road);
-      // Sidewalks N and S
-      [-1,1].forEach(side => {
-        const sw = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.2, 3.5), swMat);
-        sw.position.set(0, 0.1, rz + side * (ROAD/2 + 1.75)); scene.add(sw);
-      });
-      // Yellow center line
-      const cl = new THREE.Mesh(new THREE.BoxGeometry(CITY_SPAN, 0.02, 0.3), ylwMat);
-      cl.position.set(0, 0.14, rz); scene.add(cl);
-      // White lane dashes
-      for (let d = 0; d < 16; d++) {
-        const dash = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, 0.25), lineMat);
-        dash.position.set(-CITY_SPAN/2 + d * (CITY_SPAN/16) + CITY_SPAN/32, 0.14, rz + ROAD/4); scene.add(dash);
-        const dash2 = dash.clone(); dash2.position.z = rz - ROAD/4; scene.add(dash2);
-      }
-    });
-
-    // Vertical roads (N-S, at each rp[i] X)
-    rp.forEach(rx => {
-      const road = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.12, CITY_SPAN), roadMat);
-      road.position.set(rx, 0.06, 0); road.receiveShadow = true; scene.add(road);
-      [-1,1].forEach(side => {
-        const sw = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.2, CITY_SPAN), swMat);
-        sw.position.set(rx + side * (ROAD/2 + 1.75), 0.1, 0); scene.add(sw);
-      });
-      const cl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, CITY_SPAN), ylwMat);
-      cl.position.set(rx, 0.14, 0); scene.add(cl);
-    });
-
-    // Intersection asphalt patches + crosswalks
-    rp.forEach(rx => rp.forEach(rz => {
-      const ix = new THREE.Mesh(new THREE.BoxGeometry(ROAD, 0.13, ROAD), roadMat);
-      ix.position.set(rx, 0.065, rz); scene.add(ix);
-      // 4 crosswalks (one per side of intersection)
-      [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz]) => {
-        for (let s = 0; s < 3; s++) {
-          const stripe = new THREE.Mesh(new THREE.BoxGeometry(
-            dz !== 0 ? 0.9 : ROAD*0.7,
-            0.01,
-            dz !== 0 ? ROAD*0.7 : 0.9
-          ), lineMat);
-          stripe.position.set(
-            rx + dx*(ROAD/2+0.5) + (dz!==0 ? (s-1)*1.8 : 0),
-            0.14,
-            rz + dz*(ROAD/2+0.5) + (dx!==0 ? (s-1)*1.8 : 0)
-          );
-          scene.add(stripe);
-        }
-      });
-    }));
-
-    showToast('✅ Roads done — placing buildings...');
-
-    // ── BUILDINGS — STRICTLY INSIDE BLOCK BOUNDARIES ─────
-    // Max building footprint = BLOCK - 10 (5 unit margin from road on each side)
-    const MARGIN = 10; // keep buildings this far from road edge
-    const MAX_FOOTPRINT = BLOCK - MARGIN * 2; // 44 units max
-
-    const DT_MODELS   = ['kenney_city/building-skyscraper-a','kenney_city/building-skyscraper-b','kenney_city/building-skyscraper-c','kenney_city/building-skyscraper-d','kenney_city/building-skyscraper-e'];
-    const COMM_MODELS = ['kenney_city/building-a','kenney_city/building-b','kenney_city/building-c','kenney_city/building-d','kenney_city/building-e','kenney_city/building-f','kenney_city/building-g','kenney_city/building-h'];
-    const COMM2_MODELS= ['kenney_city/building-i','kenney_city/building-j','kenney_city/building-k','kenney_city/building-l','kenney_city/building-m','kenney_city/building-n'];
-
-    function placeBuilding(modelPath, bx, bz, targetH, maxFootprint, rotY) {
-      return new Promise(resolve => {
-        gltfLoader.load('models/' + modelPath + '.glb', (gltf) => {
-          const m = gltf.scene;
-          m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-          const box = new THREE.Box3().setFromObject(m);
-          const s3 = box.getSize(new THREE.Vector3());
-          const maxDim = Math.max(s3.x, s3.z, 0.01);
-          // Scale by HEIGHT target first
-          let sc = targetH / (s3.y || 1);
-          // Clamp so footprint doesn't exceed maxFootprint
-          const scaledFP = maxDim * sc;
-          if (scaledFP > maxFootprint) sc = maxFootprint / maxDim;
-          m.scale.setScalar(sc);
-          const b2 = new THREE.Box3().setFromObject(m);
-          m.position.set(bx, -b2.min.y, bz);
-          m.rotation.y = rotY || 0;
-          m.userData.isBuilding = true;
-          m.userData.canEnter = true;
-          m.userData.buildingId = modelPath;
-          scene.add(m); objects.push(m);
-          resolve(m);
-        }, null, () => resolve(null));
-      });
-    }
-
-    let delay = 0;
-    for (let c = 0; c < COLS; c++) {
-      for (let r = 0; r < COLS; r++) {
-        const bx = bp[c], bz = bp[r];
-        const z = zone(c, r);
-        const rot = Math.floor(Math.random() * 4) * Math.PI/2;
-
-        if (z === 'downtown') {
-          // 1 skyscraper per downtown block — centered, never touching road
-          const mdl = DT_MODELS[(c*COLS+r) % DT_MODELS.length];
-          setTimeout(() => placeBuilding(mdl, bx, bz, 55 + Math.random()*35, 50, rot), delay);
-          delay += 50;
-        } else if (z === 'commercial') {
-          const mdl = COMM_MODELS[(c*COLS+r) % COMM_MODELS.length];
-          setTimeout(() => placeBuilding(mdl, bx, bz, 20 + Math.random()*12, MAX_FOOTPRINT, rot), delay);
-          delay += 50;
-        } else {
-          // Residential — house + yard
-          setTimeout(() => {
-            // House (front half of block)
-            try {
-              const h = createModernHouse({ floors: Math.random()>0.5?2:1 });
-              h.traverse(c => { if (c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });
-              const hb = new THREE.Box3().setFromObject(h);
-              // Place in front-left of block with margin
-              h.position.set(bx - 8, -hb.min.y, bz - 6);
-              h.userData.isBuilding = true; h.userData.canEnter = true; h.userData.isHouse = true;
-              scene.add(h); objects.push(h);
-            } catch(e) {}
-
-            // Lawn
-            const lawn = new THREE.Mesh(
-              new THREE.PlaneGeometry(BLOCK-2, BLOCK-2),
-              new THREE.MeshStandardMaterial({ color: 0x3d7530, roughness: 1.0 })
-            );
-            lawn.rotation.x = -Math.PI/2; lawn.position.set(bx, 0.04, bz); scene.add(lawn);
-
-            // Fence (4 sides, with front gate gap)
-            const hs = (BLOCK-2)/2;
-            const fMat = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.9 });
-            // Side fences (no gap)
-            [-hs, hs].forEach(fx => {
-              const f = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.4, BLOCK-2), fMat);
-              f.position.set(bx+fx, 0.9, bz); scene.add(f);
-            });
-            // Back fence
-            const fb = new THREE.Mesh(new THREE.BoxGeometry(BLOCK-2, 1.4, 0.35), fMat);
-            fb.position.set(bx, 0.9, bz+hs); scene.add(fb);
-            // Front fence (two halves with gate gap)
-            [-1,1].forEach(side => {
-              const ff = new THREE.Mesh(new THREE.BoxGeometry(hs*0.7, 1.4, 0.35), fMat);
-              ff.position.set(bx + side*(hs*0.35 + 3), 0.9, bz-hs); scene.add(ff);
-            });
-
-            // Pool (back yard)
-            const px = bx + 10, pz = bz + 18;
-            const poolBorder = new THREE.Mesh(
-              new THREE.BoxGeometry(11, 0.4, 17),
-              new THREE.MeshStandardMaterial({ color: 0xddd8c8, roughness: 0.8 })
-            );
-            poolBorder.position.set(px, 0.2, pz); scene.add(poolBorder);
-            const poolWater = new THREE.Mesh(
-              new THREE.BoxGeometry(9.4, 0.5, 15.4),
-              new THREE.MeshStandardMaterial({ color: 0x1a9ad4, transparent:true, opacity:0.88, roughness:0.08 })
-            );
-            poolWater.position.set(px, 0.25, pz); scene.add(poolWater);
-            // Pool ladder
-            const ladder = new THREE.Mesh(
-              new THREE.BoxGeometry(0.15, 1.5, 0.15),
-              new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness:0.8 })
-            );
-            ladder.position.set(px+4.5, 0.75, pz); scene.add(ladder);
-
-            // Parked car in driveway
-            const driveX = bx - 22, driveZ = bz - hs + 6;
-            const parkedColors = [0x334488, 0xaa3322, 0x228844, 0xcccccc, 0x111111];
-            const parkedCar = new THREE.Group();
-            parkedCar.userData.isDrivable = true;
-            parkedCar.userData.isParked = true;
-            const pcBody = new THREE.Mesh(new THREE.BoxGeometry(2,1,4),
-              new THREE.MeshStandardMaterial({color: parkedColors[Math.floor(Math.random()*parkedColors.length)], roughness:0.3, metalness:0.6}));
-            pcBody.position.y = 0.7; pcBody.castShadow = true; parkedCar.add(pcBody);
-            const pcCabin = new THREE.Mesh(new THREE.BoxGeometry(1.7,0.7,2.2),
-              new THREE.MeshStandardMaterial({color: parkedColors[0], roughness:0.3, metalness:0.6}));
-            pcCabin.position.set(0,1.45,0.2); parkedCar.add(pcCabin);
-            const pcWMat = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
-            [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz])=>{
-              const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.18,10),pcWMat);
-              w.rotation.z=Math.PI/2; w.position.set(wx,wy,wz); parkedCar.add(w);
-            });
-            parkedCar.position.set(driveX, 0, driveZ);
-            parkedCar.rotation.y = Math.PI/2;
-            scene.add(parkedCar); objects.push(parkedCar);
-
-            // Driveway (concrete strip)
-            const dw = new THREE.Mesh(
-              new THREE.PlaneGeometry(6, BLOCK*0.4),
-              new THREE.MeshStandardMaterial({color:0x666655, roughness:1.0})
-            );
-            dw.rotation.x=-Math.PI/2; dw.position.set(bx-22, 0.05, bz-hs/2); scene.add(dw);
-
-          }, delay);
-          delay += 80;
-        }
-      }
-    }
-
-    showToast('✅ Buildings placed — adding furniture & street props...');
-
-    // ── FURNITURE INSIDE RESIDENTIAL HOMES ─────────────────
-    setTimeout(() => {
-      for (let c = 0; c < COLS; c++) {
-        for (let r = 0; r < COLS; r++) {
-          if (zone(c,r) !== 'residential') continue;
-          const hx = bp[c] - 8, hz = bp[r] - 6;
-          // Living room — couch, TV, coffee table
-          const furniture = [
-            { alias: 'sofa',         ox: -3, oz:  3, ry: 0 },
-            { alias: 'television',   ox:  5, oz:  3, ry: Math.PI },
-            { alias: 'coffee_table', ox:  1, oz:  3, ry: 0 },
-            { alias: 'armchair',     ox: -3, oz:  6, ry: Math.PI/2 },
-          ];
-          furniture.forEach(f => {
-            const key = GLB_MODELS[f.alias] || f.alias;
-            gltfLoader.load('models/' + key + '.glb', (gltf) => {
-              const m = gltf.scene;
-              m.traverse(c => { if (c.isMesh) c.castShadow = true; });
-              const box = new THREE.Box3().setFromObject(m);
-              const h = box.getSize(new THREE.Vector3()).y;
-              m.scale.setScalar(1.5 / (h || 1));
-              const b2 = new THREE.Box3().setFromObject(m);
-              m.position.set(hx + f.ox, -b2.min.y + 0.5, hz + f.oz);
-              m.rotation.y = f.ry;
-              m.userData.isFurniture = true;
-              scene.add(m); objects.push(m);
-            }, null, () => {
-              // Fallback box furniture
-              const colors = {sofa:0x4466aa, television:0x111111, coffee_table:0x885533, armchair:0x664422};
-              const dims = {sofa:[2.2,0.7,1],television:[1.2,0.8,0.1],coffee_table:[1.2,0.4,0.7],armchair:[1,0.7,0.9]};
-              const fb = new THREE.Mesh(
-                new THREE.BoxGeometry(...(dims[f.alias]||[1,0.8,1])),
-                new THREE.MeshStandardMaterial({color:colors[f.alias]||0x887744, roughness:0.8})
-              );
-              fb.position.set(hx+f.ox, 0.5, hz+f.oz);
-              fb.rotation.y = f.ry; scene.add(fb);
-            });
-          });
-        }
-      }
-    }, delay + 200);
-
-    // ── STREET LIGHTS & STOP SIGNS ────────────────────────
-    setTimeout(() => {
-      rp.forEach((lx, i) => rp.forEach((lz, j) => {
-        // Lamp post (each intersection corner)
-        [[1,1],[-1,1],[1,-1],[-1,-1]].forEach(([sx,sz], k) => {
-          if (k > 0) return; // just one per intersection
-          const post = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.12, 0.18, 8, 6),
-            new THREE.MeshStandardMaterial({color:0x555566, metalness:0.5, roughness:0.6})
-          );
-          post.position.set(lx + sx*(ROAD/2+2.5), 4, lz + sz*(ROAD/2+2.5));
-          post.castShadow = true; scene.add(post);
-          const head = new THREE.Mesh(new THREE.BoxGeometry(2.5,0.3,0.8),
-            new THREE.MeshStandardMaterial({color:0x333344, metalness:0.7}));
-          head.position.set(lx + sx*(ROAD/2+2.5) + sx*0.8, 8.1, lz + sz*(ROAD/2+2.5));
-          scene.add(head);
-          const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.35,8,6),
-            new THREE.MeshStandardMaterial({color:0xfffce0, emissive:0xffee88, emissiveIntensity:2}));
-          bulb.position.set(lx + sx*(ROAD/2+2.5) + sx*1.2, 8, lz + sz*(ROAD/2+2.5));
-          scene.add(bulb);
-          // Actual point light
-          const pl = new THREE.PointLight(0xfff8d0, 0.7, 28);
-          pl.position.set(lx + sx*(ROAD/2+2.5), 8, lz + sz*(ROAD/2+2.5));
-          scene.add(pl);
-        });
-
-        // Traffic light pole
-        const tlPost = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.12,5,6),
-          new THREE.MeshStandardMaterial({color:0x444444, metalness:0.5}));
-        tlPost.position.set(lx + ROAD/2+2, 2.5, lz - ROAD/2-2);
-        scene.add(tlPost);
-        const tlBox = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.8,0.4),
-          new THREE.MeshStandardMaterial({color:0x222222}));
-        tlBox.position.set(lx + ROAD/2+2, 5.4, lz - ROAD/2-2);
-        scene.add(tlBox);
-        [[0xee2222,0],[0xeeee22,0.65],[0x22ee22,1.3]].forEach(([col,dy]) => {
-          const light = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,6),
-            new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity:dy===0?1.5:0.3}));
-          light.position.set(lx + ROAD/2+2, 6.2-dy, lz - ROAD/2-2);
-          scene.add(light);
-        });
-
-        // Stop sign (one per intersection)
-        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,3,6),
-          new THREE.MeshStandardMaterial({color:0x999999,metalness:0.4}));
-        sp.position.set(lx - ROAD/2-1.8, 1.5, lz - ROAD/2-1.8);
-        scene.add(sp);
-        const ss = new THREE.Mesh(new THREE.CylinderGeometry(0.65,0.65,0.08,8),
-          new THREE.MeshStandardMaterial({color:0xcc1111}));
-        ss.position.set(lx - ROAD/2-1.8, 3.1, lz - ROAD/2-1.8);
-        ss.rotation.y = Math.PI/8; scene.add(ss);
-      }));
-    }, delay + 300);
-
-    // ── AI CARS ON ROAD CENTERLINES ───────────────────────
-    setTimeout(() => {
-      showToast('🚗 Spawning traffic...');
-      window._cityCarUpdate = null;
-
-      // Routes defined EXACTLY on road centerlines (rp values)
-      const carRoutes = [
-        // Outer loop CW: top road → right road → bottom → left → back
-        [new THREE.Vector3(rp[0],0.3,rp[0]), new THREE.Vector3(rp[COLS],0.3,rp[0]),
-         new THREE.Vector3(rp[COLS],0.3,rp[COLS]), new THREE.Vector3(rp[0],0.3,rp[COLS])],
-        // Inner downtown loop CCW
-        [new THREE.Vector3(rp[1],0.3,rp[1]), new THREE.Vector3(rp[1],0.3,rp[COLS-1]),
-         new THREE.Vector3(rp[COLS-1],0.3,rp[COLS-1]), new THREE.Vector3(rp[COLS-1],0.3,rp[1])],
-        // E-W along rp[2] (center horizontal)
-        [new THREE.Vector3(rp[0],0.3,rp[2]), new THREE.Vector3(rp[COLS],0.3,rp[2]),
-         new THREE.Vector3(rp[COLS],0.3,rp[2]+ROAD*0.4), new THREE.Vector3(rp[0],0.3,rp[2]+ROAD*0.4)],
-        // N-S along rp[2] (center vertical)
-        [new THREE.Vector3(rp[2],0.3,rp[0]), new THREE.Vector3(rp[2],0.3,rp[COLS]),
-         new THREE.Vector3(rp[2]-ROAD*0.4,0.3,rp[COLS]), new THREE.Vector3(rp[2]-ROAD*0.4,0.3,rp[0])],
-        // Mix: corner route
-        [new THREE.Vector3(rp[1],0.3,rp[0]), new THREE.Vector3(rp[1],0.3,rp[2]),
-         new THREE.Vector3(rp[3],0.3,rp[2]), new THREE.Vector3(rp[3],0.3,rp[COLS])],
-        // Residential route
-        [new THREE.Vector3(rp[0],0.3,rp[1]), new THREE.Vector3(rp[1],0.3,rp[1]),
-         new THREE.Vector3(rp[1],0.3,rp[COLS-1]), new THREE.Vector3(rp[0],0.3,rp[COLS-1])],
-      ];
-
-      const carMeshes = [
-        'models/kenney_cars/sedan.glb','models/kenney_cars/taxi.glb',
-        'models/kenney_cars/police.glb','models/kenney_cars/suv.glb',
-        'models/kenney_cars/van.glb','models/kenney_cars/sedan-sports.glb',
-        'models/kenney_cars/hatchback-sports.glb','models/kenney_cars/delivery.glb',
-        'models/kenney_cars/ambulance.glb',
-      ];
-      const carCols = [0x2244cc,0xffcc00,0x112299,0x333333,0xffffff,0xcc3322,0x226644,0x884411,0xee3311];
-
-      const trafficCars = [];
-      for (let ci = 0; ci < 18; ci++) {
-        const route = carRoutes[ci % carRoutes.length];
-        const wp0 = route[Math.floor(Math.random() * route.length)].clone();
-        // Offset within lane (not center-line exactly)
-        const laneOffset = (Math.random() - 0.5) * 4;
-
-        const carGroup = new THREE.Group();
-        carGroup.userData.waypointRoute = route;
-        carGroup.userData.waypointIdx = Math.floor(Math.random() * route.length);
-        carGroup.userData.speed = 9 + Math.random() * 10;
-        carGroup.userData.laneOffset = laneOffset;
-        carGroup.userData.isTrafficCar = true;
-
-        // Placeholder box car
-        const cc = carCols[ci % carCols.length];
-        const bm = new THREE.MeshStandardMaterial({color:cc, roughness:0.3, metalness:0.6});
-        const body = new THREE.Mesh(new THREE.BoxGeometry(2,1.0,4), bm);
-        body.position.y=0.7; body.castShadow=true; carGroup.add(body);
-        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7,0.7,2.2), bm);
-        cab.position.set(0,1.45,0.2); carGroup.add(cab);
-        const wm = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
-        [[-0.85,0.3,-1.3],[0.85,0.3,-1.3],[-0.85,0.3,1.3],[0.85,0.3,1.3]].forEach(([wx,wy,wz])=>{
-          const w=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.18,10),wm);
-          w.rotation.z=Math.PI/2; w.position.set(wx,wy,wz); carGroup.add(w);
-        });
-
-        carGroup.position.copy(wp0);
-        carGroup.position.x += laneOffset;
-        scene.add(carGroup); objects.push(carGroup);
-        trafficCars.push(carGroup);
-
-        // Load real GLB async
-        const path = carMeshes[ci % carMeshes.length];
-        gltfLoader.load(path, (gltf) => {
-          const glb = gltf.scene;
-          const cb = new THREE.Box3().setFromObject(glb);
-          glb.scale.setScalar(4.5 / Math.max(cb.getSize(new THREE.Vector3()).z, 0.1));
-          const cb2 = new THREE.Box3().setFromObject(glb);
-          glb.position.y = -cb2.min.y;
-          glb.traverse(c => { if (c.isMesh) c.castShadow=true; });
-          while (carGroup.children.length) carGroup.remove(carGroup.children[0]);
-          carGroup.add(glb);
-        }, null, () => {});
-      }
-
-      // Car update function — pure waypoint following on road centerlines
-      window._cityCarUpdate = (dt) => {
-        trafficCars.forEach(car => {
-          const route = car.userData.waypointRoute;
-          const idx = car.userData.waypointIdx;
-          const target = route[idx].clone();
-          target.x += car.userData.laneOffset;
-
-          const dx = target.x - car.position.x;
-          const dz = target.z - car.position.z;
-          const dist = Math.sqrt(dx*dx + dz*dz);
-
-          if (dist < 2) {
-            car.userData.waypointIdx = (idx + 1) % route.length;
-          } else {
-            const spd = car.userData.speed * dt;
-            car.position.x += (dx/dist) * spd;
-            car.position.z += (dz/dist) * spd;
-            car.position.y = 0.3;
-            // Smooth turn
-            const ta = Math.atan2(dx, dz);
-            let diff = ta - car.rotation.y;
-            while (diff > Math.PI) diff -= Math.PI*2;
-            while (diff < -Math.PI) diff += Math.PI*2;
-            car.rotation.y += diff * Math.min(1, dt*6);
-          }
-        });
-      };
-
-      showToast('✅ 18 traffic cars on 6 road routes');
-    }, delay + 400);
-
-    // ── LIGHTING ────────────────────────────────────────
-    const sun = new THREE.DirectionalLight(0xfff5e0, 2.8);
-    sun.position.set(200, 400, 100);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(4096,4096);
-    sun.shadow.camera.left=-700; sun.shadow.camera.right=700;
-    sun.shadow.camera.top=700; sun.shadow.camera.bottom=-700;
-    sun.shadow.camera.far=2000; sun.shadow.bias=-0.0003;
-    scene.add(sun);
-    scene.add(new THREE.AmbientLight(0xd0e8ff, 0.55));
-    renderer.shadowMap.enabled = true;
-
-    scene.fog = new THREE.FogExp2(0xc8d8f0, 0.0006);
-    renderer.setClearColor(0x87ceeb, 1);
-
-    // ── CAMERA — downtown street view ────────────────────
-    if (window._cam) { window._cam.position.set(0,14,-90); window._cam.lookAt(0,10,0); }
-    if (window._ctrl) { window._ctrl.target.set(0,10,0); window._ctrl.update(); }
-
-    showToast('🏙 City loading — buildings & cars streaming in!');
-  } catch(err) {
-    console.error('[CITY]', err);
-    showToast('❌ ' + err.message);
-  }
-}
-window.buildCityWorld = buildCityWorld;
-
-// ============================================================
-// OLD MINE CAVE INTERIOR — inside the African Slate Quarry
-// ============================================================
-function buildMineInterior() {
-  const TUNNEL_W = 10;    // tunnel width
-  const TUNNEL_H = 8;     // tunnel height
-  const TUNNEL_L = 18;    // tunnel segment length
-  const WALL_C   = 0x2a1f14; // dark cave rock
-  const FLOOR_C  = 0x1e160e;
-  const CEIL_C   = 0x221a10;
-  const SUPPORT_C= 0x3d2810; // wood support beams
-
-  const caveMat    = new THREE.MeshStandardMaterial({ color: WALL_C, roughness: 1.0 });
-  const floorMat   = new THREE.MeshStandardMaterial({ color: FLOOR_C, roughness: 1.0 });
-  const ceilMat    = new THREE.MeshStandardMaterial({ color: CEIL_C, roughness: 1.0 });
-  const supportMat = new THREE.MeshStandardMaterial({ color: SUPPORT_C, roughness: 1.0 });
-
-  // Add a dim torch-like point light inside a tunnel segment
-  function addTorchLight(x, y, z, color=0xff8833, intensity=3, dist=18) {
-    const light = new THREE.PointLight(color, intensity, dist);
-    light.position.set(x, y, z);
-    light.castShadow = false;
-    scene.add(light);
-    // Torch visual (small glowing sphere)
-    const torch = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 6, 4),
-      new THREE.MeshStandardMaterial({ color: 0xffaa22, emissive: 0xff8800, emissiveIntensity: 3 })
-    );
-    torch.position.set(x, y - 0.4, z);
-    scene.add(torch);
-  }
-
-  // Build one tunnel segment (closed box with open ends)
-  function buildTunnelSeg(cx, cy, cz, length, angle, isChamber=false) {
-    const W = isChamber ? TUNNEL_W * 2.5 : TUNNEL_W;
-    const H = isChamber ? TUNNEL_H * 1.8 : TUNNEL_H;
-    const L = isChamber ? length * 1.5 : length;
-    const group = new THREE.Group();
-
-    // Floor
-    const floorSeg = new THREE.Mesh(new THREE.BoxGeometry(W, 0.6, L), floorMat.clone());
-    floorSeg.position.y = -H/2 + 0.3;
-    group.add(floorSeg);
-
-    // Ceiling with irregular bumps
-    const ceil = new THREE.Mesh(new THREE.BoxGeometry(W, 1.5, L), ceilMat.clone());
-    ceil.position.y = H/2 - 0.5;
-    group.add(ceil);
-
-    // Left wall
-    const wallL = new THREE.Mesh(new THREE.BoxGeometry(1.2, H, L), caveMat.clone());
-    wallL.position.x = -W/2 + 0.6;
-    group.add(wallL);
-
-    // Right wall
-    const wallR = new THREE.Mesh(new THREE.BoxGeometry(1.2, H, L), caveMat.clone());
-    wallR.position.x = W/2 - 0.6;
-    group.add(wallR);
-
-    // Back wall (closed end) — only for dead ends
-    if (!isChamber) {
-      const backWall = new THREE.Mesh(new THREE.BoxGeometry(W, H, 1.0), caveMat.clone());
-      backWall.position.z = L/2 - 0.5;
-      // Don't add back wall — tunnels connect
-    }
-
-    // Wood support beams every 5 units
-    const beamCount = Math.floor(L / 5);
-    for (let b = 0; b < beamCount; b++) {
-      const bz = -L/2 + 3 + b * 5;
-      // Left post
-      const postL = new THREE.Mesh(new THREE.BoxGeometry(0.4, H - 1, 0.4), supportMat);
-      postL.position.set(-W/2 + 1.8, 0, bz);
-      group.add(postL);
-      // Right post
-      const postR = new THREE.Mesh(new THREE.BoxGeometry(0.4, H - 1, 0.4), supportMat);
-      postR.position.set(W/2 - 1.8, 0, bz);
-      group.add(postR);
-      // Top crossbeam
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(W - 2.4, 0.5, 0.4), supportMat);
-      beam.position.set(0, H/2 - 1, bz);
-      group.add(beam);
-    }
-
-    // Torch lights
-    addTorchLight(cx + Math.cos(angle + Math.PI/2) * (W/2 - 2), cy + H/2 - 1.5,
-      cz + Math.sin(angle + Math.PI/2) * (L * 0.3));
-
-    group.position.set(cx, cy, cz);
-    group.rotation.y = angle;
-    group.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-    scene.add(group);
-    return group;
-  }
-
-  // ── CAVE ENTRANCE ─────────────────────────────────────────
-  // Carved into the quarry wall at the base — dark opening
-  const ENTRY_ANGLE = Math.PI * 0.7; // where on the quarry wall the entrance is
-  const WALL_BASE_R = 178; // at the base of the quarry wall
-  const entryX = Math.cos(ENTRY_ANGLE) * WALL_BASE_R;
-  const entryZ = Math.sin(ENTRY_ANGLE) * WALL_BASE_R;
-
-  // Dark archway entrance
-  const archMat = new THREE.MeshStandardMaterial({ color: 0x0d0a07, roughness: 1.0 });
-  const archGroup = new THREE.Group();
-
-  // Frame the entrance with dark rock
-  const archTop = new THREE.Mesh(new THREE.BoxGeometry(TUNNEL_W + 4, 2, 3), archMat);
-  archTop.position.y = TUNNEL_H / 2 + 1;
-  archGroup.add(archTop);
-  const archLeft = new THREE.Mesh(new THREE.BoxGeometry(2, TUNNEL_H + 2, 3), archMat);
-  archLeft.position.set(-(TUNNEL_W/2 + 1), 0, 0);
-  archGroup.add(archLeft);
-  const archRight = new THREE.Mesh(new THREE.BoxGeometry(2, TUNNEL_H + 2, 3), archMat);
-  archRight.position.set(TUNNEL_W/2 + 1, 0, 0);
-  archGroup.add(archRight);
-
-  // Darkness fill (so the opening looks deep/dark)
-  const darkFill = new THREE.Mesh(
-    new THREE.BoxGeometry(TUNNEL_W, TUNNEL_H, 1),
-    new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1.0 })
-  );
-  darkFill.position.z = 1.5;
-  archGroup.add(darkFill);
-
-  archGroup.position.set(entryX, TUNNEL_H / 2, entryZ);
-  archGroup.rotation.y = ENTRY_ANGLE + Math.PI;
-  scene.add(archGroup);
-
-  // Sign above entrance
-  const signMat = new THREE.MeshStandardMaterial({ color: 0x5a3a18, roughness: 1.0 });
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(8, 1.5, 0.3), signMat);
-  sign.position.set(entryX, TUNNEL_H + 3, entryZ);
-  sign.rotation.y = ENTRY_ANGLE + Math.PI;
-  scene.add(sign);
-
-  // ── TUNNEL NETWORK ────────────────────────────────────────
-  // Main corridor going inward (toward quarry center, underground)
-  const tunnelDir = ENTRY_ANGLE + Math.PI; // inward direction
-  const UNDERGROUND_Y = -TUNNEL_H / 2; // flush with ground
-
-  // Main shaft goes straight in
-  for (let i = 0; i < 5; i++) {
-    buildTunnelSeg(
-      entryX + Math.cos(tunnelDir) * (TUNNEL_L * i + TUNNEL_L/2),
-      UNDERGROUND_Y,
-      entryZ + Math.sin(tunnelDir) * (TUNNEL_L * i + TUNNEL_L/2),
-      TUNNEL_L, tunnelDir
-    );
-  }
-
-  // Chamber 1 — main cavern after 5 segments
-  const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
-  const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
-  buildTunnelSeg(chamber1X, UNDERGROUND_Y - 2, chamber1Z, TUNNEL_L * 2, tunnelDir, true);
-
-  // Left branch from chamber
-  const leftAngle = tunnelDir - Math.PI / 2.5;
-  for (let i = 0; i < 3; i++) {
-    buildTunnelSeg(
-      chamber1X + Math.cos(leftAngle) * (TUNNEL_L * i + TUNNEL_L/2),
-      UNDERGROUND_Y - 2,
-      chamber1Z + Math.sin(leftAngle) * (TUNNEL_L * i + TUNNEL_L/2),
-      TUNNEL_L, leftAngle
-    );
-  }
-
-  // Right branch from chamber
-  const rightAngle = tunnelDir + Math.PI / 2.5;
-  for (let i = 0; i < 4; i++) {
-    buildTunnelSeg(
-      chamber1X + Math.cos(rightAngle) * (TUNNEL_L * i + TUNNEL_L/2),
-      UNDERGROUND_Y - 2,
-      chamber1Z + Math.sin(rightAngle) * (TUNNEL_L * i + TUNNEL_L/2),
-      TUNNEL_L, rightAngle
-    );
-  }
-
-  // Deep shaft — goes further down into the earth
-  const deepAngle = tunnelDir - Math.PI / 8;
-  for (let i = 0; i < 3; i++) {
-    buildTunnelSeg(
-      chamber1X + Math.cos(deepAngle) * (TUNNEL_L * (i + 2)),
-      UNDERGROUND_Y - 2 - i * 3,
-      chamber1Z + Math.sin(deepAngle) * (TUNNEL_L * (i + 2)),
-      TUNNEL_L, deepAngle
-    );
-  }
-
-  // Chamber 2 — deeper, bigger
-  const chamber2X = chamber1X + Math.cos(deepAngle) * (TUNNEL_L * 5.5);
-  const chamber2Z = chamber1Z + Math.sin(deepAngle) * (TUNNEL_L * 5.5);
-  buildTunnelSeg(chamber2X, UNDERGROUND_Y - 8, chamber2Z, TUNNEL_L * 2.5, deepAngle, true);
-
-  // Ambient light for the cave (dim, cool)
-  const caveAmb = new THREE.AmbientLight(0x221a0a, 0.15);
-  scene.add(caveAmb);
-
-  console.log('[MINE] Cave interior built — entry at:', entryX.toFixed(0), entryZ.toFixed(0));
-  return { entryX, entryZ, entryAngle: ENTRY_ANGLE };
-}
-
-// Place Old Mine assets inside the cave tunnels
-function populateMineAssets(caveInfo, aliases) {
-  const { entryX, entryZ, entryAngle } = caveInfo;
-  const tunnelDir = entryAngle + Math.PI;
-  const UNDERGROUND_Y = -4;
-  const TUNNEL_L = 18;
-
-  const mineItems = Object.entries(aliases)
-    .filter(([k]) => k.startsWith('old_mine_') && /\d$/.test(k))
-    .sort(([a],[b]) => a.localeCompare(b));
-
-  mineItems.forEach(([alias, relPath], i) => {
-    const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
-    // Spread along the main corridor and branches
-    const seg = Math.floor(i / 3);
-    const side = (i % 3) - 1; // -1, 0, 1
-    const branchChoice = i % 5;
-    let bx, by, bz;
-    if (branchChoice < 2) {
-      // Main corridor
-      bx = entryX + Math.cos(tunnelDir) * (TUNNEL_L * (seg % 5) + 4);
-      bz = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * (seg % 5) + 4);
-      bx += Math.cos(tunnelDir + Math.PI/2) * side * 3;
-      bz += Math.sin(tunnelDir + Math.PI/2) * side * 3;
-      by = UNDERGROUND_Y;
-    } else if (branchChoice < 4) {
-      // Left branch
-      const la = tunnelDir - Math.PI / 2.5;
-      const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
-      const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
-      bx = chamber1X + Math.cos(la) * (TUNNEL_L * (seg % 3) + 4);
-      bz = chamber1Z + Math.sin(la) * (TUNNEL_L * (seg % 3) + 4);
-      bx += Math.cos(la + Math.PI/2) * side * 3;
-      bz += Math.sin(la + Math.PI/2) * side * 3;
-      by = UNDERGROUND_Y - 2;
-    } else {
-      // Right branch
-      const ra = tunnelDir + Math.PI / 2.5;
-      const chamber1X = entryX + Math.cos(tunnelDir) * (TUNNEL_L * 5.5);
-      const chamber1Z = entryZ + Math.sin(tunnelDir) * (TUNNEL_L * 5.5);
-      bx = chamber1X + Math.cos(ra) * (TUNNEL_L * (seg % 4) + 4);
-      bz = chamber1Z + Math.sin(ra) * (TUNNEL_L * (seg % 4) + 4);
-      bx += Math.cos(ra + Math.PI/2) * side * 2.5;
-      bz += Math.sin(ra + Math.PI/2) * side * 2.5;
-      by = UNDERGROUND_Y - 2;
-    }
-
-    setTimeout(() => {
-      gltfLoader.load(fullPath, (gltf) => {
-        const model = gltf.scene;
-        model.traverse(c => {
-          if (c.isMesh) {
-            c.castShadow = true;
-            c.receiveShadow = true;
-            // Darken materials slightly for underground feel
-            if (c.material) {
-              const mats = Array.isArray(c.material) ? c.material : [c.material];
-              mats.forEach(m => { if (m.color) m.color.multiplyScalar(0.65); });
-            }
-          }
-        });
-
-        // Scale mine assets to fit in tunnels — medium size
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z, 0.01);
-        const s = (1.5 + Math.random() * 2.0) / maxDim;
-        model.scale.setScalar(s);
-
-        const finalBox = new THREE.Box3().setFromObject(model);
-        model.position.set(bx, by - finalBox.min.y * model.scale.x, bz);
-        model.rotation.y = Math.random() * Math.PI * 2;
-        model.userData.isPlaced = true;
-        model.userData.isMineAsset = true;
-        scene.add(model);
-        objects.push(model);
-      }, null, () => {});
-    }, i * 150 + 2000); // stagger after quarry rocks load
-  });
-}
-
-
-// ============================================================
-// ASSET DECOMPOSITION — extract individual pieces from group GLBs
-// ============================================================
-const _groupedAssets = {
-  'street_props': {
-    path: 'models/fab/street_props_streeprops.glb',
-    pieces: ['Ad poster','Pole','Power box','Public phone box','Bus stop',
-      'street light','Street light','Pole metal','Bike parking','Cone',
-      'Water Cannister','Construction asset','Road sign','fence',
-      'Road bumper','power pole','cement block','bike1','bike2',
-      'air conditioner','box1','box2','Curb','parking place','parking spots',
-      'bench','vending machine','Trash bin','Trash bin cover','Cannister',
-      'Stop sign','barbwire fence','Road stopper','Road Bunner',
-      'traffic light','Construction Cone','Fire hydrant','newspaper stand',
-      'Road block','trailer','Wooden pallet','Recycling bin']
-  }
-};
-
-// Cache loaded group GLB scenes
-const _groupCache = {};
-
-function loadGroupedAsset(groupName, pieceName, x, z, onDone) {
-  const group = _groupedAssets[groupName];
-  if (!group) { console.warn('Unknown group:', groupName); return; }
-
-  const place = (cachedScene) => {
-    // Find the named node
-    let target = null;
-    cachedScene.traverse(o => { 
-      if (o.name && o.name.toLowerCase() === pieceName.toLowerCase()) target = o; 
-    });
-    if (!target) {
-      // Fuzzy match
-      cachedScene.traverse(o => {
-        if (o.name && o.name.toLowerCase().includes(pieceName.toLowerCase().split(' ')[0])) {
-          if (!target) target = o;
-        }
-      });
-    }
-    if (!target) { showToast('⚠ Piece not found: ' + pieceName); return; }
-
-    const piece = target.clone(true);
-    piece.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-    
-    // Center + place
-    const box = new THREE.Box3().setFromObject(piece);
-    const center = box.getCenter(new THREE.Vector3());
-    piece.position.set(x - center.x, -box.min.y, z - center.z);
-    piece.userData.isPlaced = true;
-    piece.userData.pieceOf = groupName;
-    piece.userData.pieceName = pieceName;
-    piece.name = pieceName;
-    scene.add(piece);
-    objects.push(piece);
-    showToast('✅ Placed: ' + pieceName);
-    if (onDone) onDone(piece);
-  };
-
-  if (_groupCache[groupName]) {
-    place(_groupCache[groupName]);
-    return;
-  }
-
-  // Load the group GLB once, cache it
-  showToast('Loading ' + groupName + '...');
-  gltfLoader.load(group.path, (gltf) => {
-    _groupCache[groupName] = gltf.scene;
-    place(gltf.scene);
-  }, null, (e) => showToast('❌ Failed to load ' + groupName));
-}
-
-window.loadGroupedAsset = loadGroupedAsset;
-window._groupedAssets = _groupedAssets;
-
-// List all pieces of a group asset
-function listGroupPieces(groupName) {
-  const group = _groupedAssets[groupName];
-  if (!group) return [];
-  return group.pieces;
-}
-window.listGroupPieces = listGroupPieces;
-
-
-// Build a ground-level showcase of all assets from a named pack
-async function buildPackShowcase(packPrefix, packName, count) {
-  try {
-    const aliases = window._fabAliases || {};
-    const waitForAliases = (cb) => {
-      if (window._fabAliases && Object.keys(window._fabAliases).length > 50) { cb(window._fabAliases); return; }
-      setTimeout(() => waitForAliases(cb), 200);
-    };
-    waitForAliases(async (aliases) => {
-      showToast(`📦 Loading ${packName}...`);
-      // Gather all aliases for this pack
-      const items = Object.entries(aliases)
-        .filter(([k]) => k.startsWith(packPrefix + '_') && /\d/.test(k))
-        .sort(([a],[b]) => a.localeCompare(b));
-
-      const COLS = 8;
-      const SPACING = 8;
-      const startX = -(Math.min(items.length, COLS) * SPACING) / 2;
-
-      items.forEach(([alias, relPath], i) => {
-        const col = i % COLS;
-        const row = Math.floor(i / COLS);
-        const x = startX + col * SPACING;
-        const z = row * SPACING;
-        const fullPath = relPath.startsWith('models/') ? relPath : 'models/' + relPath;
-        const label = alias;
-        loadGLBModel(label, label, x, z, null, fullPath);
-      });
-      showToast(`✅ ${packName}: ${items.length} assets placed in a grid`);
-    });
-  } catch(e) {
-    showToast('❌ ' + e.message);
-  }
-}
-window.buildPackShowcase = buildPackShowcase;
-
-async function buildForestLakeWorld() {
-  const _log = (m) => { console.log('[FOREST]', m); try { showToast(m); } catch(e) {} };
-  try {
-    _log('🌲 Building world...');
-
-    // Clear scene
-    const toRemove = [];
-    scene.children.forEach(o => {
-      if ((o.type === 'Mesh' || o.type === 'Group' || o.isInstancedMesh) && !o.isLight) toRemove.push(o);
-    });
-    toRemove.forEach(o => scene.remove(o));
-    objects.length = 0;
-    if (window.npcController) window.npcController.npcs.length = 0;
-    window._lakeAnimators = [];
-
-    // Ground
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 0.95 });
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(500, 64), groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    ground.userData.isGround = true;
-    scene.add(ground);
-
-    // Ground patches
-    const patchColors = [0x2d6618, 0x4a8c28, 0x3a7d2c, 0x5a9e38, 0x285520];
-    for (let i = 0; i < 80; i++) {
-      const a = Math.random() * Math.PI * 2, r = Math.random() * 460;
-      const p = new THREE.Mesh(new THREE.CircleGeometry(3 + Math.random() * 12, 7),
-        new THREE.MeshStandardMaterial({ color: patchColors[i % patchColors.length] }));
-      p.rotation.x = -Math.PI / 2;
-      p.position.set(Math.cos(a)*r, 0.01, Math.sin(a)*r);
-      scene.add(p);
-    }
-
-    // BIG LAKE — r=90 for boats + swimming
-    const lakeR = 90;
-    const lake = buildGerstnerLake(lakeR, 'calm');
-    scene.add(lake);
-
-    // Sandy shore
-    const shore = new THREE.Mesh(
-      new THREE.RingGeometry(lakeR, lakeR + 7, 80),
-      new THREE.MeshStandardMaterial({ color: 0xd4b483, roughness: 0.95 })
-    );
-    shore.rotation.x = -Math.PI / 2;
-    shore.position.y = 0.02;
-    scene.add(shore);
-    _log('  ✅ Gerstner lake placed (r=90)');
-
-    // Shoreline rocks
-    for (let i = 0; i < 50; i++) {
-      const a = (i/50)*Math.PI*2 + Math.random()*0.4;
-      const r = lakeR + 1 + Math.random() * 5;
-      const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(0.4 + Math.random()*1.2, 0),
-        new THREE.MeshStandardMaterial({ color: [0x8a7a6a,0x9a8a7a,0x6a6058,0xb0a090][i%4], roughness: 0.95, flatShading: true })
-      );
-      rock.position.set(Math.cos(a)*r, 0.15, Math.sin(a)*r);
-      rock.rotation.set(Math.random(), Math.random(), Math.random());
-      rock.castShadow = true;
-      scene.add(rock);
-    }
-
-    // ============================================
-    // FAB ASSET SHOWCASE — ring around the lake
-    // ============================================
-    _log('  📦 Placing Fab assets...');
-    const FAB_SHOWCASE = [
-      // === RING 1 (r=110): Junkyard Fab pack ===
-      { alias: 'junkyard_1',  ring: 1, angle: 0 },
-      { alias: 'junkyard_2',  ring: 1, angle: 0.63 },
-      { alias: 'junkyard_3',  ring: 1, angle: 1.26 },
-      { alias: 'junkyard_4',  ring: 1, angle: 1.88 },
-      { alias: 'junkyard_5',  ring: 1, angle: 2.51 },
-      { alias: 'junkyard_6',  ring: 1, angle: 3.14 },
-      { alias: 'junkyard_7',  ring: 1, angle: 3.77 },
-      { alias: 'junkyard_8',  ring: 1, angle: 4.40 },
-      { alias: 'junkyard_9',  ring: 1, angle: 5.03 },
-      { alias: 'junkyard_10', ring: 1, angle: 5.65 },
-      // === RING 2 (r=145): Saloon Fab pack ===
-      { alias: 'saloon_1',  ring: 2, angle: 0 },
-      { alias: 'saloon_2',  ring: 2, angle: 0.7 },
-      { alias: 'saloon_3',  ring: 2, angle: 1.4 },
-      { alias: 'saloon_4',  ring: 2, angle: 2.1 },
-      { alias: 'saloon_5',  ring: 2, angle: 2.8 },
-      { alias: 'saloon_6',  ring: 2, angle: 3.5 },
-      { alias: 'saloon_7',  ring: 2, angle: 4.2 },
-      { alias: 'saloon_8',  ring: 2, angle: 4.9 },
-      { alias: 'saloon_9',  ring: 2, angle: 5.6 },
-      // === RING 3 (r=185): Street Fab props ===
-      { alias: 'street_props',         ring: 3, angle: 0.2 },
-      { alias: 'fire_hydrant',          ring: 3, angle: 0.9 },
-      { alias: 'bench',                 ring: 3, angle: 1.6 },
-      { alias: 'forklift',              ring: 3, angle: 2.3 },
-      { alias: 'mailbox',               ring: 3, angle: 3.0 },
-      { alias: 'wooden_door',           ring: 3, angle: 3.7 },
-      { alias: 'trash_can',             ring: 3, angle: 4.4 },
-      { alias: 'graffiti_wall_1k',      ring: 3, angle: 5.1 },
-      { alias: 'electrical_substation', ring: 3, angle: 5.8 },
-      { alias: 'trash_dumpster',        ring: 3, angle: 1.3 },
-      { alias: 'female_civilian',       ring: 3, angle: 2.0 },
-      { alias: 'manhole_cover',         ring: 3, angle: 2.7 },
-      // === RING 4 (r=230): Kenney Cars ===
-      { alias: 'kenney_cars/sedan',       ring: 4, angle: 0 },
-      { alias: 'kenney_cars/taxi',        ring: 4, angle: 0.52 },
-      { alias: 'kenney_cars/police',      ring: 4, angle: 1.05 },
-      { alias: 'kenney_cars/ambulance',   ring: 4, angle: 1.57 },
-      { alias: 'kenney_cars/firetruck',   ring: 4, angle: 2.09 },
-      { alias: 'kenney_cars/van',         ring: 4, angle: 2.62 },
-      { alias: 'kenney_cars/truck',       ring: 4, angle: 3.14 },
-      { alias: 'kenney_cars/race',        ring: 4, angle: 3.67 },
-      { alias: 'kenney_cars/suv',         ring: 4, angle: 4.19 },
-      { alias: 'kenney_cars/garbage-truck', ring: 4, angle: 4.71 },
-      { alias: 'kenney_cars/hatchback-sports', ring: 4, angle: 5.24 },
-      { alias: 'kenney_cars/delivery',    ring: 4, angle: 5.76 },
-      // === RING 5 (r=280): Kenney City buildings ===
-      { alias: 'kenney_city/building-a',  ring: 5, angle: 0 },
-      { alias: 'kenney_city/building-b',  ring: 5, angle: 0.63 },
-      { alias: 'kenney_city/building-c',  ring: 5, angle: 1.26 },
-      { alias: 'kenney_city/building-d',  ring: 5, angle: 1.88 },
-      { alias: 'kenney_city/building-e',  ring: 5, angle: 2.51 },
-      { alias: 'kenney_city/building-f',  ring: 5, angle: 3.14 },
-      { alias: 'kenney_city/road-straight', ring: 5, angle: 3.77 },
-      { alias: 'kenney_city/road-corner',   ring: 5, angle: 4.40 },
-      // === RING 6 (r=340): Kenney Fantasy ===
-      { alias: 'kenney_fantasy/banner-green',   ring: 6, angle: 0 },
-      { alias: 'kenney_fantasy/tower-round-top', ring: 6, angle: 0.78 },
-      { alias: 'kenney_fantasy/wall-corner',     ring: 6, angle: 1.57 },
-      { alias: 'kenney_fantasy/gate-open',       ring: 6, angle: 2.36 },
-      { alias: 'kenney_fantasy/tree-fantasy',    ring: 6, angle: 3.14 },
-      { alias: 'kenney_fantasy/chest-closed',    ring: 6, angle: 3.93 },
-      { alias: 'kenney_fantasy/well',            ring: 6, angle: 4.71 },
-      { alias: 'kenney_fantasy/catapult',        ring: 6, angle: 5.50 },
-      // === RING 7 (r=400): Kenney Pirate + Graveyard + Medieval ===
-      { alias: 'kenney_pirate/boat-row-large',   ring: 7, angle: 0 },
-      { alias: 'kenney_pirate/barrel',           ring: 7, angle: 0.63 },
-      { alias: 'kenney_pirate/cannon',           ring: 7, angle: 1.26 },
-      { alias: 'kenney_medieval/barrels',        ring: 7, angle: 1.88 },
-      { alias: 'kenney_medieval/fence-round',    ring: 7, angle: 2.51 },
-      { alias: 'kenney_graveyard/altar-stone',   ring: 7, angle: 3.14 },
-      { alias: 'kenney_graveyard/bench-damaged', ring: 7, angle: 3.77 },
-      { alias: 'kenney_weapons/blaster-a',       ring: 7, angle: 4.40 },
-      { alias: 'kenney_dungeon/barrel',          ring: 7, angle: 5.03 },
-      { alias: 'kenney_props/ball-blue',         ring: 7, angle: 5.65 },
-    ];
-
-    const ringRadii = [lakeR + 20, lakeR + 55, lakeR + 95, lakeR + 140, lakeR + 190, lakeR + 250, lakeR + 310];
-    // Wait for fab aliases to be available (they load async on startup)
-    const waitForAliases = (cb, retries = 20) => {
-      if (window._fabAliases && Object.keys(window._fabAliases).length > 0) { cb(window._fabAliases); return; }
-      if (retries <= 0) { console.warn('[FOREST] fab aliases never loaded'); cb({}); return; }
-      setTimeout(() => waitForAliases(cb, retries - 1), 150);
-    };
-
-    waitForAliases((aliases) => {
-      FAB_SHOWCASE.forEach(item => {
-        // Resolve path: check fab aliases, then GLB_MODELS map, then try direct
-        let fullPath = null;
-        const rawAlias = aliases[item.alias];
-        if (rawAlias) {
-          // Fab alias like 'fab/fire_hydrant.glb' → 'models/fab/fire_hydrant.glb'
-          fullPath = rawAlias.startsWith('http') || rawAlias.startsWith('models/') 
-            ? rawAlias : 'models/' + rawAlias;
-        } else {
-          // GLB_MODELS entries are keys like 'kenney_cars/sedan' → 'models/kenney_cars/sedan.glb'
-          const glbKey = GLB_MODELS[item.alias];
-          if (glbKey) {
-            const cleanKey = glbKey.endsWith('.glb') ? glbKey.slice(0,-4) : glbKey;
-            fullPath = 'models/' + cleanKey + '.glb';
-          } else {
-            // Direct path: 'kenney_cars/sedan' → 'models/kenney_cars/sedan.glb'
-            fullPath = 'models/' + item.alias + '.glb';
-          }
-        }
-        const r = ringRadii[item.ring - 1] || ringRadii[0];
-        const x = Math.cos(item.angle) * r;
-        const z = Math.sin(item.angle) * r;
-        const label = item.alias.split('/').pop();
-        loadGLBModel(label, label, x, z, null, fullPath);
-      });
-      _log('  ✅ Fab assets placed (' + Object.keys(aliases).length + ' aliases loaded)');
-    });
-    _log('  ✅ Fab assets placed');
-
-    // Forest — pushed out to ring lakeR+100+ so it frames the showcase area
-    const TYPES = ['pine','pine','pine','oak','oak','birch'];
-    let planted = 0;
-
-    for (let i = 0; i < 300; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = lakeR + 110 + Math.random() * 200;
-      const x = Math.cos(a)*r, z = Math.sin(a)*r;
-      const h = 8 + Math.random() * 12;
-      const t = TYPES[Math.floor(Math.random()*TYPES.length)];
-      const tree = t==='pine' ? createPineTree({x,z,height:h}) : t==='oak' ? createOakTree({x,z,height:h}) : createBirchTree({x,z,height:h});
-      tree.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      scene.add(tree);
-      planted++;
-    }
-
-    // Bushes between showcase rings
-    for (let i = 0; i < 80; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = lakeR + 12 + Math.random() * 95;
-      const x = Math.cos(a)*r + (Math.random()-0.5)*8;
-      const z = Math.sin(a)*r + (Math.random()-0.5)*8;
-      if (Math.sqrt(x*x+z*z) < lakeR+8) continue;
-      scene.add(createBush({ x, z, scale: 0.4 + Math.random() * 1.0 }));
-    }
-    _log('  ✅ ' + planted + ' trees + bushes placed');
-
-    // Instanced grass
-    const grassMesh = buildGrassField({ count: 40000, radius: 460, excludeRadius: lakeR + 8 });
-    scene.add(grassMesh);
-    _log('  ✅ Grass placed');
-
-    // Atmosphere
-    scene.fog = new THREE.FogExp2(0x99c8aa, 0.004);
-    renderer.setClearColor(0x85b8e0, 1);
-
-    // Lighting
-    const sun = scene.children.find(o => o.isDirectionalLight);
-    if (sun) {
-      sun.color.setHex(0xfff0c0); sun.intensity = 2.2;
-      sun.position.set(100, 160, 80);
-      sun.castShadow = true;
-      if (sun.shadow) {
-        sun.shadow.mapSize.width = 2048; sun.shadow.mapSize.height = 2048;
-        sun.shadow.camera.left = -300; sun.shadow.camera.right = 300;
-        sun.shadow.camera.top = 300; sun.shadow.camera.bottom = -300;
-        sun.shadow.camera.far = 800; sun.shadow.bias = -0.0003;
-      }
-    }
-    let amb = scene.children.find(o => o.isAmbientLight);
-    if (!amb) { amb = new THREE.AmbientLight(0xc8dcc8, 0.5); scene.add(amb); }
-    else { amb.color.setHex(0xc8dcc8); amb.intensity = 0.5; }
-    renderer.shadowMap.enabled = true;
-
-    // Camera — wide view of the lake
-    window._cam.position.set(0, 180, 280);
-    window._cam.lookAt(0, 0, 0);
-    if (window._ctrl) { window._ctrl.target.set(0, 0, 0); window._ctrl.update(); }
-
-    _log('🌲 World ready! Fab assets loading around the lake...');
-
-  } catch(err) {
-    console.error('[FOREST ERROR]', err.stack || err);
-    try { showToast('❌ ' + err.message); } catch(e) {}
-  }
-}
-window.buildForestLakeWorld = buildForestLakeWorld;
+// ═══ City builder, mine interior, template presets, and vehicle animation
+// ═══ have been extracted to city-builder.mjs
+// ═══ (buildGerstnerLake, buildMineInterior, populateMineAssets, loadGroupedAsset,
+// ═══  listGroupPieces, buildPackShowcase, loadUEBuilding, buildCityWorld3,
+// ═══  applyTemplatePreset, _stopCityVehicles, _startCityVehicles)
+// END_OF_EXTRACTED_BLOCK

@@ -9,3 +9,7 @@ firebase-debug.log
 .DS_Store
 crate-engine/.DS_Store
 web/.DS_Store
+node_modules/
+dist/
+.deploy/
+npm-debug.log*

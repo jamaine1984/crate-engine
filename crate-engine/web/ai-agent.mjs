@@ -926,7 +926,15 @@ export class CrateAgent {
 
     // 1.5. SMART LLM INTERPRETER — understands ANY natural language
     // First try the smart local parser, which handles most common patterns
-    const smartCmds = await interpretWithLLM(text);
+    const smartCmds = await interpretWithLLM(text, { agent: true }); // AI Agent uses RAG + smarter model
+    // Show knowledge mode response (RAG answer with no commands)
+    if (window._aiKnowledgeResponse) {
+      const resp = window._aiKnowledgeResponse;
+      window._aiKnowledgeResponse = null;
+      this.addBotMessage('🧠 ' + this.esc(resp));
+      return;
+    }
+
     if (smartCmds && smartCmds.length > 0) {
       // Check if it's just passing through the raw input (catch-all)
       const isPassthrough = smartCmds.length === 1 && smartCmds[0] === text;

@@ -92,7 +92,17 @@
   <div class="viewport-toolbar">
     <div class="dot red"></div><div class="dot yel"></div><div class="dot grn"></div>
     <div class="title">crate-engine — 3D viewport</div>
-    <div class="status" id="wasm-status" style="color:#d29922;margin-right:8px;font-size:11px">WASM: loading...</div>
+    <div id="mode-switcher" style="display:flex;gap:2px;margin-left:8px;background:#0a0a0a;border:1px solid #252525;border-radius:6px;padding:1px;align-items:center">
+      <button id="mode-edit" onclick="window._setMode&&window._setMode('edit')" title="Edit Mode" style="padding:2px 8px;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:'JetBrains Mono',monospace;background:#ff6b35;color:#fff;font-weight:600">Edit</button>
+      <button id="mode-play" onclick="window._setMode&&window._setMode('play')" title="Play Mode (WASD)" style="padding:2px 8px;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:'JetBrains Mono',monospace;background:transparent;color:#666">Play</button>
+      <button id="mode-view" onclick="window._setMode&&window._setMode('view')" title="View Mode (Free Fly)" style="padding:2px 8px;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:'JetBrains Mono',monospace;background:transparent;color:#666">View</button>
+    </div>
+    <div style="display:flex;gap:2px;margin-left:6px">
+      <button id="import-btn" onclick="window._showImportExport&&window._showImportExport('import')" title="Import" style="padding:2px 8px;border:1px solid #333;border-radius:4px;font-size:10px;cursor:pointer;font-family:'JetBrains Mono',monospace;background:#111;color:#aaa">Import</button>
+      <button id="export-btn" onclick="window._showImportExport&&window._showImportExport('export')" title="Export" style="padding:2px 8px;border:1px solid #333;border-radius:4px;font-size:10px;cursor:pointer;font-family:'JetBrains Mono',monospace;background:#111;color:#aaa">Export</button>
+      <button id="save-btn" onclick="window._showSaveLoad&&window._showSaveLoad()" title="Save/Load" style="padding:2px 8px;border:1px solid #333;border-radius:4px;font-size:10px;cursor:pointer;font-family:'JetBrains Mono',monospace;background:#111;color:#aaa">Save</button>
+    </div>
+    <div class="status" id="wasm-status" style="color:#d29922;margin-left:auto;margin-right:8px;font-size:11px">WASM: loading...</div>
     <div class="status" id="engine-status">● 3D Ready</div>
     <button class="expand-btn" id="expand-btn" onclick="toggleFullscreen()">⛶ Expand</button>
     <div style="position:relative;margin-left:4px;">
@@ -117,12 +127,23 @@ window._hideLoader=function(){var l=document.getElementById('engine-loader');if(
 window.onerror=(msg,src,line)=>{console.error('[ENGINE ERROR]',msg,'at',src,':',line);const l=document.querySelector('.engine-loader');if(l)l.innerHTML='<div style="color:#f87171;padding:20px;text-align:center">Engine error: '+msg+'<br><small>Try refreshing (Ctrl+R)</small></div>';};
 setTimeout(()=>{const l=document.querySelector('.engine-loader');if(l&&l.offsetHeight>0)l.style.display='none';},15000);
 </script>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
-<script type="module" src="self-smarter.mjs?v=650"></script>
-<script type="module" src="engine.mjs?v=650"></script>
-<script type="module">import auth from './auth.mjs?v=650';auth.renderAccountBadge(document.getElementById('account-nav'));</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+<script type="module" src="engine.mjs"></script>
+<script type="module">
+const mountAccountBadge = () => {
+  import('./auth.mjs')
+    .then(({ default: auth }) => auth.renderAccountBadge(document.getElementById('account-nav')))
+    .catch((err) => console.warn('[Auth] Account badge failed to load:', err));
+};
+if ('requestIdleCallback' in window) {
+  window.requestIdleCallback(mountAccountBadge, { timeout: 1500 });
+} else {
+  window.setTimeout(mountAccountBadge, 250);
+}
+</script>
 <button id="ai-settings-btn" onclick="showAISettingsModal()" title="AI Settings" style="position:fixed;top:72px;left:16px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">⚙️</button>
 <button id="mp-lobby-btn" onclick="showMultiplayerLobby()" title="Multiplayer" style="position:fixed;top:72px;left:62px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #333;font-size:16px;cursor:pointer;color:#aaa;display:flex;align-items:center;justify-content:center">🌐</button>
+<button id="code-editor-btn" onclick="if(window._openCodeEditor)window._openCodeEditor()" title="Code Editor" style="position:fixed;top:72px;left:108px;z-index:300;width:38px;height:38px;border-radius:50%;background:#1a1a2e;border:1px solid #7c5cff;font-size:16px;cursor:pointer;color:#7c5cff;display:flex;align-items:center;justify-content:center">{ }</button>
 </body>
 </html>
-// v651
+<!-- deploy 1775059953 -->

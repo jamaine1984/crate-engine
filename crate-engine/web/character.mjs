@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { collisionWorld } from './collision.mjs?v=5';
+import { collisionWorld } from './collision.mjs';
 
 const loader = new GLTFLoader();
 // Get terrain height at world position
@@ -698,27 +698,6 @@ const _screenShake = {
 };
 window._screenShake = _screenShake;
 
-// Animation frame tracking for cleanup
-let _animFrameIds = [];
-function trackFrame(id) { _animFrameIds.push(id); return id; }
-function cancelAllFrames() { _animFrameIds.forEach(id => cancelAnimationFrame(id)); _animFrameIds = []; }
-// Event listener tracking for cleanup
-let _eventListeners = [];
-function trackListener(target, type, handler, opts) {
-  target.addEventListener(type, handler, opts);
-  _eventListeners.push({target, type, handler, opts});
-  return {target, type, handler, opts};
-}
-function removeAllListeners() {
-  _eventListeners.forEach(({target, type, handler, opts}) => {
-    target.removeEventListener(type, handler, opts);
-  });
-  _eventListeners = [];
-}
-// Expose cleanup
-window._cleanupCharacter = () => { cancelAllFrames(); removeAllListeners(); console.log('[Character] Cleaned up'); };
-
-
 class CharacterController {
   constructor(scene, camera, objects) {
     this.scene = scene;
@@ -827,29 +806,38 @@ class CharacterController {
     this.mouseX = 0;
     this.mouseY = 0;
     
-    // Available character models — REAL models only, no primitives
+    // Available character models — ALL have built-in animations
     this.characterModels = {
-      'adventurer': { file: 'modular_men_adventurer', animPrefix: '' },
-      'swat': { file: 'modular_men_swat', animPrefix: '' },
-      'king': { file: 'modular_men_king', animPrefix: '' },
-      'punk': { file: 'modular_men_punk', animPrefix: '' },
-      'knight': { file: 'single_knight_pack_knightcharacter', animPrefix: 'HumanArmature|' },
+      // === Quaternius animated characters (built-in idle/walk/run/jump/death/attack) ===
+      'woman': { file: 'npcs/animated_woman', animPrefix: 'Armature|Armature|', isQuaternarius: true },
+      'man': { file: 'npcs/animated_human', animPrefix: 'Armature|Armature|', isQuaternarius: true },
+      'woman_smooth': { file: 'npcs/animated_woman_smooth', animPrefix: 'Armature|Armature|', isQuaternarius: true },
+      // === Quaternius human NPCs (11 anims each: idle/walk/run/jump/death/punch/swordslash/clapping/sit/stand/runningjump) ===
+      'casual_girl': { file: 'npcs/female_casual', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'alt_girl': { file: 'npcs/female_alternative', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'dress': { file: 'npcs/female_dress', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'tanktop': { file: 'npcs/female_tanktop', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'casual_guy': { file: 'npcs/male_casual', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'longsleeve': { file: 'npcs/male_longsleeve', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'shirt': { file: 'npcs/male_shirt', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'suit': { file: 'npcs/male_suit', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      // === Smooth (higher quality) variants ===
+      'smooth_casual_girl': { file: 'npcs/smooth_female_casual', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'smooth_dress': { file: 'npcs/smooth_female_dress', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'smooth_casual_guy': { file: 'npcs/smooth_male_casual', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      'smooth_suit': { file: 'npcs/smooth_male_suit', animPrefix: 'HumanArmature|HumanArmature|', isQuaternarius: true },
+      // === Quaternius creatures (animated) ===
+      'robot': { file: 'npcs/quat_robot', animPrefix: 'RobotArmature|RobotArmature|', isQuaternarius: true },
+      'zombie': { file: 'npcs/quat_zombie', animPrefix: 'Zombie|Zombie|', isQuaternarius: true },
+      'skeleton': { file: 'npcs/quat_skeleton', animPrefix: 'SkeletonArmature|SkeletonArmature|', isQuaternarius: true },
+      'dragon': { file: 'npcs/quat_dragon', animPrefix: 'DragonArmature|DragonArmature|', isQuaternarius: true },
+      'bat': { file: 'npcs/quat_bat', animPrefix: 'BatArmature|BatArmature|', isQuaternarius: true },
+      'slime': { file: 'npcs/quat_slime', animPrefix: 'Armature|Armature|', isQuaternarius: true },
+      // === Mixamo characters (built-in idle/walk/run) ===
       'soldier': { file: 'soldier_mixamo', animPrefix: 'mixamorig:', isMixamo: true },
       'xbot': { file: 'xbot_mixamo', animPrefix: 'mixamorig:', isMixamo: true },
-      'witch': { file: 'modular_women_witch', animPrefix: '' },
-      'medieval': { file: 'modular_women_medieval', animPrefix: '' },
-      'casual': { file: 'modular_men_casual', animPrefix: '' },
-      'farmer': { file: 'modular_men_farmer', animPrefix: '' },
-      'suit': { file: 'modular_men_suit', animPrefix: '' },
-      'worker': { file: 'modular_men_worker', animPrefix: '' },
-      'scifi': { file: 'modular_women_scifi', animPrefix: '' },
-      'formal': { file: 'modular_women_formal', animPrefix: '' },
-      'beach': { file: 'modular_men_beach', animPrefix: '' },
-      'spacesuit': { file: 'modular_men_spacesuit', animPrefix: '' },
-      'woman': { file: 'npcs/animated_woman', animPrefix: 'Armature|Armature|', isQuaternarius: true },
-      'animated_woman': { file: 'npcs/animated_woman', animPrefix: 'Armature|Armature|', isQuaternarius: true },
-      'man': { file: 'npcs/animated_human', animPrefix: 'Armature|Armature|', isQuaternarius: true },
-      'animated_man': { file: 'npcs/animated_human', animPrefix: 'Armature|Armature|', isQuaternarius: true },
+      // === Legacy knight (has combat anims) ===
+      'knight': { file: 'single_knight_pack_knightcharacter', animPrefix: 'HumanArmature|' },
     };
     
     // Procedural animation state
@@ -1176,12 +1164,11 @@ class CharacterController {
           }
         }
         
-        // Recalculate skeleton bind matrices after scale change
-        // NOTE: Do NOT call skeleton.pose() — it resets to rest pose (flat/T-pose)
-        // calculateInverses() updates bind matrices from current bone transforms
+        // Rebind skeleton BEFORE measuring ground offset
+        // Scale was just applied — skeleton bind matrices need updating
         this.model.updateMatrixWorld(true);
         this.model.traverse(child => {
-          if (child.isSkinnedMesh && child.skeleton) child.skeleton.calculateInverses();
+          if (child.isSkinnedMesh && child.skeleton) child.skeleton.pose();
         });
         
         // MODEL CONTAINER PATTERN (Sketchbook-inspired)
@@ -1342,6 +1329,30 @@ class CharacterController {
               // animated_human / animated_woman variants
               'armatureaction.001': 'walk', 'armatureaction.002': 'run',
               'working': 'interact',
+              // Quaternius Robot
+              'robot_idle': 'idle', 'robot_walking': 'walk', 'robot_running': 'run',
+              'robot_jump': 'jump', 'robot_death': 'death', 'robot_punch': 'attack',
+              'robot_dance': 'dance', 'robot_sitting': 'sit', 'robot_standing': 'stand',
+              'robot_wave': 'wave', 'robot_thumbsup': 'wave', 'robot_yes': 'wave',
+              'robot_no': 'idle', 'robot_walkjump': 'jump_run',
+              // Quaternius Zombie
+              'zombieidle': 'idle', 'zombiewalk': 'walk', 'zombierun': 'run',
+              'zombiebite': 'attack', 'zombiecrawl': 'walk',
+              // Quaternius Skeleton
+              'skeleton_idle': 'idle', 'skeleton_running': 'run',
+              'skeleton_attack': 'attack', 'skeleton_death': 'death', 'skeleton_spawn': 'idle',
+              // Quaternius Dragon
+              'dragon_flying': 'idle', 'dragon_attack': 'attack', 'dragon_attack2': 'attack',
+              'dragon_death': 'death', 'dragon_hit': 'hit',
+              // Quaternius Bat
+              'bat_flying': 'idle', 'bat_attack': 'attack', 'bat_attack2': 'attack',
+              'bat_death': 'death', 'bat_hit': 'hit',
+              // Quaternius Slime
+              'slime_idle': 'idle', 'slime_walk': 'walk',
+              'slime_attack': 'attack', 'slime_death': 'death',
+              // Female variants with SwordSlash/RunningJump
+              'female_swordslash': 'attack', 'female_runningjump': 'jump_run',
+              'female_clapping': 'wave', 'female_standing': 'stand',
             };
             name = map[name] || name;
             
@@ -1852,9 +1863,9 @@ class CharacterController {
           return;
         }
         bullet.position.copy(muzzle.clone().add(dir.clone().multiplyScalar(dist)));
-        trackFrame(requestAnimationFrame(animBullet));
+        requestAnimationFrame(animBullet);
       };
-      trackFrame(requestAnimationFrame(animBullet));
+      requestAnimationFrame(animBullet);
     }
     
     // Muzzle flash — brief bright light
@@ -4366,41 +4377,24 @@ export class NPCController {
         const npcSize = npcBox.getSize(new THREE.Vector3());
         const npcHeight = Math.max(npcSize.y, 0.1);
         model.scale.setScalar(3.0 / npcHeight); // Game-scale human (3 units tall, visible at camera distance)
-        // Recalculate skeleton bind matrices after scale change
-        model.updateMatrixWorld(true);
-        model.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.calculateInverses(); });
         
-        // FIX: Shadows on ALL mesh types — SkinnedMesh included
-        // isMesh check only catches plain Mesh, SkinnedMesh extends Mesh but
-        // some Three.js builds don't match it with isMesh. Also guard against MeshBasicMaterial.
-        model.castShadow = true;
-        model.traverse(c => {
-          if (c.isMesh || c.isSkinnedMesh) {
-            c.castShadow = true;
-            c.receiveShadow = true;
-            // MeshBasicMaterial can't cast/receive shadows — convert to StandardMaterial
-            if (c.material && c.material.isMeshBasicMaterial) {
-              const mat = new THREE.MeshStandardMaterial({
-                color: c.material.color || new THREE.Color(0x888888),
-                metalness: 0.1, roughness: 0.8,
-                map: c.material.map || null,
-              });
-              c.material = mat;
-            }
-            // Force material recompile
-            if (c.material) c.material.needsUpdate = true;
-          }
-        });
+        // Rebind skeleton BEFORE measuring ground offset
+        // Without this, animations T-pose and bounding box is wrong
+        model.updateMatrixWorld(true);
+        model.traverse(c => { if (c.isSkinnedMesh && c.skeleton) c.skeleton.pose(); });
         
         // NOW measure ground offset with correct skeleton pose
         const npcBox2 = new THREE.Box3().setFromObject(model);
         const _npcGroundOffset = -npcBox2.min.y;
         const _npcTerrainY = _getTerrainY(x, z);
         model.position.set(x, _npcTerrainY + _npcGroundOffset + 0.05, z);
+        model.castShadow = true;
+        model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
         this.scene.add(model);
         this.objects.push(model);
         model.userData.name = 'npc_' + type;
         model.userData.isNPC = true;
+        
         model.userData.groundOffset = _npcGroundOffset;
         const npc = {
           model, type, behavior,
@@ -8788,3 +8782,4 @@ class MobileControls {
 }
 
 export { MobileControls };
+// deploy-fix 1775073167

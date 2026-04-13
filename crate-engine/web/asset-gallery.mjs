@@ -10,7 +10,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const galLoader = new GLTFLoader();
 const galDraco = new DRACOLoader();
-galDraco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/');
+galDraco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/draco/');
 galLoader.setDRACOLoader(galDraco);
 
 // Category icons and colors

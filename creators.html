@@ -241,7 +241,7 @@ footer p{color:#333;font-size:0.75rem}
   <p>© 2026 <a href="/">Crateship Studios</a> · <a href="/marketplace.html">Asset Marketplace</a> · <a href="https://github.com/jamaine1984/crate-engine">Open Source</a></p>
 </footer>
 
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.162.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.162.0/examples/jsm/"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
 import auth from './auth.mjs';
@@ -261,11 +261,6 @@ let previewRenderer = null;
 // Stats
 function updateStats() {
   const models = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    // Upload to server
-    try {
-      await auth.uploadModel({ name, description: desc, category, price: parseFloat(document.getElementById('model-price').value) || 0, tags: tags.split(',').map(t=>t.trim()).filter(Boolean), fileName: currentFile.name, fileSize: currentFile.size, fileData: base64 });
-    } catch(e) { console.warn('Server upload failed, saved locally:', e); }
-
   document.getElementById('creator-count').textContent = [...new Set(models.map(m => m.creator))].length || 0;
   document.getElementById('model-count').textContent = models.length;
   document.getElementById('download-count').textContent = models.reduce((a,m) => a + (m.downloads||0), 0);

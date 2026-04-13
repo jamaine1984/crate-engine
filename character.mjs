@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { collisionWorld } from './collision.mjs?v=5';
+import { collisionWorld } from './collision.mjs';
 
 const loader = new GLTFLoader();
 // Get terrain height at world position

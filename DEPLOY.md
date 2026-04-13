@@ -15,7 +15,6 @@
   - 6,218 3D model files (GLBs)
   - AI Build Agent (zero API keys needed for core features)
   - Godmode runtime (client-side effects)
-  - Self-Smarter loop (optional, needs OpenRouter key)
 
 ## Repository Structure
 
@@ -26,7 +25,6 @@
 ├── ai-agent.mjs        ← AI chat agent + world recipes
 ├── godmode.mjs         ← Godmode effects runtime
 ├── llm-interpreter.mjs ← LLM command interpreter
-├── self-smarter.mjs    ← Self-improvement loop
 ├── city_assets.json    ← City building manifest (REQUIRED for city builder)
 ├── index.html          ← Landing page
 ├── play.html           ← Game page
@@ -80,10 +78,8 @@ cd /tmp/crate-deploy
 npx wrangler pages deploy . --project-name=crateship-games --branch=main --commit-dirty=true
 ```
 
-### ⚠️ DO NOT deploy from the git repo directly if KOKO.app is present
-KOKO.app contains a 41MB file that exceeds Cloudflare's 25MB limit. Either:
-- Move KOKO.app out temporarily, OR
-- Deploy from `/tmp/crate-deploy` as shown above
+### ⚠️ DO NOT keep large app bundles in the repo root
+App bundles like `KOKO.app` can exceed Cloudflare's 25MB upload limit. Keep them outside the repo, or deploy from `/tmp/crate-deploy` as shown above.
 
 ## Critical Files — DO NOT DELETE
 
