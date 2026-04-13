@@ -27,6 +27,7 @@ const include = [
   'local-ai-tools.mjs',
   'marketplace.html',
   'mobile.mjs',
+  'model-aliases.json',
   'model-catalog.json',
   'multiplayer-colyseus.mjs',
   'navmesh.mjs',

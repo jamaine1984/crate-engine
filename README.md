@@ -32,6 +32,7 @@ Status snapshot: 2026-04-13
 - `modulepreload-polyfill`
 - `app-physics`
 - `engine`
+- The model registry now loads from static JSON and no longer force-loads on every command.
 
 ## Lazy-Loaded Modules Added
 
@@ -56,8 +57,8 @@ Status snapshot: 2026-04-13
 
 Latest validated production build:
 
-- `engine`: `427.00 kB`
-- `app-assets`: `390.96 kB`
+- `engine`: `427.23 kB`
+- `app-assets`: `1.96 kB`
 - `app-gameplay`: `233.39 kB`
 - `app-builder`: `91.82 kB`
 - `voice-commands`: `82.63 kB`
@@ -73,7 +74,8 @@ Latest validated production build:
 
 Main result so far:
 
-- `engine` dropped from about `686 kB` earlier in the upgrade cycle to `427.00 kB`.
+- `engine` dropped from about `686 kB` earlier in the upgrade cycle to `427.23 kB`.
+- `app-assets` dropped from `390.96 kB` to `1.96 kB` by moving the model alias registry into static JSON.
 - Heavy editor/UI paths are now mostly demand-loaded.
 - The startup preload graph stayed minimal while those features moved out.
 
@@ -82,8 +84,8 @@ Main result so far:
 ### 1. Remaining Bundle Work
 
 - The main `engine` chunk is still the biggest startup target.
-- `app-assets` is still very large and should be split further.
 - `app-gameplay` is still large and can be deferred more aggressively.
+- `model-aliases.json` is now a large static data file at about `417 kB`, so asset data segmentation or compression is still worth doing later.
 - The remaining inline editor controls in `engine.mjs` should keep shrinking.
 
 ### 2. Security / Architecture Debt
@@ -109,13 +111,14 @@ Main result so far:
 ### 4. Asset / Content Pipeline
 
 - Large runtime asset catalogs still need a formal optimization pass.
+- `model-aliases.json` is now the canonical friendly-name registry and should eventually be segmented by domain or compressed further.
 - User/imported asset indexing is working, but asset-browser code should eventually share one canonical module instead of keeping duplicated legacy implementations around.
 - GLB optimization tooling exists in scripts, but the full asset estate has not been systematically processed.
 
 ## Recommended Next Order
 
-1. Split `app-assets` further, especially around the remaining asset/editor helpers.
-2. Reduce `app-gameplay` by pushing more systems behind actual play-mode entry.
+1. Reduce `app-gameplay` by pushing more systems behind actual play-mode entry.
+2. Keep shrinking `engine.mjs`, especially the remaining inline editor/control paths.
 3. Replace the OpenRouter/Gemini worker path with the intended local/proxy-safe AI path.
 4. Remove or harden `new Function(...)` in `code-editor.mjs`.
 5. Add a small regression harness for boot, play mode, galleries, imports, and multiplayer.

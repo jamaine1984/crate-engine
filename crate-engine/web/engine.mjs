@@ -448,6 +448,9 @@ function loadModelRegistryModule() {
   if (!modelRegistryPromise) {
     modelRegistryPromise = import('./model-registry.mjs').then(async (mod) => {
       modelRegistryModule = mod;
+      if (typeof mod.loadModelAliases === 'function') {
+        await mod.loadModelAliases().catch(() => ({}));
+      }
       Object.assign(GLB_MODELS, mod.GLB_MODELS || {});
       Object.assign(MODEL_SCALE_OVERRIDES, mod.MODEL_SCALE_OVERRIDES || {});
       if (typeof mod.loadModelCatalog === 'function') {
@@ -462,6 +465,17 @@ function loadModelRegistryModule() {
     });
   }
   return modelRegistryPromise;
+}
+
+async function ensureModelRegistryAvailable() {
+  if (modelRegistryModule && Object.keys(GLB_MODELS).length) return true;
+  try {
+    await loadModelRegistryModule();
+    return true;
+  } catch (err) {
+    console.warn('[ModelRegistry] Deferred load failed:', err.message);
+    return false;
+  }
 }
 
 function loadCodeEditorModule() {
@@ -5773,9 +5787,6 @@ async function parseAndExecute(rawCmd) {
   const cmd = rawCmd; // alias for compatibility
 
   const lower = (rawCmd || "").toLowerCase().trim();
-  await loadModelRegistryModule().catch((err) => {
-    console.warn('[ModelRegistry] Deferred load failed:', err.message);
-  });
   if (/^(?:build|create|generate) navmesh$/i.test(cmd) || /^navmesh build$/i.test(cmd)) {
     try {
       const { buildNavMeshForScene } = await loadNavMeshModule();
@@ -7419,6 +7430,7 @@ function showGameHUD(preset) {
   // Smart model search — "search car", "find zombie", "browse weapons"
   const searchMatch = lower.match(/^(?:search|find|browse|look for|show)\s+(.+)/);
   if (searchMatch) {
+    await ensureModelRegistryAvailable();
     const query = searchMatch[1];
     const results = searchRegistryModels(query, 15);
     if (results.length === 0) {
@@ -7435,6 +7447,7 @@ function showGameHUD(preset) {
 
   
   if (lower === "models" || lower === "model count" || lower === "how many models") {
+    await ensureModelRegistryAvailable();
     const count = Object.keys(GLB_MODELS).length;
     return "📚 Crate Engine Model Library: " + count + "+ models\n\nCategories:\n  🚗 Vehicles: sedan, SUV, taxi, ambulance, ferrari, truck\n  🏢 Buildings: houses, offices, shops, skyscrapers\n  🛋️ Furniture: tables, chairs, sofas, beds, shelves\n  ⚔️ Weapons: swords, axes, bows, blasters, shields\n  🌿 Nature: trees, rocks, plants, flowers\n  🛤️ Roads: straight, curved, intersections\n  🧟 Characters: NPCs, zombies, skeletons, dragons\n  🏴‍☠️ Themed: pirate, medieval, dungeon, sci-fi, horror\n\nUse: search [keyword] to find specific models\nUse: add [name] to place in scene";
   }
@@ -7443,6 +7456,7 @@ function showGameHUD(preset) {
   // ═══ MODEL SEARCH — "search car", "find weapon", "browse furniture" ═══
   const modelSearchMatch = lower.match(/^(?:search|find|browse|list|show)\s+(?:models?\s+)?(?:for\s+)?(.+)/);
   if (modelSearchMatch) {
+    await ensureModelRegistryAvailable();
     const query = modelSearchMatch[1].toLowerCase().trim();
     const results = [];
     const glbKeys = Object.keys(GLB_MODELS);
@@ -7470,6 +7484,7 @@ function showGameHUD(preset) {
   // GPU instancing commands
   const scatterInstMatch = lower.match(/^scatter\s+(\d+)\s+(\w+)\s*(?:instanced|gpu)?/);
   if (scatterInstMatch && parseInt(scatterInstMatch[1]) >= 20) {
+    await ensureModelRegistryAvailable();
     const num = parseInt(scatterInstMatch[1]);
     const obj = scatterInstMatch[2];
     const glb = GLB_MODELS[obj] || obj;
@@ -9303,6 +9318,8 @@ function showGameHUD(preset) {
       }
       const scaleOverride = addGenMatch[5] ? parseFloat(addGenMatch[5]) : undefined;
       const ryOverride = addGenMatch[6] ? parseFloat(addGenMatch[6]) : undefined;
+
+      await ensureModelRegistryAvailable();
 
       // 1. Try GLB_MODELS alias map (exact match)
       const glb = GLB_MODELS[rawName] || GLB_MODELS[rawName.replace(/_/g, '-')] || GLB_MODELS[rawInput] || null;

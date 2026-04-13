@@ -9,6 +9,7 @@ const staticFiles = [
   'city_assets.json',
   'favicon.svg',
   'model-catalog.json',
+  'model-aliases.json',
   'model_catalog.json',
   'og-image.svg',
   'service-worker.js'
