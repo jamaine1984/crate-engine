@@ -365,6 +365,8 @@ let audioToolsModule = null;
 let audioToolsPromise = null;
 let gameplayModule = null;
 let gameplayPromise = null;
+let townBuilderModule = null;
+let townBuilderPromise = null;
 let collisionModule = null;
 let collisionPromise = null;
 let physicsModule = null;
@@ -1147,6 +1149,20 @@ function loadGameplayModule() {
   return gameplayPromise;
 }
 
+function loadTownBuilderModule() {
+  if (townBuilderModule) return Promise.resolve(townBuilderModule);
+  if (!townBuilderPromise) {
+    townBuilderPromise = import('./town-builder.mjs').then((mod) => {
+      townBuilderModule = mod;
+      return mod;
+    }).catch((err) => {
+      townBuilderPromise = null;
+      throw err;
+    });
+  }
+  return townBuilderPromise;
+}
+
 function syncGameplayGlobals() {
   window.characterController = characterController;
   window._characterController = characterController;
@@ -1170,9 +1186,6 @@ async function ensureGameSystemsLoaded() {
       }
       if (!npcController && gameplay.NPCController && characterController) {
         npcController = new gameplay.NPCController(scene, camera, objects, characterController);
-      }
-      if (!townBuilder && gameplay.TownBuilder) {
-        townBuilder = new gameplay.TownBuilder(scene, objects, loadGLBModel);
       }
       if (!gameHUD && typeof createGameHUD === 'function') {
         gameHUD = createGameHUD();
@@ -1198,6 +1211,15 @@ async function ensureGameSystemsLoaded() {
     });
   }
   return gameplaySystemsPromise;
+}
+
+async function ensureTownBuilderReady() {
+  if (townBuilder) return townBuilder;
+  const mod = await loadTownBuilderModule();
+  if (mod?.TownBuilder) {
+    townBuilder = new mod.TownBuilder(scene, objects, loadGLBModel, { logOutput });
+  }
+  return townBuilder;
 }
 
 async function ensureGameplayReadyForCommand() {
@@ -8587,7 +8609,7 @@ function showGameHUD(preset) {
   const townMatch = lower.match(/^(?:build|create|generate)\s+(?:a\s+)?(?:(small|medium|large|huge)\s+)?(.+)/);
   if (townMatch && townKeywords.test(townMatch[2])) {
     if (!await ensureGameplayReadyForCommand()) return '⚠ Failed to load town systems';
-    if (!townBuilder) return '⚠ Town builder unavailable';
+    if (!await ensureTownBuilderReady()) return '⚠ Town builder unavailable';
     const size = townMatch[1] || 'medium';
     const type = townMatch[2];
     // Set biome-appropriate ground, sky, and lighting

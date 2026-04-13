@@ -38,6 +38,7 @@ const include = [
   'savesystem.mjs',
   'sound.mjs',
   'speech-tts.mjs',
+  'town-builder.mjs',
   'voice-commands.mjs',
   'weather.mjs',
   'debug-tools.mjs'

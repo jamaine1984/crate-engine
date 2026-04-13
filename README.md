@@ -57,9 +57,10 @@ Status snapshot: 2026-04-13
 
 Latest validated production build:
 
-- `engine`: `427.23 kB`
+- `engine`: `427.48 kB`
 - `app-assets`: `1.96 kB`
-- `app-gameplay`: `233.39 kB`
+- `app-gameplay`: `151.30 kB`
+- `app-town-builder`: `82.18 kB`
 - `app-builder`: `91.82 kB`
 - `voice-commands`: `82.63 kB`
 - `ai-agent`: `51.27 kB`
@@ -74,8 +75,9 @@ Latest validated production build:
 
 Main result so far:
 
-- `engine` dropped from about `686 kB` earlier in the upgrade cycle to `427.23 kB`.
+- `engine` dropped from about `686 kB` earlier in the upgrade cycle to `427.48 kB`.
 - `app-assets` dropped from `390.96 kB` to `1.96 kB` by moving the model alias registry into static JSON.
+- `app-gameplay` dropped from `233.39 kB` to `151.30 kB` by splitting `TownBuilder` into its own deferred chunk.
 - Heavy editor/UI paths are now mostly demand-loaded.
 - The startup preload graph stayed minimal while those features moved out.
 
@@ -84,7 +86,8 @@ Main result so far:
 ### 1. Remaining Bundle Work
 
 - The main `engine` chunk is still the biggest startup target.
-- `app-gameplay` is still large and can be deferred more aggressively.
+- `app-gameplay` is smaller now, but the remaining core character/NPC systems are still a meaningful deferred target.
+- `app-town-builder` is now isolated and only needs to load for world/town generation commands.
 - `model-aliases.json` is now a large static data file at about `417 kB`, so asset data segmentation or compression is still worth doing later.
 - The remaining inline editor controls in `engine.mjs` should keep shrinking.
 
@@ -117,8 +120,8 @@ Main result so far:
 
 ## Recommended Next Order
 
-1. Reduce `app-gameplay` by pushing more systems behind actual play-mode entry.
-2. Keep shrinking `engine.mjs`, especially the remaining inline editor/control paths.
+1. Keep shrinking `engine.mjs`, especially the remaining inline editor/control paths.
+2. Reduce the remaining core `app-gameplay` systems further if possible.
 3. Replace the OpenRouter/Gemini worker path with the intended local/proxy-safe AI path.
 4. Remove or harden `new Function(...)` in `code-editor.mjs`.
 5. Add a small regression harness for boot, play mode, galleries, imports, and multiplayer.

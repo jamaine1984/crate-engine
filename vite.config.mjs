@@ -71,6 +71,7 @@ export default defineConfig({
           if (normalized.endsWith('/physics.mjs')) return 'app-physics';
           if (normalized.endsWith('/collision.mjs')) return 'app-collision';
           if (normalized.endsWith('/character.mjs')) return 'app-gameplay';
+          if (normalized.endsWith('/town-builder.mjs')) return 'app-town-builder';
           if (normalized.endsWith('/buildings.mjs') || normalized.endsWith('/city-builder.mjs')) return 'app-builder';
           if (normalized.endsWith('/godmode.mjs')) return 'app-godmode';
         }
