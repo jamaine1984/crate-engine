@@ -292,6 +292,8 @@ const COMPONENT_PRESETS = [
   { label: 'Focus', action: 'focus', title: 'Move the camera toward the current object.' },
 ];
 
+let lastSceneSignature = '';
+
 function isSmallScreen() {
   return window.matchMedia('(max-width: 900px)').matches;
 }
@@ -332,24 +334,35 @@ function getSceneObjects() {
   return Array.isArray(candidates) ? candidates.filter((obj) => obj && obj.position && obj.userData) : [];
 }
 
+function normalizeSceneObject(obj) {
+  if (!obj) return null;
+  const objects = getSceneObjects();
+  let target = obj;
+  while (target.parent && !objects.includes(target)) target = target.parent;
+  return objects.includes(target) ? target : null;
+}
+
 function getObjectName(obj, index) {
   const name = obj?.userData?.name || obj?.name || obj?.type || 'Object';
   return String(name).replace(/[_-]+/g, ' ').trim() || 'Object ' + (index + 1);
 }
 
 function getTargetObject() {
-  const selected = window._engineBridge?.getSelected?.() || window._engine?.selectedObject;
+  const selected = normalizeSceneObject(window._engineBridge?.getSelected?.() || window._engine?.selectedObject);
   if (selected) return selected;
+  const lastPlaced = normalizeSceneObject(window._lastPlacedObj);
+  if (lastPlaced) return lastPlaced;
   const objects = getSceneObjects();
-  return window._lastPlacedObj || objects[objects.length - 1] || null;
+  return objects[objects.length - 1] || null;
 }
 
 function selectObject(obj) {
-  if (!obj) {
+  const target = normalizeSceneObject(obj) || getTargetObject();
+  if (!target) {
     notify('Select or add an object first');
     return null;
   }
-  const selected = window._engineBridge?.selectObject?.(obj) || window._engine?.selectObject?.(obj) || obj;
+  const selected = window._engineBridge?.selectObject?.(target) || window._engine?.selectObject?.(target) || target;
   window._lastPlacedObj = selected;
   updateBuilderUi();
   return selected;
@@ -466,6 +479,7 @@ function createComponentButton(preset) {
   const button = document.createElement('button');
   button.className = 'gb-preset gb-component-btn';
   button.type = 'button';
+  button.dataset.gbComponent = preset.component || preset.action || preset.label;
   button.textContent = preset.label;
   button.title = preset.title || preset.label;
   button.addEventListener('click', async () => {
@@ -509,6 +523,20 @@ function renderSceneList() {
   if (!list) return;
   const objects = getSceneObjects();
   const target = getTargetObject();
+  const visibleObjects = objects.slice(-10).reverse();
+  const signature = [
+    objects.length,
+    target?.uuid || 'none',
+    ...visibleObjects.map((obj) => [
+      obj.uuid || obj.id || obj.userData?.name || 'object',
+      obj.position?.x?.toFixed(1),
+      obj.position?.y?.toFixed(1),
+      obj.position?.z?.toFixed(1),
+      formatComponentList(obj),
+    ].join(':')),
+  ].join('|');
+  if (signature === lastSceneSignature) return;
+  lastSceneSignature = signature;
   list.innerHTML = '';
 
   if (!objects.length) {
@@ -519,7 +547,7 @@ function renderSceneList() {
     return;
   }
 
-  objects.slice(-10).reverse().forEach((obj, index) => {
+  visibleObjects.forEach((obj, index) => {
     const row = document.createElement('div');
     row.className = 'gb-scene-row';
     row.dataset.selected = obj === target ? 'true' : 'false';
