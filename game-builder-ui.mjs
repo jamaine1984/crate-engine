@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'crate-game-builder-open';
+const BLUEPRINT_STORAGE_KEY = 'crate-game-builder-blueprints';
 
 const SCRIPT_PRESETS = {
   inventory: {
@@ -292,7 +293,40 @@ const COMPONENT_PRESETS = [
   { label: 'Focus', action: 'focus', title: 'Move the camera toward the current object.' },
 ];
 
+const COMPONENT_FIELDS = {
+  collider: [
+    { key: 'type', label: 'Type', kind: 'text' },
+  ],
+  pickup: [
+    { key: 'item', label: 'Item', kind: 'text' },
+    { key: 'score', label: 'Score', kind: 'number', step: 1 },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  damage: [
+    { key: 'amount', label: 'Damage', kind: 'number', step: 1 },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+    { key: 'cooldown', label: 'Cooldown', kind: 'number', step: 0.1 },
+  ],
+  objective: [
+    { key: 'label', label: 'Label', kind: 'text' },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  spin: [
+    { key: 'speed', label: 'Speed', kind: 'number', step: 0.1 },
+  ],
+  float: [
+    { key: 'speed', label: 'Speed', kind: 'number', step: 0.1 },
+    { key: 'height', label: 'Height', kind: 'number', step: 0.1 },
+  ],
+  spawnPoint: [
+    { key: 'kind', label: 'Kind', kind: 'text' },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+};
+
 let lastSceneSignature = '';
+let lastInspectorSignature = '';
+let lastBlueprintSignature = '';
 
 function isSmallScreen() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -301,6 +335,37 @@ function isSmallScreen() {
 function notify(message) {
   if (typeof window.showToast === 'function') window.showToast(message);
   else console.log('[Game Builder]', message);
+}
+
+function cloneJson(value) {
+  try {
+    return JSON.parse(JSON.stringify(value || {}));
+  } catch {
+    return {};
+  }
+}
+
+function readBlueprints() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BLUEPRINT_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter((item) => item && item.id && item.name) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeBlueprints(items) {
+  localStorage.setItem(BLUEPRINT_STORAGE_KEY, JSON.stringify(items.slice(0, 24)));
+  lastBlueprintSignature = '';
+}
+
+function formatComponentLabel(name) {
+  return String(name || 'component').replace(/([A-Z])/g, ' $1').replace(/[_-]+/g, ' ').trim();
+}
+
+function parseNumber(value, fallback) {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : fallback;
 }
 
 function runCommand(command) {
@@ -387,6 +452,49 @@ function focusObject(obj) {
   notify('Focused: ' + getObjectName(target, 0));
 }
 
+function duplicateTarget(obj) {
+  const target = selectObject(obj || getTargetObject());
+  if (!target) return null;
+  if (typeof window._duplicateSelected === 'function') {
+    window._duplicateSelected();
+    const clone = normalizeSceneObject(window._lastPlacedObj);
+    if (clone && clone !== target) {
+      selectObject(clone);
+      notify('Cloned: ' + getObjectName(clone, 0));
+      return clone;
+    }
+  }
+
+  const scene = window._engineBridge?.scene || window._engine?.scene;
+  const objects = getSceneObjects();
+  if (!scene || !target.clone) return null;
+  const clone = target.clone(true);
+  clone.position.x += 2;
+  clone.userData = { ...cloneJson(target.userData), name: (target.userData?.name || 'object') + '_copy' };
+  scene.add(clone);
+  objects.push(clone);
+  window._lastPlacedObj = clone;
+  selectObject(clone);
+  notify('Cloned: ' + getObjectName(clone, 0));
+  return clone;
+}
+
+function deleteTarget(obj) {
+  const target = selectObject(obj || getTargetObject());
+  if (!target) return;
+  const label = getObjectName(target, 0);
+  if (typeof window._deleteSelected === 'function') {
+    window._deleteSelected();
+  } else {
+    window._engineBridge?.removeObject?.(target);
+  }
+  window._lastPlacedObj = null;
+  lastSceneSignature = '';
+  lastInspectorSignature = '';
+  notify('Deleted: ' + label);
+  updateBuilderUi();
+}
+
 function getComponentStore(obj) {
   obj.userData = obj.userData || {};
   obj.userData.gbComponents = obj.userData.gbComponents || {};
@@ -395,6 +503,14 @@ function getComponentStore(obj) {
 
 async function ensureComponentRuntime() {
   await installScript('components');
+}
+
+async function ensureRuntimeForComponents(components) {
+  const keys = Object.keys(components || {});
+  if (keys.includes('pickup')) await installScript('inventory');
+  if (keys.some((key) => ['pickup', 'damage', 'objective', 'spin', 'float'].includes(key))) {
+    await ensureComponentRuntime();
+  }
 }
 
 async function markComponent(component) {
@@ -518,6 +634,241 @@ function formatComponentList(obj) {
   return components.length ? components.join(', ') : 'No components';
 }
 
+function createTextElement(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  el.textContent = text;
+  return el;
+}
+
+function createField(label, input) {
+  const row = document.createElement('label');
+  row.className = 'gb-field';
+  row.append(createTextElement('span', '', label), input);
+  return row;
+}
+
+function createNumberInput(value, step, onChange) {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = String(step || 0.1);
+  input.value = Number.isFinite(value) ? String(Math.round(value * 1000) / 1000) : '0';
+  input.addEventListener('change', () => onChange(parseNumber(input.value, value || 0)));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') input.blur();
+  });
+  return input;
+}
+
+function createTextInput(value, onChange) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = value == null ? '' : String(value);
+  input.addEventListener('change', () => onChange(input.value.trim()));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') input.blur();
+  });
+  return input;
+}
+
+function createSmallButton(label, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'gb-small-btn';
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function updateInspectorObject(target) {
+  window._lastPlacedObj = target;
+  lastSceneSignature = '';
+  updateStats();
+  renderSceneList();
+}
+
+function renderComponentEditor(container, obj, componentName, data) {
+  const card = document.createElement('div');
+  card.className = 'gb-component-card';
+
+  const head = document.createElement('div');
+  head.className = 'gb-component-head';
+  head.appendChild(createTextElement('strong', '', formatComponentLabel(componentName)));
+  head.appendChild(createSmallButton('Remove', () => {
+    delete obj.userData.gbComponents[componentName];
+    lastInspectorSignature = '';
+    notify(formatComponentLabel(componentName) + ' removed');
+    updateBuilderUi();
+  }));
+  card.appendChild(head);
+
+  const fields = COMPONENT_FIELDS[componentName] || Object.keys(data || {}).map((key) => ({ key, label: formatComponentLabel(key), kind: typeof data[key] === 'number' ? 'number' : 'text' }));
+  fields.forEach((field) => {
+    const value = data[field.key];
+    const input = field.kind === 'number'
+      ? createNumberInput(Number(value), field.step || 0.1, (next) => {
+          data[field.key] = next;
+          updateInspectorObject(obj);
+        })
+      : createTextInput(value, (next) => {
+          data[field.key] = next;
+          updateInspectorObject(obj);
+        });
+    card.appendChild(createField(field.label, input));
+  });
+
+  container.appendChild(card);
+}
+
+async function saveSelectedBlueprint() {
+  const target = selectObject(getTargetObject());
+  if (!target) return;
+  const components = cloneJson(target.userData?.gbComponents || {});
+  const nameInput = document.getElementById('gb-blueprint-name');
+  const name = (nameInput?.value || '').trim() || getObjectName(target, 0) + ' Blueprint';
+  const blueprints = readBlueprints();
+  const id = 'gbp_' + Date.now().toString(36);
+  blueprints.unshift({
+    id,
+    name,
+    components,
+    interactable: !!target.userData?.interactable,
+    interactLabel: target.userData?.interactLabel || '',
+    createdAt: Date.now(),
+  });
+  writeBlueprints(blueprints);
+  notify('Blueprint saved: ' + name);
+  renderBlueprintList();
+}
+
+async function applyBlueprint(id) {
+  const target = selectObject(getTargetObject());
+  const blueprint = readBlueprints().find((item) => item.id === id);
+  if (!target || !blueprint) return;
+  target.userData = target.userData || {};
+  target.userData.gbComponents = cloneJson(blueprint.components || {});
+  if (blueprint.interactable) target.userData.interactable = true;
+  if (blueprint.interactLabel) target.userData.interactLabel = blueprint.interactLabel;
+  await ensureRuntimeForComponents(target.userData.gbComponents);
+  lastInspectorSignature = '';
+  notify('Applied blueprint: ' + blueprint.name);
+  updateBuilderUi();
+}
+
+function deleteBlueprint(id) {
+  const blueprints = readBlueprints().filter((item) => item.id !== id);
+  writeBlueprints(blueprints);
+  notify('Blueprint deleted');
+  renderBlueprintList();
+}
+
+function renderInspector() {
+  const inspector = document.getElementById('gb-inspector');
+  if (!inspector) return;
+  if (document.activeElement?.closest?.('#gb-inspector')) return;
+  const target = getTargetObject();
+  const signature = target ? [
+    target.uuid || target.id || 'object',
+    getObjectName(target, 0),
+    target.position?.x?.toFixed(2),
+    target.position?.y?.toFixed(2),
+    target.position?.z?.toFixed(2),
+    target.rotation?.y?.toFixed(2),
+    target.scale?.x?.toFixed(2),
+    JSON.stringify(target.userData?.gbComponents || {}),
+  ].join('|') : 'empty';
+  if (signature === lastInspectorSignature) return;
+  lastInspectorSignature = signature;
+  inspector.innerHTML = '';
+
+  if (!target) {
+    inspector.appendChild(createTextElement('div', 'gb-empty', 'Select an object from the scene list to edit game behavior.'));
+    return;
+  }
+
+  const summary = document.createElement('div');
+  summary.className = 'gb-inspector-summary';
+  const title = createTextElement('strong', '', getObjectName(target, 0));
+  const meta = createTextElement('span', '', formatPosition(target));
+  summary.append(title, meta);
+  inspector.appendChild(summary);
+
+  inspector.appendChild(createField('Name', createTextInput(getObjectName(target, 0), (next) => {
+    target.userData.name = next || getObjectName(target, 0);
+    updateInspectorObject(target);
+  })));
+
+  const transformGrid = document.createElement('div');
+  transformGrid.className = 'gb-transform-grid';
+  transformGrid.append(
+    createField('X', createNumberInput(target.position.x, 0.1, (next) => { target.position.x = next; updateInspectorObject(target); })),
+    createField('Y', createNumberInput(target.position.y, 0.1, (next) => { target.position.y = next; updateInspectorObject(target); })),
+    createField('Z', createNumberInput(target.position.z, 0.1, (next) => { target.position.z = next; updateInspectorObject(target); })),
+    createField('Rot Y', createNumberInput(target.rotation?.y || 0, 0.1, (next) => { target.rotation.y = next; updateInspectorObject(target); })),
+    createField('Scale', createNumberInput(target.scale?.x || 1, 0.05, (next) => {
+      const scale = Math.max(0.01, next);
+      target.scale.setScalar(scale);
+      updateInspectorObject(target);
+    }))
+  );
+  inspector.appendChild(transformGrid);
+
+  const actionRow = document.createElement('div');
+  actionRow.className = 'gb-action-row';
+  actionRow.append(
+    createSmallButton('Focus', () => focusObject(target)),
+    createSmallButton('Clone', () => duplicateTarget(target)),
+    createSmallButton('Delete', () => deleteTarget(target))
+  );
+  inspector.appendChild(actionRow);
+
+  const components = target.userData?.gbComponents || {};
+  const componentNames = Object.keys(components);
+  const componentWrap = document.createElement('div');
+  componentWrap.className = 'gb-component-editor';
+  if (!componentNames.length) {
+    componentWrap.appendChild(createTextElement('div', 'gb-empty', 'No behavior components yet. Add one above.'));
+  } else {
+    componentNames.forEach((name) => renderComponentEditor(componentWrap, target, name, components[name]));
+  }
+  inspector.appendChild(componentWrap);
+}
+
+function renderBlueprintList() {
+  const list = document.getElementById('gb-blueprint-list');
+  if (!list) return;
+  if (document.activeElement?.closest?.('#gb-blueprints')) return;
+  const blueprints = readBlueprints();
+  const signature = blueprints.map((item) => [item.id, item.name, JSON.stringify(item.components || {})].join(':')).join('|') || 'empty';
+  if (signature === lastBlueprintSignature) return;
+  lastBlueprintSignature = signature;
+  list.innerHTML = '';
+
+  if (!blueprints.length) {
+    list.appendChild(createTextElement('div', 'gb-empty', 'Save a selected object setup to reuse it on another object.'));
+    return;
+  }
+
+  blueprints.slice(0, 8).forEach((blueprint) => {
+    const row = document.createElement('div');
+    row.className = 'gb-blueprint-row';
+    const info = document.createElement('div');
+    info.className = 'gb-blueprint-info';
+    info.append(
+      createTextElement('strong', '', blueprint.name),
+      createTextElement('span', '', Object.keys(blueprint.components || {}).map(formatComponentLabel).join(', ') || 'No components')
+    );
+    const actions = document.createElement('div');
+    actions.className = 'gb-scene-actions';
+    actions.append(
+      createSmallButton('Apply', () => applyBlueprint(blueprint.id)),
+      createSmallButton('Delete', () => deleteBlueprint(blueprint.id))
+    );
+    row.append(info, actions);
+    list.appendChild(row);
+  });
+}
+
 function renderSceneList() {
   const list = document.getElementById('gb-scene-list');
   if (!list) return;
@@ -578,9 +929,7 @@ function renderSceneList() {
     clone.type = 'button';
     clone.textContent = 'Clone';
     clone.addEventListener('click', () => {
-      selectObject(obj);
-      window._duplicateSelected?.();
-      updateBuilderUi();
+      duplicateTarget(obj);
     });
 
     main.append(name, meta);
@@ -592,6 +941,8 @@ function renderSceneList() {
 
 function updateBuilderUi() {
   updateStats();
+  renderInspector();
+  renderBlueprintList();
   renderSceneList();
 }
 
@@ -641,8 +992,30 @@ function mount() {
     .gb-scene-name{display:block;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-scene-meta{display:block;font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-scene-actions{display:flex;gap:4px}
-    .gb-scene-actions button{height:28px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:11px;cursor:pointer;padding:0 7px}
-    .gb-scene-actions button:hover{border-color:#d9572b;color:#fff}
+    .gb-scene-actions button,.gb-small-btn{height:28px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:11px;cursor:pointer;padding:0 7px}
+    .gb-scene-actions button:hover,.gb-small-btn:hover{border-color:#d9572b;color:#fff}
+    .gb-inspector{display:flex;flex-direction:column;gap:8px;padding:8px}
+    .gb-inspector-summary{display:flex;flex-direction:column;gap:2px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
+    .gb-inspector-summary strong{font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-inspector-summary span{font-size:10px;color:#8d979e;line-height:14px}
+    .gb-field{display:flex;flex-direction:column;gap:4px;font-size:10px;line-height:12px;color:#8d979e}
+    .gb-field input{min-width:0;height:28px;border:1px solid #2a3237;background:#0b0d0e;color:#eef2f3;border-radius:6px;padding:0 7px;font:inherit;font-size:12px}
+    .gb-field input:focus{outline:1px solid #d9572b;border-color:#d9572b}
+    .gb-transform-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+    .gb-transform-grid .gb-field:nth-child(4),.gb-transform-grid .gb-field:nth-child(5){grid-column:span 1}
+    .gb-action-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+    .gb-action-row .gb-small-btn{width:100%;height:30px}
+    .gb-component-editor{display:flex;flex-direction:column;gap:7px}
+    .gb-component-card{border:1px solid #20262a;background:#121516;border-radius:7px;padding:7px;display:flex;flex-direction:column;gap:6px}
+    .gb-component-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .gb-component-head strong{font-size:12px;color:#eef2f3;text-transform:capitalize}
+    .gb-blueprint-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;padding:8px;border-bottom:1px solid #20262a}
+    .gb-blueprint-tools input{min-width:0;height:30px;border:1px solid #2a3237;background:#0b0d0e;color:#eef2f3;border-radius:6px;padding:0 8px;font-size:12px}
+    .gb-blueprint-list{display:flex;flex-direction:column;gap:6px;padding:8px}
+    .gb-blueprint-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;border:1px solid #20262a;border-radius:7px;background:#121516;padding:6px}
+    .gb-blueprint-info{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .gb-blueprint-info strong{font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-blueprint-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     @media (max-width:900px){#game-builder-panel{top:70px;left:8px;right:8px;bottom:auto;width:auto;max-height:48vh}#game-builder-panel[data-open="false"]{width:48px;right:auto}.gb-grid{grid-template-columns:1fr 1fr 1fr}}
   `;
   document.head.appendChild(style);
@@ -692,6 +1065,34 @@ function mount() {
     COMPONENT_PRESETS.forEach((preset) => componentGrid.appendChild(createComponentButton(preset)));
     componentSection.append(componentHeading, componentGrid);
     body.appendChild(componentSection);
+
+    const inspectorSection = document.createElement('section');
+    inspectorSection.className = 'gb-section';
+    const inspectorHeading = document.createElement('h3');
+    inspectorHeading.textContent = 'Inspector';
+    const inspector = document.createElement('div');
+    inspector.id = 'gb-inspector';
+    inspector.className = 'gb-inspector';
+    inspectorSection.append(inspectorHeading, inspector);
+    body.appendChild(inspectorSection);
+
+    const blueprintSection = document.createElement('section');
+    blueprintSection.className = 'gb-section';
+    blueprintSection.id = 'gb-blueprints';
+    const blueprintHeading = document.createElement('h3');
+    blueprintHeading.textContent = 'Blueprints';
+    const blueprintTools = document.createElement('div');
+    blueprintTools.className = 'gb-blueprint-tools';
+    const blueprintName = document.createElement('input');
+    blueprintName.id = 'gb-blueprint-name';
+    blueprintName.placeholder = 'Blueprint name';
+    const saveBlueprint = createSmallButton('Save', () => saveSelectedBlueprint());
+    blueprintTools.append(blueprintName, saveBlueprint);
+    const blueprintList = document.createElement('div');
+    blueprintList.id = 'gb-blueprint-list';
+    blueprintList.className = 'gb-blueprint-list';
+    blueprintSection.append(blueprintHeading, blueprintTools, blueprintList);
+    body.appendChild(blueprintSection);
 
     const sceneSection = document.createElement('section');
     sceneSection.className = 'gb-section';
