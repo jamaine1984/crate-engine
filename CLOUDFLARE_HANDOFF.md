@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `0ec514e2`
+- Current deployed source commit for the public engine code: `8290f654`
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -24,11 +24,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `c7f5a390-c203-426a-8e21-232437a25f0e`
-- Latest production deployment URL: `https://c7f5a390.crateship-games.pages.dev`
+- Latest production deployment ID: `567b6212-c084-45ad-bf85-4069754db6e8`
+- Latest production deployment URL: `https://567b6212.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `0ec514e`
-- Main live page bundle after the deploy: `/assets/play-C18sl_xm.js`
+- Source shown by Cloudflare: `8290f65`
+- Main live page bundle after the deploy: `/assets/play-C5SgZO54.js`
 
 Check the latest deployment with:
 
@@ -92,6 +92,16 @@ Follow-up production deploys on 2026-05-17 fixed the asset/runtime warnings seen
   - Removed the old hardcoded Mac desktop path.
   - Uses the current repo root on Windows and syncs current top-level `.mjs` files into the legacy `crate-engine/web` copy when needed.
 
+Follow-up production deploys on 2026-05-17 added the first object inspector and blueprint workflow:
+
+- `game-builder-ui.mjs`
+  - Added an `Inspector` section inside the Game Builder panel.
+  - Inspector shows the selected scene object's name, transform, component list, and editable component fields.
+  - Added selected-object actions for Focus, Clone, and Delete.
+  - Added editable fields for Collider, Pickup, Damage, Objective, Spin, Float, and Spawn Point components.
+  - Added a `Blueprints` section backed by `localStorage`.
+  - Blueprints save a selected object's component setup and can apply that setup to another selected object.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -115,8 +125,8 @@ Deploy to the real Cloudflare Pages project:
 npx wrangler pages deploy .deploy `
   --project-name=crateship-games `
   --branch=main `
-  --commit-hash=0ec514e286617ff6218df9fd6f524b1584241854 `
-  --commit-message="Fix deploy texture paths and HDR hook" `
+  --commit-hash=8290f654b653e5d4bc8c6bae15a0f23303c508d6 `
+  --commit-message="Add game builder inspector and blueprints" `
   --commit-dirty=false
 ```
 
@@ -151,6 +161,7 @@ Recovered model cache summary:
 - Follow-up source-sync deploy skipped `4,244` already-uploaded files and uploaded `4` changed files.
 - Latest builder-overlay deploy skipped `4,245` already-uploaded files and uploaded `3` changed files.
 - HDR/Poly Haven texture deploy skipped `4,276` already-uploaded files and uploaded `8` changed files.
+- Inspector/blueprint deploy skipped `4,281` already-uploaded files and uploaded `3` changed files.
 
 Critical city assets verified after deploy:
 
@@ -183,10 +194,11 @@ curl.exe -I -L https://crateshipgames.com/models/__definitely_missing__.glb
 
 Expected current results:
 
-- `/play` references `/assets/play-C18sl_xm.js`.
+- `/play` references `/assets/play-C5SgZO54.js`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary`.
 - Modular texture dependencies return `200 OK` and `image/jpeg` from `/textures/*`.
 - The served play bundle contains `HDRLoader` and no `RGBELoader` references.
+- The served play bundle contains `gb-inspector`, `gb-blueprints`, `Inspector`, and `Blueprints`.
 - Missing model paths return `404 Not Found`, not `200 text/html`.
 
 Browser verification from the 2026-05-17 deploy:
@@ -212,6 +224,15 @@ Browser verification from the 2026-05-17 deploy:
   - Typing `build city` in the live command box built the city and populated the Game Builder scene list.
   - Live Game Builder stats after the browser run: `408 objects`, `0 components`, `2 scripts`.
   - No new browser logs matched `RGBELoader`, `Couldn't load texture`, `modular_street_seating`, `modular_electricity_poles`, or failed modular GLB loads during the verified run.
+- Final custom-domain verification after deployment `567b6212-c084-45ad-bf85-4069754db6e8`:
+  - `/play` served `/assets/play-C5SgZO54.js`.
+  - The served bundle included the new Inspector and Blueprints UI code.
+  - Live command box `build city` built the city.
+  - Selecting a scene row opened the Inspector with transform fields and component fields.
+  - Adding `Pickup` created editable `Score` and `Radius` fields.
+  - Saving `Collectible Blueprint` created a blueprint row with Apply/Delete actions.
+  - Applying that blueprint to another scene object changed the live stats to `408 objects`, `2 components`, `2 scripts`.
+  - No new console errors were recorded during the verified inspector/blueprint run.
 
 ## Cloudflare Rules And Gotchas
 
@@ -234,6 +255,7 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+8290f654 Add game builder inspector and blueprints
 0ec514e2 Fix deploy texture paths and HDR hook
 0247a439 Fix HDR loader and Poly Haven textures
 b03ee517 Raise builder panel above gameplay overlays
