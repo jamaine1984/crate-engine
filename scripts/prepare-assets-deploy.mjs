@@ -1,4 +1,5 @@
 import { cp, mkdir, rm, symlink, lstat, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkAssets } from './check-assets.mjs';
@@ -11,6 +12,15 @@ const texturesTarget = path.resolve(process.env.CRATE_TEXTURES_DIR || path.join(
 const copyAssets = process.env.CRATE_DEPLOY_COPY_ASSETS === 'true';
 const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 const skipAssetCheck = process.env.CRATE_SKIP_ASSET_CHECK === 'true';
+const assetBaseUrl = (process.env.CRATE_ASSET_BASE_URL || 'https://crateship-games-assets.pages.dev').replace(/\/+$/, '');
+
+function getGitCommit() {
+  const result = spawnSync('git', ['rev-parse', '--short=12', 'HEAD'], {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  return result.status === 0 ? result.stdout.trim() : '';
+}
 
 async function publishDirectory(source, targetName) {
   const stat = await lstat(source);
@@ -31,11 +41,15 @@ async function publishDirectory(source, targetName) {
 await rm(deployDir, { recursive: true, force: true });
 await mkdir(deployDir, { recursive: true });
 
+let assetCheckCounts = null;
 if (!skipAssetCheck) {
-  await checkAssets({ modelRoot: modelsTarget, projectRoot: rootDir });
+  assetCheckCounts = await checkAssets({ modelRoot: modelsTarget, projectRoot: rootDir });
 } else {
   console.warn('Skipping asset-host integrity check because CRATE_SKIP_ASSET_CHECK=true.');
 }
+
+const sourceCommit = getGitCommit();
+const assetPackVersion = process.env.CRATE_ASSET_PACK_VERSION || sourceCommit || 'local';
 
 await writeFile(path.join(deployDir, 'index.html'), [
   '<!doctype html>',
@@ -55,7 +69,34 @@ await writeFile(path.join(deployDir, '404.html'), [
   '',
 ].join('\n'));
 
+await writeFile(path.join(deployDir, 'asset-manifest.json'), JSON.stringify({
+  name: 'crateship-games-assets',
+  version: assetPackVersion,
+  sourceCommit,
+  generatedAt: new Date().toISOString(),
+  assetBaseUrl,
+  paths: {
+    models: '/models/',
+    textures: '/textures/',
+  },
+  integrity: assetCheckCounts ? {
+    checkedModels: assetCheckCounts.modelFiles,
+    externalDependencies: assetCheckCounts.externalDeps,
+    catalogReferences: assetCheckCounts.catalogRefs,
+  } : null,
+  criticalAssets: [
+    '/models/kenney_cars/sedan.glb',
+    '/models/fab/street_props_streeprops.glb',
+    '/models/modular_street_seating.bin',
+    '/textures/modular_street_seating_armrests_diff_1k.jpg',
+  ],
+}, null, 2) + '\n');
+
 await writeFile(path.join(deployDir, '_headers'), [
+  '/asset-manifest.json',
+  '  Cache-Control: no-store, no-cache, must-revalidate, max-age=0',
+  '  Access-Control-Allow-Origin: *',
+  '  Cross-Origin-Resource-Policy: cross-origin',
   '/models/*',
   '  Cache-Control: public, max-age=31536000, immutable',
   '  Access-Control-Allow-Origin: *',

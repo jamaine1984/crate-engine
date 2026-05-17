@@ -69,6 +69,27 @@ async function checkHttp(pathname, expectedStatus, expectedTypeIncludes = '', or
   return { url, status: response.status, contentType };
 }
 
+async function checkAssetManifest(origin) {
+  const url = new URL('/asset-manifest.json', origin).href;
+  const response = await fetch(url, { redirect: 'follow' });
+  if (!response.ok) {
+    throw new Error(`${url} expected HTTP 200, got ${response.status}`);
+  }
+
+  const manifest = await response.json();
+  if (manifest?.name !== 'crateship-games-assets') {
+    throw new Error(`${url} has unexpected name "${manifest?.name || 'missing'}"`);
+  }
+  if (!manifest.version) {
+    throw new Error(`${url} is missing version`);
+  }
+  if (!manifest.paths?.models || !manifest.paths?.textures) {
+    throw new Error(`${url} is missing model/texture paths`);
+  }
+
+  return { url, manifest };
+}
+
 async function checkPlayHtml() {
   const response = await fetch(playUrl, { redirect: 'follow' });
   const body = await response.text();
@@ -211,7 +232,9 @@ async function runBrowserSmoke() {
 
 const play = await checkPlayHtml();
 const assetBaseUrl = play.assetBaseUrl;
+const assetManifest = await checkAssetManifest(assetBaseUrl);
 const httpChecks = [
+  await checkHttp('/asset-manifest.json', 200, 'application/json', assetBaseUrl),
   await checkHttp('/models/kenney_cars/sedan.glb', 200, 'model/gltf-binary', assetBaseUrl),
   await checkHttp('/models/fab/street_props_streeprops.glb', 200, 'model/gltf-binary', assetBaseUrl),
   await checkHttp('/models/modular_street_seating.bin', 200, 'application/octet-stream', assetBaseUrl),
@@ -224,6 +247,7 @@ console.log('Production smoke passed.');
 console.log(`URL: ${playUrl}`);
 console.log(`Bundle: ${play.bundle}`);
 console.log(`Asset base: ${assetBaseUrl}`);
+console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);
