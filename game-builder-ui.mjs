@@ -615,7 +615,7 @@ function mount() {
 
   const style = document.createElement('style');
   style.textContent = `
-    #game-builder-panel{position:fixed;top:72px;left:14px;bottom:50px;width:318px;z-index:320;background:rgba(10,11,12,.94);border:1px solid #262b2e;border-radius:8px;box-shadow:0 16px 45px rgba(0,0,0,.45);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e9edf0;display:flex;flex-direction:column;overflow:hidden;backdrop-filter:blur(14px)}
+    #game-builder-panel{position:fixed;top:72px;left:14px;bottom:50px;width:318px;z-index:12000;background:rgba(10,11,12,.94);border:1px solid #262b2e;border-radius:8px;box-shadow:0 16px 45px rgba(0,0,0,.45);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e9edf0;display:flex;flex-direction:column;overflow:hidden;backdrop-filter:blur(14px);pointer-events:auto}
     #game-builder-panel[data-open="false"]{width:48px;bottom:auto;height:48px}
     #game-builder-panel[data-open="false"] .gb-body,#game-builder-panel[data-open="false"] .gb-title,#game-builder-panel[data-open="false"] #gb-stats{display:none}
     .gb-head{height:48px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid #202427;flex-shrink:0}
