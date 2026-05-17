@@ -1,10 +1,12 @@
 import { cp, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
-const rootDir = '/Users/jamainemartin/Desktop/crate-engine';
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const staticFiles = [
   '_headers',
+  '404.html',
   'asset-catalog.json',
   'city_assets.json',
   'favicon.svg',

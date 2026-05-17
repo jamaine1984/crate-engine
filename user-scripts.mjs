@@ -323,6 +323,21 @@ export async function generateAndRunUserScript(description) {
   return script;
 }
 
+export function installUserScript(scriptObj) {
+  initializeUserScripts();
+  const script = upsertUserScript({
+    id: scriptObj.id || ('script_' + Date.now()),
+    name: scriptObj.name || 'Untitled Script',
+    description: scriptObj.description || '',
+    code: scriptObj.code || '',
+    enabled: scriptObj.enabled !== false,
+  });
+  if (script.enabled) runUserScript(script);
+  persistUserScripts();
+  getShowToast()('Installed: ' + script.name);
+  return script;
+}
+
 export function showScriptEditor(existingScript) {
   initializeUserScripts();
   const existing = existingScript || {};

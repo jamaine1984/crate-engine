@@ -128,7 +128,8 @@ window.onerror=(msg,src,line)=>{console.error('[ENGINE ERROR]',msg,'at',src,':',
 setTimeout(()=>{const l=document.querySelector('.engine-loader');if(l&&l.offsetHeight>0)l.style.display='none';},15000);
 </script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
-<script type="module" src="engine.mjs"></script>
+<script type="module" src="engine.mjs?v=20260517-builder1"></script>
+<script type="module" src="game-builder-ui.mjs?v=20260517-builder1"></script>
 <script type="module">
 const mountAccountBadge = () => {
   import('./auth.mjs')

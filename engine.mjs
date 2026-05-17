@@ -656,7 +656,7 @@ function loadUserScriptsModule() {
     return Promise.resolve(userScriptsModule);
   }
   if (!userScriptsPromise) {
-    userScriptsPromise = import('./user-scripts.mjs').then((mod) => {
+    userScriptsPromise = import('./user-scripts.mjs?v=20260517-builder1').then((mod) => {
       userScriptsModule = mod;
       syncUserScriptsModule(mod);
       return mod;
@@ -15209,6 +15209,15 @@ window._engine = {
 };
 window._loadGodmode = loadGodmodeModule;
 window._loadUserScripts = loadUserScriptsModule;
+window._installUserScriptPreset = async (scriptObj) => {
+  const mod = await loadUserScriptsModule();
+  if (!mod.installUserScript) throw new Error('Script installer unavailable');
+  return mod.installUserScript(scriptObj);
+};
+window._showScriptManager = async () => {
+  const mod = await loadUserScriptsModule();
+  return mod.showScriptManager?.();
+};
 
 // === CODE EDITOR — opens the custom scripting panel ===
 window._openCodeEditor = async () => {
@@ -17199,7 +17208,7 @@ window._updateCombat = updateCombat;
 let miniMapRenderer = null;
 let miniMapCamera = null;
 let miniMapTarget = null;
-let miniMapVisible = true;
+let miniMapVisible = false;
 let miniMapFrame = 0;
 
 function createMiniMap() {
@@ -17268,9 +17277,10 @@ function updateMiniMap() {
   const mc = document.getElementById('minimap-container');
   if (mc) mc.style.display = 'block';
   
-  // Only update every 3 frames for performance
+  // Readbacks from WebGL render targets can stall the GPU, so keep the
+  // minimap deliberately low-frequency.
   miniMapFrame++;
-  if (miniMapFrame % 3 !== 0) return;
+  if (miniMapFrame % 15 !== 0) return;
   
   if (!miniMapCamera) createMiniMap();
   

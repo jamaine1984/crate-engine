@@ -24,7 +24,7 @@ const outputPath = path.resolve(outputArg);
 await access(inputPath);
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
-const doc = io.read(inputPath);
+const doc = await io.read(inputPath);
 
 await doc.transform(
   dedup(),
@@ -37,5 +37,5 @@ await doc.transform(
   resample()
 );
 
-io.write(outputPath, doc);
+await io.write(outputPath, doc);
 console.log(`Optimized ${inputPath} -> ${outputPath}`);
