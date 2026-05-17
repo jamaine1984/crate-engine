@@ -682,7 +682,29 @@ function mount() {
   const body = document.createElement('div');
   body.className = 'gb-body';
 
-  PRESET_GROUPS.forEach((group) => {
+  const appendBuilderToolSections = () => {
+    const componentSection = document.createElement('section');
+    componentSection.className = 'gb-section';
+    const componentHeading = document.createElement('h3');
+    componentHeading.textContent = 'Components';
+    const componentGrid = document.createElement('div');
+    componentGrid.className = 'gb-grid';
+    COMPONENT_PRESETS.forEach((preset) => componentGrid.appendChild(createComponentButton(preset)));
+    componentSection.append(componentHeading, componentGrid);
+    body.appendChild(componentSection);
+
+    const sceneSection = document.createElement('section');
+    sceneSection.className = 'gb-section';
+    const sceneHeading = document.createElement('h3');
+    sceneHeading.textContent = 'Scene';
+    const sceneList = document.createElement('div');
+    sceneList.id = 'gb-scene-list';
+    sceneList.className = 'gb-scene-list';
+    sceneSection.append(sceneHeading, sceneList);
+    body.appendChild(sceneSection);
+  };
+
+  PRESET_GROUPS.forEach((group, index) => {
     const section = document.createElement('section');
     section.className = 'gb-section';
     const heading = document.createElement('h3');
@@ -692,27 +714,8 @@ function mount() {
     group.presets.forEach((preset) => grid.appendChild(createButton(preset)));
     section.append(heading, grid);
     body.appendChild(section);
+    if (index === 0) appendBuilderToolSections();
   });
-
-  const componentSection = document.createElement('section');
-  componentSection.className = 'gb-section';
-  const componentHeading = document.createElement('h3');
-  componentHeading.textContent = 'Components';
-  const componentGrid = document.createElement('div');
-  componentGrid.className = 'gb-grid';
-  COMPONENT_PRESETS.forEach((preset) => componentGrid.appendChild(createComponentButton(preset)));
-  componentSection.append(componentHeading, componentGrid);
-  body.appendChild(componentSection);
-
-  const sceneSection = document.createElement('section');
-  sceneSection.className = 'gb-section';
-  const sceneHeading = document.createElement('h3');
-  sceneHeading.textContent = 'Scene';
-  const sceneList = document.createElement('div');
-  sceneList.id = 'gb-scene-list';
-  sceneList.className = 'gb-scene-list';
-  sceneSection.append(sceneHeading, sceneList);
-  body.appendChild(sceneSection);
 
   panel.appendChild(body);
   document.body.appendChild(panel);
