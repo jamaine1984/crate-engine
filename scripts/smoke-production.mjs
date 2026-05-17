@@ -260,6 +260,50 @@ async function runBrowserSmoke() {
       undefined,
       { timeout: timeoutMs }
     );
+    const beforeReadOnly = await page.evaluate(() => {
+      const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj || null;
+      return {
+        objectCount: window._engineBridge?.objects?.length || 0,
+        selectedId: selected?.uuid || '',
+        componentCount: Object.keys(selected?.userData?.gbComponents || {}).length,
+      };
+    });
+    const editLockState = await page.evaluate(() => ({
+      panelEditMode: document.querySelector('#game-builder-panel')?.dataset.editMode || '',
+      pickupDisabled: document.querySelector('button[data-gb-component="pickup"]')?.disabled === true,
+      sceneSelectDisabled: document.querySelector('#gb-scene-list .gb-scene-row .gb-scene-main')?.disabled === true,
+      transformDisabled: document.querySelector('#gb-inspector input[type="number"]')?.disabled === true,
+      cloneDisabled: [...document.querySelectorAll('.gb-small-btn')].some((button) => button.textContent === 'Clone' && button.disabled),
+      presetDisabled: [...document.querySelectorAll('button.gb-preset')].some((button) => button.textContent === 'Inventory' && button.disabled),
+      readOnlyNote: document.querySelector('#gb-inspector .gb-readonly-note')?.textContent || '',
+    }));
+    if (editLockState.panelEditMode !== 'false' ||
+        !editLockState.pickupDisabled ||
+        !editLockState.sceneSelectDisabled ||
+        !editLockState.transformDisabled ||
+        !editLockState.cloneDisabled ||
+        !editLockState.presetDisabled ||
+        !/Read-only/i.test(editLockState.readOnlyNote)) {
+      throw new Error(`Explore mode did not lock editor controls: ${JSON.stringify(editLockState)}`);
+    }
+    await page.evaluate(() => {
+      document.querySelector('button[data-gb-component="damage"]')?.click();
+      document.querySelector('#gb-scene-list .gb-scene-row .gb-scene-main')?.click();
+      [...document.querySelectorAll('.gb-small-btn')].find((button) => button.textContent === 'Clone')?.click();
+    });
+    const afterReadOnlyClick = await page.evaluate(() => {
+      const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj || null;
+      return {
+        objectCount: window._engineBridge?.objects?.length || 0,
+        selectedId: selected?.uuid || '',
+        componentCount: Object.keys(selected?.userData?.gbComponents || {}).length,
+      };
+    });
+    if (afterReadOnlyClick.objectCount !== beforeReadOnly.objectCount ||
+        afterReadOnlyClick.selectedId !== beforeReadOnly.selectedId ||
+        afterReadOnlyClick.componentCount !== beforeReadOnly.componentCount) {
+      throw new Error(`Read-only editor controls mutated scene in Explore mode: ${JSON.stringify({ beforeReadOnly, afterReadOnlyClick })}`);
+    }
     await page.mouse.click(680, 470);
     const exploreState = await page.evaluate(() => ({
       mode: window._currentMode,
@@ -308,6 +352,8 @@ async function runBrowserSmoke() {
       () => window._currentMode === 'edit' &&
         window._playMode !== true &&
         document.querySelector('[data-gb-mode="edit"]')?.dataset.selected === 'true' &&
+        document.querySelector('#game-builder-panel')?.dataset.editMode === 'true' &&
+        document.querySelector('button[data-gb-component="pickup"]')?.disabled === false &&
         document.querySelector('#game-builder-panel')?.style.display !== 'none' &&
         document.querySelector('#model-browser-button')?.style.display !== 'none',
       undefined,

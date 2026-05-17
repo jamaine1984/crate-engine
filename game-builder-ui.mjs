@@ -422,7 +422,8 @@ function getTargetObject() {
   return objects[objects.length - 1] || null;
 }
 
-function selectObject(obj) {
+function selectObject(obj, options = {}) {
+  if (!options.readOnly && !requireEditAction('select objects')) return null;
   const target = normalizeSceneObject(obj) || getTargetObject();
   if (!target) {
     notify('Select or add an object first');
@@ -449,11 +450,12 @@ function focusObject(obj) {
     controls.target.copy(pos);
     controls.update?.();
   }
-  selectObject(target);
+  if (isEditMode()) selectObject(target);
   notify('Focused: ' + getObjectName(target, 0));
 }
 
 function duplicateTarget(obj) {
+  if (!requireEditAction('clone objects')) return null;
   const target = selectObject(obj || getTargetObject());
   if (!target) return null;
   if (typeof window._duplicateSelected === 'function') {
@@ -481,6 +483,7 @@ function duplicateTarget(obj) {
 }
 
 function deleteTarget(obj) {
+  if (!requireEditAction('delete objects')) return;
   const target = selectObject(obj || getTargetObject());
   if (!target) return;
   const label = getObjectName(target, 0);
@@ -515,6 +518,7 @@ async function ensureRuntimeForComponents(components) {
 }
 
 async function markComponent(component) {
+  if (!requireEditAction('add components')) return;
   const target = selectObject(getTargetObject());
   if (!target) return;
   const components = getComponentStore(target);
@@ -553,6 +557,7 @@ async function markComponent(component) {
 
 function runAction(action) {
   if (action === 'assets') {
+    if (!requireEditAction('place assets')) return null;
     if (window._showCategoryPicker) return window._showCategoryPicker();
     return runCommand('browse');
   }
@@ -565,6 +570,7 @@ function runAction(action) {
     return runCommand('export world');
   }
   if (action === 'scripts') {
+    if (!requireEditAction('edit scripts')) return null;
     if (window._showScriptManager) return window._showScriptManager();
     if (window._openCodeEditor) return window._openCodeEditor();
   }
@@ -581,7 +587,10 @@ function createButton(preset) {
   button.type = 'button';
   button.textContent = preset.label;
   button.title = preset.command || preset.label;
+  const editOnly = !!preset.command || !!preset.script || preset.action === 'assets' || preset.action === 'scripts';
+  if (editOnly) markEditOnly(button, preset.action === 'assets' ? 'place assets' : preset.action === 'scripts' ? 'edit scripts' : 'run builder presets');
   button.addEventListener('click', async () => {
+    if (editOnly && !requireEditAction(button.dataset.gbEditAction || 'edit this')) return;
     setBusy(button, true);
     if (preset.command) await runCommand(preset.command);
     else if (preset.script) await installScript(preset.script);
@@ -599,7 +608,9 @@ function createComponentButton(preset) {
   button.dataset.gbComponent = preset.component || preset.action || preset.label;
   button.textContent = preset.label;
   button.title = preset.title || preset.label;
+  if (preset.action !== 'focus') markEditOnly(button, 'add components');
   button.addEventListener('click', async () => {
+    if (preset.action !== 'focus' && !requireEditAction('add components')) return;
     setBusy(button, true);
     if (preset.action === 'focus') focusObject();
     else await markComponent(preset.component);
@@ -611,6 +622,7 @@ function createComponentButton(preset) {
 function setBusy(button, busy) {
   button.disabled = busy;
   button.dataset.busy = busy ? 'true' : 'false';
+  if (!busy) updateEditorControlState();
 }
 
 function updateStats() {
@@ -631,10 +643,51 @@ function getCurrentMode() {
   return mode === 'view' ? 'explore' : mode;
 }
 
+function isEditMode() {
+  const bridgeValue = window._engineBridge?.isEditMode?.();
+  if (bridgeValue === false) return false;
+  return getCurrentMode() === 'edit';
+}
+
+function requireEditAction(action) {
+  if (isEditMode()) return true;
+  notify('Switch to Edit mode to ' + action);
+  updateEditorControlState();
+  return false;
+}
+
+function markEditOnly(el, action) {
+  if (!el) return el;
+  el.dataset.gbEditOnly = 'true';
+  el.dataset.gbEditAction = action || 'edit this';
+  return el;
+}
+
 function formatModeLabel(mode) {
   if (mode === 'play') return 'Play';
   if (mode === 'explore') return 'Explore';
   return 'Edit';
+}
+
+function updateEditorControlState() {
+  const edit = isEditMode();
+  const panel = document.getElementById('game-builder-panel');
+  if (panel) panel.dataset.editMode = edit ? 'true' : 'false';
+  document.querySelectorAll('[data-gb-edit-only="true"]').forEach((el) => {
+    el.disabled = !edit;
+    el.setAttribute('aria-disabled', edit ? 'false' : 'true');
+    if (!edit) {
+      el.dataset.disabledMode = getCurrentMode();
+      if (!el.dataset.originalTitle) el.dataset.originalTitle = el.title || '';
+      el.title = 'Switch to Edit mode to ' + (el.dataset.gbEditAction || 'edit this');
+    } else {
+      delete el.dataset.disabledMode;
+      if (el.dataset.originalTitle !== undefined) {
+        el.title = el.dataset.originalTitle;
+        delete el.dataset.originalTitle;
+      }
+    }
+  });
 }
 
 function updateModeControls() {
@@ -644,6 +697,7 @@ function updateModeControls() {
     button.dataset.selected = selected ? 'true' : 'false';
     button.setAttribute('aria-pressed', selected ? 'true' : 'false');
   });
+  updateEditorControlState();
 }
 
 function setBuilderMode(mode) {
@@ -653,6 +707,7 @@ function setBuilderMode(mode) {
   else if (normalized === 'play') window._engineBridge?.enterPlayMode?.();
   else window._engineBridge?.exitPlayMode?.();
   updateModeControls();
+  updateBuilderUi();
   updateStats();
 }
 
@@ -745,35 +800,53 @@ function createField(label, input) {
   return row;
 }
 
-function createNumberInput(value, step, onChange) {
+function createNumberInput(value, step, onChange, options = {}) {
   const input = document.createElement('input');
   input.type = 'number';
   input.step = String(step || 0.1);
   input.value = Number.isFinite(value) ? String(Math.round(value * 1000) / 1000) : '0';
-  input.addEventListener('change', () => onChange(parseNumber(input.value, value || 0)));
+  if (options.editOnly) markEditOnly(input, options.action || 'edit values');
+  input.addEventListener('change', () => {
+    if (options.editOnly && !requireEditAction(options.action || 'edit values')) {
+      input.value = Number.isFinite(value) ? String(Math.round(value * 1000) / 1000) : '0';
+      return;
+    }
+    onChange(parseNumber(input.value, value || 0));
+  });
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') input.blur();
   });
   return input;
 }
 
-function createTextInput(value, onChange) {
+function createTextInput(value, onChange, options = {}) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = value == null ? '' : String(value);
-  input.addEventListener('change', () => onChange(input.value.trim()));
+  if (options.editOnly) markEditOnly(input, options.action || 'edit text');
+  input.addEventListener('change', () => {
+    if (options.editOnly && !requireEditAction(options.action || 'edit text')) {
+      input.value = value == null ? '' : String(value);
+      return;
+    }
+    onChange(input.value.trim());
+  });
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') input.blur();
   });
   return input;
 }
 
-function createSmallButton(label, onClick) {
+function createSmallButton(label, onClick, options = {}) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'gb-small-btn';
   button.textContent = label;
-  button.addEventListener('click', onClick);
+  if (options.editOnly) markEditOnly(button, options.action || 'edit this');
+  button.addEventListener('click', () => {
+    if (options.editOnly && !requireEditAction(options.action || 'edit this')) return;
+    onClick();
+  });
   return button;
 }
 
@@ -796,7 +869,7 @@ function renderComponentEditor(container, obj, componentName, data) {
     lastInspectorSignature = '';
     notify(formatComponentLabel(componentName) + ' removed');
     updateBuilderUi();
-  }));
+  }, { editOnly: true, action: 'remove components' }));
   card.appendChild(head);
 
   const fields = COMPONENT_FIELDS[componentName] || Object.keys(data || {}).map((key) => ({ key, label: formatComponentLabel(key), kind: typeof data[key] === 'number' ? 'number' : 'text' }));
@@ -806,11 +879,11 @@ function renderComponentEditor(container, obj, componentName, data) {
       ? createNumberInput(Number(value), field.step || 0.1, (next) => {
           data[field.key] = next;
           updateInspectorObject(obj);
-        })
+        }, { editOnly: true, action: 'edit component fields' })
       : createTextInput(value, (next) => {
           data[field.key] = next;
           updateInspectorObject(obj);
-        });
+        }, { editOnly: true, action: 'edit component fields' });
     card.appendChild(createField(field.label, input));
   });
 
@@ -818,6 +891,7 @@ function renderComponentEditor(container, obj, componentName, data) {
 }
 
 async function saveSelectedBlueprint() {
+  if (!requireEditAction('save blueprints')) return;
   const target = selectObject(getTargetObject());
   if (!target) return;
   const components = cloneJson(target.userData?.gbComponents || {});
@@ -839,6 +913,7 @@ async function saveSelectedBlueprint() {
 }
 
 async function applyBlueprint(id) {
+  if (!requireEditAction('apply blueprints')) return;
   const target = selectObject(getTargetObject());
   const blueprint = readBlueprints().find((item) => item.id === id);
   if (!target || !blueprint) return;
@@ -853,6 +928,7 @@ async function applyBlueprint(id) {
 }
 
 function deleteBlueprint(id) {
+  if (!requireEditAction('delete blueprints')) return;
   const blueprints = readBlueprints().filter((item) => item.id !== id);
   writeBlueprints(blueprints);
   notify('Blueprint deleted');
@@ -864,7 +940,9 @@ function renderInspector() {
   if (!inspector) return;
   if (document.activeElement?.closest?.('#gb-inspector')) return;
   const target = getTargetObject();
+  const edit = isEditMode();
   const signature = target ? [
+    edit ? 'edit' : 'readonly',
     target.uuid || target.id || 'object',
     getObjectName(target, 0),
     target.position?.x?.toFixed(2),
@@ -883,6 +961,10 @@ function renderInspector() {
     return;
   }
 
+  if (!edit) {
+    inspector.appendChild(createTextElement('div', 'gb-readonly-note', 'Read-only in ' + formatModeLabel(getCurrentMode()) + '. Switch to Edit to change this object.'));
+  }
+
   const summary = document.createElement('div');
   summary.className = 'gb-inspector-summary';
   const title = createTextElement('strong', '', getObjectName(target, 0));
@@ -893,20 +975,20 @@ function renderInspector() {
   inspector.appendChild(createField('Name', createTextInput(getObjectName(target, 0), (next) => {
     target.userData.name = next || getObjectName(target, 0);
     updateInspectorObject(target);
-  })));
+  }, { editOnly: true, action: 'rename objects' })));
 
   const transformGrid = document.createElement('div');
   transformGrid.className = 'gb-transform-grid';
   transformGrid.append(
-    createField('X', createNumberInput(target.position.x, 0.1, (next) => { target.position.x = next; updateInspectorObject(target); })),
-    createField('Y', createNumberInput(target.position.y, 0.1, (next) => { target.position.y = next; updateInspectorObject(target); })),
-    createField('Z', createNumberInput(target.position.z, 0.1, (next) => { target.position.z = next; updateInspectorObject(target); })),
-    createField('Rot Y', createNumberInput(target.rotation?.y || 0, 0.1, (next) => { target.rotation.y = next; updateInspectorObject(target); })),
+    createField('X', createNumberInput(target.position.x, 0.1, (next) => { target.position.x = next; updateInspectorObject(target); }, { editOnly: true, action: 'move objects' })),
+    createField('Y', createNumberInput(target.position.y, 0.1, (next) => { target.position.y = next; updateInspectorObject(target); }, { editOnly: true, action: 'move objects' })),
+    createField('Z', createNumberInput(target.position.z, 0.1, (next) => { target.position.z = next; updateInspectorObject(target); }, { editOnly: true, action: 'move objects' })),
+    createField('Rot Y', createNumberInput(target.rotation?.y || 0, 0.1, (next) => { target.rotation.y = next; updateInspectorObject(target); }, { editOnly: true, action: 'rotate objects' })),
     createField('Scale', createNumberInput(target.scale?.x || 1, 0.05, (next) => {
       const scale = Math.max(0.01, next);
       target.scale.setScalar(scale);
       updateInspectorObject(target);
-    }))
+    }, { editOnly: true, action: 'scale objects' }))
   );
   inspector.appendChild(transformGrid);
 
@@ -914,8 +996,8 @@ function renderInspector() {
   actionRow.className = 'gb-action-row';
   actionRow.append(
     createSmallButton('Focus', () => focusObject(target)),
-    createSmallButton('Clone', () => duplicateTarget(target)),
-    createSmallButton('Delete', () => deleteTarget(target))
+    createSmallButton('Clone', () => duplicateTarget(target), { editOnly: true, action: 'clone objects' }),
+    createSmallButton('Delete', () => deleteTarget(target), { editOnly: true, action: 'delete objects' })
   );
   inspector.appendChild(actionRow);
 
@@ -958,8 +1040,8 @@ function renderBlueprintList() {
     const actions = document.createElement('div');
     actions.className = 'gb-scene-actions';
     actions.append(
-      createSmallButton('Apply', () => applyBlueprint(blueprint.id)),
-      createSmallButton('Delete', () => deleteBlueprint(blueprint.id))
+      createSmallButton('Apply', () => applyBlueprint(blueprint.id), { editOnly: true, action: 'apply blueprints' }),
+      createSmallButton('Delete', () => deleteBlueprint(blueprint.id), { editOnly: true, action: 'delete blueprints' })
     );
     row.append(info, actions);
     list.appendChild(row);
@@ -1004,6 +1086,7 @@ function renderSceneList() {
     main.className = 'gb-scene-main';
     main.type = 'button';
     main.title = 'Select object';
+    markEditOnly(main, 'select objects');
     main.addEventListener('click', () => selectObject(obj));
 
     const name = document.createElement('span');
@@ -1025,7 +1108,9 @@ function renderSceneList() {
     const clone = document.createElement('button');
     clone.type = 'button';
     clone.textContent = 'Clone';
+    markEditOnly(clone, 'clone objects');
     clone.addEventListener('click', () => {
+      if (!requireEditAction('clone objects')) return;
       duplicateTarget(obj);
     });
 
@@ -1043,6 +1128,7 @@ function updateBuilderUi() {
   renderInspector();
   renderBlueprintList();
   renderSceneList();
+  updateEditorControlState();
 }
 
 function setOpen(panel, toggle, open) {
@@ -1084,6 +1170,9 @@ function mount() {
     .gb-mode-btn[data-selected="true"]{border-color:#4a9eff;background:#102033;color:#fff;font-weight:700}
     .gb-mode-btn[data-gb-mode="edit"][data-selected="true"]{border-color:#d9572b;background:#211a16}
     .gb-mode-btn[data-gb-mode="play"][data-selected="true"]{border-color:#38a169;background:#102318}
+    #game-builder-panel[data-edit-mode="false"] .gb-section:has([data-gb-edit-only="true"]) h3::after{content:"Read only";float:right;text-transform:none;font-weight:600;color:#75808a}
+    [data-gb-edit-only="true"]:disabled{opacity:.42!important;cursor:not-allowed!important}
+    .gb-readonly-note{margin-bottom:8px;border:1px solid #374151;background:#111827;color:#c7d2fe;border-radius:7px;padding:7px 8px;font-size:11px;line-height:15px}
     .gb-placement-status{display:flex;flex-direction:column;gap:3px;margin:8px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px;min-height:52px}
     .gb-placement-status strong{font-size:12px;line-height:16px;color:#eef2f3}
     .gb-placement-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1200,7 +1289,8 @@ function mount() {
     const blueprintName = document.createElement('input');
     blueprintName.id = 'gb-blueprint-name';
     blueprintName.placeholder = 'Blueprint name';
-    const saveBlueprint = createSmallButton('Save', () => saveSelectedBlueprint());
+    markEditOnly(blueprintName, 'save blueprints');
+    const saveBlueprint = createSmallButton('Save', () => saveSelectedBlueprint(), { editOnly: true, action: 'save blueprints' });
     blueprintTools.append(blueprintName, saveBlueprint);
     const blueprintList = document.createElement('div');
     blueprintList.id = 'gb-blueprint-list';
