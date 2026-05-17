@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `e235efe3`
+- Current deployed source commit for the public engine code: `0932fa35`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `e2b1f6e2-7e26-4254-9b3d-67d731015a90`
-- Latest production deployment URL: `https://e2b1f6e2.crateship-games.pages.dev`
+- Latest production deployment ID: `239040e1-3f9c-48b8-a31e-0ea17d220dbe`
+- Latest production deployment URL: `https://239040e1.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `e235efe`
-- Main live page bundle after the deploy: `/assets/play-Df5V4vMM.js`
+- Source shown by Cloudflare: `0932fa3`
+- Main live page bundle after the deploy: `/assets/play-CYg0M6tJ.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -215,6 +215,24 @@ Follow-up production deploys on 2026-05-17 fixed furniture loading and separated
   - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
   - The main app upload contained only `105` files, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 
+Follow-up production deploys on 2026-05-17 filtered unavailable asset catalog entries:
+
+- `engine.mjs`
+  - Filters `asset-catalog.json` against the deployed `/models/catalog.json` availability map before the gallery or command-search paths use it.
+  - Keeps user-saved, user-generated, marketplace, blob, data, and absolute external model entries.
+  - Hides `.tmp`/`.glb.tmp` entries and catalog entries that do not exist in the deployed asset host catalog.
+  - Uses alias and duplicate-folder normalization so known deployed paths can still be resolved instead of hidden.
+  - Exposes `window._assetCatalogHiddenUnavailable` for production diagnostics and smoke tests.
+- `asset-browser-ui.mjs`
+  - Gallery thumbnails now load from the corrected `item.path` when the scrubber resolves a canonical asset path.
+- `scripts/smoke-production.mjs`
+  - Verifies the filtered catalog is still large enough to be useful.
+  - Fails if `.tmp` asset references are still exposed to users.
+  - Prints the hidden unavailable asset count in smoke output.
+- App deployment `239040e1-3f9c-48b8-a31e-0ea17d220dbe`
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload contained only `105` files, uploaded `8` changed files, reused `97` already-uploaded files, and refreshed `_headers`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -377,7 +395,7 @@ Expected current results:
 
 - `npm run check:assets` passes with `108` required models, `20` external dependencies, and catalog references checked.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-Df5V4vMM.js`.
+- `/play` references `/assets/play-CYg0M6tJ.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -386,7 +404,7 @@ Expected current results:
 - Modular Poly Haven buffer dependencies return `200 OK` from the asset host `/models/*`.
 - The served play bundle contains `HDRLoader` and no `RGBELoader` references.
 - The served play bundle contains `gb-inspector`, `gb-blueprints`, `Inspector`, and `Blueprints`.
-- The served play bundle contains `data-gb-mode`, `Explore Mode`, and the fixed `let score = 0` command matcher.
+- The served play bundle contains `data-gb-mode`, `Explore Mode`, the fixed `let score = 0` command matcher, and the asset catalog availability filter.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
 - Missing asset-host model paths return `404 Not Found`, not `200 text/html`.
 
@@ -473,6 +491,17 @@ Browser verification from the 2026-05-17 deploy:
   - Smoke result: asset manifest `6f09cc09da2f`, `410` objects, `10` scene rows, `2` scripts, mode `edit`, selected component `pickup`.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mp9vevn1.png`.
+- Final custom-domain verification after deployment `239040e1-3f9c-48b8-a31e-0ea17d220dbe`:
+  - Cloudflare source showed `0932fa3`.
+  - `/play?verify=<timestamp>` served `/assets/play-CYg0M6tJ.js`.
+  - `/play?verify=<timestamp>` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check:assets` passed with `108` required models, `20` external dependencies, and `107` catalog references.
+  - `npm run smoke:production` passed after deploy on the real custom domain.
+  - Smoke verified catalog filtering, `add chair`, `build city`, Game Builder Inventory, Scene list, Pickup component tagging, and Explore/Edit mode switching.
+  - Smoke result: asset manifest `6f09cc09da2f`, hidden unavailable assets `45`, `410` objects, `10` scene rows, `2` scripts, mode `edit`, selected component `pickup`.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpa2pxfr.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -507,6 +536,7 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+0932fa35 Filter unavailable asset catalog entries
 e235efe3 Fix engine modes and furniture loading
 6f09cc09 Add asset host manifest verification
 5c139d3a Use separate Cloudflare asset host
