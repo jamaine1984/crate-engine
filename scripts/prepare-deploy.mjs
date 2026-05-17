@@ -1,6 +1,7 @@
 import { cp, mkdir, rm, symlink, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkAssets } from './check-assets.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(process.env.CRATE_ENGINE_ROOT || path.join(scriptDir, '..'));
@@ -9,12 +10,19 @@ const deployDir = path.resolve(process.env.CRATE_DEPLOY_DIR || path.join(rootDir
 const modelsTarget = path.resolve(process.env.CRATE_MODELS_DIR || path.join(rootDir, 'models'));
 const texturesTarget = path.resolve(process.env.CRATE_TEXTURES_DIR || path.join(modelsTarget, 'textures'));
 const includeAssets = process.env.CRATE_DEPLOY_INCLUDE_ASSETS !== 'false';
+const skipAssetCheck = process.env.CRATE_SKIP_ASSET_CHECK === 'true';
 
 await rm(deployDir, { recursive: true, force: true });
 await mkdir(deployDir, { recursive: true });
 await cp(distDir, deployDir, { recursive: true, force: true });
 
 if (includeAssets) {
+  if (!skipAssetCheck) {
+    await checkAssets({ modelRoot: modelsTarget, projectRoot: rootDir });
+  } else {
+    console.warn('Skipping deploy asset integrity check because CRATE_SKIP_ASSET_CHECK=true.');
+  }
+
   try {
     const modelsStat = await lstat(modelsTarget);
     if (!modelsStat.isDirectory() && !modelsStat.isSymbolicLink()) {
