@@ -140,6 +140,95 @@ onUpdate = function(dt) {
   });
 };`,
   },
+  components: {
+    id: 'gb_component_runtime',
+    name: 'Component Runtime',
+    description: 'Runs pickup, damage, objective, and motion tags from Game Builder.',
+    code: `state.gbRuntime = state.gbRuntime || { health: 100, score: 0, objectives: {} };
+
+function getPlayerPosition() {
+  const player = getPlayer();
+  if (player && player.position) return player.position;
+  if (player && player.model && player.model.position) return player.model.position;
+  if (camera && camera.position) return camera.position;
+  return null;
+}
+
+function getComponentHud() {
+  let hud = document.getElementById('gb-component-hud');
+  if (!hud) {
+    hud = document.createElement('div');
+    hud.id = 'gb-component-hud';
+    hud.style.cssText = 'position:fixed;right:18px;bottom:48px;z-index:735;width:220px;background:rgba(8,8,10,0.82);border:1px solid #2f3536;border-radius:8px;padding:10px 12px;color:#f5f5f5;font-family:monospace;font-size:12px;pointer-events:none';
+    document.body.appendChild(hud);
+  }
+  return hud;
+}
+
+function renderComponentHud() {
+  const objectiveRows = Object.values(state.gbRuntime.objectives || {});
+  const objectives = objectiveRows.length ? objectiveRows.map((item) => {
+    return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + item.label + '</div>';
+  }).join('') : '<div style="color:#7d878e">No objectives tagged</div>';
+  getComponentHud().innerHTML =
+    '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>HP</span><span>' + Math.round(state.gbRuntime.health) + '</span></div>' +
+    '<div style="height:7px;background:#1c2021;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + Math.max(0, Math.min(100, state.gbRuntime.health)) + '%;background:#59d987"></div></div>' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Score</span><span>' + state.gbRuntime.score + '</span></div>' +
+    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives;
+}
+
+onUpdate = function(dt, time) {
+  const playerPos = getPlayerPosition();
+  getObjects().forEach((obj) => {
+    const components = obj && obj.userData && obj.userData.gbComponents;
+    if (!components) return;
+
+    if (components.spin) obj.rotation.y += dt * (components.spin.speed || 1.2);
+    if (components.float) {
+      const baseY = components.float.baseY ?? obj.position.y;
+      components.float.baseY = baseY;
+      obj.position.y = baseY + Math.sin(time * (components.float.speed || 1.8)) * (components.float.height || 0.45);
+    }
+
+    if (!playerPos || !obj.position) return;
+    const distance = obj.position.distanceTo(playerPos);
+
+    if (components.objective) {
+      const id = components.objective.id || obj.uuid;
+      if (!state.gbRuntime.objectives[id]) {
+        state.gbRuntime.objectives[id] = { label: components.objective.label || 'Reach objective', done: false };
+      }
+      if (!state.gbRuntime.objectives[id].done && distance < (components.objective.radius || 3)) {
+        state.gbRuntime.objectives[id].done = true;
+        showToast('Objective complete: ' + state.gbRuntime.objectives[id].label);
+      }
+    }
+
+    if (components.pickup && !obj.userData.gbCollected && distance < (components.pickup.radius || 2.5)) {
+      obj.userData.gbCollected = true;
+      const item = components.pickup.item || obj.userData.name || 'item';
+      state.gbRuntime.score += components.pickup.score || 10;
+      if (Array.isArray(state.gbInventory)) {
+        const slot = typeof state.gbInventorySlot === 'number' ? state.gbInventorySlot : 0;
+        state.gbInventory[slot] = item;
+      }
+      scene.remove(obj);
+      showToast('Collected: ' + item);
+    }
+
+    if (components.damage && distance < (components.damage.radius || 2.5)) {
+      const lastHit = components.damage.lastHit || 0;
+      const cooldown = components.damage.cooldown || 1.2;
+      if (time - lastHit > cooldown) {
+        components.damage.lastHit = time;
+        state.gbRuntime.health = Math.max(0, state.gbRuntime.health - (components.damage.amount || 10));
+        showToast('Damage: -' + (components.damage.amount || 10));
+      }
+    }
+  });
+  renderComponentHud();
+};`,
+  },
 };
 
 const PRESET_GROUPS = [
@@ -161,6 +250,7 @@ const PRESET_GROUPS = [
       { label: 'Game HUD', script: 'hud' },
       { label: 'Quest Tracker', script: 'quest' },
       { label: 'Pickups', script: 'pickups' },
+      { label: 'Components', script: 'components' },
       { label: 'FPS Combat', command: 'fps mode' },
       { label: 'Dialogue NPC', command: 'dialogue editor' },
       { label: 'Autosave', command: 'autosave on' },
@@ -189,6 +279,17 @@ const PRESET_GROUPS = [
       { label: 'Settings', action: 'settings' },
     ],
   },
+];
+
+const COMPONENT_PRESETS = [
+  { label: 'Collider', component: 'collider', title: 'Tag the current object as solid scene geometry.' },
+  { label: 'Pickup', component: 'pickup', title: 'Make the current object collectible.' },
+  { label: 'Damage', component: 'damage', title: 'Make the current object damage the player nearby.' },
+  { label: 'Objective', component: 'objective', title: 'Make the current object complete an objective when reached.' },
+  { label: 'Spin', component: 'spin', title: 'Give the current object a runtime spin behavior.' },
+  { label: 'Float', component: 'float', title: 'Give the current object a gentle floating behavior.' },
+  { label: 'Spawn Pt', component: 'spawnPoint', title: 'Mark the current object as a player or enemy spawn point.' },
+  { label: 'Focus', action: 'focus', title: 'Move the camera toward the current object.' },
 ];
 
 function isSmallScreen() {
@@ -224,6 +325,100 @@ async function installScript(key) {
   } catch (err) {
     notify(err.message || 'Script install failed');
   }
+}
+
+function getSceneObjects() {
+  const candidates = window._engineBridge?.objects || window._engine?.objects || window._sceneObjects || [];
+  return Array.isArray(candidates) ? candidates.filter((obj) => obj && obj.position && obj.userData) : [];
+}
+
+function getObjectName(obj, index) {
+  const name = obj?.userData?.name || obj?.name || obj?.type || 'Object';
+  return String(name).replace(/[_-]+/g, ' ').trim() || 'Object ' + (index + 1);
+}
+
+function getTargetObject() {
+  const selected = window._engineBridge?.getSelected?.() || window._engine?.selectedObject;
+  if (selected) return selected;
+  const objects = getSceneObjects();
+  return window._lastPlacedObj || objects[objects.length - 1] || null;
+}
+
+function selectObject(obj) {
+  if (!obj) {
+    notify('Select or add an object first');
+    return null;
+  }
+  const selected = window._engineBridge?.selectObject?.(obj) || window._engine?.selectObject?.(obj) || obj;
+  window._lastPlacedObj = selected;
+  updateBuilderUi();
+  return selected;
+}
+
+function focusObject(obj) {
+  const target = obj || getTargetObject();
+  const camera = window._engine?.camera || window._engineBridge?.camera;
+  const controls = window._engine?.controls;
+  if (!target || !target.position || !camera) {
+    notify('Select or add an object first');
+    return;
+  }
+  const pos = target.position;
+  camera.position.set(pos.x + 10, pos.y + 7, pos.z + 10);
+  if (camera.lookAt) camera.lookAt(pos.x, pos.y, pos.z);
+  if (controls?.target?.copy) {
+    controls.target.copy(pos);
+    controls.update?.();
+  }
+  selectObject(target);
+  notify('Focused: ' + getObjectName(target, 0));
+}
+
+function getComponentStore(obj) {
+  obj.userData = obj.userData || {};
+  obj.userData.gbComponents = obj.userData.gbComponents || {};
+  return obj.userData.gbComponents;
+}
+
+async function ensureComponentRuntime() {
+  await installScript('components');
+}
+
+async function markComponent(component) {
+  const target = selectObject(getTargetObject());
+  if (!target) return;
+  const components = getComponentStore(target);
+  const cleanName = getObjectName(target, 0);
+  const id = target.uuid || ('object_' + Date.now());
+
+  if (component === 'collider') {
+    components.collider = { type: 'solid', createdAt: Date.now() };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Inspect';
+  } else if (component === 'pickup') {
+    components.pickup = { item: cleanName, score: 10, radius: 2.5 };
+    await installScript('inventory');
+    await ensureComponentRuntime();
+  } else if (component === 'damage') {
+    components.damage = { amount: 10, radius: 2.5, cooldown: 1.2 };
+    await ensureComponentRuntime();
+  } else if (component === 'objective') {
+    components.objective = { id: 'objective_' + id, label: 'Reach ' + cleanName, radius: 3 };
+    await ensureComponentRuntime();
+  } else if (component === 'spin') {
+    components.spin = { speed: 1.2 };
+    await ensureComponentRuntime();
+  } else if (component === 'float') {
+    components.float = { speed: 1.8, height: 0.45, baseY: target.position.y };
+    await ensureComponentRuntime();
+  } else if (component === 'spawnPoint') {
+    components.spawnPoint = { kind: 'player', radius: 1.5 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Spawn point';
+  }
+
+  notify(component.replace(/([A-Z])/g, ' $1') + ' added to ' + cleanName);
+  updateBuilderUi();
 }
 
 function runAction(action) {
@@ -267,6 +462,21 @@ function createButton(preset) {
   return button;
 }
 
+function createComponentButton(preset) {
+  const button = document.createElement('button');
+  button.className = 'gb-preset gb-component-btn';
+  button.type = 'button';
+  button.textContent = preset.label;
+  button.title = preset.title || preset.label;
+  button.addEventListener('click', async () => {
+    setBusy(button, true);
+    if (preset.action === 'focus') focusObject();
+    else await markComponent(preset.component);
+    setBusy(button, false);
+  });
+  return button;
+}
+
 function setBusy(button, busy) {
   button.disabled = busy;
   button.dataset.busy = busy ? 'true' : 'false';
@@ -275,10 +485,86 @@ function setBusy(button, busy) {
 function updateStats() {
   const stats = document.getElementById('gb-stats');
   if (!stats) return;
-  const objectCount = window._engine?.objects?.length || window._sceneObjects?.length || 0;
+  const objects = getSceneObjects();
+  const objectCount = objects.length;
+  const componentCount = objects.reduce((count, obj) => count + Object.keys(obj.userData?.gbComponents || {}).length, 0);
   const scriptCount = Array.isArray(window._userScripts) ? window._userScripts.length : 0;
   const mode = window._engine?.playMode ? 'Play' : 'Edit';
-  stats.innerHTML = '<span>' + objectCount + ' objects</span><span>' + scriptCount + ' scripts</span><span>' + mode + '</span>';
+  stats.innerHTML = '<span>' + objectCount + ' objects</span><span>' + componentCount + ' components</span><span>' + scriptCount + ' scripts</span><span>' + mode + '</span>';
+}
+
+function formatPosition(obj) {
+  if (!obj?.position) return 'No position';
+  return 'x ' + obj.position.x.toFixed(1) + ' y ' + obj.position.y.toFixed(1) + ' z ' + obj.position.z.toFixed(1);
+}
+
+function formatComponentList(obj) {
+  const components = Object.keys(obj?.userData?.gbComponents || {});
+  if (obj?.userData?.hasPhysics && !components.includes('physics')) components.push('physics');
+  return components.length ? components.join(', ') : 'No components';
+}
+
+function renderSceneList() {
+  const list = document.getElementById('gb-scene-list');
+  if (!list) return;
+  const objects = getSceneObjects();
+  const target = getTargetObject();
+  list.innerHTML = '';
+
+  if (!objects.length) {
+    const empty = document.createElement('div');
+    empty.className = 'gb-empty';
+    empty.textContent = 'Build a world or add an asset to see scene objects here.';
+    list.appendChild(empty);
+    return;
+  }
+
+  objects.slice(-10).reverse().forEach((obj, index) => {
+    const row = document.createElement('div');
+    row.className = 'gb-scene-row';
+    row.dataset.selected = obj === target ? 'true' : 'false';
+
+    const main = document.createElement('button');
+    main.className = 'gb-scene-main';
+    main.type = 'button';
+    main.title = 'Select object';
+    main.addEventListener('click', () => selectObject(obj));
+
+    const name = document.createElement('span');
+    name.className = 'gb-scene-name';
+    name.textContent = getObjectName(obj, objects.length - index - 1);
+
+    const meta = document.createElement('span');
+    meta.className = 'gb-scene-meta';
+    meta.textContent = formatPosition(obj) + ' | ' + formatComponentList(obj);
+
+    const actions = document.createElement('div');
+    actions.className = 'gb-scene-actions';
+
+    const focus = document.createElement('button');
+    focus.type = 'button';
+    focus.textContent = 'View';
+    focus.addEventListener('click', () => focusObject(obj));
+
+    const clone = document.createElement('button');
+    clone.type = 'button';
+    clone.textContent = 'Clone';
+    clone.addEventListener('click', () => {
+      selectObject(obj);
+      window._duplicateSelected?.();
+      updateBuilderUi();
+    });
+
+    main.append(name, meta);
+    actions.append(focus, clone);
+    row.append(main, actions);
+    list.appendChild(row);
+  });
+}
+
+function updateBuilderUi() {
+  updateStats();
+  renderSceneList();
 }
 
 function setOpen(panel, toggle, open) {
@@ -318,6 +604,17 @@ function mount() {
     .gb-preset{height:34px;border:1px solid #2a3237;background:#161a1c;color:#eef2f3;border-radius:6px;font-size:12px;cursor:pointer;text-align:left;padding:0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-preset:hover{border-color:#d9572b;background:#211a16}
     .gb-preset:disabled{opacity:.55;cursor:progress}
+    .gb-component-btn{border-color:#354044}
+    .gb-scene-list{display:flex;flex-direction:column;gap:6px;padding:8px;max-height:220px;overflow:auto}
+    .gb-empty{font-size:12px;line-height:16px;color:#8d979e;padding:4px 2px}
+    .gb-scene-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;border:1px solid #20262a;border-radius:7px;background:#121516;padding:5px}
+    .gb-scene-row[data-selected="true"]{border-color:#d9572b;background:#1c1714}
+    .gb-scene-main{min-width:0;border:0;background:transparent;color:#eef2f3;text-align:left;cursor:pointer;padding:2px 4px}
+    .gb-scene-name{display:block;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-scene-meta{display:block;font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-scene-actions{display:flex;gap:4px}
+    .gb-scene-actions button{height:28px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:11px;cursor:pointer;padding:0 7px}
+    .gb-scene-actions button:hover{border-color:#d9572b;color:#fff}
     @media (max-width:900px){#game-builder-panel{top:70px;left:8px;right:8px;bottom:auto;width:auto;max-height:48vh}#game-builder-panel[data-open="false"]{width:48px;right:auto}.gb-grid{grid-template-columns:1fr 1fr 1fr}}
   `;
   document.head.appendChild(style);
@@ -369,12 +666,32 @@ function mount() {
     body.appendChild(section);
   });
 
+  const componentSection = document.createElement('section');
+  componentSection.className = 'gb-section';
+  const componentHeading = document.createElement('h3');
+  componentHeading.textContent = 'Components';
+  const componentGrid = document.createElement('div');
+  componentGrid.className = 'gb-grid';
+  COMPONENT_PRESETS.forEach((preset) => componentGrid.appendChild(createComponentButton(preset)));
+  componentSection.append(componentHeading, componentGrid);
+  body.appendChild(componentSection);
+
+  const sceneSection = document.createElement('section');
+  sceneSection.className = 'gb-section';
+  const sceneHeading = document.createElement('h3');
+  sceneHeading.textContent = 'Scene';
+  const sceneList = document.createElement('div');
+  sceneList.id = 'gb-scene-list';
+  sceneList.className = 'gb-scene-list';
+  sceneSection.append(sceneHeading, sceneList);
+  body.appendChild(sceneSection);
+
   panel.appendChild(body);
   document.body.appendChild(panel);
 
   repositionLegacyButtons(open);
-  updateStats();
-  setInterval(updateStats, 1200);
+  updateBuilderUi();
+  setInterval(updateBuilderUi, 1200);
   window.addEventListener('resize', () => repositionLegacyButtons(panel.dataset.open === 'true'));
 }
 

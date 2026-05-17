@@ -1317,6 +1317,17 @@ function getCurrentSelection() {
   return selectedObj || window._lastPlacedObj || sceneObjects[sceneObjects.length - 1] || null;
 }
 
+function selectSceneObject(obj) {
+  if (!obj) return null;
+  let target = obj;
+  while (target.parent && !objects.includes(target)) target = target.parent;
+  if (!objects.includes(target)) return null;
+  selectedObj = target;
+  window._lastPlacedObj = target;
+  highlightSelected(target);
+  return target;
+}
+
 function getNavStartPoint() {
   if (playMode && characterController?.position) return characterController.position.clone();
   return camera.position.clone();
@@ -13307,6 +13318,7 @@ window._engineBridge = {
     scene.remove(obj);
   },
   getSelected() { return getCurrentSelection(); },
+  selectObject(obj) { return selectSceneObject(obj); },
   
   // Player
   enterPlayMode: enterPlayMode,
@@ -15197,11 +15209,13 @@ window._engine = {
   get controls() { return controls; },
   get gameScore() { return gameScore; },
   get character() { return characterController; },
+  get selectedObject() { return getCurrentSelection(); },
   get npcs() { return npcController; },
   get townBuilder() { return townBuilder; },
   enterPlayMode, exitPlayMode,
   respawn: () => { if (characterController) characterController.respawn(); },
   exec: execSingle,
+  selectObject: selectSceneObject,
   get quests() { return questSystem; },
   get crafting() { return craftingSystem; },
   get levels() { return levelSystem; },
