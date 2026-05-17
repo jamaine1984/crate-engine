@@ -1608,6 +1608,15 @@ function _hideEditorUI() {
   const sb = document.getElementById('scene-buttons'); if (sb) sb.style.display = 'none';
   const insp = document.getElementById('inspector'); if (insp) insp.style.display = 'none';
   const pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = 'none';
+  const gb = document.getElementById('game-builder-panel');
+  if (gb) {
+    gb.dataset.playHidden = 'true';
+    gb.style.display = 'none';
+  }
+  ['asset-gallery-overlay', 'category-picker-overlay', 'fab-gallery-modal', 'ie-modal'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  });
 }
 function _showEditorUI() {
   const tb = document.getElementById('build-toolbar'); if (tb) tb.style.display = 'flex';
@@ -1615,9 +1624,17 @@ function _showEditorUI() {
   const sb = document.getElementById('scene-buttons'); if (sb) sb.style.display = 'flex';
   const insp = document.getElementById('inspector'); if (insp) insp.style.removeProperty('display');
   const pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = 'flex';
+  const gb = document.getElementById('game-builder-panel');
+  if (gb && gb.dataset.playHidden === 'true') {
+    gb.style.removeProperty('display');
+    delete gb.dataset.playHidden;
+  }
 }
 
 function enterPlayMode() {
+  syncModeGlobals('play');
+  clearEditorSelection();
+  if (typeof _updateModeButtons === 'function') _updateModeButtons('play');
   // Play = camera mode. User spawns NPC separately if they want one.
   if (!characterController) {
     if (!playModeBootPending) {
@@ -1627,6 +1644,10 @@ function enterPlayMode() {
         if (!playMode) _activatePlayMode();
       }).catch((err) => {
         playModeBootPending = false;
+        if (!playMode) {
+          syncModeGlobals('edit');
+          if (typeof _updateModeButtons === 'function') _updateModeButtons('edit');
+        }
         console.warn('[Gameplay] Failed to load play systems:', err);
         showToast('⚠ Failed to load gameplay systems');
       });

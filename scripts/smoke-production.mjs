@@ -235,9 +235,36 @@ async function runBrowserSmoke() {
       throw new Error('Explore mode button did not reflect the active mode');
     }
 
+    await page.locator('[data-gb-mode="play"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => window._currentMode === 'play' && window._playMode === true,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const playState = await page.evaluate(() => ({
+      mode: window._currentMode,
+      playMode: window._playMode === true,
+      builderDisplay: document.querySelector('#game-builder-panel')?.style.display || '',
+      builderPlayHidden: document.querySelector('#game-builder-panel')?.dataset.playHidden || '',
+      promptDisplay: document.querySelector('#prompt-input')?.parentElement?.style.display || '',
+      legacyInspectorDisplay: document.querySelector('#inspector')?.style.display || '',
+    }));
+    if (playState.builderDisplay !== 'none' || playState.builderPlayHidden !== 'true') {
+      throw new Error(`Play mode did not hide Game Builder: ${JSON.stringify(playState)}`);
+    }
+    if (playState.promptDisplay !== 'none') {
+      throw new Error(`Play mode did not hide prompt input: ${JSON.stringify(playState)}`);
+    }
+    if (playState.legacyInspectorDisplay === 'flex') {
+      throw new Error('Play mode left the legacy object inspector visible');
+    }
+
     await page.evaluate(() => window._setMode?.('edit'));
     await page.waitForFunction(
-      () => window._currentMode === 'edit' && document.querySelector('[data-gb-mode="edit"]')?.dataset.selected === 'true',
+      () => window._currentMode === 'edit' &&
+        window._playMode !== true &&
+        document.querySelector('[data-gb-mode="edit"]')?.dataset.selected === 'true' &&
+        document.querySelector('#game-builder-panel')?.style.display !== 'none',
       undefined,
       { timeout: timeoutMs }
     );
