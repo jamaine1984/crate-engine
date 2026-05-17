@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `a6778271`
+- Current deployed source commit for the public engine code: `1967b372`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `5c762057-59bc-4f0d-beb1-ac80cdd6471f`
-- Latest production deployment URL: `https://5c762057.crateship-games.pages.dev`
+- Latest production deployment ID: `f365f9e1-591e-4faa-ae13-8b7724753c2d`
+- Latest production deployment URL: `https://f365f9e1.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `a677827`
-- Main live page bundle after the deploy: `/assets/play-C7r1H5jl.js`
+- Source shown by Cloudflare: `1967b37`
+- Main live page bundle after the deploy: `/assets/play-BFEZwrmY.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -248,6 +248,25 @@ Follow-up production deploys on 2026-05-17 hardened Play mode editor separation:
   - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
   - The main app upload skipped bundled `/models` and `/textures`, uploaded `6` changed files, reused `99` already-uploaded files, and refreshed `_headers`.
 
+Follow-up production deploys on 2026-05-17 improved asset placement feedback:
+
+- `engine.mjs`
+  - Added one tracked placement path for command adds, model browser picks, direct asset library picks, and Fab gallery picks.
+  - Asset placement now switches to Edit mode when needed, places the model in front of the camera instead of always at the origin, and selects the newly placed model.
+  - Exposes `window._placeCatalogAsset` and `window._lastAssetPlacement` for editor UI and production smoke diagnostics.
+  - Hides the floating model-browser button during Play mode and restores it when returning to Edit.
+- `game-builder-ui.mjs`
+  - Added a `Placement` status section to show loading, placed, blocked, or failed placement state with the placed asset name and position.
+- `editor-tools-ui.mjs`
+  - Routes Fab gallery clicks through the same tracked placement path when available.
+- `scripts/smoke-production.mjs`
+  - Verifies tracked furniture placement on the live custom domain.
+  - Verifies the placed asset is selected and the Placement panel names it.
+  - Verifies Play mode hides the model-browser button and Edit mode restores it.
+- App deployment `f365f9e1-591e-4faa-ae13-8b7724753c2d`
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `8` changed files, reused `97` already-uploaded files, and refreshed `_headers`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -355,6 +374,7 @@ Recovered model cache summary:
 - Asset-manifest deploy uploaded `1` changed file, reused `4,183` already-uploaded files, and refreshed `_headers`.
 - Furniture/mode main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 - Play-mode separation main-app deploy skipped bundled `/models` and `/textures`, uploaded `6` changed files, reused `99` already-uploaded files, and refreshed `_headers`.
+- Asset-placement main-app deploy skipped bundled `/models` and `/textures`, uploaded `8` changed files, reused `97` already-uploaded files, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -411,7 +431,7 @@ Expected current results:
 
 - `npm run check:assets` passes with `108` required models, `20` external dependencies, and catalog references checked.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-C7r1H5jl.js`.
+- `/play` references `/assets/play-BFEZwrmY.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -421,7 +441,8 @@ Expected current results:
 - The served play bundle contains `HDRLoader` and no `RGBELoader` references.
 - The served play bundle contains `gb-inspector`, `gb-blueprints`, `Inspector`, and `Blueprints`.
 - The served play bundle contains `data-gb-mode`, `Explore Mode`, the fixed `let score = 0` command matcher, and the asset catalog availability filter.
-- The served play bundle hides the Game Builder in Play mode and restores it after switching back to Edit.
+- The served play bundle contains `gb-placement-status`, `window._placeCatalogAsset`, and `window._lastAssetPlacement`.
+- The served play bundle hides the Game Builder and model browser in Play mode and restores them after switching back to Edit.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
 - Missing asset-host model paths return `404 Not Found`, not `200 text/html`.
 
@@ -531,6 +552,18 @@ Browser verification from the 2026-05-17 deploy:
   - Play mode smoke verified the Game Builder and prompt were hidden in Play, then restored the Game Builder after returning to Edit.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpa3n1f4.png`.
+- Final custom-domain verification after deployment `f365f9e1-591e-4faa-ae13-8b7724753c2d`:
+  - Cloudflare source showed `1967b37`.
+  - `/play?verify=<timestamp>` served `/assets/play-BFEZwrmY.js`.
+  - `/play?verify=<timestamp>` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check`, `npm run build`, and `npm run check:assets` passed before deploy.
+  - `npm run smoke:production` passed after deploy on the real custom domain.
+  - Smoke verified tracked furniture placement, placement status UI, selected placed asset, catalog filtering, `add chair`, `build city`, Game Builder Inventory, Scene list, Pickup component tagging, Explore/Edit switching, and Play/Edit separation.
+  - Smoke result: asset manifest `6f09cc09da2f`, hidden unavailable assets `45`, `411` objects, `10` scene rows, `2` scripts, mode `edit`, placement `placed (production-smoke)`, selected component `pickup`.
+  - Play mode smoke verified the Game Builder, prompt, and model browser were hidden in Play, then restored after returning to Edit.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpa4m4hq.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -565,6 +598,7 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+1967b372 Improve asset placement feedback
 a6778271 Harden play mode editor separation
 0932fa35 Filter unavailable asset catalog entries
 e235efe3 Fix engine modes and furniture loading
