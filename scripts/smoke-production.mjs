@@ -166,9 +166,18 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#prompt-input', { timeout: timeoutMs });
     await page.waitForSelector('#gb-inspector', { timeout: timeoutMs });
     await page.waitForSelector('#gb-blueprints', { timeout: timeoutMs });
+    await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
 
     await page.locator('button.gb-preset', { hasText: 'Inventory' }).click({ timeout: timeoutMs });
     await page.waitForFunction(() => Array.isArray(window._userScripts) && window._userScripts.length >= 1, undefined, { timeout: timeoutMs });
+
+    const beforeFurnitureCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
+    await page.evaluate(() => window._runCommand?.('add chair'));
+    await page.waitForFunction(
+      (before) => (window._engineBridge?.objects?.length || 0) > before,
+      beforeFurnitureCount,
+      { timeout: timeoutMs }
+    );
 
     const input = page.locator('#prompt-input');
     await input.fill('build city', { timeout: timeoutMs });
@@ -192,6 +201,33 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     );
 
+    await page.evaluate(() => window._setMode?.('explore'));
+    await page.waitForFunction(
+      () => window._currentMode === 'explore' && window._playMode !== true,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.mouse.click(680, 470);
+    const exploreState = await page.evaluate(() => ({
+      mode: window._currentMode,
+      playMode: window._playMode === true,
+      legacyInspectorDisplay: document.querySelector('#inspector')?.style.display || '',
+      selectedModeButton: document.querySelector('[data-gb-mode="explore"]')?.dataset.selected || '',
+    }));
+    if (exploreState.legacyInspectorDisplay === 'flex') {
+      throw new Error('Explore mode canvas click opened the object inspector');
+    }
+    if (exploreState.selectedModeButton !== 'true') {
+      throw new Error('Explore mode button did not reflect the active mode');
+    }
+
+    await page.evaluate(() => window._setMode?.('edit'));
+    await page.waitForFunction(
+      () => window._currentMode === 'edit' && document.querySelector('[data-gb-mode="edit"]')?.dataset.selected === 'true',
+      undefined,
+      { timeout: timeoutMs }
+    );
+
     await mkdir(screenshotDir, { recursive: true });
     await page.screenshot({ path: screenshotPath, fullPage: false });
 
@@ -207,6 +243,8 @@ async function runBrowserSmoke() {
         stats: document.querySelector('#gb-stats')?.textContent?.trim() || '',
         hasInspector: !!document.querySelector('#gb-inspector'),
         hasBlueprints: !!document.querySelector('#gb-blueprints'),
+        mode: window._currentMode || '',
+        hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
         scriptCount: Array.isArray(window._userScripts) ? window._userScripts.length : 0,
         selectedComponents: Object.keys(selected?.userData?.gbComponents || {}),
       };
@@ -220,6 +258,8 @@ async function runBrowserSmoke() {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
     if (!state.hasInspector || !state.hasBlueprints) throw new Error('Game Builder Inspector or Blueprints section was missing');
+    if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
+    if (state.mode !== 'edit') throw new Error(`Expected smoke to finish in edit mode, got ${state.mode || 'empty'}`);
     if (state.objectCount < 100) throw new Error(`Expected build city to create at least 100 objects, got ${state.objectCount}`);
     if (state.sceneRows < 1) throw new Error('Game Builder Scene list did not populate after build city');
     if (!state.selectedComponents.includes('pickup')) throw new Error('Pickup component was not applied to the selected object');
@@ -236,6 +276,7 @@ const assetManifest = await checkAssetManifest(assetBaseUrl);
 const httpChecks = [
   await checkHttp('/asset-manifest.json', 200, 'application/json', assetBaseUrl),
   await checkHttp('/models/kenney_cars/sedan.glb', 200, 'model/gltf-binary', assetBaseUrl),
+  await checkHttp('/models/house_interior_pack_chair_1.glb', 200, 'model/gltf-binary', assetBaseUrl),
   await checkHttp('/models/fab/street_props_streeprops.glb', 200, 'model/gltf-binary', assetBaseUrl),
   await checkHttp('/models/modular_street_seating.bin', 200, 'application/octet-stream', assetBaseUrl),
   await checkHttp('/textures/modular_street_seating_armrests_diff_1k.jpg', 200, 'image/jpeg', assetBaseUrl),
@@ -251,6 +292,7 @@ console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);
+console.log(`Mode: ${browserState.mode}`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);

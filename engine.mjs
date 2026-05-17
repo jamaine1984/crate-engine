@@ -1486,6 +1486,44 @@ window.showGameModesModal = showGameModesModal;
 
 // === PLAY MODE (WASD First-Person) ===
 let playMode = false;
+let _currentMode = 'edit';
+let _exploreMode = false;
+
+function normalizeEngineMode(mode) {
+  const value = String(mode || 'edit').toLowerCase();
+  if (value === 'view') return 'explore';
+  if (value === 'explore' || value === 'play' || value === 'edit') return value;
+  return 'edit';
+}
+
+function syncModeGlobals(mode = _currentMode) {
+  _currentMode = normalizeEngineMode(mode);
+  _exploreMode = _currentMode === 'explore';
+  window._currentMode = _currentMode;
+  window._engineMode = _currentMode;
+  window._exploreMode = _exploreMode;
+  window._playMode = playMode;
+  return _currentMode;
+}
+
+function getEngineMode() {
+  return playMode ? 'play' : _currentMode;
+}
+
+function isEditInteractionMode() {
+  return getEngineMode() === 'edit';
+}
+
+function clearEditorSelection() {
+  try {
+    if (selectedObj) {
+      selectedObj = null;
+      highlightSelected(null);
+    }
+  } catch {}
+}
+
+syncModeGlobals('edit');
     if (window._mobileControls) window._mobileControls.hide();
 
 // === CHARACTER SELECT (restored from localStorage) ===
@@ -1602,6 +1640,9 @@ function enterPlayMode() {
 function _activatePlayMode() {
   startReplayRecording();
   playMode = true; window._playMode = true;
+  syncModeGlobals('play');
+  clearEditorSelection();
+  if (typeof _updateModeButtons === 'function') _updateModeButtons('play');
   _hideEditorUI();
   
   // ALWAYS start in camera mode — user spawns NPC when ready
@@ -1679,9 +1720,11 @@ function _activatePlayMode() {
   showToast('🎮 Play mode ON! (fast mode)');
 }
 
-function exitPlayMode() {
+function exitPlayMode(nextMode = 'edit') {
   stopReplayRecording();
+  const targetMode = normalizeEngineMode(nextMode);
   playMode = false; window._playMode = false;
+  syncModeGlobals(targetMode === 'play' ? 'edit' : targetMode);
   window._composerDisabled = false;
   // Clean up play mode HUD elements
   ['fps-counter','char-select-btn','click-to-play','city-minimap','rain-overlay'].forEach(id => {
@@ -1691,7 +1734,7 @@ function exitPlayMode() {
   try { controls.enabled = true; controls.update(); } catch(e) {}
   // Show editor UI
   _showEditorUI();
-  showToast('🎮 Back to editor mode');
+  showToast(_currentMode === 'explore' ? 'Explore mode - camera only' : 'Back to editor mode');
   _showEditorUI();
   // Hide v215 HUD elements
   ['compass','crosshair','stamina-bar','interact-prompt','damage-vignette','underwater-fx','speed-lines','kill-feed'].forEach(id => {
@@ -1705,7 +1748,8 @@ function exitPlayMode() {
   if (document.pointerLockElement) {
     try { document.exitPointerLock(); } catch(e) {}
   }
-  var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return '🎮 Play mode OFF — back to editor';
+  if (typeof _updateModeButtons === 'function') _updateModeButtons(_currentMode);
+  var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return _currentMode === 'explore' ? 'Explore mode - camera only' : 'Play mode OFF - back to editor';
 }
 
 window.exitPlayMode = exitPlayMode;
@@ -9723,7 +9767,7 @@ function highlightSelected(obj) {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
-  if (playMode) return; // Don't select objects in play mode
+  if (!isEditInteractionMode()) return; // Selection and drag only run in Edit mode.
   if (e.button !== 0) return;
   const rect = canvas.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -9750,6 +9794,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  if (!isEditInteractionMode()) { isDragging = false; return; }
   if (!isDragging || !selectedObj) return;
   const rect = canvas.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -13326,6 +13371,10 @@ window._engineBridge = {
   // Player
   enterPlayMode: enterPlayMode,
   exitPlayMode: exitPlayMode,
+  setMode: (mode) => window._setMode?.(mode) || syncModeGlobals(mode),
+  getMode: () => getEngineMode(),
+  isEditMode: () => isEditInteractionMode(),
+  isExploreMode: () => getEngineMode() === 'explore',
   get characterController() { return characterController; },
   
   // World building (calls the existing template system)
@@ -13602,7 +13651,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
               for (const item of items) {
                 const name = item.name.toLowerCase();
                 const file = item.file.toLowerCase();
-                score = 0;
+                let score = 0;
                 
                 if (name === query || file.replace('.glb','') === query) score = 100;
                 else if (name.startsWith(query)) score = 80;
@@ -13621,7 +13670,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
               // Random position so objects don't stack
               const _rx = (Math.random() - 0.5) * 60;
               const _rz = (Math.random() - 0.5) * 60;
-              loadGLBModel(bestMatch.name, bestMatch.file, _rx, _rz);
+              loadGLBModel(bestMatch.name, bestMatch.file, _rx, _rz, null, bestMatch.path);
               result = '✅ Added ' + bestMatch.name + (bestScore < 60 ? ' (best match for "' + intent.query + '")' : '');
               break;
             }
@@ -14591,7 +14640,7 @@ document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   
   if (e.key === 'F2') { e.preventDefault(); takeScreenshot(); }
-  if (e.key === 'Delete' && selectedObj) {
+  if (e.key === 'Delete' && selectedObj && isEditInteractionMode()) {
     scene.remove(selectedObj);
     objects.splice(objects.indexOf(selectedObj), 1);
     logOutput('ok', 'Deleted ' + (selectedObj.userData.name || 'object'));
@@ -14786,6 +14835,10 @@ window._physics = physics;
 
 window._autoFrame = autoFrameScene;
 window._deleteSelected = function() {
+  if (!isEditInteractionMode()) {
+    showToast('Switch to Edit mode to delete objects');
+    return;
+  }
   if (selectedObj) {
     scene.remove(selectedObj);
     objects.splice(objects.indexOf(selectedObj), 1);
@@ -14796,6 +14849,10 @@ window._deleteSelected = function() {
 };
 
 window._duplicateSelected = function() {
+  if (!isEditInteractionMode()) {
+    showToast('Switch to Edit mode to clone objects');
+    return;
+  }
   if (selectedObj) {
     const clone = selectedObj.clone();
     clone.position.x += 2;
@@ -15213,9 +15270,13 @@ window._engine = {
   get gameScore() { return gameScore; },
   get character() { return characterController; },
   get selectedObject() { return getCurrentSelection(); },
+  get mode() { return getEngineMode(); },
+  get isEditMode() { return isEditInteractionMode(); },
+  get isExploreMode() { return getEngineMode() === 'explore'; },
   get npcs() { return npcController; },
   get townBuilder() { return townBuilder; },
   enterPlayMode, exitPlayMode,
+  setMode: (mode) => window._setMode?.(mode) || syncModeGlobals(mode),
   respawn: () => { if (characterController) characterController.respawn(); },
   exec: execSingle,
   selectObject: selectSceneObject,
@@ -15248,53 +15309,64 @@ window._openCodeEditor = async () => {
 // ═══════════════════════════════════════════════════════════════
 // MODE SYSTEM — Edit / Play / View with toolbar toggle
 // ═══════════════════════════════════════════════════════════════
-let _currentMode = 'edit'; // 'edit' | 'play' | 'view'
-let _viewMode = false;
-
 function _updateModeButtons(mode) {
-  ['edit','play','view'].forEach(m => {
+  const active = normalizeEngineMode(mode);
+  ['edit','explore','play','view'].forEach(m => {
     const btn = document.getElementById('mode-' + m);
     if (!btn) return;
-    if (m === mode) {
-      btn.style.background = m === 'edit' ? '#ff6b35' : m === 'play' ? '#16a34a' : '#4a9eff';
+    const normalizedButtonMode = normalizeEngineMode(m);
+    if (normalizedButtonMode === active) {
+      btn.style.background = normalizedButtonMode === 'edit' ? '#ff6b35' : normalizedButtonMode === 'play' ? '#16a34a' : '#4a9eff';
       btn.style.color = '#fff'; btn.style.fontWeight = '600';
     } else {
       btn.style.background = 'transparent'; btn.style.color = '#666'; btn.style.fontWeight = '400';
     }
   });
+  document.querySelectorAll('[data-gb-mode]').forEach(btn => {
+    const selected = normalizeEngineMode(btn.dataset.gbMode) === active;
+    btn.dataset.selected = selected ? 'true' : 'false';
+    btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+  window._refreshGameBuilderMode?.();
 }
 
 window._setMode = function(mode) {
-  if (mode === _currentMode) return;
+  const next = normalizeEngineMode(mode);
+  if (next === getEngineMode()) {
+    _updateModeButtons(next);
+    return next;
+  }
   const prev = _currentMode;
-  _currentMode = mode;
 
   // Exit previous mode
-  if (prev === 'play') { exitPlayMode(); document.exitPointerLock(); }
-  if (prev === 'view') { _viewMode = false; controls.enabled = true; document.exitPointerLock(); }
-
-  // Enter new mode
-  if (mode === 'edit') {
-    _viewMode = false;
-    controls.enabled = true;
-    logOutput('ok', 'Edit Mode — click objects to inspect, type commands below');
-  } else if (mode === 'play') {
-    enterPlayMode();
-  } else if (mode === 'view') {
-    _viewMode = true;
-    controls.enabled = true;
-    logOutput('ok', 'View Mode — WASD + Q/E to fly, Shift for speed');
+  if (playMode || prev === 'play') {
+    exitPlayMode(next);
+    try { if (document.pointerLockElement) document.exitPointerLock(); } catch(e) {}
+    if (next !== 'play') {
+      _updateModeButtons(next);
+      return next;
+    }
   }
 
-  _updateModeButtons(mode);
-  window._currentMode = mode;
+  // Enter new mode
+  if (next === 'edit') {
+    syncModeGlobals('edit');
+    controls.enabled = true;
+    logOutput('ok', 'Edit Mode - click objects to inspect, type commands below');
+  } else if (next === 'play') {
+    enterPlayMode();
+  } else if (next === 'explore') {
+    syncModeGlobals('explore');
+    clearEditorSelection();
+    controls.enabled = true;
+    logOutput('ok', 'Explore Mode - camera only, object clicks disabled');
+  }
+
+  _updateModeButtons(next);
+  return next;
 };
 
-// Sync mode when enterPlayMode/exitPlayMode are called from elsewhere
-const _origEnterPlay = enterPlayMode;
-const _origExitPlay = exitPlayMode;
-enterPlayMode = function() { _currentMode = 'play'; _updateModeButtons('play'); return _origEnterPlay(); };
-exitPlayMode = function() { _currentMode = 'edit'; _updateModeButtons('edit'); return _origExitPlay(); };
+_updateModeButtons(_currentMode);
 
 // ═══════════════════════════════════════════════════════════════
 // IMPORT / EXPORT UNIFIED MENU
@@ -16562,8 +16634,9 @@ parseAndExecute = async function(rawCmd) {
     'traffic light','fire hydrant','newspaper stand','road block','wooden pallet',
     'recycling bin','bike rack','construction asset'];
   const matchedPiece = streetPieceTriggers.find(p => lower.includes(p));
-  if (matchedPiece || (lower.startsWith('add ') && window._groupedAssets['street_props']?.pieces.some(p => lower.includes(p.toLowerCase())))) {
-    const pieceName = matchedPiece || window._groupedAssets['street_props'].pieces.find(p => lower.includes(p.toLowerCase()));
+  const streetGroupPieces = window._groupedAssets?.street_props?.pieces || [];
+  if (matchedPiece || (lower.startsWith('add ') && streetGroupPieces.some(p => lower.includes(p.toLowerCase())))) {
+    const pieceName = matchedPiece || streetGroupPieces.find(p => lower.includes(p.toLowerCase()));
     if (pieceName) {
       const px2 = window._cam ? window._cam.position.x + (Math.random()-0.5)*20 : 0;
       const pz2 = window._cam ? window._cam.position.z + (Math.random()-0.5)*20 : 0;

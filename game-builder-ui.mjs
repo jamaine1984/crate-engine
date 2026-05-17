@@ -619,8 +619,65 @@ function updateStats() {
   const objectCount = objects.length;
   const componentCount = objects.reduce((count, obj) => count + Object.keys(obj.userData?.gbComponents || {}).length, 0);
   const scriptCount = Array.isArray(window._userScripts) ? window._userScripts.length : 0;
-  const mode = window._engine?.playMode ? 'Play' : 'Edit';
+  const mode = formatModeLabel(getCurrentMode());
   stats.innerHTML = '<span>' + objectCount + ' objects</span><span>' + componentCount + ' components</span><span>' + scriptCount + ' scripts</span><span>' + mode + '</span>';
+}
+
+function getCurrentMode() {
+  const bridgeMode = window._engineBridge?.getMode?.();
+  const raw = bridgeMode || window._engine?.mode || window._currentMode || (window._engine?.playMode ? 'play' : 'edit');
+  const mode = String(raw || 'edit').toLowerCase();
+  return mode === 'view' ? 'explore' : mode;
+}
+
+function formatModeLabel(mode) {
+  if (mode === 'play') return 'Play';
+  if (mode === 'explore') return 'Explore';
+  return 'Edit';
+}
+
+function updateModeControls() {
+  const mode = getCurrentMode();
+  document.querySelectorAll('[data-gb-mode]').forEach((button) => {
+    const selected = button.dataset.gbMode === mode;
+    button.dataset.selected = selected ? 'true' : 'false';
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+}
+
+function setBuilderMode(mode) {
+  const normalized = mode === 'view' ? 'explore' : mode;
+  const setter = window._setMode || window._engineBridge?.setMode || window._engine?.setMode;
+  if (setter) setter(normalized);
+  else if (normalized === 'play') window._engineBridge?.enterPlayMode?.();
+  else window._engineBridge?.exitPlayMode?.();
+  updateModeControls();
+  updateStats();
+}
+
+function createModeSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Mode';
+  const row = document.createElement('div');
+  row.className = 'gb-mode-row';
+  [
+    { mode: 'edit', label: 'Edit', title: 'Select, move, inspect, and change objects' },
+    { mode: 'explore', label: 'Explore', title: 'Move the camera without selecting objects' },
+    { mode: 'play', label: 'Play', title: 'Run the game without editor interactions' },
+  ].forEach((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'gb-mode-btn';
+    button.dataset.gbMode = item.mode;
+    button.textContent = item.label;
+    button.title = item.title;
+    button.addEventListener('click', () => setBuilderMode(item.mode));
+    row.appendChild(button);
+  });
+  section.append(heading, row);
+  return section;
 }
 
 function formatPosition(obj) {
@@ -941,6 +998,7 @@ function renderSceneList() {
 
 function updateBuilderUi() {
   updateStats();
+  updateModeControls();
   renderInspector();
   renderBlueprintList();
   renderSceneList();
@@ -979,6 +1037,12 @@ function mount() {
     .gb-body{display:flex;flex-direction:column;gap:10px;overflow:auto;padding:10px}
     .gb-section{border:1px solid #20262a;border-radius:8px;overflow:hidden;background:#0d0f10}
     .gb-section h3{margin:0;padding:9px 10px;font-size:11px;text-transform:uppercase;letter-spacing:0;color:#98a2a9;border-bottom:1px solid #20262a;background:#121516}
+    .gb-mode-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px}
+    .gb-mode-btn{height:32px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:12px;cursor:pointer}
+    .gb-mode-btn:hover{border-color:#4a9eff;color:#fff}
+    .gb-mode-btn[data-selected="true"]{border-color:#4a9eff;background:#102033;color:#fff;font-weight:700}
+    .gb-mode-btn[data-gb-mode="edit"][data-selected="true"]{border-color:#d9572b;background:#211a16}
+    .gb-mode-btn[data-gb-mode="play"][data-selected="true"]{border-color:#38a169;background:#102318}
     .gb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
     .gb-preset{height:34px;border:1px solid #2a3237;background:#161a1c;color:#eef2f3;border-radius:6px;font-size:12px;cursor:pointer;text-align:left;padding:0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-preset:hover{border-color:#d9572b;background:#211a16}
@@ -1054,6 +1118,7 @@ function mount() {
 
   const body = document.createElement('div');
   body.className = 'gb-body';
+  body.appendChild(createModeSection());
 
   const appendBuilderToolSections = () => {
     const componentSection = document.createElement('section');
@@ -1122,6 +1187,10 @@ function mount() {
   document.body.appendChild(panel);
 
   repositionLegacyButtons(open);
+  window._refreshGameBuilderMode = () => {
+    updateModeControls();
+    updateStats();
+  };
   updateBuilderUi();
   setInterval(updateBuilderUi, 1200);
   window.addEventListener('resize', () => repositionLegacyButtons(panel.dataset.open === 'true'));
