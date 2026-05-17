@@ -31,9 +31,10 @@ on this Windows machine. The real production behavior must be checked on
 - Production branch: `main`
 - Source shown by Cloudflare: `5c139d3`
 - Main live page bundle after the deploy: `/assets/play-5xgKmEkq.js`
-- Latest asset-host deployment ID: `d6e01bfb-66b0-4d69-a9a1-51f1d625bb74`
-- Latest asset-host deployment URL: `https://d6e01bfb.crateship-games-assets.pages.dev`
-- Asset-host source shown by Cloudflare: `9afd946`
+- Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
+- Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
+- Asset-host source shown by Cloudflare: `6f09cc0`
+- Current asset manifest version: `6f09cc09da2f`
 
 Check the latest deployment with:
 
@@ -180,6 +181,18 @@ Follow-up production deploys on 2026-05-17 activated the separate Cloudflare ass
   - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
   - The main app upload contained only `105` files and uploaded `2` changed files plus `_headers`, instead of uploading the full model cache again.
 
+Follow-up production deploys on 2026-05-17 added asset-pack manifest verification:
+
+- `scripts/prepare-assets-deploy.mjs`
+  - Writes `/asset-manifest.json` into the asset host.
+  - Manifest includes the asset pack version, source commit, asset base URL, `/models/` and `/textures/` paths, integrity counts from `checkAssets()`, and critical asset paths.
+  - Adds no-store CORS headers for `/asset-manifest.json`.
+- `scripts/smoke-production.mjs`
+  - Fetches and validates `/asset-manifest.json` from the configured asset host before checking GLB/texture files and running the browser smoke flow.
+- Asset-host deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
+  - Uploaded `1` changed file, reused `4,183` already-uploaded files, and refreshed `_headers`.
+  - Published manifest version `6f09cc09da2f`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -284,6 +297,7 @@ Recovered model cache summary:
 - Initial asset-host deploy to `crateship-games-assets` uploaded `4,182` files after one retry.
 - Hardened asset-host deploy uploaded `1` changed file, reused `4,182` already-uploaded files, and refreshed `_headers`.
 - Lean main-app deploy skipped bundled `/models` and `/textures`, uploaded `2` changed files, reused `103` already-uploaded files, and refreshed `_headers`.
+- Asset-manifest deploy uploaded `1` changed file, reused `4,183` already-uploaded files, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -305,6 +319,17 @@ The modular texture dependencies returned `200 OK` with `Content-Type: image/jpe
 The modular `.bin` buffer dependencies returned `200 OK` with
 `Content-Type: application/octet-stream` and `/models/*` CORS/cache headers.
 Missing asset-host model paths return `404 Not Found` and `Cache-Control: no-store`.
+The asset manifest is available at:
+
+```text
+https://crateship-games-assets.pages.dev/asset-manifest.json
+```
+
+Current manifest version:
+
+```text
+6f09cc09da2f
+```
 
 ## Post-Deploy Verification
 
@@ -315,6 +340,7 @@ $env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-f
 npm run check:assets
 npm run smoke:production
 curl.exe -L --silent https://crateshipgames.com/play | Select-String -Pattern "crate-asset-base|assets/play"
+curl.exe -I -L https://crateship-games-assets.pages.dev/asset-manifest.json
 curl.exe -I -L https://crateship-games-assets.pages.dev/models/kenney_cars/sedan.glb
 curl.exe -I -L https://crateship-games-assets.pages.dev/models/fab/street_props_streeprops.glb
 curl.exe -I -L https://crateship-games-assets.pages.dev/textures/modular_street_seating_armrests_diff_1k.jpg
@@ -326,9 +352,10 @@ curl.exe -I -L https://crateship-games-assets.pages.dev/models/__definitely_miss
 Expected current results:
 
 - `npm run check:assets` passes with `108` required models, `20` external dependencies, and `107` catalog references.
-- `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev`.
+- `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
 - `/play` references `/assets/play-5xgKmEkq.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
+- `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
 - Modular texture dependencies return `200 OK` and `image/jpeg` from the asset host `/textures/*`.
 - Modular Poly Haven buffer dependencies return `200 OK` from the asset host `/models/*`.
@@ -410,6 +437,14 @@ Browser verification from the 2026-05-17 deploy:
   - `npm run smoke:production` passed after deploy on the real custom domain.
   - Smoke result: asset base `https://crateship-games-assets.pages.dev`, `409` objects, `10` scene rows, `2` scripts, selected component `pickup`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-5c139d3a.png`.
+- Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
+  - Cloudflare source showed `6f09cc0`.
+  - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
+  - Manifest version was `6f09cc09da2f`.
+  - Manifest integrity counts were `108` checked models, `20` external dependencies, and `107` catalog references.
+  - `npm run smoke:production` passed against the real custom domain and verified the asset manifest before building the city.
+  - Smoke result: asset manifest `6f09cc09da2f`, `409` objects, `10` scene rows, `2` scripts, selected component `pickup`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-6f09cc09.png`.
 
 ## Cloudflare Rules And Gotchas
 
@@ -436,6 +471,7 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+6f09cc09 Add asset host manifest verification
 5c139d3a Use separate Cloudflare asset host
 9afd9465 Harden asset host deployment
 d1efb55f Add production smoke test
@@ -468,6 +504,7 @@ M  scripts/prepare-deploy.mjs
 M  scripts/prepare-assets-deploy.mjs
 M  scripts/check-syntax.mjs
 M  scripts/sync-legacy-web.mjs
+M  scripts/smoke-production.mjs
 M  user-scripts.mjs
 M  vite.config.mjs
 M  package.json
@@ -478,8 +515,6 @@ A  404.html
 A  asset-url.mjs
 A  game-builder-ui.mjs
 A  scripts/check-assets.mjs
-A  scripts/smoke-production.mjs
-A  scripts/prepare-assets-deploy.mjs
 A  CLOUDFLARE_HANDOFF.md
 ```
 
@@ -491,8 +526,8 @@ does not change the public website bundle unless it is intentionally deployed.
 
 1. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
-2. Add an asset manifest/version file to `crateship-games-assets` so the app can
-   display or assert the exact asset pack version it is using.
+2. Surface the asset manifest version in a small diagnostics panel so builders
+   can see which asset pack the live editor is using.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Continue productizing the editor: a richer component inspector, project
