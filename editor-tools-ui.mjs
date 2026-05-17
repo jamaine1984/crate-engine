@@ -9,6 +9,7 @@ let context = {
   getCurrentGround: () => null,
   loadGroundTexture: () => Promise.resolve(null),
   loadGLBModel: () => {},
+  placeCatalogAsset: null,
   runCommand: () => {},
   getGLBModels: () => ({}),
 };
@@ -432,7 +433,8 @@ export async function showFabGallery() {
     card.onclick = () => {
       modal.remove();
       const path = aliases[name];
-      if (path) context.loadGLBModel?.(name, path, 0, 0, null, path);
+      if (path && context.placeCatalogAsset) context.placeCatalogAsset({ file: name, name: name.replace(/_/g, ' '), path }, 'fab-gallery');
+      else if (path) context.loadGLBModel?.(name, path, 0, 0, null, path);
       else context.runCommand?.('add fab ' + name);
     };
     grid.appendChild(card);

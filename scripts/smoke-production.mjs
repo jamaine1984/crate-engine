@@ -192,6 +192,45 @@ async function runBrowserSmoke() {
       beforeFurnitureCount,
       { timeout: timeoutMs }
     );
+    await page.waitForSelector('#gb-placement-status', { timeout: timeoutMs });
+
+    const beforePlacementCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
+    await page.evaluate(() => window._placeCatalogAsset?.({
+      file: 'house_interior_pack_chair_1.glb',
+      name: 'Smoke placement chair',
+      path: '/models/house_interior_pack_chair_1.glb',
+    }, 'production-smoke'));
+    await page.waitForFunction(
+      (before) => {
+        const state = window._lastAssetPlacement || {};
+        return (window._engineBridge?.objects?.length || 0) > before &&
+          state.status === 'placed' &&
+          state.source === 'production-smoke' &&
+          !!state.objectId &&
+          document.querySelector('#gb-placement-status')?.dataset.status === 'placed';
+      },
+      beforePlacementCount,
+      { timeout: timeoutMs }
+    );
+    const placementState = await page.evaluate(() => {
+      const selected = window._engineBridge?.getSelected?.() || null;
+      const state = window._lastAssetPlacement || {};
+      return {
+        ...state,
+        mode: window._currentMode || '',
+        selectedId: selected?.uuid || '',
+        statusText: document.querySelector('#gb-placement-status')?.textContent?.trim() || '',
+      };
+    });
+    if (placementState.mode !== 'edit') {
+      throw new Error(`Asset placement did not stay in Edit mode: ${JSON.stringify(placementState)}`);
+    }
+    if (placementState.selectedId !== placementState.objectId) {
+      throw new Error(`Placed asset was not selected: ${JSON.stringify(placementState)}`);
+    }
+    if (!/Smoke placement chair/i.test(placementState.statusText)) {
+      throw new Error(`Placement status did not name the placed asset: ${JSON.stringify(placementState)}`);
+    }
 
     const input = page.locator('#prompt-input');
     await input.fill('build city', { timeout: timeoutMs });
@@ -246,6 +285,8 @@ async function runBrowserSmoke() {
       playMode: window._playMode === true,
       builderDisplay: document.querySelector('#game-builder-panel')?.style.display || '',
       builderPlayHidden: document.querySelector('#game-builder-panel')?.dataset.playHidden || '',
+      browserDisplay: document.querySelector('#model-browser-button')?.style.display || '',
+      browserPlayHidden: document.querySelector('#model-browser-button')?.dataset.playHidden || '',
       promptDisplay: document.querySelector('#prompt-input')?.parentElement?.style.display || '',
       legacyInspectorDisplay: document.querySelector('#inspector')?.style.display || '',
     }));
@@ -254,6 +295,9 @@ async function runBrowserSmoke() {
     }
     if (playState.promptDisplay !== 'none') {
       throw new Error(`Play mode did not hide prompt input: ${JSON.stringify(playState)}`);
+    }
+    if (playState.browserDisplay !== 'none' || playState.browserPlayHidden !== 'true') {
+      throw new Error(`Play mode did not hide model browser: ${JSON.stringify(playState)}`);
     }
     if (playState.legacyInspectorDisplay === 'flex') {
       throw new Error('Play mode left the legacy object inspector visible');
@@ -264,7 +308,8 @@ async function runBrowserSmoke() {
       () => window._currentMode === 'edit' &&
         window._playMode !== true &&
         document.querySelector('[data-gb-mode="edit"]')?.dataset.selected === 'true' &&
-        document.querySelector('#game-builder-panel')?.style.display !== 'none',
+        document.querySelector('#game-builder-panel')?.style.display !== 'none' &&
+        document.querySelector('#model-browser-button')?.style.display !== 'none',
       undefined,
       { timeout: timeoutMs }
     );
@@ -287,6 +332,8 @@ async function runBrowserSmoke() {
         mode: window._currentMode || '',
         hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
         hiddenUnavailableAssets: window._assetCatalogHiddenUnavailable || 0,
+        placementStatus: window._lastAssetPlacement?.status || '',
+        placementSource: window._lastAssetPlacement?.source || '',
         scriptCount: Array.isArray(window._userScripts) ? window._userScripts.length : 0,
         selectedComponents: Object.keys(selected?.userData?.gbComponents || {}),
       };
@@ -302,6 +349,9 @@ async function runBrowserSmoke() {
     if (!state.hasInspector || !state.hasBlueprints) throw new Error('Game Builder Inspector or Blueprints section was missing');
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
     if (state.mode !== 'edit') throw new Error(`Expected smoke to finish in edit mode, got ${state.mode || 'empty'}`);
+    if (state.placementStatus !== 'placed' || state.placementSource !== 'production-smoke') {
+      throw new Error(`Expected placement smoke to finish as placed, got ${state.placementStatus || 'empty'} from ${state.placementSource || 'empty'}`);
+    }
     if (catalogState.itemCount < 1000 || catalogState.furnitureCount < 100) {
       throw new Error(`Asset catalog looks too small after filtering: ${JSON.stringify(catalogState)}`);
     }
@@ -339,6 +389,7 @@ console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);
 console.log(`Mode: ${browserState.mode}`);
 console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`);
+console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);

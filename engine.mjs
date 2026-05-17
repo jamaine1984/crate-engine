@@ -953,6 +953,7 @@ function syncEditorToolsModule(mod = editorToolsModule) {
     getCurrentGround: () => currentGround,
     loadGroundTexture: (type) => loadGroundTexture(type),
     loadGLBModel: (...args) => loadGLBModel(...args),
+    placeCatalogAsset: (result, source) => placeCatalogAsset(result, source),
     runCommand: (cmd) => parseAndExecute(cmd),
     getGLBModels: () => GLB_MODELS,
   });
@@ -1613,7 +1614,12 @@ function _hideEditorUI() {
     gb.dataset.playHidden = 'true';
     gb.style.display = 'none';
   }
-  ['asset-gallery-overlay', 'category-picker-overlay', 'fab-gallery-modal', 'ie-modal'].forEach((id) => {
+  const browser = document.getElementById('model-browser-button');
+  if (browser) {
+    browser.dataset.playHidden = 'true';
+    browser.style.display = 'none';
+  }
+  ['asset-gallery-overlay', 'category-picker-overlay', '_catPicker', 'fab-gallery-modal', 'ie-modal'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.remove();
   });
@@ -1628,6 +1634,11 @@ function _showEditorUI() {
   if (gb && gb.dataset.playHidden === 'true') {
     gb.style.removeProperty('display');
     delete gb.dataset.playHidden;
+  }
+  const browser = document.getElementById('model-browser-button');
+  if (browser && browser.dataset.playHidden === 'true') {
+    browser.style.removeProperty('display');
+    delete browser.dataset.playHidden;
   }
 }
 
@@ -2498,7 +2509,8 @@ function upgradeMaterials(obj) {
 }
 
 
-function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone) {
+function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone, options = {}) {
+  const placementOptions = options && typeof options === 'object' ? options : {};
   const statusEl = document.getElementById('engine-status');
   if (statusEl) statusEl.textContent = 'Loading ' + glbFile + '...';
   if (x === undefined || x === null) x = (Math.random() - 0.5) * 10;
@@ -2527,23 +2539,179 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone) {
     model.userData.isGLB = true;
     scene.add(model);
     objects.push(model);
+    handlePlacedAsset(model, {
+      ...placementOptions,
+      name: placementOptions.displayName || name || glbFile,
+      file: glbFile,
+      path: url,
+    });
     if (statusEl) statusEl.textContent = '3D Ready';
     if (typeof onDone === 'function') onDone();
   }, undefined, (error) => {
     console.warn('Failed to load ' + url + ':', error);
     if (statusEl) statusEl.textContent = '3D Ready';
+    handleAssetPlacementFailure({
+      ...placementOptions,
+      name: placementOptions.displayName || name || glbFile,
+      file: glbFile,
+      path: url,
+      error,
+    });
     if (typeof onDone === 'function') onDone();
   });
 }
 
-function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
+function getPlacementName(result) {
+  return String(result?.name || result?.file || result?.path || 'asset')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\.glb$/i, '')
+    .trim();
+}
+
+function normalizeCatalogAssetPath(path) {
+  if (!path) return '';
+  const value = String(path).trim();
+  if (!value) return '';
+  if (/^(https?:|blob:|data:)/i.test(value) || value.startsWith('/')) return value;
+  return '/models/' + value.replace(/^models\//i, '');
+}
+
+function setAssetPlacementState(next) {
+  const state = {
+    status: 'idle',
+    name: '',
+    file: '',
+    path: '',
+    source: '',
+    x: null,
+    y: null,
+    z: null,
+    objectId: '',
+    updatedAt: Date.now(),
+    ...(next || {}),
+  };
+  window._lastAssetPlacement = state;
+  try {
+    window.dispatchEvent(new CustomEvent('crate:asset-placement', { detail: state }));
+  } catch {}
+  try {
+    window._refreshGameBuilderPlacement?.();
+  } catch {}
+  return state;
+}
+
+function getEditorPlacementPoint(distance = 8) {
+  try {
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    dir.y = 0;
+    if (dir.lengthSq() < 0.0001 && controls?.target) {
+      dir.copy(controls.target).sub(camera.position);
+      dir.y = 0;
+    }
+    if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
+    dir.normalize();
+    const point = camera.position.clone().addScaledVector(dir, distance);
+    if (controls?.target && camera.position.distanceTo(controls.target) < 60) {
+      point.lerp(controls.target, 0.35);
+    }
+    return { x: point.x, z: point.z };
+  } catch {
+    return { x: 0, z: 0 };
+  }
+}
+
+function ensureEditModeForAssetPlacement(source = 'asset') {
+  if (isEditInteractionMode()) return true;
+  if (typeof window._setMode === 'function') {
+    window._setMode('edit');
+  } else {
+    syncModeGlobals('edit');
+    if (controls) controls.enabled = true;
+    if (typeof _updateModeButtons === 'function') _updateModeButtons('edit');
+  }
+  if (isEditInteractionMode()) {
+    showToast('Switched to Edit mode for asset placement');
+    return true;
+  }
+  setAssetPlacementState({ status: 'blocked', source, error: 'Edit mode is required for asset placement' });
+  showToast('Switch to Edit mode to place assets');
+  return false;
+}
+
+function handlePlacedAsset(model, options = {}) {
+  if (!model || (!options.trackPlacement && !options.selectAfterLoad)) return;
+  window._lastPlacedObj = model;
+  if (options.selectAfterLoad && isEditInteractionMode()) {
+    selectSceneObject(model);
+  }
+  if (options.trackPlacement) {
+    setAssetPlacementState({
+      status: 'placed',
+      name: options.name || options.displayName || model.userData?.name || 'asset',
+      file: options.file || '',
+      path: options.path || '',
+      source: options.source || '',
+      x: model.position?.x ?? null,
+      y: model.position?.y ?? null,
+      z: model.position?.z ?? null,
+      objectId: model.uuid || '',
+    });
+  }
+  if (options.notify) showToast('Placed ' + (options.name || options.displayName || model.userData?.name || 'asset'));
+}
+
+function handleAssetPlacementFailure(options = {}) {
+  if (!options.trackPlacement) return;
+  const err = options.error;
+  setAssetPlacementState({
+    status: 'failed',
+    name: options.name || options.displayName || options.file || 'asset',
+    file: options.file || '',
+    path: options.path || '',
+    source: options.source || '',
+    error: err?.message || String(err || 'Load failed'),
+  });
+}
+
+function placeCatalogAsset(result, source = 'asset-library') {
+  if (!result || !result.file) return null;
+  if (!ensureEditModeForAssetPlacement(source)) return null;
+  const name = getPlacementName(result);
+  const file = result.file;
+  const customPath = normalizeCatalogAssetPath(result.path);
+  const glb = GLB_MODELS[file] || file;
+  const point = getEditorPlacementPoint();
+  setAssetPlacementState({
+    status: 'loading',
+    name,
+    file,
+    path: customPath || glb,
+    source,
+    x: point.x,
+    z: point.z,
+  });
+  loadGLBModel(file, glb, point.x, point.z, null, customPath || undefined, {
+    trackPlacement: true,
+    selectAfterLoad: true,
+    notify: true,
+    displayName: name,
+    source,
+    file,
+  });
+  sceneHistory.push('add ' + file);
+  return { file, name, x: point.x, z: point.z };
+}
+
+function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath, options = {}) {
+  const placementOptions = options && typeof options === 'object' ? options : {};
   // Check if this is a user-saved model (from IndexedDB or catalog _b64)
   const catalogItem = _assetCatalog && Object.values(_assetCatalog).flat().find(a => a.file === glbFile || a.file === name);
   if (catalogItem && catalogItem._b64) {
     // Load from base64 data (user-generated or marketplace saved model)
     const blob = _modelDB.blobFromB64(catalogItem._b64);
     const blobUrl = URL.createObjectURL(blob);
-    _loadGLBFromUrl(name, blobUrl, x, z, scaleOverride, glbFile, () => URL.revokeObjectURL(blobUrl));
+    _loadGLBFromUrl(name, blobUrl, x, z, scaleOverride, glbFile, () => URL.revokeObjectURL(blobUrl), placementOptions);
     return;
   }
   // Also check IndexedDB async
@@ -2552,8 +2720,9 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath) {
       if (entry && entry.data_b64) {
         const blob = _modelDB.blobFromB64(entry.data_b64);
         const blobUrl = URL.createObjectURL(blob);
-        _loadGLBFromUrl(name, blobUrl, x, z, scaleOverride, glbFile, () => URL.revokeObjectURL(blobUrl));
+        _loadGLBFromUrl(name, blobUrl, x, z, scaleOverride, glbFile, () => URL.revokeObjectURL(blobUrl), placementOptions);
       } else {
+        handleAssetPlacementFailure({ ...placementOptions, name, file: glbFile, error: 'Model not found in library' });
         showToast('⚠ Model not found in library');
       }
     });
@@ -2749,6 +2918,12 @@ scene.add(model);
       model.userData.isSolid = true;
       if (window._addToCollision) window._addToCollision(model);
     }
+    handlePlacedAsset(model, {
+      ...placementOptions,
+      name: placementOptions.displayName || name || glbFile,
+      file: glbFile,
+      path: customPath || url,
+    });
     if (statusEl) statusEl.textContent = '3D Ready';
     if (typeof onDone === 'function') onDone();
   }, 
@@ -2766,11 +2941,21 @@ scene.add(model);
         // Auto-load best match
         const best = results[0];
         console.log('[loadGLBModel] 404 fallback: "' + glbFile + '" → "' + best.path + '"');
-        loadGLBModel(best.name, best.path || best.name, x, z, scaleOverride);
+        loadGLBModel(best.name, best.path || best.name, x, z, scaleOverride, undefined, {
+          ...placementOptions,
+          displayName: placementOptions.displayName || best.name,
+        });
         if (typeof showToast === 'function') showToast('Loading ' + best.name.replace(/_/g, ' ') + '...');
         return;
       }
     }
+    handleAssetPlacementFailure({
+      ...placementOptions,
+      name: placementOptions.displayName || name || glbFile,
+      file: glbFile,
+      path: customPath || url,
+      error,
+    });
     if (typeof showToast === 'function') showToast('Model not found: ' + cleanName);
   });
 }
@@ -7905,9 +8090,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:weapons?|swords?|axes?|guns?|blasters?|bows?|shields?)/)) {
     const result = await showGallery('weapons');
     if (result) {
-      const glb = GLB_MODELS[result.file] || result.file;
-      loadGLBModel(result.file, glb, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'weapons-gallery');
       return '⚔️ Added ' + result.name + ' to the scene!';
     }
     return '↩ Weapons gallery closed';
@@ -7917,8 +8100,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:buildings?|houses?|structures?|castles?|towers?|architecture)/)) {
     const result = await showGallery('buildings');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🏠 Added ' + result.name + ' to the scene!';
     }
     return '↩ Buildings gallery closed';
@@ -7928,8 +8110,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:vehicles?|cars?|trucks?|boats?|ships?|planes?)/)) {
     const result = await showGallery('vehicles');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🚗 Added ' + result.name + ' to the scene!';
     }
     return '↩ Vehicles gallery closed';
@@ -7939,8 +8120,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:animals?|creatures?|pets?|wildlife|fish|birds?|dragons?)/)) {
     const result = await showGallery('animals');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🐾 Added ' + result.name + ' to the scene!';
     }
     return '↩ Animals gallery closed';
@@ -7950,8 +8130,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:trees?|plants?|bushes?|flowers?|vegetation|flora|foliage)/)) {
     const result = await showGallery('trees');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🌳 Added ' + result.name + ' to the scene!';
     }
     return '↩ Trees gallery closed';
@@ -7961,8 +8140,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:rocks?|stones?|boulders?|minerals?|crystals?|gems?|ores?)/)) {
     const result = await showGallery('rocks');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🪨 Added ' + result.name + ' to the scene!';
     }
     return '↩ Rocks gallery closed';
@@ -7972,8 +8150,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:furniture|tables?|chairs?|beds?|shelves|lamps?|interior|decor)/)) {
     const result = await showGallery('furniture');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🪑 Added ' + result.name + ' to the scene!';
     }
     return '↩ Furniture gallery closed';
@@ -7983,8 +8160,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:food|items?|potions?|chests?|barrels?|crates?|supplies|loot|consumables?)/)) {
     const result = await showGallery('food');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🍖 Added ' + result.name + ' to the scene!';
     }
     return '↩ Items gallery closed';
@@ -7994,8 +8170,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:dungeon|torches?|skulls?|bones?|traps?|graves?|coffins?|dark|underground)/)) {
     const result = await showGallery('dungeon');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '💀 Added ' + result.name + ' to the scene!';
     }
     return '↩ Dungeon gallery closed';
@@ -8005,8 +8180,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:sci-?fi|space|cyber|neon|futuristic|tech|robots?|mechs?|drones?)/)) {
     const result = await showGallery('scifi');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🚀 Added ' + result.name + ' to the scene!';
     }
     return '↩ Sci-Fi gallery closed';
@@ -8016,8 +8190,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )?(?:nature|survival|camping?|tents?|outdoor|wilderness)/)) {
     const result = await showGallery('nature');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '⛺ Added ' + result.name + ' to the scene!';
     }
     return '↩ Nature gallery closed';
@@ -8028,8 +8201,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:show |browse |open |pick |choose |select )(?:terrain|landscape|environment)/)) {
     const result = await showGallery('terrain');
     if (result) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '🏔️ Added ' + result.name + ' to the scene!';
     }
     return '↩ Terrain gallery closed';
@@ -8039,8 +8211,7 @@ function showGameHUD(preset) {
   if (lower.match(/^(?:browse|library|asset library|show assets|browse all|all assets|all models|model library|show library|open library|browse models|show all|pick asset|choose asset|asset menu)/)) {
     const result = await showCategoryPicker();
     if (result && result.file) {
-      loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-      sceneHistory.push('add ' + result.file);
+      placeCatalogAsset(result, 'asset-gallery');
       return '✅ Added ' + result.name + ' to the scene!';
     }
     if (result && typeof result === 'string') {
@@ -13452,6 +13623,7 @@ window._engineBridge = {
   // Asset system
   loadAssetCatalog: _loadAssetCatalog,
   loadGLBModel: loadGLBModel,
+  placeCatalogAsset: placeCatalogAsset,
   showGallery: showGallery,
   showCategoryPicker: showCategoryPicker,
   searchModels: searchRegistryModels,
@@ -13689,9 +13861,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             // Category picker — route to execSingle for full handling
             const pickResult = await showCategoryPicker();
             if (pickResult) {
-              const glb = pickResult.file;
-              loadGLBModel(glb, glb, 0, 0, null, pickResult.path);
-              sceneHistory.push('add ' + glb);
+              placeCatalogAsset(pickResult, 'intent-library');
               result = '✅ Added ' + pickResult.name;
             } else {
               result = '📂 Library closed';
@@ -13776,10 +13946,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
             }
             
             if (bestMatch && bestScore >= 20) {
-              // Random position so objects don't stack
-              const _rx = (Math.random() - 0.5) * 60;
-              const _rz = (Math.random() - 0.5) * 60;
-              loadGLBModel(bestMatch.name, bestMatch.file, _rx, _rz, null, bestMatch.path);
+              placeCatalogAsset(bestMatch, 'command-add');
               result = '✅ Added ' + bestMatch.name + (bestScore < 60 ? ' (best match for "' + intent.query + '")' : '');
               break;
             }
@@ -14187,6 +14354,7 @@ window._runCommand = async function(cmd) {
 window._engineReady = true;
 window.parseAndExecute = parseAndExecute;
 window._showCategoryPicker = showCategoryPicker;
+window._placeCatalogAsset = placeCatalogAsset;
 window._execCommand = parseAndExecute;
 // Apply template preset if on a template page
 if (window._templateMode) {
@@ -15253,6 +15421,7 @@ function autoFrameScene() {
 
 // Toggle model browser with Ctrl+B or button
 const browserBtn = document.createElement('button');
+browserBtn.id = 'model-browser-button';
 browserBtn.innerHTML = '📦';
 browserBtn.title = 'Model Browser (Ctrl+B)';
 Object.assign(browserBtn.style, {
@@ -15268,9 +15437,7 @@ browserBtn.onclick = async () => {
   // Open the full category picker (4,122 models, 26 categories)
   const result = await showCategoryPicker();
   if (result && result.file) {
-    loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-    sceneHistory.push('add ' + result.file);
-    showToast('✅ Added ' + (result.name||result.file));
+    placeCatalogAsset(result, 'model-browser');
   } else if (result && typeof result === 'string') {
     if (characterController) {
       if (!characterController.characterModels[result]) characterController.characterModels[result] = { file: result, animPrefix: '', procedural: true };
@@ -15871,9 +16038,7 @@ window._mp = legacyMultiplayerProxy;
       if (window._showCategoryPicker) {
         window._showCategoryPicker().then(function(result) {
           if (result && result.file) {
-            loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-            sceneHistory.push('add ' + result.file);
-            showToast('\u2705 Added ' + (result.name||result.file));
+            placeCatalogAsset(result, 'scene-actions-library');
           }
         });
       }
@@ -16635,9 +16800,7 @@ parseAndExecute = async function(rawCmd) {
       // Open full category picker
       showCategoryPicker().then(result => {
         if (result && result.file) {
-          loadGLBModel(result.file, GLB_MODELS[result.file] || result.file, 0, 0, null, result.path);
-          sceneHistory.push('add ' + result.file);
-          showToast('✅ Added ' + (result.name||result.file));
+          placeCatalogAsset(result, 'direct-library');
         }
       });
     } else {

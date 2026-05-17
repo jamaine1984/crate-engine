@@ -327,6 +327,7 @@ const COMPONENT_FIELDS = {
 let lastSceneSignature = '';
 let lastInspectorSignature = '';
 let lastBlueprintSignature = '';
+let lastPlacementSignature = '';
 
 function isSmallScreen() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -680,9 +681,48 @@ function createModeSection() {
   return section;
 }
 
+function createPlacementSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Placement';
+  const status = document.createElement('div');
+  status.id = 'gb-placement-status';
+  status.className = 'gb-placement-status';
+  section.append(heading, status);
+  return section;
+}
+
 function formatPosition(obj) {
   if (!obj?.position) return 'No position';
   return 'x ' + obj.position.x.toFixed(1) + ' y ' + obj.position.y.toFixed(1) + ' z ' + obj.position.z.toFixed(1);
+}
+
+function formatPlacementPosition(state) {
+  if (!Number.isFinite(state?.x) || !Number.isFinite(state?.z)) return '';
+  const y = Number.isFinite(state.y) ? ' y ' + state.y.toFixed(1) : '';
+  return 'x ' + state.x.toFixed(1) + y + ' z ' + state.z.toFixed(1);
+}
+
+function renderPlacementStatus() {
+  const box = document.getElementById('gb-placement-status');
+  if (!box) return;
+  const state = window._lastAssetPlacement || {};
+  const target = getTargetObject();
+  const fallbackName = target ? getObjectName(target, 0) : '';
+  const status = state.status || (fallbackName ? 'selected' : 'ready');
+  const name = state.name || fallbackName || 'Ready';
+  const position = formatPlacementPosition(state) || (target ? formatPosition(target) : '');
+  const signature = [status, name, position, state.objectId || '', state.updatedAt || ''].join('|');
+  if (signature === lastPlacementSignature) return;
+  lastPlacementSignature = signature;
+  box.dataset.status = status;
+  box.innerHTML = '';
+  const title = createTextElement('strong', '', status === 'loading' ? 'Placing' : status === 'failed' ? 'Placement failed' : status === 'blocked' ? 'Placement blocked' : status === 'placed' ? 'Placed' : 'Ready');
+  const item = createTextElement('span', '', name);
+  box.append(title, item);
+  if (position) box.appendChild(createTextElement('span', '', position));
+  if (state.error) box.appendChild(createTextElement('span', 'gb-placement-error', state.error));
 }
 
 function formatComponentList(obj) {
@@ -999,6 +1039,7 @@ function renderSceneList() {
 function updateBuilderUi() {
   updateStats();
   updateModeControls();
+  renderPlacementStatus();
   renderInspector();
   renderBlueprintList();
   renderSceneList();
@@ -1043,6 +1084,13 @@ function mount() {
     .gb-mode-btn[data-selected="true"]{border-color:#4a9eff;background:#102033;color:#fff;font-weight:700}
     .gb-mode-btn[data-gb-mode="edit"][data-selected="true"]{border-color:#d9572b;background:#211a16}
     .gb-mode-btn[data-gb-mode="play"][data-selected="true"]{border-color:#38a169;background:#102318}
+    .gb-placement-status{display:flex;flex-direction:column;gap:3px;margin:8px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px;min-height:52px}
+    .gb-placement-status strong{font-size:12px;line-height:16px;color:#eef2f3}
+    .gb-placement-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-placement-status[data-status="placed"]{border-color:#2f6f44;background:#101a13}
+    .gb-placement-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
+    .gb-placement-status[data-status="failed"],.gb-placement-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
+    .gb-placement-error{color:#ff9b9b!important}
     .gb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
     .gb-preset{height:34px;border:1px solid #2a3237;background:#161a1c;color:#eef2f3;border-radius:6px;font-size:12px;cursor:pointer;text-align:left;padding:0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-preset:hover{border-color:#d9572b;background:#211a16}
@@ -1119,6 +1167,7 @@ function mount() {
   const body = document.createElement('div');
   body.className = 'gb-body';
   body.appendChild(createModeSection());
+  body.appendChild(createPlacementSection());
 
   const appendBuilderToolSections = () => {
     const componentSection = document.createElement('section');
@@ -1191,6 +1240,13 @@ function mount() {
     updateModeControls();
     updateStats();
   };
+  window._refreshGameBuilderPlacement = () => {
+    lastPlacementSignature = '';
+    renderPlacementStatus();
+    renderInspector();
+    renderSceneList();
+  };
+  window.addEventListener('crate:asset-placement', window._refreshGameBuilderPlacement);
   updateBuilderUi();
   setInterval(updateBuilderUi, 1200);
   window.addEventListener('resize', () => repositionLegacyButtons(panel.dataset.open === 'true'));
