@@ -13,4 +13,5 @@ node_modules/
 dist/
 .deploy/
 .deploy-assets/
+output/
 npm-debug.log*
