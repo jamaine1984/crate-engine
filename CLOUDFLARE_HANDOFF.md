@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `eaee4d37`
+- Current deployed source commit for the public engine code: `4340fff1`
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -24,10 +24,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `475ff430-bbfe-45cf-9460-f32cdbacadf8`
-- Latest production deployment URL: `https://475ff430.crateship-games.pages.dev`
+- Latest production deployment ID: `41e5066b-ed87-43c5-a8be-5bf9e4f192aa`
+- Latest production deployment URL: `https://41e5066b.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `eaee4d3`
+- Source shown by Cloudflare: `4340fff`
 - Main live page bundle after the deploy: `/assets/play-5xgKmEkq.js`
 
 Check the latest deployment with:
@@ -126,6 +126,23 @@ Follow-up production deploys on 2026-05-17 added the first asset-host split foun
   - Added downloads for `modular_street_seating.bin` and `modular_electricity_poles.bin`.
   - This fixed the live city-builder warnings for `ph_modular_street_seating.glb` and `ph_modular_electricity_poles.glb`.
 
+Follow-up production deploys on 2026-05-17 added a predeploy asset integrity guardrail:
+
+- `scripts/check-assets.mjs`
+  - Scans critical city/gameplay model references from `city_assets.json`.
+  - Verifies the default engine-critical assets: vehicle, building, street prop, Poly Haven seating/pole GLBs, and the modular `.bin` buffers.
+  - Parses binary GLB and JSON glTF files, including `.glb` files that are actually JSON glTF.
+  - Checks external `buffers[].uri` and `images[].uri` dependencies case-sensitively before deploy.
+  - Supports optional broader checks:
+    - `CRATE_ASSET_CHECK_CATALOGS=warn|strict`
+    - `CRATE_ASSET_CHECK_ALL_MODELS=true`
+- `scripts/prepare-deploy.mjs`
+  - Runs the asset integrity check before linking `/models` and `/textures` when assets are included.
+  - Supports emergency bypass with `CRATE_SKIP_ASSET_CHECK=true`, but only use that when deliberately deploying code while asset checks are being repaired.
+- `package.json`
+  - Added `npm run check:assets`.
+  - Added `npm run check:deploy` for code plus asset validation.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -133,6 +150,8 @@ Run these from the repo:
 ```powershell
 cd C:\Users\koike\Downloads\crate-engine-web-latest
 npm run check
+$env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-find-my\models-live-cache\models'
+npm run check:assets
 npm run build
 ```
 
@@ -143,14 +162,18 @@ $env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-f
 npm run prepare:deploy
 ```
 
+`prepare:deploy` runs `check:assets` automatically before it links `/models` and
+`/textures`, unless `CRATE_SKIP_ASSET_CHECK=true` is set for an emergency
+code-only deploy.
+
 Deploy to the real Cloudflare Pages project:
 
 ```powershell
 npx wrangler pages deploy .deploy `
   --project-name=crateship-games `
   --branch=main `
-  --commit-hash=eaee4d375253a6c6fc1a0c1fda1ced3a2da29311 `
-  --commit-message="Fix Poly Haven city asset buffers" `
+  --commit-hash=4340fff1c72c1ea5381d13606bdc10b07db760a1 `
+  --commit-message="Add predeploy asset integrity check" `
   --commit-dirty=false
 ```
 
@@ -219,6 +242,7 @@ Recovered model cache summary:
 - Inspector/blueprint deploy skipped `4,281` already-uploaded files and uploaded `3` changed files.
 - Asset-host pipeline deploy skipped `4,272` already-uploaded files and uploaded `12` changed files.
 - Poly Haven buffer deploy skipped `4,285` already-uploaded files and uploaded `1` changed file plus `_headers`.
+- Predeploy asset-check guardrail deploy uploaded `0` changed files, reused `4,286` already-uploaded files, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -245,16 +269,20 @@ The modular `.bin` buffer dependencies returned `200 OK` with
 Always verify the real site:
 
 ```powershell
+$env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-find-my\models-live-cache\models'
+npm run check:assets
 curl.exe -L --silent https://crateshipgames.com/play | Select-String -Pattern "assets/play"
 curl.exe -I -L https://crateshipgames.com/models/kenney_cars/sedan.glb
 curl.exe -I -L https://crateshipgames.com/models/fab/street_props_streeprops.glb
 curl.exe -I -L https://crateshipgames.com/textures/modular_street_seating_armrests_diff_1k.jpg
 curl.exe -I -L https://crateshipgames.com/textures/modular_electricity_poles_nor_gl_1k.jpg
+curl.exe -I -L https://crateshipgames.com/models/modular_street_seating.bin
 curl.exe -I -L https://crateshipgames.com/models/__definitely_missing__.glb
 ```
 
 Expected current results:
 
+- `npm run check:assets` passes with `108` required models, `20` external dependencies, and `107` catalog references.
 - `/play` references `/assets/play-5xgKmEkq.js`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary`.
 - Modular texture dependencies return `200 OK` and `image/jpeg` from `/textures/*`.
@@ -309,6 +337,13 @@ Browser verification from the 2026-05-17 deploy:
   - The Game Builder Inspector and Blueprints sections were present.
   - No console logs matched `failed`, `RGBELoader`, `Couldn't load texture`, `modular_street_seating`, or `modular_electricity_poles`.
   - No `/models/*` or `/textures/*` browser responses returned `400+` during the verified run.
+- Final custom-domain verification after deployment `41e5066b-ed87-43c5-a8be-5bf9e4f192aa`:
+  - Cloudflare source showed `4340fff`.
+  - `/play?verify=4340fff1` still served `/assets/play-5xgKmEkq.js`.
+  - `npm run check:assets` passed before deploy with `108` required models, `20` external dependencies, and `107` catalog references.
+  - Cloudflare uploaded `0` changed files, reused `4,286` already-uploaded files, and refreshed `_headers`.
+  - `/models/modular_street_seating.bin` returned `200 OK`, `application/octet-stream`, and the `/models/*` CORS/cache headers.
+  - `/models/__definitely_missing__.glb` returned `404 Not Found` instead of app HTML.
 
 ## Cloudflare Rules And Gotchas
 
@@ -331,6 +366,8 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+4340fff1 Add predeploy asset integrity check
+7b63cdb6 Update Cloudflare handoff for asset pipeline
 8290f654 Add game builder inspector and blueprints
 eaee4d37 Fix Poly Haven city asset buffers
 6e2b3623 Add asset host pipeline
@@ -358,9 +395,12 @@ M  scripts/check-syntax.mjs
 M  scripts/sync-legacy-web.mjs
 M  user-scripts.mjs
 M  vite.config.mjs
+M  package.json
+M  _headers
 A  404.html
 A  asset-url.mjs
 A  game-builder-ui.mjs
+A  scripts/check-assets.mjs
 A  scripts/prepare-assets-deploy.mjs
 A  CLOUDFLARE_HANDOFF.md
 ```
@@ -373,8 +413,8 @@ does not change the public website bundle unless it is intentionally deployed.
 
 1. Move model assets to a durable source of truth such as Cloudflare R2, a
    versioned artifact bucket, or the prepared `crateship-games-assets` Pages project.
-2. Add a repeatable asset manifest check so missing GLB/bin/texture dependencies fail before
-   deploy.
+2. Expand the repeatable asset manifest check into the future asset-host split so
+   app-code deploys and asset-only deploys validate against the same manifest.
 3. Add a live smoke script for boot, Game Builder panel, Inventory preset,
    `build city`, and missing-model 404 behavior.
 4. Continue productizing the editor: a richer component inspector, project
