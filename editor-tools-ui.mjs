@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resolveAssetFetchUrl } from './asset-url.mjs';
 
 let context = {
   showToast: () => {},
@@ -69,7 +70,7 @@ export async function ensureFabAliasesLoaded() {
     return window._fabAliases;
   }
   if (!fabAliasesPromise) {
-    fabAliasesPromise = fetch('/models/fab/fab_aliases.json').then(async (response) => {
+    fabAliasesPromise = fetch(resolveAssetFetchUrl('/models/fab/fab_aliases.json')).then(async (response) => {
       if (!response.ok) return {};
       const aliases = await response.json();
       window._fabAliases = aliases;

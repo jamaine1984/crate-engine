@@ -3,6 +3,8 @@
 // Alias map is stored as static JSON to keep the JS bundle lean.
 // ═══════════════════════════════════════════════════════════════
 
+import { resolveAssetFetchUrl } from './asset-url.mjs';
+
 const MODEL_ALIAS_URL = '/model-aliases.json';
 const MODEL_CATALOG_URLS = [
   '/models/catalog.json',
@@ -37,7 +39,7 @@ const MODEL_SCALE_OVERRIDES = {
 const GLB_MODELS = {};
 
 async function fetchJson(url) {
-  const response = await fetch(url);
+  const response = await fetch(resolveAssetFetchUrl(url));
   if (!response.ok) {
     throw new Error(`Failed to load ${url}: ${response.status}`);
   }

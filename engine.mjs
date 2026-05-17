@@ -253,6 +253,7 @@ window._userScripts = window._userScripts || [];
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { installAssetFetchPipeline, installAssetPipeline } from './asset-url.mjs';
 
 // ═══ POST-PROCESSING — Lazy loaded to prevent boot crashes ═══
 let EffectComposer, RenderPass, UnrealBloomPass, SMAAPass, ShaderPass, OutputPass, SSAOPass, HDRLoader, BokehPass;
@@ -289,6 +290,8 @@ async function loadPostProcessingModules() {
     return false;
   }
 }
+installAssetPipeline(GLTFLoader);
+installAssetFetchPipeline();
 const gltfLoader = new GLTFLoader();
 window._gltfLoader = gltfLoader;
 const dracoLoader = new DRACOLoader();

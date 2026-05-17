@@ -200,9 +200,9 @@ const pantsColors = [0x2C3E50, 0x1A1A2E, 0x4A4A4A, 0x2F4F4F, 0x191970, 0x3B3B3B,
 const shoesColors = [0x1A1A1A, 0x3D2B1F, 0x4A4A4A, 0x8B4513, 0x2F4F4F];
 const hairCols = [0x1A1A1A, 0x3B2219, 0x6B3A2A, 0xB8860B, 0xDAA520, 0xA0522D, 0x808080, 0xD2691E, 0x2F1B14, 0x4A0404];
 
-const NPC_DEFS_FULL = [];
+const NPC_DEFS = [];
 for (let i = 0; i < 50; i++) {
-  NPC_DEFS_FULL.push({
+  NPC_DEFS.push({
     name: `npc_person_${String(i+1).padStart(2,'0')}`,
     skin: skins[i % skins.length],
     shirt: shirtColors[i % shirtColors.length],
@@ -211,5 +211,3 @@ for (let i = 0; i < 50; i++) {
     hairColor: hairCols[i % hairCols.length],
   });
 }
-
-export { NPC_DEFS_FULL };

@@ -12,4 +12,5 @@ web/.DS_Store
 node_modules/
 dist/
 .deploy/
+.deploy-assets/
 npm-debug.log*

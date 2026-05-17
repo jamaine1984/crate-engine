@@ -11,6 +11,7 @@
     "check": "node ./scripts/check-syntax.mjs",
     "sync:legacy-web": "node ./scripts/sync-legacy-web.mjs",
     "prepare:deploy": "node ./scripts/prepare-deploy.mjs",
+    "prepare:deploy:assets": "node ./scripts/prepare-assets-deploy.mjs",
     "fetch:polyhaven-textures": "node ./scripts/fetch-polyhaven-textures.mjs",
     "optimize:gltf": "node ./scripts/optimize-gltf.mjs"
   },
