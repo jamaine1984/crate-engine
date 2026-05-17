@@ -34,7 +34,7 @@ export function setCityBuilderBloomPass(b) { _bloomPass = b; }
 export function setCityBuilderShowToast(fn) { _showToast = fn; }
 export function setCityBuilderLoadGLBModel(fn) { _loadGLBModel = fn; }
 export function setCityBuilderParseAndExecute(fn) { _parseAndExecute = fn; }
-export function setCityBuilderRGBELoader(loader) { _HDRLoader = loader; }
+export function setCityBuilderHDRLoader(loader) { _HDRLoader = loader; }
 
 // Convenience accessors
 function scene() { return _scene; }

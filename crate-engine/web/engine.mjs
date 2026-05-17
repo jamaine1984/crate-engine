@@ -255,7 +255,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 // ═══ POST-PROCESSING — Lazy loaded to prevent boot crashes ═══
-let EffectComposer, RenderPass, UnrealBloomPass, SMAAPass, ShaderPass, OutputPass, SSAOPass, RGBELoader, BokehPass;
+let EffectComposer, RenderPass, UnrealBloomPass, SMAAPass, ShaderPass, OutputPass, SSAOPass, HDRLoader, BokehPass;
 let _ppModulesLoaded = false;
 
 async function loadPostProcessingModules() {
@@ -268,7 +268,7 @@ async function loadPostProcessingModules() {
       import('three/addons/postprocessing/ShaderPass.js'),
       import('three/addons/postprocessing/OutputPass.js'),
       import('three/addons/postprocessing/SSAOPass.js').catch(() => null),
-      import('three/addons/loaders/RGBELoader.js'),
+      import('three/addons/loaders/HDRLoader.js'),
       import('three/addons/postprocessing/BokehPass.js').catch(() => null),
     ]);
     EffectComposer = ec.EffectComposer;
@@ -278,7 +278,7 @@ async function loadPostProcessingModules() {
     ShaderPass = sp.ShaderPass;
     OutputPass = op.OutputPass;
     SSAOPass = ss?.SSAOPass || null;
-    RGBELoader = rg.RGBELoader;
+    HDRLoader = rg.HDRLoader;
     BokehPass = bk?.BokehPass || null;
     _ppModulesLoaded = true;
     console.log('[PostFX] All post-processing modules loaded');
@@ -528,7 +528,7 @@ function syncCityBuilderModule(mod = cityBuilderModule) {
   mod.setCityBuilderLoadGLBModel?.(loadGLBModel);
   mod.setCityBuilderParseAndExecute?.((...args) => parseAndExecute(...args));
   mod.setCityBuilderBloomPass?.(bloomPass);
-  mod.setCityBuilderRGBELoader?.(RGBELoader);
+  mod.setCityBuilderHDRLoader?.(HDRLoader);
 }
 
 function loadCityBuilderModule() {
@@ -3483,7 +3483,7 @@ function loadEnvironmentMap(preset) {
   
   const url = HDRI_URLS[preset] || HDRI_URLS['default'];
   
-  new RGBELoader().load(url, (texture) => {
+  new HDRLoader().load(url, (texture) => {
     envMap = pmremGenerator.fromEquirectangular(texture).texture;
     scene.environment = envMap;
     scene.background = envMap; // Use HDRI as sky background for realism

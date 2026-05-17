@@ -1,54 +1,48 @@
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const rootDir = '/Users/jamainemartin/Desktop/crate-engine';
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(process.env.CRATE_ENGINE_ROOT || path.join(scriptDir, '..'));
 const legacyDir = path.join(rootDir, 'crate-engine/web');
-const sourceDir = process.argv.includes('--from-dist') ? path.join(rootDir, 'dist') : rootDir;
-const include = [
+const fromDist = process.argv.includes('--from-dist');
+const sourceDir = fromDist ? path.join(rootDir, 'dist') : rootDir;
+const fixedInclude = [
   '_headers',
-  'actions.mjs',
-  'ai-agent.mjs',
   'asset-catalog.json',
   'asset-gallery.mjs',
-  'auth.mjs',
-  'character.mjs',
-  'collision.mjs',
+  'city_assets.json',
   'compare.html',
   'creators.html',
   'demo.html',
-  'engine.mjs',
+  'docs',
   'favicon.svg',
   'features.html',
-  'gen_npcs.mjs',
-  'godmode.mjs',
   'index.html',
-  'interpreter.mjs',
-  'llm-interpreter.mjs',
-  'local-ai-tools.mjs',
   'marketplace.html',
-  'mobile.mjs',
   'model-aliases.json',
   'model-catalog.json',
-  'multiplayer-colyseus.mjs',
-  'navmesh.mjs',
-  'physics.mjs',
+  'model_catalog.json',
+  'og-image.svg',
   'play.html',
   'pricing.html',
   'runtime',
-  'savesystem.mjs',
-  'sound.mjs',
-  'speech-tts.mjs',
-  'town-builder.mjs',
-  'voice-commands.mjs',
-  'weather.mjs',
-  'debug-tools.mjs'
+  'service-worker.js'
 ];
+
+const include = new Set(fixedInclude);
+if (!fromDist) {
+  for (const entry of await readdir(sourceDir)) {
+    if (entry.endsWith('.mjs')) include.add(entry);
+  }
+}
 
 await rm(legacyDir, { recursive: true, force: true });
 await mkdir(legacyDir, { recursive: true });
 for (const rel of include) {
-  await cp(path.join(sourceDir, rel), path.join(legacyDir, rel), { force: true, recursive: true });
+  const src = path.join(sourceDir, rel);
+  await stat(src);
+  await cp(src, path.join(legacyDir, rel), { force: true, recursive: true });
 }
-await mkdir(path.join(legacyDir, 'docs'), { recursive: true });
-await cp(path.join(rootDir, 'docs/index.html'), path.join(legacyDir, 'docs/index.html'), { force: true });
-console.log(`Synced ${include.length} entries from ${sourceDir} to ${legacyDir}`);
+
+console.log(`Synced ${include.size} entries from ${sourceDir} to ${legacyDir}`);

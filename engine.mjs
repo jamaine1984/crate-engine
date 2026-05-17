@@ -528,7 +528,7 @@ function syncCityBuilderModule(mod = cityBuilderModule) {
   mod.setCityBuilderLoadGLBModel?.(loadGLBModel);
   mod.setCityBuilderParseAndExecute?.((...args) => parseAndExecute(...args));
   mod.setCityBuilderBloomPass?.(bloomPass);
-  mod.setCityBuilderRGBELoader?.(HDRLoader);
+  mod.setCityBuilderHDRLoader?.(HDRLoader);
 }
 
 function loadCityBuilderModule() {
