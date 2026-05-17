@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current source commit used for the latest deploy: `0909003e2cb68422e56ebca136056dc7c7df1cc8`
+- Current deployed source commit for the public engine code: `2e9794d5`
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -24,10 +24,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `918c4aad-9159-4033-9d5a-b0dda028035e`
-- Latest production deployment URL: `https://918c4aad.crateship-games.pages.dev`
+- Latest production deployment ID: `b8b419ae-faf0-4377-90c6-77f07670c0ed`
+- Latest production deployment URL: `https://b8b419ae.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `0909003`
+- Source shown by Cloudflare: `2e9794d`
 - Main live page bundle after the deploy: `/assets/play-CdQnR1E6.js`
 
 Check the latest deployment with:
@@ -90,9 +90,9 @@ Deploy to the real Cloudflare Pages project:
 npx wrangler pages deploy .deploy `
   --project-name=crateship-games `
   --branch=main `
-  --commit-hash=0909003e2cb68422e56ebca136056dc7c7df1cc8 `
-  --commit-message="Add Game Builder panel and script presets" `
-  --commit-dirty=true
+  --commit-hash=2e9794d5 `
+  --commit-message="Add Cloudflare game builder deployment pass" `
+  --commit-dirty=false
 ```
 
 Important: do not deploy only `dist` unless you are intentionally changing the
@@ -122,7 +122,8 @@ Recovered model cache summary:
 - Failed downloads: `0`
 - Known live-missing fallback paths: `45`
 - Recovered asset size: about `1.70 GB`
-- Final Pages upload skipped `4,193` already-uploaded files and uploaded `55` changed files.
+- First Pages upload skipped `4,193` already-uploaded files and uploaded `55` changed files.
+- Follow-up source-sync deploy skipped `4,244` already-uploaded files and uploaded `4` changed files.
 
 Critical city assets verified after deploy:
 
@@ -185,9 +186,15 @@ RGBELoader has been deprecated. Please use HDRLoader instead.
 - Use live browser/network checks after deploy. The user explicitly wants the
   real Cloudflare website updated, not a local-only preview.
 
-## Current Working Tree After This Pass
+## Git State After This Pass
 
-Files changed or added locally:
+The deployed source changes were committed and pushed to GitHub:
+
+```text
+2e9794d5 Add Cloudflare game builder deployment pass
+```
+
+Files included in that deploy commit:
 
 ```text
 M  engine.mjs
@@ -201,17 +208,17 @@ A  game-builder-ui.mjs
 A  CLOUDFLARE_HANDOFF.md
 ```
 
-No Git commit or push was made during this pass. The code was deployed to
-Cloudflare Pages by direct Wrangler upload.
+After the deploy commit was pushed, this handoff file was updated again to
+record the final Cloudflare deployment metadata. That handoff-only update does
+not change the public website bundle.
 
 ## Recommended Next Steps
 
-1. Commit the deployed source changes to GitHub so the repo matches production.
-2. Move model assets to a durable source of truth such as Cloudflare R2 or a
+1. Move model assets to a durable source of truth such as Cloudflare R2 or a
    versioned artifact bucket.
-3. Add a repeatable asset manifest check so missing GLB dependencies fail before
+2. Add a repeatable asset manifest check so missing GLB dependencies fail before
    deploy.
-4. Add a live smoke script for boot, Game Builder panel, Inventory preset,
+3. Add a live smoke script for boot, Game Builder panel, Inventory preset,
    `build city`, and missing-model 404 behavior.
-5. Continue productizing the editor: scene hierarchy, component inspector,
+4. Continue productizing the editor: scene hierarchy, component inspector,
    project format, safe scripting runtime, and publish/export flow.
