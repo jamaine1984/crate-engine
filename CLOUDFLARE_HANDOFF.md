@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `b03ee517`
+- Current deployed source commit for the public engine code: `0ec514e2`
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -24,11 +24,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `b054c20b-1a78-44aa-acef-844d6e9983ad`
-- Latest production deployment URL: `https://b054c20b.crateship-games.pages.dev`
+- Latest production deployment ID: `c7f5a390-c203-426a-8e21-232437a25f0e`
+- Latest production deployment URL: `https://c7f5a390.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `b03ee51`
-- Main live page bundle after the deploy: `/assets/play-CZKplQBh.js`
+- Source shown by Cloudflare: `0ec514e`
+- Main live page bundle after the deploy: `/assets/play-C18sl_xm.js`
 
 Check the latest deployment with:
 
@@ -78,6 +78,20 @@ Follow-up production deploys on 2026-05-17 added the builder component pass:
   - Moved Components and Scene directly under World so they are visible in the first panel view.
   - Raised the Game Builder panel above gameplay overlays so the builder buttons remain clickable after a city is generated.
 
+Follow-up production deploys on 2026-05-17 fixed the asset/runtime warnings seen during live city builds:
+
+- `scripts/fetch-polyhaven-textures.mjs`
+  - Added a repeatable texture downloader for the Poly Haven modular street seating and electricity pole JPEG dependencies.
+- `scripts/prepare-deploy.mjs`
+  - Keeps `/models/*` linked for GLB assets.
+  - Also links `/textures/*` to the model cache textures directory so GLTFLoader-relative texture paths resolve on the custom domain.
+- `engine.mjs`, `city-builder.mjs`, and `crate-engine/web/engine.mjs`
+  - Switched the HDR environment loader path from deprecated `RGBELoader` to `HDRLoader`.
+  - Renamed the city-builder loader hook to `setCityBuilderHDRLoader`.
+- `scripts/sync-legacy-web.mjs`
+  - Removed the old hardcoded Mac desktop path.
+  - Uses the current repo root on Windows and syncs current top-level `.mjs` files into the legacy `crate-engine/web` copy when needed.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -101,8 +115,8 @@ Deploy to the real Cloudflare Pages project:
 npx wrangler pages deploy .deploy `
   --project-name=crateship-games `
   --branch=main `
-  --commit-hash=b03ee517dc19fe43883054d17374c0cb1fc32f80 `
-  --commit-message="Raise builder panel above gameplay overlays" `
+  --commit-hash=0ec514e286617ff6218df9fd6f524b1584241854 `
+  --commit-message="Fix deploy texture paths and HDR hook" `
   --commit-dirty=false
 ```
 
@@ -136,6 +150,7 @@ Recovered model cache summary:
 - First Pages upload skipped `4,193` already-uploaded files and uploaded `55` changed files.
 - Follow-up source-sync deploy skipped `4,244` already-uploaded files and uploaded `4` changed files.
 - Latest builder-overlay deploy skipped `4,245` already-uploaded files and uploaded `3` changed files.
+- HDR/Poly Haven texture deploy skipped `4,276` already-uploaded files and uploaded `8` changed files.
 
 Critical city assets verified after deploy:
 
@@ -144,9 +159,14 @@ https://crateshipgames.com/models/kenney_cars/sedan.glb
 https://crateshipgames.com/models/buildings_pack_3_6story_stack_mat.glb
 https://crateshipgames.com/models/fab/street_props_streeprops.glb
 https://crateshipgames.com/models/ph_modular_street_seating.glb
+https://crateshipgames.com/textures/modular_street_seating_armrests_diff_1k.jpg
+https://crateshipgames.com/textures/modular_street_seating_supports_nor_gl_1k.jpg
+https://crateshipgames.com/textures/modular_electricity_poles_nor_gl_1k.jpg
+https://crateshipgames.com/textures/modular_electricity_poles_pieces_arm_1k.jpg
 ```
 
-These returned `Content-Type: model/gltf-binary` on production after the deploy.
+The `.glb` assets returned `Content-Type: model/gltf-binary` on production.
+The modular texture dependencies returned `200 OK` with `Content-Type: image/jpeg`.
 
 ## Post-Deploy Verification
 
@@ -156,13 +176,17 @@ Always verify the real site:
 curl.exe -L --silent https://crateshipgames.com/play | Select-String -Pattern "assets/play"
 curl.exe -I -L https://crateshipgames.com/models/kenney_cars/sedan.glb
 curl.exe -I -L https://crateshipgames.com/models/fab/street_props_streeprops.glb
+curl.exe -I -L https://crateshipgames.com/textures/modular_street_seating_armrests_diff_1k.jpg
+curl.exe -I -L https://crateshipgames.com/textures/modular_electricity_poles_nor_gl_1k.jpg
 curl.exe -I -L https://crateshipgames.com/models/__definitely_missing__.glb
 ```
 
 Expected current results:
 
-- `/play` references `/assets/play-CZKplQBh.js`.
+- `/play` references `/assets/play-C18sl_xm.js`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary`.
+- Modular texture dependencies return `200 OK` and `image/jpeg` from `/textures/*`.
+- The served play bundle contains `HDRLoader` and no `RGBELoader` references.
 - Missing model paths return `404 Not Found`, not `200 text/html`.
 
 Browser verification from the 2026-05-17 deploy:
@@ -181,12 +205,13 @@ Browser verification from the 2026-05-17 deploy:
   - Scene list populated with `10` visible rows.
   - Pickup component tagging changed the live stats to `408 objects`, `1 components`, `2 scripts`.
   - No `result is not defined` command-runner error was seen after the fix.
-
-Known non-blocking warning still present:
-
-```text
-RGBELoader has been deprecated. Please use HDRLoader instead.
-```
+- Final custom-domain verification after deployment `c7f5a390-c203-426a-8e21-232437a25f0e`:
+  - `/play` served `/assets/play-C18sl_xm.js`.
+  - The served bundle had `HDRLoader` and no `RGBELoader`.
+  - Root texture URLs under `/textures/*` returned `200 OK image/jpeg`.
+  - Typing `build city` in the live command box built the city and populated the Game Builder scene list.
+  - Live Game Builder stats after the browser run: `408 objects`, `0 components`, `2 scripts`.
+  - No new browser logs matched `RGBELoader`, `Couldn't load texture`, `modular_street_seating`, `modular_electricity_poles`, or failed modular GLB loads during the verified run.
 
 ## Cloudflare Rules And Gotchas
 
@@ -209,6 +234,8 @@ RGBELoader has been deprecated. Please use HDRLoader instead.
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+0ec514e2 Fix deploy texture paths and HDR hook
+0247a439 Fix HDR loader and Poly Haven textures
 b03ee517 Raise builder panel above gameplay overlays
 5be08aef Move builder components into primary panel
 fa4b7358 Stabilize builder scene targeting
@@ -221,9 +248,13 @@ Core files touched across the deployed 2026-05-17 engine passes:
 
 ```text
 M  engine.mjs
+M  city-builder.mjs
 M  play.html
+M  crate-engine/web/engine.mjs
+M  scripts/fetch-polyhaven-textures.mjs
 M  scripts/optimize-gltf.mjs
 M  scripts/prepare-deploy.mjs
+M  scripts/sync-legacy-web.mjs
 M  user-scripts.mjs
 M  vite.config.mjs
 A  404.html
