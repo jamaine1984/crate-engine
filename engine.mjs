@@ -6564,12 +6564,100 @@ window._modelDB = _modelDB;
 
 // === INLINE ASSET GALLERY ===
 let _assetCatalog = null;
+function _normalizeCatalogModelRef(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^https?:\/\/[^/]+\/models\//i, '')
+    .replace(/^\/?models\//i, '')
+    .replace(/^\/+/, '')
+    .replace(/\.glb$/i, '')
+    .toLowerCase();
+}
+
+function _withoutDuplicateLeadingFolder(ref) {
+  const parts = String(ref || '').split('/').filter(Boolean);
+  if (parts.length >= 2 && parts[0].toLowerCase() === parts[1].toLowerCase()) {
+    return [parts[0], ...parts.slice(2)].join('/');
+  }
+  return ref;
+}
+
+function _catalogCandidatesForItem(item) {
+  const refs = [
+    item?.path,
+    item?.file,
+    item?.name,
+    item?.name ? String(item.name).replace(/\s+/g, '_') : '',
+  ];
+  const out = [];
+  refs.forEach((ref) => {
+    const normalized = _normalizeCatalogModelRef(ref);
+    if (!normalized) return;
+    out.push(normalized);
+    out.push(_withoutDuplicateLeadingFolder(normalized));
+    const alias = GLB_MODELS[normalized] || GLB_MODELS[normalized.replace(/_/g, '-')] || GLB_MODELS[normalized.replace(/_/g, ' ')];
+    if (alias) out.push(_normalizeCatalogModelRef(alias));
+  });
+  return [...new Set(out.filter(Boolean))];
+}
+
+function _buildAvailableModelPathMap(modelCatalog = {}) {
+  const map = new Map();
+  Object.entries(modelCatalog || {}).forEach(([key, info]) => {
+    const canonicalPath = info?.path || info?.file || key;
+    [key, info?.name, info?.path, info?.file, canonicalPath].forEach((ref) => {
+      const normalized = _normalizeCatalogModelRef(ref);
+      if (normalized && !map.has(normalized)) map.set(normalized, canonicalPath);
+    });
+  });
+  return map;
+}
+
+function _filterAssetCatalogForAvailableModels(catalog, modelCatalog) {
+  const pathMap = _buildAvailableModelPathMap(modelCatalog);
+  if (!pathMap.size) return catalog;
+  let hidden = 0;
+  const filtered = {};
+
+  Object.entries(catalog || {}).forEach(([category, items]) => {
+    if (!Array.isArray(items)) {
+      filtered[category] = items;
+      return;
+    }
+    filtered[category] = items.map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      if (item._b64 || item.source === 'user-saved' || item.source === 'user-generated' || item.source === 'marketplace') return item;
+      const rawRef = String(item.path || item.file || '').trim();
+      if (!rawRef) return null;
+      if (/^(?:https?:|blob:|data:)/i.test(rawRef)) return item;
+      if (/\.tmp$/i.test(rawRef) || /\.glb\.tmp$/i.test(rawRef)) return null;
+      const resolved = _catalogCandidatesForItem(item).map((candidate) => pathMap.get(candidate)).find(Boolean);
+      if (!resolved) return null;
+      return resolved === rawRef || resolved === item.path ? item : { ...item, path: resolved };
+    }).filter(Boolean);
+    hidden += items.length - filtered[category].length;
+  });
+
+  if (hidden > 0) console.log('[Catalog] Hidden unavailable asset entries:', hidden);
+  window._assetCatalogHiddenUnavailable = hidden;
+  return filtered;
+}
+
 async function _loadAssetCatalog() {
   if (_assetCatalog) return _assetCatalog;
   try {
     const r = await fetch('asset-catalog.json');
     _assetCatalog = await r.json();
   } catch(e) { _assetCatalog = {}; }
+
+  try {
+    await ensureModelRegistryAvailable();
+    const modelCatalog = await modelRegistryModule?.loadModelCatalog?.();
+    _assetCatalog = _filterAssetCatalogForAvailableModels(_assetCatalog, modelCatalog || {});
+  } catch(e) {
+    console.warn('[Catalog] Availability filter skipped:', e.message);
+  }
   
   // Merge IndexedDB models (marketplace + user-generated — persisted as blobs)
   try {

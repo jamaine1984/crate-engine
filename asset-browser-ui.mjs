@@ -193,7 +193,7 @@ export function showGallery(category, options = {}) {
         const observer = new IntersectionObserver((entries) => {
           if (entries[0].isIntersecting) {
             observer.disconnect();
-            renderThumb(item.file, thumb);
+            renderThumb(item.path || item.file, thumb);
           }
         }, { root: scrollArea, threshold: 0.1 });
         observer.observe(card);

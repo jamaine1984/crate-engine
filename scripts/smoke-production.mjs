@@ -168,6 +168,20 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#gb-blueprints', { timeout: timeoutMs });
     await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
 
+    const catalogState = await page.evaluate(async () => {
+      const catalog = await window._engineBridge?.loadAssetCatalog?.();
+      const items = Object.values(catalog || {}).flat().filter((item) => item && typeof item === 'object');
+      const refs = items.map((item) => String(item.path || item.file || ''));
+      return {
+        hiddenUnavailable: window._assetCatalogHiddenUnavailable || 0,
+        itemCount: items.length,
+        furnitureCount: catalog?.furniture?.length || 0,
+        hasTmpReference: refs.some((ref) => /\.tmp$/i.test(ref) || /\.glb\.tmp$/i.test(ref)),
+        unresolvedDuplicatedKenneyPath: refs.some((ref) => /kenney_cars\/kenney_cars\//i.test(ref) && !/models\/catalog\.json/i.test(ref)),
+      };
+    });
+    if (catalogState.hasTmpReference) throw new Error('Asset catalog still exposes .tmp references');
+
     await page.locator('button.gb-preset', { hasText: 'Inventory' }).click({ timeout: timeoutMs });
     await page.waitForFunction(() => Array.isArray(window._userScripts) && window._userScripts.length >= 1, undefined, { timeout: timeoutMs });
 
@@ -245,6 +259,7 @@ async function runBrowserSmoke() {
         hasBlueprints: !!document.querySelector('#gb-blueprints'),
         mode: window._currentMode || '',
         hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
+        hiddenUnavailableAssets: window._assetCatalogHiddenUnavailable || 0,
         scriptCount: Array.isArray(window._userScripts) ? window._userScripts.length : 0,
         selectedComponents: Object.keys(selected?.userData?.gbComponents || {}),
       };
@@ -260,6 +275,9 @@ async function runBrowserSmoke() {
     if (!state.hasInspector || !state.hasBlueprints) throw new Error('Game Builder Inspector or Blueprints section was missing');
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
     if (state.mode !== 'edit') throw new Error(`Expected smoke to finish in edit mode, got ${state.mode || 'empty'}`);
+    if (catalogState.itemCount < 1000 || catalogState.furnitureCount < 100) {
+      throw new Error(`Asset catalog looks too small after filtering: ${JSON.stringify(catalogState)}`);
+    }
     if (state.objectCount < 100) throw new Error(`Expected build city to create at least 100 objects, got ${state.objectCount}`);
     if (state.sceneRows < 1) throw new Error('Game Builder Scene list did not populate after build city');
     if (!state.selectedComponents.includes('pickup')) throw new Error('Pickup component was not applied to the selected object');
@@ -293,6 +311,7 @@ console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);
 console.log(`Mode: ${browserState.mode}`);
+console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);
