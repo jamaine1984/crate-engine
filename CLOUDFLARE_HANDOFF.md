@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `4340fff1`
+- Current deployed source commit for the public engine code: `d1efb55f`
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -24,10 +24,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `41e5066b-ed87-43c5-a8be-5bf9e4f192aa`
-- Latest production deployment URL: `https://41e5066b.crateship-games.pages.dev`
+- Latest production deployment ID: `adee2aca-1910-45fb-b517-fb62f9abef53`
+- Latest production deployment URL: `https://adee2aca.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `4340fff`
+- Source shown by Cloudflare: `d1efb55`
 - Main live page bundle after the deploy: `/assets/play-5xgKmEkq.js`
 
 Check the latest deployment with:
@@ -143,6 +143,20 @@ Follow-up production deploys on 2026-05-17 added a predeploy asset integrity gua
   - Added `npm run check:assets`.
   - Added `npm run check:deploy` for code plus asset validation.
 
+Follow-up production deploys on 2026-05-17 added a production smoke test:
+
+- `scripts/smoke-production.mjs`
+  - Uses Playwright Core with the installed Chrome browser to test the real custom domain.
+  - Verifies `/play` returns a hashed play bundle.
+  - Verifies critical live asset URLs for GLB, texture, modular `.bin`, and missing-model `404` behavior.
+  - Opens `https://crateshipgames.com/play?verify=<id>`, waits for `window._engineReady`, `window._engineBridge`, and `window._crateAssetUrl`.
+  - Runs the `Inventory` Game Builder preset, types `build city`, waits for the city objects and Scene list, selects a scene row, applies the `Pickup` component, and saves a screenshot under `output/playwright/`.
+  - Supports `CRATE_SMOKE_BASE_URL`, `CRATE_SMOKE_VERIFY`, `CRATE_SMOKE_TIMEOUT_MS`, `CRATE_SMOKE_HEADLESS=false`, `CRATE_SMOKE_CHROME_PATH`, and `CRATE_SMOKE_SCREENSHOT_DIR`.
+- `package.json`
+  - Added `npm run smoke:production`.
+- `.gitignore`
+  - Ignores `output/` so smoke screenshots do not pollute commits.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -153,6 +167,7 @@ npm run check
 $env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-find-my\models-live-cache\models'
 npm run check:assets
 npm run build
+npm run smoke:production
 ```
 
 Prepare the Cloudflare upload directory with a real model source:
@@ -172,8 +187,8 @@ Deploy to the real Cloudflare Pages project:
 npx wrangler pages deploy .deploy `
   --project-name=crateship-games `
   --branch=main `
-  --commit-hash=4340fff1c72c1ea5381d13606bdc10b07db760a1 `
-  --commit-message="Add predeploy asset integrity check" `
+  --commit-hash=d1efb55ff2922776cd0f052292863ffe1ebe1c1a `
+  --commit-message="Add production smoke test" `
   --commit-dirty=false
 ```
 
@@ -243,6 +258,7 @@ Recovered model cache summary:
 - Asset-host pipeline deploy skipped `4,272` already-uploaded files and uploaded `12` changed files.
 - Poly Haven buffer deploy skipped `4,285` already-uploaded files and uploaded `1` changed file plus `_headers`.
 - Predeploy asset-check guardrail deploy uploaded `0` changed files, reused `4,286` already-uploaded files, and refreshed `_headers`.
+- Production smoke-test deploy uploaded `0` changed files, reused `4,286` already-uploaded files, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -271,6 +287,7 @@ Always verify the real site:
 ```powershell
 $env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-find-my\models-live-cache\models'
 npm run check:assets
+npm run smoke:production
 curl.exe -L --silent https://crateshipgames.com/play | Select-String -Pattern "assets/play"
 curl.exe -I -L https://crateshipgames.com/models/kenney_cars/sedan.glb
 curl.exe -I -L https://crateshipgames.com/models/fab/street_props_streeprops.glb
@@ -283,6 +300,7 @@ curl.exe -I -L https://crateshipgames.com/models/__definitely_missing__.glb
 Expected current results:
 
 - `npm run check:assets` passes with `108` required models, `20` external dependencies, and `107` catalog references.
+- `npm run smoke:production` passes against `https://crateshipgames.com/play`.
 - `/play` references `/assets/play-5xgKmEkq.js`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary`.
 - Modular texture dependencies return `200 OK` and `image/jpeg` from `/textures/*`.
@@ -344,6 +362,13 @@ Browser verification from the 2026-05-17 deploy:
   - Cloudflare uploaded `0` changed files, reused `4,286` already-uploaded files, and refreshed `_headers`.
   - `/models/modular_street_seating.bin` returned `200 OK`, `application/octet-stream`, and the `/models/*` CORS/cache headers.
   - `/models/__definitely_missing__.glb` returned `404 Not Found` instead of app HTML.
+- Final custom-domain verification after deployment `adee2aca-1910-45fb-b517-fb62f9abef53`:
+  - Cloudflare source showed `d1efb55`.
+  - `/play?verify=d1efb55` still served `/assets/play-5xgKmEkq.js`.
+  - `npm run smoke:production` passed after deploy on the real custom domain.
+  - Smoke result: `409` objects, `10` scene rows, `2` scripts, selected component `pickup`.
+  - Critical HTTP checks passed: sedan GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-d1efb55.png`.
 
 ## Cloudflare Rules And Gotchas
 
@@ -366,6 +391,7 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+d1efb55f Add production smoke test
 4340fff1 Add predeploy asset integrity check
 7b63cdb6 Update Cloudflare handoff for asset pipeline
 8290f654 Add game builder inspector and blueprints
@@ -396,11 +422,14 @@ M  scripts/sync-legacy-web.mjs
 M  user-scripts.mjs
 M  vite.config.mjs
 M  package.json
+M  package-lock.json
+M  .gitignore
 M  _headers
 A  404.html
 A  asset-url.mjs
 A  game-builder-ui.mjs
 A  scripts/check-assets.mjs
+A  scripts/smoke-production.mjs
 A  scripts/prepare-assets-deploy.mjs
 A  CLOUDFLARE_HANDOFF.md
 ```
@@ -415,7 +444,7 @@ does not change the public website bundle unless it is intentionally deployed.
    versioned artifact bucket, or the prepared `crateship-games-assets` Pages project.
 2. Expand the repeatable asset manifest check into the future asset-host split so
    app-code deploys and asset-only deploys validate against the same manifest.
-3. Add a live smoke script for boot, Game Builder panel, Inventory preset,
-   `build city`, and missing-model 404 behavior.
+3. Put `npm run smoke:production` into CI or a deploy checklist so every
+   Cloudflare production deploy gets the same live browser verification.
 4. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and publish/export flow.
