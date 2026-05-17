@@ -15,7 +15,9 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `d1efb55f`
+- Current deployed source commit for the public engine code: `5c139d3a`
+- Cloudflare Pages asset project: `crateship-games-assets`
+- Current asset host: `https://crateship-games-assets.pages.dev`
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -24,11 +26,14 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `adee2aca-1910-45fb-b517-fb62f9abef53`
-- Latest production deployment URL: `https://adee2aca.crateship-games.pages.dev`
+- Latest production deployment ID: `bbadc73c-c7a7-45cb-9bd3-662c843bbc89`
+- Latest production deployment URL: `https://bbadc73c.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `d1efb55`
+- Source shown by Cloudflare: `5c139d3`
 - Main live page bundle after the deploy: `/assets/play-5xgKmEkq.js`
+- Latest asset-host deployment ID: `d6e01bfb-66b0-4d69-a9a1-51f1d625bb74`
+- Latest asset-host deployment URL: `https://d6e01bfb.crateship-games-assets.pages.dev`
+- Asset-host source shown by Cloudflare: `9afd946`
 
 Check the latest deployment with:
 
@@ -157,6 +162,24 @@ Follow-up production deploys on 2026-05-17 added a production smoke test:
 - `.gitignore`
   - Ignores `output/` so smoke screenshots do not pollute commits.
 
+Follow-up production deploys on 2026-05-17 activated the separate Cloudflare asset host:
+
+- Cloudflare Pages project `crateship-games-assets`
+  - Created as the dedicated host for shared `/models/*` and `/textures/*`.
+  - First upload attempt hit a Wrangler socket error after partial upload; retry succeeded and uploaded `4,182` files to deployment `fa06faf8-9969-46dc-b8b1-1d7d3b70122f`.
+  - Hardened asset-host deployment `d6e01bfb-66b0-4d69-a9a1-51f1d625bb74` added asset integrity checking, a real asset `404.html`, and cleaner CORS/cache headers.
+- `scripts/prepare-assets-deploy.mjs`
+  - Now runs `checkAssets()` before staging the asset host unless `CRATE_SKIP_ASSET_CHECK=true`.
+  - Writes a real `404.html` so missing asset URLs return `404 Not Found` instead of `200 text/html`.
+- `play.html` and `demo.html`
+  - Added `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
+  - This points GLB, texture, and catalog requests at the asset host through `asset-url.mjs`.
+- `scripts/smoke-production.mjs`
+  - Reads the asset-base meta tag or `CRATE_SMOKE_ASSET_BASE_URL` and verifies model/texture URLs against that asset host.
+- App deployment `bbadc73c-c7a7-45cb-9bd3-662c843bbc89`
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload contained only `105` files and uploaded `2` changed files plus `_headers`, instead of uploading the full model cache again.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -170,16 +193,29 @@ npm run build
 npm run smoke:production
 ```
 
-Prepare the Cloudflare upload directory with a real model source:
+Prepare and deploy the separate asset host when model or texture assets change:
 
 ```powershell
 $env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-find-my\models-live-cache\models'
+npm run prepare:deploy:assets
+npx wrangler pages deploy .deploy-assets `
+  --project-name=crateship-games-assets `
+  --branch=main `
+  --commit-hash=<current-git-commit> `
+  --commit-message="<asset deploy message>" `
+  --commit-dirty=false
+```
+
+Prepare the main Cloudflare upload directory without bundled assets:
+
+```powershell
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'
 npm run prepare:deploy
 ```
 
-`prepare:deploy` runs `check:assets` automatically before it links `/models` and
-`/textures`, unless `CRATE_SKIP_ASSET_CHECK=true` is set for an emergency
-code-only deploy.
+The app reads `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`
+from `play.html` and `demo.html`, so the city builder loads `/models/*` and
+`/textures/*` from the asset project.
 
 Deploy to the real Cloudflare Pages project:
 
@@ -187,43 +223,29 @@ Deploy to the real Cloudflare Pages project:
 npx wrangler pages deploy .deploy `
   --project-name=crateship-games `
   --branch=main `
-  --commit-hash=d1efb55ff2922776cd0f052292863ffe1ebe1c1a `
-  --commit-message="Add production smoke test" `
+  --commit-hash=5c139d3a8c42fd4f3bea2d61d314d30a72a85956 `
+  --commit-message="Use separate Cloudflare asset host" `
   --commit-dirty=false
 ```
 
-Important: do not deploy only `dist` unless you are intentionally changing the
-asset-hosting strategy. The city builder needs `/models/*` assets.
+Important: do not deploy only `dist` manually. Use `prepare:deploy` so `_headers`,
+`404.html`, static catalogs, and the current asset-host strategy are preserved.
 
-### Future Separate Asset Host Workflow
+### Asset Host Override Workflow
 
-The app is now ready for a two-project asset split, but the current production
-deploy still bundles assets for safety. Use this only after a dedicated asset
-host is deployed and verified:
-
-```powershell
-cd C:\Users\koike\Downloads\crate-engine-web-latest
-$env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-find-my\models-live-cache\models'
-npm run prepare:deploy:assets
-npx wrangler pages deploy .deploy-assets `
-  --project-name=crateship-games-assets `
-  --branch=main
-```
-
-Then set the app's asset base with one of these options:
+The current production app uses `https://crateship-games-assets.pages.dev` by
+default. For temporary testing, override the asset base in the browser:
 
 ```javascript
 window.CRATESHIP_ASSET_BASE_URL = 'https://assets.example.com';
 localStorage.setItem('crate_asset_base_url', 'https://assets.example.com');
 ```
 
-Only after `https://assets.example.com/models/kenney_cars/sedan.glb`,
-`/models/catalog.json`, and representative `/textures/*` URLs return `200 OK`,
-deploy the app with:
+For smoke tests against a different asset host:
 
 ```powershell
-$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'
-npm run prepare:deploy
+$env:CRATE_SMOKE_ASSET_BASE_URL='https://assets.example.com'
+npm run smoke:production
 ```
 
 ## Model Assets
@@ -259,26 +281,30 @@ Recovered model cache summary:
 - Poly Haven buffer deploy skipped `4,285` already-uploaded files and uploaded `1` changed file plus `_headers`.
 - Predeploy asset-check guardrail deploy uploaded `0` changed files, reused `4,286` already-uploaded files, and refreshed `_headers`.
 - Production smoke-test deploy uploaded `0` changed files, reused `4,286` already-uploaded files, and refreshed `_headers`.
+- Initial asset-host deploy to `crateship-games-assets` uploaded `4,182` files after one retry.
+- Hardened asset-host deploy uploaded `1` changed file, reused `4,182` already-uploaded files, and refreshed `_headers`.
+- Lean main-app deploy skipped bundled `/models` and `/textures`, uploaded `2` changed files, reused `103` already-uploaded files, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
 ```text
-https://crateshipgames.com/models/kenney_cars/sedan.glb
-https://crateshipgames.com/models/buildings_pack_3_6story_stack_mat.glb
-https://crateshipgames.com/models/fab/street_props_streeprops.glb
-https://crateshipgames.com/models/ph_modular_street_seating.glb
-https://crateshipgames.com/textures/modular_street_seating_armrests_diff_1k.jpg
-https://crateshipgames.com/textures/modular_street_seating_supports_nor_gl_1k.jpg
-https://crateshipgames.com/textures/modular_electricity_poles_nor_gl_1k.jpg
-https://crateshipgames.com/textures/modular_electricity_poles_pieces_arm_1k.jpg
-https://crateshipgames.com/models/modular_street_seating.bin
-https://crateshipgames.com/models/modular_electricity_poles.bin
+https://crateship-games-assets.pages.dev/models/kenney_cars/sedan.glb
+https://crateship-games-assets.pages.dev/models/buildings_pack_3_6story_stack_mat.glb
+https://crateship-games-assets.pages.dev/models/fab/street_props_streeprops.glb
+https://crateship-games-assets.pages.dev/models/ph_modular_street_seating.glb
+https://crateship-games-assets.pages.dev/textures/modular_street_seating_armrests_diff_1k.jpg
+https://crateship-games-assets.pages.dev/textures/modular_street_seating_supports_nor_gl_1k.jpg
+https://crateship-games-assets.pages.dev/textures/modular_electricity_poles_nor_gl_1k.jpg
+https://crateship-games-assets.pages.dev/textures/modular_electricity_poles_pieces_arm_1k.jpg
+https://crateship-games-assets.pages.dev/models/modular_street_seating.bin
+https://crateship-games-assets.pages.dev/models/modular_electricity_poles.bin
 ```
 
-The `.glb` assets returned `Content-Type: model/gltf-binary` on production.
+The `.glb` assets returned `Content-Type: model/gltf-binary` on the asset host.
 The modular texture dependencies returned `200 OK` with `Content-Type: image/jpeg`.
 The modular `.bin` buffer dependencies returned `200 OK` with
 `Content-Type: application/octet-stream` and `/models/*` CORS/cache headers.
+Missing asset-host model paths return `404 Not Found` and `Cache-Control: no-store`.
 
 ## Post-Deploy Verification
 
@@ -288,27 +314,28 @@ Always verify the real site:
 $env:CRATE_MODELS_DIR='C:\Users\koike\Documents\Codex\2026-05-16\okay-so-let-s-find-my\models-live-cache\models'
 npm run check:assets
 npm run smoke:production
-curl.exe -L --silent https://crateshipgames.com/play | Select-String -Pattern "assets/play"
-curl.exe -I -L https://crateshipgames.com/models/kenney_cars/sedan.glb
-curl.exe -I -L https://crateshipgames.com/models/fab/street_props_streeprops.glb
-curl.exe -I -L https://crateshipgames.com/textures/modular_street_seating_armrests_diff_1k.jpg
-curl.exe -I -L https://crateshipgames.com/textures/modular_electricity_poles_nor_gl_1k.jpg
-curl.exe -I -L https://crateshipgames.com/models/modular_street_seating.bin
-curl.exe -I -L https://crateshipgames.com/models/__definitely_missing__.glb
+curl.exe -L --silent https://crateshipgames.com/play | Select-String -Pattern "crate-asset-base|assets/play"
+curl.exe -I -L https://crateship-games-assets.pages.dev/models/kenney_cars/sedan.glb
+curl.exe -I -L https://crateship-games-assets.pages.dev/models/fab/street_props_streeprops.glb
+curl.exe -I -L https://crateship-games-assets.pages.dev/textures/modular_street_seating_armrests_diff_1k.jpg
+curl.exe -I -L https://crateship-games-assets.pages.dev/textures/modular_electricity_poles_nor_gl_1k.jpg
+curl.exe -I -L https://crateship-games-assets.pages.dev/models/modular_street_seating.bin
+curl.exe -I -L https://crateship-games-assets.pages.dev/models/__definitely_missing__.glb
 ```
 
 Expected current results:
 
 - `npm run check:assets` passes with `108` required models, `20` external dependencies, and `107` catalog references.
-- `npm run smoke:production` passes against `https://crateshipgames.com/play`.
+- `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev`.
 - `/play` references `/assets/play-5xgKmEkq.js`.
-- Existing `.glb` models return `200 OK` and `model/gltf-binary`.
-- Modular texture dependencies return `200 OK` and `image/jpeg` from `/textures/*`.
-- Modular Poly Haven buffer dependencies return `200 OK` from `/models/*`.
+- `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
+- Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
+- Modular texture dependencies return `200 OK` and `image/jpeg` from the asset host `/textures/*`.
+- Modular Poly Haven buffer dependencies return `200 OK` from the asset host `/models/*`.
 - The served play bundle contains `HDRLoader` and no `RGBELoader` references.
 - The served play bundle contains `gb-inspector`, `gb-blueprints`, `Inspector`, and `Blueprints`.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
-- Missing model paths return `404 Not Found`, not `200 text/html`.
+- Missing asset-host model paths return `404 Not Found`, not `200 text/html`.
 
 Browser verification from the 2026-05-17 deploy:
 
@@ -369,10 +396,25 @@ Browser verification from the 2026-05-17 deploy:
   - Smoke result: `409` objects, `10` scene rows, `2` scripts, selected component `pickup`.
   - Critical HTTP checks passed: sedan GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-d1efb55.png`.
+- Final asset-host verification after deployment `d6e01bfb-66b0-4d69-a9a1-51f1d625bb74`:
+  - Cloudflare source showed `9afd946`.
+  - `https://crateship-games-assets.pages.dev/models/kenney_cars/sedan.glb` returned `200 OK` and `model/gltf-binary`.
+  - `https://crateship-games-assets.pages.dev/models/modular_street_seating.bin` returned `200 OK` and `application/octet-stream`.
+  - `https://crateship-games-assets.pages.dev/textures/modular_street_seating_armrests_diff_1k.jpg` returned `200 OK` and `image/jpeg`.
+  - `https://crateship-games-assets.pages.dev/models/__definitely_missing__.glb` returned `404 Not Found`.
+- Final custom-domain verification after deployment `bbadc73c-c7a7-45cb-9bd3-662c843bbc89`:
+  - Cloudflare source showed `5c139d3`.
+  - `/play?verify=5c139d3a` served `/assets/play-5xgKmEkq.js`.
+  - `/play?verify=5c139d3a` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run smoke:production` passed after deploy on the real custom domain.
+  - Smoke result: asset base `https://crateship-games-assets.pages.dev`, `409` objects, `10` scene rows, `2` scripts, selected component `pickup`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-5c139d3a.png`.
 
 ## Cloudflare Rules And Gotchas
 
 - The correct project is `crateship-games`.
+- The separate asset project is `crateship-games-assets`.
 - The custom domain is on `crateshipgames.com`.
 - Another project named `crate-engine` has existed before, but it is not the
   custom-domain production site.
@@ -380,6 +422,9 @@ Browser verification from the 2026-05-17 deploy:
   `koikes2021@gmail.com` account.
 - Cloudflare Pages uses content-addressed asset caching. A deploy can say most
   files were already uploaded. That is normal if hashes match.
+- Asset-host uploads are large. If Wrangler hits `UND_ERR_SOCKET` during the
+  first upload, retry the same `wrangler pages deploy .deploy-assets` command;
+  the successful retry uploaded the same asset set after the first partial attempt.
 - `.mjs` files have aggressive immutable caching in `_headers`. When editing
   directly loaded modules, cache-bust imports or ensure Vite emits a new hashed
   bundle.
@@ -391,6 +436,8 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+5c139d3a Use separate Cloudflare asset host
+9afd9465 Harden asset host deployment
 d1efb55f Add production smoke test
 4340fff1 Add predeploy asset integrity check
 7b63cdb6 Update Cloudflare handoff for asset pipeline
@@ -413,10 +460,12 @@ Core files touched across the deployed 2026-05-17 engine passes:
 M  engine.mjs
 M  city-builder.mjs
 M  play.html
+M  demo.html
 M  crate-engine/web/engine.mjs
 M  scripts/fetch-polyhaven-textures.mjs
 M  scripts/optimize-gltf.mjs
 M  scripts/prepare-deploy.mjs
+M  scripts/prepare-assets-deploy.mjs
 M  scripts/check-syntax.mjs
 M  scripts/sync-legacy-web.mjs
 M  user-scripts.mjs
@@ -440,11 +489,11 @@ does not change the public website bundle unless it is intentionally deployed.
 
 ## Recommended Next Steps
 
-1. Move model assets to a durable source of truth such as Cloudflare R2, a
-   versioned artifact bucket, or the prepared `crateship-games-assets` Pages project.
-2. Expand the repeatable asset manifest check into the future asset-host split so
-   app-code deploys and asset-only deploys validate against the same manifest.
-3. Put `npm run smoke:production` into CI or a deploy checklist so every
+1. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
+2. Add an asset manifest/version file to `crateship-games-assets` so the app can
+   display or assert the exact asset pack version it is using.
+3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
+   grows beyond the current recovered cache.
 4. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and publish/export flow.
