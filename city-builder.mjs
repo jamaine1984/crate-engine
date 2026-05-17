@@ -21,7 +21,7 @@ let _bloomPass = null;
 let _showToast = (msg) => console.log('[city-builder]', msg);
 let _loadGLBModel = null;
 let _parseAndExecute = null;
-let _RGBELoader = null;
+let _HDRLoader = null;
 
 const gltfLoader = new GLTFLoader();
 
@@ -34,7 +34,7 @@ export function setCityBuilderBloomPass(b) { _bloomPass = b; }
 export function setCityBuilderShowToast(fn) { _showToast = fn; }
 export function setCityBuilderLoadGLBModel(fn) { _loadGLBModel = fn; }
 export function setCityBuilderParseAndExecute(fn) { _parseAndExecute = fn; }
-export function setCityBuilderRGBELoader(loader) { _RGBELoader = loader; }
+export function setCityBuilderRGBELoader(loader) { _HDRLoader = loader; }
 
 // Convenience accessors
 function scene() { return _scene; }
@@ -575,7 +575,7 @@ async function buildCityWorld3() {
     const controls = _controls;
     let currentGround = _currentGround;
     const bloomPass = _bloomPass;
-    const RGBELoader = _RGBELoader;
+    const HDRLoader = _HDRLoader;
 
     // ═══ CLEANUP — remove previous auto-city objects ═══
     const toRemove = objects.filter(o => o.userData.isAutoCity);
@@ -648,8 +648,8 @@ async function buildCityWorld3() {
     scene.fog = new THREE.FogExp2(0xc0d8f0, 0.0008);
     // Load HDRI sky with clouds (async, will replace blue when ready)
     try {
-      if (typeof RGBELoader !== 'undefined' && RGBELoader) {
-        new RGBELoader().load(
+      if (typeof HDRLoader !== 'undefined' && HDRLoader) {
+        new HDRLoader().load(
           'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr',
           (tex) => {
             tex.mapping = THREE.EquirectangularReflectionMapping;
