@@ -8,6 +8,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(scriptDir, '..');
 
 const baseUrl = normalizeBaseUrl(process.env.CRATE_SMOKE_BASE_URL || 'https://crateshipgames.com');
+const forcedAssetBaseUrl = normalizeBaseUrl(process.env.CRATE_SMOKE_ASSET_BASE_URL || '');
 const verify = process.env.CRATE_SMOKE_VERIFY || Date.now().toString(36);
 const playUrl = `${baseUrl}/play?verify=${encodeURIComponent(verify)}`;
 const timeoutMs = parseInt(process.env.CRATE_SMOKE_TIMEOUT_MS || '120000', 10);
@@ -17,6 +18,16 @@ const screenshotPath = path.join(screenshotDir, `production-smoke-${verify}.png`
 
 function normalizeBaseUrl(value) {
   return value.replace(/\/+$/, '');
+}
+
+function extractMetaContent(html, names) {
+  for (const name of names) {
+    const direct = html.match(new RegExp(`<meta\\s+[^>]*name=["']${name}["'][^>]*content=["']([^"']+)["'][^>]*>`, 'i'))?.[1];
+    if (direct) return direct;
+    const reversed = html.match(new RegExp(`<meta\\s+[^>]*content=["']([^"']+)["'][^>]*name=["']${name}["'][^>]*>`, 'i'))?.[1];
+    if (reversed) return reversed;
+  }
+  return '';
 }
 
 function resolveChromeExecutable() {
@@ -42,8 +53,8 @@ function resolveChromeExecutable() {
   return candidates.find((candidate) => candidate && existsSync(candidate));
 }
 
-async function checkHttp(pathname, expectedStatus, expectedTypeIncludes = '') {
-  const url = new URL(pathname, baseUrl).href;
+async function checkHttp(pathname, expectedStatus, expectedTypeIncludes = '', origin = baseUrl) {
+  const url = new URL(pathname, origin).href;
   const response = await fetch(url, { method: 'HEAD', redirect: 'follow' });
   const contentType = response.headers.get('content-type') || '';
 
@@ -66,7 +77,8 @@ async function checkPlayHtml() {
   const bundle = body.match(/\/assets\/play-[^"']+\.js/)?.[0];
   if (!bundle) throw new Error(`${playUrl} did not reference a hashed play bundle`);
 
-  return { status: response.status, bundle };
+  const assetBaseUrl = forcedAssetBaseUrl || normalizeBaseUrl(extractMetaContent(body, ['crate-asset-base', 'crateship-asset-base'])) || baseUrl;
+  return { status: response.status, bundle, assetBaseUrl };
 }
 
 function summarizeConsoleMessage(message) {
@@ -94,6 +106,16 @@ async function runBrowserSmoke() {
       viewport: { width: 1365, height: 900 },
       deviceScaleFactor: 1,
     });
+
+    if (forcedAssetBaseUrl) {
+      await context.addInitScript((assetBaseUrl) => {
+        window.CRATESHIP_ASSET_BASE_URL = assetBaseUrl;
+        try {
+          window.localStorage.setItem('crate_asset_base_url', assetBaseUrl);
+        } catch {}
+      }, forcedAssetBaseUrl);
+    }
+
     const page = await context.newPage();
 
     page.on('console', (message) => {
@@ -158,6 +180,7 @@ async function runBrowserSmoke() {
       return {
         engineReady: window._engineReady === true,
         hasAssetResolver: typeof window._crateAssetUrl === 'function',
+        assetBaseUrl: typeof window._crateAssetBaseUrl === 'function' ? window._crateAssetBaseUrl() : '',
         objectCount: objects.length,
         sceneRows: document.querySelectorAll('#gb-scene-list .gb-scene-row').length,
         stats: document.querySelector('#gb-stats')?.textContent?.trim() || '',
@@ -172,6 +195,9 @@ async function runBrowserSmoke() {
     if (badAssetResponses.length) throw new Error(`Bad model/texture responses:\n${badAssetResponses.join('\n')}`);
     if (badConsole.length) throw new Error(`Console smoke failures:\n${badConsole.join('\n')}`);
     if (!state.hasAssetResolver) throw new Error('window._crateAssetUrl was not available');
+    if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
+      throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
+    }
     if (!state.hasInspector || !state.hasBlueprints) throw new Error('Game Builder Inspector or Blueprints section was missing');
     if (state.objectCount < 100) throw new Error(`Expected build city to create at least 100 objects, got ${state.objectCount}`);
     if (state.sceneRows < 1) throw new Error('Game Builder Scene list did not populate after build city');
@@ -184,18 +210,20 @@ async function runBrowserSmoke() {
 }
 
 const play = await checkPlayHtml();
+const assetBaseUrl = play.assetBaseUrl;
 const httpChecks = [
-  await checkHttp('/models/kenney_cars/sedan.glb', 200, 'model/gltf-binary'),
-  await checkHttp('/models/fab/street_props_streeprops.glb', 200, 'model/gltf-binary'),
-  await checkHttp('/models/modular_street_seating.bin', 200, 'application/octet-stream'),
-  await checkHttp('/textures/modular_street_seating_armrests_diff_1k.jpg', 200, 'image/jpeg'),
-  await checkHttp('/models/__definitely_missing__.glb', 404),
+  await checkHttp('/models/kenney_cars/sedan.glb', 200, 'model/gltf-binary', assetBaseUrl),
+  await checkHttp('/models/fab/street_props_streeprops.glb', 200, 'model/gltf-binary', assetBaseUrl),
+  await checkHttp('/models/modular_street_seating.bin', 200, 'application/octet-stream', assetBaseUrl),
+  await checkHttp('/textures/modular_street_seating_armrests_diff_1k.jpg', 200, 'image/jpeg', assetBaseUrl),
+  await checkHttp('/models/__definitely_missing__.glb', 404, '', assetBaseUrl),
 ];
 const browserState = await runBrowserSmoke();
 
 console.log('Production smoke passed.');
 console.log(`URL: ${playUrl}`);
 console.log(`Bundle: ${play.bundle}`);
+console.log(`Asset base: ${assetBaseUrl}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);
