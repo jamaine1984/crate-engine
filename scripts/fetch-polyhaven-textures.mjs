@@ -29,21 +29,41 @@ const textureFamilies = {
   ],
 };
 
-async function downloadTexture(family, file) {
-  const url = `https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/${family}/${file}`;
+const binaryFiles = {
+  modular_street_seating: ['modular_street_seating.bin'],
+  modular_electricity_poles: ['modular_electricity_poles.bin'],
+};
+
+async function downloadFile(url, outPath) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}: ${url}`);
   const bytes = Buffer.from(await response.arrayBuffer());
-  const outPath = path.join(textureRoot, file);
   await writeFile(outPath, bytes);
   console.log(`saved ${path.relative(modelRoot, outPath)} (${bytes.length} bytes)`);
 }
 
+async function downloadTexture(family, file) {
+  const url = `https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/${family}/${file}`;
+  await downloadFile(url, path.join(textureRoot, file));
+}
+
+async function downloadBinary(family, file) {
+  const url = `https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/${family}/${file}`;
+  await downloadFile(url, path.join(modelRoot, file));
+}
+
 await mkdir(textureRoot, { recursive: true });
+await mkdir(modelRoot, { recursive: true });
 
 for (const [family, files] of Object.entries(textureFamilies)) {
   for (const file of files) {
     await downloadTexture(family, file);
+  }
+}
+
+for (const [family, files] of Object.entries(binaryFiles)) {
+  for (const file of files) {
+    await downloadBinary(family, file);
   }
 }
 
