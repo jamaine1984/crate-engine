@@ -13487,7 +13487,7 @@ import('./interpreter.mjs').then(({ interpret, COMMANDS_SHOWCASE }) => {
     const bridge = window._engineBridge;
     
     // Execute based on intent
-    result = null;
+    let result = null;
     try {
       // execRaw = pass directly to parseAndExecute (specific structures, etc.)
       if (intent.action === 'execRaw') {
