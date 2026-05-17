@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `2e9794d5`
+- Current deployed source commit for the public engine code: `b03ee517`
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -24,11 +24,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `b8b419ae-faf0-4377-90c6-77f07670c0ed`
-- Latest production deployment URL: `https://b8b419ae.crateship-games.pages.dev`
+- Latest production deployment ID: `b054c20b-1a78-44aa-acef-844d6e9983ad`
+- Latest production deployment URL: `https://b054c20b.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `2e9794d`
-- Main live page bundle after the deploy: `/assets/play-CdQnR1E6.js`
+- Source shown by Cloudflare: `b03ee51`
+- Main live page bundle after the deploy: `/assets/play-CZKplQBh.js`
 
 Check the latest deployment with:
 
@@ -51,6 +51,8 @@ The 2026-05-17 deploy added the first sellable-engine editor pass:
 - `engine.mjs`
   - Exposes `window._installUserScriptPreset`.
   - Exposes `window._showScriptManager`.
+  - Exposes selection helpers so the Game Builder panel can select the same object as the inspector.
+  - Fixed the interpreter command runner strict-mode `result` variable bug that stopped preset buttons from completing.
   - Reduced minimap readback frequency to lower WebGL stall risk.
 - `play.html`
   - Loads the Game Builder UI.
@@ -66,6 +68,15 @@ The 2026-05-17 deploy added the first sellable-engine editor pass:
   - Includes `404.html` in static files.
 - `404.html`
   - Added so missing `/models/*` paths return a real 404 instead of app HTML.
+
+Follow-up production deploys on 2026-05-17 added the builder component pass:
+
+- `game-builder-ui.mjs`
+  - Added a live `Scene` section listing recent scene objects with position and component tags.
+  - Added one-click component buttons: Collider, Pickup, Damage, Objective, Spin, Float, Spawn Pt, Focus.
+  - Added a `Component Runtime` script preset for pickup, damage, objective, spin, and float behavior.
+  - Moved Components and Scene directly under World so they are visible in the first panel view.
+  - Raised the Game Builder panel above gameplay overlays so the builder buttons remain clickable after a city is generated.
 
 ## Deploy Workflow
 
@@ -90,8 +101,8 @@ Deploy to the real Cloudflare Pages project:
 npx wrangler pages deploy .deploy `
   --project-name=crateship-games `
   --branch=main `
-  --commit-hash=2e9794d5 `
-  --commit-message="Add Cloudflare game builder deployment pass" `
+  --commit-hash=b03ee517dc19fe43883054d17374c0cb1fc32f80 `
+  --commit-message="Raise builder panel above gameplay overlays" `
   --commit-dirty=false
 ```
 
@@ -124,6 +135,7 @@ Recovered model cache summary:
 - Recovered asset size: about `1.70 GB`
 - First Pages upload skipped `4,193` already-uploaded files and uploaded `55` changed files.
 - Follow-up source-sync deploy skipped `4,244` already-uploaded files and uploaded `4` changed files.
+- Latest builder-overlay deploy skipped `4,245` already-uploaded files and uploaded `3` changed files.
 
 Critical city assets verified after deploy:
 
@@ -149,7 +161,7 @@ curl.exe -I -L https://crateshipgames.com/models/__definitely_missing__.glb
 
 Expected current results:
 
-- `/play` references `/assets/play-CdQnR1E6.js`.
+- `/play` references `/assets/play-CZKplQBh.js`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary`.
 - Missing model paths return `404 Not Found`, not `200 text/html`.
 
@@ -157,12 +169,18 @@ Browser verification from the 2026-05-17 deploy:
 
 - `Game Builder` panel visible on `https://crateshipgames.com/play`.
 - Panel state: `data-open="true"`.
-- Preset button count: `26`.
+- Preset button count after the first Game Builder deploy: `26`.
 - Clicking `Inventory` installed one user script.
 - Typing `build city` on the real site built a city:
   - Engine objects: `408`
   - Scene children: `414`
   - Bundle: `/assets/play-CdQnR1E6.js`
+- Final custom-domain verification after deployment `b054c20b-1a78-44aa-acef-844d6e9983ad`:
+  - `/play` served `/assets/play-CZKplQBh.js`.
+  - Modern City preset built the city from the live Game Builder panel.
+  - Scene list populated with `10` visible rows.
+  - Pickup component tagging changed the live stats to `408 objects`, `1 components`, `2 scripts`.
+  - No `result is not defined` command-runner error was seen after the fix.
 
 Known non-blocking warning still present:
 
@@ -191,10 +209,15 @@ RGBELoader has been deprecated. Please use HDRLoader instead.
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+b03ee517 Raise builder panel above gameplay overlays
+5be08aef Move builder components into primary panel
+fa4b7358 Stabilize builder scene targeting
+433a5409 Fix command runner preset execution
+b7c05bd5 Add scene component builder tools
 2e9794d5 Add Cloudflare game builder deployment pass
 ```
 
-Files included in that deploy commit:
+Core files touched across the deployed 2026-05-17 engine passes:
 
 ```text
 M  engine.mjs
@@ -208,9 +231,9 @@ A  game-builder-ui.mjs
 A  CLOUDFLARE_HANDOFF.md
 ```
 
-After the deploy commit was pushed, this handoff file was updated again to
-record the final Cloudflare deployment metadata. That handoff-only update does
-not change the public website bundle.
+After the latest public deploy was pushed, this handoff file was updated again
+to record the final Cloudflare deployment metadata. That handoff-only update
+does not change the public website bundle unless it is intentionally deployed.
 
 ## Recommended Next Steps
 
@@ -220,5 +243,5 @@ not change the public website bundle.
    deploy.
 3. Add a live smoke script for boot, Game Builder panel, Inventory preset,
    `build city`, and missing-model 404 behavior.
-4. Continue productizing the editor: scene hierarchy, component inspector,
-   project format, safe scripting runtime, and publish/export flow.
+4. Continue productizing the editor: a richer component inspector, project
+   format, safe scripting runtime, and publish/export flow.
