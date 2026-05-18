@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `f851cfc1`
+- Current deployed source commit for the public engine code: `e7bc20de`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `06f6f159-b445-4ee8-8b20-7c61e644b837`
-- Latest production deployment URL: `https://06f6f159.crateship-games.pages.dev`
+- Latest production deployment ID: `2fc7c8cb-5569-4809-8736-a794b630028a`
+- Latest production deployment URL: `https://2fc7c8cb.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `f851cfc`
-- Main live page bundle after the deploy: `/assets/play-DGlRyrjF.js`
+- Source shown by Cloudflare: `e7bc20d`
+- Main live page bundle after the deploy: `/assets/play-C7T9ROip.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -514,6 +514,29 @@ Follow-up production deploys on 2026-05-18 added Mission Flow systems:
   - Production smoke reported systems: `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, missions:1 tagged, rewards:1 tagged, gates:1 tagged, checkpoints:1 tagged, win:1 tagged, doors:1 tagged, triggers:1 tagged, spawns:1 tagged, damage:Ready`.
   - Production smoke verified Mission runtime: `Smoke mission step -> Smoke reward -> Smoke gate (75 score)`.
   - Production smoke verified gameplay components: `missionStep, missionReward, missionGate, door, triggerZone, pickup, checkpoint, winCondition, spawnPoint`.
+
+Follow-up production deploys on 2026-05-18 added Enemy Spawn and Wave systems:
+
+- `game-builder-ui.mjs`
+  - Added Enemy Spawn and Wave component buttons plus Game Systems cards.
+  - Added Enemy Spawn Inspector fields for label, type, count, radius, speed, damage, health, attack radius, and cooldown.
+  - Added Wave Controller Inspector fields for label, wave number, count, spawn target, enemy overrides, and reward score.
+  - Extended Component Runtime to create red runtime enemy meshes in Play mode, attach them to the engine object registry, move them toward the player, apply cooldown-based damage, and clear them when leaving Play.
+  - Runtime attacks support `F`, `E`, or Space to damage the closest enemy, with wave summary tracking alive/defeated/cleared state.
+  - Runtime HUD now lists wave state and alive enemy count.
+  - Readiness now tracks enemy spawn and wave counts separately.
+- `scripts/smoke-production.mjs`
+  - Requires the live Game Systems Library to include Enemy Spawns and Wave Controller.
+  - Tags a live city object with Enemy Spawn and Wave Controller components, saves the project, reloads it, enters Play mode, and fails unless the wave spawns runtime enemies.
+  - Prints enemy wave runtime evidence in smoke output.
+- Final app deployment `2fc7c8cb-5569-4809-8736-a794b630028a`
+  - Source `e7bc20d`; bundle `/assets/play-C7T9ROip.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+  - `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Production smoke reported systems: `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, missions:1 tagged, rewards:1 tagged, gates:1 tagged, enemySpawns:1 tagged, waves:1 tagged, checkpoints:1 tagged, win:1 tagged, doors:1 tagged, triggers:1 tagged, spawns:1 tagged, damage:Ready`.
+  - Production smoke verified Enemy wave runtime: `Smoke wave from Smoke enemy spawn (2 spawned, 2 alive)`.
+  - Production smoke verified gameplay components: `enemySpawn, waveController, missionStep, missionReward, missionGate, door, triggerZone, pickup, checkpoint, winCondition, spawnPoint`.
 
 ## Deploy Workflow
 
@@ -1005,6 +1028,18 @@ Browser verification history:
   - Smoke verified `Smoke mission step -> Smoke reward -> Smoke gate (75 score)` in Play mode before respawn verification.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbp8dt5.png`.
+- Final custom-domain verification after deployment `2fc7c8cb-5569-4809-8736-a794b630028a`:
+  - Cloudflare source showed `e7bc20d`.
+  - `/play?verify=enemy-wave-e7bc20de` served `/assets/play-C7T9ROip.js`.
+  - `/play?verify=enemy-wave-e7bc20de` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Smoke verified Game Systems reported `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, missions:1 tagged, rewards:1 tagged, gates:1 tagged, enemySpawns:1 tagged, waves:1 tagged, checkpoints:1 tagged, win:1 tagged, doors:1 tagged, triggers:1 tagged, spawns:1 tagged, damage:Ready`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 411 objects, 2 scripts, 11 components, Edit mode`.
+  - Project load restored `411` objects and `2` scripts with `410` snapshots applied, `0` spawned, and restored pickup, door, trigger, mission, reward, gate, enemy spawn, and wave components.
+  - Smoke verified `Smoke wave from Smoke enemy spawn (2 spawned, 2 alive)` in Play mode before respawn verification.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-enemy-wave-e7bc20de.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1039,6 +1074,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+e7bc20de Add enemy wave systems
 f851cfc1 Add mission flow systems
 f846adfc Add door and trigger systems
 dd6afcab Fix user script runtime hooks
