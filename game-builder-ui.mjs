@@ -935,10 +935,10 @@ function deleteBlueprint(id) {
   renderBlueprintList();
 }
 
-function renderInspector() {
+function renderInspector(options = {}) {
   const inspector = document.getElementById('gb-inspector');
   if (!inspector) return;
-  if (document.activeElement?.closest?.('#gb-inspector')) return;
+  if (!options.force && document.activeElement?.closest?.('#gb-inspector')) return;
   const target = getTargetObject();
   const edit = isEditMode();
   const signature = target ? [
@@ -1327,13 +1327,18 @@ function mount() {
 
   repositionLegacyButtons(open);
   window._refreshGameBuilderMode = () => {
+    lastInspectorSignature = '';
     updateModeControls();
     updateStats();
+    renderInspector({ force: true });
+    renderBlueprintList();
+    renderSceneList();
+    updateEditorControlState();
   };
   window._refreshGameBuilderPlacement = () => {
     lastPlacementSignature = '';
     renderPlacementStatus();
-    renderInspector();
+    renderInspector({ force: true });
     renderSceneList();
   };
   window.addEventListener('crate:asset-placement', window._refreshGameBuilderPlacement);
