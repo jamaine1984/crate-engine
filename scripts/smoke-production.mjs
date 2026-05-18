@@ -166,6 +166,7 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#prompt-input', { timeout: timeoutMs });
     await page.waitForSelector('#gb-inspector', { timeout: timeoutMs });
     await page.waitForSelector('#gb-blueprints', { timeout: timeoutMs });
+    await page.waitForSelector('#gb-readiness', { timeout: timeoutMs });
     await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-project button[data-gb-action="save"]', { timeout: timeoutMs });
     await page.waitForFunction(
@@ -474,6 +475,7 @@ async function runBrowserSmoke() {
     const state = await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
       const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj || null;
+      const readiness = window._gameBuilderReadiness || {};
       return {
         engineReady: window._engineReady === true,
         hasAssetResolver: typeof window._crateAssetUrl === 'function',
@@ -487,9 +489,17 @@ async function runBrowserSmoke() {
         hasBlueprints: !!document.querySelector('#gb-blueprints'),
         hasProject: !!document.querySelector('#gb-project'),
         hasAssetPack: !!document.querySelector('#gb-asset-pack'),
+        hasReadiness: !!document.querySelector('#gb-readiness'),
         assetPackStatus: document.querySelector('#gb-asset-pack-status')?.dataset.status || '',
         assetPackText: document.querySelector('#gb-asset-pack-status')?.textContent?.trim() || '',
         assetPackVersion: window._crateAssetManifest?.version || '',
+        readinessStatus: readiness.status || '',
+        readinessTone: readiness.tone || '',
+        readinessSummary: document.querySelector('#gb-readiness-status')?.dataset.summary || readiness.summary || '',
+        readinessObjectCount: readiness.objectCount || 0,
+        readinessScriptCount: readiness.scriptCount || 0,
+        readinessComponentCount: readiness.componentCount || 0,
+        readinessAssetStatus: readiness.assetStatus || '',
         projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
         hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
@@ -518,9 +528,12 @@ async function runBrowserSmoke() {
     if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
-    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack) throw new Error('Game Builder Project, Asset Pack, Inspector, or Blueprints section was missing');
+    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness) throw new Error('Game Builder Project, Asset Pack, Readiness, Inspector, or Blueprints section was missing');
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
       throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
+    }
+    if (state.readinessTone !== 'ready' || state.readinessObjectCount < 100 || state.readinessScriptCount < 1 || state.readinessComponentCount < 1 || state.readinessAssetStatus !== 'loaded') {
+      throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
     if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand) {
@@ -567,6 +580,7 @@ console.log(`Bundle: ${play.bundle}`);
 console.log(`Asset base: ${assetBaseUrl}`);
 console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
+console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);

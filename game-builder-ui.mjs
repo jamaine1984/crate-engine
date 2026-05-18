@@ -343,6 +343,7 @@ let lastInspectorSignature = '';
 let lastBlueprintSignature = '';
 let lastPlacementSignature = '';
 let lastAssetPackSignature = '';
+let lastReadinessSignature = '';
 let assetManifestLoadStarted = false;
 
 function isSmallScreen() {
@@ -640,7 +641,7 @@ function createButton(preset) {
     else if (preset.script) await installScript(preset.script);
     else if (preset.action) await runAction(preset.action);
     setBusy(button, false);
-    updateStats();
+    updateBuilderUi();
   });
   return button;
 }
@@ -701,6 +702,113 @@ function updateProjectStatus() {
   const assetVersion = window._assetManifestVersion || window._crateAssetManifest?.version || '';
   const saveText = saves.length === 1 ? '1 saved project' : saves.length + ' saved projects';
   status.textContent = saveText + (assetVersion ? ' | assets ' + assetVersion : '');
+}
+
+function countComponents(objects) {
+  return objects.reduce((counts, obj) => {
+    const components = obj?.userData?.gbComponents || {};
+    Object.keys(components).forEach((key) => {
+      counts.total += 1;
+      counts.byType[key] = (counts.byType[key] || 0) + 1;
+    });
+    return counts;
+  }, { total: 0, byType: {} });
+}
+
+function collectReadiness() {
+  const objects = getSceneObjects();
+  const scripts = Array.isArray(window._userScripts) ? window._userScripts.filter((script) => script && script.enabled !== false) : [];
+  const componentCounts = countComponents(objects);
+  const saves = readProjectSaves();
+  const assetStatus = window._crateAssetManifestStatus?.status || (window._crateAssetManifest?.version ? 'loaded' : 'idle');
+  const mode = formatModeLabel(getCurrentMode());
+  const spawnCount = componentCounts.byType.spawnPoint || 0;
+  const pickupCount = componentCounts.byType.pickup || 0;
+  const objectiveCount = componentCounts.byType.objective || 0;
+  const hasWorld = objects.length > 0;
+  const hasGameplay = scripts.length > 0 || componentCounts.total > 0;
+  let status = 'Needs world';
+  let tone = 'warn';
+  if (assetStatus === 'failed') {
+    status = 'Asset issue';
+    tone = 'blocked';
+  } else if (hasWorld && hasGameplay) {
+    status = getCurrentMode() === 'play' ? 'Playing' : 'Ready to test';
+    tone = 'ready';
+  } else if (hasWorld) {
+    status = 'Add gameplay';
+    tone = 'warn';
+  }
+  const summary = [
+    status,
+    objects.length + ' objects',
+    scripts.length + ' scripts',
+    componentCounts.total + ' components',
+    mode + ' mode',
+  ].join(', ');
+  return {
+    status,
+    tone,
+    summary,
+    mode,
+    objectCount: objects.length,
+    scriptCount: scripts.length,
+    componentCount: componentCounts.total,
+    spawnCount,
+    pickupCount,
+    objectiveCount,
+    saveCount: saves.length,
+    assetStatus,
+    assetVersion: window._crateAssetManifest?.version || window._assetManifestVersion || '',
+  };
+}
+
+function createReadinessSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  section.id = 'gb-readiness';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Readiness';
+  const status = document.createElement('div');
+  status.id = 'gb-readiness-status';
+  status.className = 'gb-readiness-status';
+  const list = document.createElement('div');
+  list.id = 'gb-readiness-list';
+  list.className = 'gb-readiness-list';
+  section.append(heading, status, list);
+  return section;
+}
+
+function renderReadinessStatus() {
+  const status = document.getElementById('gb-readiness-status');
+  const list = document.getElementById('gb-readiness-list');
+  if (!status || !list) return;
+  const readiness = collectReadiness();
+  const signature = JSON.stringify(readiness);
+  window._gameBuilderReadiness = readiness;
+  if (signature === lastReadinessSignature) return;
+  lastReadinessSignature = signature;
+  status.dataset.status = readiness.tone;
+  status.dataset.summary = readiness.summary;
+  status.setAttribute('aria-label', readiness.summary);
+  status.replaceChildren(
+    createTextElement('strong', '', readiness.status),
+    createTextElement('span', '', readiness.mode + ' mode')
+  );
+  list.replaceChildren(
+    createReadinessRow('World', readiness.objectCount + ' objects'),
+    createReadinessRow('Gameplay', readiness.scriptCount + ' scripts | ' + readiness.componentCount + ' components'),
+    createReadinessRow('Goals', readiness.spawnCount + ' spawns | ' + readiness.pickupCount + ' pickups | ' + readiness.objectiveCount + ' objectives'),
+    createReadinessRow('Project', readiness.saveCount + (readiness.saveCount === 1 ? ' save' : ' saves')),
+    createReadinessRow('Assets', readiness.assetStatus === 'loaded' ? shortAssetValue(readiness.assetVersion) : readiness.assetStatus)
+  );
+}
+
+function createReadinessRow(label, value) {
+  const row = document.createElement('div');
+  row.className = 'gb-readiness-row';
+  row.append(createTextElement('span', '', label), createTextElement('strong', '', value));
+  return row;
 }
 
 function getAssetBaseUrl() {
@@ -1299,6 +1407,7 @@ function updateBuilderUi() {
   updateProjectStatus();
   renderPlacementStatus();
   renderAssetPackStatus();
+  renderReadinessStatus();
   renderInspector();
   renderBlueprintList();
   renderSceneList();
@@ -1361,6 +1470,16 @@ function mount() {
     .gb-asset-pack-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
     .gb-asset-pack-status[data-status="failed"]{border-color:#7f2d2d;background:#211313}
     #gb-asset-pack .gb-small-btn{margin:0 8px 8px;width:calc(100% - 16px)}
+    .gb-readiness-status{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 8px 6px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
+    .gb-readiness-status strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-readiness-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap}
+    .gb-readiness-status[data-status="ready"]{border-color:#2f6f44;background:#101a13}
+    .gb-readiness-status[data-status="warn"]{border-color:#725a21;background:#1c1710}
+    .gb-readiness-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
+    .gb-readiness-list{display:flex;flex-direction:column;gap:5px;padding:0 8px 8px}
+    .gb-readiness-row{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
+    .gb-readiness-row span{font-size:10px;line-height:14px;color:#8d979e}
+    .gb-readiness-row strong{font-size:10px;line-height:14px;color:#dfe6ea;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-project-status{padding:0 8px 7px;color:#8d979e;font-size:10px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-project-grid{padding-top:0}
     .gb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
@@ -1442,6 +1561,7 @@ function mount() {
   body.appendChild(createPlacementSection());
   body.appendChild(createProjectSection());
   body.appendChild(createAssetPackSection());
+  body.appendChild(createReadinessSection());
 
   const appendBuilderToolSections = () => {
     const componentSection = document.createElement('section');
@@ -1517,6 +1637,7 @@ function mount() {
     updateStats();
     updateProjectStatus();
     renderAssetPackStatus();
+    renderReadinessStatus();
     renderInspector({ force: true });
     renderBlueprintList();
     renderSceneList();
@@ -1525,6 +1646,7 @@ function mount() {
   window._refreshGameBuilderPlacement = () => {
     lastPlacementSignature = '';
     renderPlacementStatus();
+    renderReadinessStatus();
     renderInspector({ force: true });
     renderSceneList();
   };
