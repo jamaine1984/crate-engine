@@ -2,11 +2,19 @@ window._userScripts = window._userScripts || [];
 const sceneHistory = [];
 window._sceneHistory = sceneHistory;
 
+function isProjectCityCommand(cmd) {
+  return /^(?:build (?:a |the )?(?:city|full city|the city)|generate city|city world|new city)$/i.test(String(cmd || '').trim());
+}
+
 function recordSceneCommand(cmd) {
   const value = String(cmd || '').trim();
   if (!value || value === 'clear' || value === 'reset') return;
+  if (sceneHistory[sceneHistory.length - 1] === value) return;
+  if (isProjectCityCommand(value) && sceneHistory.some(isProjectCityCommand)) return;
   sceneHistory.push(value);
 }
+
+window._recordSceneCommand = recordSceneCommand;
 
 
 // === AAA Water & Sky (v61) ===

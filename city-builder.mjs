@@ -566,6 +566,7 @@ const UE_WALLS = {
 
 async function buildCityWorld3() {
   try {
+    window._recordSceneCommand?.('build city');
     showToast('\ud83c\udfd9\ufe0f Building GTA City...');
 
     const scene = _scene;

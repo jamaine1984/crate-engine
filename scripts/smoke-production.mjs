@@ -294,7 +294,7 @@ async function runBrowserSmoke() {
         const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
         const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
         const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
-        const hasBuildCityCommand = commands.some((cmd) => /^build (a |the )?(city|full city|the city)$/i.test(String(cmd || '').trim()));
+        const hasBuildCityCommand = commands.some((cmd) => /^(?:build (?:a |the )?(?:city|full city|the city)|generate city|city world|new city)$/i.test(String(cmd || '').trim()));
         if (parsed.version !== 3 || !hasPickup || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
         return {
           version: parsed.version,
