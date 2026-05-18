@@ -1619,7 +1619,7 @@ function _hideEditorUI() {
     browser.dataset.playHidden = 'true';
     browser.style.display = 'none';
   }
-  ['asset-gallery-overlay', 'category-picker-overlay', '_catPicker', 'fab-gallery-modal', 'ie-modal'].forEach((id) => {
+  ['asset-gallery-overlay', 'category-picker-overlay', '_catPicker', 'fab-gallery-modal', 'ie-modal', 'sl-modal', 'share-modal'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.remove();
   });
@@ -15661,17 +15661,17 @@ window._showImportExport = function(tab) {
     <div style="background:#111;border:1px solid #333;border-radius:12px;width:460px;max-width:95vw;padding:24px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <h2 style="color:#fff;margin:0;font-size:1.1rem">${isExport ? '📤 Export Scene' : '📥 Import Assets'}</h2>
-        <button onclick="this.closest('#ie-modal').remove()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer">✕</button>
+        <button id="ie-close" onclick="this.closest('#ie-modal').remove()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer">✕</button>
       </div>
       ${isExport ? `
         <div style="display:flex;flex-direction:column;gap:8px">
-          <button onclick="if(window._runCommand)window._runCommand('share');this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+          <button id="ie-export-share" onclick="if(window._runCommand)window._runCommand('share');this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>🔗 Share URL</strong><br><span style="color:#666;font-size:0.75rem">Compressed scene in a link — anyone can open and remix</span>
           </button>
-          <button onclick="if(window._exportCrateFile)window._exportCrateFile();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+          <button id="ie-export-crate" onclick="if(window._exportCrateFile)window._exportCrateFile();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>📦 Download .crate File</strong><br><span style="color:#666;font-size:0.75rem">JSON scene file — share with other Crate Engine users</span>
           </button>
-          <button onclick="if(typeof exportAsHTML==='function')exportAsHTML();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+          <button id="ie-export-html" onclick="if(typeof exportAsHTML==='function')exportAsHTML();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>🌐 Standalone HTML</strong><br><span style="color:#666;font-size:0.75rem">Self-contained HTML file with Three.js — runs anywhere</span>
           </button>
           <button onclick="if(typeof exportForUnity==='function')exportForUnity();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
@@ -15817,7 +15817,7 @@ window._showSaveLoad = function() {
     <div style="background:#111;border:1px solid #333;border-radius:12px;width:460px;max-width:95vw;padding:24px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <h2 style="color:#fff;margin:0;font-size:1.1rem">💾 Save / Load</h2>
-        <button onclick="this.closest('#sl-modal').remove()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer">✕</button>
+        <button id="sl-close" onclick="this.closest('#sl-modal').remove()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer">✕</button>
       </div>
       <div style="display:flex;gap:6px;margin-bottom:12px">
         <input id="sl-name" placeholder="Save name..." value="Scene ${saves.length + 1}" style="flex:1;background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:8px;color:#fff;font-size:0.85rem">

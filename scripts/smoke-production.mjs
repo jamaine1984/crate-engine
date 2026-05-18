@@ -167,6 +167,44 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#gb-inspector', { timeout: timeoutMs });
     await page.waitForSelector('#gb-blueprints', { timeout: timeoutMs });
     await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
+    await page.waitForSelector('#gb-project button[data-gb-action="save"]', { timeout: timeoutMs });
+
+    const projectControls = await page.evaluate(() => ({
+      hasProject: !!document.querySelector('#gb-project'),
+      actions: [...document.querySelectorAll('#gb-project button[data-gb-action]')].map((button) => button.dataset.gbAction),
+      status: document.querySelector('#gb-project-status')?.textContent || '',
+    }));
+    for (const action of ['save', 'load', 'import', 'export', 'share', 'settings']) {
+      if (!projectControls.actions.includes(action)) {
+        throw new Error(`Project controls missing ${action}: ${JSON.stringify(projectControls)}`);
+      }
+    }
+
+    await page.locator('#gb-project button[data-gb-action="save"]').click({ timeout: timeoutMs });
+    await page.waitForSelector('#sl-modal #sl-save-btn', { timeout: timeoutMs });
+    await page.locator('#sl-name').fill('Production Smoke Project', { timeout: timeoutMs });
+    await page.locator('#sl-save-btn').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => JSON.parse(localStorage.getItem('crate-saves') || '[]').some((save) => save?.name === 'Production Smoke Project'),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.waitForFunction(
+      () => /saved project/i.test(document.querySelector('#gb-project-status')?.textContent || ''),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#sl-close').click({ timeout: timeoutMs });
+
+    await page.locator('#gb-project button[data-gb-action="import"]').click({ timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-import-glb', { timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-import-crate', { timeout: timeoutMs });
+    await page.locator('#ie-close').click({ timeout: timeoutMs });
+
+    await page.locator('#gb-project button[data-gb-action="export"]').click({ timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-export-crate', { timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-export-html', { timeout: timeoutMs });
+    await page.locator('#ie-close').click({ timeout: timeoutMs });
 
     const catalogState = await page.evaluate(async () => {
       const catalog = await window._engineBridge?.loadAssetCatalog?.();
@@ -275,6 +313,8 @@ async function runBrowserSmoke() {
       transformDisabled: document.querySelector('#gb-inspector input[type="number"]')?.disabled === true,
       cloneDisabled: [...document.querySelectorAll('.gb-small-btn')].some((button) => button.textContent === 'Clone' && button.disabled),
       presetDisabled: [...document.querySelectorAll('button.gb-preset')].some((button) => button.textContent === 'Inventory' && button.disabled),
+      projectImportDisabled: document.querySelector('#gb-project button[data-gb-action="import"]')?.disabled === true,
+      projectExportDisabled: document.querySelector('#gb-project button[data-gb-action="export"]')?.disabled === true,
       readOnlyNote: document.querySelector('#gb-inspector .gb-readonly-note')?.textContent || '',
     }));
     if (editLockState.panelEditMode !== 'false' ||
@@ -283,6 +323,8 @@ async function runBrowserSmoke() {
         !editLockState.transformDisabled ||
         !editLockState.cloneDisabled ||
         !editLockState.presetDisabled ||
+        !editLockState.projectImportDisabled ||
+        editLockState.projectExportDisabled ||
         !/Read-only/i.test(editLockState.readOnlyNote)) {
       throw new Error(`Explore mode did not lock editor controls: ${JSON.stringify(editLockState)}`);
     }
@@ -375,6 +417,8 @@ async function runBrowserSmoke() {
         stats: document.querySelector('#gb-stats')?.textContent?.trim() || '',
         hasInspector: !!document.querySelector('#gb-inspector'),
         hasBlueprints: !!document.querySelector('#gb-blueprints'),
+        hasProject: !!document.querySelector('#gb-project'),
+        projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
         hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
         hiddenUnavailableAssets: window._assetCatalogHiddenUnavailable || 0,
@@ -392,7 +436,8 @@ async function runBrowserSmoke() {
     if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
-    if (!state.hasInspector || !state.hasBlueprints) throw new Error('Game Builder Inspector or Blueprints section was missing');
+    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject) throw new Error('Game Builder Project, Inspector, or Blueprints section was missing');
+    if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
     if (state.mode !== 'edit') throw new Error(`Expected smoke to finish in edit mode, got ${state.mode || 'empty'}`);
     if (state.placementStatus !== 'placed' || state.placementSource !== 'production-smoke') {
@@ -437,6 +482,7 @@ console.log(`Mode: ${browserState.mode}`);
 console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`);
 console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
 console.log(`Scripts: ${browserState.scriptCount}`);
+console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);
 console.log('HTTP checks:');

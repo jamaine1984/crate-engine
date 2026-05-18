@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'crate-game-builder-open';
 const BLUEPRINT_STORAGE_KEY = 'crate-game-builder-blueprints';
+const PROJECT_SAVE_KEY = 'crate-saves';
 
 const SCRIPT_PRESETS = {
   inventory: {
@@ -272,15 +273,28 @@ const PRESET_GROUPS = [
   {
     label: 'Ship',
     presets: [
-      { label: 'Play Mode', command: 'play' },
+      { label: 'Play Mode', action: 'play' },
       { label: 'Save', action: 'save' },
+      { label: 'Load', action: 'load' },
+      { label: 'Import', action: 'import' },
       { label: 'Export', action: 'export' },
-      { label: 'Share', command: 'share world' },
+      { label: 'Share', action: 'share' },
       { label: 'Scripts', action: 'scripts' },
       { label: 'Settings', action: 'settings' },
     ],
   },
 ];
+
+const PROJECT_ACTIONS = [
+  { label: 'Save', action: 'save', title: 'Save or load named project slots.' },
+  { label: 'Load', action: 'load', title: 'Open saved project slots.' },
+  { label: 'Import', action: 'import', title: 'Import GLB, GLTF, or .crate files.' },
+  { label: 'Export', action: 'export', title: 'Export, download, or share the current project.' },
+  { label: 'Share', action: 'share', title: 'Create a share URL for the current project.' },
+  { label: 'Settings', action: 'settings', title: 'Open engine settings.' },
+];
+
+const EDIT_ONLY_ACTIONS = new Set(['assets', 'import', 'load', 'save', 'scripts']);
 
 const COMPONENT_PRESETS = [
   { label: 'Collider', component: 'collider', title: 'Tag the current object as solid scene geometry.' },
@@ -358,6 +372,15 @@ function readBlueprints() {
 function writeBlueprints(items) {
   localStorage.setItem(BLUEPRINT_STORAGE_KEY, JSON.stringify(items.slice(0, 24)));
   lastBlueprintSignature = '';
+}
+
+function readProjectSaves() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROJECT_SAVE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter((item) => item && (item.commands || item.name)) : [];
+  } catch {
+    return [];
+  }
 }
 
 function formatComponentLabel(name) {
@@ -556,18 +579,36 @@ async function markComponent(component) {
 }
 
 function runAction(action) {
+  if (action === 'play') {
+    setBuilderMode('play');
+    return null;
+  }
   if (action === 'assets') {
     if (!requireEditAction('place assets')) return null;
     if (window._showCategoryPicker) return window._showCategoryPicker();
     return runCommand('browse');
   }
   if (action === 'save') {
+    if (!requireEditAction('save or load projects')) return null;
     if (window._showSaveLoad) return window._showSaveLoad();
     return runCommand('save world');
+  }
+  if (action === 'load') {
+    if (!requireEditAction('load projects')) return null;
+    if (window._showSaveLoad) return window._showSaveLoad();
+    return runCommand('load world');
+  }
+  if (action === 'import') {
+    if (!requireEditAction('import assets or scenes')) return null;
+    if (window._showImportExport) return window._showImportExport('import');
+    return null;
   }
   if (action === 'export') {
     if (window._showImportExport) return window._showImportExport('export');
     return runCommand('export world');
+  }
+  if (action === 'share') {
+    return runCommand('share world');
   }
   if (action === 'scripts') {
     if (!requireEditAction('edit scripts')) return null;
@@ -586,9 +627,10 @@ function createButton(preset) {
   button.className = 'gb-preset';
   button.type = 'button';
   button.textContent = preset.label;
-  button.title = preset.command || preset.label;
-  const editOnly = !!preset.command || !!preset.script || preset.action === 'assets' || preset.action === 'scripts';
-  if (editOnly) markEditOnly(button, preset.action === 'assets' ? 'place assets' : preset.action === 'scripts' ? 'edit scripts' : 'run builder presets');
+  button.title = preset.title || preset.command || preset.label;
+  if (preset.action) button.dataset.gbAction = preset.action;
+  const editOnly = !!(preset.editOnly === true || preset.script || (preset.command && preset.editOnly !== false) || EDIT_ONLY_ACTIONS.has(preset.action));
+  if (editOnly) markEditOnly(button, preset.action === 'assets' ? 'place assets' : preset.action === 'import' ? 'import assets or scenes' : preset.action === 'load' ? 'load projects' : preset.action === 'save' ? 'save or load projects' : preset.action === 'scripts' ? 'edit scripts' : 'run builder presets');
   button.addEventListener('click', async () => {
     if (editOnly && !requireEditAction(button.dataset.gbEditAction || 'edit this')) return;
     setBusy(button, true);
@@ -634,6 +676,15 @@ function updateStats() {
   const scriptCount = Array.isArray(window._userScripts) ? window._userScripts.length : 0;
   const mode = formatModeLabel(getCurrentMode());
   stats.innerHTML = '<span>' + objectCount + ' objects</span><span>' + componentCount + ' components</span><span>' + scriptCount + ' scripts</span><span>' + mode + '</span>';
+}
+
+function updateProjectStatus() {
+  const status = document.getElementById('gb-project-status');
+  if (!status) return;
+  const saves = readProjectSaves();
+  const assetVersion = window._assetManifestVersion || window._crateAssetManifest?.version || '';
+  const saveText = saves.length === 1 ? '1 saved project' : saves.length + ' saved projects';
+  status.textContent = saveText + (assetVersion ? ' | assets ' + assetVersion : '');
 }
 
 function getCurrentMode() {
@@ -745,6 +796,22 @@ function createPlacementSection() {
   status.id = 'gb-placement-status';
   status.className = 'gb-placement-status';
   section.append(heading, status);
+  return section;
+}
+
+function createProjectSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  section.id = 'gb-project';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Project';
+  const status = document.createElement('div');
+  status.id = 'gb-project-status';
+  status.className = 'gb-project-status';
+  const grid = document.createElement('div');
+  grid.className = 'gb-grid gb-project-grid';
+  PROJECT_ACTIONS.forEach((preset) => grid.appendChild(createButton(preset)));
+  section.append(heading, status, grid);
   return section;
 }
 
@@ -1124,6 +1191,7 @@ function renderSceneList() {
 function updateBuilderUi() {
   updateStats();
   updateModeControls();
+  updateProjectStatus();
   renderPlacementStatus();
   renderInspector();
   renderBlueprintList();
@@ -1180,6 +1248,8 @@ function mount() {
     .gb-placement-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
     .gb-placement-status[data-status="failed"],.gb-placement-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
     .gb-placement-error{color:#ff9b9b!important}
+    .gb-project-status{padding:0 8px 7px;color:#8d979e;font-size:10px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-project-grid{padding-top:0}
     .gb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
     .gb-preset{height:34px;border:1px solid #2a3237;background:#161a1c;color:#eef2f3;border-radius:6px;font-size:12px;cursor:pointer;text-align:left;padding:0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-preset:hover{border-color:#d9572b;background:#211a16}
@@ -1257,6 +1327,7 @@ function mount() {
   body.className = 'gb-body';
   body.appendChild(createModeSection());
   body.appendChild(createPlacementSection());
+  body.appendChild(createProjectSection());
 
   const appendBuilderToolSections = () => {
     const componentSection = document.createElement('section');
@@ -1330,6 +1401,7 @@ function mount() {
     lastInspectorSignature = '';
     updateModeControls();
     updateStats();
+    updateProjectStatus();
     renderInspector({ force: true });
     renderBlueprintList();
     renderSceneList();
