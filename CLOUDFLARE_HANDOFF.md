@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `f846adfc`
+- Current deployed source commit for the public engine code: `f851cfc1`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `157f4b60-1d07-427d-8366-d698d8de0ba5`
-- Latest production deployment URL: `https://157f4b60.crateship-games.pages.dev`
+- Latest production deployment ID: `06f6f159-b445-4ee8-8b20-7c61e644b837`
+- Latest production deployment URL: `https://06f6f159.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `f846adf`
-- Main live page bundle after the deploy: `/assets/play-DcjOECDa.js`
+- Source shown by Cloudflare: `f851cfc`
+- Main live page bundle after the deploy: `/assets/play-DGlRyrjF.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -492,6 +492,29 @@ Follow-up production deploys on 2026-05-18 added Door and Trigger systems:
   - Production smoke verified Door/Trigger runtime: `Group trigger opened Group door`.
   - Production smoke verified gameplay components: `door, triggerZone, pickup, checkpoint, winCondition, spawnPoint`.
 
+Follow-up production deploys on 2026-05-18 added Mission Flow systems:
+
+- `game-builder-ui.mjs`
+  - Added Mission, Reward, and Gate component buttons plus Game Systems cards.
+  - Added Mission Step Inspector fields for label, order, required step id, and radius.
+  - Added Reward Inspector fields for label, item, score, required step id, and radius.
+  - Added Mission Gate Inspector fields for label, required step id, axis, distance, and speed.
+  - Extended Component Runtime to complete mission steps, grant score/inventory rewards, and unlock sliding mission gates in Play mode.
+  - Runtime HUD now lists mission progress and the last claimed reward.
+  - Readiness now tracks mission step, reward, and gate counts separately.
+- `scripts/smoke-production.mjs`
+  - Requires the live Game Systems Library to include Mission Flow, Rewards, and Mission Gates.
+  - Tags a live city object with Mission Step, Reward, and Mission Gate components, saves the project, reloads it, enters Play mode, and fails unless the mission step completes, the reward is claimed, and the gate unlocks.
+  - Prints mission runtime evidence in smoke output.
+- Final app deployment `06f6f159-b445-4ee8-8b20-7c61e644b837`
+  - Source `f851cfc`; bundle `/assets/play-DGlRyrjF.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+  - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Production smoke reported systems: `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, missions:1 tagged, rewards:1 tagged, gates:1 tagged, checkpoints:1 tagged, win:1 tagged, doors:1 tagged, triggers:1 tagged, spawns:1 tagged, damage:Ready`.
+  - Production smoke verified Mission runtime: `Smoke mission step -> Smoke reward -> Smoke gate (75 score)`.
+  - Production smoke verified gameplay components: `missionStep, missionReward, missionGate, door, triggerZone, pickup, checkpoint, winCondition, spawnPoint`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -670,7 +693,7 @@ Expected current results:
 
 - `npm run check:assets` passes from this app-only checkout by validating `114` remote asset URLs and `107` catalog references against `https://crateship-games-assets.pages.dev`.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-DcjOECDa.js`.
+- `/play` references `/assets/play-DGlRyrjF.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -685,13 +708,14 @@ Expected current results:
 - The served play bundle contains `data-gb-edit-only`, `gb-readonly-note`, and the forced inspector refresh used by the Edit/Explore/Play lock.
 - Explore mode disables Game Builder mutation controls, and forced clicks on those disabled controls do not change object count, selection, or components.
 - The served play bundle contains `gb-project`, `data-gb-action="import"`, `data-gb-action="export"`, and the project Save/Load modal IDs used by smoke tests.
-- The Game Builder stats summary reads with clear separators, for example `411 objects, 6 components, 2 scripts, Edit mode`.
-- The served play bundle contains `gb-readiness`, `window._gameBuilderReadiness`, and readiness smoke output like `Ready to test, 411 objects, 2 scripts, 6 components, Edit mode`.
-- The served play bundle contains `gb-systems`, `window._gameBuilderSystems`, and systems smoke output with Inventory installed, Runtime installed, Pickup tagged, Checkpoint tagged, Win Condition tagged, Door tagged, Trigger tagged, and Spawn Point tagged.
-- The served play bundle contains `checkpoint`, `winCondition`, `spawnPoint`, `door`, `triggerZone`, and Component Runtime support for active checkpoints, active player spawns, respawns, door opening, trigger zones, and game-complete/game-over states.
+- The Game Builder stats summary reads with clear separators, for example `411 objects, 9 components, 2 scripts, Edit mode`.
+- The served play bundle contains `gb-readiness`, `window._gameBuilderReadiness`, and readiness smoke output like `Ready to test, 411 objects, 2 scripts, 9 components, Edit mode`.
+- The served play bundle contains `gb-systems`, `window._gameBuilderSystems`, and systems smoke output with Inventory installed, Runtime installed, Pickup tagged, Mission tagged, Reward tagged, Gate tagged, Checkpoint tagged, Win Condition tagged, Door tagged, Trigger tagged, and Spawn Point tagged.
+- The served play bundle contains `checkpoint`, `winCondition`, `spawnPoint`, `door`, `triggerZone`, `missionStep`, `missionReward`, `missionGate`, and Component Runtime support for active checkpoints, active player spawns, respawns, door opening, trigger zones, mission steps, reward claims, mission gates, and game-complete/game-over states.
 - Installed scripts expose active runtime hooks through `onUpdate`, so the Component Runtime actually ticks in Play mode.
 - The production smoke forces runtime health to `0` in Play mode and expects the Spawn/Checkpoint runtime to respawn back to `100` HP.
 - The production smoke verifies Trigger opens Door in Play mode and prints `Door trigger runtime: Group trigger opened Group door`.
+- The production smoke verifies Mission Step grants Reward and opens Mission Gate in Play mode and prints `Mission runtime: Smoke mission step -> Smoke reward -> Smoke gate (75 score)`.
 - The Project section can save a named project, open Import, open Export, and keeps Import disabled in Explore while Export stays enabled.
 - Saved projects use `version: 3` and include object snapshots, asset paths, builder components, and installed user scripts.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
@@ -969,6 +993,18 @@ Browser verification history:
   - Smoke verified `Group trigger opened Group door` in Play mode before respawn verification.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbok5hz.png`.
+- Final custom-domain verification after deployment `06f6f159-b445-4ee8-8b20-7c61e644b837`:
+  - Cloudflare source showed `f851cfc`.
+  - `/play?verify=mission-f851cfc1-1779113470.67827` served `/assets/play-DGlRyrjF.js`.
+  - `/play?verify=mission-f851cfc1-1779113470.67827` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Smoke verified Game Systems reported `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, missions:1 tagged, rewards:1 tagged, gates:1 tagged, checkpoints:1 tagged, win:1 tagged, doors:1 tagged, triggers:1 tagged, spawns:1 tagged, damage:Ready`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 411 objects, 2 scripts, 9 components, Edit mode`.
+  - Project load restored `411` objects and `2` scripts with `411` snapshots applied, `0` spawned, and restored pickup, door, trigger, mission, reward, and gate components.
+  - Smoke verified `Smoke mission step -> Smoke reward -> Smoke gate (75 score)` in Play mode before respawn verification.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbp8dt5.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1003,6 +1039,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+f851cfc1 Add mission flow systems
 f846adfc Add door and trigger systems
 dd6afcab Fix user script runtime hooks
 f71e8d34 Add spawn runtime behavior
