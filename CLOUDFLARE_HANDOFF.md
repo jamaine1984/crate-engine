@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `679a58d`
+- Current deployed source commit for the public engine code: `acb2ea2`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `7617ff7e-4bd1-4f3f-b1f2-be9f68e2203c`
-- Latest production deployment URL: `https://7617ff7e.crateship-games.pages.dev`
+- Latest production deployment ID: `3caa710e-7ae6-416e-ac40-447e5386760d`
+- Latest production deployment URL: `https://3caa710e.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `679a58d`
-- Main live page bundle after the deploy: `/assets/play-BKNz5ckv.js`
+- Source shown by Cloudflare: `acb2ea2`
+- Main live page bundle after the deploy: `/assets/play-BqRlEDUu.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -323,6 +323,32 @@ Follow-up production deploys on 2026-05-18 added richer project snapshots:
 - App deployment `7617ff7e-4bd1-4f3f-b1f2-be9f68e2203c`
   - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
   - The main app upload skipped bundled `/models` and `/textures`, uploaded `6` changed files, reused `99` already-uploaded files, and refreshed `_headers`.
+  - Production smoke passed on the real custom domain.
+
+Follow-up production deploys on 2026-05-18 verified project Load restores full city projects:
+
+- `engine.mjs`
+  - Exposes `window._sceneHistory` and `window._recordSceneCommand` for command-history diagnostics.
+  - Records direct city-builder commands so saved projects can replay the generated city instead of only restoring standalone GLBs.
+  - Saves `placementSource` in project object snapshots and restores it during project load.
+  - Clears the current scene before project load, waits for command replay, applies object snapshots, restores user scripts, and publishes `window._lastProjectLoad` diagnostics.
+- `city-builder.mjs`
+  - Records `build city` from inside `buildCityWorld3()` so typed prompt, interpreter, quick-start, and preset paths all produce replayable project saves.
+- `scripts/smoke-production.mjs`
+  - Saves after a city build, loads the saved project, and verifies the loaded project returns 100+ objects, scripts, and the saved Pickup component.
+  - Verifies the save contains a city replay command and logs project load details.
+- Superseded app deployment `f35c9da7-79e1-4a77-9ba4-c86a27b7a853`
+  - Source `2f688bf`; bundle `/assets/play-DO9LsZCu.js`.
+  - Uploaded `6` changed files, reused `99`, and refreshed `_headers`.
+  - Production smoke failed because project load restored only the two GLB chair objects and lost the city object carrying the Pickup component.
+- Superseded app deployment `a9f65d82-422e-4afa-ac6e-da42c572304c`
+  - Source `8350b0b`; bundle `/assets/play-ds8MB5xP.js`.
+  - Uploaded `6` changed files, reused `99`, and refreshed `_headers`.
+  - Production smoke caught that the typed prompt path still built the city without recording a replayable city command.
+- Final app deployment `3caa710e-7ae6-416e-ac40-447e5386760d`
+  - Source `acb2ea2`; bundle `/assets/play-BqRlEDUu.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `8` changed files, reused `97` already-uploaded files, and refreshed `_headers`.
   - Production smoke passed on the real custom domain.
 
 ## Deploy Workflow
@@ -676,6 +702,32 @@ Browser verification from the 2026-05-17 deploy:
   - Play mode smoke verified the Game Builder, prompt, model browser, and project modals were not left visible during Play.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbjouuf.png`.
+- Intermediate custom-domain verification after deployment `f35c9da7-79e1-4a77-9ba4-c86a27b7a853`:
+  - Cloudflare source showed `2f688bf`.
+  - `/play?verify=<timestamp>` served `/assets/play-DO9LsZCu.js`.
+  - `/play?verify=<timestamp>` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check` and `npm run build` passed before deploy.
+  - `npm run smoke:production` failed after 120 seconds while waiting for project Load to restore the saved city and Pickup component.
+- Intermediate custom-domain verification after deployment `a9f65d82-422e-4afa-ac6e-da42c572304c`:
+  - Cloudflare source showed `8350b0b`.
+  - `/play?verify=8350b0b-1779130707705` served `/assets/play-ds8MB5xP.js`.
+  - `/play?verify=8350b0b-1779130707705` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check` and `npm run build` passed before deploy.
+  - `npm run smoke:production` failed because the typed prompt path still saved only the two chair commands, not the city replay command.
+- Final custom-domain verification after deployment `3caa710e-7ae6-416e-ac40-447e5386760d`:
+  - Cloudflare source showed `acb2ea2`.
+  - `/play?verify=acb2ea2-1779131129878` served `/assets/play-BqRlEDUu.js`.
+  - `/play?verify=acb2ea2-1779131129878` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check`, `npm run build`, and `npm run smoke:production` passed against the real custom domain.
+  - `npm run check:assets` was not used for the app-only checkout because local `models` is absent after the asset-host split; the production smoke verified the live asset host instead.
+  - Smoke verified Project Save/Load restore, Project Import/Export controls, tracked furniture placement, Inventory script install, Pickup component tagging, Explore read-only locking, and Play/Edit separation.
+  - Smoke result: asset manifest `6f09cc09da2f`, hidden unavailable assets `45`, `411` objects, `10` scene rows, `2` scripts, `1` saved project, project snapshot `v3` with `411` objects, `2` scripts, and `3` commands.
+  - Project load restored `411` objects and `2` scripts with `411` snapshots applied, `0` spawned, and a restored Pickup component.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-acb2ea2-live.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -710,6 +762,9 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+acb2ea2 Record city builder commands from all entrypoints
+8350b0b Fix project load city replay
+2f688bf Verify builder project load restores snapshots
 679a58d Save richer builder project snapshots
 1cb6c6c Add builder project controls
 b8364e70 Refresh inspector on builder mode changes
