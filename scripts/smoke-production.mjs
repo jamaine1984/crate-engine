@@ -189,7 +189,7 @@ async function runBrowserSmoke() {
 
     await page.waitForFunction(
       () => Array.isArray(window._gameBuilderSystems) &&
-        window._gameBuilderSystems.length >= 8 &&
+        window._gameBuilderSystems.length >= 10 &&
         !!document.querySelector('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]'),
       undefined,
       { timeout: timeoutMs }
@@ -198,7 +198,7 @@ async function runBrowserSmoke() {
       cardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
       ids: (window._gameBuilderSystems || []).map((system) => system.id),
     }));
-    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'objectives', 'spawns', 'damage']) {
+    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'objectives', 'checkpoints', 'win', 'spawns', 'damage']) {
       if (!initialSystems.ids.includes(id)) {
         throw new Error(`Game Systems library missing ${id}: ${JSON.stringify(initialSystems)}`);
       }
@@ -295,10 +295,13 @@ async function runBrowserSmoke() {
 
     await page.locator('#gb-scene-list .gb-scene-row .gb-scene-main').first().click({ timeout: timeoutMs });
     await page.locator('button[data-gb-component="pickup"]').click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="checkpoints"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="win"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
       () => {
         const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
-        return !!selected?.userData?.gbComponents?.pickup;
+        const components = selected?.userData?.gbComponents || {};
+        return !!components.pickup && !!components.checkpoint && !!components.winCondition;
       },
       undefined,
       { timeout: timeoutMs }
@@ -522,6 +525,8 @@ async function runBrowserSmoke() {
         readinessObjectCount: readiness.objectCount || 0,
         readinessScriptCount: readiness.scriptCount || 0,
         readinessComponentCount: readiness.componentCount || 0,
+        readinessCheckpointCount: readiness.checkpointCount || 0,
+        readinessWinConditionCount: readiness.winConditionCount || 0,
         readinessAssetStatus: readiness.assetStatus || '',
         projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
@@ -555,10 +560,21 @@ async function runBrowserSmoke() {
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
       throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
     }
-    if (state.systemCardCount < 8 || !state.installedSystems.includes('inventory') || !state.installedSystems.includes('runtime') || !state.installedSystems.includes('pickups')) {
+    if (state.systemCardCount < 10 ||
+      !state.installedSystems.includes('inventory') ||
+      !state.installedSystems.includes('runtime') ||
+      !state.installedSystems.includes('pickups') ||
+      !state.installedSystems.includes('checkpoints') ||
+      !state.installedSystems.includes('win')) {
       throw new Error(`Game Systems library did not install expected systems: ${JSON.stringify(state)}`);
     }
-    if (state.readinessTone !== 'ready' || state.readinessObjectCount < 100 || state.readinessScriptCount < 1 || state.readinessComponentCount < 1 || state.readinessAssetStatus !== 'loaded') {
+    if (state.readinessTone !== 'ready' ||
+      state.readinessObjectCount < 100 ||
+      state.readinessScriptCount < 1 ||
+      state.readinessComponentCount < 3 ||
+      state.readinessCheckpointCount < 1 ||
+      state.readinessWinConditionCount < 1 ||
+      state.readinessAssetStatus !== 'loaded') {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
@@ -578,7 +594,9 @@ async function runBrowserSmoke() {
     }
     if (state.objectCount < 100) throw new Error(`Expected build city to create at least 100 objects, got ${state.objectCount}`);
     if (state.sceneRows < 1) throw new Error('Game Builder Scene list did not populate after build city');
-    if (!state.selectedComponents.includes('pickup')) throw new Error('Pickup component was not applied to the selected object');
+    if (!state.selectedComponents.includes('pickup') || !state.selectedComponents.includes('checkpoint') || !state.selectedComponents.includes('winCondition')) {
+      throw new Error(`Required gameplay components were not applied to the selected object: ${JSON.stringify(state.selectedComponents)}`);
+    }
 
     return state;
   } finally {
