@@ -145,7 +145,7 @@ onUpdate = function(dt) {
   components: {
     id: 'gb_component_runtime',
     name: 'Component Runtime',
-    description: 'Runs pickup, damage, mission, reward, gate, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
+    description: 'Runs pickup, damage, mission, reward, gate, enemy, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
     code: `state.gbRuntime = state.gbRuntime || {};
 state.gbRuntime.health = state.gbRuntime.health ?? 100;
 state.gbRuntime.score = state.gbRuntime.score || 0;
@@ -157,6 +157,9 @@ state.gbRuntime.triggers = state.gbRuntime.triggers || {};
 state.gbRuntime.missionSteps = state.gbRuntime.missionSteps || {};
 state.gbRuntime.rewards = state.gbRuntime.rewards || {};
 state.gbRuntime.gates = state.gbRuntime.gates || {};
+state.gbRuntime.enemySpawns = state.gbRuntime.enemySpawns || {};
+state.gbRuntime.waves = state.gbRuntime.waves || {};
+state.gbRuntime.enemies = state.gbRuntime.enemies || {};
 state.gbRuntime.winConditions = state.gbRuntime.winConditions || {};
 state.gbRuntime.gameComplete = state.gbRuntime.gameComplete || false;
 state.gbRuntime.gameOver = state.gbRuntime.gameOver || false;
@@ -263,6 +266,178 @@ function respawnPlayer(time) {
   return true;
 }
 
+function getObjectRegistry() {
+  const objects = getObjects();
+  return Array.isArray(objects) ? objects : [];
+}
+
+function addRuntimeObject(obj) {
+  const objects = getObjectRegistry();
+  if (obj && !objects.includes(obj)) objects.push(obj);
+}
+
+function removeRuntimeObject(obj) {
+  const objects = getObjectRegistry();
+  const index = objects.indexOf(obj);
+  if (index >= 0) objects.splice(index, 1);
+}
+
+function removeEnemyRecord(record) {
+  if (!record || !record.mesh) return;
+  if (record.mesh.parent) record.mesh.parent.remove(record.mesh);
+  else scene.remove(record.mesh);
+  removeRuntimeObject(record.mesh);
+}
+
+function clearRuntimeEnemies() {
+  Object.values(state.gbRuntime.enemies || {}).forEach((record) => removeEnemyRecord(record));
+  state.gbRuntime.enemies = {};
+}
+
+function getEnemySpawnForWave(wave, spawns) {
+  const rows = Object.values(spawns || {});
+  if (!rows.length) return null;
+  const target = String(wave.spawnGroup || 'nearest').trim().toLowerCase();
+  if (target && target !== 'nearest' && target !== 'all') {
+    const exact = rows.find((spawn) => String(spawn.id || '').toLowerCase() === target || String(spawn.label || '').toLowerCase() === target);
+    if (exact) return exact;
+  }
+  return rows[0];
+}
+
+function createRuntimeEnemy(spawn, wave, index) {
+  const waveId = wave.id || 'wave';
+  const id = waveId + '_enemy_' + index;
+  const existing = state.gbRuntime.enemies[id];
+  if (existing && existing.mesh && existing.mesh.parent) return existing;
+  if (existing && existing.mesh) removeRuntimeObject(existing.mesh);
+  const geometry = THREE.CapsuleGeometry
+    ? new THREE.CapsuleGeometry(0.45, 1.15, 4, 8)
+    : new THREE.BoxGeometry(0.9, 1.6, 0.9);
+  const material = new THREE.MeshStandardMaterial({ color: 0xb84a4a, emissive: 0x421010, emissiveIntensity: 0.45, roughness: 0.75 });
+  const mesh = new THREE.Mesh(geometry, material);
+  const radius = Math.max(0, Number(spawn.radius) || 2);
+  const count = Math.max(1, Number(wave.count) || Number(spawn.count) || 1);
+  const angle = count > 1 ? index / count * Math.PI * 2 : 0;
+  const base = spawn.position || { x: 0, y: 0, z: 0 };
+  mesh.position.set(
+    (Number(base.x) || 0) + Math.cos(angle) * radius,
+    (Number(base.y) || 0) + 0.85,
+    (Number(base.z) || 0) + Math.sin(angle) * radius
+  );
+  mesh.userData = mesh.userData || {};
+  mesh.userData.name = (wave.label || 'Wave') + ' enemy ' + (index + 1);
+  mesh.userData.gbRuntimeEnemy = true;
+  mesh.userData.gbEnemyId = id;
+  mesh.userData.interactable = false;
+  scene.add(mesh);
+  addRuntimeObject(mesh);
+  const health = Math.max(1, Number(wave.enemyHealth) || Number(spawn.health) || 30);
+  const record = {
+    id,
+    waveId,
+    spawnId: spawn.id || '',
+    label: mesh.userData.name,
+    mesh,
+    alive: true,
+    health,
+    maxHealth: health,
+    speed: Math.max(0, Number(wave.enemySpeed) || Number(spawn.speed) || 1.2),
+    damage: Math.max(0, Number(wave.enemyDamage) || Number(spawn.damage) || 5),
+    attackRadius: Math.max(0.25, Number(wave.attackRadius) || Number(spawn.attackRadius) || 2.3),
+    attackCooldown: Math.max(0.15, Number(wave.attackCooldown) || Number(spawn.attackCooldown) || 1.2),
+    lastAttackAt: -999,
+    position: copyPosition(mesh.position, 0),
+  };
+  state.gbRuntime.enemies[id] = record;
+  return record;
+}
+
+function defeatEnemy(record, time) {
+  if (!record || !record.alive) return false;
+  record.alive = false;
+  record.defeatedAt = time;
+  record.health = 0;
+  removeEnemyRecord(record);
+  record.mesh = null;
+  state.gbRuntime.lastEnemyDefeated = { id: record.id, label: record.label, waveId: record.waveId, defeatedAt: time };
+  state.gbRuntime.score += 5;
+  showToast('Enemy defeated: ' + record.label);
+  return true;
+}
+
+function damageClosestEnemy(amount, radius, time) {
+  const playerPos = getPlayerPosition();
+  if (!playerPos) return false;
+  const enemies = Object.values(state.gbRuntime.enemies || {}).filter((record) => record && record.alive && record.mesh && record.mesh.position);
+  let closest = null;
+  let closestDistance = Math.max(0.5, Number(radius) || 4);
+  enemies.forEach((record) => {
+    const distance = distanceBetween(playerPos, record.mesh.position);
+    if (distance < closestDistance) {
+      closest = record;
+      closestDistance = distance;
+    }
+  });
+  if (!closest) return false;
+  closest.health = Math.max(0, (Number(closest.health) || 0) - (Number(amount) || 20));
+  if (closest.health <= 0) return defeatEnemy(closest, time);
+  showToast('Enemy hit: ' + closest.label);
+  return true;
+}
+
+function updateRuntimeEnemy(record, dt, playerPos, time) {
+  if (!record || !record.alive || !record.mesh || !record.mesh.position) return;
+  if (playerPos) {
+    const distance = distanceBetween(record.mesh.position, playerPos);
+    if (distance > 0.05 && record.speed > 0) {
+      const step = Math.min(distance, record.speed * dt);
+      record.mesh.position.x += ((Number(playerPos.x) || 0) - record.mesh.position.x) / distance * step;
+      record.mesh.position.z += ((Number(playerPos.z) || 0) - record.mesh.position.z) / distance * step;
+      if (typeof record.mesh.lookAt === 'function') record.mesh.lookAt(playerPos.x, record.mesh.position.y, playerPos.z);
+    }
+    if (distance < record.attackRadius && time - (record.lastAttackAt || -999) > record.attackCooldown) {
+      record.lastAttackAt = time;
+      if (record.damage > 0) {
+        state.gbRuntime.health = Math.max(0, state.gbRuntime.health - record.damage);
+        showToast('Enemy hit: -' + record.damage);
+      }
+    }
+  }
+  record.position = copyPosition(record.mesh.position, 0);
+}
+
+function startWaveIfReady(wave, spawns, time) {
+  if (!wave || wave.spawned || wave.complete) return;
+  const spawn = getEnemySpawnForWave(wave, spawns);
+  if (!spawn) return;
+  const count = Math.max(1, Number(wave.count) || Number(spawn.count) || 3);
+  for (let i = 0; i < count; i += 1) createRuntimeEnemy(spawn, wave, i);
+  wave.spawned = true;
+  wave.startedAt = time;
+  wave.active = true;
+  wave.complete = false;
+  showToast('Wave started: ' + wave.label);
+}
+
+function updateWaveSummary(wave, time) {
+  if (!wave) return;
+  const enemies = Object.values(state.gbRuntime.enemies || {}).filter((record) => record && record.waveId === wave.id);
+  const alive = enemies.filter((record) => record.alive).length;
+  const defeated = enemies.filter((record) => !record.alive).length;
+  const wasComplete = wave.complete === true;
+  wave.alive = alive;
+  wave.defeated = defeated;
+  wave.active = wave.spawned && alive > 0;
+  wave.complete = wave.spawned && enemies.length > 0 && alive === 0;
+  if (!wasComplete && wave.complete) {
+    const score = Math.max(0, Number(wave.rewardScore) || 0);
+    if (score > 0) state.gbRuntime.score += score;
+    state.gbRuntime.lastWaveComplete = { id: wave.id, label: wave.label, defeated, completedAt: time };
+    showToast('Wave cleared: ' + wave.label);
+  }
+}
+
 function getComponentHud() {
   let hud = document.getElementById('gb-component-hud');
   if (!hud) {
@@ -295,25 +470,45 @@ function renderComponentHud() {
     return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + escapeHud(item.label) + '</div>';
   }).join('') : '';
   const reward = state.gbRuntime.lastReward ? '<div style="color:#59d987;margin-top:6px">Reward: ' + escapeHud(state.gbRuntime.lastReward.label) + '</div>' : '';
+  const waves = Object.values(state.gbRuntime.waves || {});
+  const enemies = Object.values(state.gbRuntime.enemies || {});
+  const aliveEnemies = enemies.filter((item) => item && item.alive).length;
+  const waveRows = waves.length ? '<div style="color:#80b7ff;margin-top:6px;margin-bottom:5px;font-weight:700">Waves</div>' + waves.slice(0, 3).map((item) => {
+    const status = item.complete ? 'cleared' : item.active ? 'active' : item.spawned ? 'spawned' : 'ready';
+    return '<div style="color:' + (item.complete ? '#59d987' : item.active ? '#ffb36b' : '#d6e0e6') + '">' + escapeHud(item.label) + ': ' + status + ' (' + (item.alive || 0) + '/' + (item.count || 0) + ')</div>';
+  }).join('') : '';
+  const enemyRows = aliveEnemies ? '<div style="color:#ffb36b;margin-top:6px">Enemies: ' + aliveEnemies + ' alive</div>' : '';
   const gameState = state.gbRuntime.gameComplete ? '<div style="margin-top:8px;color:#59d987;font-weight:700">Game Complete</div>' : state.gbRuntime.gameOver ? '<div style="margin-top:8px;color:#ff9b9b;font-weight:700">Game Over</div>' : '';
   getComponentHud().innerHTML =
     '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>HP</span><span>' + Math.round(state.gbRuntime.health) + '</span></div>' +
     '<div style="height:7px;background:#1c2021;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + Math.max(0, Math.min(100, state.gbRuntime.health)) + '%;background:#59d987"></div></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Score</span><span>' + state.gbRuntime.score + '</span></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px;color:#a9b3b8"><span>Respawns</span><span>' + state.gbRuntime.respawns + '</span></div>' +
-    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + missionRows + reward + spawn + checkpoint + winRows + doorRows + trigger + gameState;
+    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + missionRows + reward + spawn + checkpoint + winRows + doorRows + trigger + waveRows + enemyRows + gameState;
 }
+
+onKeyPress = function(key) {
+  if (!playMode()) return;
+  if (key === 'f' || key === 'e' || key === ' ') {
+    damageClosestEnemy(25, 4, Date.now() * 0.001);
+  }
+};
 
 onUpdate = function(dt, time) {
   const playerPos = getPlayerPosition();
   const isPlaying = playMode();
-  if (!isPlaying) state.gbRuntime.spawnActivated = false;
+  if (!isPlaying) {
+    state.gbRuntime.spawnActivated = false;
+    clearRuntimeEnemies();
+  }
   const nextSpawnPoints = {};
   const nextDoors = {};
   const nextTriggers = {};
   const nextMissionSteps = {};
   const nextRewards = {};
   const nextGates = {};
+  const nextEnemySpawns = {};
+  const nextWaves = {};
   const triggerQueue = [];
   let firstPlayerSpawn = null;
   getObjects().forEach((obj) => {
@@ -340,6 +535,47 @@ onUpdate = function(dt, time) {
       };
       nextSpawnPoints[id] = spawnRecord;
       if (kind === 'player' && !firstPlayerSpawn) firstPlayerSpawn = spawnRecord;
+    }
+
+    if (components.enemySpawn && obj.position) {
+      const id = components.enemySpawn.id || obj.uuid;
+      nextEnemySpawns[id] = {
+        id,
+        label: components.enemySpawn.label || obj.userData.name || 'Enemy spawn',
+        enemyType: components.enemySpawn.enemyType || 'crawler',
+        count: Math.max(1, Number(components.enemySpawn.count) || 3),
+        radius: Math.max(0, Number(components.enemySpawn.radius) || 2),
+        speed: Math.max(0, Number(components.enemySpawn.speed) || 1.2),
+        damage: Math.max(0, Number(components.enemySpawn.damage) || 5),
+        health: Math.max(1, Number(components.enemySpawn.health) || 30),
+        attackRadius: Math.max(0.25, Number(components.enemySpawn.attackRadius) || 2.3),
+        attackCooldown: Math.max(0.15, Number(components.enemySpawn.attackCooldown) || 1.2),
+        position: copyPosition(obj.position, 0),
+      };
+    }
+
+    if (components.waveController) {
+      const id = components.waveController.id || obj.uuid;
+      const previous = state.gbRuntime.waves[id] || {};
+      nextWaves[id] = {
+        id,
+        label: components.waveController.label || 'Wave ' + (components.waveController.wave || 1),
+        wave: Number(components.waveController.wave) || 1,
+        count: Math.max(1, Number(components.waveController.count) || 3),
+        spawnGroup: components.waveController.spawnGroup || 'nearest',
+        enemySpeed: Math.max(0, Number(components.waveController.enemySpeed) || 0),
+        enemyDamage: Math.max(0, Number(components.waveController.enemyDamage) || 0),
+        enemyHealth: Math.max(0, Number(components.waveController.enemyHealth) || 0),
+        attackRadius: Math.max(0, Number(components.waveController.attackRadius) || 0),
+        attackCooldown: Math.max(0, Number(components.waveController.attackCooldown) || 0),
+        rewardScore: Math.max(0, Number(components.waveController.rewardScore) || 0),
+        spawned: isPlaying ? previous.spawned === true : false,
+        startedAt: previous.startedAt || 0,
+        alive: isPlaying ? previous.alive || 0 : 0,
+        defeated: isPlaying ? previous.defeated || 0 : 0,
+        active: isPlaying ? previous.active === true : false,
+        complete: isPlaying ? previous.complete === true : false,
+      };
     }
 
     if (components.door && obj.position) {
@@ -560,6 +796,22 @@ onUpdate = function(dt, time) {
   state.gbRuntime.missionSteps = nextMissionSteps;
   state.gbRuntime.rewards = nextRewards;
   state.gbRuntime.gates = nextGates;
+  state.gbRuntime.enemySpawns = nextEnemySpawns;
+  state.gbRuntime.waves = nextWaves;
+  if (isPlaying) {
+    Object.values(nextWaves)
+      .sort((a, b) => (a.wave || 0) - (b.wave || 0))
+      .forEach((wave) => startWaveIfReady(wave, nextEnemySpawns, time));
+    Object.values(state.gbRuntime.enemies || {}).forEach((record) => {
+      if (!nextWaves[record.waveId]) {
+        removeEnemyRecord(record);
+        delete state.gbRuntime.enemies[record.id];
+        return;
+      }
+      updateRuntimeEnemy(record, dt, playerPos, time);
+    });
+    Object.values(nextWaves).forEach((wave) => updateWaveSummary(wave, time));
+  }
   if (state.gbRuntime.activeSpawn && nextSpawnPoints[state.gbRuntime.activeSpawn.id]) {
     state.gbRuntime.activeSpawn = nextSpawnPoints[state.gbRuntime.activeSpawn.id];
   } else if (firstPlayerSpawn) {
@@ -700,7 +952,7 @@ const GAME_SYSTEMS = [
   {
     id: 'runtime',
     name: 'Component Runtime',
-    detail: 'Runs pickup, damage, mission, gate, objective, spawn, checkpoint, win, spin, and float tags.',
+    detail: 'Runs pickup, damage, mission, gate, enemy, objective, spawn, checkpoint, win, spin, and float tags.',
     script: 'components',
     scriptId: 'gb_component_runtime',
     actionLabel: 'Install',
@@ -743,6 +995,22 @@ const GAME_SYSTEMS = [
     detail: 'Open selected gates after mission requirements.',
     component: 'missionGate',
     countKey: 'missionGate',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'enemySpawns',
+    name: 'Enemy Spawns',
+    detail: 'Mark selected objects as enemy spawn anchors.',
+    component: 'enemySpawn',
+    countKey: 'enemySpawn',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'waves',
+    name: 'Wave Controller',
+    detail: 'Spawn and track enemy waves during Play mode.',
+    component: 'waveController',
+    countKey: 'waveController',
     actionLabel: 'Tag Selected',
   },
   {
@@ -805,6 +1073,8 @@ const COMPONENT_PRESETS = [
   { label: 'Mission', component: 'missionStep', title: 'Make the current object advance mission progress.' },
   { label: 'Reward', component: 'missionReward', title: 'Grant score or inventory after mission progress.' },
   { label: 'Gate', component: 'missionGate', title: 'Open the current object after a mission requirement.' },
+  { label: 'Enemy Spawn', component: 'enemySpawn', title: 'Make the current object spawn enemies during waves.' },
+  { label: 'Wave', component: 'waveController', title: 'Make the current object control an enemy wave.' },
   { label: 'Checkpoint', component: 'checkpoint', title: 'Mark the current object as a checkpoint.' },
   { label: 'Win Goal', component: 'winCondition', title: 'Mark the current object as a win condition.' },
   { label: 'Door', component: 'door', title: 'Make the current object open when a trigger fires.' },
@@ -852,6 +1122,27 @@ const COMPONENT_FIELDS = {
     { key: 'axis', label: 'Axis', kind: 'text' },
     { key: 'distance', label: 'Distance', kind: 'number', step: 0.1 },
     { key: 'speed', label: 'Speed', kind: 'number', step: 0.1 },
+  ],
+  enemySpawn: [
+    { key: 'label', label: 'Label', kind: 'text' },
+    { key: 'enemyType', label: 'Type', kind: 'text' },
+    { key: 'count', label: 'Count', kind: 'number', step: 1 },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+    { key: 'speed', label: 'Speed', kind: 'number', step: 0.1 },
+    { key: 'damage', label: 'Damage', kind: 'number', step: 1 },
+    { key: 'health', label: 'Health', kind: 'number', step: 1 },
+    { key: 'attackRadius', label: 'Attack', kind: 'number', step: 0.1 },
+    { key: 'attackCooldown', label: 'Cooldown', kind: 'number', step: 0.1 },
+  ],
+  waveController: [
+    { key: 'label', label: 'Label', kind: 'text' },
+    { key: 'wave', label: 'Wave', kind: 'number', step: 1 },
+    { key: 'count', label: 'Count', kind: 'number', step: 1 },
+    { key: 'spawnGroup', label: 'Spawn', kind: 'text' },
+    { key: 'enemySpeed', label: 'Speed', kind: 'number', step: 0.1 },
+    { key: 'enemyDamage', label: 'Damage', kind: 'number', step: 1 },
+    { key: 'enemyHealth', label: 'Health', kind: 'number', step: 1 },
+    { key: 'rewardScore', label: 'Reward', kind: 'number', step: 1 },
   ],
   checkpoint: [
     { key: 'label', label: 'Label', kind: 'text' },
@@ -1089,7 +1380,7 @@ async function ensureComponentRuntime() {
 async function ensureRuntimeForComponents(components) {
   const keys = Object.keys(components || {});
   if (keys.includes('pickup')) await installScript('inventory');
-  if (keys.some((key) => ['pickup', 'damage', 'objective', 'missionStep', 'missionReward', 'missionGate', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
+  if (keys.some((key) => ['pickup', 'damage', 'objective', 'missionStep', 'missionReward', 'missionGate', 'enemySpawn', 'waveController', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
     await ensureComponentRuntime();
   }
 }
@@ -1130,6 +1421,16 @@ async function markComponent(component) {
     components.missionGate = { id: 'gate_' + id, label: cleanName + ' gate', requiredStepId: 'all', axis: 'y', distance: 3, speed: 2.5 };
     target.userData.interactable = true;
     target.userData.interactLabel = target.userData.interactLabel || 'Gate';
+    await ensureComponentRuntime();
+  } else if (component === 'enemySpawn') {
+    components.enemySpawn = { id: 'enemy_spawn_' + id, label: cleanName + ' enemy spawn', enemyType: 'crawler', count: 3, radius: 2, speed: 1.2, damage: 5, health: 30, attackRadius: 2.3, attackCooldown: 1.2 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Enemy spawn';
+    await ensureComponentRuntime();
+  } else if (component === 'waveController') {
+    components.waveController = { id: 'wave_' + id, label: 'Wave 1', wave: 1, count: 3, spawnGroup: 'nearest', enemySpeed: 0, enemyDamage: 0, enemyHealth: 0, rewardScore: 50 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Wave';
     await ensureComponentRuntime();
   } else if (component === 'checkpoint') {
     components.checkpoint = { id: 'checkpoint_' + id, label: cleanName + ' checkpoint', radius: 3 };
@@ -1325,6 +1626,8 @@ function collectReadiness() {
   const missionStepCount = componentCounts.byType.missionStep || 0;
   const rewardCount = componentCounts.byType.missionReward || 0;
   const gateCount = componentCounts.byType.missionGate || 0;
+  const enemySpawnCount = componentCounts.byType.enemySpawn || 0;
+  const waveCount = componentCounts.byType.waveController || 0;
   const hasWorld = objects.length > 0;
   const hasGameplay = scripts.length > 0 || componentCounts.total > 0;
   let status = 'Needs world';
@@ -1364,6 +1667,8 @@ function collectReadiness() {
     missionStepCount,
     rewardCount,
     gateCount,
+    enemySpawnCount,
+    waveCount,
     saveCount: saves.length,
     assetStatus,
     assetVersion: window._crateAssetManifest?.version || window._assetManifestVersion || '',
@@ -1408,6 +1713,7 @@ function renderReadinessStatus() {
     createReadinessRow('Progress', readiness.pickupCount + ' pickups | ' + readiness.checkpointCount + ' checkpoints'),
     createReadinessRow('Goals', readiness.objectiveCount + ' objectives | ' + readiness.winConditionCount + ' wins'),
     createReadinessRow('Missions', readiness.missionStepCount + ' steps | ' + readiness.rewardCount + ' rewards | ' + readiness.gateCount + ' gates'),
+    createReadinessRow('Enemies', readiness.enemySpawnCount + ' spawns | ' + readiness.waveCount + ' waves'),
     createReadinessRow('Triggers', readiness.triggerCount + ' triggers | ' + readiness.doorCount + ' doors'),
     createReadinessRow('Spawns', readiness.spawnCount + ' spawns'),
     createReadinessRow('Project', readiness.saveCount + (readiness.saveCount === 1 ? ' save' : ' saves')),
