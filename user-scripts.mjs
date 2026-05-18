@@ -129,12 +129,12 @@ function attachListeners() {
 export function runUserScript(scriptObj) {
   try {
     const sandbox = createUserScriptSandbox();
-    const wrappedCode = '"use strict";\n' + (scriptObj.code || '');
+    const wrappedCode = '"use strict";\n' + (scriptObj.code || '') + '\n;return { onUpdate, onKeyPress, onCollision };';
     const fn = new Function(...Object.keys(sandbox), wrappedCode);
-    fn(...Object.values(sandbox));
-    scriptObj._onUpdate = sandbox.onUpdate;
-    scriptObj._onKeyPress = sandbox.onKeyPress;
-    scriptObj._onCollision = sandbox.onCollision;
+    const hooks = fn(...Object.values(sandbox)) || {};
+    scriptObj._onUpdate = typeof hooks.onUpdate === 'function' ? hooks.onUpdate : sandbox.onUpdate;
+    scriptObj._onKeyPress = typeof hooks.onKeyPress === 'function' ? hooks.onKeyPress : sandbox.onKeyPress;
+    scriptObj._onCollision = typeof hooks.onCollision === 'function' ? hooks.onCollision : sandbox.onCollision;
     scriptObj._running = true;
     console.log('[AI Sandbox] Script "' + (scriptObj.name || 'Untitled Script') + '" running');
     return true;
