@@ -677,7 +677,21 @@ function updateStats() {
   const componentCount = objects.reduce((count, obj) => count + Object.keys(obj.userData?.gbComponents || {}).length, 0);
   const scriptCount = Array.isArray(window._userScripts) ? window._userScripts.length : 0;
   const mode = formatModeLabel(getCurrentMode());
-  stats.innerHTML = '<span>' + objectCount + ' objects</span><span>' + componentCount + ' components</span><span>' + scriptCount + ' scripts</span><span>' + mode + '</span>';
+  const summary = objectCount + ' objects, ' + componentCount + ' components, ' + scriptCount + ' scripts, ' + mode + ' mode';
+  stats.dataset.summary = summary;
+  stats.setAttribute('aria-label', summary);
+  stats.replaceChildren(
+    createStatPill(objectCount + ' objects'),
+    createStatPill(componentCount + ' components'),
+    createStatPill(scriptCount + ' scripts'),
+    createStatPill(mode + ' mode')
+  );
+}
+
+function createStatPill(label) {
+  const pill = document.createElement('span');
+  pill.textContent = label;
+  return pill;
 }
 
 function updateProjectStatus() {

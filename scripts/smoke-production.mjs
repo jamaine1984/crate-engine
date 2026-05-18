@@ -480,7 +480,9 @@ async function runBrowserSmoke() {
         assetBaseUrl: typeof window._crateAssetBaseUrl === 'function' ? window._crateAssetBaseUrl() : '',
         objectCount: objects.length,
         sceneRows: document.querySelectorAll('#gb-scene-list .gb-scene-row').length,
-        stats: document.querySelector('#gb-stats')?.textContent?.trim() || '',
+        stats: document.querySelector('#gb-stats')?.dataset.summary ||
+          document.querySelector('#gb-stats')?.getAttribute('aria-label') ||
+          document.querySelector('#gb-stats')?.textContent?.trim() || '',
         hasInspector: !!document.querySelector('#gb-inspector'),
         hasBlueprints: !!document.querySelector('#gb-blueprints'),
         hasProject: !!document.querySelector('#gb-project'),
