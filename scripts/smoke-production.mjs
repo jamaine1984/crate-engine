@@ -189,7 +189,7 @@ async function runBrowserSmoke() {
 
     await page.waitForFunction(
       () => Array.isArray(window._gameBuilderSystems) &&
-        window._gameBuilderSystems.length >= 12 &&
+        window._gameBuilderSystems.length >= 15 &&
         !!document.querySelector('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]'),
       undefined,
       { timeout: timeoutMs }
@@ -198,7 +198,7 @@ async function runBrowserSmoke() {
       cardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
       ids: (window._gameBuilderSystems || []).map((system) => system.id),
     }));
-    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'objectives', 'checkpoints', 'win', 'doors', 'triggers', 'spawns', 'damage']) {
+    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'objectives', 'missions', 'rewards', 'gates', 'checkpoints', 'win', 'doors', 'triggers', 'spawns', 'damage']) {
       if (!initialSystems.ids.includes(id)) {
         throw new Error(`Game Systems library missing ${id}: ${JSON.stringify(initialSystems)}`);
       }
@@ -333,6 +333,47 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     );
 
+    await page.locator('#gb-scene-list .gb-scene-row .gb-scene-main').nth(2).click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="missions"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="rewards"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="gates"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.evaluate(() => {
+      const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+      const components = selected?.userData?.gbComponents || {};
+      if (components.missionStep) {
+        components.missionStep.label = 'Smoke mission step';
+        components.missionStep.radius = 9999;
+      }
+      if (components.missionReward) {
+        components.missionReward.label = 'Smoke reward';
+        components.missionReward.item = 'smoke-token';
+        components.missionReward.score = 75;
+        components.missionReward.radius = 9999;
+      }
+      if (components.missionGate) {
+        components.missionGate.label = 'Smoke gate';
+        components.missionGate.requiredStepId = components.missionStep?.id || 'all';
+        components.missionGate.distance = 3;
+      }
+      if (components.missionReward && components.missionStep) {
+        components.missionReward.requiredStepId = components.missionStep.id;
+      }
+      window._refreshGameBuilder?.();
+    });
+    await page.waitForFunction(
+      () => {
+        const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+        const components = selected?.userData?.gbComponents || {};
+        return !!components.missionStep &&
+          !!components.missionReward &&
+          !!components.missionGate &&
+          Number(components.missionStep.radius) >= 9999 &&
+          Number(components.missionReward.score) === 75;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
+
     await page.locator('#gb-project button[data-gb-action="save"]').click({ timeout: timeoutMs });
     await page.waitForSelector('#sl-modal #sl-save-btn', { timeout: timeoutMs });
     await page.locator('#sl-name').fill('Production Smoke Project', { timeout: timeoutMs });
@@ -347,11 +388,14 @@ async function runBrowserSmoke() {
         const hasSpawnPoint = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.spawnPoint);
         const hasDoor = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.door);
         const hasTriggerZone = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.triggerZone);
+        const hasMissionStep = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.missionStep);
+        const hasMissionReward = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.missionReward);
+        const hasMissionGate = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.missionGate);
         const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
         const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
         const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
         const hasBuildCityCommand = commands.some((cmd) => /^(?:build (?:a |the )?(?:city|full city|the city)|generate city|city world|new city)$/i.test(String(cmd || '').trim()));
-        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
+        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasMissionStep || !hasMissionReward || !hasMissionGate || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
         return {
           version: parsed.version,
           objectCount: parsed.objects.length,
@@ -362,6 +406,9 @@ async function runBrowserSmoke() {
           hasSpawnPoint,
           hasDoor,
           hasTriggerZone,
+          hasMissionStep,
+          hasMissionReward,
+          hasMissionGate,
           hasAssetPath,
         };
       },
@@ -389,7 +436,10 @@ async function runBrowserSmoke() {
         const pickupObj = objects.find((obj) => obj?.userData?.gbComponents?.pickup);
         const doorObj = objects.find((obj) => obj?.userData?.gbComponents?.door);
         const triggerObj = objects.find((obj) => obj?.userData?.gbComponents?.triggerZone);
-        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj || !doorObj || !triggerObj) return null;
+        const missionObj = objects.find((obj) => obj?.userData?.gbComponents?.missionStep);
+        const rewardObj = objects.find((obj) => obj?.userData?.gbComponents?.missionReward);
+        const gateObj = objects.find((obj) => obj?.userData?.gbComponents?.missionGate);
+        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj || !doorObj || !triggerObj || !missionObj || !rewardObj || !gateObj) return null;
         return {
           status: load.status,
           objectCount: objects.length,
@@ -397,6 +447,9 @@ async function runBrowserSmoke() {
           pickupId: pickupObj.uuid || '',
           doorId: doorObj.uuid || '',
           triggerId: triggerObj.uuid || '',
+          missionId: missionObj.uuid || '',
+          rewardId: rewardObj.uuid || '',
+          gateId: gateObj.uuid || '',
           spawned: load.snapshot?.spawned || 0,
           applied: load.snapshot?.applied || 0,
           expected: load.snapshot?.expected || 0,
@@ -536,6 +589,33 @@ async function runBrowserSmoke() {
       throw new Error(`Door/Trigger runtime did not fire cleanly: ${JSON.stringify(doorTriggerState)}`);
     }
 
+    const missionFlowState = await page.waitForFunction(
+      () => {
+        const runtime = window._userScriptScope?.gbRuntime || {};
+        const steps = Object.values(runtime.missionSteps || {});
+        const rewards = Object.values(runtime.rewards || {});
+        const gates = Object.values(runtime.gates || {});
+        const doneStep = steps.find((step) => step.done);
+        const claimedReward = rewards.find((reward) => reward.claimed);
+        const unlockedGate = gates.find((gate) => gate.unlocked && (gate.progress || 0) > 0);
+        if (!doneStep || !claimedReward || !unlockedGate || !runtime.lastReward) return null;
+        return {
+          doneStep: doneStep.label || '',
+          claimedReward: claimedReward.label || '',
+          rewardScore: claimedReward.score || 0,
+          unlockedGate: unlockedGate.label || '',
+          gateProgress: unlockedGate.progress || 0,
+          runtimeScore: runtime.score || 0,
+          lastReward: runtime.lastReward?.label || '',
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    if (!missionFlowState.doneStep || !missionFlowState.claimedReward || !missionFlowState.unlockedGate || missionFlowState.rewardScore < 75) {
+      throw new Error(`Mission flow runtime did not complete cleanly: ${JSON.stringify(missionFlowState)}`);
+    }
+
     await page.waitForFunction(
       () => !!window._userScriptScope?.gbRuntime?.activeSpawn?.position,
       undefined,
@@ -623,6 +703,9 @@ async function runBrowserSmoke() {
         readinessSpawnCount: readiness.spawnCount || 0,
         readinessDoorCount: readiness.doorCount || 0,
         readinessTriggerCount: readiness.triggerCount || 0,
+        readinessMissionStepCount: readiness.missionStepCount || 0,
+        readinessRewardCount: readiness.rewardCount || 0,
+        readinessGateCount: readiness.gateCount || 0,
         readinessAssetStatus: readiness.assetStatus || '',
         projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
@@ -643,11 +726,17 @@ async function runBrowserSmoke() {
     state.savedProjectHasSpawnPoint = savedProjectState.hasSpawnPoint;
     state.savedProjectHasDoor = savedProjectState.hasDoor;
     state.savedProjectHasTriggerZone = savedProjectState.hasTriggerZone;
+    state.savedProjectHasMissionStep = savedProjectState.hasMissionStep;
+    state.savedProjectHasMissionReward = savedProjectState.hasMissionReward;
+    state.savedProjectHasMissionGate = savedProjectState.hasMissionGate;
     state.loadedProjectObjectCount = loadedProjectState.objectCount;
     state.loadedProjectScriptCount = loadedProjectState.scriptCount;
     state.loadedProjectPickupId = loadedProjectState.pickupId;
     state.loadedProjectDoorId = loadedProjectState.doorId;
     state.loadedProjectTriggerId = loadedProjectState.triggerId;
+    state.loadedProjectMissionId = loadedProjectState.missionId;
+    state.loadedProjectRewardId = loadedProjectState.rewardId;
+    state.loadedProjectGateId = loadedProjectState.gateId;
     state.loadedProjectSpawned = loadedProjectState.spawned;
     state.loadedProjectApplied = loadedProjectState.applied;
     state.respawnHealth = afterRespawnState.health;
@@ -656,6 +745,12 @@ async function runBrowserSmoke() {
     state.firedTrigger = doorTriggerState.firedTrigger;
     state.doorProgress = doorTriggerState.doorProgress;
     state.triggerFireCount = doorTriggerState.triggerFireCount;
+    state.missionStep = missionFlowState.doneStep;
+    state.missionReward = missionFlowState.claimedReward;
+    state.missionGate = missionFlowState.unlockedGate;
+    state.missionGateProgress = missionFlowState.gateProgress;
+    state.missionRewardScore = missionFlowState.rewardScore;
+    state.missionRuntimeScore = missionFlowState.runtimeScore;
 
     if (pageErrors.length) throw new Error(`Page errors:\n${pageErrors.join('\n')}`);
     if (badAssetResponses.length) throw new Error(`Bad model/texture responses:\n${badAssetResponses.join('\n')}`);
@@ -668,10 +763,13 @@ async function runBrowserSmoke() {
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
       throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
     }
-    if (state.systemCardCount < 12 ||
+    if (state.systemCardCount < 15 ||
       !state.installedSystems.includes('inventory') ||
       !state.installedSystems.includes('runtime') ||
       !state.installedSystems.includes('pickups') ||
+      !state.installedSystems.includes('missions') ||
+      !state.installedSystems.includes('rewards') ||
+      !state.installedSystems.includes('gates') ||
       !state.installedSystems.includes('checkpoints') ||
       !state.installedSystems.includes('win') ||
       !state.installedSystems.includes('doors') ||
@@ -682,20 +780,23 @@ async function runBrowserSmoke() {
     if (state.readinessTone !== 'ready' ||
       state.readinessObjectCount < 100 ||
       state.readinessScriptCount < 1 ||
-      state.readinessComponentCount < 6 ||
+      state.readinessComponentCount < 9 ||
       state.readinessCheckpointCount < 1 ||
       state.readinessWinConditionCount < 1 ||
       state.readinessSpawnCount < 1 ||
       state.readinessDoorCount < 1 ||
       state.readinessTriggerCount < 1 ||
+      state.readinessMissionStepCount < 1 ||
+      state.readinessRewardCount < 1 ||
+      state.readinessGateCount < 1 ||
       state.readinessAssetStatus !== 'loaded') {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
-    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone) {
+    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
     }
-    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId) {
+    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId || !state.loadedProjectMissionId || !state.loadedProjectRewardId || !state.loadedProjectGateId) {
       throw new Error(`Project load did not restore rich scene state: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
@@ -714,11 +815,17 @@ async function runBrowserSmoke() {
     if (!state.gameplayComponents.includes('door') || !state.gameplayComponents.includes('triggerZone')) {
       throw new Error(`Door/Trigger components were not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
     }
+    if (!state.gameplayComponents.includes('missionStep') || !state.gameplayComponents.includes('missionReward') || !state.gameplayComponents.includes('missionGate')) {
+      throw new Error(`Mission flow components were not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
+    }
     if (state.respawnHealth < 100 || state.respawnCount < 1) {
       throw new Error(`Spawn runtime did not reset health and respawn count: ${JSON.stringify(state)}`);
     }
     if (!state.openedDoor || state.doorProgress <= 0 || state.triggerFireCount < 1) {
       throw new Error(`Door/Trigger runtime did not open a door: ${JSON.stringify(state)}`);
+    }
+    if (!state.missionStep || !state.missionReward || !state.missionGate || state.missionGateProgress <= 0 || state.missionRewardScore < 75) {
+      throw new Error(`Mission flow runtime did not finish: ${JSON.stringify(state)}`);
     }
 
     return state;
@@ -758,8 +865,9 @@ console.log(`Placement: ${browserState.placementStatus} (${browserState.placemen
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
-console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'})`);
+console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'})`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
+console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`Respawn runtime: ${browserState.respawnCount} respawns, ${browserState.respawnHealth} HP`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Gameplay components: ${browserState.gameplayComponents.join(', ')}`);

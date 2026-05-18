@@ -145,7 +145,7 @@ onUpdate = function(dt) {
   components: {
     id: 'gb_component_runtime',
     name: 'Component Runtime',
-    description: 'Runs pickup, damage, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
+    description: 'Runs pickup, damage, mission, reward, gate, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
     code: `state.gbRuntime = state.gbRuntime || {};
 state.gbRuntime.health = state.gbRuntime.health ?? 100;
 state.gbRuntime.score = state.gbRuntime.score || 0;
@@ -154,6 +154,9 @@ state.gbRuntime.checkpoints = state.gbRuntime.checkpoints || {};
 state.gbRuntime.spawnPoints = state.gbRuntime.spawnPoints || {};
 state.gbRuntime.doors = state.gbRuntime.doors || {};
 state.gbRuntime.triggers = state.gbRuntime.triggers || {};
+state.gbRuntime.missionSteps = state.gbRuntime.missionSteps || {};
+state.gbRuntime.rewards = state.gbRuntime.rewards || {};
+state.gbRuntime.gates = state.gbRuntime.gates || {};
 state.gbRuntime.winConditions = state.gbRuntime.winConditions || {};
 state.gbRuntime.gameComplete = state.gbRuntime.gameComplete || false;
 state.gbRuntime.gameOver = state.gbRuntime.gameOver || false;
@@ -208,6 +211,19 @@ function getDoorOpenPosition(closed, door) {
 function setObjectPosition(obj, pos) {
   if (!obj || !obj.position || typeof obj.position.set !== 'function') return;
   obj.position.set(pos.x, pos.y, pos.z);
+}
+
+function getGateOpenPosition(closed, gate) {
+  return getDoorOpenPosition(closed, { axis: gate.axis || 'y', distance: gate.distance || 3 });
+}
+
+function isRequirementMet(requiredStepId, steps) {
+  const required = String(requiredStepId || '').trim();
+  const rows = Object.values(steps || {});
+  if (!required || required === 'none') return true;
+  if (required === 'all') return rows.length > 0 && rows.every((item) => item.done);
+  if (required === 'any') return rows.some((item) => item.done);
+  return !!steps?.[required]?.done;
 }
 
 function movePlayerTo(target) {
@@ -274,13 +290,18 @@ function renderComponentHud() {
     return '<div style="color:' + (item.open ? '#59d987' : '#d6e0e6') + '">' + (item.open ? '[open] ' : '[closed] ') + escapeHud(item.label) + '</div>';
   }).join('') : '';
   const trigger = state.gbRuntime.lastTrigger ? '<div style="color:#f6c34a;margin-top:6px">Trigger: ' + escapeHud(state.gbRuntime.lastTrigger.label) + '</div>' : '';
+  const missionSteps = Object.values(state.gbRuntime.missionSteps || {}).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const missionRows = missionSteps.length ? '<div style="color:#80b7ff;margin-top:6px;margin-bottom:5px;font-weight:700">Mission</div>' + missionSteps.slice(0, 4).map((item) => {
+    return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + escapeHud(item.label) + '</div>';
+  }).join('') : '';
+  const reward = state.gbRuntime.lastReward ? '<div style="color:#59d987;margin-top:6px">Reward: ' + escapeHud(state.gbRuntime.lastReward.label) + '</div>' : '';
   const gameState = state.gbRuntime.gameComplete ? '<div style="margin-top:8px;color:#59d987;font-weight:700">Game Complete</div>' : state.gbRuntime.gameOver ? '<div style="margin-top:8px;color:#ff9b9b;font-weight:700">Game Over</div>' : '';
   getComponentHud().innerHTML =
     '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>HP</span><span>' + Math.round(state.gbRuntime.health) + '</span></div>' +
     '<div style="height:7px;background:#1c2021;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + Math.max(0, Math.min(100, state.gbRuntime.health)) + '%;background:#59d987"></div></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Score</span><span>' + state.gbRuntime.score + '</span></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px;color:#a9b3b8"><span>Respawns</span><span>' + state.gbRuntime.respawns + '</span></div>' +
-    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + spawn + checkpoint + winRows + doorRows + trigger + gameState;
+    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + missionRows + reward + spawn + checkpoint + winRows + doorRows + trigger + gameState;
 }
 
 onUpdate = function(dt, time) {
@@ -290,6 +311,9 @@ onUpdate = function(dt, time) {
   const nextSpawnPoints = {};
   const nextDoors = {};
   const nextTriggers = {};
+  const nextMissionSteps = {};
+  const nextRewards = {};
+  const nextGates = {};
   const triggerQueue = [];
   let firstPlayerSpawn = null;
   getObjects().forEach((obj) => {
@@ -384,6 +408,95 @@ onUpdate = function(dt, time) {
       nextTriggers[id] = triggerRecord;
     }
 
+    if (components.missionStep) {
+      const id = components.missionStep.id || obj.uuid;
+      const previous = state.gbRuntime.missionSteps[id] || {};
+      const radius = Number(components.missionStep.radius) || 3;
+      const steps = { ...state.gbRuntime.missionSteps, ...nextMissionSteps };
+      const requirementMet = isRequirementMet(components.missionStep.requiredStepId || 'none', steps);
+      const done = previous.done || (isPlaying && requirementMet && distance < radius);
+      const stepRecord = {
+        id,
+        label: components.missionStep.label || 'Mission step',
+        order: Number(components.missionStep.order) || 1,
+        radius,
+        requiredStepId: components.missionStep.requiredStepId || 'none',
+        done,
+        position: copyPosition(obj.position, 0),
+      };
+      if (!previous.done && done) showToast('Mission step complete: ' + stepRecord.label);
+      nextMissionSteps[id] = stepRecord;
+    }
+
+    if (components.missionReward) {
+      const id = components.missionReward.id || obj.uuid;
+      const previous = state.gbRuntime.rewards[id] || {};
+      const radius = Number(components.missionReward.radius) || 3;
+      const score = Number(components.missionReward.score) || 25;
+      const item = components.missionReward.item || 'Reward';
+      const requiredStepId = components.missionReward.requiredStepId || 'all';
+      const steps = { ...state.gbRuntime.missionSteps, ...nextMissionSteps };
+      const canClaim = isPlaying && isRequirementMet(requiredStepId, steps);
+      const claimed = previous.claimed || (canClaim && distance < radius);
+      const rewardRecord = {
+        id,
+        label: components.missionReward.label || item,
+        item,
+        score,
+        radius,
+        requiredStepId,
+        claimed,
+        position: copyPosition(obj.position, 0),
+      };
+      if (!previous.claimed && claimed) {
+        state.gbRuntime.score += score;
+        if (Array.isArray(state.gbInventory)) {
+          const slot = typeof state.gbInventorySlot === 'number' ? state.gbInventorySlot : 0;
+          state.gbInventory[slot] = item;
+        }
+        state.gbRuntime.lastReward = { id, label: rewardRecord.label, item, score, claimedAt: time };
+        showToast('Reward: ' + rewardRecord.label + ' +' + score);
+      }
+      nextRewards[id] = rewardRecord;
+    }
+
+    if (components.missionGate && obj.position) {
+      const id = components.missionGate.id || obj.uuid;
+      const previous = state.gbRuntime.gates[id] || {};
+      const steps = { ...state.gbRuntime.missionSteps, ...nextMissionSteps };
+      const unlocked = isPlaying && isRequirementMet(components.missionGate.requiredStepId || 'all', steps);
+      const speed = Math.max(0.1, Number(components.missionGate.speed) || 2.5);
+      const closed = isPlaying && previous.closed ? previous.closed : copyPosition(obj.position, 0);
+      const openPosition = getGateOpenPosition(closed, components.missionGate);
+      const targetProgress = unlocked ? 1 : 0;
+      const progress = isPlaying ? (previous.progress === undefined ? targetProgress : previous.progress) : 0;
+      const nextProgress = !isPlaying ? targetProgress : progress < targetProgress
+        ? Math.min(targetProgress, progress + dt * speed)
+        : Math.max(targetProgress, progress - dt * speed);
+      const gateRecord = {
+        id,
+        label: components.missionGate.label || 'Mission gate',
+        requiredStepId: components.missionGate.requiredStepId || 'all',
+        unlocked,
+        progress: nextProgress,
+        axis: components.missionGate.axis || 'y',
+        distance: Number(components.missionGate.distance) || 3,
+        speed,
+        closed,
+        openPosition,
+        position: copyPosition(obj.position, 0),
+      };
+      if (isPlaying) {
+        setObjectPosition(obj, {
+          x: lerp(closed.x, openPosition.x, nextProgress),
+          y: lerp(closed.y, openPosition.y, nextProgress),
+          z: lerp(closed.z, openPosition.z, nextProgress),
+        });
+      }
+      if (!previous.unlocked && unlocked) showToast('Gate unlocked: ' + gateRecord.label);
+      nextGates[id] = gateRecord;
+    }
+
     if (components.objective) {
       const id = components.objective.id || obj.uuid;
       if (!state.gbRuntime.objectives[id]) {
@@ -444,6 +557,9 @@ onUpdate = function(dt, time) {
   state.gbRuntime.spawnPoints = nextSpawnPoints;
   state.gbRuntime.doors = nextDoors;
   state.gbRuntime.triggers = nextTriggers;
+  state.gbRuntime.missionSteps = nextMissionSteps;
+  state.gbRuntime.rewards = nextRewards;
+  state.gbRuntime.gates = nextGates;
   if (state.gbRuntime.activeSpawn && nextSpawnPoints[state.gbRuntime.activeSpawn.id]) {
     state.gbRuntime.activeSpawn = nextSpawnPoints[state.gbRuntime.activeSpawn.id];
   } else if (firstPlayerSpawn) {
@@ -584,7 +700,7 @@ const GAME_SYSTEMS = [
   {
     id: 'runtime',
     name: 'Component Runtime',
-    detail: 'Runs pickup, damage, objective, spawn, checkpoint, win, spin, and float tags.',
+    detail: 'Runs pickup, damage, mission, gate, objective, spawn, checkpoint, win, spin, and float tags.',
     script: 'components',
     scriptId: 'gb_component_runtime',
     actionLabel: 'Install',
@@ -603,6 +719,30 @@ const GAME_SYSTEMS = [
     detail: 'Make selected objects complete objectives.',
     component: 'objective',
     countKey: 'objective',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'missions',
+    name: 'Mission Flow',
+    detail: 'Make selected objects advance mission progress.',
+    component: 'missionStep',
+    countKey: 'missionStep',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'rewards',
+    name: 'Rewards',
+    detail: 'Grant score and inventory after mission progress.',
+    component: 'missionReward',
+    countKey: 'missionReward',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'gates',
+    name: 'Mission Gates',
+    detail: 'Open selected gates after mission requirements.',
+    component: 'missionGate',
+    countKey: 'missionGate',
     actionLabel: 'Tag Selected',
   },
   {
@@ -662,6 +802,9 @@ const COMPONENT_PRESETS = [
   { label: 'Pickup', component: 'pickup', title: 'Make the current object collectible.' },
   { label: 'Damage', component: 'damage', title: 'Make the current object damage the player nearby.' },
   { label: 'Objective', component: 'objective', title: 'Make the current object complete an objective when reached.' },
+  { label: 'Mission', component: 'missionStep', title: 'Make the current object advance mission progress.' },
+  { label: 'Reward', component: 'missionReward', title: 'Grant score or inventory after mission progress.' },
+  { label: 'Gate', component: 'missionGate', title: 'Open the current object after a mission requirement.' },
   { label: 'Checkpoint', component: 'checkpoint', title: 'Mark the current object as a checkpoint.' },
   { label: 'Win Goal', component: 'winCondition', title: 'Mark the current object as a win condition.' },
   { label: 'Door', component: 'door', title: 'Make the current object open when a trigger fires.' },
@@ -689,6 +832,26 @@ const COMPONENT_FIELDS = {
   objective: [
     { key: 'label', label: 'Label', kind: 'text' },
     { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  missionStep: [
+    { key: 'label', label: 'Label', kind: 'text' },
+    { key: 'order', label: 'Order', kind: 'number', step: 1 },
+    { key: 'requiredStepId', label: 'Requires', kind: 'text' },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  missionReward: [
+    { key: 'label', label: 'Label', kind: 'text' },
+    { key: 'item', label: 'Item', kind: 'text' },
+    { key: 'score', label: 'Score', kind: 'number', step: 1 },
+    { key: 'requiredStepId', label: 'Requires', kind: 'text' },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  missionGate: [
+    { key: 'label', label: 'Label', kind: 'text' },
+    { key: 'requiredStepId', label: 'Requires', kind: 'text' },
+    { key: 'axis', label: 'Axis', kind: 'text' },
+    { key: 'distance', label: 'Distance', kind: 'number', step: 0.1 },
+    { key: 'speed', label: 'Speed', kind: 'number', step: 0.1 },
   ],
   checkpoint: [
     { key: 'label', label: 'Label', kind: 'text' },
@@ -926,7 +1089,7 @@ async function ensureComponentRuntime() {
 async function ensureRuntimeForComponents(components) {
   const keys = Object.keys(components || {});
   if (keys.includes('pickup')) await installScript('inventory');
-  if (keys.some((key) => ['pickup', 'damage', 'objective', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
+  if (keys.some((key) => ['pickup', 'damage', 'objective', 'missionStep', 'missionReward', 'missionGate', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
     await ensureComponentRuntime();
   }
 }
@@ -952,6 +1115,21 @@ async function markComponent(component) {
     await ensureComponentRuntime();
   } else if (component === 'objective') {
     components.objective = { id: 'objective_' + id, label: 'Reach ' + cleanName, radius: 3 };
+    await ensureComponentRuntime();
+  } else if (component === 'missionStep') {
+    components.missionStep = { id: 'mission_' + id, label: 'Complete ' + cleanName, order: 1, requiredStepId: 'none', radius: 3 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Mission';
+    await ensureComponentRuntime();
+  } else if (component === 'missionReward') {
+    components.missionReward = { id: 'reward_' + id, label: cleanName + ' reward', item: cleanName + ' token', score: 25, requiredStepId: 'all', radius: 3 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Reward';
+    await ensureComponentRuntime();
+  } else if (component === 'missionGate') {
+    components.missionGate = { id: 'gate_' + id, label: cleanName + ' gate', requiredStepId: 'all', axis: 'y', distance: 3, speed: 2.5 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Gate';
     await ensureComponentRuntime();
   } else if (component === 'checkpoint') {
     components.checkpoint = { id: 'checkpoint_' + id, label: cleanName + ' checkpoint', radius: 3 };
@@ -1144,6 +1322,9 @@ function collectReadiness() {
   const winConditionCount = componentCounts.byType.winCondition || 0;
   const doorCount = componentCounts.byType.door || 0;
   const triggerCount = componentCounts.byType.triggerZone || 0;
+  const missionStepCount = componentCounts.byType.missionStep || 0;
+  const rewardCount = componentCounts.byType.missionReward || 0;
+  const gateCount = componentCounts.byType.missionGate || 0;
   const hasWorld = objects.length > 0;
   const hasGameplay = scripts.length > 0 || componentCounts.total > 0;
   let status = 'Needs world';
@@ -1180,6 +1361,9 @@ function collectReadiness() {
     winConditionCount,
     doorCount,
     triggerCount,
+    missionStepCount,
+    rewardCount,
+    gateCount,
     saveCount: saves.length,
     assetStatus,
     assetVersion: window._crateAssetManifest?.version || window._assetManifestVersion || '',
@@ -1223,6 +1407,7 @@ function renderReadinessStatus() {
     createReadinessRow('Gameplay', readiness.scriptCount + ' scripts | ' + readiness.componentCount + ' components'),
     createReadinessRow('Progress', readiness.pickupCount + ' pickups | ' + readiness.checkpointCount + ' checkpoints'),
     createReadinessRow('Goals', readiness.objectiveCount + ' objectives | ' + readiness.winConditionCount + ' wins'),
+    createReadinessRow('Missions', readiness.missionStepCount + ' steps | ' + readiness.rewardCount + ' rewards | ' + readiness.gateCount + ' gates'),
     createReadinessRow('Triggers', readiness.triggerCount + ' triggers | ' + readiness.doorCount + ' doors'),
     createReadinessRow('Spawns', readiness.spawnCount + ' spawns'),
     createReadinessRow('Project', readiness.saveCount + (readiness.saveCount === 1 ? ' save' : ' saves')),
