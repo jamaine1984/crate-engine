@@ -167,6 +167,7 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#gb-inspector', { timeout: timeoutMs });
     await page.waitForSelector('#gb-blueprints', { timeout: timeoutMs });
     await page.waitForSelector('#gb-readiness', { timeout: timeoutMs });
+    await page.waitForSelector('#gb-systems', { timeout: timeoutMs });
     await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-project button[data-gb-action="save"]', { timeout: timeoutMs });
     await page.waitForFunction(
@@ -183,6 +184,23 @@ async function runBrowserSmoke() {
     for (const action of ['save', 'load', 'import', 'export', 'share', 'settings']) {
       if (!projectControls.actions.includes(action)) {
         throw new Error(`Project controls missing ${action}: ${JSON.stringify(projectControls)}`);
+      }
+    }
+
+    await page.waitForFunction(
+      () => Array.isArray(window._gameBuilderSystems) &&
+        window._gameBuilderSystems.length >= 8 &&
+        !!document.querySelector('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]'),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const initialSystems = await page.evaluate(() => ({
+      cardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
+      ids: (window._gameBuilderSystems || []).map((system) => system.id),
+    }));
+    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'objectives', 'spawns', 'damage']) {
+      if (!initialSystems.ids.includes(id)) {
+        throw new Error(`Game Systems library missing ${id}: ${JSON.stringify(initialSystems)}`);
       }
     }
 
@@ -214,7 +232,7 @@ async function runBrowserSmoke() {
     });
     if (catalogState.hasTmpReference) throw new Error('Asset catalog still exposes .tmp references');
 
-    await page.locator('button.gb-preset', { hasText: 'Inventory' }).click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
     await page.waitForFunction(() => Array.isArray(window._userScripts) && window._userScripts.length >= 1, undefined, { timeout: timeoutMs });
 
     const beforeFurnitureCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
@@ -476,6 +494,7 @@ async function runBrowserSmoke() {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
       const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj || null;
       const readiness = window._gameBuilderReadiness || {};
+      const gameSystems = window._gameBuilderSystems || [];
       return {
         engineReady: window._engineReady === true,
         hasAssetResolver: typeof window._crateAssetUrl === 'function',
@@ -490,6 +509,10 @@ async function runBrowserSmoke() {
         hasProject: !!document.querySelector('#gb-project'),
         hasAssetPack: !!document.querySelector('#gb-asset-pack'),
         hasReadiness: !!document.querySelector('#gb-readiness'),
+        hasSystems: !!document.querySelector('#gb-systems'),
+        systemCardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
+        installedSystems: gameSystems.filter((system) => system.status === 'installed').map((system) => system.id),
+        systemSummary: gameSystems.map((system) => system.id + ':' + system.statusText).join(', '),
         assetPackStatus: document.querySelector('#gb-asset-pack-status')?.dataset.status || '',
         assetPackText: document.querySelector('#gb-asset-pack-status')?.textContent?.trim() || '',
         assetPackVersion: window._crateAssetManifest?.version || '',
@@ -528,9 +551,12 @@ async function runBrowserSmoke() {
     if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
-    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness) throw new Error('Game Builder Project, Asset Pack, Readiness, Inspector, or Blueprints section was missing');
+    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Systems, Inspector, or Blueprints section was missing');
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
       throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
+    }
+    if (state.systemCardCount < 8 || !state.installedSystems.includes('inventory') || !state.installedSystems.includes('runtime') || !state.installedSystems.includes('pickups')) {
+      throw new Error(`Game Systems library did not install expected systems: ${JSON.stringify(state)}`);
     }
     if (state.readinessTone !== 'ready' || state.readinessObjectCount < 100 || state.readinessScriptCount < 1 || state.readinessComponentCount < 1 || state.readinessAssetStatus !== 'loaded') {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
@@ -581,6 +607,7 @@ console.log(`Asset base: ${assetBaseUrl}`);
 console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
+console.log(`Game systems: ${browserState.systemSummary}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);

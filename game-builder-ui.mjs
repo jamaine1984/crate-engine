@@ -294,6 +294,73 @@ const PROJECT_ACTIONS = [
   { label: 'Settings', action: 'settings', title: 'Open engine settings.' },
 ];
 
+const GAME_SYSTEMS = [
+  {
+    id: 'inventory',
+    name: 'Inventory',
+    detail: 'Five-slot hotbar for pickup-based games.',
+    script: 'inventory',
+    scriptId: 'gb_inventory_hotbar',
+    actionLabel: 'Install',
+  },
+  {
+    id: 'hud',
+    name: 'Game HUD',
+    detail: 'Health, score, and level display.',
+    script: 'hud',
+    scriptId: 'gb_game_hud',
+    actionLabel: 'Install',
+  },
+  {
+    id: 'quest',
+    name: 'Quest Tracker',
+    detail: 'Objective panel for directed gameplay.',
+    script: 'quest',
+    scriptId: 'gb_quest_tracker',
+    actionLabel: 'Install',
+  },
+  {
+    id: 'runtime',
+    name: 'Component Runtime',
+    detail: 'Runs pickup, damage, objective, spin, and float tags.',
+    script: 'components',
+    scriptId: 'gb_component_runtime',
+    actionLabel: 'Install',
+  },
+  {
+    id: 'pickups',
+    name: 'Pickup System',
+    detail: 'Make selected objects collectible.',
+    component: 'pickup',
+    countKey: 'pickup',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'objectives',
+    name: 'Objective System',
+    detail: 'Make selected objects complete objectives.',
+    component: 'objective',
+    countKey: 'objective',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'spawns',
+    name: 'Spawn Points',
+    detail: 'Mark selected objects as player or enemy starts.',
+    component: 'spawnPoint',
+    countKey: 'spawnPoint',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'damage',
+    name: 'Damage Zones',
+    detail: 'Make selected objects damage nearby players.',
+    component: 'damage',
+    countKey: 'damage',
+    actionLabel: 'Tag Selected',
+  },
+];
+
 const EDIT_ONLY_ACTIONS = new Set(['assets', 'import', 'load', 'save', 'scripts']);
 
 const COMPONENT_PRESETS = [
@@ -344,6 +411,7 @@ let lastBlueprintSignature = '';
 let lastPlacementSignature = '';
 let lastAssetPackSignature = '';
 let lastReadinessSignature = '';
+let lastGameSystemsSignature = '';
 let assetManifestLoadStarted = false;
 
 function isSmallScreen() {
@@ -704,6 +772,12 @@ function updateProjectStatus() {
   status.textContent = saveText + (assetVersion ? ' | assets ' + assetVersion : '');
 }
 
+function getInstalledScriptIds() {
+  return new Set((Array.isArray(window._userScripts) ? window._userScripts : [])
+    .filter((script) => script && script.enabled !== false)
+    .map((script) => script.id || script.name || ''));
+}
+
 function countComponents(objects) {
   return objects.reduce((counts, obj) => {
     const components = obj?.userData?.gbComponents || {};
@@ -809,6 +883,85 @@ function createReadinessRow(label, value) {
   row.className = 'gb-readiness-row';
   row.append(createTextElement('span', '', label), createTextElement('strong', '', value));
   return row;
+}
+
+function createGameSystemsSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  section.id = 'gb-systems';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Game Systems';
+  const list = document.createElement('div');
+  list.id = 'gb-systems-list';
+  list.className = 'gb-systems-list';
+  section.append(heading, list);
+  return section;
+}
+
+function collectGameSystemState() {
+  const objects = getSceneObjects();
+  const componentCounts = countComponents(objects);
+  const scriptIds = getInstalledScriptIds();
+  const hasTarget = !!getTargetObject();
+  return GAME_SYSTEMS.map((system) => {
+    const installed = system.scriptId ? scriptIds.has(system.scriptId) : (componentCounts.byType[system.countKey] || 0) > 0;
+    const count = system.countKey ? componentCounts.byType[system.countKey] || 0 : 0;
+    const status = installed ? 'installed' : system.component && !hasTarget ? 'needs-object' : 'available';
+    const statusText = installed
+      ? (system.countKey ? count + ' tagged' : 'Installed')
+      : (status === 'needs-object' ? 'Select object' : 'Ready');
+    return {
+      id: system.id,
+      name: system.name,
+      detail: system.detail,
+      status,
+      statusText,
+      actionLabel: installed ? 'Reapply' : system.actionLabel,
+      script: system.script,
+      component: system.component,
+    };
+  });
+}
+
+function renderGameSystems() {
+  const list = document.getElementById('gb-systems-list');
+  if (!list) return;
+  const systems = collectGameSystemState();
+  const signature = JSON.stringify(systems.map((system) => [system.id, system.status, system.statusText]));
+  window._gameBuilderSystems = systems;
+  if (signature === lastGameSystemsSignature) return;
+  lastGameSystemsSignature = signature;
+  list.replaceChildren(...systems.map(createGameSystemCard));
+  updateEditorControlState();
+}
+
+function createGameSystemCard(system) {
+  const card = document.createElement('div');
+  card.className = 'gb-system-card';
+  card.dataset.gbSystem = system.id;
+  card.dataset.status = system.status;
+
+  const info = document.createElement('div');
+  info.className = 'gb-system-info';
+  info.append(
+    createTextElement('strong', '', system.name),
+    createTextElement('span', '', system.detail)
+  );
+
+  const controls = document.createElement('div');
+  controls.className = 'gb-system-controls';
+  const badge = createTextElement('span', 'gb-system-badge', system.statusText);
+  const button = createSmallButton(system.actionLabel, async () => {
+    if (system.script) await installScript(system.script);
+    if (system.component) await markComponent(system.component);
+    lastGameSystemsSignature = '';
+    updateBuilderUi();
+  }, { editOnly: true, action: system.script ? 'install game systems' : 'tag gameplay components' });
+  button.dataset.gbAction = 'install-system';
+  button.dataset.gbSystemAction = system.id;
+  controls.append(badge, button);
+  card.append(info, controls);
+  return card;
 }
 
 function getAssetBaseUrl() {
@@ -1408,6 +1561,7 @@ function updateBuilderUi() {
   renderPlacementStatus();
   renderAssetPackStatus();
   renderReadinessStatus();
+  renderGameSystems();
   renderInspector();
   renderBlueprintList();
   renderSceneList();
@@ -1480,6 +1634,16 @@ function mount() {
     .gb-readiness-row{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
     .gb-readiness-row span{font-size:10px;line-height:14px;color:#8d979e}
     .gb-readiness-row strong{font-size:10px;line-height:14px;color:#dfe6ea;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-systems-list{display:flex;flex-direction:column;gap:7px;padding:8px}
+    .gb-system-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
+    .gb-system-card[data-status="installed"]{border-color:#2f6f44;background:#101a13}
+    .gb-system-card[data-status="needs-object"]{border-color:#725a21;background:#1c1710}
+    .gb-system-info{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .gb-system-info strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-system-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-system-controls{display:flex;align-items:center;gap:6px}
+    .gb-system-badge{max-width:74px;font-size:10px;line-height:14px;color:#aeb7bd;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-system-controls .gb-small-btn{width:82px}
     .gb-project-status{padding:0 8px 7px;color:#8d979e;font-size:10px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-project-grid{padding-top:0}
     .gb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
@@ -1562,6 +1726,7 @@ function mount() {
   body.appendChild(createProjectSection());
   body.appendChild(createAssetPackSection());
   body.appendChild(createReadinessSection());
+  body.appendChild(createGameSystemsSection());
 
   const appendBuilderToolSections = () => {
     const componentSection = document.createElement('section');
@@ -1638,6 +1803,7 @@ function mount() {
     updateProjectStatus();
     renderAssetPackStatus();
     renderReadinessStatus();
+    renderGameSystems();
     renderInspector({ force: true });
     renderBlueprintList();
     renderSceneList();
@@ -1647,6 +1813,7 @@ function mount() {
     lastPlacementSignature = '';
     renderPlacementStatus();
     renderReadinessStatus();
+    renderGameSystems();
     renderInspector({ force: true });
     renderSceneList();
   };
