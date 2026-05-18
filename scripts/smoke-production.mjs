@@ -312,6 +312,43 @@ async function runBrowserSmoke() {
     );
     await page.locator('#sl-close').click({ timeout: timeoutMs });
 
+    await page.evaluate(() => {
+      const saves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
+      const index = saves.findIndex((item) => item?.name === 'Production Smoke Project');
+      if (index < 0) throw new Error('Saved project was not found for load test');
+      window._loadSaveSlot?.(index);
+    });
+    const loadedProjectState = await page.waitForFunction(
+      (saved) => {
+        const load = window._lastProjectLoad || {};
+        const objects = window._engineBridge?.objects || window._sceneObjects || [];
+        const scripts = Array.isArray(window._userScripts) ? window._userScripts.length : 0;
+        const pickupObj = objects.find((obj) => obj?.userData?.gbComponents?.pickup);
+        if (load.status !== 'loaded' || objects.length < Math.max(1, saved.objectCount - 2) || scripts < saved.scriptCount || !pickupObj) return null;
+        return {
+          status: load.status,
+          objectCount: objects.length,
+          scriptCount: scripts,
+          pickupId: pickupObj.uuid || '',
+          spawned: load.snapshot?.spawned || 0,
+          applied: load.snapshot?.applied || 0,
+          expected: load.snapshot?.expected || 0,
+        };
+      },
+      savedProjectState,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    await page.evaluate(() => {
+      const objects = window._engineBridge?.objects || window._sceneObjects || [];
+      const pickupObj = objects.find((obj) => obj?.userData?.gbComponents?.pickup);
+      if (pickupObj) window._engineBridge?.selectObject?.(pickupObj);
+    });
+    await page.waitForFunction(
+      () => !!window._engineBridge?.getSelected?.()?.userData?.gbComponents?.pickup,
+      undefined,
+      { timeout: timeoutMs }
+    );
+
     await page.evaluate(() => window._setMode?.('explore'));
     await page.waitForFunction(
       () => window._currentMode === 'explore' && window._playMode !== true,
@@ -451,6 +488,10 @@ async function runBrowserSmoke() {
     state.savedProjectVersion = savedProjectState.version;
     state.savedProjectObjectCount = savedProjectState.objectCount;
     state.savedProjectScriptCount = savedProjectState.scriptCount;
+    state.loadedProjectObjectCount = loadedProjectState.objectCount;
+    state.loadedProjectScriptCount = loadedProjectState.scriptCount;
+    state.loadedProjectSpawned = loadedProjectState.spawned;
+    state.loadedProjectApplied = loadedProjectState.applied;
 
     if (pageErrors.length) throw new Error(`Page errors:\n${pageErrors.join('\n')}`);
     if (badAssetResponses.length) throw new Error(`Bad model/texture responses:\n${badAssetResponses.join('\n')}`);
@@ -463,6 +504,9 @@ async function runBrowserSmoke() {
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
     if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
+    }
+    if (state.loadedProjectObjectCount < state.savedProjectObjectCount - 2 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1) {
+      throw new Error(`Project load did not restore rich scene state: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
     if (state.mode !== 'edit') throw new Error(`Expected smoke to finish in edit mode, got ${state.mode || 'empty'}`);
@@ -510,6 +554,7 @@ console.log(`Placement: ${browserState.placementStatus} (${browserState.placemen
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts`);
+console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned)`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);
 console.log('HTTP checks:');

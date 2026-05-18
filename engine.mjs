@@ -2548,7 +2548,7 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone, option
       path: url,
     });
     if (statusEl) statusEl.textContent = '3D Ready';
-    if (typeof onDone === 'function') onDone();
+    if (typeof onDone === 'function') onDone(model);
   }, undefined, (error) => {
     console.warn('Failed to load ' + url + ':', error);
     if (statusEl) statusEl.textContent = '3D Ready';
@@ -2559,7 +2559,7 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone, option
       path: url,
       error,
     });
-    if (typeof onDone === 'function') onDone();
+    if (typeof onDone === 'function') onDone(null, error);
   });
 }
 
@@ -14578,8 +14578,63 @@ function serializeProjectObject(obj, index) {
   return entry;
 }
 
+function clearProjectSceneForLoad() {
+  clearEditorSelection();
+  while (objects.length) {
+    const obj = objects.pop();
+    scene.remove(obj);
+  }
+  sceneHistory.length = 0;
+  if (window._waterZones) window._waterZones.length = 0;
+  if (typeof clearDrivingCars === 'function') clearDrivingCars();
+  if (typeof window._refreshGameBuilderMode === 'function') window._refreshGameBuilderMode();
+  if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
+}
+
+function applyProjectSnapshotToObject(obj, snapshot) {
+  if (!obj || !snapshot) return false;
+  obj.userData = obj.userData || {};
+  if (snapshot.name) obj.userData.name = snapshot.name;
+  if (Array.isArray(snapshot.position) && obj.position) obj.position.set(snapshot.position[0] || 0, snapshot.position[1] || 0, snapshot.position[2] || 0);
+  if (Array.isArray(snapshot.rotation) && obj.rotation) obj.rotation.set(snapshot.rotation[0] || 0, snapshot.rotation[1] || 0, snapshot.rotation[2] || 0);
+  if (Array.isArray(snapshot.scale) && obj.scale) obj.scale.set(snapshot.scale[0] || 1, snapshot.scale[1] || snapshot.scale[0] || 1, snapshot.scale[2] || snapshot.scale[0] || 1);
+  obj.userData.gbComponents = cloneProjectJson(snapshot.components || {}, {});
+  const meta = snapshot.userData || {};
+  obj.userData.interactable = meta.interactable === true;
+  obj.userData.interactLabel = meta.interactLabel || '';
+  if (meta.isSolid) obj.userData.isSolid = true;
+  if (snapshot.assetFile) obj.userData.gbAssetFile = snapshot.assetFile;
+  if (snapshot.assetPath) obj.userData.gbAssetPath = snapshot.assetPath;
+  if (window._addToCollision && obj.userData.isSolid) window._addToCollision(obj);
+  return true;
+}
+
+function waitForProjectCommandReplay(expectedObjects = 0) {
+  return new Promise((resolve) => {
+    const expected = Math.max(0, Number(expectedObjects) || 0);
+    const deadline = performance.now() + 25000;
+    let lastCount = objects.length;
+    let stableSince = performance.now();
+    const poll = () => {
+      const count = objects.length;
+      if (count !== lastCount) {
+        lastCount = count;
+        stableSince = performance.now();
+      }
+      const closeEnough = expected === 0 || count >= Math.max(1, expected - 2);
+      const stableEnough = expected > 0 && count >= Math.min(50, expected) && performance.now() - stableSince > 1200;
+      if (closeEnough || stableEnough || performance.now() > deadline) {
+        resolve({ count, timedOut: performance.now() > deadline });
+        return;
+      }
+      setTimeout(poll, 250);
+    };
+    poll();
+  });
+}
+
 function applyProjectObjectSnapshots(snapshots = []) {
-  if (!Array.isArray(snapshots) || !snapshots.length) return;
+  if (!Array.isArray(snapshots) || !snapshots.length) return Promise.resolve({ expected: 0, applied: 0, spawned: 0 });
   const used = new Set();
   const pickTarget = (snapshot) => {
     const name = String(snapshot?.name || '').toLowerCase();
@@ -14599,26 +14654,41 @@ function applyProjectObjectSnapshots(snapshots = []) {
     return null;
   };
 
+  let applied = 0;
+  let spawned = 0;
+  const pendingLoads = [];
   snapshots.forEach((snapshot) => {
     const obj = pickTarget(snapshot);
-    if (!obj) return;
-    obj.userData = obj.userData || {};
-    if (snapshot.name) obj.userData.name = snapshot.name;
-    if (Array.isArray(snapshot.position) && obj.position) obj.position.set(snapshot.position[0] || 0, snapshot.position[1] || 0, snapshot.position[2] || 0);
-    if (Array.isArray(snapshot.rotation) && obj.rotation) obj.rotation.set(snapshot.rotation[0] || 0, snapshot.rotation[1] || 0, snapshot.rotation[2] || 0);
-    if (Array.isArray(snapshot.scale) && obj.scale) obj.scale.set(snapshot.scale[0] || 1, snapshot.scale[1] || snapshot.scale[0] || 1, snapshot.scale[2] || snapshot.scale[0] || 1);
-    obj.userData.gbComponents = cloneProjectJson(snapshot.components || {}, {});
-    const meta = snapshot.userData || {};
-    obj.userData.interactable = meta.interactable === true;
-    obj.userData.interactLabel = meta.interactLabel || '';
-    if (meta.isSolid) obj.userData.isSolid = true;
-    if (snapshot.assetFile) obj.userData.gbAssetFile = snapshot.assetFile;
-    if (snapshot.assetPath) obj.userData.gbAssetPath = snapshot.assetPath;
-    if (window._addToCollision && obj.userData.isSolid) window._addToCollision(obj);
+    if (obj) {
+      if (applyProjectSnapshotToObject(obj, snapshot)) applied++;
+      return;
+    }
+    if (!snapshot.assetPath) return;
+    spawned++;
+    pendingLoads.push(new Promise((resolve) => {
+      const pos = Array.isArray(snapshot.position) ? snapshot.position : [0, 0, 0];
+      const scale = Array.isArray(snapshot.scale) ? snapshot.scale[0] : null;
+      _loadGLBFromUrl(
+        snapshot.name || snapshot.assetFile || 'project asset',
+        snapshot.assetPath,
+        pos[0] || 0,
+        pos[2] || 0,
+        scale,
+        snapshot.assetFile || snapshot.assetPath.split('/').pop(),
+        (model) => {
+          if (model && applyProjectSnapshotToObject(model, snapshot)) applied++;
+          resolve();
+        },
+        { source: 'project-load' },
+      );
+    }));
   });
 
-  if (typeof window._refreshGameBuilderMode === 'function') window._refreshGameBuilderMode();
-  if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
+  return Promise.allSettled(pendingLoads).then(() => {
+    if (typeof window._refreshGameBuilderMode === 'function') window._refreshGameBuilderMode();
+    if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
+    return { expected: snapshots.length, applied, spawned };
+  });
 }
 
 function restoreProjectScripts(scripts = []) {
@@ -14632,7 +14702,7 @@ function restoreProjectScripts(scripts = []) {
 
 function deserializeScene(data) {
   // Clear current scene
-  parseAndExecute('clear');
+  clearProjectSceneForLoad();
   
   let cmds;
   let projectObjects = [];
@@ -14643,6 +14713,13 @@ function deserializeScene(data) {
       cmds = parsed.commands || [];
       projectObjects = Array.isArray(parsed.objects) ? parsed.objects : [];
       projectScripts = Array.isArray(parsed.userScripts) ? parsed.userScripts : [];
+      window._lastProjectLoad = {
+        status: 'loading',
+        expectedObjects: projectObjects.length,
+        expectedScripts: projectScripts.length,
+        commandCount: cmds.length,
+        startedAt: Date.now(),
+      };
       // Restore weather/time after commands
       setTimeout(() => {
         if (parsed.weather) setWeather(parsed.weather);
@@ -14659,10 +14736,31 @@ function deserializeScene(data) {
   let i = 0;
   function next() {
     if (i >= cmds.length) {
-      setTimeout(() => {
-        applyProjectObjectSnapshots(projectObjects);
+      waitForProjectCommandReplay(projectObjects.length).then((replay) => {
+        return applyProjectObjectSnapshots(projectObjects).then((snapshotResult) => {
+          restoreProjectScripts(projectScripts);
+          window._lastProjectLoad = {
+            status: 'loaded',
+            expectedObjects: projectObjects.length,
+            restoredObjects: objects.length,
+            expectedScripts: projectScripts.length,
+            commandCount: cmds.length,
+            snapshot: snapshotResult,
+            replay,
+            finishedAt: Date.now(),
+          };
+        });
+      }).catch((err) => {
+        window._lastProjectLoad = {
+          status: 'failed',
+          expectedObjects: projectObjects.length,
+          expectedScripts: projectScripts.length,
+          commandCount: cmds.length,
+          error: err?.message || String(err || 'Project load failed'),
+          finishedAt: Date.now(),
+        };
         restoreProjectScripts(projectScripts);
-      }, 350);
+      });
       return;
     }
     parseAndExecute(cmds[i]);
