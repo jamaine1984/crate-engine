@@ -145,15 +145,25 @@ onUpdate = function(dt) {
   components: {
     id: 'gb_component_runtime',
     name: 'Component Runtime',
-    description: 'Runs pickup, damage, objective, checkpoint, win, and motion tags from Game Builder.',
+    description: 'Runs pickup, damage, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
     code: `state.gbRuntime = state.gbRuntime || {};
 state.gbRuntime.health = state.gbRuntime.health ?? 100;
 state.gbRuntime.score = state.gbRuntime.score || 0;
 state.gbRuntime.objectives = state.gbRuntime.objectives || {};
 state.gbRuntime.checkpoints = state.gbRuntime.checkpoints || {};
+state.gbRuntime.spawnPoints = state.gbRuntime.spawnPoints || {};
 state.gbRuntime.winConditions = state.gbRuntime.winConditions || {};
 state.gbRuntime.gameComplete = state.gbRuntime.gameComplete || false;
 state.gbRuntime.gameOver = state.gbRuntime.gameOver || false;
+state.gbRuntime.respawns = state.gbRuntime.respawns || 0;
+state.gbRuntime.lastRespawnAt = state.gbRuntime.lastRespawnAt || -999;
+state.gbRuntime.spawnActivated = state.gbRuntime.spawnActivated || false;
+
+function escapeHud(value) {
+  return String(value || '').replace(/[&<>"']/g, function(ch) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+  });
+}
 
 function getPlayerPosition() {
   const player = getPlayer();
@@ -161,6 +171,51 @@ function getPlayerPosition() {
   if (player && player.model && player.model.position) return player.model.position;
   if (camera && camera.position) return camera.position;
   return null;
+}
+
+function copyPosition(pos, yOffset) {
+  return {
+    x: Number(pos && pos.x) || 0,
+    y: (Number(pos && pos.y) || 0) + (Number(yOffset) || 0),
+    z: Number(pos && pos.z) || 0,
+  };
+}
+
+function movePlayerTo(target) {
+  if (!target || !target.position) return false;
+  const pos = target.position;
+  const player = getPlayer();
+  const y = Number(pos.y) || 0;
+  if (player && player.position && typeof player.position.set === 'function') {
+    player.position.set(pos.x, y, pos.z);
+  }
+  if (player && player.model && player.model.position && typeof player.model.position.set === 'function') {
+    player.model.position.set(pos.x, y, pos.z);
+  }
+  if (player && player.collider && typeof player.collider.teleport === 'function') {
+    player.collider.teleport(pos.x, y, pos.z);
+  }
+  if ((!player || !player.model) && camera && camera.position && typeof camera.position.set === 'function') {
+    camera.position.set(pos.x, y + 1.6, pos.z);
+  }
+  return true;
+}
+
+function getRespawnTarget() {
+  return state.gbRuntime.activeCheckpoint || state.gbRuntime.activeSpawn || null;
+}
+
+function respawnPlayer(time) {
+  const target = getRespawnTarget();
+  if (!target || !target.position) return false;
+  if (time - (state.gbRuntime.lastRespawnAt || -999) < 1.25) return false;
+  state.gbRuntime.lastRespawnAt = time;
+  state.gbRuntime.respawns += 1;
+  state.gbRuntime.health = 100;
+  state.gbRuntime.gameOver = false;
+  movePlayerTo(target);
+  showToast('Respawned at: ' + target.label);
+  return true;
 }
 
 function getComponentHud() {
@@ -177,23 +232,29 @@ function getComponentHud() {
 function renderComponentHud() {
   const objectiveRows = Object.values(state.gbRuntime.objectives || {});
   const objectives = objectiveRows.length ? objectiveRows.map((item) => {
-    return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + item.label + '</div>';
+    return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + escapeHud(item.label) + '</div>';
   }).join('') : '<div style="color:#7d878e">No objectives tagged</div>';
-  const checkpoint = state.gbRuntime.activeCheckpoint ? '<div style="color:#f6c34a;margin-top:6px">Checkpoint: ' + state.gbRuntime.activeCheckpoint.label + '</div>' : '';
+  const spawn = state.gbRuntime.activeSpawn ? '<div style="color:#9ee7ff;margin-top:6px">Spawn: ' + escapeHud(state.gbRuntime.activeSpawn.label) + '</div>' : '';
+  const checkpoint = state.gbRuntime.activeCheckpoint ? '<div style="color:#f6c34a;margin-top:6px">Checkpoint: ' + escapeHud(state.gbRuntime.activeCheckpoint.label) + '</div>' : '';
   const wins = Object.values(state.gbRuntime.winConditions || {});
   const winRows = wins.length ? '<div style="color:#80b7ff;margin-top:6px;margin-bottom:5px;font-weight:700">Win Goals</div>' + wins.map((item) => {
-    return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + item.label + '</div>';
+    return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + escapeHud(item.label) + '</div>';
   }).join('') : '';
   const gameState = state.gbRuntime.gameComplete ? '<div style="margin-top:8px;color:#59d987;font-weight:700">Game Complete</div>' : state.gbRuntime.gameOver ? '<div style="margin-top:8px;color:#ff9b9b;font-weight:700">Game Over</div>' : '';
   getComponentHud().innerHTML =
     '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>HP</span><span>' + Math.round(state.gbRuntime.health) + '</span></div>' +
     '<div style="height:7px;background:#1c2021;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + Math.max(0, Math.min(100, state.gbRuntime.health)) + '%;background:#59d987"></div></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Score</span><span>' + state.gbRuntime.score + '</span></div>' +
-    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + checkpoint + winRows + gameState;
+    '<div style="display:flex;justify-content:space-between;margin-bottom:8px;color:#a9b3b8"><span>Respawns</span><span>' + state.gbRuntime.respawns + '</span></div>' +
+    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + spawn + checkpoint + winRows + gameState;
 }
 
 onUpdate = function(dt, time) {
   const playerPos = getPlayerPosition();
+  const isPlaying = playMode();
+  if (!isPlaying) state.gbRuntime.spawnActivated = false;
+  const nextSpawnPoints = {};
+  let firstPlayerSpawn = null;
   getObjects().forEach((obj) => {
     const components = obj && obj.userData && obj.userData.gbComponents;
     if (!components) return;
@@ -203,6 +264,21 @@ onUpdate = function(dt, time) {
       const baseY = components.float.baseY ?? obj.position.y;
       components.float.baseY = baseY;
       obj.position.y = baseY + Math.sin(time * (components.float.speed || 1.8)) * (components.float.height || 0.45);
+    }
+
+    if (components.spawnPoint && obj.position) {
+      const id = components.spawnPoint.id || obj.uuid;
+      const kind = components.spawnPoint.kind || 'player';
+      const label = components.spawnPoint.label || (kind === 'player' ? 'Player spawn' : 'Spawn point');
+      const spawnRecord = {
+        id,
+        kind,
+        label,
+        radius: components.spawnPoint.radius || 1.5,
+        position: copyPosition(obj.position, kind === 'player' ? 1.5 : 0),
+      };
+      nextSpawnPoints[id] = spawnRecord;
+      if (kind === 'player' && !firstPlayerSpawn) firstPlayerSpawn = spawnRecord;
     }
 
     if (!playerPos || !obj.position) return;
@@ -226,7 +302,7 @@ onUpdate = function(dt, time) {
       }
       if (!state.gbRuntime.checkpoints[id].reached && distance < (components.checkpoint.radius || 3)) {
         state.gbRuntime.checkpoints[id].reached = true;
-        state.gbRuntime.activeCheckpoint = { id, label: state.gbRuntime.checkpoints[id].label };
+        state.gbRuntime.activeCheckpoint = { id, label: state.gbRuntime.checkpoints[id].label, position: copyPosition(obj.position, 1.5) };
         showToast('Checkpoint reached: ' + state.gbRuntime.checkpoints[id].label);
       }
     }
@@ -265,13 +341,28 @@ onUpdate = function(dt, time) {
     }
   });
   const winRows = Object.values(state.gbRuntime.winConditions || {});
+  state.gbRuntime.spawnPoints = nextSpawnPoints;
+  if (state.gbRuntime.activeSpawn && nextSpawnPoints[state.gbRuntime.activeSpawn.id]) {
+    state.gbRuntime.activeSpawn = nextSpawnPoints[state.gbRuntime.activeSpawn.id];
+  } else if (firstPlayerSpawn) {
+    state.gbRuntime.activeSpawn = firstPlayerSpawn;
+  } else {
+    state.gbRuntime.activeSpawn = null;
+  }
   if (!state.gbRuntime.gameComplete && winRows.length && winRows.every((item) => item.done)) {
     state.gbRuntime.gameComplete = true;
     showToast('Game complete');
   }
+  if (isPlaying && !state.gbRuntime.spawnActivated && state.gbRuntime.activeSpawn) {
+    state.gbRuntime.spawnActivated = true;
+    movePlayerTo(state.gbRuntime.activeSpawn);
+    showToast('Started at: ' + state.gbRuntime.activeSpawn.label);
+  }
   if (!state.gbRuntime.gameOver && state.gbRuntime.health <= 0) {
-    state.gbRuntime.gameOver = true;
-    showToast('Game over');
+    if (!respawnPlayer(time)) {
+      state.gbRuntime.gameOver = true;
+      showToast('Game over');
+    }
   }
   renderComponentHud();
 };`,
@@ -367,7 +458,7 @@ const GAME_SYSTEMS = [
   {
     id: 'runtime',
     name: 'Component Runtime',
-    detail: 'Runs pickup, damage, objective, spin, and float tags.',
+    detail: 'Runs pickup, damage, objective, spawn, checkpoint, win, spin, and float tags.',
     script: 'components',
     scriptId: 'gb_component_runtime',
     actionLabel: 'Install',
@@ -471,6 +562,7 @@ const COMPONENT_FIELDS = {
     { key: 'height', label: 'Height', kind: 'number', step: 0.1 },
   ],
   spawnPoint: [
+    { key: 'label', label: 'Label', kind: 'text' },
     { key: 'kind', label: 'Kind', kind: 'text' },
     { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
   ],
@@ -677,7 +769,7 @@ async function ensureComponentRuntime() {
 async function ensureRuntimeForComponents(components) {
   const keys = Object.keys(components || {});
   if (keys.includes('pickup')) await installScript('inventory');
-  if (keys.some((key) => ['pickup', 'damage', 'objective', 'checkpoint', 'winCondition', 'spin', 'float'].includes(key))) {
+  if (keys.some((key) => ['pickup', 'damage', 'objective', 'checkpoint', 'winCondition', 'spawnPoint', 'spin', 'float'].includes(key))) {
     await ensureComponentRuntime();
   }
 }
@@ -721,9 +813,10 @@ async function markComponent(component) {
     components.float = { speed: 1.8, height: 0.45, baseY: target.position.y };
     await ensureComponentRuntime();
   } else if (component === 'spawnPoint') {
-    components.spawnPoint = { kind: 'player', radius: 1.5 };
+    components.spawnPoint = { id: 'spawn_' + id, label: cleanName + ' spawn', kind: 'player', radius: 1.5 };
     target.userData.interactable = true;
     target.userData.interactLabel = target.userData.interactLabel || 'Spawn point';
+    await ensureComponentRuntime();
   }
 
   notify(component.replace(/([A-Z])/g, ' $1') + ' added to ' + cleanName);

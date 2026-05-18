@@ -297,11 +297,12 @@ async function runBrowserSmoke() {
     await page.locator('button[data-gb-component="pickup"]').click({ timeout: timeoutMs });
     await page.locator('#gb-systems [data-gb-system="checkpoints"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
     await page.locator('#gb-systems [data-gb-system="win"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="spawns"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
       () => {
         const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
         const components = selected?.userData?.gbComponents || {};
-        return !!components.pickup && !!components.checkpoint && !!components.winCondition;
+        return !!components.pickup && !!components.checkpoint && !!components.winCondition && !!components.spawnPoint;
       },
       undefined,
       { timeout: timeoutMs }
@@ -318,11 +319,12 @@ async function runBrowserSmoke() {
         if (!save?.data) return null;
         const parsed = JSON.parse(save.data);
         const hasPickup = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.pickup);
+        const hasSpawnPoint = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.spawnPoint);
         const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
         const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
         const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
         const hasBuildCityCommand = commands.some((cmd) => /^(?:build (?:a |the )?(?:city|full city|the city)|generate city|city world|new city)$/i.test(String(cmd || '').trim()));
-        if (parsed.version !== 3 || !hasPickup || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
+        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
         return {
           version: parsed.version,
           objectCount: parsed.objects.length,
@@ -330,6 +332,7 @@ async function runBrowserSmoke() {
           commandCount: commands.length,
           hasBuildCityCommand,
           hasPickup,
+          hasSpawnPoint,
           hasAssetPath,
         };
       },
@@ -477,6 +480,40 @@ async function runBrowserSmoke() {
       throw new Error('Play mode left the legacy object inspector visible');
     }
 
+    await page.waitForFunction(
+      () => !!window._userScriptScope?.gbRuntime?.activeSpawn?.position,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const respawnState = await page.evaluate(() => {
+      const runtime = window._userScriptScope.gbRuntime;
+      runtime.health = 0;
+      runtime.lastRespawnAt = -999;
+      return {
+        beforeRespawns: runtime.respawns || 0,
+        activeSpawn: runtime.activeSpawn?.label || '',
+        activeCheckpoint: runtime.activeCheckpoint?.label || '',
+      };
+    });
+    const afterRespawnState = await page.waitForFunction(
+      (before) => {
+        const runtime = window._userScriptScope?.gbRuntime || {};
+        if ((runtime.respawns || 0) <= before.beforeRespawns || runtime.health < 100) return null;
+        return {
+          health: runtime.health,
+          respawns: runtime.respawns || 0,
+          activeSpawn: runtime.activeSpawn?.label || '',
+          activeCheckpoint: runtime.activeCheckpoint?.label || '',
+          gameOver: runtime.gameOver === true,
+        };
+      },
+      respawnState,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    if (afterRespawnState.gameOver || !afterRespawnState.activeSpawn) {
+      throw new Error(`Spawn runtime did not respawn cleanly: ${JSON.stringify({ before: respawnState, after: afterRespawnState })}`);
+    }
+
     await page.evaluate(() => window._setMode?.('edit'));
     await page.waitForFunction(
       () => window._currentMode === 'edit' &&
@@ -527,6 +564,7 @@ async function runBrowserSmoke() {
         readinessComponentCount: readiness.componentCount || 0,
         readinessCheckpointCount: readiness.checkpointCount || 0,
         readinessWinConditionCount: readiness.winConditionCount || 0,
+        readinessSpawnCount: readiness.spawnCount || 0,
         readinessAssetStatus: readiness.assetStatus || '',
         projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
@@ -543,11 +581,14 @@ async function runBrowserSmoke() {
     state.savedProjectScriptCount = savedProjectState.scriptCount;
     state.savedProjectCommandCount = savedProjectState.commandCount;
     state.savedProjectHasBuildCityCommand = savedProjectState.hasBuildCityCommand;
+    state.savedProjectHasSpawnPoint = savedProjectState.hasSpawnPoint;
     state.loadedProjectObjectCount = loadedProjectState.objectCount;
     state.loadedProjectScriptCount = loadedProjectState.scriptCount;
     state.loadedProjectPickupId = loadedProjectState.pickupId;
     state.loadedProjectSpawned = loadedProjectState.spawned;
     state.loadedProjectApplied = loadedProjectState.applied;
+    state.respawnHealth = afterRespawnState.health;
+    state.respawnCount = afterRespawnState.respawns;
 
     if (pageErrors.length) throw new Error(`Page errors:\n${pageErrors.join('\n')}`);
     if (badAssetResponses.length) throw new Error(`Bad model/texture responses:\n${badAssetResponses.join('\n')}`);
@@ -565,20 +606,22 @@ async function runBrowserSmoke() {
       !state.installedSystems.includes('runtime') ||
       !state.installedSystems.includes('pickups') ||
       !state.installedSystems.includes('checkpoints') ||
-      !state.installedSystems.includes('win')) {
+      !state.installedSystems.includes('win') ||
+      !state.installedSystems.includes('spawns')) {
       throw new Error(`Game Systems library did not install expected systems: ${JSON.stringify(state)}`);
     }
     if (state.readinessTone !== 'ready' ||
       state.readinessObjectCount < 100 ||
       state.readinessScriptCount < 1 ||
-      state.readinessComponentCount < 3 ||
+      state.readinessComponentCount < 4 ||
       state.readinessCheckpointCount < 1 ||
       state.readinessWinConditionCount < 1 ||
+      state.readinessSpawnCount < 1 ||
       state.readinessAssetStatus !== 'loaded') {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
-    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand) {
+    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
     }
     if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId) {
@@ -594,8 +637,11 @@ async function runBrowserSmoke() {
     }
     if (state.objectCount < 100) throw new Error(`Expected build city to create at least 100 objects, got ${state.objectCount}`);
     if (state.sceneRows < 1) throw new Error('Game Builder Scene list did not populate after build city');
-    if (!state.selectedComponents.includes('pickup') || !state.selectedComponents.includes('checkpoint') || !state.selectedComponents.includes('winCondition')) {
+    if (!state.selectedComponents.includes('pickup') || !state.selectedComponents.includes('checkpoint') || !state.selectedComponents.includes('winCondition') || !state.selectedComponents.includes('spawnPoint')) {
       throw new Error(`Required gameplay components were not applied to the selected object: ${JSON.stringify(state.selectedComponents)}`);
+    }
+    if (state.respawnHealth < 100 || state.respawnCount < 1) {
+      throw new Error(`Spawn runtime did not reset health and respawn count: ${JSON.stringify(state)}`);
     }
 
     return state;
@@ -636,6 +682,7 @@ console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
 console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'})`);
+console.log(`Respawn runtime: ${browserState.respawnCount} respawns, ${browserState.respawnHealth} HP`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);
 console.log('HTTP checks:');
