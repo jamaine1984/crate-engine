@@ -189,7 +189,7 @@ async function runBrowserSmoke() {
 
     await page.waitForFunction(
       () => Array.isArray(window._gameBuilderSystems) &&
-        window._gameBuilderSystems.length >= 17 &&
+        window._gameBuilderSystems.length >= 18 &&
         !!document.querySelector('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]'),
       undefined,
       { timeout: timeoutMs }
@@ -198,7 +198,7 @@ async function runBrowserSmoke() {
       cardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
       ids: (window._gameBuilderSystems || []).map((system) => system.id),
     }));
-    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'objectives', 'missions', 'rewards', 'gates', 'enemySpawns', 'waves', 'checkpoints', 'win', 'doors', 'triggers', 'spawns', 'damage']) {
+    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'equipment', 'objectives', 'missions', 'rewards', 'gates', 'enemySpawns', 'waves', 'checkpoints', 'win', 'doors', 'triggers', 'spawns', 'damage']) {
       if (!initialSystems.ids.includes(id)) {
         throw new Error(`Game Systems library missing ${id}: ${JSON.stringify(initialSystems)}`);
       }
@@ -348,6 +348,9 @@ async function runBrowserSmoke() {
         components.missionReward.label = 'Smoke reward';
         components.missionReward.item = 'smoke-token';
         components.missionReward.score = 75;
+        components.missionReward.xp = 40;
+        components.missionReward.slot = 'trinket';
+        components.missionReward.power = 3;
         components.missionReward.radius = 9999;
       }
       if (components.missionGate) {
@@ -388,6 +391,12 @@ async function runBrowserSmoke() {
         components.enemySpawn.damage = 1;
         components.enemySpawn.health = 20;
         components.enemySpawn.attackRadius = 1.2;
+        components.enemySpawn.dropItem = 'smoke blade';
+        components.enemySpawn.dropSlot = 'weapon';
+        components.enemySpawn.dropPower = 7;
+        components.enemySpawn.dropXp = 35;
+        components.enemySpawn.dropScore = 9;
+        components.enemySpawn.dropChance = 1;
       }
       if (components.waveController) {
         components.waveController.label = 'Smoke wave';
@@ -406,6 +415,31 @@ async function runBrowserSmoke() {
           !!components.waveController &&
           Number(components.enemySpawn.count) === 2 &&
           Number(components.waveController.count) === 2;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
+
+    await page.locator('#gb-scene-list .gb-scene-row .gb-scene-main').nth(4).click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="equipment"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.evaluate(() => {
+      const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+      const components = selected?.userData?.gbComponents || {};
+      if (components.equipmentItem) {
+        components.equipmentItem.item = 'Smoke armor';
+        components.equipmentItem.slot = 'armor';
+        components.equipmentItem.power = 2;
+        components.equipmentItem.xp = 5;
+      }
+      window._refreshGameBuilder?.();
+    });
+    await page.waitForFunction(
+      () => {
+        const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+        const components = selected?.userData?.gbComponents || {};
+        return !!components.equipmentItem &&
+          components.equipmentItem.slot === 'armor' &&
+          Number(components.equipmentItem.power) === 2;
       },
       undefined,
       { timeout: timeoutMs }
@@ -430,11 +464,12 @@ async function runBrowserSmoke() {
         const hasMissionGate = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.missionGate);
         const hasEnemySpawn = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.enemySpawn);
         const hasWaveController = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.waveController);
+        const hasEquipmentItem = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.equipmentItem);
         const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
         const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
         const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
         const hasBuildCityCommand = commands.some((cmd) => /^(?:build (?:a |the )?(?:city|full city|the city)|generate city|city world|new city)$/i.test(String(cmd || '').trim()));
-        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasMissionStep || !hasMissionReward || !hasMissionGate || !hasEnemySpawn || !hasWaveController || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
+        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasMissionStep || !hasMissionReward || !hasMissionGate || !hasEnemySpawn || !hasWaveController || !hasEquipmentItem || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
         return {
           version: parsed.version,
           objectCount: parsed.objects.length,
@@ -450,6 +485,7 @@ async function runBrowserSmoke() {
           hasMissionGate,
           hasEnemySpawn,
           hasWaveController,
+          hasEquipmentItem,
           hasAssetPath,
         };
       },
@@ -482,7 +518,8 @@ async function runBrowserSmoke() {
         const gateObj = objects.find((obj) => obj?.userData?.gbComponents?.missionGate);
         const enemySpawnObj = objects.find((obj) => obj?.userData?.gbComponents?.enemySpawn);
         const waveObj = objects.find((obj) => obj?.userData?.gbComponents?.waveController);
-        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj || !doorObj || !triggerObj || !missionObj || !rewardObj || !gateObj || !enemySpawnObj || !waveObj) return null;
+        const equipmentObj = objects.find((obj) => obj?.userData?.gbComponents?.equipmentItem);
+        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj || !doorObj || !triggerObj || !missionObj || !rewardObj || !gateObj || !enemySpawnObj || !waveObj || !equipmentObj) return null;
         return {
           status: load.status,
           objectCount: objects.length,
@@ -495,6 +532,7 @@ async function runBrowserSmoke() {
           gateId: gateObj.uuid || '',
           enemySpawnId: enemySpawnObj.uuid || '',
           waveId: waveObj.uuid || '',
+          equipmentId: equipmentObj.uuid || '',
           spawned: load.snapshot?.spawned || 0,
           applied: load.snapshot?.applied || 0,
           expected: load.snapshot?.expected || 0,
@@ -692,6 +730,81 @@ async function runBrowserSmoke() {
       undefined,
       { timeout: timeoutMs }
     );
+    await page.evaluate(() => {
+      const runtime = window._userScriptScope?.gbRuntime || {};
+      const target = runtime.activeSpawn?.position || { x: 0, y: 1.5, z: 0 };
+      const enemy = Object.values(runtime.enemies || {}).find((item) => item?.alive && item.mesh?.position);
+      if (!enemy) throw new Error('No live enemy available for drop test');
+      enemy.health = 1;
+      enemy.mesh.position.set(target.x, target.y, target.z);
+      enemy.position = { x: target.x, y: target.y, z: target.z };
+    });
+    await page.keyboard.press('KeyF');
+    await page.evaluate(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true }));
+      for (const script of window._userScripts || []) {
+        if (script && script.enabled !== false && script._running && typeof script._onKeyPress === 'function') {
+          script._onKeyPress('f');
+        }
+      }
+    });
+    const readLootState = () => {
+        const scope = window._userScriptScope || {};
+        const runtime = scope.gbRuntime || {};
+        const equipment = scope.gbEquipment || {};
+        const stats = scope.gbPlayerStats || {};
+        const inventory = Array.isArray(scope.gbInventoryItems) ? scope.gbInventoryItems : [];
+        const weapon = equipment.weapon || null;
+        const trinket = equipment.trinket || null;
+        const attack = (Number(stats.attack) || 10) + (Number(weapon?.power) || 0) + (Number(trinket?.power) || 0);
+        const hasDrop = inventory.some((item) => item?.name === 'smoke blade');
+        if (!runtime.lastEnemyDefeated || !hasDrop || weapon?.name !== 'smoke blade' || attack < 20) return null;
+        return {
+          defeated: runtime.lastEnemyDefeated.label || '',
+          drop: runtime.lastItemGrant?.name || '',
+          weapon: weapon.name || '',
+          weaponPower: Number(weapon.power) || 0,
+          trinket: trinket?.name || '',
+          trinketPower: Number(trinket?.power) || 0,
+          attack,
+          xp: Number(stats.xp) || 0,
+          inventoryCount: inventory.length,
+        };
+      };
+    const lootState = await page.waitForFunction(
+      readLootState,
+      undefined,
+      { timeout: 10000 }
+    ).then((handle) => handle.jsonValue()).catch(async () => {
+      const diagnostic = await page.evaluate(() => {
+        const scope = window._userScriptScope || {};
+        const runtime = scope.gbRuntime || {};
+        const equipment = scope.gbEquipment || {};
+        const stats = scope.gbPlayerStats || {};
+        const inventory = Array.isArray(scope.gbInventoryItems) ? scope.gbInventoryItems : [];
+        const enemies = Object.values(runtime.enemies || {}).map((enemy) => ({
+          id: enemy?.id || '',
+          alive: enemy?.alive === true,
+          health: Number(enemy?.health) || 0,
+          dropItem: enemy?.dropItem || '',
+          dropSlot: enemy?.dropSlot || '',
+          hasMesh: !!enemy?.mesh,
+        }));
+        return {
+          lastEnemyDefeated: runtime.lastEnemyDefeated || null,
+          lastItemGrant: runtime.lastItemGrant || null,
+          equipment,
+          stats,
+          inventory: inventory.map((item) => ({ name: item?.name || '', slot: item?.slot || '', power: Number(item?.power) || 0, xp: Number(item?.xp) || 0 })),
+          enemies,
+        };
+      });
+      throw new Error(`Enemy drop diagnostic: ${JSON.stringify(diagnostic)}`);
+    });
+    if (lootState.weapon !== 'smoke blade' || lootState.attack < 20 || lootState.inventoryCount < 2) {
+      throw new Error(`Enemy drop did not update inventory/equipment/stats: ${JSON.stringify(lootState)}`);
+    }
+
     const respawnState = await page.evaluate(() => {
       const runtime = window._userScriptScope.gbRuntime;
       runtime.health = 0;
@@ -769,6 +882,7 @@ async function runBrowserSmoke() {
         readinessObjectCount: readiness.objectCount || 0,
         readinessScriptCount: readiness.scriptCount || 0,
         readinessComponentCount: readiness.componentCount || 0,
+        readinessEquipmentCount: readiness.equipmentCount || 0,
         readinessCheckpointCount: readiness.checkpointCount || 0,
         readinessWinConditionCount: readiness.winConditionCount || 0,
         readinessSpawnCount: readiness.spawnCount || 0,
@@ -804,6 +918,7 @@ async function runBrowserSmoke() {
     state.savedProjectHasMissionGate = savedProjectState.hasMissionGate;
     state.savedProjectHasEnemySpawn = savedProjectState.hasEnemySpawn;
     state.savedProjectHasWaveController = savedProjectState.hasWaveController;
+    state.savedProjectHasEquipmentItem = savedProjectState.hasEquipmentItem;
     state.loadedProjectObjectCount = loadedProjectState.objectCount;
     state.loadedProjectScriptCount = loadedProjectState.scriptCount;
     state.loadedProjectPickupId = loadedProjectState.pickupId;
@@ -814,6 +929,7 @@ async function runBrowserSmoke() {
     state.loadedProjectGateId = loadedProjectState.gateId;
     state.loadedProjectEnemySpawnId = loadedProjectState.enemySpawnId;
     state.loadedProjectWaveId = loadedProjectState.waveId;
+    state.loadedProjectEquipmentId = loadedProjectState.equipmentId;
     state.loadedProjectSpawned = loadedProjectState.spawned;
     state.loadedProjectApplied = loadedProjectState.applied;
     state.respawnHealth = afterRespawnState.health;
@@ -833,6 +949,13 @@ async function runBrowserSmoke() {
     state.waveActive = waveRuntimeState.active;
     state.waveAlive = waveRuntimeState.alive;
     state.waveEnemyCount = waveRuntimeState.enemyCount;
+    state.lootDrop = lootState.drop;
+    state.lootWeapon = lootState.weapon;
+    state.lootWeaponPower = lootState.weaponPower;
+    state.lootTrinket = lootState.trinket;
+    state.lootAttack = lootState.attack;
+    state.lootXp = lootState.xp;
+    state.lootInventoryCount = lootState.inventoryCount;
 
     if (pageErrors.length) throw new Error(`Page errors:\n${pageErrors.join('\n')}`);
     if (badAssetResponses.length) throw new Error(`Bad model/texture responses:\n${badAssetResponses.join('\n')}`);
@@ -845,10 +968,11 @@ async function runBrowserSmoke() {
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
       throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
     }
-    if (state.systemCardCount < 17 ||
+    if (state.systemCardCount < 18 ||
       !state.installedSystems.includes('inventory') ||
       !state.installedSystems.includes('runtime') ||
       !state.installedSystems.includes('pickups') ||
+      !state.installedSystems.includes('equipment') ||
       !state.installedSystems.includes('missions') ||
       !state.installedSystems.includes('rewards') ||
       !state.installedSystems.includes('gates') ||
@@ -864,7 +988,8 @@ async function runBrowserSmoke() {
     if (state.readinessTone !== 'ready' ||
       state.readinessObjectCount < 100 ||
       state.readinessScriptCount < 1 ||
-      state.readinessComponentCount < 11 ||
+      state.readinessComponentCount < 12 ||
+      state.readinessEquipmentCount < 1 ||
       state.readinessCheckpointCount < 1 ||
       state.readinessWinConditionCount < 1 ||
       state.readinessSpawnCount < 1 ||
@@ -879,10 +1004,10 @@ async function runBrowserSmoke() {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
-    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate || !state.savedProjectHasEnemySpawn || !state.savedProjectHasWaveController) {
+    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate || !state.savedProjectHasEnemySpawn || !state.savedProjectHasWaveController || !state.savedProjectHasEquipmentItem) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
     }
-    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId || !state.loadedProjectMissionId || !state.loadedProjectRewardId || !state.loadedProjectGateId || !state.loadedProjectEnemySpawnId || !state.loadedProjectWaveId) {
+    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId || !state.loadedProjectMissionId || !state.loadedProjectRewardId || !state.loadedProjectGateId || !state.loadedProjectEnemySpawnId || !state.loadedProjectWaveId || !state.loadedProjectEquipmentId) {
       throw new Error(`Project load did not restore rich scene state: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
@@ -907,6 +1032,9 @@ async function runBrowserSmoke() {
     if (!state.gameplayComponents.includes('enemySpawn') || !state.gameplayComponents.includes('waveController')) {
       throw new Error(`Enemy wave components were not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
     }
+    if (!state.gameplayComponents.includes('equipmentItem')) {
+      throw new Error(`Equipment component was not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
+    }
     if (state.respawnHealth < 100 || state.respawnCount < 1) {
       throw new Error(`Spawn runtime did not reset health and respawn count: ${JSON.stringify(state)}`);
     }
@@ -918,6 +1046,9 @@ async function runBrowserSmoke() {
     }
     if (!state.waveName || state.waveEnemyCount < 2 || state.waveAlive < 1) {
       throw new Error(`Enemy wave runtime did not stay active: ${JSON.stringify(state)}`);
+    }
+    if (state.lootWeapon !== 'smoke blade' || state.lootAttack < 20 || state.lootInventoryCount < 2) {
+      throw new Error(`Inventory/equipment/drop runtime did not update stats: ${JSON.stringify(state)}`);
     }
 
     return state;
@@ -957,10 +1088,11 @@ console.log(`Placement: ${browserState.placementStatus} (${browserState.placemen
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
-console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'}, enemy spawn ${browserState.loadedProjectEnemySpawnId || 'missing'}, wave ${browserState.loadedProjectWaveId || 'missing'})`);
+console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, equipment ${browserState.loadedProjectEquipmentId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'}, enemy spawn ${browserState.loadedProjectEnemySpawnId || 'missing'}, wave ${browserState.loadedProjectWaveId || 'missing'})`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`Enemy wave runtime: ${browserState.waveName || 'missing'} from ${browserState.waveSpawn || 'missing'} (${browserState.waveEnemyCount} spawned, ${browserState.waveAlive} alive)`);
+console.log(`Inventory runtime: ${browserState.lootDrop || 'missing'} equipped ${browserState.lootWeapon || 'missing'} (${browserState.lootWeaponPower} power, ${browserState.lootAttack} attack, ${browserState.lootInventoryCount} items)`);
 console.log(`Respawn runtime: ${browserState.respawnCount} respawns, ${browserState.respawnHealth} HP`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Gameplay components: ${browserState.gameplayComponents.join(', ')}`);

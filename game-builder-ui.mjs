@@ -5,10 +5,100 @@ const PROJECT_SAVE_KEY = 'crate-saves';
 const SCRIPT_PRESETS = {
   inventory: {
     id: 'gb_inventory_hotbar',
-    name: 'Inventory Hotbar',
-    description: 'Five-slot inventory with pickup support.',
-    code: `state.gbInventory = state.gbInventory || [null, null, null, null, null];
+    name: 'Inventory + Equipment',
+    description: 'Five-slot inventory, equipment slots, and player stat display.',
+    code: `state.gbInventory = Array.isArray(state.gbInventory) ? state.gbInventory : [null, null, null, null, null];
+while (state.gbInventory.length < 5) state.gbInventory.push(null);
+state.gbInventory = state.gbInventory.slice(0, 5);
+state.gbInventoryItems = Array.isArray(state.gbInventoryItems) ? state.gbInventoryItems : [];
 state.gbInventorySlot = state.gbInventorySlot || 0;
+state.gbEquipment = state.gbEquipment || { weapon: null, armor: null, trinket: null };
+state.gbPlayerStats = state.gbPlayerStats || { level: 1, xp: 0, attack: 10, defense: 0, speed: 1, attackRange: 4 };
+
+function escapeInventory(value) {
+  return String(value || '').replace(/[&<>"']/g, function(ch) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+  });
+}
+
+function normalizeInventoryItem(raw, fallbackName) {
+  if (raw && typeof raw === 'object') {
+    return {
+      id: raw.id || ('item_' + Date.now() + '_' + Math.floor(Math.random() * 1000)),
+      name: raw.name || raw.item || fallbackName || 'Item',
+      type: raw.type || 'item',
+      slot: raw.slot || '',
+      power: Number(raw.power) || 0,
+      score: Number(raw.score) || 0,
+      xp: Number(raw.xp) || 0,
+    };
+  }
+  return {
+    id: 'item_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    name: raw || fallbackName || 'Item',
+    type: 'item',
+    slot: '',
+    power: 0,
+    score: 0,
+    xp: 0,
+  };
+}
+
+function getEquippedBonus(slot) {
+  const item = state.gbEquipment && state.gbEquipment[slot];
+  return item && Number(item.power) ? Number(item.power) : 0;
+}
+
+function getStats() {
+  const stats = state.gbPlayerStats || {};
+  return {
+    level: Math.max(1, Number(stats.level) || 1),
+    xp: Math.max(0, Number(stats.xp) || 0),
+    attack: Math.max(0, Number(stats.attack) || 10) + getEquippedBonus('weapon') + getEquippedBonus('trinket'),
+    defense: Math.max(0, Number(stats.defense) || 0) + getEquippedBonus('armor'),
+    speed: Math.max(0.1, Number(stats.speed) || 1),
+    attackRange: Math.max(1, Number(stats.attackRange) || 4),
+  };
+}
+
+function addPlayerXp(amount) {
+  const gain = Math.max(0, Number(amount) || 0);
+  if (!gain) return;
+  state.gbPlayerStats.xp = Math.max(0, Number(state.gbPlayerStats.xp) || 0) + gain;
+  while (state.gbPlayerStats.xp >= state.gbPlayerStats.level * 100) {
+    state.gbPlayerStats.xp -= state.gbPlayerStats.level * 100;
+    state.gbPlayerStats.level += 1;
+    state.gbPlayerStats.attack += 2;
+    state.gbPlayerStats.defense += 1;
+    showToast('Level up: ' + state.gbPlayerStats.level);
+  }
+}
+
+function equipInventoryItem(item) {
+  if (!item || !item.slot) return false;
+  if (!['weapon', 'armor', 'trinket'].includes(item.slot)) return false;
+  state.gbEquipment[item.slot] = item;
+  state.gbRuntime = state.gbRuntime || {};
+  state.gbRuntime.lastEquippedItem = { name: item.name, slot: item.slot, power: item.power };
+  showToast('Equipped ' + item.slot + ': ' + item.name);
+  return true;
+}
+
+function addInventoryItem(raw, options) {
+  const item = normalizeInventoryItem(raw, options && options.name);
+  state.gbInventoryItems.push(item);
+  const preferred = Math.max(0, Math.min(4, Number(state.gbInventorySlot) || 0));
+  let slot = state.gbInventory.findIndex((entry) => !entry);
+  if (slot < 0) slot = preferred;
+  state.gbInventory[slot] = item;
+  state.gbInventorySlot = slot;
+  if (item.xp) addPlayerXp(item.xp);
+  if (item.slot) equipInventoryItem(item);
+  state.gbRuntime = state.gbRuntime || {};
+  state.gbRuntime.lastInventoryItem = { name: item.name, slot: item.slot || '', power: item.power || 0, xp: item.xp || 0 };
+  showToast('Added item: ' + item.name);
+  return item;
+}
 
 let hotbar = document.getElementById('gb-hotbar');
 if (!hotbar) {
@@ -20,9 +110,24 @@ if (!hotbar) {
 
 function renderHotbar() {
   hotbar.innerHTML = state.gbInventory.map((item, index) => {
+    item = normalizeInventoryItem(item, '');
     const active = index === state.gbInventorySlot;
-    return '<div style="width:52px;height:52px;border:' + (active ? '2px solid #59d987' : '1px solid #333') + ';background:' + (active ? 'rgba(89,217,135,0.14)' : 'rgba(5,5,5,0.78)') + ';border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#f5f5f5;font-size:10px"><span style="color:#888">' + (index + 1) + '</span><span>' + (item ? String(item).slice(0, 7) : '') + '</span></div>';
+    const label = state.gbInventory[index] ? escapeInventory(item.name).slice(0, 8) : '';
+    const slot = item && item.slot ? escapeInventory(item.slot).slice(0, 5) : '';
+    return '<div style="width:58px;height:56px;border:' + (active ? '2px solid #59d987' : '1px solid #333') + ';background:' + (active ? 'rgba(89,217,135,0.14)' : 'rgba(5,5,5,0.78)') + ';border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#f5f5f5;font-size:10px;line-height:13px"><span style="color:#888">' + (index + 1) + '</span><span>' + label + '</span><span style="color:#9ee7ff">' + slot + '</span></div>';
   }).join('');
+  const stats = getStats();
+  const equipment = state.gbEquipment || {};
+  const equipmentRows = ['weapon', 'armor', 'trinket'].map((slot) => {
+    const item = equipment[slot];
+    return '<div style="display:flex;justify-content:space-between;gap:8px"><span>' + slot + '</span><strong>' + escapeInventory(item ? item.name : '-') + '</strong></div>';
+  }).join('');
+  hotbar.innerHTML += '<div style="min-width:172px;border:1px solid #2f3536;background:rgba(5,5,5,0.78);border-radius:8px;padding:7px 8px;color:#dfe6ea;font-size:10px;line-height:14px">' +
+    '<div style="display:flex;justify-content:space-between;color:#59d987"><strong>Stats</strong><span>Lv ' + stats.level + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between"><span>ATK</span><strong>' + stats.attack + '</strong><span>DEF</span><strong>' + stats.defense + '</strong></div>' +
+    '<div style="display:flex;justify-content:space-between"><span>XP</span><strong>' + Math.round(stats.xp) + '/' + (stats.level * 100) + '</strong></div>' +
+    equipmentRows +
+    '</div>';
 }
 
 onKeyPress = function(key) {
@@ -30,7 +135,12 @@ onKeyPress = function(key) {
     state.gbInventorySlot = Number(key) - 1;
     renderHotbar();
   }
-  if (key === 'e') {
+  if (key === 'q') {
+    const item = state.gbInventory[state.gbInventorySlot];
+    if (item) equipInventoryItem(normalizeInventoryItem(item, 'Item'));
+    renderHotbar();
+  }
+  if (key === 'e' && !playMode()) {
     const player = getPlayer();
     if (!player) return;
     let closest = null;
@@ -44,9 +154,8 @@ onKeyPress = function(key) {
       }
     });
     if (closest) {
-      state.gbInventory[state.gbInventorySlot] = closest.userData.name;
+      addInventoryItem({ name: closest.userData.name || 'Item', type: 'world' });
       scene.remove(closest);
-      showToast('Picked up: ' + closest.userData.name);
       renderHotbar();
     }
   }
@@ -145,7 +254,7 @@ onUpdate = function(dt) {
   components: {
     id: 'gb_component_runtime',
     name: 'Component Runtime',
-    description: 'Runs pickup, damage, mission, reward, gate, enemy, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
+    description: 'Runs pickup, equipment, damage, mission, reward, gate, enemy, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
     code: `state.gbRuntime = state.gbRuntime || {};
 state.gbRuntime.health = state.gbRuntime.health ?? 100;
 state.gbRuntime.score = state.gbRuntime.score || 0;
@@ -161,6 +270,14 @@ state.gbRuntime.enemySpawns = state.gbRuntime.enemySpawns || {};
 state.gbRuntime.waves = state.gbRuntime.waves || {};
 state.gbRuntime.enemies = state.gbRuntime.enemies || {};
 state.gbRuntime.winConditions = state.gbRuntime.winConditions || {};
+state.gbInventory = Array.isArray(state.gbInventory) ? state.gbInventory : [null, null, null, null, null];
+while (state.gbInventory.length < 5) state.gbInventory.push(null);
+state.gbInventory = state.gbInventory.slice(0, 5);
+state.gbInventoryItems = Array.isArray(state.gbInventoryItems) ? state.gbInventoryItems : [];
+state.gbInventorySlot = state.gbInventorySlot || 0;
+state.gbEquipment = state.gbEquipment || { weapon: null, armor: null, trinket: null };
+state.gbPlayerStats = state.gbPlayerStats || { level: 1, xp: 0, attack: 10, defense: 0, speed: 1, attackRange: 4 };
+state.gbRuntime.playerStats = state.gbPlayerStats;
 state.gbRuntime.gameComplete = state.gbRuntime.gameComplete || false;
 state.gbRuntime.gameOver = state.gbRuntime.gameOver || false;
 state.gbRuntime.respawns = state.gbRuntime.respawns || 0;
@@ -227,6 +344,96 @@ function isRequirementMet(requiredStepId, steps) {
   if (required === 'all') return rows.length > 0 && rows.every((item) => item.done);
   if (required === 'any') return rows.some((item) => item.done);
   return !!steps?.[required]?.done;
+}
+
+function normalizeRuntimeItem(config, fallbackName) {
+  const source = config || {};
+  const name = source.name || source.item || fallbackName || 'Item';
+  return {
+    id: source.id || ('item_' + Date.now() + '_' + Math.floor(Math.random() * 1000)),
+    name,
+    type: source.type || (source.slot ? 'equipment' : 'item'),
+    slot: source.slot || '',
+    power: Number(source.power) || 0,
+    score: Number(source.score) || 0,
+    xp: Number(source.xp) || 0,
+  };
+}
+
+function getEquippedBonus(slot) {
+  const item = state.gbEquipment && state.gbEquipment[slot];
+  return item && Number(item.power) ? Number(item.power) : 0;
+}
+
+function getRuntimeStats() {
+  const stats = state.gbPlayerStats || {};
+  return {
+    level: Math.max(1, Number(stats.level) || 1),
+    xp: Math.max(0, Number(stats.xp) || 0),
+    attack: Math.max(0, Number(stats.attack) || 10) + getEquippedBonus('weapon') + getEquippedBonus('trinket'),
+    defense: Math.max(0, Number(stats.defense) || 0) + getEquippedBonus('armor'),
+    speed: Math.max(0.1, Number(stats.speed) || 1),
+    attackRange: Math.max(1, Number(stats.attackRange) || 4),
+  };
+}
+
+function addPlayerXp(amount) {
+  const gain = Math.max(0, Number(amount) || 0);
+  if (!gain) return;
+  state.gbPlayerStats.xp = Math.max(0, Number(state.gbPlayerStats.xp) || 0) + gain;
+  while (state.gbPlayerStats.xp >= state.gbPlayerStats.level * 100) {
+    state.gbPlayerStats.xp -= state.gbPlayerStats.level * 100;
+    state.gbPlayerStats.level += 1;
+    state.gbPlayerStats.attack += 2;
+    state.gbPlayerStats.defense += 1;
+    showToast('Level up: ' + state.gbPlayerStats.level);
+  }
+  state.gbRuntime.playerStats = state.gbPlayerStats;
+}
+
+function equipRuntimeItem(item) {
+  if (!item || !item.slot) return false;
+  if (!['weapon', 'armor', 'trinket'].includes(item.slot)) return false;
+  state.gbEquipment[item.slot] = item;
+  state.gbRuntime.lastEquippedItem = { name: item.name, slot: item.slot, power: item.power || 0 };
+  return true;
+}
+
+function addInventoryItem(item) {
+  state.gbInventoryItems.push(item);
+  const preferred = Math.max(0, Math.min(4, Number(state.gbInventorySlot) || 0));
+  let slotIndex = state.gbInventory.findIndex((entry) => !entry);
+  if (slotIndex < 0) slotIndex = preferred;
+  state.gbInventory[slotIndex] = item;
+  state.gbInventorySlot = slotIndex;
+  if (item.xp) addPlayerXp(item.xp);
+  if (item.slot) equipRuntimeItem(item);
+  state.gbRuntime.lastInventoryItem = { name: item.name, slot: item.slot || '', power: item.power || 0, xp: item.xp || 0 };
+  return item;
+}
+
+function grantRuntimeItem(config, fallbackName, source) {
+  const item = normalizeRuntimeItem(config, fallbackName);
+  if (item.score) state.gbRuntime.score += item.score;
+  addInventoryItem(item);
+  state.gbRuntime.lastItemGrant = {
+    name: item.name,
+    slot: item.slot || '',
+    power: item.power || 0,
+    score: item.score || 0,
+    xp: item.xp || 0,
+    source: source || 'gameplay',
+  };
+  showToast('Item: ' + item.name);
+  return item;
+}
+
+function getAttackDamage() {
+  return Math.max(1, Math.round(getRuntimeStats().attack));
+}
+
+function getAttackRange() {
+  return Math.max(1, Number(getRuntimeStats().attackRange) || 4);
 }
 
 function movePlayerTo(target) {
@@ -346,6 +553,12 @@ function createRuntimeEnemy(spawn, wave, index) {
     damage: Math.max(0, Number(wave.enemyDamage) || Number(spawn.damage) || 5),
     attackRadius: Math.max(0.25, Number(wave.attackRadius) || Number(spawn.attackRadius) || 2.3),
     attackCooldown: Math.max(0.15, Number(wave.attackCooldown) || Number(spawn.attackCooldown) || 1.2),
+    dropItem: wave.dropItem || spawn.dropItem || 'Enemy scrap',
+    dropSlot: wave.dropSlot || spawn.dropSlot || '',
+    dropPower: Math.max(0, Number(wave.dropPower) || Number(spawn.dropPower) || 0),
+    dropScore: Math.max(0, Number(wave.dropScore) || Number(spawn.dropScore) || 5),
+    dropXp: Math.max(0, Number(wave.dropXp) || Number(spawn.dropXp) || 10),
+    dropChance: Math.max(0, Math.min(1, Number(wave.dropChance) > 0 ? Number(wave.dropChance) : Number(spawn.dropChance ?? 1))),
     lastAttackAt: -999,
     position: copyPosition(mesh.position, 0),
   };
@@ -361,7 +574,18 @@ function defeatEnemy(record, time) {
   removeEnemyRecord(record);
   record.mesh = null;
   state.gbRuntime.lastEnemyDefeated = { id: record.id, label: record.label, waveId: record.waveId, defeatedAt: time };
-  state.gbRuntime.score += 5;
+  const chance = Math.max(0, Math.min(1, Number(record.dropChance) || 0));
+  if (chance > 0 && (chance >= 1 || Math.random() <= chance)) {
+    grantRuntimeItem({
+      name: record.dropItem || 'Enemy scrap',
+      item: record.dropItem || 'Enemy scrap',
+      type: record.dropSlot ? 'equipment' : 'drop',
+      slot: record.dropSlot || '',
+      power: record.dropPower || 0,
+      score: record.dropScore || 0,
+      xp: record.dropXp || 0,
+    }, record.dropItem || 'Enemy scrap', 'enemyDrop');
+  }
   showToast('Enemy defeated: ' + record.label);
   return true;
 }
@@ -470,6 +694,12 @@ function renderComponentHud() {
     return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + escapeHud(item.label) + '</div>';
   }).join('') : '';
   const reward = state.gbRuntime.lastReward ? '<div style="color:#59d987;margin-top:6px">Reward: ' + escapeHud(state.gbRuntime.lastReward.label) + '</div>' : '';
+  const stats = getRuntimeStats();
+  const equipment = state.gbEquipment || {};
+  const statRows = '<div style="color:#80b7ff;margin-top:6px;margin-bottom:5px;font-weight:700">Player</div>' +
+    '<div style="display:flex;justify-content:space-between;color:#d6e0e6"><span>Level ' + stats.level + '</span><span>ATK ' + stats.attack + ' | DEF ' + stats.defense + '</span></div>' +
+    '<div style="color:#a9b3b8">Weapon: ' + escapeHud(equipment.weapon?.name || '-') + '</div>' +
+    '<div style="color:#a9b3b8">Armor: ' + escapeHud(equipment.armor?.name || '-') + '</div>';
   const waves = Object.values(state.gbRuntime.waves || {});
   const enemies = Object.values(state.gbRuntime.enemies || {});
   const aliveEnemies = enemies.filter((item) => item && item.alive).length;
@@ -484,13 +714,13 @@ function renderComponentHud() {
     '<div style="height:7px;background:#1c2021;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + Math.max(0, Math.min(100, state.gbRuntime.health)) + '%;background:#59d987"></div></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Score</span><span>' + state.gbRuntime.score + '</span></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px;color:#a9b3b8"><span>Respawns</span><span>' + state.gbRuntime.respawns + '</span></div>' +
-    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + missionRows + reward + spawn + checkpoint + winRows + doorRows + trigger + waveRows + enemyRows + gameState;
+    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + missionRows + reward + statRows + spawn + checkpoint + winRows + doorRows + trigger + waveRows + enemyRows + gameState;
 }
 
 onKeyPress = function(key) {
   if (!playMode()) return;
   if (key === 'f' || key === 'e' || key === ' ') {
-    damageClosestEnemy(25, 4, Date.now() * 0.001);
+    damageClosestEnemy(getAttackDamage(), getAttackRange(), Date.now() * 0.001);
   }
 };
 
@@ -550,6 +780,12 @@ onUpdate = function(dt, time) {
         health: Math.max(1, Number(components.enemySpawn.health) || 30),
         attackRadius: Math.max(0.25, Number(components.enemySpawn.attackRadius) || 2.3),
         attackCooldown: Math.max(0.15, Number(components.enemySpawn.attackCooldown) || 1.2),
+        dropItem: components.enemySpawn.dropItem || 'Enemy scrap',
+        dropSlot: components.enemySpawn.dropSlot || '',
+        dropPower: Math.max(0, Number(components.enemySpawn.dropPower) || 0),
+        dropScore: Math.max(0, Number(components.enemySpawn.dropScore) || 5),
+        dropXp: Math.max(0, Number(components.enemySpawn.dropXp) || 10),
+        dropChance: Math.max(0, Math.min(1, Number(components.enemySpawn.dropChance ?? 1))),
         position: copyPosition(obj.position, 0),
       };
     }
@@ -569,6 +805,12 @@ onUpdate = function(dt, time) {
         attackRadius: Math.max(0, Number(components.waveController.attackRadius) || 0),
         attackCooldown: Math.max(0, Number(components.waveController.attackCooldown) || 0),
         rewardScore: Math.max(0, Number(components.waveController.rewardScore) || 0),
+        dropItem: components.waveController.dropItem || '',
+        dropSlot: components.waveController.dropSlot || '',
+        dropPower: Math.max(0, Number(components.waveController.dropPower) || 0),
+        dropScore: Math.max(0, Number(components.waveController.dropScore) || 0),
+        dropXp: Math.max(0, Number(components.waveController.dropXp) || 0),
+        dropChance: Math.max(0, Math.min(1, Number(components.waveController.dropChance ?? 0))),
         spawned: isPlaying ? previous.spawned === true : false,
         startedAt: previous.startedAt || 0,
         alive: isPlaying ? previous.alive || 0 : 0,
@@ -670,6 +912,9 @@ onUpdate = function(dt, time) {
       const radius = Number(components.missionReward.radius) || 3;
       const score = Number(components.missionReward.score) || 25;
       const item = components.missionReward.item || 'Reward';
+      const slot = components.missionReward.slot || '';
+      const power = Math.max(0, Number(components.missionReward.power) || 0);
+      const xp = Math.max(0, Number(components.missionReward.xp) || 0);
       const requiredStepId = components.missionReward.requiredStepId || 'all';
       const steps = { ...state.gbRuntime.missionSteps, ...nextMissionSteps };
       const canClaim = isPlaying && isRequirementMet(requiredStepId, steps);
@@ -679,18 +924,17 @@ onUpdate = function(dt, time) {
         label: components.missionReward.label || item,
         item,
         score,
+        slot,
+        power,
+        xp,
         radius,
         requiredStepId,
         claimed,
         position: copyPosition(obj.position, 0),
       };
       if (!previous.claimed && claimed) {
-        state.gbRuntime.score += score;
-        if (Array.isArray(state.gbInventory)) {
-          const slot = typeof state.gbInventorySlot === 'number' ? state.gbInventorySlot : 0;
-          state.gbInventory[slot] = item;
-        }
-        state.gbRuntime.lastReward = { id, label: rewardRecord.label, item, score, claimedAt: time };
+        grantRuntimeItem({ name: item, item, type: slot ? 'equipment' : 'reward', slot, power, score, xp }, item, 'missionReward');
+        state.gbRuntime.lastReward = { id, label: rewardRecord.label, item, score, slot, power, xp, claimedAt: time };
         showToast('Reward: ' + rewardRecord.label + ' +' + score);
       }
       nextRewards[id] = rewardRecord;
@@ -770,13 +1014,33 @@ onUpdate = function(dt, time) {
     if (components.pickup && !obj.userData.gbCollected && distance < (components.pickup.radius || 2.5)) {
       obj.userData.gbCollected = true;
       const item = components.pickup.item || obj.userData.name || 'item';
-      state.gbRuntime.score += components.pickup.score || 10;
-      if (Array.isArray(state.gbInventory)) {
-        const slot = typeof state.gbInventorySlot === 'number' ? state.gbInventorySlot : 0;
-        state.gbInventory[slot] = item;
-      }
+      grantRuntimeItem({
+        name: item,
+        item,
+        type: components.pickup.slot ? 'equipment' : 'pickup',
+        slot: components.pickup.slot || '',
+        power: Math.max(0, Number(components.pickup.power) || 0),
+        score: components.pickup.score || 10,
+        xp: Math.max(0, Number(components.pickup.xp) || 0),
+      }, item, 'pickup');
       scene.remove(obj);
       showToast('Collected: ' + item);
+    }
+
+    if (components.equipmentItem && !obj.userData.gbCollected && distance < (components.equipmentItem.radius || 2.5)) {
+      obj.userData.gbCollected = true;
+      const item = components.equipmentItem.item || obj.userData.name || 'equipment';
+      grantRuntimeItem({
+        name: item,
+        item,
+        type: 'equipment',
+        slot: components.equipmentItem.slot || 'weapon',
+        power: Math.max(0, Number(components.equipmentItem.power) || 1),
+        score: Math.max(0, Number(components.equipmentItem.score) || 0),
+        xp: Math.max(0, Number(components.equipmentItem.xp) || 0),
+      }, item, 'equipment');
+      scene.remove(obj);
+      showToast('Equipped item: ' + item);
     }
 
     if (components.damage && distance < (components.damage.radius || 2.5)) {
@@ -927,8 +1191,8 @@ const PROJECT_ACTIONS = [
 const GAME_SYSTEMS = [
   {
     id: 'inventory',
-    name: 'Inventory',
-    detail: 'Five-slot hotbar for pickup-based games.',
+    name: 'Inventory + Equipment',
+    detail: 'Five-slot hotbar, equipment slots, and player stats.',
     script: 'inventory',
     scriptId: 'gb_inventory_hotbar',
     actionLabel: 'Install',
@@ -952,7 +1216,7 @@ const GAME_SYSTEMS = [
   {
     id: 'runtime',
     name: 'Component Runtime',
-    detail: 'Runs pickup, damage, mission, gate, enemy, objective, spawn, checkpoint, win, spin, and float tags.',
+    detail: 'Runs pickup, equipment, damage, mission, gate, enemy, objective, spawn, checkpoint, win, spin, and float tags.',
     script: 'components',
     scriptId: 'gb_component_runtime',
     actionLabel: 'Install',
@@ -963,6 +1227,14 @@ const GAME_SYSTEMS = [
     detail: 'Make selected objects collectible.',
     component: 'pickup',
     countKey: 'pickup',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'equipment',
+    name: 'Equipment Item',
+    detail: 'Make selected objects equippable inventory items.',
+    component: 'equipmentItem',
+    countKey: 'equipmentItem',
     actionLabel: 'Tag Selected',
   },
   {
@@ -1068,6 +1340,7 @@ const EDIT_ONLY_ACTIONS = new Set(['assets', 'import', 'load', 'save', 'scripts'
 const COMPONENT_PRESETS = [
   { label: 'Collider', component: 'collider', title: 'Tag the current object as solid scene geometry.' },
   { label: 'Pickup', component: 'pickup', title: 'Make the current object collectible.' },
+  { label: 'Equip Item', component: 'equipmentItem', title: 'Make the current object an equippable inventory item.' },
   { label: 'Damage', component: 'damage', title: 'Make the current object damage the player nearby.' },
   { label: 'Objective', component: 'objective', title: 'Make the current object complete an objective when reached.' },
   { label: 'Mission', component: 'missionStep', title: 'Make the current object advance mission progress.' },
@@ -1092,6 +1365,17 @@ const COMPONENT_FIELDS = {
   pickup: [
     { key: 'item', label: 'Item', kind: 'text' },
     { key: 'score', label: 'Score', kind: 'number', step: 1 },
+    { key: 'xp', label: 'XP', kind: 'number', step: 1 },
+    { key: 'slot', label: 'Equip Slot', kind: 'text' },
+    { key: 'power', label: 'Power', kind: 'number', step: 1 },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  equipmentItem: [
+    { key: 'item', label: 'Item', kind: 'text' },
+    { key: 'slot', label: 'Slot', kind: 'text' },
+    { key: 'power', label: 'Power', kind: 'number', step: 1 },
+    { key: 'score', label: 'Score', kind: 'number', step: 1 },
+    { key: 'xp', label: 'XP', kind: 'number', step: 1 },
     { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
   ],
   damage: [
@@ -1113,6 +1397,9 @@ const COMPONENT_FIELDS = {
     { key: 'label', label: 'Label', kind: 'text' },
     { key: 'item', label: 'Item', kind: 'text' },
     { key: 'score', label: 'Score', kind: 'number', step: 1 },
+    { key: 'xp', label: 'XP', kind: 'number', step: 1 },
+    { key: 'slot', label: 'Equip Slot', kind: 'text' },
+    { key: 'power', label: 'Power', kind: 'number', step: 1 },
     { key: 'requiredStepId', label: 'Requires', kind: 'text' },
     { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
   ],
@@ -1133,6 +1420,12 @@ const COMPONENT_FIELDS = {
     { key: 'health', label: 'Health', kind: 'number', step: 1 },
     { key: 'attackRadius', label: 'Attack', kind: 'number', step: 0.1 },
     { key: 'attackCooldown', label: 'Cooldown', kind: 'number', step: 0.1 },
+    { key: 'dropItem', label: 'Drop', kind: 'text' },
+    { key: 'dropSlot', label: 'Drop Slot', kind: 'text' },
+    { key: 'dropPower', label: 'Drop Power', kind: 'number', step: 1 },
+    { key: 'dropXp', label: 'Drop XP', kind: 'number', step: 1 },
+    { key: 'dropScore', label: 'Drop Score', kind: 'number', step: 1 },
+    { key: 'dropChance', label: 'Drop Chance', kind: 'number', step: 0.1 },
   ],
   waveController: [
     { key: 'label', label: 'Label', kind: 'text' },
@@ -1143,6 +1436,12 @@ const COMPONENT_FIELDS = {
     { key: 'enemyDamage', label: 'Damage', kind: 'number', step: 1 },
     { key: 'enemyHealth', label: 'Health', kind: 'number', step: 1 },
     { key: 'rewardScore', label: 'Reward', kind: 'number', step: 1 },
+    { key: 'dropItem', label: 'Drop', kind: 'text' },
+    { key: 'dropSlot', label: 'Drop Slot', kind: 'text' },
+    { key: 'dropPower', label: 'Drop Power', kind: 'number', step: 1 },
+    { key: 'dropXp', label: 'Drop XP', kind: 'number', step: 1 },
+    { key: 'dropScore', label: 'Drop Score', kind: 'number', step: 1 },
+    { key: 'dropChance', label: 'Drop Chance', kind: 'number', step: 0.1 },
   ],
   checkpoint: [
     { key: 'label', label: 'Label', kind: 'text' },
@@ -1379,8 +1678,8 @@ async function ensureComponentRuntime() {
 
 async function ensureRuntimeForComponents(components) {
   const keys = Object.keys(components || {});
-  if (keys.includes('pickup')) await installScript('inventory');
-  if (keys.some((key) => ['pickup', 'damage', 'objective', 'missionStep', 'missionReward', 'missionGate', 'enemySpawn', 'waveController', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
+  if (keys.some((key) => ['pickup', 'equipmentItem', 'missionReward', 'enemySpawn', 'waveController'].includes(key))) await installScript('inventory');
+  if (keys.some((key) => ['pickup', 'equipmentItem', 'damage', 'objective', 'missionStep', 'missionReward', 'missionGate', 'enemySpawn', 'waveController', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
     await ensureComponentRuntime();
   }
 }
@@ -1398,7 +1697,13 @@ async function markComponent(component) {
     target.userData.interactable = true;
     target.userData.interactLabel = target.userData.interactLabel || 'Inspect';
   } else if (component === 'pickup') {
-    components.pickup = { item: cleanName, score: 10, radius: 2.5 };
+    components.pickup = { item: cleanName, score: 10, xp: 0, slot: '', power: 0, radius: 2.5 };
+    await installScript('inventory');
+    await ensureComponentRuntime();
+  } else if (component === 'equipmentItem') {
+    components.equipmentItem = { item: cleanName, slot: 'weapon', power: 2, score: 0, xp: 10, radius: 2.5 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Equip';
     await installScript('inventory');
     await ensureComponentRuntime();
   } else if (component === 'damage') {
@@ -1413,9 +1718,10 @@ async function markComponent(component) {
     target.userData.interactLabel = target.userData.interactLabel || 'Mission';
     await ensureComponentRuntime();
   } else if (component === 'missionReward') {
-    components.missionReward = { id: 'reward_' + id, label: cleanName + ' reward', item: cleanName + ' token', score: 25, requiredStepId: 'all', radius: 3 };
+    components.missionReward = { id: 'reward_' + id, label: cleanName + ' reward', item: cleanName + ' token', score: 25, xp: 10, slot: '', power: 0, requiredStepId: 'all', radius: 3 };
     target.userData.interactable = true;
     target.userData.interactLabel = target.userData.interactLabel || 'Reward';
+    await installScript('inventory');
     await ensureComponentRuntime();
   } else if (component === 'missionGate') {
     components.missionGate = { id: 'gate_' + id, label: cleanName + ' gate', requiredStepId: 'all', axis: 'y', distance: 3, speed: 2.5 };
@@ -1423,14 +1729,16 @@ async function markComponent(component) {
     target.userData.interactLabel = target.userData.interactLabel || 'Gate';
     await ensureComponentRuntime();
   } else if (component === 'enemySpawn') {
-    components.enemySpawn = { id: 'enemy_spawn_' + id, label: cleanName + ' enemy spawn', enemyType: 'crawler', count: 3, radius: 2, speed: 1.2, damage: 5, health: 30, attackRadius: 2.3, attackCooldown: 1.2 };
+    components.enemySpawn = { id: 'enemy_spawn_' + id, label: cleanName + ' enemy spawn', enemyType: 'crawler', count: 3, radius: 2, speed: 1.2, damage: 5, health: 30, attackRadius: 2.3, attackCooldown: 1.2, dropItem: cleanName + ' scrap', dropSlot: '', dropPower: 0, dropXp: 10, dropScore: 5, dropChance: 1 };
     target.userData.interactable = true;
     target.userData.interactLabel = target.userData.interactLabel || 'Enemy spawn';
+    await installScript('inventory');
     await ensureComponentRuntime();
   } else if (component === 'waveController') {
-    components.waveController = { id: 'wave_' + id, label: 'Wave 1', wave: 1, count: 3, spawnGroup: 'nearest', enemySpeed: 0, enemyDamage: 0, enemyHealth: 0, rewardScore: 50 };
+    components.waveController = { id: 'wave_' + id, label: 'Wave 1', wave: 1, count: 3, spawnGroup: 'nearest', enemySpeed: 0, enemyDamage: 0, enemyHealth: 0, rewardScore: 50, dropItem: '', dropSlot: '', dropPower: 0, dropXp: 0, dropScore: 0, dropChance: 0 };
     target.userData.interactable = true;
     target.userData.interactLabel = target.userData.interactLabel || 'Wave';
+    await installScript('inventory');
     await ensureComponentRuntime();
   } else if (component === 'checkpoint') {
     components.checkpoint = { id: 'checkpoint_' + id, label: cleanName + ' checkpoint', radius: 3 };
@@ -1618,6 +1926,7 @@ function collectReadiness() {
   const mode = formatModeLabel(getCurrentMode());
   const spawnCount = componentCounts.byType.spawnPoint || 0;
   const pickupCount = componentCounts.byType.pickup || 0;
+  const equipmentCount = componentCounts.byType.equipmentItem || 0;
   const objectiveCount = componentCounts.byType.objective || 0;
   const checkpointCount = componentCounts.byType.checkpoint || 0;
   const winConditionCount = componentCounts.byType.winCondition || 0;
@@ -1659,6 +1968,7 @@ function collectReadiness() {
     componentCount: componentCounts.total,
     spawnCount,
     pickupCount,
+    equipmentCount,
     objectiveCount,
     checkpointCount,
     winConditionCount,
@@ -1710,7 +2020,7 @@ function renderReadinessStatus() {
   list.replaceChildren(
     createReadinessRow('World', readiness.objectCount + ' objects'),
     createReadinessRow('Gameplay', readiness.scriptCount + ' scripts | ' + readiness.componentCount + ' components'),
-    createReadinessRow('Progress', readiness.pickupCount + ' pickups | ' + readiness.checkpointCount + ' checkpoints'),
+    createReadinessRow('Progress', readiness.pickupCount + ' pickups | ' + readiness.equipmentCount + ' equipment | ' + readiness.checkpointCount + ' checkpoints'),
     createReadinessRow('Goals', readiness.objectiveCount + ' objectives | ' + readiness.winConditionCount + ' wins'),
     createReadinessRow('Missions', readiness.missionStepCount + ' steps | ' + readiness.rewardCount + ' rewards | ' + readiness.gateCount + ' gates'),
     createReadinessRow('Enemies', readiness.enemySpawnCount + ' spawns | ' + readiness.waveCount + ' waves'),

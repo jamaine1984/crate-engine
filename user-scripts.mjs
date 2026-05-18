@@ -5,6 +5,7 @@ const USER_SCRIPTS_STORAGE_KEY = 'crate-user-scripts';
 
 let listenersAttached = false;
 let savedScriptsLoaded = false;
+const KEYDOWN_HANDLED_FLAG = '__crateUserScriptKeyHandled';
 let context = {
   getScene: () => null,
   getCamera: () => null,
@@ -112,6 +113,12 @@ function createUserScriptSandbox() {
 }
 
 function handleUserScriptKeydown(event) {
+  if (event[KEYDOWN_HANDLED_FLAG]) return;
+  try {
+    Object.defineProperty(event, KEYDOWN_HANDLED_FLAG, { value: true });
+  } catch {
+    event[KEYDOWN_HANDLED_FLAG] = true;
+  }
   for (const script of getUserScripts()) {
     if (!script.enabled || !script._running || !script._onKeyPress) continue;
     try {
@@ -123,6 +130,7 @@ function handleUserScriptKeydown(event) {
 function attachListeners() {
   if (listenersAttached) return;
   window.addEventListener('keydown', handleUserScriptKeydown);
+  document.addEventListener('keydown', handleUserScriptKeydown, true);
   listenersAttached = true;
 }
 
