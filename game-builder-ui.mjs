@@ -342,6 +342,8 @@ let lastSceneSignature = '';
 let lastInspectorSignature = '';
 let lastBlueprintSignature = '';
 let lastPlacementSignature = '';
+let lastAssetPackSignature = '';
+let assetManifestLoadStarted = false;
 
 function isSmallScreen() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -687,6 +689,43 @@ function updateProjectStatus() {
   status.textContent = saveText + (assetVersion ? ' | assets ' + assetVersion : '');
 }
 
+function getAssetBaseUrl() {
+  if (typeof window._crateAssetBaseUrl === 'function') {
+    const base = window._crateAssetBaseUrl();
+    if (base) return base;
+  }
+  const meta = document.querySelector('meta[name="crate-asset-base"],meta[name="crateship-asset-base"]');
+  return (meta?.getAttribute('content') || window.CRATESHIP_ASSET_BASE_URL || '').replace(/\/+$/, '');
+}
+
+function shortAssetValue(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.length > 18 ? text.slice(0, 12) + '...' + text.slice(-4) : text;
+}
+
+async function refreshAssetManifest(force = false) {
+  if (assetManifestLoadStarted && !force) return;
+  assetManifestLoadStarted = true;
+  const base = getAssetBaseUrl();
+  window._crateAssetManifestStatus = { status: 'loading', base };
+  renderAssetPackStatus();
+  try {
+    if (!base) throw new Error('No asset host configured');
+    const response = await fetch(new URL('/asset-manifest.json', base + '/').href, { cache: 'no-store' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const manifest = await response.json();
+    window._crateAssetManifest = manifest;
+    window._assetManifestVersion = manifest.version || '';
+    window._crateAssetManifestStatus = { status: 'loaded', base, checkedAt: Date.now() };
+  } catch (err) {
+    window._crateAssetManifestStatus = { status: 'failed', base, error: err?.message || String(err || 'Asset manifest failed') };
+  }
+  lastAssetPackSignature = '';
+  renderAssetPackStatus();
+  updateProjectStatus();
+}
+
 function getCurrentMode() {
   const bridgeMode = window._engineBridge?.getMode?.();
   const raw = bridgeMode || window._engine?.mode || window._currentMode || (window._engine?.playMode ? 'play' : 'edit');
@@ -815,6 +854,21 @@ function createProjectSection() {
   return section;
 }
 
+function createAssetPackSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  section.id = 'gb-asset-pack';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Asset Pack';
+  const status = document.createElement('div');
+  status.id = 'gb-asset-pack-status';
+  status.className = 'gb-asset-pack-status';
+  const refresh = createSmallButton('Check', () => refreshAssetManifest(true), { action: 'check assets' });
+  refresh.dataset.gbAction = 'asset-pack-refresh';
+  section.append(heading, status, refresh);
+  return section;
+}
+
 function formatPosition(obj) {
   if (!obj?.position) return 'No position';
   return 'x ' + obj.position.x.toFixed(1) + ' y ' + obj.position.y.toFixed(1) + ' z ' + obj.position.z.toFixed(1);
@@ -845,6 +899,43 @@ function renderPlacementStatus() {
   box.append(title, item);
   if (position) box.appendChild(createTextElement('span', '', position));
   if (state.error) box.appendChild(createTextElement('span', 'gb-placement-error', state.error));
+}
+
+function renderAssetPackStatus() {
+  const box = document.getElementById('gb-asset-pack-status');
+  if (!box) return;
+  const state = window._crateAssetManifestStatus || {};
+  const manifest = window._crateAssetManifest || {};
+  const base = state.base || getAssetBaseUrl() || 'local';
+  const version = manifest.version || window._assetManifestVersion || '';
+  const integrity = manifest.integrity || {};
+  const signature = [
+    state.status || '',
+    base,
+    version,
+    integrity.checkedModels || '',
+    integrity.catalogReferences || '',
+    state.error || '',
+  ].join('|');
+  if (signature === lastAssetPackSignature) return;
+  lastAssetPackSignature = signature;
+  box.dataset.status = state.status || (version ? 'loaded' : 'idle');
+  box.innerHTML = '';
+  if (state.status === 'failed') {
+    box.append(createTextElement('strong', '', 'Asset host issue'), createTextElement('span', 'gb-placement-error', state.error || 'Manifest unavailable'));
+    return;
+  }
+  if (state.status === 'loading') {
+    box.append(createTextElement('strong', '', 'Checking assets'), createTextElement('span', '', shortAssetValue(base)));
+    return;
+  }
+  box.append(
+    createTextElement('strong', '', version ? 'Assets ' + shortAssetValue(version) : 'Assets ready'),
+    createTextElement('span', '', shortAssetValue(base)),
+  );
+  if (integrity.checkedModels || integrity.catalogReferences) {
+    box.appendChild(createTextElement('span', '', (integrity.checkedModels || 0) + ' models | ' + (integrity.catalogReferences || 0) + ' refs'));
+  }
 }
 
 function formatComponentList(obj) {
@@ -1193,6 +1284,7 @@ function updateBuilderUi() {
   updateModeControls();
   updateProjectStatus();
   renderPlacementStatus();
+  renderAssetPackStatus();
   renderInspector();
   renderBlueprintList();
   renderSceneList();
@@ -1248,6 +1340,13 @@ function mount() {
     .gb-placement-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
     .gb-placement-status[data-status="failed"],.gb-placement-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
     .gb-placement-error{color:#ff9b9b!important}
+    .gb-asset-pack-status{display:flex;flex-direction:column;gap:3px;margin:8px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px;min-height:52px}
+    .gb-asset-pack-status strong{font-size:12px;line-height:16px;color:#eef2f3}
+    .gb-asset-pack-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-asset-pack-status[data-status="loaded"]{border-color:#2f6f44;background:#101a13}
+    .gb-asset-pack-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
+    .gb-asset-pack-status[data-status="failed"]{border-color:#7f2d2d;background:#211313}
+    #gb-asset-pack .gb-small-btn{margin:0 8px 8px;width:calc(100% - 16px)}
     .gb-project-status{padding:0 8px 7px;color:#8d979e;font-size:10px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-project-grid{padding-top:0}
     .gb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
@@ -1328,6 +1427,7 @@ function mount() {
   body.appendChild(createModeSection());
   body.appendChild(createPlacementSection());
   body.appendChild(createProjectSection());
+  body.appendChild(createAssetPackSection());
 
   const appendBuilderToolSections = () => {
     const componentSection = document.createElement('section');
@@ -1402,6 +1502,7 @@ function mount() {
     updateModeControls();
     updateStats();
     updateProjectStatus();
+    renderAssetPackStatus();
     renderInspector({ force: true });
     renderBlueprintList();
     renderSceneList();
@@ -1415,6 +1516,7 @@ function mount() {
   };
   window.addEventListener('crate:asset-placement', window._refreshGameBuilderPlacement);
   updateBuilderUi();
+  refreshAssetManifest();
   setInterval(updateBuilderUi, 1200);
   window.addEventListener('resize', () => repositionLegacyButtons(panel.dataset.open === 'true'));
 }

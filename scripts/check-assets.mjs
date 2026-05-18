@@ -5,6 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(process.env.CRATE_ENGINE_ROOT || path.join(scriptDir, '..'));
 const defaultModelRoot = path.resolve(process.env.CRATE_MODELS_DIR || path.join(rootDir, 'models'));
+const defaultAssetBaseUrl = 'https://crateship-games-assets.pages.dev';
+const explicitModelRoot = Boolean(process.env.CRATE_MODELS_DIR);
 const externalUriPattern = /^(?:data|blob|https?:|\/\/)/i;
 const modelExtensions = new Set(['.glb', '.gltf']);
 const catalogFiles = ['city_assets.json'];
@@ -42,6 +44,47 @@ function normalizeModelRef(value) {
   const ext = path.posix.extname(cleaned).toLowerCase();
   if (ext) return cleaned;
   return `${cleaned}.glb`;
+}
+
+function normalizeAssetBaseUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function resolveRemoteAssetPath(ref) {
+  const raw = String(ref || '').trim();
+  if (!raw || /^(?:data|blob|javascript):/i.test(raw)) return '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      return new URL(raw).pathname;
+    } catch {
+      return '';
+    }
+  }
+  const cleaned = raw.split('#')[0].split('?')[0].replace(/^\.?\//, '');
+  if (!cleaned) return '';
+  if (cleaned.startsWith('/')) return cleaned;
+  if (/^(models|textures)\//i.test(cleaned)) return '/' + cleaned;
+  return '/models/' + cleanAssetPath(cleaned);
+}
+
+function remoteAssetUrl(assetBaseUrl, ref) {
+  const assetPath = resolveRemoteAssetPath(ref);
+  if (!assetPath) return '';
+  return new URL(assetPath, `${assetBaseUrl}/`).href;
+}
+
+async function fetchWithTimeout(url, options = {}) {
+  const { timeoutMs, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs || 15000);
+  try {
+    return await fetch(url, {
+      ...fetchOptions,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function assertDirectory(dir, label) {
@@ -206,6 +249,155 @@ async function checkCatalogRefs(modelRoot, projectRoot, files, failures, counts,
   return foundRefs;
 }
 
+async function collectCatalogRefSet(projectRoot, files, counts) {
+  const foundRefs = new Set();
+
+  for (const file of files) {
+    const fullPath = path.join(projectRoot, file);
+    const info = await stat(fullPath).catch(() => null);
+    if (!info?.isFile()) continue;
+
+    const data = await readJson(fullPath);
+    const refs = [...new Set(collectCatalogModelRefs(data, file).map(normalizeModelRef).filter(Boolean))];
+    counts.catalogRefs += refs.length;
+    for (const ref of refs) foundRefs.add(ref);
+  }
+
+  return foundRefs;
+}
+
+async function mapLimit(items, limit, task) {
+  const results = [];
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const currentIndex = index++;
+      results[currentIndex] = await task(items[currentIndex], currentIndex);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function checkRemoteAsset(assetBaseUrl, ref) {
+  const url = remoteAssetUrl(assetBaseUrl, ref);
+  if (!url) return { ok: false, ref, url, status: 0, contentType: '', detail: 'Invalid asset reference' };
+
+  let response = await fetchWithTimeout(url, { method: 'HEAD', redirect: 'follow' }).catch((err) => ({ error: err }));
+  if (response?.error || response.status === 405) {
+    response = await fetchWithTimeout(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { Range: 'bytes=0-0' },
+    }).catch((err) => ({ error: err }));
+  }
+
+  if (response?.error) {
+    return { ok: false, ref, url, status: 0, contentType: '', detail: response.error.message || String(response.error) };
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  return {
+    ok: response.status >= 200 && response.status < 400,
+    ref,
+    url,
+    status: response.status,
+    contentType,
+    detail: response.status >= 400 ? `HTTP ${response.status}` : '',
+  };
+}
+
+async function checkRemoteAssetHost(options) {
+  const assetBaseUrl = normalizeAssetBaseUrl(options.assetBaseUrl || process.env.CRATE_ASSET_BASE_URL || defaultAssetBaseUrl);
+  const projectRoot = path.resolve(options.projectRoot || rootDir);
+  const optionalCatalogMode = options.optionalCatalogMode || process.env.CRATE_ASSET_CHECK_CATALOGS || 'off';
+  const strictOptionalCatalogs = optionalCatalogMode === 'strict';
+  const warnOptionalCatalogs = optionalCatalogMode === 'warn' || strictOptionalCatalogs;
+  const failures = [];
+  const counts = {
+    remoteAssets: 0,
+    catalogRefs: 0,
+    optionalMissing: [],
+  };
+
+  const manifestUrl = new URL('/asset-manifest.json', `${assetBaseUrl}/`).href;
+  const manifestResponse = await fetchWithTimeout(manifestUrl, { redirect: 'follow' });
+  if (!manifestResponse.ok) {
+    throw new Error(`${manifestUrl} expected HTTP 200, got ${manifestResponse.status}`);
+  }
+  const manifest = await manifestResponse.json();
+  if (manifest?.name !== 'crateship-games-assets') {
+    failures.push({ type: 'manifest', source: manifestUrl, detail: `Unexpected name ${manifest?.name || 'missing'}` });
+  }
+  if (!manifest.version) failures.push({ type: 'manifest', source: manifestUrl, detail: 'Missing version' });
+  if (!manifest.paths?.models || !manifest.paths?.textures) {
+    failures.push({ type: 'manifest', source: manifestUrl, detail: 'Missing model/texture paths' });
+  }
+
+  const requiredRefs = new Set(defaultRequiredRefs.map(normalizeModelRef));
+  const catalogRefs = await collectCatalogRefSet(projectRoot, catalogFiles, counts);
+  for (const ref of catalogRefs) requiredRefs.add(ref);
+  for (const ref of manifest.criticalAssets || []) requiredRefs.add(resolveRemoteAssetPath(ref));
+
+  if (warnOptionalCatalogs) {
+    const optionalCounts = { catalogRefs: 0 };
+    const optionalRefs = await collectCatalogRefSet(projectRoot, optionalCatalogFiles, optionalCounts);
+    const optionalResults = await mapLimit([...optionalRefs], 12, (ref) => checkRemoteAsset(assetBaseUrl, ref));
+    const missing = optionalResults.filter((result) => !result.ok).map((result) => ({ type: 'catalog', source: 'optional', missing: result.ref, detail: result.detail || `HTTP ${result.status}` }));
+    counts.optionalMissing.push(...missing);
+    if (strictOptionalCatalogs) failures.push(...missing);
+  }
+
+  if (manifest.integrity?.catalogReferences && counts.catalogRefs && manifest.integrity.catalogReferences < counts.catalogRefs) {
+    failures.push({
+      type: 'manifest',
+      source: manifestUrl,
+      detail: `Manifest catalogReferences ${manifest.integrity.catalogReferences} is lower than local required refs ${counts.catalogRefs}`,
+    });
+  }
+
+  const refs = [...requiredRefs].filter(Boolean);
+  const results = await mapLimit(refs, 12, (ref) => checkRemoteAsset(assetBaseUrl, ref));
+  counts.remoteAssets = results.length;
+  failures.push(...results.filter((result) => !result.ok).map((result) => ({
+    type: 'remote',
+    source: result.ref,
+    missing: result.url,
+    detail: result.detail || `HTTP ${result.status}`,
+  })));
+
+  if (counts.optionalMissing.length && warnOptionalCatalogs && !strictOptionalCatalogs) {
+    const sample = counts.optionalMissing.slice(0, 8).map((item) => `${item.source}: ${item.missing}`);
+    console.warn(`[assets] Optional remote catalog references missing: ${counts.optionalMissing.length}`);
+    for (const item of sample) console.warn(`  - ${item}`);
+    if (counts.optionalMissing.length > sample.length) {
+      console.warn(`  ... ${counts.optionalMissing.length - sample.length} more`);
+    }
+  }
+
+  if (failures.length) {
+    const sample = failures.slice(0, 20).map((item) => {
+      const detail = item.detail ? ` (${item.detail})` : '';
+      return `${item.type}: ${item.source}${item.missing ? ` -> ${item.missing}` : ''}${detail}`;
+    });
+    throw new Error([
+      `Remote asset host check failed with ${failures.length} blocking issue(s).`,
+      ...sample.map((line) => `  - ${line}`),
+      failures.length > sample.length ? `  ... ${failures.length - sample.length} more` : '',
+    ].filter(Boolean).join('\n'));
+  }
+
+  console.log([
+    `Remote asset host check passed.`,
+    `Host: ${assetBaseUrl}.`,
+    `Manifest: ${manifest.version}.`,
+    `Checked remote assets: ${counts.remoteAssets}.`,
+    `Catalog references: ${counts.catalogRefs}.`,
+  ].join(' '));
+
+  return { ...counts, manifest };
+}
+
 export async function checkAssets(options = {}) {
   const modelRoot = path.resolve(options.modelRoot || defaultModelRoot);
   const projectRoot = path.resolve(options.projectRoot || rootDir);
@@ -220,6 +412,22 @@ export async function checkAssets(options = {}) {
     catalogRefs: 0,
     optionalMissing: [],
   };
+
+  const modelRootInfo = await stat(modelRoot).catch(() => null);
+  const assetBaseUrl = normalizeAssetBaseUrl(options.assetBaseUrl || process.env.CRATE_ASSET_BASE_URL || '');
+  const remoteRequested = options.remote === true || process.env.CRATE_ASSET_CHECK_REMOTE === 'true' || Boolean(assetBaseUrl);
+  const hasExplicitModelRoot = explicitModelRoot || Boolean(options.modelRoot);
+  if (remoteRequested || !modelRootInfo?.isDirectory()) {
+    if (!modelRootInfo?.isDirectory() && hasExplicitModelRoot && !remoteRequested) {
+      throw new Error(`Model root is not a directory: ${modelRoot}`);
+    }
+    return checkRemoteAssetHost({
+      ...options,
+      assetBaseUrl: assetBaseUrl || defaultAssetBaseUrl,
+      projectRoot,
+      optionalCatalogMode,
+    });
+  }
 
   await assertDirectory(modelRoot, 'Model root');
 

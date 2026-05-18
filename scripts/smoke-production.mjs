@@ -168,6 +168,11 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#gb-blueprints', { timeout: timeoutMs });
     await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-project button[data-gb-action="save"]', { timeout: timeoutMs });
+    await page.waitForFunction(
+      () => window._crateAssetManifest?.version && document.querySelector('#gb-asset-pack-status')?.dataset.status === 'loaded',
+      undefined,
+      { timeout: timeoutMs }
+    );
 
     const projectControls = await page.evaluate(() => ({
       hasProject: !!document.querySelector('#gb-project'),
@@ -479,6 +484,10 @@ async function runBrowserSmoke() {
         hasInspector: !!document.querySelector('#gb-inspector'),
         hasBlueprints: !!document.querySelector('#gb-blueprints'),
         hasProject: !!document.querySelector('#gb-project'),
+        hasAssetPack: !!document.querySelector('#gb-asset-pack'),
+        assetPackStatus: document.querySelector('#gb-asset-pack-status')?.dataset.status || '',
+        assetPackText: document.querySelector('#gb-asset-pack-status')?.textContent?.trim() || '',
+        assetPackVersion: window._crateAssetManifest?.version || '',
         projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
         hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
@@ -507,7 +516,10 @@ async function runBrowserSmoke() {
     if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
-    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject) throw new Error('Game Builder Project, Inspector, or Blueprints section was missing');
+    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack) throw new Error('Game Builder Project, Asset Pack, Inspector, or Blueprints section was missing');
+    if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
+      throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
+    }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
     if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
@@ -552,6 +564,7 @@ console.log(`URL: ${playUrl}`);
 console.log(`Bundle: ${play.bundle}`);
 console.log(`Asset base: ${assetBaseUrl}`);
 console.log(`Asset manifest: ${assetManifest.manifest.version}`);
+console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);
