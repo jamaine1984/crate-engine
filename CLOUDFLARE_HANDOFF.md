@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `b30bcf69`
+- Current deployed source commit for the public engine code: `147d95ab`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `f5bd018f-7619-47d8-8ea2-7e75cb3281c9`
-- Latest production deployment URL: `https://f5bd018f.crateship-games.pages.dev`
+- Latest production deployment ID: `f316aad7-26ef-4d4a-b3c2-4d9e72211244`
+- Latest production deployment URL: `https://f316aad7.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `b30bcf6`
-- Main live page bundle after the deploy: `/assets/play-D_UxywgF.js`
+- Source shown by Cloudflare: `147d95a`
+- Main live page bundle after the deploy: `/assets/play-BWBpHDR0.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -402,6 +402,24 @@ Follow-up production deploys on 2026-05-18 added Game Builder readiness checks:
   - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
   - Production smoke reported readiness: `Ready to test, 411 objects, 2 scripts, 1 components, Edit mode`.
 
+Follow-up production deploys on 2026-05-18 added the Game Systems Library:
+
+- `game-builder-ui.mjs`
+  - Added a `Game Systems` section to the Game Builder panel.
+  - Shows install/tag status for Inventory, Game HUD, Quest Tracker, Component Runtime, Pickup System, Objective System, Spawn Points, and Damage Zones.
+  - Provides direct `Install` or `Tag Selected` actions instead of forcing creators to type prompts for common gameplay systems.
+  - Exposes `window._gameBuilderSystems` for diagnostics and production smoke tests.
+- `scripts/smoke-production.mjs`
+  - Requires all eight Game Systems cards to exist on the live site.
+  - Installs Inventory from the Game Systems section.
+  - Fails production smoke unless Inventory, Component Runtime, and Pickup System are reported as installed/tagged after the build flow.
+- Final app deployment `f316aad7-26ef-4d4a-b3c2-4d9e72211244`
+  - Source `147d95a`; bundle `/assets/play-BWBpHDR0.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+  - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Production smoke reported systems: `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, spawns:Ready, damage:Ready`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -523,6 +541,7 @@ Recovered model cache summary:
 - Rich-project-snapshot main-app deploy skipped bundled `/models` and `/textures`, uploaded `6` changed files, reused `99` already-uploaded files, and refreshed `_headers`.
 - Status-summary main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 - Readiness-panel main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+- Game-systems main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -578,7 +597,7 @@ Expected current results:
 
 - `npm run check:assets` passes from this app-only checkout by validating `114` remote asset URLs and `107` catalog references against `https://crateship-games-assets.pages.dev`.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-D_UxywgF.js`.
+- `/play` references `/assets/play-BWBpHDR0.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -595,6 +614,7 @@ Expected current results:
 - The served play bundle contains `gb-project`, `data-gb-action="import"`, `data-gb-action="export"`, and the project Save/Load modal IDs used by smoke tests.
 - The Game Builder stats summary reads with clear separators, for example `411 objects, 1 components, 2 scripts, Edit mode`.
 - The served play bundle contains `gb-readiness`, `window._gameBuilderReadiness`, and readiness smoke output like `Ready to test, 411 objects, 2 scripts, 1 components, Edit mode`.
+- The served play bundle contains `gb-systems`, `window._gameBuilderSystems`, and systems smoke output with Inventory installed, Runtime installed, and Pickup tagged.
 - The Project section can save a named project, open Import, open Export, and keeps Import disabled in Explore while Export stays enabled.
 - Saved projects use `version: 3` and include object snapshots, asset paths, builder components, and installed user scripts.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
@@ -823,6 +843,18 @@ Browser verification history:
   - Project load restored `411` objects and `2` scripts with `411` snapshots applied, `0` spawned, and a restored Pickup component.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbmng8a.png`.
+- Final custom-domain verification after deployment `f316aad7-26ef-4d4a-b3c2-4d9e72211244`:
+  - Cloudflare source showed `147d95a`.
+  - `/play?verify=147d95ab-1779134788324` served `/assets/play-BWBpHDR0.js`.
+  - `/play?verify=147d95ab-1779134788324` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Smoke verified the Asset Pack UI loaded manifest `6f09cc09da2f`.
+  - Smoke verified Game Systems reported `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, spawns:Ready, damage:Ready`.
+  - Smoke verified Game Builder Readiness still reported `Ready to test, 411 objects, 2 scripts, 1 components, Edit mode`.
+  - Project load restored `411` objects and `2` scripts with `411` snapshots applied, `0` spawned, and a restored Pickup component.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbmx6fb.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -857,6 +889,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+147d95ab Add Game Systems library
 b30bcf69 Add Game Builder readiness panel
 75eea039 Improve Game Builder status summary
 03ad4e1 Add asset pack diagnostics
