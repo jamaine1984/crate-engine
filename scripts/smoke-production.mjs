@@ -189,7 +189,7 @@ async function runBrowserSmoke() {
 
     await page.waitForFunction(
       () => Array.isArray(window._gameBuilderSystems) &&
-        window._gameBuilderSystems.length >= 10 &&
+        window._gameBuilderSystems.length >= 12 &&
         !!document.querySelector('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]'),
       undefined,
       { timeout: timeoutMs }
@@ -198,7 +198,7 @@ async function runBrowserSmoke() {
       cardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
       ids: (window._gameBuilderSystems || []).map((system) => system.id),
     }));
-    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'objectives', 'checkpoints', 'win', 'spawns', 'damage']) {
+    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'objectives', 'checkpoints', 'win', 'doors', 'triggers', 'spawns', 'damage']) {
       if (!initialSystems.ids.includes(id)) {
         throw new Error(`Game Systems library missing ${id}: ${JSON.stringify(initialSystems)}`);
       }
@@ -308,6 +308,31 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     );
 
+    await page.locator('#gb-scene-list .gb-scene-row .gb-scene-main').nth(1).click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="doors"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="triggers"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.evaluate(() => {
+      const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+      const components = selected?.userData?.gbComponents || {};
+      if (components.triggerZone) {
+        components.triggerZone.radius = 9999;
+        components.triggerZone.message = 'Smoke trigger opened door';
+      }
+      if (components.door && components.triggerZone) {
+        components.triggerZone.targetDoorId = components.door.id || 'nearest';
+      }
+      window._refreshGameBuilder?.();
+    });
+    await page.waitForFunction(
+      () => {
+        const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+        const components = selected?.userData?.gbComponents || {};
+        return !!components.door && !!components.triggerZone && Number(components.triggerZone.radius) >= 9999;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
+
     await page.locator('#gb-project button[data-gb-action="save"]').click({ timeout: timeoutMs });
     await page.waitForSelector('#sl-modal #sl-save-btn', { timeout: timeoutMs });
     await page.locator('#sl-name').fill('Production Smoke Project', { timeout: timeoutMs });
@@ -320,11 +345,13 @@ async function runBrowserSmoke() {
         const parsed = JSON.parse(save.data);
         const hasPickup = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.pickup);
         const hasSpawnPoint = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.spawnPoint);
+        const hasDoor = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.door);
+        const hasTriggerZone = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.triggerZone);
         const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
         const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
         const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
         const hasBuildCityCommand = commands.some((cmd) => /^(?:build (?:a |the )?(?:city|full city|the city)|generate city|city world|new city)$/i.test(String(cmd || '').trim()));
-        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
+        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
         return {
           version: parsed.version,
           objectCount: parsed.objects.length,
@@ -333,6 +360,8 @@ async function runBrowserSmoke() {
           hasBuildCityCommand,
           hasPickup,
           hasSpawnPoint,
+          hasDoor,
+          hasTriggerZone,
           hasAssetPath,
         };
       },
@@ -358,12 +387,16 @@ async function runBrowserSmoke() {
         const objects = window._engineBridge?.objects || window._sceneObjects || [];
         const scripts = Array.isArray(window._userScripts) ? window._userScripts.length : 0;
         const pickupObj = objects.find((obj) => obj?.userData?.gbComponents?.pickup);
-        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj) return null;
+        const doorObj = objects.find((obj) => obj?.userData?.gbComponents?.door);
+        const triggerObj = objects.find((obj) => obj?.userData?.gbComponents?.triggerZone);
+        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj || !doorObj || !triggerObj) return null;
         return {
           status: load.status,
           objectCount: objects.length,
           scriptCount: scripts,
           pickupId: pickupObj.uuid || '',
+          doorId: doorObj.uuid || '',
+          triggerId: triggerObj.uuid || '',
           spawned: load.snapshot?.spawned || 0,
           applied: load.snapshot?.applied || 0,
           expected: load.snapshot?.expected || 0,
@@ -480,6 +513,29 @@ async function runBrowserSmoke() {
       throw new Error('Play mode left the legacy object inspector visible');
     }
 
+    const doorTriggerState = await page.waitForFunction(
+      () => {
+        const runtime = window._userScriptScope?.gbRuntime || {};
+        const doors = Object.values(runtime.doors || {});
+        const triggers = Object.values(runtime.triggers || {});
+        const openedDoor = doors.find((door) => door.open === true && (door.progress || 0) > 0);
+        const firedTrigger = triggers.find((trigger) => (trigger.fireCount || 0) > 0);
+        if (!openedDoor || !firedTrigger || !runtime.lastTrigger?.targetDoor) return null;
+        return {
+          openedDoor: openedDoor.label || '',
+          doorProgress: openedDoor.progress || 0,
+          firedTrigger: firedTrigger.label || '',
+          triggerFireCount: firedTrigger.fireCount || 0,
+          lastTriggerTarget: runtime.lastTrigger.targetDoor || '',
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    if (!doorTriggerState.openedDoor || doorTriggerState.doorProgress <= 0 || doorTriggerState.triggerFireCount < 1) {
+      throw new Error(`Door/Trigger runtime did not fire cleanly: ${JSON.stringify(doorTriggerState)}`);
+    }
+
     await page.waitForFunction(
       () => !!window._userScriptScope?.gbRuntime?.activeSpawn?.position,
       undefined,
@@ -565,6 +621,8 @@ async function runBrowserSmoke() {
         readinessCheckpointCount: readiness.checkpointCount || 0,
         readinessWinConditionCount: readiness.winConditionCount || 0,
         readinessSpawnCount: readiness.spawnCount || 0,
+        readinessDoorCount: readiness.doorCount || 0,
+        readinessTriggerCount: readiness.triggerCount || 0,
         readinessAssetStatus: readiness.assetStatus || '',
         projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
@@ -574,6 +632,7 @@ async function runBrowserSmoke() {
         placementSource: window._lastAssetPlacement?.source || '',
         scriptCount: Array.isArray(window._userScripts) ? window._userScripts.length : 0,
         selectedComponents: Object.keys(selected?.userData?.gbComponents || {}),
+        gameplayComponents: [...new Set(objects.flatMap((obj) => Object.keys(obj?.userData?.gbComponents || {})))],
       };
     });
     state.savedProjectVersion = savedProjectState.version;
@@ -582,13 +641,21 @@ async function runBrowserSmoke() {
     state.savedProjectCommandCount = savedProjectState.commandCount;
     state.savedProjectHasBuildCityCommand = savedProjectState.hasBuildCityCommand;
     state.savedProjectHasSpawnPoint = savedProjectState.hasSpawnPoint;
+    state.savedProjectHasDoor = savedProjectState.hasDoor;
+    state.savedProjectHasTriggerZone = savedProjectState.hasTriggerZone;
     state.loadedProjectObjectCount = loadedProjectState.objectCount;
     state.loadedProjectScriptCount = loadedProjectState.scriptCount;
     state.loadedProjectPickupId = loadedProjectState.pickupId;
+    state.loadedProjectDoorId = loadedProjectState.doorId;
+    state.loadedProjectTriggerId = loadedProjectState.triggerId;
     state.loadedProjectSpawned = loadedProjectState.spawned;
     state.loadedProjectApplied = loadedProjectState.applied;
     state.respawnHealth = afterRespawnState.health;
     state.respawnCount = afterRespawnState.respawns;
+    state.openedDoor = doorTriggerState.openedDoor;
+    state.firedTrigger = doorTriggerState.firedTrigger;
+    state.doorProgress = doorTriggerState.doorProgress;
+    state.triggerFireCount = doorTriggerState.triggerFireCount;
 
     if (pageErrors.length) throw new Error(`Page errors:\n${pageErrors.join('\n')}`);
     if (badAssetResponses.length) throw new Error(`Bad model/texture responses:\n${badAssetResponses.join('\n')}`);
@@ -601,30 +668,34 @@ async function runBrowserSmoke() {
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
       throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
     }
-    if (state.systemCardCount < 10 ||
+    if (state.systemCardCount < 12 ||
       !state.installedSystems.includes('inventory') ||
       !state.installedSystems.includes('runtime') ||
       !state.installedSystems.includes('pickups') ||
       !state.installedSystems.includes('checkpoints') ||
       !state.installedSystems.includes('win') ||
+      !state.installedSystems.includes('doors') ||
+      !state.installedSystems.includes('triggers') ||
       !state.installedSystems.includes('spawns')) {
       throw new Error(`Game Systems library did not install expected systems: ${JSON.stringify(state)}`);
     }
     if (state.readinessTone !== 'ready' ||
       state.readinessObjectCount < 100 ||
       state.readinessScriptCount < 1 ||
-      state.readinessComponentCount < 4 ||
+      state.readinessComponentCount < 6 ||
       state.readinessCheckpointCount < 1 ||
       state.readinessWinConditionCount < 1 ||
       state.readinessSpawnCount < 1 ||
+      state.readinessDoorCount < 1 ||
+      state.readinessTriggerCount < 1 ||
       state.readinessAssetStatus !== 'loaded') {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
-    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint) {
+    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
     }
-    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId) {
+    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId) {
       throw new Error(`Project load did not restore rich scene state: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
@@ -640,8 +711,14 @@ async function runBrowserSmoke() {
     if (!state.selectedComponents.includes('pickup') || !state.selectedComponents.includes('checkpoint') || !state.selectedComponents.includes('winCondition') || !state.selectedComponents.includes('spawnPoint')) {
       throw new Error(`Required gameplay components were not applied to the selected object: ${JSON.stringify(state.selectedComponents)}`);
     }
+    if (!state.gameplayComponents.includes('door') || !state.gameplayComponents.includes('triggerZone')) {
+      throw new Error(`Door/Trigger components were not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
+    }
     if (state.respawnHealth < 100 || state.respawnCount < 1) {
       throw new Error(`Spawn runtime did not reset health and respawn count: ${JSON.stringify(state)}`);
+    }
+    if (!state.openedDoor || state.doorProgress <= 0 || state.triggerFireCount < 1) {
+      throw new Error(`Door/Trigger runtime did not open a door: ${JSON.stringify(state)}`);
     }
 
     return state;
@@ -681,9 +758,11 @@ console.log(`Placement: ${browserState.placementStatus} (${browserState.placemen
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
-console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'})`);
+console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'})`);
+console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Respawn runtime: ${browserState.respawnCount} respawns, ${browserState.respawnHealth} HP`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
+console.log(`Gameplay components: ${browserState.gameplayComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);
 console.log('HTTP checks:');
 for (const check of httpChecks) {

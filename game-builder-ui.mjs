@@ -152,6 +152,8 @@ state.gbRuntime.score = state.gbRuntime.score || 0;
 state.gbRuntime.objectives = state.gbRuntime.objectives || {};
 state.gbRuntime.checkpoints = state.gbRuntime.checkpoints || {};
 state.gbRuntime.spawnPoints = state.gbRuntime.spawnPoints || {};
+state.gbRuntime.doors = state.gbRuntime.doors || {};
+state.gbRuntime.triggers = state.gbRuntime.triggers || {};
 state.gbRuntime.winConditions = state.gbRuntime.winConditions || {};
 state.gbRuntime.gameComplete = state.gbRuntime.gameComplete || false;
 state.gbRuntime.gameOver = state.gbRuntime.gameOver || false;
@@ -179,6 +181,33 @@ function copyPosition(pos, yOffset) {
     y: (Number(pos && pos.y) || 0) + (Number(yOffset) || 0),
     z: Number(pos && pos.z) || 0,
   };
+}
+
+function distanceBetween(a, b) {
+  if (!a || !b) return Infinity;
+  const dx = (Number(a.x) || 0) - (Number(b.x) || 0);
+  const dy = (Number(a.y) || 0) - (Number(b.y) || 0);
+  const dz = (Number(a.z) || 0) - (Number(b.z) || 0);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function getDoorOpenPosition(closed, door) {
+  const axis = String(door.axis || 'y').toLowerCase();
+  const distance = Number(door.distance) || 3;
+  const open = { x: closed.x, y: closed.y, z: closed.z };
+  if (axis === 'x') open.x += distance;
+  else if (axis === 'z') open.z += distance;
+  else open.y += distance;
+  return open;
+}
+
+function setObjectPosition(obj, pos) {
+  if (!obj || !obj.position || typeof obj.position.set !== 'function') return;
+  obj.position.set(pos.x, pos.y, pos.z);
 }
 
 function movePlayerTo(target) {
@@ -240,13 +269,18 @@ function renderComponentHud() {
   const winRows = wins.length ? '<div style="color:#80b7ff;margin-top:6px;margin-bottom:5px;font-weight:700">Win Goals</div>' + wins.map((item) => {
     return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + escapeHud(item.label) + '</div>';
   }).join('') : '';
+  const doors = Object.values(state.gbRuntime.doors || {});
+  const doorRows = doors.length ? '<div style="color:#80b7ff;margin-top:6px;margin-bottom:5px;font-weight:700">Doors</div>' + doors.slice(0, 3).map((item) => {
+    return '<div style="color:' + (item.open ? '#59d987' : '#d6e0e6') + '">' + (item.open ? '[open] ' : '[closed] ') + escapeHud(item.label) + '</div>';
+  }).join('') : '';
+  const trigger = state.gbRuntime.lastTrigger ? '<div style="color:#f6c34a;margin-top:6px">Trigger: ' + escapeHud(state.gbRuntime.lastTrigger.label) + '</div>' : '';
   const gameState = state.gbRuntime.gameComplete ? '<div style="margin-top:8px;color:#59d987;font-weight:700">Game Complete</div>' : state.gbRuntime.gameOver ? '<div style="margin-top:8px;color:#ff9b9b;font-weight:700">Game Over</div>' : '';
   getComponentHud().innerHTML =
     '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>HP</span><span>' + Math.round(state.gbRuntime.health) + '</span></div>' +
     '<div style="height:7px;background:#1c2021;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + Math.max(0, Math.min(100, state.gbRuntime.health)) + '%;background:#59d987"></div></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Score</span><span>' + state.gbRuntime.score + '</span></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px;color:#a9b3b8"><span>Respawns</span><span>' + state.gbRuntime.respawns + '</span></div>' +
-    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + spawn + checkpoint + winRows + gameState;
+    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + spawn + checkpoint + winRows + doorRows + trigger + gameState;
 }
 
 onUpdate = function(dt, time) {
@@ -254,6 +288,9 @@ onUpdate = function(dt, time) {
   const isPlaying = playMode();
   if (!isPlaying) state.gbRuntime.spawnActivated = false;
   const nextSpawnPoints = {};
+  const nextDoors = {};
+  const nextTriggers = {};
+  const triggerQueue = [];
   let firstPlayerSpawn = null;
   getObjects().forEach((obj) => {
     const components = obj && obj.userData && obj.userData.gbComponents;
@@ -281,8 +318,71 @@ onUpdate = function(dt, time) {
       if (kind === 'player' && !firstPlayerSpawn) firstPlayerSpawn = spawnRecord;
     }
 
+    if (components.door && obj.position) {
+      const id = components.door.id || obj.uuid;
+      const previous = state.gbRuntime.doors[id] || {};
+      const label = components.door.label || obj.userData.name || 'Door';
+      const speed = Math.max(0.1, Number(components.door.speed) || 2.5);
+      const closed = isPlaying && previous.closed ? previous.closed : copyPosition(obj.position, 0);
+      const openPosition = getDoorOpenPosition(closed, components.door);
+      const open = isPlaying
+        ? (components.door.open === true || previous.open === true)
+        : components.door.open === true;
+      const targetProgress = open ? 1 : 0;
+      const progress = isPlaying
+        ? (previous.progress === undefined ? (open ? 1 : 0) : previous.progress)
+        : targetProgress;
+      const nextProgress = !isPlaying ? targetProgress : progress < targetProgress
+        ? Math.min(targetProgress, progress + dt * speed)
+        : Math.max(targetProgress, progress - dt * speed);
+      const doorRecord = {
+        id,
+        label,
+        open,
+        progress: nextProgress,
+        axis: components.door.axis || 'y',
+        distance: Number(components.door.distance) || 3,
+        speed,
+        closed,
+        openPosition,
+        sourcePosition: copyPosition(obj.position, 0),
+      };
+      const nextPos = {
+        x: lerp(closed.x, openPosition.x, nextProgress),
+        y: lerp(closed.y, openPosition.y, nextProgress),
+        z: lerp(closed.z, openPosition.z, nextProgress),
+      };
+      if (isPlaying || components.door.open === true) setObjectPosition(obj, nextPos);
+      nextDoors[id] = doorRecord;
+    }
+
     if (!playerPos || !obj.position) return;
     const distance = obj.position.distanceTo(playerPos);
+
+    if (isPlaying && components.triggerZone) {
+      const id = components.triggerZone.id || obj.uuid;
+      const previous = state.gbRuntime.triggers[id] || {};
+      const radius = Number(components.triggerZone.radius) || 4;
+      const inside = distance < radius;
+      const once = components.triggerZone.once !== false && components.triggerZone.once !== 'false';
+      const entered = inside && !previous.inside;
+      const canFire = entered && (!once || !previous.fired);
+      const triggerRecord = {
+        id,
+        label: components.triggerZone.label || 'Trigger',
+        action: components.triggerZone.action || 'openDoor',
+        targetDoorId: components.triggerZone.targetDoorId || 'nearest',
+        message: components.triggerZone.message || '',
+        radius,
+        once,
+        fired: previous.fired || canFire,
+        inside,
+        fireCount: previous.fireCount || 0,
+        position: copyPosition(obj.position, 0),
+      };
+      if (canFire) triggerQueue.push(triggerRecord);
+      nextTriggers[id] = triggerRecord;
+    }
 
     if (components.objective) {
       const id = components.objective.id || obj.uuid;
@@ -342,6 +442,8 @@ onUpdate = function(dt, time) {
   });
   const winRows = Object.values(state.gbRuntime.winConditions || {});
   state.gbRuntime.spawnPoints = nextSpawnPoints;
+  state.gbRuntime.doors = nextDoors;
+  state.gbRuntime.triggers = nextTriggers;
   if (state.gbRuntime.activeSpawn && nextSpawnPoints[state.gbRuntime.activeSpawn.id]) {
     state.gbRuntime.activeSpawn = nextSpawnPoints[state.gbRuntime.activeSpawn.id];
   } else if (firstPlayerSpawn) {
@@ -353,6 +455,30 @@ onUpdate = function(dt, time) {
     state.gbRuntime.gameComplete = true;
     showToast('Game complete');
   }
+  triggerQueue.forEach((trigger) => {
+    const doors = Object.values(state.gbRuntime.doors || {});
+    let door = null;
+    if (trigger.targetDoorId && trigger.targetDoorId !== 'nearest') {
+      door = state.gbRuntime.doors[trigger.targetDoorId] || doors.find((item) => item.label === trigger.targetDoorId);
+    }
+    if (!door && doors.length) {
+      door = doors.reduce((nearest, item) => {
+        return distanceBetween(trigger.position, item.closed) < distanceBetween(trigger.position, nearest.closed) ? item : nearest;
+      }, doors[0]);
+    }
+    if (trigger.action === 'openDoor' && door) {
+      door.open = true;
+      door.progress = Math.max(door.progress || 0, 0.02);
+      state.gbRuntime.doors[door.id] = door;
+      state.gbRuntime.triggers[trigger.id].fireCount += 1;
+      state.gbRuntime.lastTrigger = { id: trigger.id, label: trigger.label, action: trigger.action, targetDoor: door.label, firedAt: time };
+      showToast(trigger.message || ('Opened: ' + door.label));
+    } else if (trigger.action === 'message') {
+      state.gbRuntime.triggers[trigger.id].fireCount += 1;
+      state.gbRuntime.lastTrigger = { id: trigger.id, label: trigger.label, action: trigger.action, targetDoor: '', firedAt: time };
+      showToast(trigger.message || ('Triggered: ' + trigger.label));
+    }
+  });
   if (isPlaying && !state.gbRuntime.spawnActivated && state.gbRuntime.activeSpawn) {
     state.gbRuntime.spawnActivated = true;
     movePlayerTo(state.gbRuntime.activeSpawn);
@@ -496,6 +622,22 @@ const GAME_SYSTEMS = [
     actionLabel: 'Tag Selected',
   },
   {
+    id: 'doors',
+    name: 'Doors',
+    detail: 'Make selected objects open when triggered.',
+    component: 'door',
+    countKey: 'door',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'triggers',
+    name: 'Triggers',
+    detail: 'Make selected objects fire zone actions.',
+    component: 'triggerZone',
+    countKey: 'triggerZone',
+    actionLabel: 'Tag Selected',
+  },
+  {
     id: 'spawns',
     name: 'Spawn Points',
     detail: 'Mark selected objects as player or enemy starts.',
@@ -522,6 +664,8 @@ const COMPONENT_PRESETS = [
   { label: 'Objective', component: 'objective', title: 'Make the current object complete an objective when reached.' },
   { label: 'Checkpoint', component: 'checkpoint', title: 'Mark the current object as a checkpoint.' },
   { label: 'Win Goal', component: 'winCondition', title: 'Mark the current object as a win condition.' },
+  { label: 'Door', component: 'door', title: 'Make the current object open when a trigger fires.' },
+  { label: 'Trigger', component: 'triggerZone', title: 'Make the current object fire a gameplay action nearby.' },
   { label: 'Spin', component: 'spin', title: 'Give the current object a runtime spin behavior.' },
   { label: 'Float', component: 'float', title: 'Give the current object a gentle floating behavior.' },
   { label: 'Spawn Pt', component: 'spawnPoint', title: 'Mark the current object as a player or enemy spawn point.' },
@@ -553,6 +697,19 @@ const COMPONENT_FIELDS = {
   winCondition: [
     { key: 'label', label: 'Label', kind: 'text' },
     { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  door: [
+    { key: 'label', label: 'Label', kind: 'text' },
+    { key: 'axis', label: 'Axis', kind: 'text' },
+    { key: 'distance', label: 'Distance', kind: 'number', step: 0.1 },
+    { key: 'speed', label: 'Speed', kind: 'number', step: 0.1 },
+  ],
+  triggerZone: [
+    { key: 'label', label: 'Label', kind: 'text' },
+    { key: 'action', label: 'Action', kind: 'text' },
+    { key: 'targetDoorId', label: 'Door Id', kind: 'text' },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+    { key: 'message', label: 'Message', kind: 'text' },
   ],
   spin: [
     { key: 'speed', label: 'Speed', kind: 'number', step: 0.1 },
@@ -769,7 +926,7 @@ async function ensureComponentRuntime() {
 async function ensureRuntimeForComponents(components) {
   const keys = Object.keys(components || {});
   if (keys.includes('pickup')) await installScript('inventory');
-  if (keys.some((key) => ['pickup', 'damage', 'objective', 'checkpoint', 'winCondition', 'spawnPoint', 'spin', 'float'].includes(key))) {
+  if (keys.some((key) => ['pickup', 'damage', 'objective', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
     await ensureComponentRuntime();
   }
 }
@@ -805,6 +962,16 @@ async function markComponent(component) {
     components.winCondition = { id: 'win_' + id, label: 'Finish at ' + cleanName, radius: 3 };
     target.userData.interactable = true;
     target.userData.interactLabel = target.userData.interactLabel || 'Finish';
+    await ensureComponentRuntime();
+  } else if (component === 'door') {
+    components.door = { id: 'door_' + id, label: cleanName + ' door', axis: 'y', distance: 3, speed: 2.5, open: false };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Door';
+    await ensureComponentRuntime();
+  } else if (component === 'triggerZone') {
+    components.triggerZone = { id: 'trigger_' + id, label: cleanName + ' trigger', action: 'openDoor', targetDoorId: 'nearest', radius: 4, message: 'Door opened', once: true };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Trigger';
     await ensureComponentRuntime();
   } else if (component === 'spin') {
     components.spin = { speed: 1.2 };
@@ -975,6 +1142,8 @@ function collectReadiness() {
   const objectiveCount = componentCounts.byType.objective || 0;
   const checkpointCount = componentCounts.byType.checkpoint || 0;
   const winConditionCount = componentCounts.byType.winCondition || 0;
+  const doorCount = componentCounts.byType.door || 0;
+  const triggerCount = componentCounts.byType.triggerZone || 0;
   const hasWorld = objects.length > 0;
   const hasGameplay = scripts.length > 0 || componentCounts.total > 0;
   let status = 'Needs world';
@@ -1009,6 +1178,8 @@ function collectReadiness() {
     objectiveCount,
     checkpointCount,
     winConditionCount,
+    doorCount,
+    triggerCount,
     saveCount: saves.length,
     assetStatus,
     assetVersion: window._crateAssetManifest?.version || window._assetManifestVersion || '',
@@ -1052,6 +1223,7 @@ function renderReadinessStatus() {
     createReadinessRow('Gameplay', readiness.scriptCount + ' scripts | ' + readiness.componentCount + ' components'),
     createReadinessRow('Progress', readiness.pickupCount + ' pickups | ' + readiness.checkpointCount + ' checkpoints'),
     createReadinessRow('Goals', readiness.objectiveCount + ' objectives | ' + readiness.winConditionCount + ' wins'),
+    createReadinessRow('Triggers', readiness.triggerCount + ' triggers | ' + readiness.doorCount + ' doors'),
     createReadinessRow('Spawns', readiness.spawnCount + ' spawns'),
     createReadinessRow('Project', readiness.saveCount + (readiness.saveCount === 1 ? ' save' : ' saves')),
     createReadinessRow('Assets', readiness.assetStatus === 'loaded' ? shortAssetValue(readiness.assetVersion) : readiness.assetStatus)
