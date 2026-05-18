@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `147d95ab`
+- Current deployed source commit for the public engine code: `39673143`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `f316aad7-26ef-4d4a-b3c2-4d9e72211244`
-- Latest production deployment URL: `https://f316aad7.crateship-games.pages.dev`
+- Latest production deployment ID: `4b4ad1c1-d948-4856-a21c-6f12efa08b62`
+- Latest production deployment URL: `https://4b4ad1c1.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `147d95a`
-- Main live page bundle after the deploy: `/assets/play-BWBpHDR0.js`
+- Source shown by Cloudflare: `3967314`
+- Main live page bundle after the deploy: `/assets/play-DfB0C3M-.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -420,6 +420,26 @@ Follow-up production deploys on 2026-05-18 added the Game Systems Library:
   - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
   - Production smoke reported systems: `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, spawns:Ready, damage:Ready`.
 
+Follow-up production deploys on 2026-05-18 added checkpoint and win-condition systems:
+
+- `game-builder-ui.mjs`
+  - Extended Component Runtime to handle `checkpoint` and `winCondition` builder components.
+  - Runtime HUD now shows active checkpoints, win goals, game-complete state, and game-over state.
+  - Added Checkpoint and Win Goal component buttons plus editable labels/radii in the Inspector.
+  - Added Checkpoints and Win Condition cards to the Game Systems Library.
+  - Readiness now tracks pickups, checkpoints, objectives, win goals, and spawn counts separately.
+- `scripts/smoke-production.mjs`
+  - Requires the live Game Systems Library to include Checkpoints and Win Condition.
+  - Tags the selected live city object with Pickup, Checkpoint, and Win Condition.
+  - Fails production smoke unless Readiness reports at least three gameplay components, one checkpoint, and one win condition.
+- Final app deployment `4b4ad1c1-d948-4856-a21c-6f12efa08b62`
+  - Source `3967314`; bundle `/assets/play-DfB0C3M-.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+  - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Production smoke reported systems: `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, checkpoints:1 tagged, win:1 tagged, spawns:Ready, damage:Ready`.
+  - Production smoke confirmed selected components: `pickup, checkpoint, winCondition`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -542,6 +562,7 @@ Recovered model cache summary:
 - Status-summary main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 - Readiness-panel main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 - Game-systems main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+- Checkpoint-win main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -597,7 +618,7 @@ Expected current results:
 
 - `npm run check:assets` passes from this app-only checkout by validating `114` remote asset URLs and `107` catalog references against `https://crateship-games-assets.pages.dev`.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-BWBpHDR0.js`.
+- `/play` references `/assets/play-DfB0C3M-.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -614,7 +635,8 @@ Expected current results:
 - The served play bundle contains `gb-project`, `data-gb-action="import"`, `data-gb-action="export"`, and the project Save/Load modal IDs used by smoke tests.
 - The Game Builder stats summary reads with clear separators, for example `411 objects, 1 components, 2 scripts, Edit mode`.
 - The served play bundle contains `gb-readiness`, `window._gameBuilderReadiness`, and readiness smoke output like `Ready to test, 411 objects, 2 scripts, 1 components, Edit mode`.
-- The served play bundle contains `gb-systems`, `window._gameBuilderSystems`, and systems smoke output with Inventory installed, Runtime installed, and Pickup tagged.
+- The served play bundle contains `gb-systems`, `window._gameBuilderSystems`, and systems smoke output with Inventory installed, Runtime installed, Pickup tagged, Checkpoint tagged, and Win Condition tagged.
+- The served play bundle contains `checkpoint`, `winCondition`, and Component Runtime support for active checkpoints and game-complete/game-over states.
 - The Project section can save a named project, open Import, open Export, and keeps Import disabled in Explore while Export stays enabled.
 - Saved projects use `version: 3` and include object snapshots, asset paths, builder components, and installed user scripts.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
@@ -855,6 +877,18 @@ Browser verification history:
   - Project load restored `411` objects and `2` scripts with `411` snapshots applied, `0` spawned, and a restored Pickup component.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbmx6fb.png`.
+- Final custom-domain verification after deployment `4b4ad1c1-d948-4856-a21c-6f12efa08b62`:
+  - Cloudflare source showed `3967314`.
+  - `/play?verify=39673143-1779135241661` served `/assets/play-DfB0C3M-.js`.
+  - `/play?verify=39673143-1779135241661` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Smoke verified Checkpoints and Win Condition cards exist in Game Systems.
+  - Smoke verified Game Systems reported `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, checkpoints:1 tagged, win:1 tagged, spawns:Ready, damage:Ready`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 411 objects, 2 scripts, 3 components, Edit mode`.
+  - Project load restored `411` objects and `2` scripts with `411` snapshots applied, `0` spawned, and a selected object with `pickup`, `checkpoint`, and `winCondition`.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbn6vdc.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -889,6 +923,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+39673143 Add checkpoint and win condition systems
 147d95ab Add Game Systems library
 b30bcf69 Add Game Builder readiness panel
 75eea039 Improve Game Builder status summary
