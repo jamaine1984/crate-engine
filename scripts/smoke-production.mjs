@@ -182,18 +182,6 @@ async function runBrowserSmoke() {
 
     await page.locator('#gb-project button[data-gb-action="save"]').click({ timeout: timeoutMs });
     await page.waitForSelector('#sl-modal #sl-save-btn', { timeout: timeoutMs });
-    await page.locator('#sl-name').fill('Production Smoke Project', { timeout: timeoutMs });
-    await page.locator('#sl-save-btn').click({ timeout: timeoutMs });
-    await page.waitForFunction(
-      () => JSON.parse(localStorage.getItem('crate-saves') || '[]').some((save) => save?.name === 'Production Smoke Project'),
-      undefined,
-      { timeout: timeoutMs }
-    );
-    await page.waitForFunction(
-      () => /saved project/i.test(document.querySelector('#gb-project-status')?.textContent || ''),
-      undefined,
-      { timeout: timeoutMs }
-    );
     await page.locator('#sl-close').click({ timeout: timeoutMs });
 
     await page.locator('#gb-project button[data-gb-action="import"]').click({ timeout: timeoutMs });
@@ -291,6 +279,38 @@ async function runBrowserSmoke() {
       undefined,
       { timeout: timeoutMs }
     );
+
+    await page.locator('#gb-project button[data-gb-action="save"]').click({ timeout: timeoutMs });
+    await page.waitForSelector('#sl-modal #sl-save-btn', { timeout: timeoutMs });
+    await page.locator('#sl-name').fill('Production Smoke Project', { timeout: timeoutMs });
+    await page.locator('#sl-save-btn').click({ timeout: timeoutMs });
+    const savedProjectState = await page.waitForFunction(
+      () => {
+        const saves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
+        const save = saves.find((item) => item?.name === 'Production Smoke Project');
+        if (!save?.data) return null;
+        const parsed = JSON.parse(save.data);
+        const hasPickup = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.pickup);
+        const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
+        const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
+        if (parsed.version !== 3 || !hasPickup || !hasAssetPath || !hasScripts) return null;
+        return {
+          version: parsed.version,
+          objectCount: parsed.objects.length,
+          scriptCount: parsed.userScripts.length,
+          hasPickup,
+          hasAssetPath,
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    await page.waitForFunction(
+      () => /saved project/i.test(document.querySelector('#gb-project-status')?.textContent || ''),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#sl-close').click({ timeout: timeoutMs });
 
     await page.evaluate(() => window._setMode?.('explore'));
     await page.waitForFunction(
@@ -428,6 +448,9 @@ async function runBrowserSmoke() {
         selectedComponents: Object.keys(selected?.userData?.gbComponents || {}),
       };
     });
+    state.savedProjectVersion = savedProjectState.version;
+    state.savedProjectObjectCount = savedProjectState.objectCount;
+    state.savedProjectScriptCount = savedProjectState.scriptCount;
 
     if (pageErrors.length) throw new Error(`Page errors:\n${pageErrors.join('\n')}`);
     if (badAssetResponses.length) throw new Error(`Bad model/texture responses:\n${badAssetResponses.join('\n')}`);
@@ -438,6 +461,9 @@ async function runBrowserSmoke() {
     }
     if (!state.hasInspector || !state.hasBlueprints || !state.hasProject) throw new Error('Game Builder Project, Inspector, or Blueprints section was missing');
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
+    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1) {
+      throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
+    }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
     if (state.mode !== 'edit') throw new Error(`Expected smoke to finish in edit mode, got ${state.mode || 'empty'}`);
     if (state.placementStatus !== 'placed' || state.placementSource !== 'production-smoke') {
@@ -483,6 +509,7 @@ console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`
 console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
+console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);
 console.log('HTTP checks:');

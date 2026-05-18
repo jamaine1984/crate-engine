@@ -2537,6 +2537,8 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone, option
     model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
     model.userData.name = name;
     model.userData.isGLB = true;
+    model.userData.gbAssetFile = glbFile;
+    model.userData.gbAssetPath = url;
     scene.add(model);
     objects.push(model);
     handlePlacedAsset(model, {
@@ -2640,7 +2642,11 @@ function ensureEditModeForAssetPlacement(source = 'asset') {
 }
 
 function handlePlacedAsset(model, options = {}) {
-  if (!model || (!options.trackPlacement && !options.selectAfterLoad)) return;
+  if (!model) return;
+  if (options.file) model.userData.gbAssetFile = options.file;
+  if (options.path) model.userData.gbAssetPath = options.path;
+  if (options.source) model.userData.gbPlacementSource = options.source;
+  if (!options.trackPlacement && !options.selectAfterLoad) return;
   window._lastPlacedObj = model;
   if (options.selectAfterLoad && isEditInteractionMode()) {
     selectSceneObject(model);
@@ -2891,6 +2897,8 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath, options = 
     });
     model.userData.name = name;
     model.userData.isGLB = true;
+    model.userData.gbAssetFile = glbFile;
+    model.userData.gbAssetPath = customPath || url;
     // Auto-float boats — always at water surface level
     if (ln.includes('boat') || ln.includes('ship') || ln.includes('canoe') || ln.includes('kayak')) {
       // Boats float at y=0 (just above ocean at -0.3)
@@ -14510,16 +14518,131 @@ input.focus();
 // ═══════════════════════════════════════════
 // sceneHistory declared at top of file
 
+function cloneProjectJson(value, fallback = null) {
+  try {
+    return JSON.parse(JSON.stringify(value ?? fallback));
+  } catch {
+    return fallback;
+  }
+}
+
+function serializeProjectScripts() {
+  return Array.isArray(window._userScripts)
+    ? window._userScripts.map(script => ({
+        id: script.id,
+        name: script.name,
+        description: script.description || '',
+        code: script.code || '',
+        enabled: script.enabled !== false,
+      })).filter(script => script.id && script.code)
+    : [];
+}
+
+function serializeProjectObject(obj, index) {
+  if (!obj || !obj.userData || !obj.position) return null;
+  const components = cloneProjectJson(obj.userData.gbComponents || {}, {});
+  const assetPath = obj.userData.gbAssetPath || obj.userData.glbPath || obj.userData.assetPath || '';
+  const assetFile = obj.userData.gbAssetFile || obj.userData.glbFile || (assetPath ? assetPath.split('/').pop() : '');
+  const entry = {
+    index,
+    id: obj.uuid || '',
+    name: obj.userData.name || obj.name || '',
+    position: [
+      Number(obj.position.x.toFixed(3)),
+      Number(obj.position.y.toFixed(3)),
+      Number(obj.position.z.toFixed(3)),
+    ],
+    rotation: [
+      Number((obj.rotation?.x || 0).toFixed(4)),
+      Number((obj.rotation?.y || 0).toFixed(4)),
+      Number((obj.rotation?.z || 0).toFixed(4)),
+    ],
+    scale: [
+      Number((obj.scale?.x || 1).toFixed(4)),
+      Number((obj.scale?.y || obj.scale?.x || 1).toFixed(4)),
+      Number((obj.scale?.z || obj.scale?.x || 1).toFixed(4)),
+    ],
+    components,
+    userData: {
+      interactable: obj.userData.interactable === true,
+      interactLabel: obj.userData.interactLabel || '',
+      isSolid: obj.userData.isSolid === true,
+      isGLB: obj.userData.isGLB === true,
+      isWater: obj.userData.isWater === true,
+      waterPreset: obj.userData.waterPreset || '',
+      isGerstnerWater: obj.userData.isGerstnerWater === true,
+    },
+  };
+  if (assetFile) entry.assetFile = assetFile;
+  if (assetPath) entry.assetPath = assetPath;
+  return entry;
+}
+
+function applyProjectObjectSnapshots(snapshots = []) {
+  if (!Array.isArray(snapshots) || !snapshots.length) return;
+  const used = new Set();
+  const pickTarget = (snapshot) => {
+    const name = String(snapshot?.name || '').toLowerCase();
+    const byName = name ? objects.find((obj, index) => {
+      if (used.has(index)) return false;
+      return String(obj?.userData?.name || obj?.name || '').toLowerCase() === name;
+    }) : null;
+    if (byName) {
+      used.add(objects.indexOf(byName));
+      return byName;
+    }
+    const fallbackIndex = Number.isInteger(snapshot?.index) ? snapshot.index : -1;
+    if (fallbackIndex >= 0 && objects[fallbackIndex] && !used.has(fallbackIndex)) {
+      used.add(fallbackIndex);
+      return objects[fallbackIndex];
+    }
+    return null;
+  };
+
+  snapshots.forEach((snapshot) => {
+    const obj = pickTarget(snapshot);
+    if (!obj) return;
+    obj.userData = obj.userData || {};
+    if (snapshot.name) obj.userData.name = snapshot.name;
+    if (Array.isArray(snapshot.position) && obj.position) obj.position.set(snapshot.position[0] || 0, snapshot.position[1] || 0, snapshot.position[2] || 0);
+    if (Array.isArray(snapshot.rotation) && obj.rotation) obj.rotation.set(snapshot.rotation[0] || 0, snapshot.rotation[1] || 0, snapshot.rotation[2] || 0);
+    if (Array.isArray(snapshot.scale) && obj.scale) obj.scale.set(snapshot.scale[0] || 1, snapshot.scale[1] || snapshot.scale[0] || 1, snapshot.scale[2] || snapshot.scale[0] || 1);
+    obj.userData.gbComponents = cloneProjectJson(snapshot.components || {}, {});
+    const meta = snapshot.userData || {};
+    obj.userData.interactable = meta.interactable === true;
+    obj.userData.interactLabel = meta.interactLabel || '';
+    if (meta.isSolid) obj.userData.isSolid = true;
+    if (snapshot.assetFile) obj.userData.gbAssetFile = snapshot.assetFile;
+    if (snapshot.assetPath) obj.userData.gbAssetPath = snapshot.assetPath;
+    if (window._addToCollision && obj.userData.isSolid) window._addToCollision(obj);
+  });
+
+  if (typeof window._refreshGameBuilderMode === 'function') window._refreshGameBuilderMode();
+  if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
+}
+
+function restoreProjectScripts(scripts = []) {
+  if (!Array.isArray(scripts) || !scripts.length) return;
+  scripts.forEach((script, index) => {
+    setTimeout(() => {
+      window._installUserScriptPreset?.(script)?.catch?.((err) => console.warn('[Project] Script restore failed:', err));
+    }, index * 30);
+  });
+}
 
 function deserializeScene(data) {
   // Clear current scene
   parseAndExecute('clear');
   
   let cmds;
+  let projectObjects = [];
+  let projectScripts = [];
   try {
     const parsed = JSON.parse(data);
-    if (parsed.version === 2) {
+    if (Array.isArray(parsed.commands)) {
       cmds = parsed.commands || [];
+      projectObjects = Array.isArray(parsed.objects) ? parsed.objects : [];
+      projectScripts = Array.isArray(parsed.userScripts) ? parsed.userScripts : [];
       // Restore weather/time after commands
       setTimeout(() => {
         if (parsed.weather) setWeather(parsed.weather);
@@ -14535,7 +14658,13 @@ function deserializeScene(data) {
   
   let i = 0;
   function next() {
-    if (i >= cmds.length) return;
+    if (i >= cmds.length) {
+      setTimeout(() => {
+        applyProjectObjectSnapshots(projectObjects);
+        restoreProjectScripts(projectScripts);
+      }, 350);
+      return;
+    }
     parseAndExecute(cmds[i]);
     i++;
     setTimeout(next, 200);
@@ -14545,24 +14674,15 @@ function deserializeScene(data) {
 
 function serializeScene() {
   // Save both command history AND current object state
-  const objectState = objects.map(obj => {
-    if (!obj || !obj.userData) return null;
-    const entry = {
-      name: obj.userData.name || '',
-      pos: [+obj.position.x.toFixed(2), +obj.position.y.toFixed(2), +obj.position.z.toFixed(2)],
-      scale: +obj.scale.x.toFixed(4),
-      rot: +obj.rotation.y.toFixed(3),
-    };
-    if (obj.userData.isGLB) entry.glb = true;
-    if (obj.userData.isWater) entry.water = true;
-    if (obj.userData.waterPreset) entry.waterPreset = obj.userData.waterPreset;
-    if (obj.userData.isGerstnerWater) entry.gerstner = true;
-    return entry;
-  }).filter(Boolean);
+  const objectState = objects.map((obj, index) => serializeProjectObject(obj, index)).filter(Boolean);
   
   return JSON.stringify({
-    version: 2,
+    format: 'crate-engine-project',
+    version: 3,
+    savedAt: new Date().toISOString(),
     commands: sceneHistory.filter(c => c !== 'clear' && c !== 'reset'),
+    objects: objectState,
+    userScripts: serializeProjectScripts(),
     weather: weatherSystem || null,
     time: null, // TODO: track time of day
   });
@@ -15746,30 +15866,19 @@ function _importCrateFile(file) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (data.commands && Array.isArray(data.commands)) {
-        logOutput('info', 'Loading .crate scene (' + data.commands.length + ' commands)...');
-        if (window._parseAndExecute) {
-          window._parseAndExecute('clear');
-          data.commands.forEach((cmd, i) => {
-            setTimeout(() => window._parseAndExecute(cmd), i * 50);
-          });
-        }
-        logOutput('ok', 'Scene loaded from ' + file.name);
-      }
+      if (!data.commands || !Array.isArray(data.commands)) throw new Error('Missing commands array');
+      logOutput('info', 'Loading .crate scene (' + data.commands.length + ' commands)...');
+      deserializeScene(JSON.stringify(data));
+      logOutput('ok', 'Scene loaded from ' + file.name);
     } catch (e) { logOutput('err', 'Invalid .crate file: ' + e.message); }
   };
   reader.readAsText(file);
 }
 
 window._exportCrateFile = function() {
-  const data = {
-    format: 'crate-engine-scene',
-    version: 1,
-    name: 'My Scene',
-    date: new Date().toISOString(),
-    commands: (window._sceneHistory || sceneHistory || []).slice(),
-    objectCount: objects.length,
-  };
+  const data = JSON.parse(serializeScene());
+  data.name = 'My Scene';
+  data.objectCount = objects.length;
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -15837,6 +15946,7 @@ window._showSaveLoad = function() {
       name,
       date: new Date().toISOString(),
       objectCount: objects.length,
+      data: serializeScene(),
       commands: (window._sceneHistory || sceneHistory || []).slice(),
     });
     localStorage.setItem('crate-saves', JSON.stringify(allSaves));
@@ -15849,14 +15959,15 @@ window._showSaveLoad = function() {
 window._loadSaveSlot = function(idx) {
   const saves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
   const save = saves[idx];
-  if (!save || !save.commands) return;
-  if (window._parseAndExecute) {
+  if (!save || (!save.data && !save.commands)) return;
+  if (save.data) deserializeScene(save.data);
+  else if (window._parseAndExecute) {
     window._parseAndExecute('clear');
     save.commands.forEach((cmd, i) => {
       setTimeout(() => window._parseAndExecute(cmd), i * 50);
     });
   }
-  logOutput('ok', 'Loaded "' + save.name + '" (' + save.commands.length + ' commands)');
+  logOutput('ok', 'Loaded "' + save.name + '" (' + (save.commands?.length || 0) + ' commands)');
 };
 
 window._deleteSaveSlot = function(idx) {
