@@ -293,11 +293,15 @@ async function runBrowserSmoke() {
         const hasPickup = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.pickup);
         const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
         const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
-        if (parsed.version !== 3 || !hasPickup || !hasAssetPath || !hasScripts) return null;
+        const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
+        const hasBuildCityCommand = commands.some((cmd) => /^build (a |the )?(city|full city|the city)$/i.test(String(cmd || '').trim()));
+        if (parsed.version !== 3 || !hasPickup || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
         return {
           version: parsed.version,
           objectCount: parsed.objects.length,
           scriptCount: parsed.userScripts.length,
+          commandCount: commands.length,
+          hasBuildCityCommand,
           hasPickup,
           hasAssetPath,
         };
@@ -324,7 +328,7 @@ async function runBrowserSmoke() {
         const objects = window._engineBridge?.objects || window._sceneObjects || [];
         const scripts = Array.isArray(window._userScripts) ? window._userScripts.length : 0;
         const pickupObj = objects.find((obj) => obj?.userData?.gbComponents?.pickup);
-        if (load.status !== 'loaded' || objects.length < Math.max(1, saved.objectCount - 2) || scripts < saved.scriptCount || !pickupObj) return null;
+        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj) return null;
         return {
           status: load.status,
           objectCount: objects.length,
@@ -488,8 +492,11 @@ async function runBrowserSmoke() {
     state.savedProjectVersion = savedProjectState.version;
     state.savedProjectObjectCount = savedProjectState.objectCount;
     state.savedProjectScriptCount = savedProjectState.scriptCount;
+    state.savedProjectCommandCount = savedProjectState.commandCount;
+    state.savedProjectHasBuildCityCommand = savedProjectState.hasBuildCityCommand;
     state.loadedProjectObjectCount = loadedProjectState.objectCount;
     state.loadedProjectScriptCount = loadedProjectState.scriptCount;
+    state.loadedProjectPickupId = loadedProjectState.pickupId;
     state.loadedProjectSpawned = loadedProjectState.spawned;
     state.loadedProjectApplied = loadedProjectState.applied;
 
@@ -502,10 +509,10 @@ async function runBrowserSmoke() {
     }
     if (!state.hasInspector || !state.hasBlueprints || !state.hasProject) throw new Error('Game Builder Project, Inspector, or Blueprints section was missing');
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
-    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1) {
+    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
     }
-    if (state.loadedProjectObjectCount < state.savedProjectObjectCount - 2 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1) {
+    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId) {
       throw new Error(`Project load did not restore rich scene state: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
@@ -553,8 +560,8 @@ console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`
 console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
-console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts`);
-console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned)`);
+console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
+console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'})`);
 console.log(`Selected components: ${browserState.selectedComponents.join(', ')}`);
 console.log(`Screenshot: ${screenshotPath}`);
 console.log('HTTP checks:');

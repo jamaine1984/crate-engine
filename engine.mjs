@@ -1,5 +1,12 @@
 window._userScripts = window._userScripts || [];
 const sceneHistory = [];
+window._sceneHistory = sceneHistory;
+
+function recordSceneCommand(cmd) {
+  const value = String(cmd || '').trim();
+  if (!value || value === 'clear' || value === 'reset') return;
+  sceneHistory.push(value);
+}
 
 
 // === AAA Water & Sky (v61) ===
@@ -2705,7 +2712,7 @@ function placeCatalogAsset(result, source = 'asset-library') {
     source,
     file,
   });
-  sceneHistory.push('add ' + file);
+  recordSceneCommand('add ' + file);
   return { file, name, x: point.x, z: point.z };
 }
 
@@ -6215,6 +6222,7 @@ async function parseAndExecute(rawCmd) {
 
   if (/^build (a |the )?(city|full city|the city)$/i.test(cmd)) {
     const { buildCityWorld3 } = await loadCityBuilderModule();
+    recordSceneCommand('build city');
     buildCityWorld3();
     return '🏙️ Building full city... give it 15-20 seconds to load all assets!';
   }
@@ -7215,7 +7223,7 @@ async function execSingle(cmd) {
     return;
   }
 
-  sceneHistory.push(cmd);
+  recordSceneCommand(cmd);
   const lower = cmd.toLowerCase().trim();
 
   // === V215 NEW COMMANDS ===
@@ -14563,6 +14571,7 @@ function serializeProjectObject(obj, index) {
       Number((obj.scale?.z || obj.scale?.x || 1).toFixed(4)),
     ],
     components,
+    placementSource: obj.userData.gbPlacementSource || '',
     userData: {
       interactable: obj.userData.interactable === true,
       interactLabel: obj.userData.interactLabel || '',
@@ -14605,6 +14614,7 @@ function applyProjectSnapshotToObject(obj, snapshot) {
   if (meta.isSolid) obj.userData.isSolid = true;
   if (snapshot.assetFile) obj.userData.gbAssetFile = snapshot.assetFile;
   if (snapshot.assetPath) obj.userData.gbAssetPath = snapshot.assetPath;
+  if (snapshot.placementSource) obj.userData.gbPlacementSource = snapshot.placementSource;
   if (window._addToCollision && obj.userData.isSolid) window._addToCollision(obj);
   return true;
 }
@@ -16755,7 +16765,7 @@ let dragCounter = 0;
           scene.add(model);
           objects.push(model);
           if (window._sceneObjects) window._sceneObjects.push(model);
-          sceneHistory.push('add ' + name);
+          recordSceneCommand('add ' + name);
           
           // Save to IndexedDB for persistence
           const importId = 'user_import_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
