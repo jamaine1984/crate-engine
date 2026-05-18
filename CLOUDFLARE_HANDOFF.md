@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `39673143`
+- Current deployed source commit for the public engine code: `dd6afcab`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `4b4ad1c1-d948-4856-a21c-6f12efa08b62`
-- Latest production deployment URL: `https://4b4ad1c1.crateship-games.pages.dev`
+- Latest production deployment ID: `bde12b5e-d62c-4318-96f3-cc2d4992e663`
+- Latest production deployment URL: `https://bde12b5e.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `3967314`
-- Main live page bundle after the deploy: `/assets/play-DfB0C3M-.js`
+- Source shown by Cloudflare: `dd6afca`
+- Main live page bundle after the deploy: `/assets/play-ZkCR6qii.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -440,6 +440,36 @@ Follow-up production deploys on 2026-05-18 added checkpoint and win-condition sy
   - Production smoke reported systems: `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, checkpoints:1 tagged, win:1 tagged, spawns:Ready, damage:Ready`.
   - Production smoke confirmed selected components: `pickup, checkpoint, winCondition`.
 
+Follow-up production deploys on 2026-05-18 added functional spawn/respawn runtime behavior and fixed the scripting hook runner:
+
+- `game-builder-ui.mjs`
+  - Extended Component Runtime to handle `spawnPoint` as an active Play-mode system, not only editor metadata.
+  - Spawn points now set the active player start, show in the runtime HUD, and reset when leaving Play mode.
+  - Respawns now target the active checkpoint first, then the active player spawn, restoring runtime health to `100`.
+  - Spawn Point Inspector fields now include a label, kind, and radius.
+  - Installing or tagging a Spawn Point now installs the Component Runtime automatically.
+- `user-scripts.mjs`
+  - Fixed the sandbox runner so `onUpdate`, `onKeyPress`, and `onCollision` assignments are captured from script code.
+  - This bug was preventing installed gameplay scripts from ticking even when the script card showed as installed.
+- `scripts/smoke-production.mjs`
+  - Requires the live Game Systems Library to tag Spawn Points.
+  - Fails production smoke unless saved projects include Spawn Point components.
+  - Enters Play mode, forces runtime health to `0`, and fails unless the component runtime respawns to `100` HP.
+- App deployment `7f3399a9-fcc0-44f4-847b-079d06cea6fa`
+  - Source `f71e8d3`; bundle `/assets/play-1kwhOa_e.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+  - This deployment was superseded because production smoke revealed the sandbox was not capturing `onUpdate` hooks.
+- Final app deployment `bde12b5e-d62c-4318-96f3-cc2d4992e663`
+  - Source `dd6afca`; bundle `/assets/play-ZkCR6qii.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `8` changed files, reused `97` already-uploaded files, and refreshed `_headers`.
+  - Quick hook probe on `https://crateshipgames.com/play` confirmed both `gb_inventory_hotbar` and `gb_component_runtime` had active `onUpdate` hooks.
+  - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Production smoke reported systems: `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, checkpoints:1 tagged, win:1 tagged, spawns:1 tagged, damage:Ready`.
+  - Production smoke confirmed selected components: `pickup, checkpoint, winCondition, spawnPoint`.
+  - Production smoke verified respawn runtime: `1` respawn and `100` HP.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -618,7 +648,7 @@ Expected current results:
 
 - `npm run check:assets` passes from this app-only checkout by validating `114` remote asset URLs and `107` catalog references against `https://crateship-games-assets.pages.dev`.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-DfB0C3M-.js`.
+- `/play` references `/assets/play-ZkCR6qii.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -633,10 +663,12 @@ Expected current results:
 - The served play bundle contains `data-gb-edit-only`, `gb-readonly-note`, and the forced inspector refresh used by the Edit/Explore/Play lock.
 - Explore mode disables Game Builder mutation controls, and forced clicks on those disabled controls do not change object count, selection, or components.
 - The served play bundle contains `gb-project`, `data-gb-action="import"`, `data-gb-action="export"`, and the project Save/Load modal IDs used by smoke tests.
-- The Game Builder stats summary reads with clear separators, for example `411 objects, 1 components, 2 scripts, Edit mode`.
-- The served play bundle contains `gb-readiness`, `window._gameBuilderReadiness`, and readiness smoke output like `Ready to test, 411 objects, 2 scripts, 1 components, Edit mode`.
-- The served play bundle contains `gb-systems`, `window._gameBuilderSystems`, and systems smoke output with Inventory installed, Runtime installed, Pickup tagged, Checkpoint tagged, and Win Condition tagged.
-- The served play bundle contains `checkpoint`, `winCondition`, and Component Runtime support for active checkpoints and game-complete/game-over states.
+- The Game Builder stats summary reads with clear separators, for example `411 objects, 4 components, 2 scripts, Edit mode`.
+- The served play bundle contains `gb-readiness`, `window._gameBuilderReadiness`, and readiness smoke output like `Ready to test, 411 objects, 2 scripts, 4 components, Edit mode`.
+- The served play bundle contains `gb-systems`, `window._gameBuilderSystems`, and systems smoke output with Inventory installed, Runtime installed, Pickup tagged, Checkpoint tagged, Win Condition tagged, and Spawn Point tagged.
+- The served play bundle contains `checkpoint`, `winCondition`, `spawnPoint`, and Component Runtime support for active checkpoints, active player spawns, respawns, and game-complete/game-over states.
+- Installed scripts expose active runtime hooks through `onUpdate`, so the Component Runtime actually ticks in Play mode.
+- The production smoke forces runtime health to `0` in Play mode and expects the Spawn/Checkpoint runtime to respawn back to `100` HP.
 - The Project section can save a named project, open Import, open Export, and keeps Import disabled in Explore while Export stays enabled.
 - Saved projects use `version: 3` and include object snapshots, asset paths, builder components, and installed user scripts.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
@@ -889,6 +921,19 @@ Browser verification history:
   - Project load restored `411` objects and `2` scripts with `411` snapshots applied, `0` spawned, and a selected object with `pickup`, `checkpoint`, and `winCondition`.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbn6vdc.png`.
+- Final custom-domain verification after deployment `bde12b5e-d62c-4318-96f3-cc2d4992e663`:
+  - Cloudflare source showed `dd6afca`.
+  - `/play?verify=hooks-dd6afcab-1779110858.34615` served `/assets/play-ZkCR6qii.js`.
+  - `/play?verify=hooks-dd6afcab-1779110858.34615` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - Quick hook probe verified installed scripts reported `hasUpdate: true` for Inventory Hotbar and Component Runtime.
+  - `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Smoke verified Game Systems reported `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, objectives:Ready, checkpoints:1 tagged, win:1 tagged, spawns:1 tagged, damage:Ready`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 411 objects, 2 scripts, 4 components, Edit mode`.
+  - Project load restored `411` objects and `2` scripts with `411` snapshots applied, `0` spawned, and a selected object with `pickup`, `checkpoint`, `winCondition`, and `spawnPoint`.
+  - Smoke verified Component Runtime respawned from `0` health back to `100` HP in Play mode.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbnoyxz.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -923,6 +968,8 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+dd6afcab Fix user script runtime hooks
+f71e8d34 Add spawn runtime behavior
 39673143 Add checkpoint and win condition systems
 147d95ab Add Game Systems library
 b30bcf69 Add Game Builder readiness panel
