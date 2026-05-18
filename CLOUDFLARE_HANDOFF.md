@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `b8364e70`
+- Current deployed source commit for the public engine code: `1cb6c6c`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `4e7ae6f3-4238-4158-b907-4290eefae405`
-- Latest production deployment URL: `https://4e7ae6f3.crateship-games.pages.dev`
+- Latest production deployment ID: `8cc68a30-fb5b-45ca-a6f0-3fb9962ce2e9`
+- Latest production deployment URL: `https://8cc68a30.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `b8364e7`
-- Main live page bundle after the deploy: `/assets/play-DowQ6fa7.js`
+- Source shown by Cloudflare: `1cb6c6c`
+- Main live page bundle after the deploy: `/assets/play-Cdu9RoE0.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -288,6 +288,28 @@ Follow-up production deploys on 2026-05-18 locked Game Builder editing outside E
   - The main app upload skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
   - Production smoke passed on the real custom domain after the inspector redraw fix.
 
+Follow-up production deploys on 2026-05-18 added Game Builder project controls:
+
+- `game-builder-ui.mjs`
+  - Added a top-level `Project` section in the Game Builder panel.
+  - Exposes Save, Load, Import, Export, Share, and Settings as visible builder actions instead of relying on hidden legacy toolbar buttons.
+  - Shows saved project count in `#gb-project-status`.
+  - Keeps Save, Load, and Import edit-only because they can mutate project state or scene contents.
+  - Keeps Export and Share available in Explore because they are read-only project actions.
+  - Added stable `data-gb-action` selectors for project buttons.
+- `engine.mjs`
+  - Added stable modal IDs for project smoke tests: `#sl-close`, `#ie-close`, `#ie-export-share`, `#ie-export-crate`, and `#ie-export-html`.
+  - Play mode now removes Save/Load and Share modals along with existing import/asset modals so project UI cannot intercept gameplay input.
+- `scripts/smoke-production.mjs`
+  - Verifies the Project section has Save, Load, Import, Export, Share, and Settings actions.
+  - Saves a named project into `localStorage.crate-saves`.
+  - Opens and verifies the Import modal and Export modal on the real custom domain.
+  - Verifies Import is disabled in Explore while Export remains available.
+- App deployment `8cc68a30-fb5b-45ca-a6f0-3fb9962ce2e9`
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `6` changed files, reused `99` already-uploaded files, and refreshed `_headers`.
+  - Production smoke passed on the real custom domain.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -398,6 +420,7 @@ Recovered model cache summary:
 - Asset-placement main-app deploy skipped bundled `/models` and `/textures`, uploaded `8` changed files, reused `97` already-uploaded files, and refreshed `_headers`.
 - Editor-lock intermediate main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, refreshed `_headers`, and was superseded after smoke caught a read-only inspector redraw gap.
 - Editor-lock fix main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+- Project-controls main-app deploy skipped bundled `/models` and `/textures`, uploaded `6` changed files, reused `99` already-uploaded files, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -454,7 +477,7 @@ Expected current results:
 
 - `npm run check:assets` passes with `108` required models, `20` external dependencies, and catalog references checked.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-DowQ6fa7.js`.
+- `/play` references `/assets/play-Cdu9RoE0.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -468,6 +491,8 @@ Expected current results:
 - The served play bundle hides the Game Builder and model browser in Play mode and restores them after switching back to Edit.
 - The served play bundle contains `data-gb-edit-only`, `gb-readonly-note`, and the forced inspector refresh used by the Edit/Explore/Play lock.
 - Explore mode disables Game Builder mutation controls, and forced clicks on those disabled controls do not change object count, selection, or components.
+- The served play bundle contains `gb-project`, `data-gb-action="import"`, `data-gb-action="export"`, and the project Save/Load modal IDs used by smoke tests.
+- The Project section can save a named project, open Import, open Export, and keeps Import disabled in Explore while Export stays enabled.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
 - Missing asset-host model paths return `404 Not Found`, not `200 text/html`.
 
@@ -608,6 +633,19 @@ Browser verification from the 2026-05-17 deploy:
   - Play mode smoke verified the Game Builder, prompt, and model browser were hidden in Play, then restored after returning to Edit.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbiyeq0.png`.
+- Final custom-domain verification after deployment `8cc68a30-fb5b-45ca-a6f0-3fb9962ce2e9`:
+  - Cloudflare source showed `1cb6c6c`.
+  - `/play?verify=<timestamp>` served `/assets/play-Cdu9RoE0.js`.
+  - `/play?verify=<timestamp>` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the upload set had `105` files and no staged `/models` or `/textures` directories.
+  - `npm run check`, `npm run build`, and `npm run check:assets` passed before deploy.
+  - `npm run smoke:production` passed after deploy on the real custom domain.
+  - Smoke verified Project Save, Import, and Export controls before the existing city/gameplay checks.
+  - Smoke result: asset manifest `6f09cc09da2f`, hidden unavailable assets `45`, `411` objects, `10` scene rows, `2` scripts, `1` saved project, mode `edit`, placement `placed (production-smoke)`, selected component `pickup`.
+  - Explore smoke verified mutating project controls like Import are disabled while Export stays available.
+  - Play mode smoke verified the Game Builder, prompt, model browser, and project modals were not left visible during Play.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `output/playwright/production-smoke-mpbjdqtv.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -642,6 +680,7 @@ Browser verification from the 2026-05-17 deploy:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+1cb6c6c Add builder project controls
 b8364e70 Refresh inspector on builder mode changes
 c529d95e Lock editor controls outside edit mode
 1967b372 Improve asset placement feedback
