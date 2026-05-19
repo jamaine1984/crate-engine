@@ -1088,6 +1088,9 @@ async function runBrowserSmoke() {
           hasRefresh: !!document.querySelector('#refresh-admin'),
           hasSave: !!document.querySelector('#save-token'),
           hasClear: !!document.querySelector('#clear-token'),
+          hasReviewNoteInput: !!document.querySelector('#admin-review-note'),
+          reviewNoteRequired: state.reviewNoteRequired === true,
+          reviewNoteCount: document.querySelector('#review-note-count')?.textContent || '',
           hasReviewQueue: /Review Queue/i.test(document.body.textContent || ''),
         };
       },
@@ -1102,6 +1105,8 @@ async function runBrowserSmoke() {
         !adminDashboardState.hasRefresh ||
         !adminDashboardState.hasSave ||
         !adminDashboardState.hasClear ||
+        !adminDashboardState.hasReviewNoteInput ||
+        !adminDashboardState.reviewNoteRequired ||
         !adminDashboardState.hasReviewQueue) {
       throw new Error(`Admin dashboard locked state failed: ${JSON.stringify(adminDashboardState)}`);
     }
@@ -1121,6 +1126,7 @@ async function runBrowserSmoke() {
             rowSlugs: state.rowSlugs || [],
             counts: state.counts || {},
             auditRows: Number(state.auditRows) || 0,
+            noteRows: Number(state.noteRows) || 0,
             featuredRows: Number(state.featuredRows) || 0,
             hiddenRows: Number(state.hiddenRows) || 0,
           };
@@ -1974,6 +1980,9 @@ async function runBrowserSmoke() {
     state.adminDashboardHasControls = adminDashboardState.hasControls;
     state.adminDashboardHasTable = adminDashboardState.hasTable;
     state.adminDashboardHasReviewQueue = adminDashboardState.hasReviewQueue;
+    state.adminDashboardHasReviewNoteInput = adminDashboardState.hasReviewNoteInput;
+    state.adminDashboardReviewNoteRequired = adminDashboardState.reviewNoteRequired;
+    state.adminDashboardReviewNoteCount = adminDashboardState.reviewNoteCount;
     state.adminDashboardAuthedStatus = adminDashboardAuthedState?.status || '';
     state.adminDashboardAuthedTotal = adminDashboardAuthedState?.total || 0;
     state.adminDashboardAuthedSmokeListed = adminDashboardAuthedState?.rowSlugs?.includes('production-smoke-published-game') || false;
@@ -2190,6 +2199,8 @@ async function runBrowserSmoke() {
         !state.adminDashboardHasControls ||
         !state.adminDashboardHasTable ||
         !state.adminDashboardHasReviewQueue ||
+        !state.adminDashboardHasReviewNoteInput ||
+        !state.adminDashboardReviewNoteRequired ||
         (state.adminSmokeTokenProvided && (state.adminDashboardAuthedStatus !== 'loaded' || !state.adminDashboardAuthedSmokeListed)) ||
         state.publishedFilterQuery !== 'production smoke' ||
         state.publishedFilterSource !== 'all' ||
@@ -2303,7 +2314,7 @@ console.log(`Published metadata: creator ${browserState.publishedDetailCreatorNa
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
 console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games, admin featured ${(browserState.marketplaceDiscoveryAdminFeaturedSlugs || []).length}`);
 console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components, featured ${browserState.gameDetailFeatured ? 'yes' : 'no'})`);
-console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
+console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

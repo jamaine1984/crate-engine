@@ -23,7 +23,7 @@ h1{font-size:clamp(1.8rem,3vw,3.1rem);margin:0;color:#fff;line-height:1.05}
 .status-pill.ready{border-color:#1f6847;background:#092218;color:#7ddf9e}
 .status-pill.warn{border-color:#775d18;background:#211a08;color:#f7d774}
 .status-pill.err{border-color:#713030;background:#251010;color:#fca5a5}
-.auth,.toolbar,.table-panel{border:1px solid #1d2a31;background:#0b1116;border-radius:12px}
+.auth,.toolbar,.review-note,.table-panel{border:1px solid #1d2a31;background:#0b1116;border-radius:12px}
 .auth{display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;gap:10px;align-items:center;padding:14px;margin-bottom:14px}
 .auth input,.toolbar input,.toolbar select{width:100%;background:#05080a;border:1px solid #24323b;border-radius:9px;color:#e7eef2;padding:10px 11px;outline:none}
 .auth input:focus,.toolbar input:focus,.toolbar select:focus{border-color:#7ddf9e}
@@ -38,6 +38,11 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .stat strong{display:block;color:#fff;font-size:1.55rem;margin-bottom:5px}
 .stat span{color:#8fa0a8;font-size:.76rem;text-transform:uppercase;font-weight:900;letter-spacing:.05em}
 .toolbar{display:grid;grid-template-columns:minmax(230px,1fr) 160px 160px auto;gap:10px;padding:14px;margin-bottom:14px;align-items:center}
+.review-note{padding:14px;margin-bottom:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}
+.review-note label{display:block;color:#8fa0a8;font-size:.72rem;text-transform:uppercase;font-weight:900;letter-spacing:.05em;margin-bottom:6px}
+.review-note textarea{width:100%;min-height:76px;resize:vertical;background:#05080a;border:1px solid #24323b;border-radius:9px;color:#e7eef2;padding:10px 11px;outline:none;font-family:inherit;line-height:1.4}
+.review-note textarea:focus{border-color:#7ddf9e}
+.note-count{color:#8fa0a8;font-size:.78rem;white-space:nowrap;padding-top:28px}
 .table-panel{overflow:hidden}
 .table-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px;border-bottom:1px solid #1d2a31}
 .table-head h2{font-size:1rem;margin:0;color:#fff}
@@ -62,7 +67,8 @@ td{color:#dce7eb;font-size:.86rem}
 .empty{padding:28px;text-align:center;color:#8fa0a8;border-top:1px solid #162229}
 @media (max-width:980px){
   .hero{align-items:flex-start;flex-direction:column}
-  .auth,.toolbar{grid-template-columns:1fr}
+  .auth,.toolbar,.review-note{grid-template-columns:1fr}
+  .note-count{padding-top:0}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   table,thead,tbody,tr,th,td{display:block}
   thead{display:none}
@@ -131,6 +137,14 @@ td{color:#dce7eb;font-size:.86rem}
     <button id="apply-filters" type="button">Apply</button>
   </section>
 
+  <section class="review-note" aria-label="Moderation review note">
+    <div>
+      <label for="admin-review-note">Review note required for changes</label>
+      <textarea id="admin-review-note" maxlength="240" placeholder="Example: Featured because the build has complete gameplay systems and a clean public detail page."></textarea>
+    </div>
+    <div id="review-note-count" class="note-count">0 / 240</div>
+  </section>
+
   <section class="table-panel">
     <div class="table-head">
       <h2>Review Queue</h2>
@@ -163,6 +177,8 @@ td{color:#dce7eb;font-size:.86rem}
     search: document.getElementById('admin-search'),
     filter: document.getElementById('admin-filter'),
     sort: document.getElementById('admin-sort'),
+    note: document.getElementById('admin-review-note'),
+    noteCount: document.getElementById('review-note-count'),
     apply: document.getElementById('apply-filters'),
     authStatus: document.getElementById('auth-status'),
     status: document.getElementById('status-pill'),
@@ -240,12 +256,16 @@ td{color:#dce7eb;font-size:.86rem}
       error: state.error || '',
       tokenStored: !!readToken(),
       hasTokenInput: !!els.token,
-      hasControls: !!(els.search && els.filter && els.sort && els.apply && els.refresh),
+      hasControls: !!(els.search && els.filter && els.sort && els.note && els.apply && els.refresh),
       hasTable: !!els.rows,
+      hasReviewNoteInput: !!els.note,
+      reviewNoteRequired: true,
+      noteLength: (els.note?.value || '').trim().length,
       rowSlugs: currentRows.map((game) => game.slug),
       hiddenRows: currentRows.filter((game) => game.moderationStatus === 'hidden').length,
       featuredRows: currentRows.filter((game) => game.featured).length,
       auditRows: currentRows.filter((game) => Number(game.auditCount) > 0 || game.lastAdminAction).length,
+      noteRows: currentRows.filter((game) => game.lastAdminNote).length,
     };
     renderStatus();
   }
@@ -299,12 +319,13 @@ td{color:#dce7eb;font-size:.86rem}
       const auditText = game.lastAdminAction
         ? escapeHtml(game.lastAdminAction) + '<br><span>' + escapeHtml(formatDate(game.lastAdminActionAt)) + '</span>'
         : 'No admin changes';
+      const noteText = game.lastAdminNote ? '<br><span>Note: ' + escapeHtml(game.lastAdminNote) + '</span>' : '';
       return '<tr data-admin-game="' + escapeHtml(slug) + '">' +
         '<td><div class="game-title">' + escapeHtml(game.title || slug || 'Untitled Game') + '</div><span class="game-slug">' + escapeHtml(slug) + '</span>' +
           '<div class="desc">' + escapeHtml(game.description || 'No description submitted.') + '</div></td>' +
         '<td>' + badge(game) + '</td>' +
         '<td><div class="metrics">' + (Number(game.objects) || 0) + ' objects<br>' + (Number(game.components) || 0) + ' components<br>' + (Number(game.scripts) || 0) + ' scripts</div></td>' +
-        '<td><div class="audit">' + auditText + '<br>' + (Number(game.auditCount) || 0) + ' audit entries</div></td>' +
+        '<td><div class="audit">' + auditText + noteText + '<br>' + (Number(game.auditCount) || 0) + ' audit entries</div></td>' +
         '<td><div class="actions">' +
           '<button type="button" data-action="feature" data-slug="' + escapeHtml(slug) + '">' + (featured ? 'Unfeature' : 'Feature') + '</button>' +
           '<button type="button" data-action="visibility" data-slug="' + escapeHtml(slug) + '">' + (unlisted ? 'List' : 'Unlist') + '</button>' +
@@ -372,6 +393,13 @@ td{color:#dce7eb;font-size:.86rem}
 
   async function updateGame(slug, updates, button) {
     if (!slug || !updates) return;
+    const reviewNote = (els.note?.value || '').trim().slice(0, 240);
+    if (!reviewNote) {
+      els.authStatus.textContent = 'Add a review note before changing moderation.';
+      els.note?.focus();
+      setState({ error: 'Review note required for moderation changes.' });
+      return;
+    }
     const original = button ? button.textContent : '';
     if (button) {
       button.disabled = true;
@@ -381,11 +409,13 @@ td{color:#dce7eb;font-size:.86rem}
       const response = await fetch('/api/games/' + encodeURIComponent(slug), {
         method: 'PATCH',
         headers: headers(true),
-        body: JSON.stringify(updates),
+        body: JSON.stringify(Object.assign({}, updates, { reviewNote })),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Moderation update failed.');
       els.authStatus.textContent = 'Updated ' + slug + '.';
+      if (els.note) els.note.value = '';
+      updateNoteCount();
       await loadAdminGames();
     } catch (err) {
       els.authStatus.textContent = err?.message || String(err || 'Moderation update failed.');
@@ -415,6 +445,11 @@ td{color:#dce7eb;font-size:.86rem}
   els.save.addEventListener('click', () => loadAdminGames());
   els.refresh.addEventListener('click', () => loadAdminGames());
   els.apply.addEventListener('click', () => loadAdminGames());
+  function updateNoteCount() {
+    if (els.noteCount) els.noteCount.textContent = String((els.note?.value || '').trim().length) + ' / 240';
+    setState({ error: state.error || '' });
+  }
+  els.note?.addEventListener('input', updateNoteCount);
   els.clear.addEventListener('click', () => {
     writeToken('');
     els.token.value = '';

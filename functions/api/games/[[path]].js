@@ -3,6 +3,7 @@ const MAX_TITLE_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 1200;
 const MAX_CREATOR_LENGTH = 80;
 const MAX_CREATOR_URL_LENGTH = 220;
+const MAX_REVIEW_NOTE_LENGTH = 240;
 const MAX_TAGS = 12;
 const MAX_LIST_SCAN = 1000;
 const GAME_PREFIX = 'game:';
@@ -75,6 +76,10 @@ function cleanFeaturedAt(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 }
 
+function cleanReviewNote(value) {
+  return cleanText(value || '', MAX_REVIEW_NOTE_LENGTH);
+}
+
 function cleanSort(value) {
   const normalized = cleanText(value || 'updated', 32).toLowerCase();
   return ['updated', 'title', 'objects', 'components', 'scripts'].includes(normalized) ? normalized : 'updated';
@@ -140,6 +145,7 @@ function recordMetadata(record) {
     auditCount: auditTrail.length,
     lastAdminAction: Array.isArray(lastAudit?.fields) ? lastAudit.fields.join(', ') : (lastAudit?.action || ''),
     lastAdminActionAt: lastAudit?.at || '',
+    lastAdminNote: lastAudit?.note || '',
   };
 }
 
@@ -496,6 +502,7 @@ function adminGameFromMetadata(key, origin) {
     auditCount: Number(key.metadata?.auditCount) || 0,
     lastAdminAction: key.metadata?.lastAdminAction || '',
     lastAdminActionAt: key.metadata?.lastAdminActionAt || '',
+    lastAdminNote: key.metadata?.lastAdminNote || '',
   };
 }
 
@@ -613,6 +620,7 @@ async function updateGame(context, slug) {
     moderationStatus: cleanModerationStatus(record.moderationStatus),
     featured: !!record.featured,
   };
+  const reviewNote = cleanReviewNote(payload.reviewNote || payload.reason || payload.note || '');
   const now = new Date().toISOString();
 
   if (payload.title != null) record.title = cleanText(payload.title, MAX_TITLE_LENGTH) || record.title;
@@ -661,6 +669,7 @@ async function updateGame(context, slug) {
         action: 'published-game-moderation',
         fields: changes.map((change) => change.field),
         changes,
+        note: reviewNote,
       });
     } else {
       record.auditTrail = cleanAuditTrail(record);
