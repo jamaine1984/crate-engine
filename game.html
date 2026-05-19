@@ -18,6 +18,7 @@ a{color:#00ff88;text-decoration:none}
 .crumb{display:inline-flex;align-items:center;gap:8px;color:#91a19a;font-size:.86rem;margin-bottom:22px}
 .hero{border:1px solid #173326;background:linear-gradient(180deg,#0d1c15 0%,#07100c 100%);border-radius:18px;padding:28px}
 .status{color:#00ff88;font-size:.76rem;text-transform:uppercase;font-weight:800;letter-spacing:.08em;margin-bottom:10px}
+.status.featured{color:#f7d774}
 h1{font-size:clamp(2rem,5vw,4rem);line-height:1.05;color:#fff;margin-bottom:12px}
 .creator{color:#00ff88;font-weight:700;margin-bottom:14px}
 .description{color:#aac0b7;line-height:1.6;max-width:780px}
@@ -108,11 +109,12 @@ h1{font-size:clamp(2rem,5vw,4rem);line-height:1.05;color:#fff;margin-bottom:12px
       .slice(0, 18);
     const play = playHref(game);
     const remix = '/play?published=' + encodeURIComponent(game.slug || slug);
+    const featured = game.featured === true;
     root.dataset.status = 'loaded';
     root.className = 'detail';
     root.innerHTML =
       '<section class="hero">' +
-        '<div class="status">' + escapeHtml(game.visibility || 'public') + ' published game</div>' +
+        '<div class="status' + (featured ? ' featured' : '') + '">' + escapeHtml(featured ? 'Featured published game' : ((game.visibility || 'public') + ' published game')) + '</div>' +
         '<h1>' + escapeHtml(game.title || game.slug || 'Untitled Game') + '</h1>' +
         '<div class="creator">By ' + escapeHtml(game.creatorName || 'Crate creator') + '</div>' +
         '<p class="description">' + escapeHtml(game.description || 'A playable Crate Engine project published by the community.') + '</p>' +
@@ -138,6 +140,7 @@ h1{font-size:clamp(2rem,5vw,4rem);line-height:1.05;color:#fff;margin-bottom:12px
         '<div class="meta-list">' +
           '<div><strong>Slug:</strong> ' + escapeHtml(game.slug || slug) + '</div>' +
           '<div><strong>Source:</strong> ' + escapeHtml(game.source || 'cloudflare-pages-kv') + '</div>' +
+          '<div><strong>Featured:</strong> ' + escapeHtml(featured ? 'Yes' : 'No') + '</div>' +
           '<div><strong>Updated:</strong> ' + escapeHtml(formatDate(game.updatedAt)) + '</div>' +
           '<div><strong>Asset host:</strong> ' + escapeHtml(game.assetBaseUrl || 'https://crateship-games-assets.pages.dev') + '</div>' +
         '</div>' +
@@ -148,6 +151,8 @@ h1{font-size:clamp(2rem,5vw,4rem);line-height:1.05;color:#fff;margin-bottom:12px
       title: game.title || '',
       creatorName: game.creatorName || '',
       visibility: game.visibility || '',
+      featured,
+      featuredAt: game.featuredAt || '',
       tags,
       systems: systems.map((entry) => entry[0]),
       objects: Number(game.objects) || 0,

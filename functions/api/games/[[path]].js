@@ -64,6 +64,17 @@ function cleanModerationStatus(value) {
   return normalized === 'hidden' ? 'hidden' : 'active';
 }
 
+function cleanFeatured(value) {
+  return value === true || value === 1 || value === 'true' || value === '1';
+}
+
+function cleanFeaturedAt(value) {
+  const text = cleanText(value || '', 48);
+  if (!text) return '';
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
 function cleanSort(value) {
   const normalized = cleanText(value || 'updated', 32).toLowerCase();
   return ['updated', 'title', 'objects', 'components', 'scripts'].includes(normalized) ? normalized : 'updated';
@@ -112,6 +123,8 @@ function recordMetadata(record) {
     creatorName: record.creator?.name || '',
     visibility: record.visibility,
     moderationStatus: record.moderationStatus,
+    featured: !!record.featured,
+    featuredAt: record.featuredAt || '',
   };
 }
 
@@ -229,6 +242,8 @@ function publicGameSummary(record) {
     creatorUrl: creator.website,
     visibility: cleanVisibility(record.visibility),
     moderationStatus: cleanModerationStatus(record.moderationStatus),
+    featured: !!record.featured,
+    featuredAt: record.featuredAt || '',
   };
 }
 
@@ -302,6 +317,8 @@ async function publishGame(context) {
     creator: creator.name || creator.website ? creator : (existing?.creator || { name: '', website: '' }),
     visibility: cleanVisibility(payload.visibility || existing?.visibility || 'public'),
     moderationStatus: cleanModerationStatus(existing?.moderationStatus || 'active'),
+    featured: !!existing?.featured,
+    featuredAt: existing?.featuredAt || '',
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -389,6 +406,8 @@ async function listGames(context) {
       creatorName: key.metadata?.creatorName || '',
       visibility: cleanVisibility(key.metadata?.visibility),
       moderationStatus: cleanModerationStatus(key.metadata?.moderationStatus),
+      featured: !!key.metadata?.featured,
+      featuredAt: key.metadata?.featuredAt || '',
     }));
   const availableTags = Array.from(new Set(visibleGames.flatMap((game) => Array.isArray(game.tags) ? game.tags : []))).sort();
   const filteredGames = visibleGames
@@ -461,6 +480,16 @@ async function updateGame(context, slug) {
     record.moderationStatus = cleanModerationStatus(payload.moderationStatus);
   } else {
     record.moderationStatus = cleanModerationStatus(record.moderationStatus);
+  }
+  if (payload.featured != null) {
+    if (auth.mode !== 'admin') {
+      return json({ ok: false, error: 'Admin authorization is required to feature games.' }, { status: 403 });
+    }
+    record.featured = cleanFeatured(payload.featured);
+    record.featuredAt = record.featured ? (cleanFeaturedAt(payload.featuredAt) || record.featuredAt || new Date().toISOString()) : '';
+  } else {
+    record.featured = !!record.featured;
+    record.featuredAt = record.featuredAt || '';
   }
   record.visibility = cleanVisibility(record.visibility);
   record.updatedAt = new Date().toISOString();

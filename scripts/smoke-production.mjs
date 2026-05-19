@@ -866,6 +866,18 @@ async function runBrowserSmoke() {
     try {
       metadataUpdatePayload = await metadataUpdate.json();
     } catch {}
+    const metadataFeaturedUpdate = await fetch(metadataGuardApiUrl, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Crate-Owner-Token': metadataGuardPublishState.ownerToken,
+      },
+      body: JSON.stringify({ featured: true }),
+    });
+    let metadataFeaturedPayload = {};
+    try {
+      metadataFeaturedPayload = await metadataFeaturedUpdate.json();
+    } catch {}
     const metadataDirect = await fetch(metadataGuardApiUrl);
     let metadataDirectPayload = {};
     try {
@@ -893,9 +905,13 @@ async function runBrowserSmoke() {
       updateAuthorization: metadataUpdatePayload?.authorization || '',
       updateVisibility: metadataUpdatePayload?.game?.visibility || '',
       updateCreator: metadataUpdatePayload?.game?.creatorName || '',
+      featuredUpdateStatus: metadataFeaturedUpdate.status,
+      featuredUpdateOk: metadataFeaturedPayload?.ok === true,
+      featuredUpdateError: metadataFeaturedPayload?.error || '',
       directStatus: metadataDirect.status,
       directVisibility: metadataDirectPayload?.game?.visibility || '',
       directCreator: metadataDirectPayload?.game?.creatorName || '',
+      directFeatured: metadataDirectPayload?.game?.featured === true,
       publicListStatus: metadataList.status,
       publicListHasSlug: Array.isArray(metadataListPayload?.games) && metadataListPayload.games.some((item) => item?.slug === metadataGuardPublishState.slug),
       directListStatus: metadataDirectList.status,
@@ -914,9 +930,12 @@ async function runBrowserSmoke() {
         metadataGuardState.updateAuthorization !== 'owner' ||
         metadataGuardState.updateVisibility !== 'unlisted' ||
         metadataGuardState.updateCreator !== 'Smoke Updated Creator' ||
+        metadataGuardState.featuredUpdateStatus !== 403 ||
+        metadataGuardState.featuredUpdateOk ||
         metadataGuardState.directStatus !== 200 ||
         metadataGuardState.directVisibility !== 'unlisted' ||
         metadataGuardState.directCreator !== 'Smoke Updated Creator' ||
+        metadataGuardState.directFeatured ||
         metadataGuardState.publicListStatus !== 200 ||
         metadataGuardState.publicListHasSlug ||
         metadataGuardState.directListStatus !== 200 ||
@@ -966,6 +985,8 @@ async function runBrowserSmoke() {
           discoveryTotal: Number(discovery.total) || 0,
           discoveryRailCards: Number(discovery.railCards) || 0,
           discoveryFeaturedSlugs: discovery.featuredSlugs || [],
+          discoveryAdminFeaturedSlugs: discovery.adminFeaturedSlugs || [],
+          discoveryFeaturedFlags: discovery.featuredFlags || {},
           discoveryRecentSlugs: discovery.recentSlugs || [],
           discoverySystemsSlugs: discovery.systemsSlugs || [],
           hasDiscoveryRails: !!document.querySelector('#published-market-rails'),
@@ -977,6 +998,7 @@ async function runBrowserSmoke() {
           hasRefresh: !!document.querySelector('#published-market-refresh'),
           hasSmoke: !!row,
           hasUnlistedGuard: !!document.querySelector('[data-published-game="production-smoke-metadata-guard-game"]'),
+          featuredBadgeCount: document.querySelectorAll('.featured-badge').length,
           creatorText: row.querySelector('.creator')?.textContent || '',
           tagText: row.querySelector('.tags')?.textContent || '',
           playHref: row.querySelector('.actions a')?.getAttribute('href') || '',
@@ -1004,6 +1026,8 @@ async function runBrowserSmoke() {
           title: state.title || '',
           creatorName: state.creatorName || '',
           visibility: state.visibility || '',
+          featured: state.featured === true,
+          featuredAt: state.featuredAt || '',
           tags: state.tags || [],
           systems: state.systems || [],
           objects: Number(state.objects) || 0,
@@ -1166,14 +1190,19 @@ async function runBrowserSmoke() {
           hasDuplicate: !!panel.querySelector('[data-publish-duplicate]'),
           hasDelete: !!panel.querySelector('[data-publish-delete]'),
           hasVisibilityToggle: !!panel.querySelector('[data-publish-visibility]'),
+          hasFeaturedToggle: !!panel.querySelector('[data-publish-featured]'),
           creatorName: /Production Smoke Creator/.test(panel.textContent || '') ? 'Production Smoke Creator' : '',
           visibility: /Visibility:\s*Public/i.test(panel.textContent || '') ? 'public' : '',
+          featuredLabel: /Featured:/i.test(panel.textContent || '') ? 'present' : '',
           text: panel.textContent || '',
         };
       },
       undefined,
       { timeout: timeoutMs }
     ).then((handle) => handle.jsonValue());
+    if (!publishedDetailState.hasFeaturedToggle || publishedDetailState.featuredLabel !== 'present') {
+      throw new Error(`Published game detail did not show featured curation controls: ${JSON.stringify(publishedDetailState)}`);
+    }
 
     await page.locator('#published-search').fill('production smoke');
     await page.waitForFunction(
@@ -1790,10 +1819,13 @@ async function runBrowserSmoke() {
     state.publishedDetailHasDuplicate = publishedDetailState.hasDuplicate;
     state.publishedDetailHasDelete = publishedDetailState.hasDelete;
     state.publishedDetailHasVisibilityToggle = publishedDetailState.hasVisibilityToggle;
+    state.publishedDetailHasFeaturedToggle = publishedDetailState.hasFeaturedToggle;
     state.publishedDetailCreatorName = publishedDetailState.creatorName;
     state.publishedDetailVisibility = publishedDetailState.visibility;
     state.publishedMetadataGuardUpdateStatus = metadataGuardState.updateStatus;
     state.publishedMetadataGuardVisibility = metadataGuardState.updateVisibility;
+    state.publishedMetadataGuardFeaturedUpdateStatus = metadataGuardState.featuredUpdateStatus;
+    state.publishedMetadataGuardDirectFeatured = metadataGuardState.directFeatured;
     state.publishedMetadataGuardPublicListHasSlug = metadataGuardState.publicListHasSlug;
     state.publishedMetadataGuardDirectListVisibility = metadataGuardState.directListVisibility;
     state.marketplaceStatus = marketplaceState.status;
@@ -1810,6 +1842,8 @@ async function runBrowserSmoke() {
     state.marketplaceDiscoveryTotal = marketplaceState.discoveryTotal;
     state.marketplaceDiscoveryRailCards = marketplaceState.discoveryRailCards;
     state.marketplaceDiscoveryFeaturedSlugs = marketplaceState.discoveryFeaturedSlugs;
+    state.marketplaceDiscoveryAdminFeaturedSlugs = marketplaceState.discoveryAdminFeaturedSlugs;
+    state.marketplaceDiscoveryFeaturedFlags = marketplaceState.discoveryFeaturedFlags;
     state.marketplaceDiscoveryRecentSlugs = marketplaceState.discoveryRecentSlugs;
     state.marketplaceDiscoverySystemsSlugs = marketplaceState.discoverySystemsSlugs;
     state.marketplaceHasDiscoveryRails = marketplaceState.hasDiscoveryRails;
@@ -1821,6 +1855,7 @@ async function runBrowserSmoke() {
     state.marketplaceHasRefresh = marketplaceState.hasRefresh;
     state.marketplaceHasSmoke = marketplaceState.hasSmoke;
     state.marketplaceHasUnlistedGuard = marketplaceState.hasUnlistedGuard;
+    state.marketplaceFeaturedBadgeCount = marketplaceState.featuredBadgeCount;
     state.marketplaceCreatorText = marketplaceState.creatorText;
     state.marketplaceTagText = marketplaceState.tagText;
     state.marketplacePlayHref = marketplaceState.playHref;
@@ -1832,6 +1867,8 @@ async function runBrowserSmoke() {
     state.gameDetailTitle = gameDetailState.title;
     state.gameDetailCreatorName = gameDetailState.creatorName;
     state.gameDetailVisibility = gameDetailState.visibility;
+    state.gameDetailFeatured = gameDetailState.featured;
+    state.gameDetailFeaturedAt = gameDetailState.featuredAt;
     state.gameDetailTags = gameDetailState.tags;
     state.gameDetailSystems = gameDetailState.systems;
     state.gameDetailObjects = gameDetailState.objects;
@@ -2156,10 +2193,10 @@ console.log(`Published API: ${browserState.publishedCloudSource || 'missing'} ${
 console.log(`Published library UI: ${browserState.publishedLibraryCloudCount} cloud rows, ${browserState.publishedLibraryLocalCount} local rows, ${browserState.publishedLibraryLoadButtons} edit buttons`);
 console.log(`Published editor load: ${browserState.publishedEditorLoadStatus || 'missing'} ${browserState.publishedEditorLoadSlug || 'missing'} (${browserState.publishedEditorLoadObjectCount} objects, filter ${browserState.publishedFilterQuery || 'empty'})`);
 console.log(`Published management: detail ${browserState.publishedDetailPanelStatus || 'missing'}, owner ${browserState.publishedDetailOwnerManaged ? 'managed' : 'missing'}, delete guard ${browserState.publishedDeleteGuardBlockedStatus}/${browserState.publishedDeleteGuardDeletedStatus}/${browserState.publishedDeleteGuardMissingStatus}`);
-console.log(`Published metadata: creator ${browserState.publishedDetailCreatorName || 'missing'}, visibility ${browserState.publishedDetailVisibility || 'missing'}, unlisted guard ${browserState.publishedMetadataGuardUpdateStatus}/${browserState.publishedMetadataGuardVisibility || 'missing'}`);
+console.log(`Published metadata: creator ${browserState.publishedDetailCreatorName || 'missing'}, visibility ${browserState.publishedDetailVisibility || 'missing'}, unlisted guard ${browserState.publishedMetadataGuardUpdateStatus}/${browserState.publishedMetadataGuardVisibility || 'missing'}, featured guard ${browserState.publishedMetadataGuardFeaturedUpdateStatus || 'missing'}, featured toggle ${browserState.publishedDetailHasFeaturedToggle ? 'ready' : 'missing'}`);
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
-console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games`);
-console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components)`);
+console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games, admin featured ${(browserState.marketplaceDiscoveryAdminFeaturedSlugs || []).length}`);
+console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components, featured ${browserState.gameDetailFeatured ? 'yes' : 'no'})`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

@@ -75,6 +75,7 @@ a{color:#00ff88;text-decoration:none}
 .published-rail-card strong{display:block;color:#dfffee;font-size:.82rem;line-height:1.25}
 .published-rail-card small{display:block;color:#789087;font-size:.72rem;margin-top:3px}
 .published-rail-card a{border:1px solid #24483a;border-radius:8px;padding:7px 9px;background:#0f1f18;color:#00ff88;font-size:.74rem;font-weight:800}
+.featured-badge{display:inline-flex;align-items:center;width:max-content;border:1px solid #f7c94855;border-radius:999px;background:#281f08;color:#f7d774;font-size:.68rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em;padding:3px 7px}
 .published-filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .published-filter-row button{padding:7px 11px;border-radius:999px;border:1px solid #24483a;background:#07100c;color:#91a19a;cursor:pointer;font-size:.78rem}
 .published-filter-row button.active{background:#00ff88;color:#00140b;border-color:#00ff88;font-weight:800}
@@ -352,6 +353,7 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
       return '<article class="published-card" data-published-game="' + escapeHtml(game.slug || '') + '">' +
         '<h3>' + escapeHtml(game.title || game.slug || 'Untitled Game') + '</h3>' +
         '<div class="creator">By ' + escapeHtml(creator) + '</div>' +
+        (game.featured ? '<div class="featured-badge">Featured</div>' : '') +
         '<div class="desc">' + escapeHtml(description) + '</div>' +
         (tags.length ? '<div class="tags">' + tags.slice(0, 4).map((tag) => '<span>' + escapeHtml(tag) + '</span>').join('') + '</div>' : '') +
         '<div class="meta">' +
@@ -438,6 +440,7 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
       return '<article class="published-card" data-published-game="' + escapeHtml(game.slug || '') + '">' +
         '<h3>' + escapeHtml(game.title || game.slug || 'Untitled Game') + '</h3>' +
         '<div class="creator">By ' + escapeHtml(creator) + '</div>' +
+        (game.featured ? '<div class="featured-badge">Featured</div>' : '') +
         '<div class="desc">' + escapeHtml(description) + '</div>' +
         (tags.length ? '<div class="tags">' + tags.slice(0, 4).map((tag) => '<span>' + escapeHtml(tag) + '</span>').join('') + '</div>' : '') +
         '<div class="meta">' +
@@ -476,6 +479,7 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
   function railCard(game, reason) {
     return '<article class="published-rail-card" data-discovery-game="' + escapeHtml(game.slug || '') + '">' +
       '<div><strong>' + escapeHtml(game.title || game.slug || 'Untitled Game') + '</strong>' +
+      (game.featured ? '<span class="featured-badge">Featured</span>' : '') +
       '<small>' + escapeHtml(reason) + '</small></div>' +
       '<a href="' + escapeHtml(detailUrl(game)) + '">Details</a>' +
     '</article>';
@@ -497,6 +501,11 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
       total: discoveryGames.length,
       hasRails: !!rails,
       featuredSlugs: (lanes.featured || []).map((game) => game.slug),
+      adminFeaturedSlugs: discoveryGames.filter((game) => game?.featured).map((game) => game.slug),
+      featuredFlags: (lanes.featured || []).reduce((flags, game) => {
+        if (game?.slug) flags[game.slug] = !!game.featured;
+        return flags;
+      }, {}),
       recentSlugs: (lanes.recent || []).map((game) => game.slug),
       systemsSlugs: (lanes.systems || []).map((game) => game.slug),
       railCards: rails ? rails.querySelectorAll('[data-discovery-game]').length : 0,
@@ -505,11 +514,17 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
 
   function renderDiscoveryRails() {
     if (!rails) return;
-    const featured = topGames(discoveryGames, (a, b) => discoveryScore(b) - discoveryScore(a));
+    const featured = topGames(discoveryGames, (a, b) => {
+      const af = a?.featured ? 1 : 0;
+      const bf = b?.featured ? 1 : 0;
+      if (af !== bf) return bf - af;
+      if (af && bf) return String(b.featuredAt || b.updatedAt || '').localeCompare(String(a.featuredAt || a.updatedAt || ''));
+      return discoveryScore(b) - discoveryScore(a);
+    });
     const recent = topGames(discoveryGames, (a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
     const systems = topGames(discoveryGames, (a, b) => (Number(b.components) || 0) - (Number(a.components) || 0));
     rails.dataset.status = 'loaded';
-    renderRail('featured', featured, (game) => (Number(game.objects) || 0) + ' objects, ' + (Number(game.components) || 0) + ' systems');
+    renderRail('featured', featured, (game) => game.featured ? 'Featured pick' : ((Number(game.objects) || 0) + ' objects, ' + (Number(game.components) || 0) + ' systems'));
     renderRail('recent', recent, (game) => 'Updated ' + formatDate(game.updatedAt));
     renderRail('systems', systems, (game) => (Number(game.components) || 0) + ' components, ' + (Number(game.scripts) || 0) + ' scripts');
     setDiscoveryState('loaded', { featured, recent, systems });
