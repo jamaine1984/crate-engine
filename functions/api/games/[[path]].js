@@ -4,6 +4,8 @@ const MAX_DESCRIPTION_LENGTH = 1200;
 const MAX_CREATOR_LENGTH = 80;
 const MAX_CREATOR_URL_LENGTH = 220;
 const MAX_REVIEW_NOTE_LENGTH = 240;
+const MAX_ADMIN_NAME_LENGTH = 80;
+const MAX_ADMIN_ROLE_LENGTH = 32;
 const MAX_TAGS = 12;
 const MAX_LIST_SCAN = 1000;
 const GAME_PREFIX = 'game:';
@@ -80,6 +82,15 @@ function cleanReviewNote(value) {
   return cleanText(value || '', MAX_REVIEW_NOTE_LENGTH);
 }
 
+function cleanAdminName(value) {
+  return cleanText(value || '', MAX_ADMIN_NAME_LENGTH);
+}
+
+function cleanAdminRole(value) {
+  const normalized = cleanText(value || 'admin', MAX_ADMIN_ROLE_LENGTH).toLowerCase();
+  return ['admin', 'moderator', 'curator', 'viewer'].includes(normalized) ? normalized : 'admin';
+}
+
 function cleanSort(value) {
   const normalized = cleanText(value || 'updated', 32).toLowerCase();
   return ['updated', 'title', 'objects', 'components', 'scripts'].includes(normalized) ? normalized : 'updated';
@@ -146,6 +157,8 @@ function recordMetadata(record) {
     lastAdminAction: Array.isArray(lastAudit?.fields) ? lastAudit.fields.join(', ') : (lastAudit?.action || ''),
     lastAdminActionAt: lastAudit?.at || '',
     lastAdminNote: lastAudit?.note || '',
+    lastAdminActor: lastAudit?.adminName || lastAudit?.actor || '',
+    lastAdminRole: lastAudit?.adminRole || '',
   };
 }
 
@@ -171,6 +184,14 @@ function cleanToken(value) {
   return String(value || '').trim().slice(0, 256);
 }
 
+function publicAdminIdentity(admin) {
+  return {
+    id: cleanText(admin?.id || '', 48),
+    name: cleanAdminName(admin?.name || 'Admin'),
+    role: cleanAdminRole(admin?.role || 'admin'),
+  };
+}
+
 function bearerToken(request) {
   const header = request.headers.get('authorization') || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -184,19 +205,88 @@ async function hashToken(token) {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function isAdminRequest(context, payload = {}) {
-  const expected = cleanToken(context.env.CRATE_GAMES_ADMIN_TOKEN || context.env.CRATE_ADMIN_TOKEN || '');
-  if (!expected) return false;
+function parseAdminTokenEntries(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed.map((entry, index) => typeof entry === 'string'
+        ? { token: entry, name: `Admin ${index + 1}`, role: 'admin' }
+        : entry);
+    }
+    if (parsed && typeof parsed === 'object') {
+      return Object.entries(parsed).map(([token, value]) => {
+        if (value && typeof value === 'object') return { token, ...value };
+        return { token, name: value };
+      });
+    }
+  } catch {}
+  return text
+    .split(',')
+    .map((token) => cleanToken(token))
+    .filter(Boolean)
+    .map((token, index) => ({ token, name: `Admin ${index + 1}`, role: 'admin' }));
+}
+
+function adminTokenEntries(env = {}) {
+  const entries = [];
+  const legacyToken = cleanToken(env.CRATE_GAMES_ADMIN_TOKEN || env.CRATE_ADMIN_TOKEN || '');
+  if (legacyToken) {
+    entries.push({
+      token: legacyToken,
+      name: env.CRATE_GAMES_ADMIN_NAME || env.CRATE_ADMIN_NAME || 'Primary admin',
+      role: env.CRATE_GAMES_ADMIN_ROLE || env.CRATE_ADMIN_ROLE || 'admin',
+    });
+  }
+  for (const entry of parseAdminTokenEntries(env.CRATE_GAMES_ADMIN_TOKENS || env.CRATE_ADMIN_TOKENS || '')) {
+    const token = cleanToken(entry?.token);
+    if (!token) continue;
+    entries.push({
+      token,
+      name: entry.name || entry.label || entry.email || entry.id || 'Admin',
+      role: entry.role || 'admin',
+    });
+  }
+  return entries;
+}
+
+async function adminAuthorization(context, payload = {}) {
   const provided = cleanToken(
     context.request.headers.get('x-crate-admin-token') ||
     payload.adminToken ||
     bearerToken(context.request)
   );
-  return !!provided && provided === expected;
+  if (!provided) return null;
+  const entries = adminTokenEntries(context.env);
+  const match = entries.find((entry) => provided === cleanToken(entry.token));
+  if (!match) return null;
+  const tokenHash = await hashToken(provided);
+  return {
+    mode: 'admin',
+    admin: publicAdminIdentity({
+      id: `admin-${tokenHash.slice(0, 12)}`,
+      name: cleanAdminName(match.name || 'Admin'),
+      role: cleanAdminRole(match.role || 'admin'),
+    }),
+  };
+}
+
+async function isAdminRequest(context, payload = {}) {
+  return !!(await adminAuthorization(context, payload));
+}
+
+function adminRoleCanChange(admin, field) {
+  const role = cleanAdminRole(admin?.role || 'admin');
+  if (role === 'admin') return true;
+  if (role === 'moderator') return field === 'visibility' || field === 'moderationStatus';
+  if (role === 'curator') return field === 'featured';
+  return false;
 }
 
 async function authorizeManagedGame(context, record, payload = {}) {
-  if (await isAdminRequest(context, payload)) return { ok: true, mode: 'admin' };
+  const adminAuth = await adminAuthorization(context, payload);
+  if (adminAuth) return { ok: true, mode: 'admin', admin: adminAuth.admin };
   if (!record?.ownerHash) {
     return { ok: false, status: 403, error: 'This published game has no owner token. Admin authorization is required.' };
   }
@@ -503,6 +593,8 @@ function adminGameFromMetadata(key, origin) {
     lastAdminAction: key.metadata?.lastAdminAction || '',
     lastAdminActionAt: key.metadata?.lastAdminActionAt || '',
     lastAdminNote: key.metadata?.lastAdminNote || '',
+    lastAdminActor: key.metadata?.lastAdminActor || '',
+    lastAdminRole: key.metadata?.lastAdminRole || '',
   };
 }
 
@@ -529,7 +621,8 @@ function matchesAdminFilter(game, filter) {
 async function listAdminGames(context) {
   const store = getStore(context.env);
   if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
-  if (!(await isAdminRequest(context))) {
+  const adminAuth = await adminAuthorization(context);
+  if (!adminAuth) {
     return json({ ok: false, error: 'Admin authorization is required to view published-game moderation.' }, { status: 403 });
   }
 
@@ -586,6 +679,7 @@ async function listAdminGames(context) {
   const games = filteredGames.slice(offset, offset + limit);
   return json({
     ok: true,
+    admin: adminAuth.admin,
     games,
     counts,
     query,
@@ -662,10 +756,17 @@ async function updateGame(context, slug) {
       .filter((field) => beforeAdminFields[field] !== afterAdminFields[field])
       .map((field) => ({ field, before: beforeAdminFields[field], after: afterAdminFields[field] }));
     if (changes.length) {
+      const denied = changes.find((change) => !adminRoleCanChange(auth.admin, change.field));
+      if (denied) {
+        return json({ ok: false, error: `Admin role ${auth.admin?.role || 'viewer'} cannot change ${denied.field}.` }, { status: 403 });
+      }
       record.auditTrail = cleanAuditTrail(record);
       record.auditTrail.push({
         at: now,
         actor: 'admin',
+        adminId: auth.admin?.id || '',
+        adminName: auth.admin?.name || 'Admin',
+        adminRole: auth.admin?.role || 'admin',
         action: 'published-game-moderation',
         fields: changes.map((change) => change.field),
         changes,
@@ -683,7 +784,7 @@ async function updateGame(context, slug) {
     metadata: recordMetadata(record),
   });
 
-  return json({ ok: true, game: publicGameSummary(record), authorization: auth.mode });
+  return json({ ok: true, game: publicGameSummary(record), authorization: auth.mode, admin: auth.mode === 'admin' ? auth.admin : null });
 }
 
 async function deleteGame(context, slug) {

@@ -33,6 +33,9 @@ button.warn{background:#221a08;color:#f7d774;border-color:#6e5317}
 button.danger{background:#251010;color:#fca5a5;border-color:#713030}
 button:disabled{opacity:.55;cursor:not-allowed}
 .auth-status{color:#8fa0a8;font-size:.85rem;min-height:20px}
+.admin-actor{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #162229;padding-top:10px;color:#8fa0a8;font-size:.8rem}
+.admin-actor strong{color:#e7eef2}
+.admin-actor span:last-child{border:1px solid #2d3a42;border-radius:999px;padding:4px 8px;text-transform:uppercase;font-size:.68rem;font-weight:900}
 .stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:14px 0}
 .stat{border:1px solid #1d2a31;background:#0b1116;border-radius:12px;padding:14px;min-height:88px}
 .stat strong{display:block;color:#fff;font-size:1.55rem;margin-bottom:5px}
@@ -105,6 +108,7 @@ td{color:#dce7eb;font-size:.86rem}
     <button id="clear-token" type="button">Clear</button>
     <button id="refresh-admin" type="button">Refresh</button>
     <div id="auth-status" class="auth-status">Enter the admin token to load moderation data.</div>
+    <div id="admin-actor" class="admin-actor"><strong>Admin identity locked</strong><span>Locked</span></div>
   </section>
 
   <section class="stats" aria-label="Moderation totals">
@@ -181,6 +185,7 @@ td{color:#dce7eb;font-size:.86rem}
     noteCount: document.getElementById('review-note-count'),
     apply: document.getElementById('apply-filters'),
     authStatus: document.getElementById('auth-status'),
+    actor: document.getElementById('admin-actor'),
     status: document.getElementById('status-pill'),
     rows: document.getElementById('admin-rows'),
     empty: document.getElementById('empty-state'),
@@ -203,6 +208,7 @@ td{color:#dce7eb;font-size:.86rem}
     query: '',
     filter: 'all',
     sort: 'updated',
+    admin: null,
     error: '',
   };
 
@@ -258,6 +264,10 @@ td{color:#dce7eb;font-size:.86rem}
       hasTokenInput: !!els.token,
       hasControls: !!(els.search && els.filter && els.sort && els.note && els.apply && els.refresh),
       hasTable: !!els.rows,
+      hasAdminActor: !!els.actor,
+      adminName: state.admin?.name || '',
+      adminRole: state.admin?.role || '',
+      adminId: state.admin?.id || '',
       hasReviewNoteInput: !!els.note,
       reviewNoteRequired: true,
       noteLength: (els.note?.value || '').trim().length,
@@ -268,6 +278,7 @@ td{color:#dce7eb;font-size:.86rem}
       noteRows: currentRows.filter((game) => game.lastAdminNote).length,
     };
     renderStatus();
+    renderActor();
   }
 
   function renderStatus() {
@@ -290,6 +301,18 @@ td{color:#dce7eb;font-size:.86rem}
       const node = document.getElementById(statIds[key]);
       if (node) node.textContent = String(Number(counts?.[key]) || 0);
     });
+  }
+
+  function renderActor() {
+    if (!els.actor) return;
+    const admin = state.admin || {};
+    if (state.status === 'loaded' && admin.name) {
+      els.actor.innerHTML = '<strong>Signed in as ' + escapeHtml(admin.name) + '</strong><span>' + escapeHtml(admin.role || 'admin') + '</span>';
+      return;
+    }
+    const label = state.status === 'loading' ? 'Checking admin identity' : 'Admin identity locked';
+    const role = state.status === 'unauthorized' ? 'Rejected' : 'Locked';
+    els.actor.innerHTML = '<strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(role) + '</span>';
   }
 
   function badge(game) {
@@ -320,12 +343,13 @@ td{color:#dce7eb;font-size:.86rem}
         ? escapeHtml(game.lastAdminAction) + '<br><span>' + escapeHtml(formatDate(game.lastAdminActionAt)) + '</span>'
         : 'No admin changes';
       const noteText = game.lastAdminNote ? '<br><span>Note: ' + escapeHtml(game.lastAdminNote) + '</span>' : '';
+      const actorText = game.lastAdminActor ? '<br><span>By: ' + escapeHtml(game.lastAdminActor) + (game.lastAdminRole ? ' (' + escapeHtml(game.lastAdminRole) + ')' : '') + '</span>' : '';
       return '<tr data-admin-game="' + escapeHtml(slug) + '">' +
         '<td><div class="game-title">' + escapeHtml(game.title || slug || 'Untitled Game') + '</div><span class="game-slug">' + escapeHtml(slug) + '</span>' +
           '<div class="desc">' + escapeHtml(game.description || 'No description submitted.') + '</div></td>' +
         '<td>' + badge(game) + '</td>' +
         '<td><div class="metrics">' + (Number(game.objects) || 0) + ' objects<br>' + (Number(game.components) || 0) + ' components<br>' + (Number(game.scripts) || 0) + ' scripts</div></td>' +
-        '<td><div class="audit">' + auditText + noteText + '<br>' + (Number(game.auditCount) || 0) + ' audit entries</div></td>' +
+        '<td><div class="audit">' + auditText + actorText + noteText + '<br>' + (Number(game.auditCount) || 0) + ' audit entries</div></td>' +
         '<td><div class="actions">' +
           '<button type="button" data-action="feature" data-slug="' + escapeHtml(slug) + '">' + (featured ? 'Unfeature' : 'Feature') + '</button>' +
           '<button type="button" data-action="visibility" data-slug="' + escapeHtml(slug) + '">' + (unlisted ? 'List' : 'Unlist') + '</button>' +
@@ -343,13 +367,13 @@ td{color:#dce7eb;font-size:.86rem}
     if (!token) {
       currentRows = [];
       renderStats({});
-      setState({ status: 'locked', total: 0, counts: {}, error: '' });
+      setState({ status: 'locked', total: 0, counts: {}, admin: null, error: '' });
       renderRows([]);
       els.authStatus.textContent = 'Enter the admin token to load moderation data.';
       els.summary.textContent = 'No data loaded.';
       return;
     }
-    setState({ status: 'loading', error: '' });
+    setState({ status: 'loading', admin: null, error: '' });
     els.authStatus.textContent = 'Loading published-game moderation data...';
     els.summary.textContent = 'Loading...';
     try {
@@ -375,6 +399,7 @@ td{color:#dce7eb;font-size:.86rem}
         query: payload.query || '',
         filter: payload.filter || 'all',
         sort: payload.sort || 'updated',
+        admin: payload.admin || null,
         error: '',
       });
       renderRows(currentRows);
@@ -386,7 +411,7 @@ td{color:#dce7eb;font-size:.86rem}
       const unauthorized = err?.status === 403;
       els.authStatus.textContent = unauthorized ? 'Admin token rejected by Cloudflare.' : (err?.message || 'Admin moderation load failed.');
       els.summary.textContent = unauthorized ? 'Token required or rejected.' : 'Could not load moderation data.';
-      setState({ status: unauthorized ? 'unauthorized' : 'failed', total: 0, counts: {}, error: err?.message || String(err || 'Admin load failed') });
+      setState({ status: unauthorized ? 'unauthorized' : 'failed', total: 0, counts: {}, admin: null, error: err?.message || String(err || 'Admin load failed') });
       renderRows([]);
     }
   }
