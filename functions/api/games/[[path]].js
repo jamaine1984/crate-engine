@@ -7,8 +7,8 @@ const GAME_PREFIX = 'game:';
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Crate-Owner-Token, X-Crate-Admin-Token',
     'Access-Control-Max-Age': '86400',
   };
 }
@@ -65,6 +65,50 @@ function bytes(value) {
   return new TextEncoder().encode(String(value || '')).length;
 }
 
+function cleanToken(value) {
+  return String(value || '').trim().slice(0, 256);
+}
+
+function bearerToken(request) {
+  const header = request.headers.get('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? cleanToken(match[1]) : '';
+}
+
+async function hashToken(token) {
+  const clean = cleanToken(token);
+  if (!clean) return '';
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(clean));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function isAdminRequest(context, payload = {}) {
+  const expected = cleanToken(context.env.CRATE_GAMES_ADMIN_TOKEN || context.env.CRATE_ADMIN_TOKEN || '');
+  if (!expected) return false;
+  const provided = cleanToken(
+    context.request.headers.get('x-crate-admin-token') ||
+    payload.adminToken ||
+    bearerToken(context.request)
+  );
+  return !!provided && provided === expected;
+}
+
+async function authorizeManagedGame(context, record, payload = {}) {
+  if (await isAdminRequest(context, payload)) return { ok: true, mode: 'admin' };
+  if (!record?.ownerHash) {
+    return { ok: false, status: 403, error: 'This published game has no owner token. Admin authorization is required.' };
+  }
+  const providedOwnerToken = cleanToken(context.request.headers.get('x-crate-owner-token') || payload.ownerToken || '');
+  if (!providedOwnerToken) {
+    return { ok: false, status: 403, error: 'Owner token required for this published game.' };
+  }
+  const providedHash = await hashToken(providedOwnerToken);
+  if (providedHash !== record.ownerHash) {
+    return { ok: false, status: 403, error: 'Owner token does not match this published game.' };
+  }
+  return { ok: true, mode: 'owner' };
+}
+
 async function readJson(request) {
   const text = await request.text();
   if (bytes(text) > MAX_BODY_BYTES) {
@@ -115,6 +159,16 @@ function publicGameSummary(record) {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     source: record.source,
+    ownerManaged: !!record.ownerHash,
+  };
+}
+
+function publicGameDetails(record) {
+  return {
+    ...publicGameSummary(record),
+    sceneData: record.sceneData,
+    projectData: record.projectData,
+    playable: record.playable,
   };
 }
 
@@ -139,6 +193,12 @@ async function publishGame(context) {
   }
 
   const existing = await store.get(keyForSlug(slug), 'json').catch(() => null);
+  if (existing?.ownerHash) {
+    const auth = await authorizeManagedGame(context, existing, payload);
+    if (!auth.ok) return json({ ok: false, error: auth.error }, { status: auth.status });
+  }
+  const ownerToken = cleanToken(payload.ownerToken || '');
+  const ownerHash = ownerToken ? await hashToken(ownerToken) : (existing?.ownerHash || '');
   const projectSummary = projectData ? summarizeProject(projectData) : {};
   const now = new Date().toISOString();
   const origin = new URL(context.request.url).origin;
@@ -165,6 +225,7 @@ async function publishGame(context) {
     } : null,
     assetBaseUrl: payload.assetBaseUrl || 'https://crateship-games-assets.pages.dev',
     source: 'cloudflare-pages-kv',
+    ownerHash,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -177,6 +238,7 @@ async function publishGame(context) {
       commands: record.commands,
       components: record.components,
       updatedAt: now,
+      ownerManaged: !!record.ownerHash,
     },
   });
 
@@ -190,7 +252,7 @@ async function getGame(context, slug) {
   if (!cleanSlug) return json({ ok: false, error: 'Missing game slug.' }, { status: 400 });
   const record = await store.get(keyForSlug(cleanSlug), 'json');
   if (!record) return json({ ok: false, error: 'Game not found.' }, { status: 404 });
-  return json({ ok: true, game: record }, { cacheControl: 'public, max-age=30' });
+  return json({ ok: true, game: publicGameDetails(record) }, { cacheControl: 'public, max-age=30' });
 }
 
 async function listGames(context) {
@@ -219,9 +281,24 @@ async function listGames(context) {
       updatedAt: key.metadata?.updatedAt || '',
       url: `${url.origin}/play?published=${encodeURIComponent(key.metadata?.slug || key.name.replace(GAME_PREFIX, ''))}`,
       source: 'cloudflare-pages-kv',
+      ownerManaged: !!key.metadata?.ownerManaged,
     }))
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   return json({ ok: true, games, cursor: listed.cursor || null, listComplete: listed.list_complete });
+}
+
+async function deleteGame(context, slug) {
+  const store = getStore(context.env);
+  if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
+  const cleanSlug = slugify(slug);
+  if (!cleanSlug) return json({ ok: false, error: 'Missing game slug.' }, { status: 400 });
+  const key = keyForSlug(cleanSlug);
+  const record = await store.get(key, 'json');
+  if (!record) return json({ ok: false, error: 'Game not found.' }, { status: 404 });
+  const auth = await authorizeManagedGame(context, record);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, { status: auth.status });
+  await store.delete(key);
+  return json({ ok: true, deleted: true, slug: cleanSlug, authorization: auth.mode });
 }
 
 export async function onRequest(context) {
@@ -239,6 +316,9 @@ export async function onRequest(context) {
     }
     if (context.request.method === 'GET' && parts.length === 1) {
       return getGame(context, parts[0]);
+    }
+    if (context.request.method === 'DELETE' && parts.length === 1) {
+      return deleteGame(context, parts[0]);
     }
     return json({ ok: false, error: 'Not found.' }, { status: 404 });
   } catch (err) {

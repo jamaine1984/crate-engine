@@ -14868,6 +14868,28 @@ function savePublishedGamesLibrary(rows) {
   localStorage.setItem('crate_published_games', JSON.stringify(Array.isArray(rows) ? rows : []));
 }
 
+var PUBLISHED_OWNER_TOKEN_KEY = 'crate_publish_owner_token';
+
+function createPublishOwnerToken() {
+  var webCrypto = window.crypto || {};
+  if (webCrypto.randomUUID) return webCrypto.randomUUID();
+  var bytes = new Uint8Array(24);
+  webCrypto.getRandomValues?.(bytes);
+  return Array.from(bytes).map(function(byte) { return byte.toString(16).padStart(2, '0'); }).join('') || ('owner-' + Date.now().toString(36) + Math.random().toString(36).slice(2));
+}
+
+function getPublishOwnerToken() {
+  try {
+    var existing = localStorage.getItem(PUBLISHED_OWNER_TOKEN_KEY);
+    if (existing) return existing;
+    var token = createPublishOwnerToken();
+    localStorage.setItem(PUBLISHED_OWNER_TOKEN_KEY, token);
+    return token;
+  } catch(e) {
+    return createPublishOwnerToken();
+  }
+}
+
 function slugifyPublishedGame(value) {
   return String(value || 'game-' + Date.now().toString(36))
     .trim()
@@ -14929,6 +14951,7 @@ async function syncPublishedGameToCloudflare(gameData) {
     componentTypes: gameData.componentTypes,
     playable: summarizePlayableForPublish(gameData.playable),
     assetBaseUrl: gameData.playable?.assetBaseUrl || window.CRATESHIP_ASSET_BASE_URL || document.querySelector('meta[name="crate-asset-base"]')?.content || 'https://crateship-games-assets.pages.dev',
+    ownerToken: gameData.ownerToken || getPublishOwnerToken(),
   };
   var response = await fetch('/api/games/publish', {
     method: 'POST',
@@ -14941,6 +14964,22 @@ async function syncPublishedGameToCloudflare(gameData) {
     throw new Error(result?.error || ('Publish API failed with HTTP ' + response.status));
   }
   return result.game || { url: result.url, slug: gameData.slug };
+}
+
+async function deletePublishedGameFromCloudflare(slug, ownerToken) {
+  var response = await fetch('/api/games/' + encodeURIComponent(slug), {
+    method: 'DELETE',
+    headers: {
+      'Accept': 'application/json',
+      'X-Crate-Owner-Token': ownerToken || getPublishOwnerToken(),
+    },
+  });
+  var result = null;
+  try { result = await response.json(); } catch(e) { result = null; }
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error || ('Delete API failed with HTTP ' + response.status));
+  }
+  return result;
 }
 
 async function fetchPublishedGameFromCloudflare(slug) {
@@ -14988,7 +15027,7 @@ function renderPublishedGameRows(games, source) {
       '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong style="color:#f5f7f8">' + escapeProjectHtml(game.title || game.slug || 'Untitled Game') + '</strong><span style="color:#7ddf9e;font-size:11px">' + escapeProjectHtml(game.slug || '') + '</span></div>' +
       '<div style="color:#a5b2b9;font-size:11px;margin-top:5px">' + (game.objects || 0) + ' objects | ' + (game.components || 0) + ' components | ' + (game.scripts || 0) + ' scripts | ' + sourceLabel + '</div>' +
       '<input readonly value="' + escapeProjectHtml(url) + '" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px;background:#05080a;border:1px solid #1f2933;border-radius:7px;color:#7ddf9e;font-size:11px" onclick="this.select()">' +
-      '<div style="display:flex;gap:8px;margin-top:8px"><button data-publish-load="' + escapeProjectHtml(game.slug || '') + '" data-publish-source="' + source + '" style="flex:1;padding:8px;border:0;border-radius:7px;background:#f59e0b;color:#130b00;font-weight:700;cursor:pointer">Edit</button><button data-publish-copy="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:0;border-radius:7px;background:#7ddf9e;color:#061009;font-weight:700;cursor:pointer">Copy Link</button><button data-publish-open="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer">Open</button></div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px"><button data-publish-details="' + escapeProjectHtml(game.slug || '') + '" data-publish-source="' + source + '" style="flex:1;padding:8px;border:1px solid #2d3a42;border-radius:7px;background:#17232a;color:#dce7eb;font-weight:700;cursor:pointer">Details</button><button data-publish-load="' + escapeProjectHtml(game.slug || '') + '" data-publish-source="' + source + '" style="flex:1;padding:8px;border:0;border-radius:7px;background:#f59e0b;color:#130b00;font-weight:700;cursor:pointer">Edit</button><button data-publish-copy="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:0;border-radius:7px;background:#7ddf9e;color:#061009;font-weight:700;cursor:pointer">Copy Link</button><button data-publish-open="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer">Open</button></div>' +
       '</div>';
   }).join('');
 }
@@ -15007,6 +15046,66 @@ function filterPublishedGames(games, query) {
     ].filter(Boolean).join(' ').toLowerCase();
     return haystack.indexOf(needle) >= 0;
   });
+}
+
+function formatPublishedDate(value) {
+  if (!value) return 'Unknown';
+  var date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toLocaleString();
+}
+
+function findLocalPublishedGame(slug) {
+  return getPublishedGamesLibrary().find(function(item) { return item && item.slug === slug; }) || null;
+}
+
+function renderPublishedGameDetail(game, source) {
+  var url = getPublishedGameUrl(game);
+  var tags = Array.isArray(game.tags) ? game.tags : String(game.tags || '').split(',').map(function(tag) { return tag.trim(); }).filter(Boolean);
+  var componentTypes = game.componentTypes && typeof game.componentTypes === 'object' ? Object.keys(game.componentTypes).sort().slice(0, 8).join(', ') : '';
+  var ownerLabel = game.ownerManaged ? 'Owner managed' : (source === 'cloud' ? 'Admin delete only' : 'Browser local');
+  var deleteLabel = source === 'cloud' ? 'Delete Cloud' : 'Remove Browser';
+  var deleteTitle = source === 'cloud' ? 'Requires the publishing browser owner token or Cloudflare admin token.' : 'Removes this saved link from this browser only.';
+  return '<div style="border:1px solid #30404a;background:#0b1116;border-radius:12px;padding:14px;margin:10px 0 14px;color:#dce7eb">' +
+    '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="font-size:15px;font-weight:700;color:#fff">' + escapeProjectHtml(game.title || game.slug || 'Untitled Game') + '</div><div style="color:#7ddf9e;font-size:11px;margin-top:3px">' + escapeProjectHtml(game.slug || '') + '</div></div><button data-publish-detail-close style="background:none;border:0;color:#7d8c94;font-size:20px;cursor:pointer">x</button></div>' +
+    '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px">' +
+      '<div style="background:#05080a;border:1px solid #1f2933;border-radius:8px;padding:8px"><div style="color:#7d8c94;font-size:10px">Objects</div><strong>' + (game.objects || 0) + '</strong></div>' +
+      '<div style="background:#05080a;border:1px solid #1f2933;border-radius:8px;padding:8px"><div style="color:#7d8c94;font-size:10px">Components</div><strong>' + (game.components || 0) + '</strong></div>' +
+      '<div style="background:#05080a;border:1px solid #1f2933;border-radius:8px;padding:8px"><div style="color:#7d8c94;font-size:10px">Scripts</div><strong>' + (game.scripts || 0) + '</strong></div>' +
+      '<div style="background:#05080a;border:1px solid #1f2933;border-radius:8px;padding:8px"><div style="color:#7d8c94;font-size:10px">Guard</div><strong>' + escapeProjectHtml(ownerLabel) + '</strong></div>' +
+    '</div>' +
+    '<div style="color:#9aa8ae;font-size:11px;line-height:16px;margin-top:10px">' +
+      '<div><strong>Updated:</strong> ' + escapeProjectHtml(formatPublishedDate(game.updatedAt || game.publishedAt)) + '</div>' +
+      '<div><strong>Created:</strong> ' + escapeProjectHtml(formatPublishedDate(game.createdAt || game.publishedAt)) + '</div>' +
+      '<div><strong>Assets:</strong> ' + escapeProjectHtml(game.assetBaseUrl || 'https://crateship-games-assets.pages.dev') + '</div>' +
+      (tags.length ? '<div><strong>Tags:</strong> ' + tags.map(escapeProjectHtml).join(', ') + '</div>' : '') +
+      (componentTypes ? '<div><strong>Components:</strong> ' + escapeProjectHtml(componentTypes) + '</div>' : '') +
+      (game.description ? '<div><strong>Description:</strong> ' + escapeProjectHtml(game.description) + '</div>' : '') +
+    '</div>' +
+    '<input readonly value="' + escapeProjectHtml(url) + '" style="width:100%;box-sizing:border-box;margin-top:10px;padding:8px;background:#05080a;border:1px solid #1f2933;border-radius:7px;color:#7ddf9e;font-size:11px" onclick="this.select()">' +
+    '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:10px">' +
+      '<button data-publish-load="' + escapeProjectHtml(game.slug || '') + '" data-publish-source="' + source + '" style="padding:8px;border:0;border-radius:7px;background:#f59e0b;color:#130b00;font-weight:700;cursor:pointer">Edit</button>' +
+      '<button data-publish-duplicate="' + escapeProjectHtml(game.slug || '') + '" data-publish-source="' + source + '" style="padding:8px;border:0;border-radius:7px;background:#7ddf9e;color:#061009;font-weight:700;cursor:pointer">Duplicate</button>' +
+      '<button data-publish-copy="' + escapeProjectHtml(url) + '" style="padding:8px;border:0;border-radius:7px;background:#17232a;color:#dce7eb;cursor:pointer">Copy</button>' +
+      '<button data-publish-open="' + escapeProjectHtml(url) + '" style="padding:8px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer">Open</button>' +
+      '<button data-publish-delete="' + escapeProjectHtml(game.slug || '') + '" data-publish-source="' + source + '" title="' + escapeProjectHtml(deleteTitle) + '" style="padding:8px;border:1px solid #5a1f1f;border-radius:7px;background:#1b0d0d;color:#fca5a5;cursor:pointer">' + deleteLabel + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+async function duplicatePublishedGameIntoEditor(game, source) {
+  var result = await loadPublishedGameIntoEditor(game, source);
+  window._lastPublishedDuplicate = {
+    status: 'loaded-copy',
+    source: source,
+    sourceSlug: game?.slug || '',
+    suggestedSlug: slugifyPublishedGame((game?.title || game?.slug || 'game') + '-copy'),
+    loadedStatus: result?.status || '',
+    objects: window._engineBridge?.objects?.length || 0,
+    loadedAt: Date.now(),
+  };
+  logOutput('ok', 'Loaded duplicate copy of "' + (game?.title || game?.slug || 'published game') + '". Publish with a new slug when ready.');
+  return window._lastPublishedDuplicate;
 }
 
 async function loadPublishedGameIntoEditor(game, source) {
@@ -15075,6 +15174,7 @@ async function publishSceneToLocalLibrary(options) {
   try { project = JSON.parse(data); } catch(e) { project = { commands: sceneHistory.slice(), objects: [] }; }
   var title = String(options.title || project.name || 'Untitled Game').trim() || 'Untitled Game';
   var slug = slugifyPublishedGame(options.slug || title);
+  var ownerToken = options.ownerToken || getPublishOwnerToken();
   var encoded = compressScene(data);
   var shareUrl = window.location.origin + '/play?published=' + encodeURIComponent(slug) + '#' + encoded;
   var componentCounts = countProjectComponentsForPublish(project);
@@ -15100,6 +15200,7 @@ async function publishSceneToLocalLibrary(options) {
     scripts: Array.isArray(project.userScripts) ? project.userScripts.length : 0,
     components: componentCounts.total,
     componentTypes: componentCounts.byType,
+    ownerToken: ownerToken,
     publishedAt: Date.now(),
   };
   var library = getPublishedGamesLibrary().filter(function(item) { return item && item.slug !== slug; });
@@ -15145,6 +15246,7 @@ function showPublishedGamesLibrary() {
     '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px"><input id="published-search" placeholder="Search published games" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #263238;border-radius:8px;background:#05080a;color:#e7eef2;font-size:12px"><div id="published-source-filters" style="display:flex;gap:6px"><button data-published-source-filter="all" style="padding:8px 9px;border:1px solid #2d3a42;border-radius:7px;background:#7ddf9e;color:#061009;font-size:11px;font-weight:700;cursor:pointer">All</button><button data-published-source-filter="cloud" style="padding:8px 9px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;font-size:11px;cursor:pointer">Cloud</button><button data-published-source-filter="local" style="padding:8px 9px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;font-size:11px;cursor:pointer">Browser</button></div></div>' +
     '<div id="published-filter-summary" style="min-height:16px;color:#8fa0a8;font-size:11px;margin-bottom:6px"></div>' +
     '<div id="published-library-status" style="min-height:16px;color:#8fa0a8;font-size:11px;margin-bottom:10px"></div>' +
+    '<div id="published-detail-panel" data-status="empty" style="display:none"></div>' +
     '<div id="published-cloud-section"><div style="color:#7d8c94;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">Cloud Library</div>' +
     '<div id="published-cloud-list" data-status="loading" style="min-height:42px"><div style="color:#77838a;padding:16px;border:1px dashed #263238;border-radius:10px;text-align:center">Loading cloud games...</div></div></div>' +
     '<div id="published-local-section"><div style="color:#7d8c94;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">This Browser</div>' +
@@ -15188,6 +15290,56 @@ function showPublishedGamesLibrary() {
       summary.textContent = visible.join(' / ') + ' shown';
     }
   }
+  function getPublishedGameForAction(slug, source) {
+    var list = source === 'cloud' ? (window._lastCloudPublishedGames || cloudGames || []) : getPublishedGamesLibrary();
+    return list.find(function(item) { return item && item.slug === slug; }) || findLocalPublishedGame(slug) || { slug: slug };
+  }
+  async function showDetailForGame(slug, source) {
+    var panel = modal.querySelector('#published-detail-panel');
+    if (!panel) return;
+    var game = getPublishedGameForAction(slug, source);
+    panel.style.display = 'block';
+    panel.dataset.status = 'loading';
+    panel.innerHTML = '<div style="border:1px dashed #30404a;border-radius:12px;padding:14px;color:#8fa0a8">Loading game details...</div>';
+    try {
+      var detailGame = source === 'cloud' ? await fetchPublishedGameFromCloudflare(slug) : game;
+      if (source === 'cloud') {
+        var localMatch = findLocalPublishedGame(slug);
+        if (localMatch?.ownerToken) detailGame.ownerToken = localMatch.ownerToken;
+      }
+      panel.dataset.status = 'loaded';
+      panel.innerHTML = renderPublishedGameDetail(detailGame, source);
+      window._lastPublishedDetail = {
+        status: 'loaded',
+        source: source,
+        slug: detailGame.slug || slug,
+        ownerManaged: !!detailGame.ownerManaged,
+        objects: detailGame.objects || 0,
+        components: detailGame.components || 0,
+        hasProjectData: typeof detailGame.projectData === 'string' && detailGame.projectData.length > 0,
+      };
+    } catch(e) {
+      panel.dataset.status = 'failed';
+      panel.innerHTML = '<div style="border:1px dashed #5a3a12;border-radius:12px;padding:14px;color:#f59e0b">Could not load details: ' + escapeProjectHtml(e?.message || String(e || 'Unknown error')) + '</div>';
+      window._lastPublishedDetail = { status: 'failed', source: source, slug: slug, error: e?.message || String(e || 'Detail load failed') };
+    }
+  }
+  async function deletePublishedGameForAction(slug, source) {
+    var game = getPublishedGameForAction(slug, source);
+    if (source === 'cloud') {
+      var ownerToken = game.ownerToken || findLocalPublishedGame(slug)?.ownerToken || getPublishOwnerToken();
+      var result = await deletePublishedGameFromCloudflare(slug, ownerToken);
+      cloudGames = cloudGames.filter(function(item) { return item && item.slug !== slug; });
+      window._lastCloudPublishedGames = cloudGames;
+      applyPublishedFilters();
+      return result;
+    }
+    var nextRows = getPublishedGamesLibrary().filter(function(item) { return item && item.slug !== slug; });
+    savePublishedGamesLibrary(nextRows);
+    games = nextRows.slice().sort(function(a, b) { return (b.publishedAt || 0) - (a.publishedAt || 0); });
+    applyPublishedFilters();
+    return { ok: true, deleted: true, slug: slug, authorization: 'browser-local' };
+  }
   async function loadCloudList() {
     var cloudList = modal.querySelector('#published-cloud-list');
     cloudList.dataset.status = 'loading';
@@ -15216,10 +15368,74 @@ function showPublishedGamesLibrary() {
   modal.querySelector('#published-search')?.addEventListener('input', applyPublishedFilters);
   modal.addEventListener('click', function(e) {
     if (e.target === modal) { modal.remove(); return; }
+    var closeDetail = e.target.closest('[data-publish-detail-close]');
+    if (closeDetail) {
+      var panel = modal.querySelector('#published-detail-panel');
+      if (panel) {
+        panel.style.display = 'none';
+        panel.dataset.status = 'empty';
+      }
+      return;
+    }
     var filterButton = e.target.closest('[data-published-source-filter]');
     if (filterButton) {
       modal.dataset.publishedActiveSource = filterButton.dataset.publishedSourceFilter || 'all';
       applyPublishedFilters();
+      return;
+    }
+    var detailButton = e.target.closest('[data-publish-details]');
+    if (detailButton) {
+      showDetailForGame(detailButton.dataset.publishDetails || '', detailButton.dataset.publishSource || '');
+      return;
+    }
+    var duplicateButton = e.target.closest('[data-publish-duplicate]');
+    if (duplicateButton) {
+      var duplicateSlug = duplicateButton.dataset.publishDuplicate || '';
+      var duplicateSource = duplicateButton.dataset.publishSource || '';
+      var duplicateGame = getPublishedGameForAction(duplicateSlug, duplicateSource);
+      duplicateButton.disabled = true;
+      duplicateButton.textContent = 'Loading...';
+      duplicatePublishedGameIntoEditor(duplicateGame, duplicateSource).then(function(result) {
+        window._lastPublishedEditorLoad = result;
+        modal.remove();
+      }).catch(function(err) {
+        duplicateButton.disabled = false;
+        duplicateButton.textContent = 'Duplicate';
+        var status = modal.querySelector('#published-library-status');
+        if (status) {
+          status.style.color = '#f59e0b';
+          status.textContent = err?.message || String(err || 'Duplicate load failed.');
+        }
+      });
+      return;
+    }
+    var deleteButton = e.target.closest('[data-publish-delete]');
+    if (deleteButton) {
+      var deleteSlug = deleteButton.dataset.publishDelete || '';
+      var deleteSource = deleteButton.dataset.publishSource || '';
+      var status = modal.querySelector('#published-library-status');
+      deleteButton.disabled = true;
+      deleteButton.textContent = 'Deleting...';
+      deletePublishedGameForAction(deleteSlug, deleteSource).then(function(result) {
+        window._lastPublishedDelete = result;
+        var panel = modal.querySelector('#published-detail-panel');
+        if (panel) {
+          panel.style.display = 'none';
+          panel.dataset.status = 'empty';
+        }
+        if (status) {
+          status.style.color = '#7ddf9e';
+          status.textContent = 'Deleted ' + deleteSlug + ' from ' + (deleteSource === 'cloud' ? 'Cloud Library.' : 'this browser.');
+        }
+      }).catch(function(err) {
+        deleteButton.disabled = false;
+        deleteButton.textContent = deleteSource === 'cloud' ? 'Delete Cloud' : 'Remove Browser';
+        if (status) {
+          status.style.color = '#f59e0b';
+          status.textContent = err?.message || String(err || 'Delete failed.');
+        }
+        window._lastPublishedDelete = { ok: false, slug: deleteSlug, source: deleteSource, error: err?.message || String(err || 'Delete failed') };
+      });
       return;
     }
     var loadButton = e.target.closest('[data-publish-load]');
@@ -15265,6 +15481,7 @@ window._showPublishedGames = showPublishedGamesLibrary;
 window._getPublishedGames = getPublishedGamesLibrary;
 window._fetchCloudPublishedGames = fetchCloudPublishedGames;
 window._loadPublishedGameIntoEditor = loadPublishedGameIntoEditor;
+window._deleteCloudPublishedGame = deletePublishedGameFromCloudflare;
 
 // === PUBLISH TO .COM ===
 function publishScene() {

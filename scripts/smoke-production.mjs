@@ -668,6 +668,7 @@ async function runBrowserSmoke() {
         slug: 'production-smoke-published-game',
         description: 'Smoke test published build',
         tags: ['smoke', 'publish'],
+        ownerToken: 'production-smoke-owner-token',
       });
       const rows = window._getPublishedGames?.() || [];
       const decoded = window._decompressScene?.(result?.sceneData || '');
@@ -719,8 +720,10 @@ async function runBrowserSmoke() {
         apiObjects: Number(apiGame?.objects) || 0,
         apiComponents: Number(apiGame?.components) || 0,
         apiHasProjectData: typeof apiGame?.projectData === 'string' && apiGame.projectData.includes('"crate-engine-project"'),
+        apiOwnerManaged: apiGame?.ownerManaged === true,
         listStatus,
         listHasSlug: Array.isArray(apiList) && apiList.some((item) => item?.slug === result?.slug),
+        listOwnerManaged: Array.isArray(apiList) && apiList.some((item) => item?.slug === result?.slug && item?.ownerManaged === true),
         lastPublishedSlug: window._lastPublishedGame?.slug || '',
       };
     });
@@ -748,9 +751,66 @@ async function runBrowserSmoke() {
         publishedState.apiObjects < 100 ||
         publishedState.apiComponents < 14 ||
         !publishedState.apiHasProjectData ||
+        !publishedState.apiOwnerManaged ||
         publishedState.listStatus !== 200 ||
-        !publishedState.listHasSlug) {
+        !publishedState.listHasSlug ||
+        !publishedState.listOwnerManaged) {
       throw new Error(`Published game library did not create a portable playable link: ${JSON.stringify(publishedState)}`);
+    }
+
+    const deleteGuardPublishState = await page.evaluate(async () => {
+      const ownerToken = 'production-smoke-delete-owner-token';
+      const result = await window._publishLocalGame?.({
+        title: 'Production Smoke Delete Guard',
+        slug: 'production-smoke-delete-guard-game',
+        description: 'Smoke test delete guard',
+        tags: ['smoke', 'delete'],
+        ownerToken,
+      });
+      const slug = result?.slug || 'production-smoke-delete-guard-game';
+      return {
+        slug,
+        ownerToken,
+        publishStatus: result?.cloudStatus || '',
+        publishSource: result?.cloud?.source || '',
+        ownerManaged: result?.cloud?.ownerManaged === true,
+      };
+    });
+    const deleteGuardApiUrl = new URL('/api/games/' + encodeURIComponent(deleteGuardPublishState.slug), baseUrl).href;
+    const blockedDelete = await fetch(deleteGuardApiUrl, { method: 'DELETE' });
+    let blockedError = '';
+    try {
+      blockedError = (await blockedDelete.json())?.error || '';
+    } catch {}
+    const ownerDelete = await fetch(deleteGuardApiUrl, {
+      method: 'DELETE',
+      headers: { 'X-Crate-Owner-Token': deleteGuardPublishState.ownerToken },
+    });
+    let ownerDeletePayload = {};
+    try {
+      ownerDeletePayload = await ownerDelete.json();
+    } catch {}
+    const missingAfterDelete = await fetch(deleteGuardApiUrl);
+    const deleteGuardState = {
+      ...deleteGuardPublishState,
+      blockedStatus: blockedDelete.status,
+      blockedError,
+      deletedStatus: ownerDelete.status,
+      deletedOk: ownerDeletePayload?.ok === true && ownerDeletePayload?.deleted === true,
+      deletedAuthorization: ownerDeletePayload?.authorization || '',
+      missingStatus: missingAfterDelete.status,
+    };
+    if (deleteGuardState.slug !== 'production-smoke-delete-guard-game' ||
+        deleteGuardState.publishStatus !== 'synced' ||
+        deleteGuardState.publishSource !== 'cloudflare-pages-kv' ||
+        !deleteGuardState.ownerManaged ||
+        deleteGuardState.blockedStatus !== 403 ||
+        !/owner token/i.test(deleteGuardState.blockedError) ||
+        deleteGuardState.deletedStatus !== 200 ||
+        !deleteGuardState.deletedOk ||
+        deleteGuardState.deletedAuthorization !== 'owner' ||
+        deleteGuardState.missingStatus !== 404) {
+      throw new Error(`Published game delete guard failed: ${JSON.stringify(deleteGuardState)}`);
     }
 
     const publishedLoadContext = await browser.newContext({
@@ -832,6 +892,8 @@ async function runBrowserSmoke() {
         hasLocalSmoke: !!localRow,
         hasCloudEdit: !!cloudRow?.querySelector('[data-publish-load]'),
         hasLocalEdit: !!localRow?.querySelector('[data-publish-load]'),
+        hasCloudDetails: !!cloudRow?.querySelector('[data-publish-details]'),
+        hasLocalDetails: !!localRow?.querySelector('[data-publish-details]'),
         cloudUrl,
         localUrl,
         lastCloudCount: window._lastCloudPublishedGames?.length || 0,
@@ -850,6 +912,8 @@ async function runBrowserSmoke() {
         !publishedLibraryState.hasLocalSmoke ||
         !publishedLibraryState.hasCloudEdit ||
         !publishedLibraryState.hasLocalEdit ||
+        !publishedLibraryState.hasCloudDetails ||
+        !publishedLibraryState.hasLocalDetails ||
         !publishedLibraryState.hasSearch ||
         !publishedLibraryState.sourceFilters.includes('all') ||
         !publishedLibraryState.sourceFilters.includes('cloud') ||
@@ -863,6 +927,37 @@ async function runBrowserSmoke() {
         publishedLibraryState.loadButtons < 2) {
       throw new Error(`Published Games modal did not show cloud/local library: ${JSON.stringify(publishedLibraryState)}`);
     }
+
+    await page.locator('#published-cloud-list [data-published-row="production-smoke-published-game"] [data-publish-details]').click({ timeout: timeoutMs });
+    const publishedDetailState = await page.waitForFunction(
+      () => {
+        const detail = window._lastPublishedDetail || {};
+        const panel = document.querySelector('#published-detail-panel');
+        if (panel?.dataset.status !== 'loaded' ||
+            detail.status !== 'loaded' ||
+            detail.slug !== 'production-smoke-published-game' ||
+            detail.objects < 100 ||
+            detail.components < 14 ||
+            detail.ownerManaged !== true) {
+          return null;
+        }
+        return {
+          panelStatus: panel.dataset.status || '',
+          slug: detail.slug || '',
+          source: detail.source || '',
+          ownerManaged: detail.ownerManaged === true,
+          objects: detail.objects || 0,
+          components: detail.components || 0,
+          hasProjectData: detail.hasProjectData === true,
+          hasEdit: !!panel.querySelector('[data-publish-load]'),
+          hasDuplicate: !!panel.querySelector('[data-publish-duplicate]'),
+          hasDelete: !!panel.querySelector('[data-publish-delete]'),
+          text: panel.textContent || '',
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
 
     await page.locator('#published-search').fill('production smoke');
     await page.waitForFunction(
@@ -1443,8 +1538,14 @@ async function runBrowserSmoke() {
     state.publishedApiFormat = publishedState.apiFormat;
     state.publishedApiObjects = publishedState.apiObjects;
     state.publishedApiComponents = publishedState.apiComponents;
+    state.publishedApiOwnerManaged = publishedState.apiOwnerManaged;
     state.publishedListStatus = publishedState.listStatus;
     state.publishedListHasSlug = publishedState.listHasSlug;
+    state.publishedListOwnerManaged = publishedState.listOwnerManaged;
+    state.publishedDeleteGuardBlockedStatus = deleteGuardState.blockedStatus;
+    state.publishedDeleteGuardDeletedStatus = deleteGuardState.deletedStatus;
+    state.publishedDeleteGuardMissingStatus = deleteGuardState.missingStatus;
+    state.publishedDeleteGuardAuthorization = deleteGuardState.deletedAuthorization;
     state.publishedLoadStatus = publishedLoadState.status;
     state.publishedLoadSlug = publishedLoadState.slug;
     state.publishedLoadObjectCount = publishedLoadState.objectCount;
@@ -1460,8 +1561,16 @@ async function runBrowserSmoke() {
     state.publishedLibraryLoadButtons = publishedLibraryState.loadButtons;
     state.publishedLibraryHasCloudEdit = publishedLibraryState.hasCloudEdit;
     state.publishedLibraryHasLocalEdit = publishedLibraryState.hasLocalEdit;
+    state.publishedLibraryHasCloudDetails = publishedLibraryState.hasCloudDetails;
+    state.publishedLibraryHasLocalDetails = publishedLibraryState.hasLocalDetails;
     state.publishedLibraryHasSearch = publishedLibraryState.hasSearch;
     state.publishedLibrarySourceFilters = publishedLibraryState.sourceFilters;
+    state.publishedDetailPanelStatus = publishedDetailState.panelStatus;
+    state.publishedDetailSlug = publishedDetailState.slug;
+    state.publishedDetailOwnerManaged = publishedDetailState.ownerManaged;
+    state.publishedDetailHasProjectData = publishedDetailState.hasProjectData;
+    state.publishedDetailHasDuplicate = publishedDetailState.hasDuplicate;
+    state.publishedDetailHasDelete = publishedDetailState.hasDelete;
     state.publishedFilterQuery = publishedFilterState.query;
     state.publishedFilterSource = publishedFilterState.source;
     state.publishedFilterCloudShown = publishedFilterState.cloudShown;
@@ -1582,8 +1691,14 @@ async function runBrowserSmoke() {
         state.publishedApiFormat !== 'crate-cloud-published-game' ||
         state.publishedApiObjects < 100 ||
         state.publishedApiComponents < 14 ||
+        !state.publishedApiOwnerManaged ||
         state.publishedListStatus !== 200 ||
         !state.publishedListHasSlug ||
+        !state.publishedListOwnerManaged ||
+        state.publishedDeleteGuardBlockedStatus !== 403 ||
+        state.publishedDeleteGuardDeletedStatus !== 200 ||
+        state.publishedDeleteGuardMissingStatus !== 404 ||
+        state.publishedDeleteGuardAuthorization !== 'owner' ||
         state.publishedLoadStatus !== 'cloud-published' ||
         state.publishedLoadSlug !== 'production-smoke-published-game' ||
         state.publishedLoadObjectCount < 100 ||
@@ -1593,6 +1708,8 @@ async function runBrowserSmoke() {
         !state.publishedLibraryHasLocalSmoke ||
         !state.publishedLibraryHasCloudEdit ||
         !state.publishedLibraryHasLocalEdit ||
+        !state.publishedLibraryHasCloudDetails ||
+        !state.publishedLibraryHasLocalDetails ||
         !state.publishedLibraryHasSearch ||
         !state.publishedLibrarySourceFilters.includes('all') ||
         !state.publishedLibrarySourceFilters.includes('cloud') ||
@@ -1600,6 +1717,12 @@ async function runBrowserSmoke() {
         state.publishedLibraryCopyButtons < 2 ||
         state.publishedLibraryOpenButtons < 2 ||
         state.publishedLibraryLoadButtons < 2 ||
+        state.publishedDetailPanelStatus !== 'loaded' ||
+        state.publishedDetailSlug !== 'production-smoke-published-game' ||
+        !state.publishedDetailOwnerManaged ||
+        !state.publishedDetailHasProjectData ||
+        !state.publishedDetailHasDuplicate ||
+        !state.publishedDetailHasDelete ||
         state.publishedFilterQuery !== 'production smoke' ||
         state.publishedFilterSource !== 'all' ||
         state.publishedFilterCloudShown < 1 ||
@@ -1704,6 +1827,7 @@ console.log(`Published game: ${browserState.publishedSlug || 'missing'} (${brows
 console.log(`Published API: ${browserState.publishedCloudSource || 'missing'} ${browserState.publishedApiStatus} (${browserState.publishedLoadStatus || 'missing'}, ${browserState.publishedLoadObjectCount} objects loaded)`);
 console.log(`Published library UI: ${browserState.publishedLibraryCloudCount} cloud rows, ${browserState.publishedLibraryLocalCount} local rows, ${browserState.publishedLibraryLoadButtons} edit buttons`);
 console.log(`Published editor load: ${browserState.publishedEditorLoadStatus || 'missing'} ${browserState.publishedEditorLoadSlug || 'missing'} (${browserState.publishedEditorLoadObjectCount} objects, filter ${browserState.publishedFilterQuery || 'empty'})`);
+console.log(`Published management: detail ${browserState.publishedDetailPanelStatus || 'missing'}, owner ${browserState.publishedDetailOwnerManaged ? 'managed' : 'missing'}, delete guard ${browserState.publishedDeleteGuardBlockedStatus}/${browserState.publishedDeleteGuardDeletedStatus}/${browserState.publishedDeleteGuardMissingStatus}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);
