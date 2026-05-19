@@ -23,7 +23,7 @@ h1{font-size:clamp(1.8rem,3vw,3.1rem);margin:0;color:#fff;line-height:1.05}
 .status-pill.ready{border-color:#1f6847;background:#092218;color:#7ddf9e}
 .status-pill.warn{border-color:#775d18;background:#211a08;color:#f7d774}
 .status-pill.err{border-color:#713030;background:#251010;color:#fca5a5}
-.auth,.toolbar,.review-note,.table-panel{border:1px solid #1d2a31;background:#0b1116;border-radius:12px}
+.auth,.toolbar,.review-note,.table-panel,.audit-detail{border:1px solid #1d2a31;background:#0b1116;border-radius:12px}
 .auth{display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;gap:10px;align-items:center;padding:14px;margin-bottom:14px}
 .auth input,.toolbar input,.toolbar select{width:100%;background:#05080a;border:1px solid #24323b;border-radius:9px;color:#e7eef2;padding:10px 11px;outline:none}
 .auth input:focus,.toolbar input:focus,.toolbar select:focus{border-color:#7ddf9e}
@@ -68,6 +68,17 @@ td{color:#dce7eb;font-size:.86rem}
 .actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
 .actions button,.actions a{padding:8px 9px;font-size:.76rem;border:1px solid #2d3a42;background:#121a20;color:#e7eef2;border-radius:9px;font-weight:800}
 .empty{padding:28px;text-align:center;color:#8fa0a8;border-top:1px solid #162229}
+.audit-detail{margin-top:14px;padding:14px}
+.audit-detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px}
+.audit-detail h2{margin:0;color:#fff;font-size:1rem}
+.audit-detail p{margin:4px 0 0;color:#8fa0a8;font-size:.82rem;line-height:1.45}
+.audit-list{display:grid;gap:10px}
+.audit-entry{border:1px solid #1d2a31;background:#080d11;border-radius:10px;padding:12px}
+.audit-entry strong{display:block;color:#e7eef2;margin-bottom:4px}
+.audit-meta{color:#8fa0a8;font-size:.76rem;margin-bottom:8px}
+.audit-changes{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.audit-change{border:1px solid #263943;background:#101820;border-radius:999px;padding:4px 8px;color:#c8d5db;font-size:.72rem}
+.audit-note{color:#dce7eb;font-size:.8rem;line-height:1.4;margin-top:8px}
 @media (max-width:980px){
   .hero{align-items:flex-start;flex-direction:column}
   .auth,.toolbar,.review-note{grid-template-columns:1fr}
@@ -78,6 +89,7 @@ td{color:#dce7eb;font-size:.86rem}
   tr{border-bottom:1px solid #1d2a31;padding:10px 0}
   td{border-bottom:0;padding:8px 14px}
   .actions{justify-content:flex-start}
+  .audit-detail-head{display:block}
 }
 </style>
 </head>
@@ -168,6 +180,19 @@ td{color:#dce7eb;font-size:.86rem}
     </table>
     <div id="empty-state" class="empty">Enter the admin token to load the review queue.</div>
   </section>
+
+  <section id="audit-detail" class="audit-detail" aria-label="Moderation audit history">
+    <div class="audit-detail-head">
+      <div>
+        <h2 id="audit-title">Audit History</h2>
+        <p id="audit-summary">Choose Audit on a game row to inspect moderation changes.</p>
+      </div>
+      <button id="audit-clear" type="button">Clear Audit</button>
+    </div>
+    <div id="audit-rows" class="audit-list">
+      <div class="empty">No audit history loaded.</div>
+    </div>
+  </section>
 </main>
 
 <script>
@@ -190,6 +215,11 @@ td{color:#dce7eb;font-size:.86rem}
     rows: document.getElementById('admin-rows'),
     empty: document.getElementById('empty-state'),
     summary: document.getElementById('table-summary'),
+    auditPanel: document.getElementById('audit-detail'),
+    auditTitle: document.getElementById('audit-title'),
+    auditSummary: document.getElementById('audit-summary'),
+    auditRows: document.getElementById('audit-rows'),
+    auditClear: document.getElementById('audit-clear'),
   };
   const statIds = {
     total: 'stat-total',
@@ -209,6 +239,7 @@ td{color:#dce7eb;font-size:.86rem}
     filter: 'all',
     sort: 'updated',
     admin: null,
+    auditDetail: { status: 'empty', slug: '', rows: 0, source: '' },
     error: '',
   };
 
@@ -264,6 +295,11 @@ td{color:#dce7eb;font-size:.86rem}
       hasTokenInput: !!els.token,
       hasControls: !!(els.search && els.filter && els.sort && els.note && els.apply && els.refresh),
       hasTable: !!els.rows,
+      hasAuditDetail: !!els.auditPanel,
+      auditDetailStatus: state.auditDetail?.status || 'empty',
+      auditDetailSlug: state.auditDetail?.slug || '',
+      auditDetailRows: Number(state.auditDetail?.rows) || 0,
+      auditDetailSource: state.auditDetail?.source || '',
       hasAdminActor: !!els.actor,
       adminName: state.admin?.name || '',
       adminRole: state.admin?.role || '',
@@ -315,6 +351,41 @@ td{color:#dce7eb;font-size:.86rem}
     els.actor.innerHTML = '<strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(role) + '</span>';
   }
 
+  function formatChange(change) {
+    if (!change || !change.field) return '';
+    return escapeHtml(change.field) + ': ' + escapeHtml(change.before || 'empty') + ' -> ' + escapeHtml(change.after || 'empty');
+  }
+
+  function renderAuditDetail(payload) {
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    const game = payload?.game || {};
+    const source = payload?.source || '';
+    const slug = game.slug || state.auditDetail?.slug || '';
+    if (!payload) {
+      if (els.auditTitle) els.auditTitle.textContent = 'Audit History';
+      if (els.auditSummary) els.auditSummary.textContent = 'Choose Audit on a game row to inspect moderation changes.';
+      if (els.auditRows) els.auditRows.innerHTML = '<div class="empty">No audit history loaded.</div>';
+      setState({ auditDetail: { status: 'empty', slug: '', rows: 0, source: '' } });
+      return;
+    }
+    if (els.auditTitle) els.auditTitle.textContent = 'Audit History: ' + (game.title || slug || 'Selected game');
+    if (els.auditSummary) {
+      els.auditSummary.textContent = events.length + ' entries from ' + (source === 'd1' ? 'D1 audit store' : 'KV record fallback') + '.';
+    }
+    if (els.auditRows) {
+      els.auditRows.innerHTML = events.length ? events.map((event) => {
+        const changes = Array.isArray(event.changes) ? event.changes.map(formatChange).filter(Boolean) : [];
+        return '<article class="audit-entry">' +
+          '<strong>' + escapeHtml(event.action || 'Moderation update') + '</strong>' +
+          '<div class="audit-meta">' + escapeHtml(formatDate(event.at)) + ' by ' + escapeHtml(event.adminName || event.actor || 'Admin') + ' (' + escapeHtml(event.adminRole || 'admin') + ')</div>' +
+          (changes.length ? '<div class="audit-changes">' + changes.map((change) => '<span class="audit-change">' + change + '</span>').join('') + '</div>' : '') +
+          (event.note ? '<div class="audit-note">Note: ' + escapeHtml(event.note) + '</div>' : '') +
+        '</article>';
+      }).join('') : '<div class="empty">No moderation audit entries are stored for this game yet.</div>';
+    }
+    setState({ auditDetail: { status: 'loaded', slug, rows: events.length, source } });
+  }
+
   function badge(game) {
     const visibility = game.visibility === 'unlisted' ? 'unlisted' : 'listed';
     const moderation = game.moderationStatus === 'hidden' ? 'hidden' : visibility;
@@ -351,6 +422,7 @@ td{color:#dce7eb;font-size:.86rem}
         '<td><div class="metrics">' + (Number(game.objects) || 0) + ' objects<br>' + (Number(game.components) || 0) + ' components<br>' + (Number(game.scripts) || 0) + ' scripts</div></td>' +
         '<td><div class="audit">' + auditText + actorText + noteText + '<br>' + (Number(game.auditCount) || 0) + ' audit entries</div></td>' +
         '<td><div class="actions">' +
+          '<button type="button" data-action="audit" data-slug="' + escapeHtml(slug) + '">Audit</button>' +
           '<button type="button" data-action="feature" data-slug="' + escapeHtml(slug) + '">' + (featured ? 'Unfeature' : 'Feature') + '</button>' +
           '<button type="button" data-action="visibility" data-slug="' + escapeHtml(slug) + '">' + (unlisted ? 'List' : 'Unlist') + '</button>' +
           '<button type="button" class="' + (hidden ? 'primary' : 'danger') + '" data-action="moderation" data-slug="' + escapeHtml(slug) + '">' + (hidden ? 'Restore' : 'Hide') + '</button>' +
@@ -369,6 +441,7 @@ td{color:#dce7eb;font-size:.86rem}
       renderStats({});
       setState({ status: 'locked', total: 0, counts: {}, admin: null, error: '' });
       renderRows([]);
+      renderAuditDetail(null);
       els.authStatus.textContent = 'Enter the admin token to load moderation data.';
       els.summary.textContent = 'No data loaded.';
       return;
@@ -413,6 +486,35 @@ td{color:#dce7eb;font-size:.86rem}
       els.summary.textContent = unauthorized ? 'Token required or rejected.' : 'Could not load moderation data.';
       setState({ status: unauthorized ? 'unauthorized' : 'failed', total: 0, counts: {}, admin: null, error: err?.message || String(err || 'Admin load failed') });
       renderRows([]);
+      renderAuditDetail(null);
+    }
+  }
+
+  async function loadAudit(slug, button) {
+    if (!slug) return;
+    const original = button ? button.textContent : '';
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Loading...';
+    }
+    setState({ auditDetail: { status: 'loading', slug, rows: 0, source: '' } });
+    if (els.auditTitle) els.auditTitle.textContent = 'Audit History: ' + slug;
+    if (els.auditSummary) els.auditSummary.textContent = 'Loading moderation audit history...';
+    if (els.auditRows) els.auditRows.innerHTML = '<div class="empty">Loading audit history...</div>';
+    try {
+      const response = await fetch('/api/games/admin/audit/' + encodeURIComponent(slug) + '?limit=100', { headers: headers(false) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Audit history failed.');
+      renderAuditDetail(payload);
+    } catch (err) {
+      if (els.auditSummary) els.auditSummary.textContent = err?.message || String(err || 'Audit history failed.');
+      if (els.auditRows) els.auditRows.innerHTML = '<div class="empty">Could not load audit history.</div>';
+      setState({ auditDetail: { status: 'failed', slug, rows: 0, source: '' }, error: err?.message || String(err || 'Audit history failed') });
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = original;
+      }
     }
   }
 
@@ -462,6 +564,7 @@ td{color:#dce7eb;font-size:.86rem}
     if (!button) return;
     const game = rowForSlug(button.dataset.slug || '');
     if (!game) return;
+    if (button.dataset.action === 'audit') loadAudit(game.slug, button);
     if (button.dataset.action === 'feature') updateGame(game.slug, { featured: !game.featured }, button);
     if (button.dataset.action === 'visibility') updateGame(game.slug, { visibility: game.visibility === 'unlisted' ? 'public' : 'unlisted' }, button);
     if (button.dataset.action === 'moderation') updateGame(game.slug, { moderationStatus: game.moderationStatus === 'hidden' ? 'active' : 'hidden' }, button);
@@ -470,6 +573,7 @@ td{color:#dce7eb;font-size:.86rem}
   els.save.addEventListener('click', () => loadAdminGames());
   els.refresh.addEventListener('click', () => loadAdminGames());
   els.apply.addEventListener('click', () => loadAdminGames());
+  els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {
     if (els.noteCount) els.noteCount.textContent = String((els.note?.value || '').trim().length) + ' / 240';
     setState({ error: state.error || '' });
