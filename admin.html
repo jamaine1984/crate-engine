@@ -39,7 +39,10 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .storage-panel{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:14px;align-items:center;padding:14px;margin-bottom:14px}
 .storage-panel strong{display:block;color:#fff;font-size:.98rem;margin-bottom:4px}
 .storage-panel p{margin:0;color:#8fa0a8;font-size:.84rem;line-height:1.4}
+.storage-panel p + p{margin-top:6px}
 .storage-label{color:#7ddf9e;text-transform:uppercase;font-size:.7rem;font-weight:900;letter-spacing:.06em;margin-bottom:4px}
+.storage-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.storage-actions button{white-space:nowrap}
 .storage-panel[data-status="verified"]{border-color:#1f6847;background:#08140f}
 .storage-panel[data-status="failed"]{border-color:#713030;background:#160b0b}
 .storage-panel[data-status="checking"]{border-color:#775d18;background:#171307}
@@ -89,6 +92,7 @@ td{color:#dce7eb;font-size:.86rem}
 @media (max-width:980px){
   .hero{align-items:flex-start;flex-direction:column}
   .auth,.storage-panel,.toolbar,.review-note{grid-template-columns:1fr}
+  .storage-actions{justify-content:flex-start}
   .note-count{padding-top:0}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   table,thead,tbody,tr,th,td{display:block}
@@ -135,8 +139,13 @@ td{color:#dce7eb;font-size:.86rem}
       <div class="storage-label">Audit storage</div>
       <strong>D1 moderation audit</strong>
       <p id="audit-storage-summary">Enter the admin token to verify D1 audit storage.</p>
+      <p id="audit-backfill-summary">Backfill is locked until the admin token is accepted.</p>
     </div>
-    <button id="verify-audit-storage" type="button">Verify D1</button>
+    <div class="storage-actions">
+      <button id="verify-audit-storage" type="button">Verify D1</button>
+      <button id="dry-run-audit-backfill" type="button">Dry Run Backfill</button>
+      <button id="run-audit-backfill" class="primary" type="button">Backfill D1</button>
+    </div>
   </section>
 
   <section class="stats" aria-label="Moderation totals">
@@ -230,7 +239,10 @@ td{color:#dce7eb;font-size:.86rem}
     status: document.getElementById('status-pill'),
     storagePanel: document.getElementById('audit-storage-panel'),
     storageSummary: document.getElementById('audit-storage-summary'),
+    backfillSummary: document.getElementById('audit-backfill-summary'),
     storageVerify: document.getElementById('verify-audit-storage'),
+    backfillDryRun: document.getElementById('dry-run-audit-backfill'),
+    backfillRun: document.getElementById('run-audit-backfill'),
     rows: document.getElementById('admin-rows'),
     empty: document.getElementById('empty-state'),
     summary: document.getElementById('table-summary'),
@@ -260,6 +272,7 @@ td{color:#dce7eb;font-size:.86rem}
     admin: null,
     auditDetail: { status: 'empty', slug: '', rows: 0, source: '' },
     auditStorage: { status: 'locked', source: '', writeVerified: false },
+    auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     error: '',
   };
 
@@ -318,6 +331,8 @@ td{color:#dce7eb;font-size:.86rem}
       hasAuditDetail: !!els.auditPanel,
       hasAuditStorage: !!els.storagePanel,
       hasAuditStorageVerify: !!els.storageVerify,
+      hasAuditBackfillDryRun: !!els.backfillDryRun,
+      hasAuditBackfillRun: !!els.backfillRun,
       auditDetailStatus: state.auditDetail?.status || 'empty',
       auditDetailSlug: state.auditDetail?.slug || '',
       auditDetailRows: Number(state.auditDetail?.rows) || 0,
@@ -325,6 +340,11 @@ td{color:#dce7eb;font-size:.86rem}
       auditStorageStatus: state.auditStorage?.status || 'locked',
       auditStorageSource: state.auditStorage?.source || '',
       auditStorageWriteVerified: state.auditStorage?.writeVerified === true,
+      auditBackfillStatus: state.auditBackfill?.status || 'locked',
+      auditBackfillDryRun: state.auditBackfill?.dryRun !== false,
+      auditBackfillScanned: Number(state.auditBackfill?.scanned) || 0,
+      auditBackfillEvents: Number(state.auditBackfill?.auditEvents) || 0,
+      auditBackfillWritten: Number(state.auditBackfill?.written) || 0,
       hasAdminActor: !!els.actor,
       adminName: state.admin?.name || '',
       adminRole: state.admin?.role || '',
@@ -381,27 +401,56 @@ td{color:#dce7eb;font-size:.86rem}
     if (!els.storagePanel) return;
     const storage = state.auditStorage || {};
     const token = readToken();
+    const backfill = state.auditBackfill || {};
     const status = storage.status || (readToken() ? 'ready' : 'locked');
     els.storagePanel.dataset.status = status;
+    const locked = !token || state.status !== 'loaded';
     if (els.storageVerify) {
-      els.storageVerify.disabled = status === 'checking' || !token || state.status !== 'loaded';
+      els.storageVerify.disabled = status === 'checking' || locked;
       els.storageVerify.textContent = status === 'checking' ? 'Verifying...' : 'Verify D1';
     }
-    if (!els.storageSummary) return;
+    if (els.backfillDryRun) {
+      els.backfillDryRun.disabled = backfill.status === 'checking' || locked;
+      els.backfillDryRun.textContent = backfill.status === 'checking' && backfill.dryRun !== false ? 'Checking...' : 'Dry Run Backfill';
+    }
+    if (els.backfillRun) {
+      els.backfillRun.disabled = backfill.status === 'checking' || locked;
+      els.backfillRun.textContent = backfill.status === 'checking' && backfill.dryRun === false ? 'Backfilling...' : 'Backfill D1';
+    }
+    if (els.storageSummary) {
+      if (!token) {
+        els.storageSummary.textContent = 'Enter the admin token to verify D1 audit storage.';
+      } else if (state.status === 'loading') {
+        els.storageSummary.textContent = 'Checking admin identity before D1 verification.';
+      } else if (state.status === 'unauthorized') {
+        els.storageSummary.textContent = 'Admin token rejected. D1 verification is locked.';
+      } else if (status === 'verified') {
+        els.storageSummary.textContent = 'D1 audit storage verified with a temporary write/read/delete probe.';
+      } else if (status === 'failed') {
+        els.storageSummary.textContent = state.error || 'D1 audit storage verification failed.';
+      } else if (status === 'checking') {
+        els.storageSummary.textContent = 'Running a temporary D1 write/read/delete probe...';
+      } else {
+        els.storageSummary.textContent = 'Admin token saved. D1 audit storage is ready for verification.';
+      }
+    }
+    if (!els.backfillSummary) return;
     if (!token) {
-      els.storageSummary.textContent = 'Enter the admin token to verify D1 audit storage.';
+      els.backfillSummary.textContent = 'Backfill is locked until the admin token is accepted.';
     } else if (state.status === 'loading') {
-      els.storageSummary.textContent = 'Checking admin identity before D1 verification.';
+      els.backfillSummary.textContent = 'Backfill unlocks after admin identity is loaded.';
     } else if (state.status === 'unauthorized') {
-      els.storageSummary.textContent = 'Admin token rejected. D1 verification is locked.';
-    } else if (status === 'verified') {
-      els.storageSummary.textContent = 'D1 audit storage verified with a temporary write/read/delete probe.';
-    } else if (status === 'failed') {
-      els.storageSummary.textContent = state.error || 'D1 audit storage verification failed.';
-    } else if (status === 'checking') {
-      els.storageSummary.textContent = 'Running a temporary D1 write/read/delete probe...';
+      els.backfillSummary.textContent = 'Admin token rejected. Backfill is locked.';
+    } else if (backfill.status === 'checking') {
+      els.backfillSummary.textContent = backfill.dryRun === false ? 'Copying KV audit history into D1...' : 'Scanning KV audit history without writing...';
+    } else if (backfill.status === 'dry-run') {
+      els.backfillSummary.textContent = 'Dry run scanned ' + (Number(backfill.scanned) || 0) + ' games and found ' + (Number(backfill.auditEvents) || 0) + ' audit events.';
+    } else if (backfill.status === 'completed') {
+      els.backfillSummary.textContent = 'Backfill wrote ' + (Number(backfill.written) || 0) + ' D1 audit rows from ' + (Number(backfill.auditEvents) || 0) + ' events.';
+    } else if (backfill.status === 'failed') {
+      els.backfillSummary.textContent = state.error || 'Audit backfill failed.';
     } else {
-      els.storageSummary.textContent = 'Admin token saved. D1 audit storage is ready for verification.';
+      els.backfillSummary.textContent = 'Run a dry backfill first, then backfill D1 when the result looks right.';
     }
   }
 
@@ -493,7 +542,15 @@ td{color:#dce7eb;font-size:.86rem}
     if (!token) {
       currentRows = [];
       renderStats({});
-      setState({ status: 'locked', total: 0, counts: {}, admin: null, auditStorage: { status: 'locked', source: '', writeVerified: false }, error: '' });
+      setState({
+        status: 'locked',
+        total: 0,
+        counts: {},
+        admin: null,
+        auditStorage: { status: 'locked', source: '', writeVerified: false },
+        auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
+        error: '',
+      });
       renderRows([]);
       renderAuditDetail(null);
       els.authStatus.textContent = 'Enter the admin token to load moderation data.';
@@ -528,6 +585,7 @@ td{color:#dce7eb;font-size:.86rem}
         sort: payload.sort || 'updated',
         admin: payload.admin || null,
         auditStorage: { status: 'ready', source: 'd1', writeVerified: false },
+        auditBackfill: { status: 'ready', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
         error: '',
       });
       renderRows(currentRows);
@@ -539,7 +597,15 @@ td{color:#dce7eb;font-size:.86rem}
       const unauthorized = err?.status === 403;
       els.authStatus.textContent = unauthorized ? 'Admin token rejected by Cloudflare.' : (err?.message || 'Admin moderation load failed.');
       els.summary.textContent = unauthorized ? 'Token required or rejected.' : 'Could not load moderation data.';
-      setState({ status: unauthorized ? 'unauthorized' : 'failed', total: 0, counts: {}, admin: null, auditStorage: { status: unauthorized ? 'locked' : 'failed', source: '', writeVerified: false }, error: err?.message || String(err || 'Admin load failed') });
+      setState({
+        status: unauthorized ? 'unauthorized' : 'failed',
+        total: 0,
+        counts: {},
+        admin: null,
+        auditStorage: { status: unauthorized ? 'locked' : 'failed', source: '', writeVerified: false },
+        auditBackfill: { status: unauthorized ? 'locked' : 'failed', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
+        error: err?.message || String(err || 'Admin load failed'),
+      });
       renderRows([]);
       renderAuditDetail(null);
     }
@@ -638,6 +704,49 @@ td{color:#dce7eb;font-size:.86rem}
     }
   }
 
+  async function backfillAuditStorage(dryRun, button) {
+    const token = readToken();
+    if (!token) {
+      els.authStatus.textContent = 'Enter the admin token before running audit backfill.';
+      els.token?.focus();
+      setState({ auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true }, error: '' });
+      return;
+    }
+    const nextDryRun = dryRun !== false;
+    setState({ auditBackfill: { status: 'checking', scanned: 0, auditEvents: 0, written: 0, dryRun: nextDryRun }, error: '' });
+    try {
+      const response = await fetch('/api/games/admin/audit/backfill?dryRun=' + (nextDryRun ? 'true' : 'false'), {
+        method: 'POST',
+        headers: headers(false),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        const err = new Error(payload?.error || 'Audit backfill failed.');
+        err.status = response.status;
+        throw err;
+      }
+      const scanned = Number(payload.scanned) || 0;
+      const auditEvents = Number(payload.auditEvents) || 0;
+      const written = Number(payload.written) || 0;
+      els.authStatus.textContent = nextDryRun
+        ? 'Audit backfill dry run finished.'
+        : 'Audit backfill finished.';
+      setState({
+        auditBackfill: {
+          status: nextDryRun ? 'dry-run' : 'completed',
+          scanned,
+          auditEvents,
+          written,
+          dryRun: payload.dryRun !== false,
+        },
+        error: '',
+      });
+    } catch (err) {
+      els.authStatus.textContent = err?.message || String(err || 'Audit backfill failed.');
+      setState({ auditBackfill: { status: 'failed', scanned: 0, auditEvents: 0, written: 0, dryRun: nextDryRun }, error: err?.message || String(err || 'Audit backfill failed') });
+    }
+  }
+
   function rowForSlug(slug) {
     return currentRows.find((game) => game.slug === slug) || null;
   }
@@ -657,6 +766,8 @@ td{color:#dce7eb;font-size:.86rem}
   els.refresh.addEventListener('click', () => loadAdminGames());
   els.apply.addEventListener('click', () => loadAdminGames());
   els.storageVerify?.addEventListener('click', (event) => verifyAuditStorage(event.currentTarget));
+  els.backfillDryRun?.addEventListener('click', (event) => backfillAuditStorage(true, event.currentTarget));
+  els.backfillRun?.addEventListener('click', (event) => backfillAuditStorage(false, event.currentTarget));
   els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {
     if (els.noteCount) els.noteCount.textContent = String((els.note?.value || '').trim().length) + ' / 240';

@@ -1154,8 +1154,15 @@ async function runBrowserSmoke() {
           hasAuditDetail: state.hasAuditDetail === true,
           hasAuditStorage: state.hasAuditStorage === true,
           hasAuditStorageVerify: state.hasAuditStorageVerify === true,
+          hasAuditBackfillDryRun: state.hasAuditBackfillDryRun === true,
+          hasAuditBackfillRun: state.hasAuditBackfillRun === true,
           auditStorageStatus: state.auditStorageStatus || '',
           auditStorageWriteVerified: state.auditStorageWriteVerified === true,
+          auditBackfillStatus: state.auditBackfillStatus || '',
+          auditBackfillDryRun: state.auditBackfillDryRun === true,
+          auditBackfillScanned: Number(state.auditBackfillScanned) || 0,
+          auditBackfillEvents: Number(state.auditBackfillEvents) || 0,
+          auditBackfillWritten: Number(state.auditBackfillWritten) || 0,
           auditDetailStatus: state.auditDetailStatus || '',
           auditDetailRows: Number(state.auditDetailRows) || 0,
           hasAdminActor: state.hasAdminActor === true,
@@ -1190,8 +1197,15 @@ async function runBrowserSmoke() {
         !adminDashboardState.hasAuditDetail ||
         !adminDashboardState.hasAuditStorage ||
         !adminDashboardState.hasAuditStorageVerify ||
+        !adminDashboardState.hasAuditBackfillDryRun ||
+        !adminDashboardState.hasAuditBackfillRun ||
         adminDashboardState.auditStorageStatus !== 'locked' ||
         adminDashboardState.auditStorageWriteVerified ||
+        adminDashboardState.auditBackfillStatus !== 'locked' ||
+        !adminDashboardState.auditBackfillDryRun ||
+        adminDashboardState.auditBackfillScanned !== 0 ||
+        adminDashboardState.auditBackfillEvents !== 0 ||
+        adminDashboardState.auditBackfillWritten !== 0 ||
         adminDashboardState.auditDetailStatus !== 'empty' ||
         adminDashboardState.adminName ||
         adminDashboardState.adminRole ||
@@ -1204,6 +1218,7 @@ async function runBrowserSmoke() {
     let adminDashboardAuthedState = null;
     let adminDashboardAuditState = null;
     let adminDashboardStorageState = null;
+    let adminDashboardBackfillState = null;
     if (smokeAdminToken) {
       await adminPage.locator('#admin-token').fill(smokeAdminToken);
       await adminPage.locator('#save-token').click({ timeout: timeoutMs });
@@ -1248,6 +1263,25 @@ async function runBrowserSmoke() {
       ).then((handle) => handle.jsonValue());
       if (adminDashboardStorageState.source !== 'd1' || !adminDashboardStorageState.writeVerified) {
         throw new Error(`Admin dashboard D1 storage probe did not verify: ${JSON.stringify(adminDashboardStorageState)}`);
+      }
+      await adminPage.locator('#dry-run-audit-backfill').click({ timeout: timeoutMs });
+      adminDashboardBackfillState = await adminPage.waitForFunction(
+        () => {
+          const state = window._crateAdminDashboard || {};
+          if (state.auditBackfillStatus !== 'dry-run') return null;
+          return {
+            status: state.auditBackfillStatus || '',
+            dryRun: state.auditBackfillDryRun === true,
+            scanned: Number(state.auditBackfillScanned) || 0,
+            events: Number(state.auditBackfillEvents) || 0,
+            written: Number(state.auditBackfillWritten) || 0,
+          };
+        },
+        undefined,
+        { timeout: timeoutMs }
+      ).then((handle) => handle.jsonValue());
+      if (!adminDashboardBackfillState.dryRun || adminDashboardBackfillState.written !== 0) {
+        throw new Error(`Admin dashboard D1 backfill dry run did not stay read-only: ${JSON.stringify(adminDashboardBackfillState)}`);
       }
       await adminPage.locator('button[data-action="audit"][data-slug="production-smoke-published-game"]').click({ timeout: timeoutMs });
       adminDashboardAuditState = await adminPage.waitForFunction(
@@ -2121,6 +2155,13 @@ async function runBrowserSmoke() {
     state.adminDashboardHasAuditStorageVerify = adminDashboardState.hasAuditStorageVerify;
     state.adminDashboardAuditStorageStatus = adminDashboardState.auditStorageStatus;
     state.adminDashboardAuditStorageWriteVerified = adminDashboardState.auditStorageWriteVerified;
+    state.adminDashboardHasAuditBackfillDryRun = adminDashboardState.hasAuditBackfillDryRun;
+    state.adminDashboardHasAuditBackfillRun = adminDashboardState.hasAuditBackfillRun;
+    state.adminDashboardAuditBackfillStatus = adminDashboardState.auditBackfillStatus;
+    state.adminDashboardAuditBackfillDryRun = adminDashboardState.auditBackfillDryRun;
+    state.adminDashboardAuditBackfillScanned = adminDashboardState.auditBackfillScanned;
+    state.adminDashboardAuditBackfillEvents = adminDashboardState.auditBackfillEvents;
+    state.adminDashboardAuditBackfillWritten = adminDashboardState.auditBackfillWritten;
     state.adminDashboardHasAdminActor = adminDashboardState.hasAdminActor;
     state.adminDashboardAdminName = adminDashboardState.adminName;
     state.adminDashboardAdminRole = adminDashboardState.adminRole;
@@ -2140,6 +2181,11 @@ async function runBrowserSmoke() {
     state.adminDashboardStorageProbeStatus = adminDashboardStorageState?.status || '';
     state.adminDashboardStorageProbeSource = adminDashboardStorageState?.source || '';
     state.adminDashboardStorageProbeWriteVerified = adminDashboardStorageState?.writeVerified === true;
+    state.adminDashboardBackfillProbeStatus = adminDashboardBackfillState?.status || '';
+    state.adminDashboardBackfillProbeDryRun = adminDashboardBackfillState?.dryRun === true;
+    state.adminDashboardBackfillProbeScanned = adminDashboardBackfillState?.scanned || 0;
+    state.adminDashboardBackfillProbeEvents = adminDashboardBackfillState?.events || 0;
+    state.adminDashboardBackfillProbeWritten = adminDashboardBackfillState?.written || 0;
     state.adminSmokeTokenProvided = !!smokeAdminToken;
     state.publishedFilterQuery = publishedFilterState.query;
     state.publishedFilterSource = publishedFilterState.source;
@@ -2361,12 +2407,19 @@ async function runBrowserSmoke() {
         !state.adminDashboardHasAuditStorageVerify ||
         state.adminDashboardAuditStorageStatus !== 'locked' ||
         state.adminDashboardAuditStorageWriteVerified ||
+        !state.adminDashboardHasAuditBackfillDryRun ||
+        !state.adminDashboardHasAuditBackfillRun ||
+        state.adminDashboardAuditBackfillStatus !== 'locked' ||
+        !state.adminDashboardAuditBackfillDryRun ||
+        state.adminDashboardAuditBackfillScanned !== 0 ||
+        state.adminDashboardAuditBackfillEvents !== 0 ||
+        state.adminDashboardAuditBackfillWritten !== 0 ||
         state.adminDashboardAuditDetailStatus !== 'empty' ||
         !state.adminDashboardHasAdminActor ||
         !state.adminDashboardHasReviewQueue ||
         !state.adminDashboardHasReviewNoteInput ||
         !state.adminDashboardReviewNoteRequired ||
-        (state.adminSmokeTokenProvided && (state.adminDashboardAuthedStatus !== 'loaded' || !state.adminDashboardAuthedSmokeListed || !state.adminDashboardAuthedAdminName || !state.adminDashboardAuthedAdminRole || state.adminDashboardLoadedAuditStatus !== 'loaded' || state.adminDashboardLoadedAuditSlug !== 'production-smoke-published-game' || state.adminDashboardStorageProbeStatus !== 'verified' || state.adminDashboardStorageProbeSource !== 'd1' || !state.adminDashboardStorageProbeWriteVerified)) ||
+        (state.adminSmokeTokenProvided && (state.adminDashboardAuthedStatus !== 'loaded' || !state.adminDashboardAuthedSmokeListed || !state.adminDashboardAuthedAdminName || !state.adminDashboardAuthedAdminRole || state.adminDashboardLoadedAuditStatus !== 'loaded' || state.adminDashboardLoadedAuditSlug !== 'production-smoke-published-game' || state.adminDashboardStorageProbeStatus !== 'verified' || state.adminDashboardStorageProbeSource !== 'd1' || !state.adminDashboardStorageProbeWriteVerified || state.adminDashboardBackfillProbeStatus !== 'dry-run' || !state.adminDashboardBackfillProbeDryRun || state.adminDashboardBackfillProbeWritten !== 0)) ||
         state.publishedFilterQuery !== 'production smoke' ||
         state.publishedFilterSource !== 'all' ||
         state.publishedFilterCloudShown < 1 ||
@@ -2479,7 +2532,7 @@ console.log(`Published metadata: creator ${browserState.publishedDetailCreatorNa
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
 console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games, admin featured ${(browserState.marketplaceDiscoveryAdminFeaturedSlugs || []).length}`);
 console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components, featured ${browserState.gameDetailFeatured ? 'yes' : 'no'})`);
-console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, verify guard ${browserState.adminAuditVerifyGuardStatus || 'missing'}, backfill guard ${browserState.adminAuditBackfillGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, storage panel ${browserState.adminDashboardHasAuditStorage && browserState.adminDashboardHasAuditStorageVerify ? browserState.adminDashboardAuditStorageStatus || 'ready' : 'missing'}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, d1 verify ${browserState.adminAuditD1VerifyStatus || 'missing'} ${browserState.adminAuditD1WriteVerified ? 'verified' : 'missing'}, ui storage ${browserState.adminDashboardStorageProbeStatus || 'missing'} ${browserState.adminDashboardStorageProbeWriteVerified ? 'verified' : 'missing'}, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
+console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, verify guard ${browserState.adminAuditVerifyGuardStatus || 'missing'}, backfill guard ${browserState.adminAuditBackfillGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, storage panel ${browserState.adminDashboardHasAuditStorage && browserState.adminDashboardHasAuditStorageVerify ? browserState.adminDashboardAuditStorageStatus || 'ready' : 'missing'}, backfill controls ${browserState.adminDashboardHasAuditBackfillDryRun && browserState.adminDashboardHasAuditBackfillRun ? browserState.adminDashboardAuditBackfillStatus || 'ready' : 'missing'}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, d1 verify ${browserState.adminAuditD1VerifyStatus || 'missing'} ${browserState.adminAuditD1WriteVerified ? 'verified' : 'missing'}, ui storage ${browserState.adminDashboardStorageProbeStatus || 'missing'} ${browserState.adminDashboardStorageProbeWriteVerified ? 'verified' : 'missing'}, ui backfill ${browserState.adminDashboardBackfillProbeStatus || 'missing'} ${browserState.adminDashboardBackfillProbeDryRun ? 'dry-run' : 'missing'} wrote ${browserState.adminDashboardBackfillProbeWritten || 0}, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);
