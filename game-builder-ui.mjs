@@ -254,7 +254,7 @@ onUpdate = function(dt) {
   components: {
     id: 'gb_component_runtime',
     name: 'Component Runtime',
-    description: 'Runs pickup, equipment, damage, mission, reward, gate, enemy, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
+    description: 'Runs pickup, equipment, NPC, merchant, damage, mission, reward, gate, enemy, objective, checkpoint, spawn, win, and motion tags from Game Builder.',
     code: `state.gbRuntime = state.gbRuntime || {};
 state.gbRuntime.health = state.gbRuntime.health ?? 100;
 state.gbRuntime.score = state.gbRuntime.score || 0;
@@ -269,6 +269,9 @@ state.gbRuntime.gates = state.gbRuntime.gates || {};
 state.gbRuntime.enemySpawns = state.gbRuntime.enemySpawns || {};
 state.gbRuntime.waves = state.gbRuntime.waves || {};
 state.gbRuntime.enemies = state.gbRuntime.enemies || {};
+state.gbRuntime.npcs = state.gbRuntime.npcs || {};
+state.gbRuntime.merchants = state.gbRuntime.merchants || {};
+state.gbRuntime.dialogue = state.gbRuntime.dialogue || null;
 state.gbRuntime.winConditions = state.gbRuntime.winConditions || {};
 state.gbInventory = Array.isArray(state.gbInventory) ? state.gbInventory : [null, null, null, null, null];
 while (state.gbInventory.length < 5) state.gbInventory.push(null);
@@ -434,6 +437,112 @@ function getAttackDamage() {
 
 function getAttackRange() {
   return Math.max(1, Number(getRuntimeStats().attackRange) || 4);
+}
+
+function findClosestRuntimeRecord(records, playerPos) {
+  const rows = Object.values(records || {}).filter((record) => record && record.position);
+  let closest = null;
+  let closestDistance = Infinity;
+  rows.forEach((record) => {
+    if (record.available === false) return;
+    const radius = Math.max(0.5, Number(record.radius) || 3);
+    const distance = distanceBetween(playerPos, record.position);
+    if (distance <= radius && distance < closestDistance) {
+      closest = record;
+      closestDistance = distance;
+    }
+  });
+  return closest;
+}
+
+function setRuntimeDialogue(type, speaker, text, time) {
+  const dialogue = {
+    type: type || 'dialogue',
+    speaker: speaker || 'NPC',
+    text: text || '',
+    at: time || Date.now() * 0.001,
+  };
+  state.gbRuntime.dialogue = dialogue;
+  state.gbRuntime.lastDialogue = dialogue;
+  showToast(dialogue.speaker + ': ' + String(dialogue.text || '').slice(0, 52));
+  return dialogue;
+}
+
+function interactClosestNpc(time) {
+  const playerPos = getPlayerPosition();
+  if (!playerPos) return false;
+  const npc = findClosestRuntimeRecord(state.gbRuntime.npcs, playerPos);
+  if (!npc) return false;
+  npc.talked = true;
+  npc.talkCount = (Number(npc.talkCount) || 0) + 1;
+  npc.lastTalkedAt = time || Date.now() * 0.001;
+  setRuntimeDialogue('npc', npc.name || 'NPC', npc.dialogue || 'Hello.', npc.lastTalkedAt);
+  const hasReward = !!npc.rewardItem || Number(npc.rewardScore) > 0 || Number(npc.rewardXp) > 0;
+  if (hasReward && !npc.rewardClaimed) {
+    if (npc.rewardItem) {
+      grantRuntimeItem({
+        name: npc.rewardItem,
+        item: npc.rewardItem,
+        type: npc.rewardSlot ? 'equipment' : 'npcReward',
+        slot: npc.rewardSlot || '',
+        power: Number(npc.rewardPower) || 0,
+        score: Number(npc.rewardScore) || 0,
+        xp: Number(npc.rewardXp) || 0,
+      }, npc.rewardItem, 'npcReward');
+    } else {
+      state.gbRuntime.score += Math.max(0, Number(npc.rewardScore) || 0);
+      addPlayerXp(Math.max(0, Number(npc.rewardXp) || 0));
+    }
+    npc.rewardClaimed = true;
+  }
+  state.gbRuntime.npcs[npc.id] = npc;
+  state.gbRuntime.activeNpc = npc;
+  return true;
+}
+
+function interactClosestMerchant(time) {
+  const playerPos = getPlayerPosition();
+  if (!playerPos) return false;
+  const merchant = findClosestRuntimeRecord(state.gbRuntime.merchants, playerPos);
+  if (!merchant) return false;
+  merchant.visited = true;
+  merchant.lastVisitedAt = time || Date.now() * 0.001;
+  const stock = Math.max(0, Number(merchant.stock) || 0);
+  const sold = Math.max(0, Number(merchant.sold) || 0);
+  if (stock > 0 && sold >= stock) {
+    setRuntimeDialogue('merchant', merchant.name || 'Merchant', 'Sold out: ' + merchant.item, merchant.lastVisitedAt);
+    state.gbRuntime.merchants[merchant.id] = merchant;
+    return true;
+  }
+  const price = Math.max(0, Number(merchant.price) || 0);
+  if ((Number(state.gbRuntime.score) || 0) < price) {
+    setRuntimeDialogue('merchant', merchant.name || 'Merchant', 'Need ' + price + ' score for ' + merchant.item, merchant.lastVisitedAt);
+    state.gbRuntime.merchants[merchant.id] = merchant;
+    return true;
+  }
+  state.gbRuntime.score = Math.max(0, (Number(state.gbRuntime.score) || 0) - price);
+  const item = grantRuntimeItem({
+    name: merchant.item || 'Merchant item',
+    item: merchant.item || 'Merchant item',
+    type: merchant.slot ? 'equipment' : 'merchant',
+    slot: merchant.slot || '',
+    power: Number(merchant.power) || 0,
+    score: 0,
+    xp: Number(merchant.xp) || 0,
+  }, merchant.item || 'Merchant item', 'merchant');
+  merchant.sold = sold + 1;
+  merchant.lastPurchase = item.name;
+  state.gbRuntime.lastPurchase = {
+    merchant: merchant.name || 'Merchant',
+    item: item.name,
+    price,
+    sold: merchant.sold,
+    purchasedAt: merchant.lastVisitedAt,
+  };
+  setRuntimeDialogue('merchant', merchant.name || 'Merchant', 'Purchased ' + item.name, merchant.lastVisitedAt);
+  state.gbRuntime.merchants[merchant.id] = merchant;
+  state.gbRuntime.activeMerchant = merchant;
+  return true;
 }
 
 function movePlayerTo(target) {
@@ -694,6 +803,14 @@ function renderComponentHud() {
     return '<div style="color:' + (item.done ? '#59d987' : '#d6e0e6') + '">' + (item.done ? '[x] ' : '[ ] ') + escapeHud(item.label) + '</div>';
   }).join('') : '';
   const reward = state.gbRuntime.lastReward ? '<div style="color:#59d987;margin-top:6px">Reward: ' + escapeHud(state.gbRuntime.lastReward.label) + '</div>' : '';
+  const dialogue = state.gbRuntime.dialogue;
+  const npcCount = Object.values(state.gbRuntime.npcs || {}).length;
+  const merchantCount = Object.values(state.gbRuntime.merchants || {}).length;
+  const npcRows = (npcCount || merchantCount || dialogue) ? '<div style="color:#80b7ff;margin-top:6px;margin-bottom:5px;font-weight:700">NPCs</div>' +
+    (state.gbRuntime.activeNpc ? '<div style="color:#d6e0e6">Talk: ' + escapeHud(state.gbRuntime.activeNpc.name) + ' [T]</div>' : '') +
+    (state.gbRuntime.activeMerchant ? '<div style="color:#d6e0e6">Buy: ' + escapeHud(state.gbRuntime.activeMerchant.item) + ' [E]</div>' : '') +
+    (dialogue ? '<div style="color:#f6c34a;margin-top:4px">' + escapeHud(dialogue.speaker) + ': ' + escapeHud(dialogue.text) + '</div>' : '') +
+    (state.gbRuntime.lastPurchase ? '<div style="color:#59d987;margin-top:4px">Bought: ' + escapeHud(state.gbRuntime.lastPurchase.item) + '</div>' : '') : '';
   const stats = getRuntimeStats();
   const equipment = state.gbEquipment || {};
   const statRows = '<div style="color:#80b7ff;margin-top:6px;margin-bottom:5px;font-weight:700">Player</div>' +
@@ -714,11 +831,19 @@ function renderComponentHud() {
     '<div style="height:7px;background:#1c2021;border-radius:6px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + Math.max(0, Math.min(100, state.gbRuntime.health)) + '%;background:#59d987"></div></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Score</span><span>' + state.gbRuntime.score + '</span></div>' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px;color:#a9b3b8"><span>Respawns</span><span>' + state.gbRuntime.respawns + '</span></div>' +
-    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + missionRows + reward + statRows + spawn + checkpoint + winRows + doorRows + trigger + waveRows + enemyRows + gameState;
+    '<div style="color:#80b7ff;margin-bottom:5px;font-weight:700">Objectives</div>' + objectives + missionRows + reward + npcRows + statRows + spawn + checkpoint + winRows + doorRows + trigger + waveRows + enemyRows + gameState;
 }
 
 onKeyPress = function(key) {
   if (!playMode()) return;
+  const time = Date.now() * 0.001;
+  if (key === 't') {
+    if (interactClosestNpc(time)) return;
+  }
+  if (key === 'e') {
+    if (interactClosestMerchant(time)) return;
+    if (interactClosestNpc(time)) return;
+  }
   if (key === 'f' || key === 'e' || key === ' ') {
     damageClosestEnemy(getAttackDamage(), getAttackRange(), Date.now() * 0.001);
   }
@@ -739,6 +864,8 @@ onUpdate = function(dt, time) {
   const nextGates = {};
   const nextEnemySpawns = {};
   const nextWaves = {};
+  const nextNpcs = {};
+  const nextMerchants = {};
   const triggerQueue = [];
   let firstPlayerSpawn = null;
   getObjects().forEach((obj) => {
@@ -817,6 +944,52 @@ onUpdate = function(dt, time) {
         defeated: isPlaying ? previous.defeated || 0 : 0,
         active: isPlaying ? previous.active === true : false,
         complete: isPlaying ? previous.complete === true : false,
+      };
+    }
+
+    if (components.npc && obj.position) {
+      const id = components.npc.id || obj.uuid;
+      const previous = state.gbRuntime.npcs[id] || {};
+      const steps = { ...state.gbRuntime.missionSteps, ...nextMissionSteps };
+      const available = isRequirementMet(components.npc.requiredStepId || 'none', steps);
+      nextNpcs[id] = {
+        id,
+        name: components.npc.name || components.npc.label || obj.userData.name || 'NPC',
+        role: components.npc.role || 'Guide',
+        dialogue: components.npc.dialogue || 'Hello, builder.',
+        questId: components.npc.questId || '',
+        requiredStepId: components.npc.requiredStepId || 'none',
+        rewardItem: components.npc.rewardItem || '',
+        rewardSlot: components.npc.rewardSlot || '',
+        rewardPower: Math.max(0, Number(components.npc.rewardPower) || 0),
+        rewardScore: Math.max(0, Number(components.npc.rewardScore) || 0),
+        rewardXp: Math.max(0, Number(components.npc.rewardXp) || 0),
+        radius: Math.max(0.5, Number(components.npc.radius) || 3),
+        talked: previous.talked === true,
+        talkCount: Number(previous.talkCount) || 0,
+        rewardClaimed: previous.rewardClaimed === true,
+        available,
+        position: copyPosition(obj.position, 0),
+      };
+    }
+
+    if (components.merchant && obj.position) {
+      const id = components.merchant.id || obj.uuid;
+      const previous = state.gbRuntime.merchants[id] || {};
+      nextMerchants[id] = {
+        id,
+        name: components.merchant.name || components.merchant.label || obj.userData.name || 'Merchant',
+        item: components.merchant.item || 'Shop item',
+        price: Math.max(0, Number(components.merchant.price) || 25),
+        slot: components.merchant.slot || '',
+        power: Math.max(0, Number(components.merchant.power) || 0),
+        xp: Math.max(0, Number(components.merchant.xp) || 0),
+        stock: Math.max(0, Number(components.merchant.stock) || 1),
+        radius: Math.max(0.5, Number(components.merchant.radius) || 3),
+        sold: Number(previous.sold) || 0,
+        visited: previous.visited === true,
+        lastPurchase: previous.lastPurchase || '',
+        position: copyPosition(obj.position, 0),
       };
     }
 
@@ -1062,6 +1235,10 @@ onUpdate = function(dt, time) {
   state.gbRuntime.gates = nextGates;
   state.gbRuntime.enemySpawns = nextEnemySpawns;
   state.gbRuntime.waves = nextWaves;
+  state.gbRuntime.npcs = nextNpcs;
+  state.gbRuntime.merchants = nextMerchants;
+  state.gbRuntime.activeNpc = isPlaying && playerPos ? findClosestRuntimeRecord(nextNpcs, playerPos) : null;
+  state.gbRuntime.activeMerchant = isPlaying && playerPos ? findClosestRuntimeRecord(nextMerchants, playerPos) : null;
   if (isPlaying) {
     Object.values(nextWaves)
       .sort((a, b) => (a.wave || 0) - (b.wave || 0))
@@ -1216,7 +1393,7 @@ const GAME_SYSTEMS = [
   {
     id: 'runtime',
     name: 'Component Runtime',
-    detail: 'Runs pickup, equipment, damage, mission, gate, enemy, objective, spawn, checkpoint, win, spin, and float tags.',
+    detail: 'Runs pickup, equipment, NPC, merchant, damage, mission, gate, enemy, objective, spawn, checkpoint, win, spin, and float tags.',
     script: 'components',
     scriptId: 'gb_component_runtime',
     actionLabel: 'Install',
@@ -1235,6 +1412,22 @@ const GAME_SYSTEMS = [
     detail: 'Make selected objects equippable inventory items.',
     component: 'equipmentItem',
     countKey: 'equipmentItem',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'npcs',
+    name: 'Dialogue NPC',
+    detail: 'Make selected objects talk, give quest hints, and grant optional rewards.',
+    component: 'npc',
+    countKey: 'npc',
+    actionLabel: 'Tag Selected',
+  },
+  {
+    id: 'merchants',
+    name: 'Merchant',
+    detail: 'Make selected objects sell inventory or equipment for score.',
+    component: 'merchant',
+    countKey: 'merchant',
     actionLabel: 'Tag Selected',
   },
   {
@@ -1341,6 +1534,8 @@ const COMPONENT_PRESETS = [
   { label: 'Collider', component: 'collider', title: 'Tag the current object as solid scene geometry.' },
   { label: 'Pickup', component: 'pickup', title: 'Make the current object collectible.' },
   { label: 'Equip Item', component: 'equipmentItem', title: 'Make the current object an equippable inventory item.' },
+  { label: 'NPC', component: 'npc', title: 'Make the current object a talking NPC with optional quest reward.' },
+  { label: 'Merchant', component: 'merchant', title: 'Make the current object sell inventory or equipment for score.' },
   { label: 'Damage', component: 'damage', title: 'Make the current object damage the player nearby.' },
   { label: 'Objective', component: 'objective', title: 'Make the current object complete an objective when reached.' },
   { label: 'Mission', component: 'missionStep', title: 'Make the current object advance mission progress.' },
@@ -1376,6 +1571,29 @@ const COMPONENT_FIELDS = {
     { key: 'power', label: 'Power', kind: 'number', step: 1 },
     { key: 'score', label: 'Score', kind: 'number', step: 1 },
     { key: 'xp', label: 'XP', kind: 'number', step: 1 },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  npc: [
+    { key: 'name', label: 'Name', kind: 'text' },
+    { key: 'role', label: 'Role', kind: 'text' },
+    { key: 'dialogue', label: 'Dialogue', kind: 'text' },
+    { key: 'questId', label: 'Quest ID', kind: 'text' },
+    { key: 'requiredStepId', label: 'Requires', kind: 'text' },
+    { key: 'rewardItem', label: 'Reward', kind: 'text' },
+    { key: 'rewardSlot', label: 'Reward Slot', kind: 'text' },
+    { key: 'rewardPower', label: 'Power', kind: 'number', step: 1 },
+    { key: 'rewardScore', label: 'Score', kind: 'number', step: 1 },
+    { key: 'rewardXp', label: 'XP', kind: 'number', step: 1 },
+    { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
+  ],
+  merchant: [
+    { key: 'name', label: 'Name', kind: 'text' },
+    { key: 'item', label: 'Item', kind: 'text' },
+    { key: 'price', label: 'Price', kind: 'number', step: 1 },
+    { key: 'slot', label: 'Slot', kind: 'text' },
+    { key: 'power', label: 'Power', kind: 'number', step: 1 },
+    { key: 'xp', label: 'XP', kind: 'number', step: 1 },
+    { key: 'stock', label: 'Stock', kind: 'number', step: 1 },
     { key: 'radius', label: 'Radius', kind: 'number', step: 0.1 },
   ],
   damage: [
@@ -1678,8 +1896,8 @@ async function ensureComponentRuntime() {
 
 async function ensureRuntimeForComponents(components) {
   const keys = Object.keys(components || {});
-  if (keys.some((key) => ['pickup', 'equipmentItem', 'missionReward', 'enemySpawn', 'waveController'].includes(key))) await installScript('inventory');
-  if (keys.some((key) => ['pickup', 'equipmentItem', 'damage', 'objective', 'missionStep', 'missionReward', 'missionGate', 'enemySpawn', 'waveController', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
+  if (keys.some((key) => ['pickup', 'equipmentItem', 'missionReward', 'enemySpawn', 'waveController', 'npc', 'merchant'].includes(key))) await installScript('inventory');
+  if (keys.some((key) => ['pickup', 'equipmentItem', 'npc', 'merchant', 'damage', 'objective', 'missionStep', 'missionReward', 'missionGate', 'enemySpawn', 'waveController', 'checkpoint', 'winCondition', 'door', 'triggerZone', 'spawnPoint', 'spin', 'float'].includes(key))) {
     await ensureComponentRuntime();
   }
 }
@@ -1704,6 +1922,18 @@ async function markComponent(component) {
     components.equipmentItem = { item: cleanName, slot: 'weapon', power: 2, score: 0, xp: 10, radius: 2.5 };
     target.userData.interactable = true;
     target.userData.interactLabel = target.userData.interactLabel || 'Equip';
+    await installScript('inventory');
+    await ensureComponentRuntime();
+  } else if (component === 'npc') {
+    components.npc = { id: 'npc_' + id, name: cleanName + ' guide', role: 'Guide', dialogue: 'I can point you toward the next objective.', questId: 'quest_' + id, requiredStepId: 'none', rewardItem: cleanName + ' note', rewardSlot: '', rewardPower: 0, rewardScore: 10, rewardXp: 10, radius: 3 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Talk';
+    await installScript('inventory');
+    await ensureComponentRuntime();
+  } else if (component === 'merchant') {
+    components.merchant = { id: 'merchant_' + id, name: cleanName + ' vendor', item: cleanName + ' gear', price: 25, slot: 'trinket', power: 1, xp: 5, stock: 1, radius: 3 };
+    target.userData.interactable = true;
+    target.userData.interactLabel = target.userData.interactLabel || 'Shop';
     await installScript('inventory');
     await ensureComponentRuntime();
   } else if (component === 'damage') {
@@ -1927,6 +2157,8 @@ function collectReadiness() {
   const spawnCount = componentCounts.byType.spawnPoint || 0;
   const pickupCount = componentCounts.byType.pickup || 0;
   const equipmentCount = componentCounts.byType.equipmentItem || 0;
+  const npcCount = componentCounts.byType.npc || 0;
+  const merchantCount = componentCounts.byType.merchant || 0;
   const objectiveCount = componentCounts.byType.objective || 0;
   const checkpointCount = componentCounts.byType.checkpoint || 0;
   const winConditionCount = componentCounts.byType.winCondition || 0;
@@ -1969,6 +2201,8 @@ function collectReadiness() {
     spawnCount,
     pickupCount,
     equipmentCount,
+    npcCount,
+    merchantCount,
     objectiveCount,
     checkpointCount,
     winConditionCount,
@@ -2021,6 +2255,7 @@ function renderReadinessStatus() {
     createReadinessRow('World', readiness.objectCount + ' objects'),
     createReadinessRow('Gameplay', readiness.scriptCount + ' scripts | ' + readiness.componentCount + ' components'),
     createReadinessRow('Progress', readiness.pickupCount + ' pickups | ' + readiness.equipmentCount + ' equipment | ' + readiness.checkpointCount + ' checkpoints'),
+    createReadinessRow('NPCs', readiness.npcCount + ' dialogue | ' + readiness.merchantCount + ' merchants'),
     createReadinessRow('Goals', readiness.objectiveCount + ' objectives | ' + readiness.winConditionCount + ' wins'),
     createReadinessRow('Missions', readiness.missionStepCount + ' steps | ' + readiness.rewardCount + ' rewards | ' + readiness.gateCount + ' gates'),
     createReadinessRow('Enemies', readiness.enemySpawnCount + ' spawns | ' + readiness.waveCount + ' waves'),

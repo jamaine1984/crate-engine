@@ -189,7 +189,7 @@ async function runBrowserSmoke() {
 
     await page.waitForFunction(
       () => Array.isArray(window._gameBuilderSystems) &&
-        window._gameBuilderSystems.length >= 18 &&
+        window._gameBuilderSystems.length >= 20 &&
         !!document.querySelector('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]'),
       undefined,
       { timeout: timeoutMs }
@@ -198,7 +198,7 @@ async function runBrowserSmoke() {
       cardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
       ids: (window._gameBuilderSystems || []).map((system) => system.id),
     }));
-    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'equipment', 'objectives', 'missions', 'rewards', 'gates', 'enemySpawns', 'waves', 'checkpoints', 'win', 'doors', 'triggers', 'spawns', 'damage']) {
+    for (const id of ['inventory', 'hud', 'quest', 'runtime', 'pickups', 'equipment', 'npcs', 'merchants', 'objectives', 'missions', 'rewards', 'gates', 'enemySpawns', 'waves', 'checkpoints', 'win', 'doors', 'triggers', 'spawns', 'damage']) {
       if (!initialSystems.ids.includes(id)) {
         throw new Error(`Game Systems library missing ${id}: ${JSON.stringify(initialSystems)}`);
       }
@@ -445,6 +445,65 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     );
 
+    await page.locator('#gb-scene-list .gb-scene-row .gb-scene-main').nth(5).click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="npcs"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.evaluate(() => {
+      const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+      const components = selected?.userData?.gbComponents || {};
+      if (components.npc) {
+        components.npc.name = 'Smoke guide';
+        components.npc.role = 'Quest giver';
+        components.npc.dialogue = 'The city needs a real quest giver.';
+        components.npc.questId = 'smoke-npc-quest';
+        components.npc.rewardItem = 'smoke note';
+        components.npc.rewardScore = 10;
+        components.npc.rewardXp = 20;
+        components.npc.radius = 9999;
+      }
+      window._refreshGameBuilder?.();
+    });
+    await page.waitForFunction(
+      () => {
+        const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+        const components = selected?.userData?.gbComponents || {};
+        return !!components.npc &&
+          components.npc.name === 'Smoke guide' &&
+          Number(components.npc.radius) >= 9999;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
+
+    await page.locator('#gb-scene-list .gb-scene-row .gb-scene-main').nth(6).click({ timeout: timeoutMs });
+    await page.locator('#gb-systems [data-gb-system="merchants"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
+    await page.evaluate(() => {
+      const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+      const components = selected?.userData?.gbComponents || {};
+      if (components.merchant) {
+        components.merchant.name = 'Smoke vendor';
+        components.merchant.item = 'smoke cloak';
+        components.merchant.price = 25;
+        components.merchant.slot = 'armor';
+        components.merchant.power = 4;
+        components.merchant.xp = 15;
+        components.merchant.stock = 1;
+        components.merchant.radius = 9999;
+      }
+      window._refreshGameBuilder?.();
+    });
+    await page.waitForFunction(
+      () => {
+        const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+        const components = selected?.userData?.gbComponents || {};
+        return !!components.merchant &&
+          components.merchant.item === 'smoke cloak' &&
+          Number(components.merchant.price) === 25 &&
+          Number(components.merchant.radius) >= 9999;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
+
     await page.locator('#gb-project button[data-gb-action="save"]').click({ timeout: timeoutMs });
     await page.waitForSelector('#sl-modal #sl-save-btn', { timeout: timeoutMs });
     await page.locator('#sl-name').fill('Production Smoke Project', { timeout: timeoutMs });
@@ -465,11 +524,13 @@ async function runBrowserSmoke() {
         const hasEnemySpawn = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.enemySpawn);
         const hasWaveController = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.waveController);
         const hasEquipmentItem = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.equipmentItem);
+        const hasNpc = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.npc);
+        const hasMerchant = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.merchant);
         const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
         const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
         const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
         const hasBuildCityCommand = commands.some((cmd) => /^(?:build (?:a |the )?(?:city|full city|the city)|generate city|city world|new city)$/i.test(String(cmd || '').trim()));
-        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasMissionStep || !hasMissionReward || !hasMissionGate || !hasEnemySpawn || !hasWaveController || !hasEquipmentItem || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
+        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasMissionStep || !hasMissionReward || !hasMissionGate || !hasEnemySpawn || !hasWaveController || !hasEquipmentItem || !hasNpc || !hasMerchant || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
         return {
           version: parsed.version,
           objectCount: parsed.objects.length,
@@ -486,6 +547,8 @@ async function runBrowserSmoke() {
           hasEnemySpawn,
           hasWaveController,
           hasEquipmentItem,
+          hasNpc,
+          hasMerchant,
           hasAssetPath,
         };
       },
@@ -519,7 +582,9 @@ async function runBrowserSmoke() {
         const enemySpawnObj = objects.find((obj) => obj?.userData?.gbComponents?.enemySpawn);
         const waveObj = objects.find((obj) => obj?.userData?.gbComponents?.waveController);
         const equipmentObj = objects.find((obj) => obj?.userData?.gbComponents?.equipmentItem);
-        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj || !doorObj || !triggerObj || !missionObj || !rewardObj || !gateObj || !enemySpawnObj || !waveObj || !equipmentObj) return null;
+        const npcObj = objects.find((obj) => obj?.userData?.gbComponents?.npc);
+        const merchantObj = objects.find((obj) => obj?.userData?.gbComponents?.merchant);
+        if (load.status !== 'loaded' || objects.length < 100 || scripts < saved.scriptCount || !pickupObj || !doorObj || !triggerObj || !missionObj || !rewardObj || !gateObj || !enemySpawnObj || !waveObj || !equipmentObj || !npcObj || !merchantObj) return null;
         return {
           status: load.status,
           objectCount: objects.length,
@@ -533,6 +598,8 @@ async function runBrowserSmoke() {
           enemySpawnId: enemySpawnObj.uuid || '',
           waveId: waveObj.uuid || '',
           equipmentId: equipmentObj.uuid || '',
+          npcId: npcObj.uuid || '',
+          merchantId: merchantObj.uuid || '',
           spawned: load.snapshot?.spawned || 0,
           applied: load.snapshot?.applied || 0,
           expected: load.snapshot?.expected || 0,
@@ -697,6 +764,85 @@ async function runBrowserSmoke() {
     ).then((handle) => handle.jsonValue());
     if (!missionFlowState.doneStep || !missionFlowState.claimedReward || !missionFlowState.unlockedGate || missionFlowState.rewardScore < 75) {
       throw new Error(`Mission flow runtime did not complete cleanly: ${JSON.stringify(missionFlowState)}`);
+    }
+
+    await page.waitForFunction(
+      () => {
+        const runtime = window._userScriptScope?.gbRuntime || {};
+        return runtime.activeNpc?.name === 'Smoke guide' && runtime.activeMerchant?.item === 'smoke cloak';
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.keyboard.press('KeyT');
+    await page.evaluate(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', bubbles: true }));
+      for (const script of window._userScripts || []) {
+        if (script && script.enabled !== false && script._running && typeof script._onKeyPress === 'function') {
+          script._onKeyPress('t');
+        }
+      }
+    });
+    const npcRuntimeState = await page.waitForFunction(
+      () => {
+        const scope = window._userScriptScope || {};
+        const runtime = scope.gbRuntime || {};
+        const npcs = Object.values(runtime.npcs || {});
+        const inventory = Array.isArray(scope.gbInventoryItems) ? scope.gbInventoryItems : [];
+        const npc = npcs.find((item) => item.name === 'Smoke guide' && item.talked && item.rewardClaimed);
+        const note = inventory.find((item) => item?.name === 'smoke note');
+        if (!npc || !note || runtime.lastDialogue?.speaker !== 'Smoke guide') return null;
+        return {
+          name: npc.name || '',
+          role: npc.role || '',
+          dialogue: runtime.lastDialogue?.text || '',
+          reward: note.name || '',
+          rewardClaimed: npc.rewardClaimed === true,
+          talkCount: Number(npc.talkCount) || 0,
+          score: Number(runtime.score) || 0,
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    if (npcRuntimeState.name !== 'Smoke guide' || npcRuntimeState.reward !== 'smoke note' || !npcRuntimeState.rewardClaimed) {
+      throw new Error(`NPC runtime did not talk and grant reward: ${JSON.stringify(npcRuntimeState)}`);
+    }
+
+    await page.keyboard.press('KeyE');
+    await page.evaluate(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', code: 'KeyE', bubbles: true }));
+      for (const script of window._userScripts || []) {
+        if (script && script.enabled !== false && script._running && typeof script._onKeyPress === 'function') {
+          script._onKeyPress('e');
+        }
+      }
+    });
+    const merchantRuntimeState = await page.waitForFunction(
+      () => {
+        const scope = window._userScriptScope || {};
+        const runtime = scope.gbRuntime || {};
+        const merchants = Object.values(runtime.merchants || {});
+        const equipment = scope.gbEquipment || {};
+        const inventory = Array.isArray(scope.gbInventoryItems) ? scope.gbInventoryItems : [];
+        const merchant = merchants.find((item) => item.name === 'Smoke vendor');
+        const cloak = inventory.find((item) => item?.name === 'smoke cloak');
+        if (!merchant || !runtime.lastPurchase || !cloak || equipment.armor?.name !== 'smoke cloak') return null;
+        return {
+          name: merchant.name || '',
+          item: runtime.lastPurchase.item || '',
+          price: Number(runtime.lastPurchase.price) || 0,
+          sold: Number(merchant.sold) || 0,
+          armor: equipment.armor?.name || '',
+          armorPower: Number(equipment.armor?.power) || 0,
+          score: Number(runtime.score) || 0,
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    if (merchantRuntimeState.item !== 'smoke cloak' || merchantRuntimeState.armor !== 'smoke cloak' || merchantRuntimeState.armorPower < 4) {
+      throw new Error(`Merchant runtime did not sell and equip item: ${JSON.stringify(merchantRuntimeState)}`);
     }
 
     const waveRuntimeState = await page.waitForFunction(
@@ -883,6 +1029,8 @@ async function runBrowserSmoke() {
         readinessScriptCount: readiness.scriptCount || 0,
         readinessComponentCount: readiness.componentCount || 0,
         readinessEquipmentCount: readiness.equipmentCount || 0,
+        readinessNpcCount: readiness.npcCount || 0,
+        readinessMerchantCount: readiness.merchantCount || 0,
         readinessCheckpointCount: readiness.checkpointCount || 0,
         readinessWinConditionCount: readiness.winConditionCount || 0,
         readinessSpawnCount: readiness.spawnCount || 0,
@@ -919,6 +1067,8 @@ async function runBrowserSmoke() {
     state.savedProjectHasEnemySpawn = savedProjectState.hasEnemySpawn;
     state.savedProjectHasWaveController = savedProjectState.hasWaveController;
     state.savedProjectHasEquipmentItem = savedProjectState.hasEquipmentItem;
+    state.savedProjectHasNpc = savedProjectState.hasNpc;
+    state.savedProjectHasMerchant = savedProjectState.hasMerchant;
     state.loadedProjectObjectCount = loadedProjectState.objectCount;
     state.loadedProjectScriptCount = loadedProjectState.scriptCount;
     state.loadedProjectPickupId = loadedProjectState.pickupId;
@@ -930,6 +1080,8 @@ async function runBrowserSmoke() {
     state.loadedProjectEnemySpawnId = loadedProjectState.enemySpawnId;
     state.loadedProjectWaveId = loadedProjectState.waveId;
     state.loadedProjectEquipmentId = loadedProjectState.equipmentId;
+    state.loadedProjectNpcId = loadedProjectState.npcId;
+    state.loadedProjectMerchantId = loadedProjectState.merchantId;
     state.loadedProjectSpawned = loadedProjectState.spawned;
     state.loadedProjectApplied = loadedProjectState.applied;
     state.respawnHealth = afterRespawnState.health;
@@ -944,6 +1096,16 @@ async function runBrowserSmoke() {
     state.missionGateProgress = missionFlowState.gateProgress;
     state.missionRewardScore = missionFlowState.rewardScore;
     state.missionRuntimeScore = missionFlowState.runtimeScore;
+    state.npcName = npcRuntimeState.name;
+    state.npcDialogue = npcRuntimeState.dialogue;
+    state.npcReward = npcRuntimeState.reward;
+    state.npcRewardClaimed = npcRuntimeState.rewardClaimed;
+    state.merchantName = merchantRuntimeState.name;
+    state.merchantItem = merchantRuntimeState.item;
+    state.merchantPrice = merchantRuntimeState.price;
+    state.merchantSold = merchantRuntimeState.sold;
+    state.merchantArmor = merchantRuntimeState.armor;
+    state.merchantArmorPower = merchantRuntimeState.armorPower;
     state.waveSpawn = waveRuntimeState.spawn;
     state.waveName = waveRuntimeState.wave;
     state.waveActive = waveRuntimeState.active;
@@ -968,11 +1130,13 @@ async function runBrowserSmoke() {
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
       throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
     }
-    if (state.systemCardCount < 18 ||
+    if (state.systemCardCount < 20 ||
       !state.installedSystems.includes('inventory') ||
       !state.installedSystems.includes('runtime') ||
       !state.installedSystems.includes('pickups') ||
       !state.installedSystems.includes('equipment') ||
+      !state.installedSystems.includes('npcs') ||
+      !state.installedSystems.includes('merchants') ||
       !state.installedSystems.includes('missions') ||
       !state.installedSystems.includes('rewards') ||
       !state.installedSystems.includes('gates') ||
@@ -988,8 +1152,10 @@ async function runBrowserSmoke() {
     if (state.readinessTone !== 'ready' ||
       state.readinessObjectCount < 100 ||
       state.readinessScriptCount < 1 ||
-      state.readinessComponentCount < 12 ||
+      state.readinessComponentCount < 14 ||
       state.readinessEquipmentCount < 1 ||
+      state.readinessNpcCount < 1 ||
+      state.readinessMerchantCount < 1 ||
       state.readinessCheckpointCount < 1 ||
       state.readinessWinConditionCount < 1 ||
       state.readinessSpawnCount < 1 ||
@@ -1004,10 +1170,10 @@ async function runBrowserSmoke() {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
-    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate || !state.savedProjectHasEnemySpawn || !state.savedProjectHasWaveController || !state.savedProjectHasEquipmentItem) {
+    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate || !state.savedProjectHasEnemySpawn || !state.savedProjectHasWaveController || !state.savedProjectHasEquipmentItem || !state.savedProjectHasNpc || !state.savedProjectHasMerchant) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
     }
-    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId || !state.loadedProjectMissionId || !state.loadedProjectRewardId || !state.loadedProjectGateId || !state.loadedProjectEnemySpawnId || !state.loadedProjectWaveId || !state.loadedProjectEquipmentId) {
+    if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId || !state.loadedProjectMissionId || !state.loadedProjectRewardId || !state.loadedProjectGateId || !state.loadedProjectEnemySpawnId || !state.loadedProjectWaveId || !state.loadedProjectEquipmentId || !state.loadedProjectNpcId || !state.loadedProjectMerchantId) {
       throw new Error(`Project load did not restore rich scene state: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
@@ -1035,6 +1201,9 @@ async function runBrowserSmoke() {
     if (!state.gameplayComponents.includes('equipmentItem')) {
       throw new Error(`Equipment component was not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
     }
+    if (!state.gameplayComponents.includes('npc') || !state.gameplayComponents.includes('merchant')) {
+      throw new Error(`NPC/Merchant components were not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
+    }
     if (state.respawnHealth < 100 || state.respawnCount < 1) {
       throw new Error(`Spawn runtime did not reset health and respawn count: ${JSON.stringify(state)}`);
     }
@@ -1043,6 +1212,12 @@ async function runBrowserSmoke() {
     }
     if (!state.missionStep || !state.missionReward || !state.missionGate || state.missionGateProgress <= 0 || state.missionRewardScore < 75) {
       throw new Error(`Mission flow runtime did not finish: ${JSON.stringify(state)}`);
+    }
+    if (state.npcName !== 'Smoke guide' || state.npcReward !== 'smoke note' || !state.npcRewardClaimed) {
+      throw new Error(`NPC runtime did not finish: ${JSON.stringify(state)}`);
+    }
+    if (state.merchantItem !== 'smoke cloak' || state.merchantArmor !== 'smoke cloak' || state.merchantArmorPower < 4 || state.merchantSold < 1) {
+      throw new Error(`Merchant runtime did not finish: ${JSON.stringify(state)}`);
     }
     if (!state.waveName || state.waveEnemyCount < 2 || state.waveAlive < 1) {
       throw new Error(`Enemy wave runtime did not stay active: ${JSON.stringify(state)}`);
@@ -1088,9 +1263,11 @@ console.log(`Placement: ${browserState.placementStatus} (${browserState.placemen
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
-console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, equipment ${browserState.loadedProjectEquipmentId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'}, enemy spawn ${browserState.loadedProjectEnemySpawnId || 'missing'}, wave ${browserState.loadedProjectWaveId || 'missing'})`);
+console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, equipment ${browserState.loadedProjectEquipmentId || 'missing'}, npc ${browserState.loadedProjectNpcId || 'missing'}, merchant ${browserState.loadedProjectMerchantId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'}, enemy spawn ${browserState.loadedProjectEnemySpawnId || 'missing'}, wave ${browserState.loadedProjectWaveId || 'missing'})`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
+console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);
+console.log(`Merchant runtime: ${browserState.merchantName || 'missing'} sold ${browserState.merchantItem || 'missing'} for ${browserState.merchantPrice} score (${browserState.merchantArmorPower} armor power)`);
 console.log(`Enemy wave runtime: ${browserState.waveName || 'missing'} from ${browserState.waveSpawn || 'missing'} (${browserState.waveEnemyCount} spawned, ${browserState.waveAlive} alive)`);
 console.log(`Inventory runtime: ${browserState.lootDrop || 'missing'} equipped ${browserState.lootWeapon || 'missing'} (${browserState.lootWeaponPower} power, ${browserState.lootAttack} attack, ${browserState.lootInventoryCount} items)`);
 console.log(`Respawn runtime: ${browserState.respawnCount} respawns, ${browserState.respawnHealth} HP`);
