@@ -1361,6 +1361,7 @@ const PROJECT_ACTIONS = [
   { label: 'Load', action: 'load', title: 'Open saved project slots.' },
   { label: 'Import', action: 'import', title: 'Import GLB, GLTF, or .crate files.' },
   { label: 'Export', action: 'export', title: 'Export, download, or share the current project.' },
+  { label: 'Published', action: 'published', title: 'Open published cloud and browser game links.' },
   { label: 'Share', action: 'share', title: 'Create a share URL for the current project.' },
   { label: 'Settings', action: 'settings', title: 'Open engine settings.' },
 ];
@@ -2035,6 +2036,10 @@ function runAction(action) {
   if (action === 'export') {
     if (window._showImportExport) return window._showImportExport('export');
     return runCommand('export world');
+  }
+  if (action === 'published') {
+    if (window._showPublishedGames) return window._showPublishedGames();
+    return null;
   }
   if (action === 'share') {
     return runCommand('share world');
