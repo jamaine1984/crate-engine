@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `f174b263`
+- Current deployed source commit for the public engine code: `59900900`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -27,10 +27,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `582efb26-a001-4135-b7f7-8c5df3647691`
-- Latest production deployment URL: `https://582efb26.crateship-games.pages.dev`
+- Latest production deployment ID: `355eeee0-9a64-457f-8a76-a2558c1488a1`
+- Latest production deployment URL: `https://355eeee0.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `f174b26`
+- Source shown by Cloudflare: `5990090`
 - Main live page bundle after the deploy: `/assets/play-ovN8zwhf.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -1723,6 +1723,23 @@ Browser verification history:
   - Smoke verified `Admin moderation: API guard 403, dashboard locked, controls ready, review notes ready`.
   - Smoke still verified build-city output, separate asset-host loading, furniture placement, published game export/load, marketplace discovery, game details, mode/editor separation, and runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-review-notes-f174b263.png`.
+- Final custom-domain verification after deployment `355eeee0-9a64-457f-8a76-a2558c1488a1`:
+  - Cloudflare source showed `5990090`.
+  - `/play?verify=admin-identity-59900900` served `/assets/play-ovN8zwhf.js`.
+  - `/play?verify=admin-identity-59900900` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/admin.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had `111` files, no `/models` or `/textures` directories, and did include `admin.html` and `play.html`.
+  - The deploy uploaded `1` changed file, reused `108` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, inline HTML script parsing, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - `functions/api/games/[[path]].js` now supports named admin identities through the existing single-token variables plus optional `CRATE_GAMES_ADMIN_TOKENS` or `CRATE_ADMIN_TOKENS`.
+  - Supported admin roles are `admin`, `moderator`, `curator`, and `viewer`; role checks gate moderation-status, visibility, and featured changes.
+  - Moderation audit entries now record `adminId`, `adminName`, and `adminRole`; moderation-list metadata exposes the latest actor and role.
+  - `admin.html` now shows the resolved signed-in admin identity after a token is accepted and shows the latest moderation actor in each audit row.
+  - Smoke verified `Admin moderation: API guard 403, dashboard locked, controls ready, actor ready, review notes ready`.
+  - Smoke still verified build-city output, separate asset-host loading, furniture placement, published game export/load, marketplace discovery, game details, mode/editor separation, and runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-identity-59900900.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1758,6 +1775,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+59900900 Add admin identity roles to moderation
 f174b263 Add admin review notes to moderation actions
 5fefd03b Add published game moderation dashboard
 0f0789cf Add featured game curation metadata
@@ -1861,7 +1879,7 @@ does not change the public website bundle unless it is intentionally deployed.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Continue productizing the publish system: connect real signed-in owner
-   accounts, add account-based admin roles, move longer audit history to D1,
-   and add per-admin identity on moderation actions.
+   accounts, move longer moderation audit history to D1, and add an admin
+   audit-history detail view.
 5. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and export/import hardening.
