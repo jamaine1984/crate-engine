@@ -15,9 +15,10 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `f534ac27`
+- Current deployed source commit for the public engine code: `51dcde5e`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
+- Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -26,11 +27,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `824c508c-7cca-474a-ad8f-de4002b1853f`
-- Latest production deployment URL: `https://824c508c.crateship-games.pages.dev`
+- Latest production deployment ID: `559da24a-c56f-4cb0-abfb-287ea6926070`
+- Latest production deployment URL: `https://559da24a.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `f534ac2`
-- Main live page bundle after the deploy: `/assets/play-ve-g4PUj.js`
+- Source shown by Cloudflare: `51dcde5`
+- Main live page bundle after the deploy: `/assets/play-D3alRuCc.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -628,6 +629,35 @@ Follow-up production deploys on 2026-05-19 added Publish Library and portable ga
   - Production smoke verified published game `production-smoke-published-game` with `411` objects, `14` components, and a `209819` byte playable package.
   - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, and remote asset-host checks.
 
+Follow-up production deploys on 2026-05-19 added the Cloudflare Published Games API:
+
+- `functions/api/games/[[path]].js`
+  - Added Pages Functions routes for `POST /api/games/publish`, `GET /api/games/<slug>`, and `GET /api/games`.
+  - Stores published game records in the existing `CRATE_GAMES` KV namespace.
+  - Saves the full project payload, encoded scene data, publish metadata, component counts, playable-package summary, and clean URL.
+- `wrangler.toml`
+  - Updated the Pages project name to `crateship-games`.
+  - Added the `CRATE_GAMES` KV binding.
+  - Updated the compatibility date for this deploy.
+- `_routes.json` and `vite.config.mjs`
+  - Added route rules so only `/api/*` invokes Pages Functions.
+  - The static app continues serving normally from Pages assets.
+- `engine.mjs`
+  - Publish now syncs local published-game records to `/api/games/publish`.
+  - A synced game uses the clean URL `/play?published=<slug>` instead of requiring the hash payload.
+  - Clean published links can fetch the game from `/api/games/<slug>` in a fresh browser and load it through `deserializeScene()`.
+  - Local hash links and local-library fallback remain available if the API is unavailable.
+- `scripts/smoke-production.mjs`
+  - Verifies the publish API response, direct game lookup, list lookup, and clean cloud link loading in a fresh browser context.
+  - Blocks service workers during smoke so verification uses the live Cloudflare deployment instead of cached worker responses.
+- Final app deployment `559da24a-c56f-4cb0-abfb-287ea6926070`
+  - Source `51dcde5`; bundle `/assets/play-D3alRuCc.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The final upload reused all `105` static files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Published API: cloudflare-pages-kv 200 (cloud-published, 411 objects loaded)`.
+  - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, and remote asset-host checks.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -637,6 +667,7 @@ cd C:\Users\koike\Downloads\crate-engine-web-latest
 npm run check
 npm run check:assets
 npm run build
+npx wrangler pages functions build functions --build-output-directory dist --outdir .wrangler\functions-build --output-routes-path .wrangler\functions-routes.json --compatibility-date 2026-05-19
 $env:CRATE_DEPLOY_INCLUDE_ASSETS='false'
 npm run prepare:deploy
 npx wrangler pages deploy .deploy `
@@ -1194,6 +1225,23 @@ Browser verification history:
   - Smoke verified Inventory runtime: `smoke blade equipped smoke blade (7 power, 22 attack, 5 items)`.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-publish-f534ac27.png`.
+- Final custom-domain verification after deployment `559da24a-c56f-4cb0-abfb-287ea6926070`:
+  - Cloudflare source showed `51dcde5`.
+  - `/play?verify=api-51dcde5e` served `/assets/play-D3alRuCc.js`.
+  - `/play?verify=api-51dcde5e` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - The final deploy reused all `105` static files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified `/api/games/publish` wrote `production-smoke-published-game` to `CRATE_GAMES`.
+  - Smoke verified `/api/games/production-smoke-published-game` returned `200` with `crate-cloud-published-game`, full project data, `411` objects, and `14` components.
+  - Smoke verified `/api/games?slug=production-smoke-published-game` returned the game in the list API.
+  - Smoke loaded the clean cloud URL `/play?published=production-smoke-published-game` in a fresh browser context and reported `cloud-published, 411 objects loaded`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 411 objects, 2 scripts, 14 components, Edit mode`.
+  - Playable export verified `production-smoke-game-playable.html` with `411` objects, `14` components, and `209797` HTML bytes.
+  - Published game verified `production-smoke-published-game` with `411` objects, `14` components, and a `209822` byte playable package.
+  - Project load restored NPC and merchant components plus equipment, pickup, door, trigger, mission, reward, gate, enemy spawn, wave, checkpoint, win, and spawn components.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-api-51dcde5e.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1208,6 +1256,7 @@ Browser verification history:
 - The correct project is `crateship-games`.
 - The separate asset project is `crateship-games-assets`.
 - The custom domain is on `crateshipgames.com`.
+- Published games use the Pages Function routes under `/api/games/*` and the `CRATE_GAMES` KV namespace. Keep `_routes.json` limited to `/api/*` so the static game app is not routed through Functions.
 - Another project named `crate-engine` has existed before, but it is not the
   custom-domain production site.
 - Wrangler auth was verified with `npx wrangler whoami`; it showed the
@@ -1228,6 +1277,8 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+51dcde5e Stabilize published game smoke load
+3133868c Add Cloudflare published games API
 f534ac27 Add publish library workflow
 face24d3 Add playable web package export
 4c8b8179 Add NPC merchant gameplay systems
@@ -1289,12 +1340,15 @@ M  scripts/sync-legacy-web.mjs
 M  scripts/smoke-production.mjs
 M  user-scripts.mjs
 M  vite.config.mjs
+M  wrangler.toml
 M  package.json
 M  package-lock.json
 M  .gitignore
 M  _headers
+A  _routes.json
 A  404.html
 A  asset-url.mjs
+A  functions/api/games/[[path]].js
 A  game-builder-ui.mjs
 A  scripts/check-assets.mjs
 A  CLOUDFLARE_HANDOFF.md
@@ -1312,5 +1366,7 @@ does not change the public website bundle unless it is intentionally deployed.
    can see which asset pack the live editor is using.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
-4. Continue productizing the editor: a richer component inspector, project
-   format, safe scripting runtime, and publish/export flow.
+4. Continue productizing the publish system: add owner accounts, moderation,
+   edit/delete controls, and marketplace/library UI fed from `/api/games`.
+5. Continue productizing the editor: a richer component inspector, project
+   format, safe scripting runtime, and export/import hardening.
