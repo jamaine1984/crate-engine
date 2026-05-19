@@ -926,6 +926,48 @@ async function runBrowserSmoke() {
       throw new Error(`Published metadata guard failed: ${JSON.stringify(metadataGuardState)}`);
     }
 
+    const marketplaceContext = await browser.newContext({
+      viewport: { width: 1365, height: 900 },
+      deviceScaleFactor: 1,
+      serviceWorkers: 'block',
+    });
+    const marketplacePage = await marketplaceContext.newPage();
+    const marketplaceUrl = `${baseUrl}/marketplace.html?verify=${encodeURIComponent(verify + '-marketplace')}`;
+    await marketplacePage.goto(marketplaceUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    await marketplacePage.waitForFunction(
+      () => window._cratePublishedMarketplace?.status === 'loaded' &&
+        document.querySelector('#published-market-grid')?.dataset.status === 'loaded',
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await marketplacePage.locator('#published-market-search').fill('production smoke');
+    const marketplaceState = await marketplacePage.waitForFunction(
+      () => {
+        const state = window._cratePublishedMarketplace || {};
+        const grid = document.querySelector('#published-market-grid');
+        const row = document.querySelector('[data-published-game="production-smoke-published-game"]');
+        if (state.status !== 'loaded' || state.query !== 'production smoke' || !row) return null;
+        return {
+          status: state.status,
+          total: Number(state.total) || 0,
+          shown: Number(state.shown) || 0,
+          query: state.query || '',
+          hasSection: !!document.querySelector('#published-games-section'),
+          hasSearch: !!document.querySelector('#published-market-search'),
+          hasRefresh: !!document.querySelector('#published-market-refresh'),
+          hasSmoke: !!row,
+          hasUnlistedGuard: !!document.querySelector('[data-published-game="production-smoke-metadata-guard-game"]'),
+          creatorText: row.querySelector('.creator')?.textContent || '',
+          playHref: row.querySelector('.actions a')?.getAttribute('href') || '',
+          remixHref: row.querySelector('.actions a.secondary')?.getAttribute('href') || '',
+          summary: document.querySelector('#published-market-summary')?.textContent || '',
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    await marketplaceContext.close();
+
     const publishedLoadContext = await browser.newContext({
       viewport: { width: 1365, height: 900 },
       deviceScaleFactor: 1,
@@ -1700,6 +1742,19 @@ async function runBrowserSmoke() {
     state.publishedMetadataGuardVisibility = metadataGuardState.updateVisibility;
     state.publishedMetadataGuardPublicListHasSlug = metadataGuardState.publicListHasSlug;
     state.publishedMetadataGuardDirectListVisibility = metadataGuardState.directListVisibility;
+    state.marketplaceStatus = marketplaceState.status;
+    state.marketplaceTotal = marketplaceState.total;
+    state.marketplaceShown = marketplaceState.shown;
+    state.marketplaceQuery = marketplaceState.query;
+    state.marketplaceHasSection = marketplaceState.hasSection;
+    state.marketplaceHasSearch = marketplaceState.hasSearch;
+    state.marketplaceHasRefresh = marketplaceState.hasRefresh;
+    state.marketplaceHasSmoke = marketplaceState.hasSmoke;
+    state.marketplaceHasUnlistedGuard = marketplaceState.hasUnlistedGuard;
+    state.marketplaceCreatorText = marketplaceState.creatorText;
+    state.marketplacePlayHref = marketplaceState.playHref;
+    state.marketplaceRemixHref = marketplaceState.remixHref;
+    state.marketplaceSummary = marketplaceState.summary;
     state.publishedFilterQuery = publishedFilterState.query;
     state.publishedFilterSource = publishedFilterState.source;
     state.publishedFilterCloudShown = publishedFilterState.cloudShown;
@@ -1861,6 +1916,17 @@ async function runBrowserSmoke() {
         state.publishedMetadataGuardVisibility !== 'unlisted' ||
         state.publishedMetadataGuardPublicListHasSlug ||
         state.publishedMetadataGuardDirectListVisibility !== 'unlisted' ||
+        state.marketplaceStatus !== 'loaded' ||
+        !state.marketplaceHasSection ||
+        !state.marketplaceHasSearch ||
+        !state.marketplaceHasRefresh ||
+        !state.marketplaceHasSmoke ||
+        state.marketplaceHasUnlistedGuard ||
+        state.marketplaceQuery !== 'production smoke' ||
+        state.marketplaceShown < 1 ||
+        !/Production Smoke Creator/.test(state.marketplaceCreatorText || '') ||
+        !state.marketplacePlayHref.includes('/play?published=production-smoke-published-game') ||
+        !state.marketplaceRemixHref.includes('/play?published=production-smoke-published-game') ||
         state.publishedFilterQuery !== 'production smoke' ||
         state.publishedFilterSource !== 'all' ||
         state.publishedFilterCloudShown < 1 ||
@@ -1932,6 +1998,7 @@ const play = await checkPlayHtml();
 const assetBaseUrl = play.assetBaseUrl;
 const assetManifest = await checkAssetManifest(assetBaseUrl);
 const httpChecks = [
+  await checkHttp('/marketplace.html', 200, 'text/html', baseUrl),
   await checkHttp('/asset-manifest.json', 200, 'application/json', assetBaseUrl),
   await checkHttp('/models/kenney_cars/sedan.glb', 200, 'model/gltf-binary', assetBaseUrl),
   await checkHttp('/models/house_interior_pack_chair_1.glb', 200, 'model/gltf-binary', assetBaseUrl),
@@ -1967,6 +2034,7 @@ console.log(`Published library UI: ${browserState.publishedLibraryCloudCount} cl
 console.log(`Published editor load: ${browserState.publishedEditorLoadStatus || 'missing'} ${browserState.publishedEditorLoadSlug || 'missing'} (${browserState.publishedEditorLoadObjectCount} objects, filter ${browserState.publishedFilterQuery || 'empty'})`);
 console.log(`Published management: detail ${browserState.publishedDetailPanelStatus || 'missing'}, owner ${browserState.publishedDetailOwnerManaged ? 'managed' : 'missing'}, delete guard ${browserState.publishedDeleteGuardBlockedStatus}/${browserState.publishedDeleteGuardDeletedStatus}/${browserState.publishedDeleteGuardMissingStatus}`);
 console.log(`Published metadata: creator ${browserState.publishedDetailCreatorName || 'missing'}, visibility ${browserState.publishedDetailVisibility || 'missing'}, unlisted guard ${browserState.publishedMetadataGuardUpdateStatus}/${browserState.publishedMetadataGuardVisibility || 'missing'}`);
+console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);
