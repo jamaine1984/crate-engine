@@ -214,6 +214,7 @@ async function runBrowserSmoke() {
     await page.locator('#ie-close').click({ timeout: timeoutMs });
 
     await page.locator('#gb-project button[data-gb-action="export"]').click({ timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-export-playable', { timeout: timeoutMs });
     await page.waitForSelector('#ie-modal #ie-export-crate', { timeout: timeoutMs });
     await page.waitForSelector('#ie-modal #ie-export-html', { timeout: timeoutMs });
     await page.locator('#ie-close').click({ timeout: timeoutMs });
@@ -608,6 +609,52 @@ async function runBrowserSmoke() {
       savedProjectState,
       { timeout: timeoutMs }
     ).then((handle) => handle.jsonValue());
+
+    const playableExportState = await page.evaluate(async () => {
+      const result = await window._exportPlayablePackage?.({ download: false, title: 'Production Smoke Game' });
+      const stored = window._lastPlayableExport || {};
+      return {
+        format: result?.format || '',
+        filename: result?.filename || '',
+        assetBaseUrl: result?.assetBaseUrl || '',
+        objectCount: Number(result?.objectCount) || 0,
+        commandCount: Number(result?.commandCount) || 0,
+        scriptCount: Number(result?.scriptCount) || 0,
+        componentCount: Number(result?.componentCount) || 0,
+        componentTypes: result?.componentTypes || {},
+        files: result?.files || [],
+        htmlBytes: Number(result?.htmlBytes) || 0,
+        crateBytes: Number(result?.crateBytes) || 0,
+        hasEmbeddedPackage: result?.hasEmbeddedPackage === true,
+        hasRuntimeControls: result?.hasRuntimeControls === true,
+        htmlHasAssetBase: typeof stored.html === 'string' && stored.html.includes('https://crateship-games-assets.pages.dev'),
+        htmlHasNpcRuntime: typeof stored.html === 'string' && stored.html.includes('interactNpc'),
+        htmlHasMerchantRuntime: typeof stored.html === 'string' && stored.html.includes('interactMerchant'),
+        crateHasNpc: typeof stored.crate === 'string' && stored.crate.includes('"npc"'),
+        crateHasMerchant: typeof stored.crate === 'string' && stored.crate.includes('"merchant"'),
+      };
+    });
+    if (playableExportState.format !== 'crate-playable-package' ||
+        !playableExportState.filename.endsWith('-playable.html') ||
+        playableExportState.assetBaseUrl !== 'https://crateship-games-assets.pages.dev' ||
+        playableExportState.objectCount < 100 ||
+        playableExportState.componentCount < 14 ||
+        playableExportState.scriptCount < 1 ||
+        playableExportState.htmlBytes < 50000 ||
+        playableExportState.crateBytes < 10000 ||
+        !playableExportState.files.includes('index.html') ||
+        !playableExportState.files.includes('game.crate') ||
+        !playableExportState.files.includes('README.md') ||
+        !playableExportState.hasEmbeddedPackage ||
+        !playableExportState.hasRuntimeControls ||
+        !playableExportState.htmlHasAssetBase ||
+        !playableExportState.htmlHasNpcRuntime ||
+        !playableExportState.htmlHasMerchantRuntime ||
+        !playableExportState.crateHasNpc ||
+        !playableExportState.crateHasMerchant) {
+      throw new Error(`Playable export package was not complete: ${JSON.stringify(playableExportState)}`);
+    }
+
     await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
       const pickupObj = objects.find((obj) => obj?.userData?.gbComponents?.pickup);
@@ -1084,6 +1131,16 @@ async function runBrowserSmoke() {
     state.loadedProjectMerchantId = loadedProjectState.merchantId;
     state.loadedProjectSpawned = loadedProjectState.spawned;
     state.loadedProjectApplied = loadedProjectState.applied;
+    state.playableExportFormat = playableExportState.format;
+    state.playableExportFilename = playableExportState.filename;
+    state.playableExportObjectCount = playableExportState.objectCount;
+    state.playableExportCommandCount = playableExportState.commandCount;
+    state.playableExportScriptCount = playableExportState.scriptCount;
+    state.playableExportComponentCount = playableExportState.componentCount;
+    state.playableExportHtmlBytes = playableExportState.htmlBytes;
+    state.playableExportCrateBytes = playableExportState.crateBytes;
+    state.playableExportFiles = playableExportState.files;
+    state.playableExportHasRuntimeControls = playableExportState.hasRuntimeControls;
     state.respawnHealth = afterRespawnState.health;
     state.respawnCount = afterRespawnState.respawns;
     state.openedDoor = doorTriggerState.openedDoor;
@@ -1176,6 +1233,9 @@ async function runBrowserSmoke() {
     if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId || !state.loadedProjectMissionId || !state.loadedProjectRewardId || !state.loadedProjectGateId || !state.loadedProjectEnemySpawnId || !state.loadedProjectWaveId || !state.loadedProjectEquipmentId || !state.loadedProjectNpcId || !state.loadedProjectMerchantId) {
       throw new Error(`Project load did not restore rich scene state: ${JSON.stringify(state)}`);
     }
+    if (state.playableExportFormat !== 'crate-playable-package' || state.playableExportObjectCount < 100 || state.playableExportComponentCount < 14 || state.playableExportHtmlBytes < 50000 || !state.playableExportHasRuntimeControls) {
+      throw new Error(`Playable export package did not include a runtime-ready project: ${JSON.stringify(state)}`);
+    }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
     if (state.mode !== 'edit') throw new Error(`Expected smoke to finish in edit mode, got ${state.mode || 'empty'}`);
     if (state.placementStatus !== 'placed' || state.placementSource !== 'production-smoke') {
@@ -1264,6 +1324,7 @@ console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
 console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, equipment ${browserState.loadedProjectEquipmentId || 'missing'}, npc ${browserState.loadedProjectNpcId || 'missing'}, merchant ${browserState.loadedProjectMerchantId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'}, enemy spawn ${browserState.loadedProjectEnemySpawnId || 'missing'}, wave ${browserState.loadedProjectWaveId || 'missing'})`);
+console.log(`Playable export: ${browserState.playableExportFilename || 'missing'} (${browserState.playableExportObjectCount} objects, ${browserState.playableExportComponentCount} components, ${browserState.playableExportHtmlBytes} html bytes)`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

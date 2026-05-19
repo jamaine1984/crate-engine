@@ -389,6 +389,427 @@ export function exportAsHTML() {
   context.logOutput('ok', '📦 Exported! Open crate-scene.html in any browser.');
 }
 
+function getProjectSnapshot() {
+  const raw = context.serializeScene?.();
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== 'object') return null;
+    parsed.objects = Array.isArray(parsed.objects) ? parsed.objects : [];
+    parsed.commands = Array.isArray(parsed.commands) ? parsed.commands : [];
+    parsed.userScripts = Array.isArray(parsed.userScripts) ? parsed.userScripts : [];
+    return parsed;
+  } catch {
+    return {
+      format: 'crate-engine-project',
+      version: 3,
+      savedAt: new Date().toISOString(),
+      commands: String(raw).split('|').filter(Boolean),
+      objects: [],
+      userScripts: [],
+      weather: null,
+      time: null,
+    };
+  }
+}
+
+function getAssetBaseUrl() {
+  if (typeof window !== 'undefined' && typeof window._crateAssetBaseUrl === 'function') {
+    const value = window._crateAssetBaseUrl();
+    if (value) return value;
+  }
+  if (typeof document !== 'undefined') {
+    const meta = document.querySelector('meta[name="crate-asset-base"]')?.content;
+    if (meta) return meta;
+  }
+  return 'https://crateship-games-assets.pages.dev';
+}
+
+function slugifyName(value) {
+  return String(value || 'crate-playable-game')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || 'crate-playable-game';
+}
+
+function countProjectComponents(objects = []) {
+  const byType = {};
+  let total = 0;
+  objects.forEach((obj) => {
+    const components = obj?.components || {};
+    Object.keys(components).forEach((key) => {
+      total += 1;
+      byType[key] = (byType[key] || 0) + 1;
+    });
+  });
+  return { total, byType };
+}
+
+function createPlayableReadme(manifest) {
+  return [
+    '# ' + manifest.title,
+    '',
+    'This package was exported from CrateShip Games.',
+    '',
+    '- Open index.html in a browser to play.',
+    '- Keep internet access enabled if the package references the shared CrateShip asset host.',
+    '- Object count: ' + manifest.objectCount,
+    '- Component count: ' + manifest.componentCount,
+    '- Asset host: ' + manifest.assetBaseUrl,
+    '',
+    'The same project data is embedded inside index.html and also available as game.crate.',
+  ].join('\n');
+}
+
+function createPlayableHtml(pkg) {
+  const embedded = JSON.stringify(pkg).replace(/</g, '\\u003c');
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${pkg.manifest.title}</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#05070a;color:#edf2f7;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+#viewport{position:fixed;inset:0;display:block}
+#hud{position:fixed;left:16px;top:16px;z-index:5;min-width:240px;max-width:340px;background:rgba(5,7,10,.82);border:1px solid rgba(148,163,184,.35);border-radius:8px;padding:12px 14px;backdrop-filter:blur(10px);font-size:13px;line-height:1.45}
+#hud strong{color:#86efac}
+#dialogue{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:6;width:min(680px,calc(100vw - 32px));background:rgba(5,7,10,.88);border:1px solid rgba(134,239,172,.45);border-radius:8px;padding:12px 14px;display:none}
+#loading{position:fixed;right:16px;top:16px;z-index:5;background:rgba(5,7,10,.78);border:1px solid rgba(148,163,184,.3);border-radius:8px;padding:10px 12px;color:#cbd5e1;font-size:12px}
+.muted{color:#94a3b8}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}<\/script>
+</head>
+<body>
+<canvas id="viewport"></canvas>
+<div id="hud"></div>
+<div id="dialogue"></div>
+<div id="loading">Loading package...</div>
+<script>window.__CRATE_PLAYABLE_PACKAGE__=${embedded};<\/script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const pkg = window.__CRATE_PLAYABLE_PACKAGE__;
+const project = pkg.project || {};
+const assetBase = String(pkg.manifest.assetBaseUrl || '').replace(/\\/$/, '');
+const objects = Array.isArray(project.objects) ? project.objects : [];
+const hud = document.getElementById('hud');
+const dialogue = document.getElementById('dialogue');
+const loading = document.getElementById('loading');
+const canvas = document.getElementById('viewport');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x101820);
+scene.fog = new THREE.FogExp2(0x101820, 0.012);
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 900);
+camera.position.set(12, 11, 16);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.target.set(0, 1, 0);
+scene.add(new THREE.HemisphereLight(0xeff6ff, 0x1f2937, 2.1));
+const sun = new THREE.DirectionalLight(0xfff5df, 3.2);
+sun.position.set(30, 42, 18);
+sun.castShadow = true;
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshStandardMaterial({ color: 0x243426, roughness: 0.9 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const loader = new GLTFLoader();
+loader.setCrossOrigin('anonymous');
+const records = [];
+const keys = {};
+const state = { health: 100, score: 0, xp: 0, inventory: [], equipment: {}, message: '', loaded: 0, failed: 0 };
+const player = new THREE.Mesh(
+  new THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.35, 1.1, 4, 8) : new THREE.BoxGeometry(0.7, 1.7, 0.7),
+  new THREE.MeshStandardMaterial({ color: 0x86efac, emissive: 0x12351f, emissiveIntensity: 0.35 })
+);
+player.position.set(0, 1, 0);
+scene.add(player);
+
+function vec3(value, fallback) {
+  return Array.isArray(value) ? new THREE.Vector3(Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0) : fallback.clone();
+}
+function resolveAsset(path, file) {
+  const ref = String(path || file || '');
+  if (!ref) return '';
+  if (/^https?:/i.test(ref)) return ref;
+  if (ref.startsWith('/')) return assetBase + ref;
+  return assetBase + '/models/' + ref.replace(/^models\\//, '');
+}
+function componentColor(components) {
+  if (components.npc) return 0x60a5fa;
+  if (components.merchant) return 0xfbbf24;
+  if (components.enemySpawn || components.waveController) return 0xef4444;
+  if (components.equipmentItem || components.pickup) return 0x86efac;
+  if (components.missionStep || components.missionReward || components.missionGate) return 0xc084fc;
+  return 0x94a3b8;
+}
+function addPlaceholder(group, snap) {
+  const components = snap.components || {};
+  const marker = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ color: componentColor(components), roughness: 0.72 })
+  );
+  marker.position.y = 0.5;
+  marker.castShadow = true;
+  marker.receiveShadow = true;
+  group.add(marker);
+}
+function fitModel(model) {
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const max = Math.max(size.x, size.y, size.z);
+  if (max > 0 && max > 8) model.scale.multiplyScalar(8 / max);
+}
+function addObject(snap, index) {
+  const group = new THREE.Group();
+  group.name = snap.name || 'Object ' + (index + 1);
+  group.position.copy(vec3(snap.position, new THREE.Vector3()));
+  if (Array.isArray(snap.rotation)) group.rotation.set(Number(snap.rotation[0]) || 0, Number(snap.rotation[1]) || 0, Number(snap.rotation[2]) || 0);
+  if (Array.isArray(snap.scale)) group.scale.set(Number(snap.scale[0]) || 1, Number(snap.scale[1]) || Number(snap.scale[0]) || 1, Number(snap.scale[2]) || Number(snap.scale[0]) || 1);
+  const components = snap.components || {};
+  const record = { id: snap.id || String(index), name: group.name, group, components, removed: false, talked: false, sold: 0 };
+  records.push(record);
+  scene.add(group);
+  const assetUrl = resolveAsset(snap.assetPath, snap.assetFile);
+  if (assetUrl) {
+    loader.load(assetUrl, (gltf) => {
+      const model = gltf.scene || gltf.scenes?.[0];
+      if (!model) { addPlaceholder(group, snap); return; }
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      fitModel(model);
+      group.add(model);
+      state.loaded += 1;
+      updateLoading();
+    }, undefined, () => {
+      state.failed += 1;
+      addPlaceholder(group, snap);
+      updateLoading();
+    });
+  } else {
+    addPlaceholder(group, snap);
+  }
+}
+function updateLoading() {
+  loading.textContent = 'Package: ' + records.length + ' objects, ' + state.loaded + ' assets loaded, ' + state.failed + ' placeholders';
+}
+function nearby(filter, radius) {
+  let best = null;
+  let bestDistance = radius || 3;
+  records.forEach((record) => {
+    if (record.removed || !filter(record)) return;
+    const d = player.position.distanceTo(record.group.position);
+    if (d < bestDistance) {
+      best = record;
+      bestDistance = d;
+    }
+  });
+  return best;
+}
+function grantItem(item) {
+  const entry = item || {};
+  const name = entry.name || entry.item || 'Item';
+  state.inventory.push(name);
+  if (entry.slot) state.equipment[entry.slot] = name;
+  if (entry.score) state.score += Number(entry.score) || 0;
+  if (entry.xp) state.xp += Number(entry.xp) || 0;
+}
+function showMessage(speaker, text) {
+  state.message = (speaker || 'Game') + ': ' + (text || '');
+  dialogue.style.display = 'block';
+  dialogue.innerHTML = '<strong>' + escapeHtml(speaker || 'Game') + '</strong><div>' + escapeHtml(text || '') + '</div>';
+  clearTimeout(showMessage._timer);
+  showMessage._timer = setTimeout(() => { dialogue.style.display = 'none'; }, 5000);
+}
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch]);
+}
+function interactNpc() {
+  const npc = nearby((record) => record.components.npc, 4);
+  if (!npc) return false;
+  const cfg = npc.components.npc || {};
+  npc.talked = true;
+  showMessage(cfg.name || npc.name || 'NPC', cfg.dialogue || 'Hello.');
+  if (!npc.rewardClaimed && (cfg.rewardItem || cfg.rewardScore || cfg.rewardXp)) {
+    grantItem({ name: cfg.rewardItem || 'NPC reward', slot: cfg.rewardSlot || '', power: cfg.rewardPower || 0, score: cfg.rewardScore || 0, xp: cfg.rewardXp || 0 });
+    npc.rewardClaimed = true;
+  }
+  return true;
+}
+function interactMerchant() {
+  const merchant = nearby((record) => record.components.merchant, 4);
+  if (!merchant) return false;
+  const cfg = merchant.components.merchant || {};
+  const price = Number(cfg.price) || 0;
+  const stock = Math.max(0, Number(cfg.stock) || 1);
+  if (merchant.sold >= stock) {
+    showMessage(cfg.name || 'Merchant', 'Sold out.');
+    return true;
+  }
+  if (state.score < price) {
+    showMessage(cfg.name || 'Merchant', 'Need ' + price + ' score for ' + (cfg.item || 'item') + '.');
+    return true;
+  }
+  state.score -= price;
+  merchant.sold += 1;
+  grantItem({ name: cfg.item || 'Merchant item', slot: cfg.slot || '', power: cfg.power || 0, xp: cfg.xp || 0 });
+  showMessage(cfg.name || 'Merchant', 'Purchased ' + (cfg.item || 'Merchant item') + '.');
+  return true;
+}
+function attackEnemy() {
+  const enemy = nearby((record) => record.components.enemySpawn || record.components.waveController, 5);
+  if (!enemy) return false;
+  enemy.removed = true;
+  scene.remove(enemy.group);
+  state.score += 10;
+  showMessage('Combat', 'Enemy cleared: ' + enemy.name);
+  return true;
+}
+function updatePickups() {
+  records.forEach((record) => {
+    if (record.removed) return;
+    const pickup = record.components.pickup || record.components.equipmentItem;
+    if (!pickup) return;
+    const radius = Number(pickup.radius) || 2.5;
+    if (player.position.distanceTo(record.group.position) < radius) {
+      grantItem({ name: pickup.item || record.name, slot: pickup.slot || '', power: pickup.power || 0, score: pickup.score || 0, xp: pickup.xp || 0 });
+      record.removed = true;
+      scene.remove(record.group);
+    }
+  });
+}
+function updatePlayer(dt) {
+  const speed = 7 * dt;
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+  if (keys.KeyW || keys.ArrowUp) player.position.addScaledVector(forward, speed);
+  if (keys.KeyS || keys.ArrowDown) player.position.addScaledVector(forward, -speed);
+  if (keys.KeyA || keys.ArrowLeft) player.position.addScaledVector(right, -speed);
+  if (keys.KeyD || keys.ArrowRight) player.position.addScaledVector(right, speed);
+  controls.target.lerp(player.position, 0.08);
+}
+function renderHud() {
+  const npc = nearby((record) => record.components.npc, 4);
+  const merchant = nearby((record) => record.components.merchant, 4);
+  hud.innerHTML = '<strong>' + escapeHtml(pkg.manifest.title) + '</strong>' +
+    '<div class="muted">' + records.length + ' objects | ' + pkg.manifest.componentCount + ' components</div>' +
+    '<div>Score: ' + Math.round(state.score) + ' | XP: ' + Math.round(state.xp) + '</div>' +
+    '<div>Inventory: ' + (state.inventory.slice(-4).map(escapeHtml).join(', ') || '-') + '</div>' +
+    '<div>Equipment: ' + (Object.keys(state.equipment).map((slot) => slot + '=' + state.equipment[slot]).join(', ') || '-') + '</div>' +
+    '<div class="muted">Move WASD. T talk. E buy/interact. F attack.</div>' +
+    (npc ? '<div>Talk: ' + escapeHtml(npc.components.npc.name || npc.name) + '</div>' : '') +
+    (merchant ? '<div>Merchant: ' + escapeHtml(merchant.components.merchant.item || merchant.name) + '</div>' : '');
+}
+objects.slice(0, 650).forEach(addObject);
+updateLoading();
+window.addEventListener('keydown', (event) => {
+  keys[event.code] = true;
+  const key = event.key.toLowerCase();
+  if (key === 't') interactNpc();
+  if (key === 'e') interactMerchant() || interactNpc();
+  if (key === 'f' || key === ' ') attackEnemy();
+});
+window.addEventListener('keyup', (event) => { keys[event.code] = false; });
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  updatePlayer(dt);
+  updatePickups();
+  controls.update();
+  renderHud();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+<\/script>
+</body>
+</html>`;
+}
+
+export function exportPlayablePackage(options = {}) {
+  const project = getProjectSnapshot();
+  if (!project || (!project.objects.length && !project.commands.length)) {
+    context.logOutput('warn', 'Nothing to export - build something first.');
+    return null;
+  }
+  const componentCounts = countProjectComponents(project.objects);
+  const title = options.title || project.name || 'Crate Playable Game';
+  const slug = slugifyName(title);
+  const manifest = {
+    format: 'crate-playable-package',
+    version: 1,
+    title,
+    slug,
+    exportedAt: new Date().toISOString(),
+    engine: 'CrateShip Games Web Engine',
+    assetBaseUrl: options.assetBaseUrl || getAssetBaseUrl(),
+    objectCount: project.objects.length,
+    commandCount: project.commands.length,
+    scriptCount: project.userScripts.length,
+    componentCount: componentCounts.total,
+    componentTypes: componentCounts.byType,
+  };
+  const pkg = { manifest, project };
+  const html = createPlayableHtml(pkg);
+  const crate = JSON.stringify(project, null, 2);
+  const readme = createPlayableReadme(manifest);
+  const summary = {
+    format: manifest.format,
+    version: manifest.version,
+    title: manifest.title,
+    filename: slug + '-playable.html',
+    assetBaseUrl: manifest.assetBaseUrl,
+    objectCount: manifest.objectCount,
+    commandCount: manifest.commandCount,
+    scriptCount: manifest.scriptCount,
+    componentCount: manifest.componentCount,
+    componentTypes: manifest.componentTypes,
+    files: ['index.html', 'game.crate', 'README.md'],
+    htmlBytes: new Blob([html]).size,
+    crateBytes: new Blob([crate]).size,
+    readmeBytes: new Blob([readme]).size,
+    hasEmbeddedPackage: html.includes('__CRATE_PLAYABLE_PACKAGE__'),
+    hasRuntimeControls: html.includes('Move WASD. T talk. E buy/interact. F attack.'),
+  };
+  if (typeof window !== 'undefined') {
+    window._lastPlayableExport = { ...summary, manifest, html, crate, readme };
+  }
+  if (options.download !== false) {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = summary.filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  context.logOutput('ok', 'Playable package ready: ' + summary.filename + ' (' + summary.objectCount + ' objects, ' + summary.componentCount + ' components).');
+  return summary;
+}
+
 export function showProWelcome() {
   const banner = document.createElement('div');
   Object.assign(banner.style, {

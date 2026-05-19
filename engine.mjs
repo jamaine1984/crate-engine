@@ -15904,6 +15904,9 @@ window._showImportExport = function(tab) {
           <button id="ie-export-share" onclick="if(window._runCommand)window._runCommand('share');this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>🔗 Share URL</strong><br><span style="color:#666;font-size:0.75rem">Compressed scene in a link — anyone can open and remix</span>
           </button>
+          <button id="ie-export-playable" onclick="if(window._exportPlayablePackage)window._exportPlayablePackage();this.closest('#ie-modal').remove()" style="padding:12px;background:#10251a;border:1px solid #2f7d4b;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>Playable Web Package</strong><br><span style="color:#8ecfa4;font-size:0.75rem">Single HTML with embedded project data, runtime controls, and asset-host links</span>
+          </button>
           <button id="ie-export-crate" onclick="if(window._exportCrateFile)window._exportCrateFile();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>📦 Download .crate File</strong><br><span style="color:#666;font-size:0.75rem">JSON scene file — share with other Crate Engine users</span>
           </button>
@@ -16192,12 +16195,23 @@ async function exportForUnreal() {
   return mod.exportForUnreal();
 }
 
+async function exportPlayablePackage(options) {
+  const mod = await loadProjectToolsModule();
+  return mod.exportPlayablePackage(options);
+}
+
 function exportAsHTML() {
   loadProjectToolsModule().then((mod) => mod.exportAsHTML()).catch((err) => {
     console.error('[Project Tools] HTML export failed:', err);
     logOutput('error', '❌ Export tools failed to load');
   });
 }
+
+window.exportForUnity = exportForUnity;
+window.exportForUnreal = exportForUnreal;
+window.exportAsHTML = exportAsHTML;
+window._exportPlayablePackage = exportPlayablePackage;
+window.exportPlayablePackage = exportPlayablePackage;
 
 function showProWelcome() {
   loadProjectToolsModule().then((mod) => mod.showProWelcome()).catch((err) => {
