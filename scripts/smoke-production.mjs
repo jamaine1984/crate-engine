@@ -936,6 +936,7 @@ async function runBrowserSmoke() {
     await marketplacePage.goto(marketplaceUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
     await marketplacePage.waitForFunction(
       () => window._cratePublishedMarketplace?.status === 'loaded' &&
+        window._cratePublishedDiscovery?.status === 'loaded' &&
         document.querySelector('#published-market-grid')?.dataset.status === 'loaded',
       undefined,
       { timeout: timeoutMs }
@@ -946,6 +947,7 @@ async function runBrowserSmoke() {
     const marketplaceState = await marketplacePage.waitForFunction(
       () => {
         const state = window._cratePublishedMarketplace || {};
+        const discovery = window._cratePublishedDiscovery || {};
         const grid = document.querySelector('#published-market-grid');
         const row = document.querySelector('[data-published-game="production-smoke-published-game"]');
         if (state.status !== 'loaded' || state.query !== 'production smoke' || state.tag !== 'smoke' || state.sort !== 'objects' || !row) return null;
@@ -960,6 +962,13 @@ async function runBrowserSmoke() {
           tag: state.tag || '',
           sort: state.sort || '',
           availableTags: state.availableTags || [],
+          discoveryStatus: discovery.status || '',
+          discoveryTotal: Number(discovery.total) || 0,
+          discoveryRailCards: Number(discovery.railCards) || 0,
+          discoveryFeaturedSlugs: discovery.featuredSlugs || [],
+          discoveryRecentSlugs: discovery.recentSlugs || [],
+          discoverySystemsSlugs: discovery.systemsSlugs || [],
+          hasDiscoveryRails: !!document.querySelector('#published-market-rails'),
           hasSection: !!document.querySelector('#published-games-section'),
           hasSearch: !!document.querySelector('#published-market-search'),
           hasSort: !!document.querySelector('#published-market-sort'),
@@ -1797,6 +1806,13 @@ async function runBrowserSmoke() {
     state.marketplaceTag = marketplaceState.tag;
     state.marketplaceSort = marketplaceState.sort;
     state.marketplaceAvailableTags = marketplaceState.availableTags;
+    state.marketplaceDiscoveryStatus = marketplaceState.discoveryStatus;
+    state.marketplaceDiscoveryTotal = marketplaceState.discoveryTotal;
+    state.marketplaceDiscoveryRailCards = marketplaceState.discoveryRailCards;
+    state.marketplaceDiscoveryFeaturedSlugs = marketplaceState.discoveryFeaturedSlugs;
+    state.marketplaceDiscoveryRecentSlugs = marketplaceState.discoveryRecentSlugs;
+    state.marketplaceDiscoverySystemsSlugs = marketplaceState.discoverySystemsSlugs;
+    state.marketplaceHasDiscoveryRails = marketplaceState.hasDiscoveryRails;
     state.marketplaceHasSection = marketplaceState.hasSection;
     state.marketplaceHasSearch = marketplaceState.hasSearch;
     state.marketplaceHasSort = marketplaceState.hasSort;
@@ -2004,6 +2020,13 @@ async function runBrowserSmoke() {
         state.marketplaceSort !== 'objects' ||
         !state.marketplaceAvailableTags.includes('smoke') ||
         !state.marketplaceAvailableTags.includes('publish') ||
+        state.marketplaceDiscoveryStatus !== 'loaded' ||
+        !state.marketplaceHasDiscoveryRails ||
+        state.marketplaceDiscoveryTotal < 1 ||
+        state.marketplaceDiscoveryRailCards < 1 ||
+        !state.marketplaceDiscoveryFeaturedSlugs.includes('production-smoke-published-game') ||
+        !state.marketplaceDiscoveryRecentSlugs.includes('production-smoke-published-game') ||
+        !state.marketplaceDiscoverySystemsSlugs.includes('production-smoke-published-game') ||
         state.marketplaceShown < 1 ||
         !/Production Smoke Creator/.test(state.marketplaceCreatorText || '') ||
         !/smoke/.test(state.marketplaceTagText || '') ||
@@ -2135,6 +2158,7 @@ console.log(`Published editor load: ${browserState.publishedEditorLoadStatus || 
 console.log(`Published management: detail ${browserState.publishedDetailPanelStatus || 'missing'}, owner ${browserState.publishedDetailOwnerManaged ? 'managed' : 'missing'}, delete guard ${browserState.publishedDeleteGuardBlockedStatus}/${browserState.publishedDeleteGuardDeletedStatus}/${browserState.publishedDeleteGuardMissingStatus}`);
 console.log(`Published metadata: creator ${browserState.publishedDetailCreatorName || 'missing'}, visibility ${browserState.publishedDetailVisibility || 'missing'}, unlisted guard ${browserState.publishedMetadataGuardUpdateStatus}/${browserState.publishedMetadataGuardVisibility || 'missing'}`);
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
+console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games`);
 console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components)`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);

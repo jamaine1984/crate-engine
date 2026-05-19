@@ -66,6 +66,15 @@ a{color:#00ff88;text-decoration:none}
 .published-controls input{min-width:260px;padding:10px 12px;border-radius:10px;border:1px solid #24483a;background:#07100c;color:#fff;outline:none}
 .published-controls select{padding:10px 12px;border-radius:10px;border:1px solid #24483a;background:#07100c;color:#fff;outline:none}
 .published-controls button{padding:10px 14px;border-radius:10px;border:1px solid #24483a;background:#0f1f18;color:#00ff88;cursor:pointer;font-weight:700}
+.published-rails{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px}
+.published-rail{border:1px solid #173326;background:#091711;border-radius:12px;padding:12px;min-height:150px}
+.published-rail h3{font-size:.9rem;color:#fff;margin-bottom:9px}
+.published-rail h3 span{color:#00ff88}
+.published-rail-list{display:flex;flex-direction:column;gap:8px}
+.published-rail-card{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border:1px solid #1b3a2c;border-radius:10px;background:#07100c;padding:9px}
+.published-rail-card strong{display:block;color:#dfffee;font-size:.82rem;line-height:1.25}
+.published-rail-card small{display:block;color:#789087;font-size:.72rem;margin-top:3px}
+.published-rail-card a{border:1px solid #24483a;border-radius:8px;padding:7px 9px;background:#0f1f18;color:#00ff88;font-size:.74rem;font-weight:800}
 .published-filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .published-filter-row button{padding:7px 11px;border-radius:999px;border:1px solid #24483a;background:#07100c;color:#91a19a;cursor:pointer;font-size:.78rem}
 .published-filter-row button.active{background:#00ff88;color:#00140b;border-color:#00ff88;font-weight:800}
@@ -88,6 +97,10 @@ a{color:#00ff88;text-decoration:none}
 .published-pagination button:disabled{opacity:.45;cursor:not-allowed;color:#6f837a}
 .published-pagination span{color:#91a19a;font-size:.84rem}
 .published-empty{border:1px dashed #24483a;border-radius:12px;padding:20px;text-align:center;color:#91a19a}
+@media (max-width:900px){
+  .published-rails{grid-template-columns:1fr}
+  .published-card .actions{flex-direction:column}
+}
 /* Creator section */
 .creator-hero{background:linear-gradient(135deg,#1a1510 0%,#0a0a0f 100%);border:1px solid #f59e0b33;border-radius:20px;padding:50px 40px;text-align:center;margin-bottom:30px}
 .creator-hero h2{font-size:2rem;margin-bottom:12px;color:#f59e0b}
@@ -151,6 +164,20 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
         </select>
         <button id="published-market-refresh">Refresh</button>
       </div>
+    </div>
+    <div class="published-rails" id="published-market-rails" data-status="loading">
+      <section class="published-rail" data-rail="featured">
+        <h3>Featured <span>Builds</span></h3>
+        <div class="published-rail-list" data-rail-list="featured"><div class="published-empty">Loading featured games...</div></div>
+      </section>
+      <section class="published-rail" data-rail="recent">
+        <h3>Recent <span>Publishes</span></h3>
+        <div class="published-rail-list" data-rail-list="recent"><div class="published-empty">Loading recent games...</div></div>
+      </section>
+      <section class="published-rail" data-rail="systems">
+        <h3>Top <span>Systems</span></h3>
+        <div class="published-rail-list" data-rail-list="systems"><div class="published-empty">Loading system-rich games...</div></div>
+      </section>
     </div>
     <div class="published-filter-row" id="published-market-tags" data-active-tag="">Loading categories...</div>
     <div class="published-summary" id="published-market-summary" data-status="idle">Loading public games...</div>
@@ -225,7 +252,9 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
   const refresh = document.getElementById('published-market-refresh');
   const pagination = document.getElementById('published-market-pagination');
   const pageLabel = document.getElementById('published-market-page-label');
+  const rails = document.getElementById('published-market-rails');
   let publishedGames = [];
+  let discoveryGames = [];
   let availableTags = [];
   let activeTag = '';
   let currentPage = 1;
@@ -233,6 +262,7 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
   let pageInfo = { page: 1, pages: 1, pageSize: 12, total: 0, hasNext: false, hasPrev: false };
   let pendingSearchTimer = 0;
   let loadSerial = 0;
+  let discoverySerial = 0;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -425,6 +455,89 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
     }).join('');
   }
 
+  function discoveryScore(game) {
+    return (Number(game.components) || 0) * 6 + (Number(game.scripts) || 0) * 4 + Math.min(Number(game.objects) || 0, 500) / 25;
+  }
+
+  function topGames(rows, sorter) {
+    const seen = new Set();
+    return rows
+      .slice()
+      .sort(sorter)
+      .filter((game) => {
+        const slug = game.slug || '';
+        if (!slug || seen.has(slug)) return false;
+        seen.add(slug);
+        return true;
+      })
+      .slice(0, 3);
+  }
+
+  function railCard(game, reason) {
+    return '<article class="published-rail-card" data-discovery-game="' + escapeHtml(game.slug || '') + '">' +
+      '<div><strong>' + escapeHtml(game.title || game.slug || 'Untitled Game') + '</strong>' +
+      '<small>' + escapeHtml(reason) + '</small></div>' +
+      '<a href="' + escapeHtml(detailUrl(game)) + '">Details</a>' +
+    '</article>';
+  }
+
+  function renderRail(name, rows, reasonForGame) {
+    const list = rails?.querySelector('[data-rail-list="' + name + '"]');
+    if (!list) return;
+    if (!rows.length) {
+      list.innerHTML = '<div class="published-empty">No public games yet.</div>';
+      return;
+    }
+    list.innerHTML = rows.map((game) => railCard(game, reasonForGame(game))).join('');
+  }
+
+  function setDiscoveryState(status, lanes = {}) {
+    window._cratePublishedDiscovery = {
+      status,
+      total: discoveryGames.length,
+      hasRails: !!rails,
+      featuredSlugs: (lanes.featured || []).map((game) => game.slug),
+      recentSlugs: (lanes.recent || []).map((game) => game.slug),
+      systemsSlugs: (lanes.systems || []).map((game) => game.slug),
+      railCards: rails ? rails.querySelectorAll('[data-discovery-game]').length : 0,
+    };
+  }
+
+  function renderDiscoveryRails() {
+    if (!rails) return;
+    const featured = topGames(discoveryGames, (a, b) => discoveryScore(b) - discoveryScore(a));
+    const recent = topGames(discoveryGames, (a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    const systems = topGames(discoveryGames, (a, b) => (Number(b.components) || 0) - (Number(a.components) || 0));
+    rails.dataset.status = 'loaded';
+    renderRail('featured', featured, (game) => (Number(game.objects) || 0) + ' objects, ' + (Number(game.components) || 0) + ' systems');
+    renderRail('recent', recent, (game) => 'Updated ' + formatDate(game.updatedAt));
+    renderRail('systems', systems, (game) => (Number(game.components) || 0) + ' components, ' + (Number(game.scripts) || 0) + ' scripts');
+    setDiscoveryState('loaded', { featured, recent, systems });
+  }
+
+  async function loadDiscoveryRails() {
+    if (!rails) return;
+    const serial = ++discoverySerial;
+    rails.dataset.status = 'loading';
+    setDiscoveryState('loading');
+    try {
+      const response = await fetch('/api/games?limit=50&sort=updated', { headers: { 'Accept': 'application/json' } });
+      const payload = await response.json();
+      if (serial !== discoverySerial) return;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Published discovery API failed.');
+      discoveryGames = Array.isArray(payload.games) ? payload.games : [];
+      renderDiscoveryRails();
+    } catch (err) {
+      if (serial !== discoverySerial) return;
+      discoveryGames = [];
+      rails.dataset.status = 'failed';
+      rails.querySelectorAll('.published-rail-list').forEach((list) => {
+        list.innerHTML = '<div class="published-empty">Discovery is unavailable right now.</div>';
+      });
+      window._cratePublishedDiscovery = { status: 'failed', total: 0, hasRails: !!rails, error: err?.message || String(err || 'Unknown error') };
+    }
+  }
+
   renderPublishedGames = function() {
     const rows = publishedGames;
     grid.dataset.status = 'loaded';
@@ -506,9 +619,16 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
     if (button.dataset.publishedPage === 'next' && pageInfo.hasNext) currentPage += 1;
     loadPublishedGames();
   });
-  refresh?.addEventListener('click', () => loadPublishedGames());
+  refresh?.addEventListener('click', () => {
+    loadPublishedGames();
+    loadDiscoveryRails();
+  });
   window._loadPublishedMarketplace = loadPublishedGames;
-  window.addEventListener('DOMContentLoaded', loadPublishedGames);
+  window._loadPublishedDiscovery = loadDiscoveryRails;
+  window.addEventListener('DOMContentLoaded', () => {
+    loadDiscoveryRails();
+    loadPublishedGames();
+  });
 })();
 </script>
 
