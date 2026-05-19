@@ -941,23 +941,31 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     );
     await marketplacePage.locator('#published-market-search').fill('production smoke');
+    await marketplacePage.locator('[data-published-tag="smoke"]').click({ timeout: timeoutMs });
+    await marketplacePage.locator('#published-market-sort').selectOption('objects', { timeout: timeoutMs });
     const marketplaceState = await marketplacePage.waitForFunction(
       () => {
         const state = window._cratePublishedMarketplace || {};
         const grid = document.querySelector('#published-market-grid');
         const row = document.querySelector('[data-published-game="production-smoke-published-game"]');
-        if (state.status !== 'loaded' || state.query !== 'production smoke' || !row) return null;
+        if (state.status !== 'loaded' || state.query !== 'production smoke' || state.tag !== 'smoke' || state.sort !== 'objects' || !row) return null;
         return {
           status: state.status,
           total: Number(state.total) || 0,
           shown: Number(state.shown) || 0,
           query: state.query || '',
+          tag: state.tag || '',
+          sort: state.sort || '',
+          availableTags: state.availableTags || [],
           hasSection: !!document.querySelector('#published-games-section'),
           hasSearch: !!document.querySelector('#published-market-search'),
+          hasSort: !!document.querySelector('#published-market-sort'),
+          hasTagFilters: document.querySelectorAll('[data-published-tag]').length,
           hasRefresh: !!document.querySelector('#published-market-refresh'),
           hasSmoke: !!row,
           hasUnlistedGuard: !!document.querySelector('[data-published-game="production-smoke-metadata-guard-game"]'),
           creatorText: row.querySelector('.creator')?.textContent || '',
+          tagText: row.querySelector('.tags')?.textContent || '',
           playHref: row.querySelector('.actions a')?.getAttribute('href') || '',
           remixHref: row.querySelector('.actions a.secondary')?.getAttribute('href') || '',
           summary: document.querySelector('#published-market-summary')?.textContent || '',
@@ -1746,12 +1754,18 @@ async function runBrowserSmoke() {
     state.marketplaceTotal = marketplaceState.total;
     state.marketplaceShown = marketplaceState.shown;
     state.marketplaceQuery = marketplaceState.query;
+    state.marketplaceTag = marketplaceState.tag;
+    state.marketplaceSort = marketplaceState.sort;
+    state.marketplaceAvailableTags = marketplaceState.availableTags;
     state.marketplaceHasSection = marketplaceState.hasSection;
     state.marketplaceHasSearch = marketplaceState.hasSearch;
+    state.marketplaceHasSort = marketplaceState.hasSort;
+    state.marketplaceHasTagFilters = marketplaceState.hasTagFilters;
     state.marketplaceHasRefresh = marketplaceState.hasRefresh;
     state.marketplaceHasSmoke = marketplaceState.hasSmoke;
     state.marketplaceHasUnlistedGuard = marketplaceState.hasUnlistedGuard;
     state.marketplaceCreatorText = marketplaceState.creatorText;
+    state.marketplaceTagText = marketplaceState.tagText;
     state.marketplacePlayHref = marketplaceState.playHref;
     state.marketplaceRemixHref = marketplaceState.remixHref;
     state.marketplaceSummary = marketplaceState.summary;
@@ -1919,12 +1933,19 @@ async function runBrowserSmoke() {
         state.marketplaceStatus !== 'loaded' ||
         !state.marketplaceHasSection ||
         !state.marketplaceHasSearch ||
+        !state.marketplaceHasSort ||
+        state.marketplaceHasTagFilters < 2 ||
         !state.marketplaceHasRefresh ||
         !state.marketplaceHasSmoke ||
         state.marketplaceHasUnlistedGuard ||
         state.marketplaceQuery !== 'production smoke' ||
+        state.marketplaceTag !== 'smoke' ||
+        state.marketplaceSort !== 'objects' ||
+        !state.marketplaceAvailableTags.includes('smoke') ||
+        !state.marketplaceAvailableTags.includes('publish') ||
         state.marketplaceShown < 1 ||
         !/Production Smoke Creator/.test(state.marketplaceCreatorText || '') ||
+        !/smoke/.test(state.marketplaceTagText || '') ||
         !state.marketplacePlayHref.includes('/play?published=production-smoke-published-game') ||
         !state.marketplaceRemixHref.includes('/play?published=production-smoke-published-game') ||
         state.publishedFilterQuery !== 'production smoke' ||
@@ -2034,7 +2055,7 @@ console.log(`Published library UI: ${browserState.publishedLibraryCloudCount} cl
 console.log(`Published editor load: ${browserState.publishedEditorLoadStatus || 'missing'} ${browserState.publishedEditorLoadSlug || 'missing'} (${browserState.publishedEditorLoadObjectCount} objects, filter ${browserState.publishedFilterQuery || 'empty'})`);
 console.log(`Published management: detail ${browserState.publishedDetailPanelStatus || 'missing'}, owner ${browserState.publishedDetailOwnerManaged ? 'managed' : 'missing'}, delete guard ${browserState.publishedDeleteGuardBlockedStatus}/${browserState.publishedDeleteGuardDeletedStatus}/${browserState.publishedDeleteGuardMissingStatus}`);
 console.log(`Published metadata: creator ${browserState.publishedDetailCreatorName || 'missing'}, visibility ${browserState.publishedDetailVisibility || 'missing'}, unlisted guard ${browserState.publishedMetadataGuardUpdateStatus}/${browserState.publishedMetadataGuardVisibility || 'missing'}`);
-console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
+console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

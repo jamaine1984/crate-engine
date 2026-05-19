@@ -64,7 +64,11 @@ a{color:#00ff88;text-decoration:none}
 .published-top p{color:#91a19a;font-size:.92rem;max-width:620px;line-height:1.5}
 .published-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .published-controls input{min-width:260px;padding:10px 12px;border-radius:10px;border:1px solid #24483a;background:#07100c;color:#fff;outline:none}
+.published-controls select{padding:10px 12px;border-radius:10px;border:1px solid #24483a;background:#07100c;color:#fff;outline:none}
 .published-controls button{padding:10px 14px;border-radius:10px;border:1px solid #24483a;background:#0f1f18;color:#00ff88;cursor:pointer;font-weight:700}
+.published-filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.published-filter-row button{padding:7px 11px;border-radius:999px;border:1px solid #24483a;background:#07100c;color:#91a19a;cursor:pointer;font-size:.78rem}
+.published-filter-row button.active{background:#00ff88;color:#00140b;border-color:#00ff88;font-weight:800}
 .published-summary{color:#6f837a;font-size:.82rem;margin-bottom:14px;min-height:18px}
 .published-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
 .published-card{border:1px solid #1b3a2c;background:#0a1510;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;min-height:190px}
@@ -73,6 +77,8 @@ a{color:#00ff88;text-decoration:none}
 .published-card .desc{color:#91a19a;font-size:.82rem;line-height:1.45;min-height:34px}
 .published-card .meta{display:flex;gap:8px;flex-wrap:wrap;color:#6f837a;font-size:.74rem}
 .published-card .meta span{border:1px solid #1b3a2c;border-radius:999px;padding:3px 8px;background:#07100c}
+.published-card .tags{display:flex;gap:6px;flex-wrap:wrap}
+.published-card .tags span{border:1px solid #24483a;border-radius:999px;padding:3px 8px;color:#b8f8d4;background:#07100c;font-size:.72rem}
 .published-card .actions{display:flex;gap:8px;margin-top:auto}
 .published-card .actions a{flex:1;text-align:center;padding:9px;border-radius:9px;background:#00ff88;color:#00140b;font-weight:800;font-size:.8rem}
 .published-card .actions a.secondary{background:#13231b;color:#b8f8d4;border:1px solid #24483a}
@@ -131,9 +137,17 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
       </div>
       <div class="published-controls">
         <input id="published-market-search" placeholder="Search published games">
+        <select id="published-market-sort" aria-label="Sort published games">
+          <option value="updated">Newest</option>
+          <option value="title">Title</option>
+          <option value="objects">Most objects</option>
+          <option value="components">Most systems</option>
+          <option value="scripts">Most scripts</option>
+        </select>
         <button id="published-market-refresh">Refresh</button>
       </div>
     </div>
+    <div class="published-filter-row" id="published-market-tags" data-active-tag="">Loading categories...</div>
     <div class="published-summary" id="published-market-summary" data-status="idle">Loading public games...</div>
     <div class="published-grid" id="published-market-grid" data-status="loading"></div>
   </div>
@@ -196,8 +210,11 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
   const grid = document.getElementById('published-market-grid');
   const summary = document.getElementById('published-market-summary');
   const search = document.getElementById('published-market-search');
+  const sort = document.getElementById('published-market-sort');
+  const tagBar = document.getElementById('published-market-tags');
   const refresh = document.getElementById('published-market-refresh');
   let publishedGames = [];
+  let activeTag = '';
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -219,9 +236,36 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
     return game.url || (window.location.origin + '/play?published=' + encodeURIComponent(game.slug || 'game'));
   }
 
+  function getTags(game) {
+    return Array.isArray(game?.tags) ? game.tags.filter(Boolean) : [];
+  }
+
+  function sortGames(rows) {
+    const mode = sort?.value || 'updated';
+    return rows.slice().sort((a, b) => {
+      if (mode === 'title') return String(a.title || a.slug || '').localeCompare(String(b.title || b.slug || ''));
+      if (mode === 'objects') return (Number(b.objects) || 0) - (Number(a.objects) || 0);
+      if (mode === 'components') return (Number(b.components) || 0) - (Number(a.components) || 0);
+      if (mode === 'scripts') return (Number(b.scripts) || 0) - (Number(a.scripts) || 0);
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    });
+  }
+
+  function renderTagFilters() {
+    if (!tagBar) return;
+    const tags = [...new Set(publishedGames.flatMap(getTags))].sort();
+    tagBar.dataset.activeTag = activeTag;
+    tagBar.innerHTML = [''].concat(tags).map((tag) => {
+      const label = tag || 'All games';
+      const active = tag === activeTag;
+      return '<button data-published-tag="' + escapeHtml(tag) + '"' + (active ? ' class="active"' : '') + '>' + escapeHtml(label) + '</button>';
+    }).join('');
+  }
+
   function renderPublishedGames() {
     const query = (search?.value || '').trim().toLowerCase();
-    const filtered = publishedGames.filter((game) => {
+    const filtered = sortGames(publishedGames.filter((game) => {
+      if (activeTag && !getTags(game).includes(activeTag)) return false;
       if (!query) return true;
       return [
         game.title,
@@ -230,7 +274,7 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
         game.creatorName,
         Array.isArray(game.tags) ? game.tags.join(' ') : game.tags,
       ].filter(Boolean).join(' ').toLowerCase().includes(query);
-    });
+    }));
     grid.dataset.status = 'loaded';
     window._cratePublishedMarketplace = {
       status: 'loaded',
@@ -238,9 +282,12 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
       shown: filtered.length,
       slugs: filtered.map((game) => game.slug),
       query,
+      tag: activeTag,
+      sort: sort?.value || 'updated',
+      availableTags: [...new Set(publishedGames.flatMap(getTags))].sort(),
     };
     summary.dataset.status = 'loaded';
-    summary.textContent = filtered.length + ' public games shown' + (query ? ' for "' + query + '"' : '');
+    summary.textContent = filtered.length + ' public games shown' + (activeTag ? ' in ' + activeTag : '') + (query ? ' for "' + query + '"' : '') + ' · sorted by ' + (sort?.selectedOptions?.[0]?.textContent || 'Newest');
     if (!filtered.length) {
       grid.innerHTML = '<div class="published-empty">No public games match this search yet.</div>';
       return;
@@ -249,10 +296,12 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
       const url = gameUrl(game);
       const creator = game.creatorName || 'Crate creator';
       const description = game.description || 'A playable Crate Engine project published by the community.';
+      const tags = getTags(game);
       return '<article class="published-card" data-published-game="' + escapeHtml(game.slug || '') + '">' +
         '<h3>' + escapeHtml(game.title || game.slug || 'Untitled Game') + '</h3>' +
         '<div class="creator">By ' + escapeHtml(creator) + '</div>' +
         '<div class="desc">' + escapeHtml(description) + '</div>' +
+        (tags.length ? '<div class="tags">' + tags.slice(0, 4).map((tag) => '<span>' + escapeHtml(tag) + '</span>').join('') + '</div>' : '') +
         '<div class="meta">' +
           '<span>' + (Number(game.objects) || 0) + ' objects</span>' +
           '<span>' + (Number(game.components) || 0) + ' components</span>' +
@@ -278,6 +327,8 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
       const payload = await response.json();
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Published games API failed.');
       publishedGames = Array.isArray(payload.games) ? payload.games : [];
+      if (activeTag && !publishedGames.some((game) => getTags(game).includes(activeTag))) activeTag = '';
+      renderTagFilters();
       renderPublishedGames();
     } catch (err) {
       publishedGames = [];
@@ -290,6 +341,14 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
   }
 
   search?.addEventListener('input', renderPublishedGames);
+  sort?.addEventListener('change', renderPublishedGames);
+  tagBar?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-published-tag]');
+    if (!button) return;
+    activeTag = button.dataset.publishedTag || '';
+    renderTagFilters();
+    renderPublishedGames();
+  });
   refresh?.addEventListener('click', loadPublishedGames);
   window._loadPublishedMarketplace = loadPublishedGames;
   window.addEventListener('DOMContentLoaded', loadPublishedGames);

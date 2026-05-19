@@ -63,6 +63,11 @@ function cleanModerationStatus(value) {
   return normalized === 'hidden' ? 'hidden' : 'active';
 }
 
+function cleanSort(value) {
+  const normalized = cleanText(value || 'updated', 32).toLowerCase();
+  return ['updated', 'title', 'objects', 'components', 'scripts'].includes(normalized) ? normalized : 'updated';
+}
+
 function cleanCreator(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   const website = cleanText(source.website || source.url || '', MAX_CREATOR_URL_LENGTH);
@@ -81,6 +86,24 @@ function cleanCreator(value = {}) {
 
 function isListVisible(record) {
   return record && cleanVisibility(record.visibility) === 'public' && cleanModerationStatus(record.moderationStatus) === 'active';
+}
+
+function recordMetadata(record) {
+  return {
+    slug: record.slug,
+    title: record.title,
+    description: cleanText(record.description, 180),
+    tags: Array.isArray(record.tags) ? record.tags.slice(0, MAX_TAGS) : [],
+    objects: record.objects,
+    commands: record.commands,
+    scripts: record.scripts,
+    components: record.components,
+    updatedAt: record.updatedAt,
+    ownerManaged: !!record.ownerHash,
+    creatorName: record.creator?.name || '',
+    visibility: record.visibility,
+    moderationStatus: record.moderationStatus,
+  };
 }
 
 function keyForSlug(slug) {
@@ -275,18 +298,7 @@ async function publishGame(context) {
   };
 
   await store.put(keyForSlug(slug), JSON.stringify(record), {
-    metadata: {
-      slug,
-      title,
-      objects: record.objects,
-      commands: record.commands,
-      components: record.components,
-      updatedAt: now,
-      ownerManaged: !!record.ownerHash,
-      creatorName: record.creator?.name || '',
-      visibility: record.visibility,
-      moderationStatus: record.moderationStatus,
-    },
+    metadata: recordMetadata(record),
   });
 
   return json({ ok: true, game: publicGameSummary(record), url: record.url });
@@ -311,6 +323,9 @@ async function listGames(context) {
   if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
   const url = new URL(context.request.url);
   const requestedSlug = slugify(url.searchParams.get('slug') || '');
+  const query = cleanText(url.searchParams.get('q') || '', 80).toLowerCase();
+  const tag = cleanText(url.searchParams.get('tag') || '', 36).toLowerCase();
+  const sort = cleanSort(url.searchParams.get('sort') || 'updated');
   if (requestedSlug) {
     const record = await store.get(keyForSlug(requestedSlug), 'json');
     return json({
@@ -327,8 +342,11 @@ async function listGames(context) {
     .map((key) => ({
       slug: key.metadata?.slug || key.name.replace(GAME_PREFIX, ''),
       title: key.metadata?.title || key.name.replace(GAME_PREFIX, ''),
+      description: key.metadata?.description || '',
+      tags: Array.isArray(key.metadata?.tags) ? key.metadata.tags : [],
       objects: Number(key.metadata?.objects) || 0,
       commands: Number(key.metadata?.commands) || 0,
+      scripts: Number(key.metadata?.scripts) || 0,
       components: Number(key.metadata?.components) || 0,
       updatedAt: key.metadata?.updatedAt || '',
       url: `${url.origin}/play?published=${encodeURIComponent(key.metadata?.slug || key.name.replace(GAME_PREFIX, ''))}`,
@@ -338,8 +356,24 @@ async function listGames(context) {
       visibility: cleanVisibility(key.metadata?.visibility),
       moderationStatus: cleanModerationStatus(key.metadata?.moderationStatus),
     }))
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-  return json({ ok: true, games, cursor: listed.cursor || null, listComplete: listed.list_complete });
+    .filter((game) => {
+      if (tag && !(Array.isArray(game.tags) && game.tags.includes(tag))) return false;
+      if (!query) return true;
+      return [game.title, game.slug, game.description, game.creatorName, ...(Array.isArray(game.tags) ? game.tags : [])]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    })
+    .sort((a, b) => {
+      if (sort === 'title') return String(a.title).localeCompare(String(b.title));
+      if (sort === 'objects') return (Number(b.objects) || 0) - (Number(a.objects) || 0);
+      if (sort === 'components') return (Number(b.components) || 0) - (Number(a.components) || 0);
+      if (sort === 'scripts') return (Number(b.scripts) || 0) - (Number(a.scripts) || 0);
+      return String(b.updatedAt).localeCompare(String(a.updatedAt));
+    });
+  const availableTags = Array.from(new Set(games.flatMap((game) => Array.isArray(game.tags) ? game.tags : []))).sort();
+  return json({ ok: true, games, tags: availableTags, sort, query, tag, cursor: listed.cursor || null, listComplete: listed.list_complete });
 }
 
 async function updateGame(context, slug) {
@@ -376,18 +410,7 @@ async function updateGame(context, slug) {
   record.updatedAt = new Date().toISOString();
 
   await store.put(key, JSON.stringify(record), {
-    metadata: {
-      slug: record.slug,
-      title: record.title,
-      objects: record.objects,
-      commands: record.commands,
-      components: record.components,
-      updatedAt: record.updatedAt,
-      ownerManaged: !!record.ownerHash,
-      creatorName: record.creator?.name || '',
-      visibility: record.visibility,
-      moderationStatus: record.moderationStatus,
-    },
+    metadata: recordMetadata(record),
   });
 
   return json({ ok: true, game: publicGameSummary(record), authorization: auth.mode });
