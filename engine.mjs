@@ -14899,6 +14899,88 @@ function escapeProjectHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function summarizePlayableForPublish(playable) {
+  if (!playable || typeof playable !== 'object') return null;
+  return {
+    format: playable.format || '',
+    filename: playable.filename || '',
+    assetBaseUrl: playable.assetBaseUrl || '',
+    objectCount: Number(playable.objectCount) || 0,
+    commandCount: Number(playable.commandCount) || 0,
+    scriptCount: Number(playable.scriptCount) || 0,
+    componentCount: Number(playable.componentCount) || 0,
+    htmlBytes: Number(playable.htmlBytes) || 0,
+    crateBytes: Number(playable.crateBytes) || 0,
+  };
+}
+
+async function syncPublishedGameToCloudflare(gameData) {
+  var payload = {
+    title: gameData.title,
+    description: gameData.description,
+    slug: gameData.slug,
+    tags: gameData.tags,
+    sceneData: gameData.sceneData,
+    projectData: gameData.projectData,
+    objects: gameData.objects,
+    commands: gameData.commands,
+    scripts: gameData.scripts,
+    components: gameData.components,
+    componentTypes: gameData.componentTypes,
+    playable: summarizePlayableForPublish(gameData.playable),
+    assetBaseUrl: gameData.playable?.assetBaseUrl || window.CRATESHIP_ASSET_BASE_URL || document.querySelector('meta[name="crate-asset-base"]')?.content || 'https://crateship-games-assets.pages.dev',
+  };
+  var response = await fetch('/api/games/publish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  var result = null;
+  try { result = await response.json(); } catch(e) { result = null; }
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error || ('Publish API failed with HTTP ' + response.status));
+  }
+  return result.game || { url: result.url, slug: gameData.slug };
+}
+
+async function fetchPublishedGameFromCloudflare(slug) {
+  var response = await fetch('/api/games/' + encodeURIComponent(slug), { headers: { 'Accept': 'application/json' } });
+  var result = null;
+  try { result = await response.json(); } catch(e) { result = null; }
+  if (!response.ok || !result?.ok || !result.game) {
+    throw new Error(result?.error || ('Published game not found: ' + slug));
+  }
+  return result.game;
+}
+
+async function loadPublishedSceneFromCloudflare(slug) {
+  window._lastSharedSceneLoad = { status: 'loading-cloud', slug: slug, startedAt: Date.now() };
+  try {
+    var game = await fetchPublishedGameFromCloudflare(slug);
+    var data = game.projectData || '';
+    if (!data && game.sceneData) data = decompressScene(game.sceneData) || '';
+    if (!data) throw new Error('Published game has no project data.');
+    logOutput('info', 'Loading cloud published game: ' + (game.title || slug));
+    showRemixBanner(game.commands || game.objects || 0);
+    deserializeScene(data);
+    window._lastSharedSceneLoad = {
+      status: 'cloud-published',
+      objects: game.objects || 0,
+      commands: game.commands || 0,
+      slug: slug,
+      loadedAt: Date.now()
+    };
+  } catch(e) {
+    window._lastSharedSceneLoad = {
+      status: 'cloud-failed',
+      slug: slug,
+      error: e?.message || String(e || 'Published game load failed'),
+      loadedAt: Date.now()
+    };
+    logOutput('warn', 'Could not load cloud published game "' + slug + '": ' + window._lastSharedSceneLoad.error);
+  }
+}
+
 async function publishSceneToLocalLibrary(options) {
   options = options || {};
   var data = serializeScene();
@@ -14941,7 +15023,29 @@ async function publishSceneToLocalLibrary(options) {
   library.push(gameData);
   savePublishedGamesLibrary(library);
   window._lastPublishedGame = gameData;
-  logOutput('ok', 'Published "' + title + '" to your game library.');
+  if (options.sync !== false) {
+    try {
+      var cloudGame = await syncPublishedGameToCloudflare(gameData);
+      gameData.cloudStatus = 'synced';
+      gameData.cloud = cloudGame;
+      gameData.shareUrl = cloudGame.url || gameData.shareUrl;
+      library = getPublishedGamesLibrary().filter(function(item) { return item && item.slug !== slug; });
+      library.push(gameData);
+      savePublishedGamesLibrary(library);
+      window._lastPublishedGame = gameData;
+      logOutput('ok', 'Published "' + title + '" to Cloudflare library.');
+    } catch(e) {
+      gameData.cloudStatus = 'local-only';
+      gameData.cloudError = e?.message || String(e || 'Cloud publish failed');
+      library = getPublishedGamesLibrary().filter(function(item) { return item && item.slug !== slug; });
+      library.push(gameData);
+      savePublishedGamesLibrary(library);
+      window._lastPublishedGame = gameData;
+      logOutput('warn', 'Saved local publish link. Cloud sync failed: ' + gameData.cloudError);
+    }
+  } else {
+    logOutput('ok', 'Published "' + title + '" to your game library.');
+  }
   return gameData;
 }
 
@@ -14954,9 +15058,10 @@ function showPublishedGamesLibrary() {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:100006;display:flex;align-items:center;justify-content:center;font-family:JetBrains Mono,monospace';
   var rows = games.length ? games.map(function(game) {
     var url = game.shareUrl || (window.location.origin + '/play?published=' + encodeURIComponent(game.slug || 'game') + '#' + (game.sceneData || ''));
+    var syncLabel = game.cloudStatus === 'synced' ? 'Cloud synced' : 'Portable local link';
     return '<div style="border:1px solid #263238;background:#0b1014;border-radius:10px;padding:12px;margin-bottom:8px;text-align:left">' +
       '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong style="color:#f5f7f8">' + escapeProjectHtml(game.title || 'Untitled Game') + '</strong><span style="color:#7ddf9e;font-size:11px">' + escapeProjectHtml(game.slug || '') + '</span></div>' +
-      '<div style="color:#a5b2b9;font-size:11px;margin-top:5px">' + (game.objects || 0) + ' objects | ' + (game.components || 0) + ' components | ' + (game.scripts || 0) + ' scripts</div>' +
+      '<div style="color:#a5b2b9;font-size:11px;margin-top:5px">' + (game.objects || 0) + ' objects | ' + (game.components || 0) + ' components | ' + (game.scripts || 0) + ' scripts | ' + syncLabel + '</div>' +
       '<input readonly value="' + escapeProjectHtml(url) + '" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px;background:#05080a;border:1px solid #1f2933;border-radius:7px;color:#7ddf9e;font-size:11px" onclick="this.select()">' +
       '<div style="display:flex;gap:8px;margin-top:8px"><button data-publish-copy="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:0;border-radius:7px;background:#7ddf9e;color:#061009;font-weight:700;cursor:pointer">Copy Link</button><button data-publish-open="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer">Open</button></div>' +
       '</div>';
@@ -15070,17 +15175,21 @@ function publishScene() {
       var desc = document.getElementById('pub-desc').value.trim();
       var finalSlug = document.getElementById('pub-slug').value.trim().replace(/[^a-z0-9-]/gi, '-').toLowerCase();
       var tags = document.getElementById('pub-tags').value.trim().split(',').map(function(t){return t.trim()}).filter(Boolean);
-      var result = await auth.publishGame({ title: title, description: desc, slug: finalSlug, tags: tags, sceneData: compressScene(data), objects: objects.length, commands: sceneHistory.length });
-      if (result.error) { logOutput('err', '⚠ ' + result.error); btn.textContent = '🚀 Publish Live'; btn.style.opacity = '1'; return; }
+      var result = null;
+      try {
+        result = await auth.publishGame({ title: title, description: desc, slug: finalSlug, tags: tags, sceneData: compressScene(data), objects: objects.length, commands: sceneHistory.length });
+      } catch(e) {
+        result = { error: e?.message || String(e || 'Account publish failed') };
+      }
+      if (result?.error || !result?.url) { logOutput('warn', 'Account publish unavailable. Publishing to the Cloudflare game library instead.'); }
+      if (!result?.error && result?.url) {
       logOutput('ok', '🚀 Published at ' + result.url);
       modal.innerHTML = '<div style="background:#111;border:1px solid #4ade80;border-radius:16px;padding:32px;max-width:480px;width:90%;text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">🎉</div><div style="font-size:1.3rem;font-weight:700;color:#4ade80;margin-bottom:8px">Published!</div><p style="color:#888;font-size:0.8rem">' + result.url + '</p><button onclick="navigator.clipboard.writeText(\'' + result.url + '\');this.textContent=\'Copied!\'" style="margin-top:12px;padding:10px 24px;background:#4ade80;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700">📋 Copy Link</button><button onclick="this.closest(\'[id=publish-modal]\').remove()" style="margin:8px;padding:10px 24px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer">Close</button></div>';
-      return;
+        return;
+      }
     } else if (auth.isLoggedIn && !auth.isPremium) {
-      // Show upgrade prompt
-      logOutput('warn', '⚠ Publishing requires Premium plan ($14.99/mo)');
-      var upgradeResult = await auth.subscribe('premium');
-      if (upgradeResult.checkoutUrl) window.location = upgradeResult.checkoutUrl;
-      return;
+      // Use Cloudflare library publish during beta.
+      logOutput('info', 'Publishing to the Cloudflare game library. Premium account sync can be added later.');
     } else if (!auth.isLoggedIn) {
       logOutput('info', 'Publishing portable game link locally. Sign in later to sync it online.');
     }
@@ -15247,12 +15356,16 @@ function loadSharedScene() {
       };
       return;
     }
+    loadPublishedSceneFromCloudflare(publishedSlug);
+    return;
   }
 }
 
 window._loadSharedScene = loadSharedScene;
 window._compressScene = compressScene;
 window._decompressScene = decompressScene;
+window._syncPublishedGame = syncPublishedGameToCloudflare;
+window._fetchPublishedGame = fetchPublishedGameFromCloudflare;
 
 function showRemixBanner(cmdCount) {
   var banner = document.createElement('div');

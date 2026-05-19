@@ -1,0 +1,247 @@
+const MAX_BODY_BYTES = 900000;
+const MAX_TITLE_LENGTH = 120;
+const MAX_DESCRIPTION_LENGTH = 1200;
+const MAX_TAGS = 12;
+const GAME_PREFIX = 'game:';
+
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+function json(data, init = {}) {
+  return new Response(JSON.stringify(data), {
+    status: init.status || 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': init.cacheControl || 'no-store',
+      ...corsHeaders(),
+      ...(init.headers || {}),
+    },
+  });
+}
+
+function getStore(env) {
+  return env.CRATE_GAMES || env.CRATEGAMES || null;
+}
+
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72);
+}
+
+function cleanText(value, maxLength) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function cleanTags(tags) {
+  const raw = Array.isArray(tags) ? tags : String(tags || '').split(',');
+  return raw
+    .map((tag) => cleanText(tag, 36).toLowerCase())
+    .filter(Boolean)
+    .filter((tag, index, arr) => arr.indexOf(tag) === index)
+    .slice(0, MAX_TAGS);
+}
+
+function keyForSlug(slug) {
+  return GAME_PREFIX + slug;
+}
+
+function pathParts(params) {
+  const value = params?.path;
+  if (!value) return [];
+  return Array.isArray(value) ? value.filter(Boolean) : String(value).split('/').filter(Boolean);
+}
+
+function bytes(value) {
+  return new TextEncoder().encode(String(value || '')).length;
+}
+
+async function readJson(request) {
+  const text = await request.text();
+  if (bytes(text) > MAX_BODY_BYTES) {
+    const err = new Error('Published game payload is too large for the current web publish endpoint.');
+    err.status = 413;
+    throw err;
+  }
+  try {
+    return JSON.parse(text || '{}');
+  } catch {
+    const err = new Error('Request body must be valid JSON.');
+    err.status = 400;
+    throw err;
+  }
+}
+
+function summarizeProject(projectData) {
+  try {
+    const parsed = JSON.parse(projectData);
+    const objects = Array.isArray(parsed.objects) ? parsed.objects : [];
+    return {
+      format: parsed.format || '',
+      objects: objects.length,
+      commands: Array.isArray(parsed.commands) ? parsed.commands.length : 0,
+      scripts: Array.isArray(parsed.userScripts) ? parsed.userScripts.length : 0,
+      components: objects.reduce((sum, obj) => sum + Object.keys(obj?.components || {}).length, 0),
+    };
+  } catch {
+    return { format: '', objects: 0, commands: 0, scripts: 0, components: 0 };
+  }
+}
+
+function publicGameSummary(record) {
+  return {
+    format: record.format,
+    version: record.version,
+    slug: record.slug,
+    title: record.title,
+    description: record.description,
+    tags: record.tags,
+    url: record.url,
+    objects: record.objects,
+    commands: record.commands,
+    scripts: record.scripts,
+    components: record.components,
+    componentTypes: record.componentTypes,
+    assetBaseUrl: record.assetBaseUrl,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    source: record.source,
+  };
+}
+
+async function publishGame(context) {
+  const store = getStore(context.env);
+  if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
+
+  const payload = await readJson(context.request);
+  const title = cleanText(payload.title || 'Untitled Game', MAX_TITLE_LENGTH) || 'Untitled Game';
+  const slug = slugify(payload.slug || title);
+  if (!slug || slug.length < 3) {
+    return json({ ok: false, error: 'Game slug must contain at least 3 letters or numbers.' }, { status: 400 });
+  }
+
+  const projectData = typeof payload.projectData === 'string' ? payload.projectData : '';
+  const sceneData = typeof payload.sceneData === 'string' ? payload.sceneData : '';
+  if (!projectData && !sceneData) {
+    return json({ ok: false, error: 'Published games require projectData or sceneData.' }, { status: 400 });
+  }
+  if (bytes(projectData) > MAX_BODY_BYTES || bytes(sceneData) > MAX_BODY_BYTES) {
+    return json({ ok: false, error: 'Published game project data is too large.' }, { status: 413 });
+  }
+
+  const existing = await store.get(keyForSlug(slug), 'json').catch(() => null);
+  const projectSummary = projectData ? summarizeProject(projectData) : {};
+  const now = new Date().toISOString();
+  const origin = new URL(context.request.url).origin;
+  const record = {
+    format: 'crate-cloud-published-game',
+    version: 1,
+    slug,
+    title,
+    description: cleanText(payload.description, MAX_DESCRIPTION_LENGTH),
+    tags: cleanTags(payload.tags),
+    sceneData,
+    projectData,
+    url: `${origin}/play?published=${encodeURIComponent(slug)}`,
+    objects: Number(projectSummary.objects || payload.objects) || 0,
+    commands: Number(projectSummary.commands || payload.commands) || 0,
+    scripts: Number(projectSummary.scripts || payload.scripts) || 0,
+    components: Number(projectSummary.components || payload.components) || 0,
+    componentTypes: payload.componentTypes && typeof payload.componentTypes === 'object' ? payload.componentTypes : {},
+    playable: payload.playable && typeof payload.playable === 'object' ? {
+      format: payload.playable.format || '',
+      filename: payload.playable.filename || '',
+      htmlBytes: Number(payload.playable.htmlBytes) || 0,
+      crateBytes: Number(payload.playable.crateBytes) || 0,
+    } : null,
+    assetBaseUrl: payload.assetBaseUrl || 'https://crateship-games-assets.pages.dev',
+    source: 'cloudflare-pages-kv',
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+
+  await store.put(keyForSlug(slug), JSON.stringify(record), {
+    metadata: {
+      slug,
+      title,
+      objects: record.objects,
+      commands: record.commands,
+      components: record.components,
+      updatedAt: now,
+    },
+  });
+
+  return json({ ok: true, game: publicGameSummary(record), url: record.url });
+}
+
+async function getGame(context, slug) {
+  const store = getStore(context.env);
+  if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
+  const cleanSlug = slugify(slug);
+  if (!cleanSlug) return json({ ok: false, error: 'Missing game slug.' }, { status: 400 });
+  const record = await store.get(keyForSlug(cleanSlug), 'json');
+  if (!record) return json({ ok: false, error: 'Game not found.' }, { status: 404 });
+  return json({ ok: true, game: record }, { cacheControl: 'public, max-age=30' });
+}
+
+async function listGames(context) {
+  const store = getStore(context.env);
+  if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
+  const url = new URL(context.request.url);
+  const requestedSlug = slugify(url.searchParams.get('slug') || '');
+  if (requestedSlug) {
+    const record = await store.get(keyForSlug(requestedSlug), 'json');
+    return json({
+      ok: true,
+      games: record ? [publicGameSummary(record)] : [],
+      cursor: null,
+      listComplete: true,
+    });
+  }
+  const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 24, 1), 50);
+  const listed = await store.list({ prefix: GAME_PREFIX, limit });
+  const games = listed.keys
+    .map((key) => ({
+      slug: key.metadata?.slug || key.name.replace(GAME_PREFIX, ''),
+      title: key.metadata?.title || key.name.replace(GAME_PREFIX, ''),
+      objects: Number(key.metadata?.objects) || 0,
+      commands: Number(key.metadata?.commands) || 0,
+      components: Number(key.metadata?.components) || 0,
+      updatedAt: key.metadata?.updatedAt || '',
+      url: `${url.origin}/play?published=${encodeURIComponent(key.metadata?.slug || key.name.replace(GAME_PREFIX, ''))}`,
+      source: 'cloudflare-pages-kv',
+    }))
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  return json({ ok: true, games, cursor: listed.cursor || null, listComplete: listed.list_complete });
+}
+
+export async function onRequest(context) {
+  if (context.request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
+  try {
+    const parts = pathParts(context.params);
+    if (context.request.method === 'POST' && parts.length === 1 && parts[0] === 'publish') {
+      return publishGame(context);
+    }
+    if (context.request.method === 'GET' && parts.length === 0) {
+      return listGames(context);
+    }
+    if (context.request.method === 'GET' && parts.length === 1) {
+      return getGame(context, parts[0]);
+    }
+    return json({ ok: false, error: 'Not found.' }, { status: 404 });
+  } catch (err) {
+    return json({ ok: false, error: err.message || 'Game API failed.' }, { status: err.status || 500 });
+  }
+}

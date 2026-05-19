@@ -33,6 +33,7 @@ async function collectSyntaxFiles(dir = rootDir, files = []) {
       (
         entry.name.endsWith('.mjs') ||
         relPath === 'service-worker.js' ||
+        (relPath.startsWith('functions/') && entry.name.endsWith('.js')) ||
         (relPath.startsWith('worker/') && entry.name.endsWith('.js'))
       );
 

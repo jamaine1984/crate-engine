@@ -10,6 +10,7 @@ firebase-debug.log
 crate-engine/.DS_Store
 web/.DS_Store
 node_modules/
+.wrangler/
 dist/
 .deploy/
 .deploy-assets/

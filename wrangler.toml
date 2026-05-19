@@ -1,3 +1,7 @@
-name = "crate-engine"
+name = "crateship-games"
 pages_build_output_dir = "dist"
-compatibility_date = "2026-03-11"
+compatibility_date = "2026-05-19"
+
+[[kv_namespaces]]
+binding = "CRATE_GAMES"
+id = "cfd1bca8ac84439cadc2bb146a034d41"

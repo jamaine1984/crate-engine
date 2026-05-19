@@ -6,6 +6,7 @@ import { defineConfig } from 'vite';
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const staticFiles = [
   '_headers',
+  '_routes.json',
   '404.html',
   'asset-catalog.json',
   'city_assets.json',

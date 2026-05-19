@@ -670,12 +670,31 @@ async function runBrowserSmoke() {
       try {
         parsed = JSON.parse(decoded);
       } catch {}
+      let apiGame = null;
+      let apiList = null;
+      let apiStatus = 0;
+      let listStatus = 0;
+      try {
+        const apiResponse = await fetch('/api/games/' + encodeURIComponent(result?.slug || ''));
+        apiStatus = apiResponse.status;
+        const apiPayload = await apiResponse.json();
+        apiGame = apiPayload?.game || null;
+      } catch {}
+      try {
+        const listResponse = await fetch('/api/games?slug=' + encodeURIComponent(result?.slug || ''));
+        listStatus = listResponse.status;
+        const listPayload = await listResponse.json();
+        apiList = Array.isArray(listPayload?.games) ? listPayload.games : [];
+      } catch {}
       return {
         format: result?.format || '',
         version: Number(result?.version) || 0,
         slug: result?.slug || '',
         title: result?.title || '',
         shareUrl: result?.shareUrl || '',
+        cloudStatus: result?.cloudStatus || '',
+        cloudUrl: result?.cloud?.url || '',
+        cloudSource: result?.cloud?.source || '',
         objects: Number(result?.objects) || 0,
         commands: Number(result?.commands) || 0,
         scripts: Number(result?.scripts) || 0,
@@ -689,13 +708,25 @@ async function runBrowserSmoke() {
         decodedComponents: Array.isArray(parsed?.objects)
           ? parsed.objects.reduce((sum, obj) => sum + Object.keys(obj?.components || {}).length, 0)
           : 0,
+        apiStatus,
+        apiFormat: apiGame?.format || '',
+        apiSlug: apiGame?.slug || '',
+        apiObjects: Number(apiGame?.objects) || 0,
+        apiComponents: Number(apiGame?.components) || 0,
+        apiHasProjectData: typeof apiGame?.projectData === 'string' && apiGame.projectData.includes('"crate-engine-project"'),
+        listStatus,
+        listHasSlug: Array.isArray(apiList) && apiList.some((item) => item?.slug === result?.slug),
         lastPublishedSlug: window._lastPublishedGame?.slug || '',
       };
     });
     if (publishedState.format !== 'crate-published-game' ||
         publishedState.version < 2 ||
         publishedState.slug !== 'production-smoke-published-game' ||
-        !publishedState.shareUrl.includes('/play?published=production-smoke-published-game#') ||
+        !publishedState.shareUrl.includes('/play?published=production-smoke-published-game') ||
+        publishedState.shareUrl.includes('#') ||
+        publishedState.cloudStatus !== 'synced' ||
+        !publishedState.cloudUrl.includes('/play?published=production-smoke-published-game') ||
+        publishedState.cloudSource !== 'cloudflare-pages-kv' ||
         publishedState.objects < 100 ||
         publishedState.components < 14 ||
         publishedState.scripts < 1 ||
@@ -705,9 +736,61 @@ async function runBrowserSmoke() {
         publishedState.lastPublishedSlug !== 'production-smoke-published-game' ||
         publishedState.decodedFormat !== 'crate-engine-project' ||
         publishedState.decodedObjects < 100 ||
-        publishedState.decodedComponents < 14) {
+        publishedState.decodedComponents < 14 ||
+        publishedState.apiStatus !== 200 ||
+        publishedState.apiFormat !== 'crate-cloud-published-game' ||
+        publishedState.apiSlug !== 'production-smoke-published-game' ||
+        publishedState.apiObjects < 100 ||
+        publishedState.apiComponents < 14 ||
+        !publishedState.apiHasProjectData ||
+        publishedState.listStatus !== 200 ||
+        !publishedState.listHasSlug) {
       throw new Error(`Published game library did not create a portable playable link: ${JSON.stringify(publishedState)}`);
     }
+
+    const publishedLoadPage = await context.newPage();
+    publishedLoadPage.on('console', (message) => {
+      const text = summarizeConsoleMessage(message);
+      if (
+        message.type() === 'error' ||
+        /RGBELoader|Couldn't load texture|Error creating WebGL|Engine error|ReferenceError|TypeError|SyntaxError/i.test(text)
+      ) {
+        badConsole.push(text);
+      }
+    });
+    publishedLoadPage.on('pageerror', (error) => pageErrors.push(error.stack || error.message));
+    publishedLoadPage.on('response', (response) => {
+      const url = response.url();
+      if ((url.includes('/models/') || url.includes('/textures/')) && response.status() >= 400) {
+        badAssetResponses.push(`${response.status()} ${url}`);
+      }
+    });
+    const publishedLoadUrl = `${publishedState.shareUrl}${publishedState.shareUrl.includes('?') ? '&' : '?'}verify=${encodeURIComponent(verify + '-published-load')}`;
+    await publishedLoadPage.goto(publishedLoadUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    await publishedLoadPage.waitForFunction(
+      () => window._engineReady === true && window._engineBridge && window._lastSharedSceneLoad?.status === 'cloud-published',
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const publishedLoadState = await publishedLoadPage.waitForFunction(
+      () => {
+        const load = window._lastSharedSceneLoad || {};
+        const projectLoad = window._lastProjectLoad || {};
+        const objectCount = window._engineBridge?.objects?.length || 0;
+        if (load.status !== 'cloud-published' || objectCount < 100 || projectLoad.status !== 'loaded') return null;
+        return {
+          status: load.status,
+          slug: load.slug || '',
+          objectCount,
+          projectStatus: projectLoad.status || '',
+          restoredObjects: projectLoad.restoredObjects || 0,
+          commandCount: projectLoad.commandCount || 0,
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    await publishedLoadPage.close();
 
     await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
@@ -1207,6 +1290,19 @@ async function runBrowserSmoke() {
     state.publishedDecodedFormat = publishedState.decodedFormat;
     state.publishedDecodedObjects = publishedState.decodedObjects;
     state.publishedDecodedComponents = publishedState.decodedComponents;
+    state.publishedCloudStatus = publishedState.cloudStatus;
+    state.publishedCloudSource = publishedState.cloudSource;
+    state.publishedApiStatus = publishedState.apiStatus;
+    state.publishedApiFormat = publishedState.apiFormat;
+    state.publishedApiObjects = publishedState.apiObjects;
+    state.publishedApiComponents = publishedState.apiComponents;
+    state.publishedListStatus = publishedState.listStatus;
+    state.publishedListHasSlug = publishedState.listHasSlug;
+    state.publishedLoadStatus = publishedLoadState.status;
+    state.publishedLoadSlug = publishedLoadState.slug;
+    state.publishedLoadObjectCount = publishedLoadState.objectCount;
+    state.publishedLoadProjectStatus = publishedLoadState.projectStatus;
+    state.publishedLoadRestoredObjects = publishedLoadState.restoredObjects;
     state.respawnHealth = afterRespawnState.health;
     state.respawnCount = afterRespawnState.respawns;
     state.openedDoor = doorTriggerState.openedDoor;
@@ -1310,7 +1406,19 @@ async function runBrowserSmoke() {
         state.publishedPlayableHtmlBytes < 50000 ||
         state.publishedDecodedFormat !== 'crate-engine-project' ||
         state.publishedDecodedObjects < 100 ||
-        state.publishedDecodedComponents < 14) {
+        state.publishedDecodedComponents < 14 ||
+        state.publishedCloudStatus !== 'synced' ||
+        state.publishedCloudSource !== 'cloudflare-pages-kv' ||
+        state.publishedApiStatus !== 200 ||
+        state.publishedApiFormat !== 'crate-cloud-published-game' ||
+        state.publishedApiObjects < 100 ||
+        state.publishedApiComponents < 14 ||
+        state.publishedListStatus !== 200 ||
+        !state.publishedListHasSlug ||
+        state.publishedLoadStatus !== 'cloud-published' ||
+        state.publishedLoadSlug !== 'production-smoke-published-game' ||
+        state.publishedLoadObjectCount < 100 ||
+        state.publishedLoadProjectStatus !== 'loaded') {
       throw new Error(`Published game library did not finish with a runtime-ready game: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
@@ -1403,6 +1511,7 @@ console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserSta
 console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, equipment ${browserState.loadedProjectEquipmentId || 'missing'}, npc ${browserState.loadedProjectNpcId || 'missing'}, merchant ${browserState.loadedProjectMerchantId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'}, enemy spawn ${browserState.loadedProjectEnemySpawnId || 'missing'}, wave ${browserState.loadedProjectWaveId || 'missing'})`);
 console.log(`Playable export: ${browserState.playableExportFilename || 'missing'} (${browserState.playableExportObjectCount} objects, ${browserState.playableExportComponentCount} components, ${browserState.playableExportHtmlBytes} html bytes)`);
 console.log(`Published game: ${browserState.publishedSlug || 'missing'} (${browserState.publishedObjects} objects, ${browserState.publishedComponents} components, package ${browserState.publishedPlayableHtmlBytes} html bytes)`);
+console.log(`Published API: ${browserState.publishedCloudSource || 'missing'} ${browserState.publishedApiStatus} (${browserState.publishedLoadStatus || 'missing'}, ${browserState.publishedLoadObjectCount} objects loaded)`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);
