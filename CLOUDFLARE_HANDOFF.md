@@ -1,6 +1,6 @@
 # CrateShip Games Cloudflare Handoff
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 This file is the operational handoff for the real CrateShip Games web engine at
 `https://crateshipgames.com/play`. Use it before changing or deploying the web
@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `face24d3`
+- Current deployed source commit for the public engine code: `f534ac27`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `adbf2876-0a00-4da6-9948-4f2d53091739`
-- Latest production deployment URL: `https://adbf2876.crateship-games.pages.dev`
+- Latest production deployment ID: `824c508c-7cca-474a-ad8f-de4002b1853f`
+- Latest production deployment URL: `https://824c508c.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `face24d`
-- Main live page bundle after the deploy: `/assets/play-V6Rd-gpY.js`
+- Source shown by Cloudflare: `f534ac2`
+- Main live page bundle after the deploy: `/assets/play-ve-g4PUj.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -608,6 +608,26 @@ Follow-up production deploys on 2026-05-18 added Playable Web Package export:
   - Production smoke verified playable export `production-smoke-game-playable.html` with `411` objects, `14` components, and `209790` HTML bytes.
   - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, and remote asset-host checks.
 
+Follow-up production deploys on 2026-05-19 added Publish Library and portable game links:
+
+- `engine.mjs`
+  - Added local published-game records in `localStorage.crate_published_games`.
+  - Added `_publishLocalGame`, `_showPublishedGames`, and `_getPublishedGames` helpers for publishing, managing, and smoke-testing local published builds.
+  - Publish now creates a portable `/play?published=<slug>#<encoded-project>` link even when the user is not signed in, while premium server-side publishing still remains available when auth allows it.
+  - The Export Scene modal now includes `Publish to Game Library` and `Published Games` actions.
+  - Shared/published links can load full `crate-engine-project` JSON through `deserializeScene()`, and `?published=<slug>` can fall back to a local published-library row when no hash is present.
+  - Exposed `_loadSharedScene`, `_compressScene`, and `_decompressScene` for verification and future publish-link tooling.
+- `scripts/smoke-production.mjs`
+  - Requires the live export modal to include publish and published-library controls.
+  - Publishes `production-smoke-published-game` on the real custom domain, verifies the share URL, checks the saved library row, decodes the full project payload, and confirms the generated playable package is runtime-ready.
+- Final app deployment `824c508c-7cca-474a-ad8f-de4002b1853f`
+  - Source `f534ac2`; bundle `/assets/play-ve-g4PUj.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `6` changed files, reused `99` already-uploaded files, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Production smoke verified published game `production-smoke-published-game` with `411` objects, `14` components, and a `209819` byte playable package.
+  - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, and remote asset-host checks.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -1154,6 +1174,26 @@ Browser verification history:
   - Smoke verified Inventory runtime: `smoke blade equipped smoke blade (7 power, 22 attack, 5 items)`.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-export-face24d3.png`.
+- Final custom-domain verification after deployment `824c508c-7cca-474a-ad8f-de4002b1853f`:
+  - Cloudflare source showed `f534ac2`.
+  - `/play?verify=publish-f534ac27` served `/assets/play-ve-g4PUj.js`.
+  - `/play?verify=publish-f534ac27` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - The upload changed `6` app files, reused `99` already-uploaded files, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - `engine.mjs` added the publish library workflow: local published-game records, portable `/play?published=<slug>#<project>` links, a Published Games modal, and export-modal buttons for publishing and library management.
+  - `engine.mjs` now lets shared/published links load full project JSON through `deserializeScene()` and still supports local published slug fallback from `localStorage`.
+  - `scripts/smoke-production.mjs` now verifies the publish/export buttons, creates `production-smoke-published-game`, checks the stored library row, decodes the saved project, and validates the generated playable package.
+  - Smoke verified Game Systems reported `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, equipment:1 tagged, npcs:1 tagged, merchants:1 tagged, objectives:Ready, missions:1 tagged, rewards:1 tagged, gates:1 tagged, enemySpawns:1 tagged, waves:1 tagged, checkpoints:1 tagged, win:1 tagged, doors:1 tagged, triggers:1 tagged, spawns:1 tagged, damage:Ready`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 411 objects, 2 scripts, 14 components, Edit mode`.
+  - Playable export verified `production-smoke-game-playable.html` with `411` objects, `14` components, and `209789` HTML bytes.
+  - Published game verified `production-smoke-published-game` with `411` objects, `14` components, and a `209819` byte playable package.
+  - Project load restored NPC and merchant components plus equipment, pickup, door, trigger, mission, reward, gate, enemy spawn, wave, checkpoint, win, and spawn components.
+  - Smoke verified NPC runtime: `Smoke guide said "The city needs a real quest giver." and granted smoke note`.
+  - Smoke verified Merchant runtime: `Smoke vendor sold smoke cloak for 25 score (4 armor power)`.
+  - Smoke verified Inventory runtime: `smoke blade equipped smoke blade (7 power, 22 attack, 5 items)`.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-publish-f534ac27.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1188,6 +1228,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+f534ac27 Add publish library workflow
 face24d3 Add playable web package export
 4c8b8179 Add NPC merchant gameplay systems
 d7df45a3 Add inventory equipment progression
