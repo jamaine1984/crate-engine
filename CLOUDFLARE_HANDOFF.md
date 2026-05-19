@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `f60bb86e`
+- Current deployed source commit for the public engine code: `1255806e`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -27,10 +27,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `27ce8272-0693-44a6-9ba9-0b7a2f7912dd`
-- Latest production deployment URL: `https://27ce8272.crateship-games.pages.dev`
+- Latest production deployment ID: `ab9765be-0bbb-4cbf-9bf0-f26d11049844`
+- Latest production deployment URL: `https://ab9765be.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `f60bb86`
+- Source shown by Cloudflare: `1255806`
 - Main live page bundle after the deploy: `/assets/play-jPFx6JZK.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -857,6 +857,26 @@ Follow-up production deploys on 2026-05-19 added public game detail pages and pa
   - Production smoke verified `Game detail: production-smoke-published-game by Production Smoke Creator (411 objects, 14 components)`.
   - Production smoke still verified marketplace filters, published metadata, owner/delete guardrails, clean cloud link loading, playable export, all live gameplay systems, and remote asset-host checks.
 
+Follow-up production deploys on 2026-05-19 added public marketplace discovery rails:
+
+- `marketplace.html`
+  - Added three Published Games discovery sections: Featured Builds, Recent Publishes, and Top Systems.
+  - Discovery rails are populated from the public `/api/games?limit=50&sort=updated` metadata list.
+  - Featured is ranked by object/component/script richness, Recent is ranked by publish update time, and Top Systems is ranked by component count.
+  - Rail cards link to the public `/game.html?slug=<slug>` detail page.
+  - Exposes `window._cratePublishedDiscovery` with rail status, total games, rail-card count, and lane slugs for production smoke checks.
+- `scripts/smoke-production.mjs`
+  - Waits for the discovery rails to load on the live marketplace page.
+  - Verifies the smoke published game appears in Featured Builds, Recent Publishes, and Top Systems.
+  - Logs `Marketplace discovery: loaded 3 cards from 1 games` in the current smoke dataset.
+- Final app deployment `ab9765be-0bbb-4cbf-9bf0-f26d11049844`
+  - Source `1255806`; bundle `/assets/play-jPFx6JZK.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; `.deploy` had no `/models` or `/textures`.
+  - The app upload uploaded `1` changed file, reused `106` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, inline HTML script parsing for `marketplace.html` and `game.html`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Marketplace discovery: loaded 3 cards from 1 games`.
+  - Production smoke still verified marketplace filters, public game details, published metadata, owner/delete guardrails, clean cloud link loading, playable export, all live gameplay systems, and remote asset-host checks.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -986,6 +1006,7 @@ Recovered model cache summary:
 - Published-games marketplace deploy skipped bundled `/models` and `/textures`, uploaded `1` changed file, reused `104` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 - Marketplace filters deploy skipped bundled `/models` and `/textures`, uploaded `1` changed file, reused `104` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 - Published-game detail-pages deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `104` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+- Published-game discovery-rails deploy skipped bundled `/models` and `/textures`, uploaded `1` changed file, reused `106` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -1070,7 +1091,7 @@ Expected current results:
 - Missing asset-host model paths return `404 Not Found`, not `200 text/html`.
 - The Published Games modal exposes search/filter, row Edit, row Details, creator/admin settings, detail-panel Duplicate, List/Unlist, and guarded Delete/Remove controls.
 - The published-game API marks owner-managed records, blocks unmanaged deletes with `403`, accepts matching owner-token deletes with `200`, returns `404` after successful delete, and supports owner-token metadata updates with public/unlisted visibility.
-- `/marketplace.html` exposes the public Published Games browser backed by `/api/games`, supports search, tag/category filters, sorting, pagination, and detail links, and unlisted games are excluded from that public browser.
+- `/marketplace.html` exposes the public Published Games browser backed by `/api/games`, supports Featured Builds, Recent Publishes, Top Systems, search, tag/category filters, sorting, pagination, and detail links, and unlisted games are excluded from that public browser.
 - `/game.html?slug=<published-game-slug>` loads a public game detail page from `/api/games/<slug>` with Play Game and Open in Engine actions.
 
 Browser verification history:
@@ -1582,6 +1603,19 @@ Browser verification history:
   - Smoke verified `Game detail: production-smoke-published-game by Production Smoke Creator (411 objects, 14 components)`.
   - Smoke still verified published metadata, owner/delete guardrails, cloud clean-link loading, playable export, all live gameplay systems, and remote asset-host checks.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-game-detail-f60bb86e.png`.
+- Final custom-domain verification after deployment `ab9765be-0bbb-4cbf-9bf0-f26d11049844`:
+  - Cloudflare source showed `1255806`.
+  - `/play?verify=discovery-rails-1255806e` served `/assets/play-jPFx6JZK.js`.
+  - `/play?verify=discovery-rails-1255806e` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - The deploy uploaded `1` changed file, reused `106` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, inline HTML script parsing, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified discovery rails loaded and included `production-smoke-published-game` in Featured Builds, Recent Publishes, and Top Systems.
+  - Smoke verified `Marketplace discovery: loaded 3 cards from 1 games`.
+  - Smoke still verified marketplace search/tag/sort/pagination/detail link, public game detail page, published metadata, owner/delete guardrails, cloud clean-link loading, playable export, all live gameplay systems, and remote asset-host checks.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-discovery-rails-1255806e.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1617,6 +1651,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+1255806e Add published game discovery rails
 f60bb86e Add published game detail pages
 1eb0e04d Add marketplace game discovery filters
 c1910645 Add published games marketplace browser
@@ -1715,7 +1750,7 @@ does not change the public website bundle unless it is intentionally deployed.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Continue productizing the publish system: connect real signed-in owner
-   accounts, add a moderation queue, and add featured/recent/trending sections
+   accounts, add a moderation queue, and add manual featured curation controls
    for the public Published Games browser.
 5. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and export/import hardening.
