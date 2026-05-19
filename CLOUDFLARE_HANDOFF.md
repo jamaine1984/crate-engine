@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `92f41e6d`
+- Current deployed source commit for the public engine code: `c1910645`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -27,10 +27,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `f1fcd980-8c12-49a2-9692-043250b2d662`
-- Latest production deployment URL: `https://f1fcd980.crateship-games.pages.dev`
+- Latest production deployment ID: `c2ca8b5a-150d-4329-a7bc-4f0f7a0294fe`
+- Latest production deployment URL: `https://c2ca8b5a.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `92f41e6`
+- Source shown by Cloudflare: `c191064`
 - Main live page bundle after the deploy: `/assets/play-jPFx6JZK.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -784,6 +784,26 @@ Follow-up production deploys on 2026-05-19 added published-game metadata managem
   - Production smoke verified `Published library UI: 1 cloud rows, 3 local rows, 4 edit buttons`.
   - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, playable export, cloud clean-link loading, and remote asset-host checks.
 
+Follow-up production deploys on 2026-05-19 added the public Published Games marketplace browser:
+
+- `marketplace.html`
+  - Added a top-level `Published Games` section above the asset marketplace grids.
+  - Fetches public published games from `/api/games?limit=24`.
+  - Renders playable cards with creator name, description, object/component/script counts, Play, and Remix links.
+  - Adds a search field and refresh button for public game browsing.
+  - Runs independently of the Three.js asset viewer module so published games can render even if a 3D asset preview is slow.
+- `scripts/smoke-production.mjs`
+  - Verifies `https://crateshipgames.com/marketplace.html` returns `200 text/html`.
+  - Opens the live marketplace page, waits for the Published Games section to load, searches `production smoke`, and verifies the public smoke game appears.
+  - Verifies the temporary unlisted metadata guard game does not appear in the marketplace browser.
+- Final app deployment `c2ca8b5a-150d-4329-a7bc-4f0f7a0294fe`
+  - Source `c191064`; bundle `/assets/play-jPFx6JZK.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; `.deploy` had no `/models` or `/textures`.
+  - The app upload uploaded `1` changed file, reused `104` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Marketplace games: 1/1 shown for production smoke, smoke visible`.
+  - Production smoke still verified published metadata, owner/delete guardrails, clean cloud link loading, playable export, all live gameplay systems, and remote asset-host checks.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -910,6 +930,7 @@ Recovered model cache summary:
 - Checkpoint-win main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 - Published-management main-app deploy skipped bundled `/models` and `/textures`, reused all `105` static files on the final upload, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 - Published-metadata main-app deploy skipped bundled `/models` and `/textures`, uploaded `6` changed files, reused `99` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+- Published-games marketplace deploy skipped bundled `/models` and `/textures`, uploaded `1` changed file, reused `104` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -994,6 +1015,7 @@ Expected current results:
 - Missing asset-host model paths return `404 Not Found`, not `200 text/html`.
 - The Published Games modal exposes search/filter, row Edit, row Details, creator/admin settings, detail-panel Duplicate, List/Unlist, and guarded Delete/Remove controls.
 - The published-game API marks owner-managed records, blocks unmanaged deletes with `403`, accepts matching owner-token deletes with `200`, returns `404` after successful delete, and supports owner-token metadata updates with public/unlisted visibility.
+- `/marketplace.html` exposes the public Published Games browser backed by `/api/games?limit=24`, and unlisted games are excluded from that public browser.
 
 Browser verification history:
 
@@ -1465,6 +1487,18 @@ Browser verification history:
   - Project load restored NPC and merchant components plus equipment, pickup, door, trigger, mission, reward, gate, enemy spawn, wave, checkpoint, win, and spawn components.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-published-meta-92f41e6d.png`.
+- Final custom-domain verification after deployment `c2ca8b5a-150d-4329-a7bc-4f0f7a0294fe`:
+  - Cloudflare source showed `c191064`.
+  - `/play?verify=marketplace-c1910645` served `/assets/play-jPFx6JZK.js`.
+  - `/play?verify=marketplace-c1910645` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - The deploy uploaded `1` changed file, reused `104` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified the public marketplace Published Games browser loaded, searched `production smoke`, showed `production-smoke-published-game`, and did not show the temporary unlisted guard game.
+  - Smoke verified `Marketplace games: 1/1 shown for production smoke, smoke visible`.
+  - Smoke still verified published metadata, owner/delete guardrails, cloud clean-link loading, playable export, all live gameplay systems, and remote asset-host checks.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-marketplace-c1910645.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1500,6 +1534,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+c1910645 Add published games marketplace browser
 92f41e6d Add published game metadata management
 0155d9b5 Add published game management guardrails
 295390cf Add published games search and edit smoke
@@ -1595,7 +1630,7 @@ does not change the public website bundle unless it is intentionally deployed.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Continue productizing the publish system: connect real signed-in owner
-   accounts, add a moderation queue, and build richer marketplace/library
-   browsing fed from `/api/games`.
+   accounts, add a moderation queue, and add sorting/category pages for the
+   public Published Games browser.
 5. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and export/import hardening.
