@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `51dcde5e`
+- Current deployed source commit for the public engine code: `8d6f6ea8`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -27,11 +27,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `559da24a-c56f-4cb0-abfb-287ea6926070`
-- Latest production deployment URL: `https://559da24a.crateship-games.pages.dev`
+- Latest production deployment ID: `fc425040-70f5-403a-a6ce-063784376e45`
+- Latest production deployment URL: `https://fc425040.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `51dcde5`
-- Main live page bundle after the deploy: `/assets/play-D3alRuCc.js`
+- Source shown by Cloudflare: `8d6f6ea`
+- Main live page bundle after the deploy: `/assets/play-CXxUDet_.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -658,6 +658,27 @@ Follow-up production deploys on 2026-05-19 added the Cloudflare Published Games 
   - Production smoke verified `Published API: cloudflare-pages-kv 200 (cloud-published, 411 objects loaded)`.
   - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, and remote asset-host checks.
 
+Follow-up production deploys on 2026-05-19 added the Cloud Published Games library UI:
+
+- `engine.mjs`
+  - The `Published Games` modal now has separate `Cloud Library` and `This Browser` sections.
+  - The Cloud Library fetches `/api/games`, has a `Refresh Cloud` button, and renders clean cloud rows with readonly URLs plus Copy Link and Open controls.
+  - The modal keeps browser-local published records visible for offline/local fallback.
+  - The modal fetches the just-published slug directly if it is not already in the latest cloud list, so a new publish appears immediately.
+  - Exposes `window._fetchCloudPublishedGames` for smoke/debug checks.
+- `scripts/smoke-production.mjs`
+  - Opens the Published Games modal after publishing `production-smoke-published-game`.
+  - Waits for the Cloud Library to report `data-status="loaded"`.
+  - Verifies both cloud and local rows exist, the cloud URL is `/play?published=production-smoke-published-game` with no hash payload, and copy/open buttons are present.
+- Final app deployment `fc425040-70f5-403a-a6ce-063784376e45`
+  - Source `8d6f6ea`; bundle `/assets/play-CXxUDet_.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; `.deploy` had no `/models` or `/textures`.
+  - The app upload uploaded `6` changed files, reused `99` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Published library UI: 1 cloud rows, 1 local rows`.
+  - Production smoke verified `Published API: cloudflare-pages-kv 200 (cloud-published, 349 objects loaded)`.
+  - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, and remote asset-host checks.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -1242,6 +1263,22 @@ Browser verification history:
   - Project load restored NPC and merchant components plus equipment, pickup, door, trigger, mission, reward, gate, enemy spawn, wave, checkpoint, win, and spawn components.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-api-51dcde5e.png`.
+- Final custom-domain verification after deployment `fc425040-70f5-403a-a6ce-063784376e45`:
+  - Cloudflare source showed `8d6f6ea`.
+  - `/play?verify=library-8d6f6ea8` served `/assets/play-CXxUDet_.js`.
+  - `/play?verify=library-8d6f6ea8` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - The deploy uploaded `6` changed files, reused `99` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke opened the Published Games modal and verified `Published library UI: 1 cloud rows, 1 local rows`.
+  - Smoke verified the cloud row uses a clean `/play?published=production-smoke-published-game` link without a hash payload and the local row still exists.
+  - Smoke loaded the clean cloud URL `/play?published=production-smoke-published-game` in a fresh browser context and reported `cloud-published, 349 objects loaded`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 412 objects, 2 scripts, 14 components, Edit mode`.
+  - Playable export verified `production-smoke-game-playable.html` with `411` objects, `14` components, and `209800` HTML bytes.
+  - Published game verified `production-smoke-published-game` with `411` objects, `14` components, and a `209835` byte playable package.
+  - Project load restored NPC and merchant components plus equipment, pickup, door, trigger, mission, reward, gate, enemy spawn, wave, checkpoint, win, and spawn components.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-library-8d6f6ea8.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1277,6 +1314,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+8d6f6ea8 Add cloud published games library UI
 51dcde5e Stabilize published game smoke load
 3133868c Add Cloudflare published games API
 f534ac27 Add publish library workflow
