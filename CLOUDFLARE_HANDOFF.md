@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `0bc525a7`
+- Current deployed source commit for the public engine code: `d605a14a`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -28,10 +28,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `b0c3106d-4223-4a4b-823f-94ed6167b689`
-- Latest production deployment URL: `https://b0c3106d.crateship-games.pages.dev`
+- Latest production deployment ID: `01ada5ca-a48a-4afa-b746-eae1bbfc85ce`
+- Latest production deployment URL: `https://01ada5ca.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `0bc525a`
+- Source shown by Cloudflare: `d605a14`
 - Main live page bundle after the deploy: `/assets/play-ovN8zwhf.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -966,6 +966,27 @@ Follow-up production deploys on 2026-05-19 bound D1 moderation audit storage:
   - Smoke URL was `https://crateshipgames.com/play?verify=admin-audit-d1-0bc525a7`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-audit-d1-0bc525a7.png`.
 
+Follow-up production deploys on 2026-05-19 added a D1 audit storage probe:
+
+- `functions/api/games/[[path]].js`
+  - Added protected `POST /api/games/admin/audit/verify`.
+  - The route requires a valid Cloudflare admin token with `admin` role.
+  - It verifies D1 write/read/delete by inserting a temporary `__audit_probe__` row, reading it back, and deleting it before returning.
+  - It does not mutate any published game record and does not leave a persistent audit row when the delete succeeds.
+- `scripts/smoke-production.mjs`
+  - Added an unauthenticated guard check for the audit verify route.
+  - If `CRATE_SMOKE_ADMIN_TOKEN` is present in the local/CI environment, smoke posts to `/api/games/admin/audit/verify` and requires `writeVerified: true`.
+  - The current local environment did not have `CRATE_SMOKE_ADMIN_TOKEN`, so this live smoke verified the new route is locked and left the authenticated probe for CI/local env configuration.
+- Final app deployment `01ada5ca-a48a-4afa-b746-eae1bbfc85ce`
+  - Source `d605a14`; bundle `/assets/play-ovN8zwhf.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; `.deploy` had no `/models` or `/textures`.
+  - The app upload reused `109` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check functions/api/games/[[path]].js`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Admin moderation: API guard 403, audit guard 403, verify guard 403, backfill guard 403, dashboard locked, controls ready, actor ready, audit panel ready, review notes ready`.
+  - Smoke URL was `https://crateshipgames.com/play?verify=audit-probe-d605a14a`.
+  - D1 row count after deploy remained `0`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-audit-probe-d605a14a.png`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -1037,8 +1058,15 @@ Protected backfill endpoint:
 POST https://crateshipgames.com/api/games/admin/audit/backfill?dryRun=true
 ```
 
-It requires a valid admin token and role `admin`. Do not put admin tokens in
-tracked files or browser-exposed code.
+Protected temporary D1 write probe endpoint:
+
+```text
+POST https://crateshipgames.com/api/games/admin/audit/verify
+```
+
+Both routes require a valid admin token and role `admin`. Do not put admin
+tokens in tracked files or browser-exposed code. For production smoke, set
+`CRATE_SMOKE_ADMIN_TOKEN` only in the local shell or CI secret environment.
 
 Deploy to the real Cloudflare Pages project:
 
@@ -1215,7 +1243,7 @@ Expected current results:
 - `/game.html?slug=<published-game-slug>` loads a public game detail page from `/api/games/<slug>` with Play Game, Open in Engine, and Featured status.
 - `/admin.html` loads the Published Game Moderation dashboard, stays locked without the Cloudflare admin token, and uses `GET /api/games/admin/list` plus existing `PATCH /api/games/<slug>` actions for admin moderation.
 - `GET /api/games/admin/list` returns `403` without admin authorization and returns metadata-only rows with counts, filters, sorting, featured status, moderation status, and last audit fields when authorized.
-- `GET /api/games/admin/audit/<slug>` and `POST /api/games/admin/audit/backfill?dryRun=true` both return `403` without admin authorization.
+- `GET /api/games/admin/audit/<slug>`, `POST /api/games/admin/audit/verify`, and `POST /api/games/admin/audit/backfill?dryRun=true` all return `403` without admin authorization.
 - `CRATE_AUDIT` points at D1 database `crateship-games-audit` (`9cbee4e4-caa7-43fb-bbb7-9f0f7d7e2b9a`), and the remote `moderation_audit` table exists.
 
 Browser verification history:
@@ -1836,6 +1864,23 @@ Browser verification history:
   - Smoke verified `Admin moderation: API guard 403, audit guard 403, backfill guard 403, dashboard locked, controls ready, actor ready, audit panel ready, review notes ready`.
   - Smoke still verified build-city output, separate asset-host loading, furniture placement, published game export/load, marketplace discovery, game details, mode/editor separation, and runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-audit-d1-0bc525a7.png`.
+- Final custom-domain verification after deployment `01ada5ca-a48a-4afa-b746-eae1bbfc85ce`:
+  - Cloudflare source showed `d605a14`.
+  - `/play?verify=audit-probe-d605a14a` served `/assets/play-ovN8zwhf.js`.
+  - `/play?verify=audit-probe-d605a14a` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/admin.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories and did include `admin.html` and `play.html`.
+  - The deploy reused `109` static files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `POST /api/games/admin/audit/verify` now exists and is protected for temporary D1 write/read/delete probes.
+  - The local smoke environment did not have `CRATE_SMOKE_ADMIN_TOKEN`, so the live smoke verified the route returns `403` without admin authorization.
+  - The remote `moderation_audit` table still has `0` rows after deploy.
+  - `node --check functions/api/games/[[path]].js`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified unauthenticated admin list, admin audit, admin audit verify, and admin audit backfill endpoints all returned `403`.
+  - Smoke verified `Admin moderation: API guard 403, audit guard 403, verify guard 403, backfill guard 403, dashboard locked, controls ready, actor ready, audit panel ready, review notes ready`.
+  - Smoke still verified build-city output, separate asset-host loading, furniture placement, published game export/load, marketplace discovery, game details, mode/editor separation, and runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-audit-probe-d605a14a.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1863,6 +1908,10 @@ Browser verification history:
 - `npx wrangler d1 list` briefly returned Cloudflare API authentication error
   code `10000` on 2026-05-19, then succeeded on retry. The D1 database was
   created, bound, migrated, and verified after the retry.
+- `npx wrangler d1 execute` briefly returned Cloudflare API authorization error
+  code `7403` when run in parallel with another Wrangler API call on 2026-05-19;
+  `wrangler whoami`, `wrangler d1 list`, and the same D1 execute command passed
+  immediately after retrying sequentially.
 - Existing KV audit backfill was a no-op on 2026-05-19 because the only remote
   smoke game record had `auditTrail: []`; use the protected backfill route once
   real admin moderation records exist.
@@ -1877,6 +1926,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+d605a14a Add D1 audit storage probe
 0bc525a7 Bind D1 moderation audit backfill
 5da8d53b Add moderation audit history view
 59900900 Add admin identity roles to moderation
@@ -1984,8 +2034,8 @@ does not change the public website bundle unless it is intentionally deployed.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Configure `CRATE_SMOKE_ADMIN_TOKEN` only in the local/CI smoke environment
-   when ready, then add a non-destructive authenticated moderation smoke that
-   proves D1 audit writes without exposing the token in tracked files.
+   when ready, then rerun `npm run smoke:production` so the protected
+   `/api/games/admin/audit/verify` route executes its temporary D1 write probe.
 5. Run the protected audit backfill after real moderation records exist in KV;
    the 2026-05-19 check found no old audit entries to migrate.
 6. Continue productizing the editor: a richer component inspector, project
