@@ -215,6 +215,8 @@ async function runBrowserSmoke() {
 
     await page.locator('#gb-project button[data-gb-action="export"]').click({ timeout: timeoutMs });
     await page.waitForSelector('#ie-modal #ie-export-playable', { timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-export-publish', { timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-export-library', { timeout: timeoutMs });
     await page.waitForSelector('#ie-modal #ie-export-crate', { timeout: timeoutMs });
     await page.waitForSelector('#ie-modal #ie-export-html', { timeout: timeoutMs });
     await page.locator('#ie-close').click({ timeout: timeoutMs });
@@ -653,6 +655,58 @@ async function runBrowserSmoke() {
         !playableExportState.crateHasNpc ||
         !playableExportState.crateHasMerchant) {
       throw new Error(`Playable export package was not complete: ${JSON.stringify(playableExportState)}`);
+    }
+
+    const publishedState = await page.evaluate(async () => {
+      const result = await window._publishLocalGame?.({
+        title: 'Production Smoke Published Game',
+        slug: 'production-smoke-published-game',
+        description: 'Smoke test published build',
+        tags: ['smoke', 'publish'],
+      });
+      const rows = window._getPublishedGames?.() || [];
+      const decoded = window._decompressScene?.(result?.sceneData || '');
+      let parsed = null;
+      try {
+        parsed = JSON.parse(decoded);
+      } catch {}
+      return {
+        format: result?.format || '',
+        version: Number(result?.version) || 0,
+        slug: result?.slug || '',
+        title: result?.title || '',
+        shareUrl: result?.shareUrl || '',
+        objects: Number(result?.objects) || 0,
+        commands: Number(result?.commands) || 0,
+        scripts: Number(result?.scripts) || 0,
+        components: Number(result?.components) || 0,
+        hasPlayable: !!result?.playable && result.playable.format === 'crate-playable-package',
+        playableHtmlBytes: Number(result?.playable?.htmlBytes) || 0,
+        storedCount: rows.length,
+        storedSlug: rows.find((item) => item?.slug === result?.slug)?.slug || '',
+        decodedFormat: parsed?.format || '',
+        decodedObjects: Array.isArray(parsed?.objects) ? parsed.objects.length : 0,
+        decodedComponents: Array.isArray(parsed?.objects)
+          ? parsed.objects.reduce((sum, obj) => sum + Object.keys(obj?.components || {}).length, 0)
+          : 0,
+        lastPublishedSlug: window._lastPublishedGame?.slug || '',
+      };
+    });
+    if (publishedState.format !== 'crate-published-game' ||
+        publishedState.version < 2 ||
+        publishedState.slug !== 'production-smoke-published-game' ||
+        !publishedState.shareUrl.includes('/play?published=production-smoke-published-game#') ||
+        publishedState.objects < 100 ||
+        publishedState.components < 14 ||
+        publishedState.scripts < 1 ||
+        !publishedState.hasPlayable ||
+        publishedState.playableHtmlBytes < 50000 ||
+        publishedState.storedSlug !== 'production-smoke-published-game' ||
+        publishedState.lastPublishedSlug !== 'production-smoke-published-game' ||
+        publishedState.decodedFormat !== 'crate-engine-project' ||
+        publishedState.decodedObjects < 100 ||
+        publishedState.decodedComponents < 14) {
+      throw new Error(`Published game library did not create a portable playable link: ${JSON.stringify(publishedState)}`);
     }
 
     await page.evaluate(() => {
@@ -1141,6 +1195,18 @@ async function runBrowserSmoke() {
     state.playableExportCrateBytes = playableExportState.crateBytes;
     state.playableExportFiles = playableExportState.files;
     state.playableExportHasRuntimeControls = playableExportState.hasRuntimeControls;
+    state.publishedFormat = publishedState.format;
+    state.publishedSlug = publishedState.slug;
+    state.publishedShareUrl = publishedState.shareUrl;
+    state.publishedObjects = publishedState.objects;
+    state.publishedCommands = publishedState.commands;
+    state.publishedScripts = publishedState.scripts;
+    state.publishedComponents = publishedState.components;
+    state.publishedPlayableHtmlBytes = publishedState.playableHtmlBytes;
+    state.publishedStoredCount = publishedState.storedCount;
+    state.publishedDecodedFormat = publishedState.decodedFormat;
+    state.publishedDecodedObjects = publishedState.decodedObjects;
+    state.publishedDecodedComponents = publishedState.decodedComponents;
     state.respawnHealth = afterRespawnState.health;
     state.respawnCount = afterRespawnState.respawns;
     state.openedDoor = doorTriggerState.openedDoor;
@@ -1236,6 +1302,17 @@ async function runBrowserSmoke() {
     if (state.playableExportFormat !== 'crate-playable-package' || state.playableExportObjectCount < 100 || state.playableExportComponentCount < 14 || state.playableExportHtmlBytes < 50000 || !state.playableExportHasRuntimeControls) {
       throw new Error(`Playable export package did not include a runtime-ready project: ${JSON.stringify(state)}`);
     }
+    if (state.publishedFormat !== 'crate-published-game' ||
+        state.publishedSlug !== 'production-smoke-published-game' ||
+        state.publishedObjects < 100 ||
+        state.publishedComponents < 14 ||
+        state.publishedScripts < 1 ||
+        state.publishedPlayableHtmlBytes < 50000 ||
+        state.publishedDecodedFormat !== 'crate-engine-project' ||
+        state.publishedDecodedObjects < 100 ||
+        state.publishedDecodedComponents < 14) {
+      throw new Error(`Published game library did not finish with a runtime-ready game: ${JSON.stringify(state)}`);
+    }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
     if (state.mode !== 'edit') throw new Error(`Expected smoke to finish in edit mode, got ${state.mode || 'empty'}`);
     if (state.placementStatus !== 'placed' || state.placementSource !== 'production-smoke') {
@@ -1325,6 +1402,7 @@ console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
 console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, equipment ${browserState.loadedProjectEquipmentId || 'missing'}, npc ${browserState.loadedProjectNpcId || 'missing'}, merchant ${browserState.loadedProjectMerchantId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'}, enemy spawn ${browserState.loadedProjectEnemySpawnId || 'missing'}, wave ${browserState.loadedProjectWaveId || 'missing'})`);
 console.log(`Playable export: ${browserState.playableExportFilename || 'missing'} (${browserState.playableExportObjectCount} objects, ${browserState.playableExportComponentCount} components, ${browserState.playableExportHtmlBytes} html bytes)`);
+console.log(`Published game: ${browserState.publishedSlug || 'missing'} (${browserState.publishedObjects} objects, ${browserState.publishedComponents} components, package ${browserState.publishedPlayableHtmlBytes} html bytes)`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

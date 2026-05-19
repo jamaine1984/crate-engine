@@ -14855,6 +14855,135 @@ function shareScene() {
 }
 
 
+function getPublishedGamesLibrary() {
+  try {
+    var rows = JSON.parse(localStorage.getItem('crate_published_games') || '[]');
+    return Array.isArray(rows) ? rows.filter(Boolean) : [];
+  } catch(e) {
+    return [];
+  }
+}
+
+function savePublishedGamesLibrary(rows) {
+  localStorage.setItem('crate_published_games', JSON.stringify(Array.isArray(rows) ? rows : []));
+}
+
+function slugifyPublishedGame(value) {
+  return String(value || 'game-' + Date.now().toString(36))
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72) || ('game-' + Date.now().toString(36));
+}
+
+function countProjectComponentsForPublish(project) {
+  var total = 0;
+  var byType = {};
+  (project && Array.isArray(project.objects) ? project.objects : []).forEach(function(obj) {
+    var components = obj && obj.components ? obj.components : {};
+    Object.keys(components).forEach(function(key) {
+      total += 1;
+      byType[key] = (byType[key] || 0) + 1;
+    });
+  });
+  return { total: total, byType: byType };
+}
+
+function escapeProjectHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function publishSceneToLocalLibrary(options) {
+  options = options || {};
+  var data = serializeScene();
+  if (!data) {
+    logOutput('warn', 'Nothing to publish - build something first.');
+    return null;
+  }
+  var project = null;
+  try { project = JSON.parse(data); } catch(e) { project = { commands: sceneHistory.slice(), objects: [] }; }
+  var title = String(options.title || project.name || 'Untitled Game').trim() || 'Untitled Game';
+  var slug = slugifyPublishedGame(options.slug || title);
+  var encoded = compressScene(data);
+  var shareUrl = window.location.origin + '/play?published=' + encodeURIComponent(slug) + '#' + encoded;
+  var componentCounts = countProjectComponentsForPublish(project);
+  var playable = null;
+  try {
+    playable = await window._exportPlayablePackage?.({ download: false, title: title });
+  } catch(e) {
+    console.warn('[Publish] Playable package generation failed:', e);
+  }
+  var gameData = {
+    format: 'crate-published-game',
+    version: 2,
+    title: title,
+    description: String(options.description || '').trim(),
+    slug: slug,
+    tags: Array.isArray(options.tags) ? options.tags : String(options.tags || '').split(',').map(function(tag) { return tag.trim(); }).filter(Boolean),
+    sceneData: encoded,
+    projectData: data,
+    shareUrl: shareUrl,
+    playable: playable || null,
+    objects: Array.isArray(project.objects) ? project.objects.length : objects.length,
+    commands: Array.isArray(project.commands) ? project.commands.length : sceneHistory.length,
+    scripts: Array.isArray(project.userScripts) ? project.userScripts.length : 0,
+    components: componentCounts.total,
+    componentTypes: componentCounts.byType,
+    publishedAt: Date.now(),
+  };
+  var library = getPublishedGamesLibrary().filter(function(item) { return item && item.slug !== slug; });
+  library.push(gameData);
+  savePublishedGamesLibrary(library);
+  window._lastPublishedGame = gameData;
+  logOutput('ok', 'Published "' + title + '" to your game library.');
+  return gameData;
+}
+
+function showPublishedGamesLibrary() {
+  var existingModal = document.getElementById('published-games-modal');
+  if (existingModal) existingModal.remove();
+  var games = getPublishedGamesLibrary().slice().sort(function(a, b) { return (b.publishedAt || 0) - (a.publishedAt || 0); });
+  var modal = document.createElement('div');
+  modal.id = 'published-games-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:100006;display:flex;align-items:center;justify-content:center;font-family:JetBrains Mono,monospace';
+  var rows = games.length ? games.map(function(game) {
+    var url = game.shareUrl || (window.location.origin + '/play?published=' + encodeURIComponent(game.slug || 'game') + '#' + (game.sceneData || ''));
+    return '<div style="border:1px solid #263238;background:#0b1014;border-radius:10px;padding:12px;margin-bottom:8px;text-align:left">' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong style="color:#f5f7f8">' + escapeProjectHtml(game.title || 'Untitled Game') + '</strong><span style="color:#7ddf9e;font-size:11px">' + escapeProjectHtml(game.slug || '') + '</span></div>' +
+      '<div style="color:#a5b2b9;font-size:11px;margin-top:5px">' + (game.objects || 0) + ' objects | ' + (game.components || 0) + ' components | ' + (game.scripts || 0) + ' scripts</div>' +
+      '<input readonly value="' + escapeProjectHtml(url) + '" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px;background:#05080a;border:1px solid #1f2933;border-radius:7px;color:#7ddf9e;font-size:11px" onclick="this.select()">' +
+      '<div style="display:flex;gap:8px;margin-top:8px"><button data-publish-copy="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:0;border-radius:7px;background:#7ddf9e;color:#061009;font-weight:700;cursor:pointer">Copy Link</button><button data-publish-open="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer">Open</button></div>' +
+      '</div>';
+  }).join('') : '<div style="color:#77838a;padding:22px">No published games yet.</div>';
+  modal.innerHTML = '<div style="width:min(620px,94vw);max-height:86vh;overflow:auto;background:#090d10;border:1px solid #2d3a42;border-radius:14px;padding:18px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="color:#fff;font-size:18px;font-weight:700">Published Games</div><div style="color:#7d8c94;font-size:12px">Portable playable links saved on this browser.</div></div><button id="published-close" style="background:none;border:0;color:#7d8c94;font-size:24px;cursor:pointer">x</button></div>' +
+    rows +
+    '</div>';
+  document.body.appendChild(modal);
+  document.getElementById('published-close').onclick = function() { modal.remove(); };
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+  modal.querySelectorAll('[data-publish-copy]').forEach(function(button) {
+    button.addEventListener('click', function() {
+      navigator.clipboard?.writeText(button.dataset.publishCopy).catch(function(){});
+      button.textContent = 'Copied';
+      setTimeout(function() { button.textContent = 'Copy Link'; }, 1200);
+    });
+  });
+  modal.querySelectorAll('[data-publish-open]').forEach(function(button) {
+    button.addEventListener('click', function() { window.open(button.dataset.publishOpen, '_blank'); });
+  });
+}
+
+window._publishLocalGame = publishSceneToLocalLibrary;
+window._showPublishedGames = showPublishedGamesLibrary;
+window._getPublishedGames = getPublishedGamesLibrary;
+
 // === PUBLISH TO .COM ===
 function publishScene() {
   var data = serializeScene();
@@ -14953,8 +15082,7 @@ function publishScene() {
       if (upgradeResult.checkoutUrl) window.location = upgradeResult.checkoutUrl;
       return;
     } else if (!auth.isLoggedIn) {
-      auth.showAuthModal(function(user) { document.getElementById('pub-go').click(); });
-      return;
+      logOutput('info', 'Publishing portable game link locally. Sign in later to sync it online.');
     }
   
     var title = document.getElementById('pub-title').value.trim() || 'Untitled Game';
@@ -14966,29 +15094,13 @@ function publishScene() {
     btn.textContent = '⏳ Publishing...';
     btn.style.opacity = '0.6';
     
-    // Save scene data with metadata
-    var encoded = compressScene(data);
-    var gameData = {
-      title: title,
-      description: desc,
-      slug: finalSlug,
-      tags: tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean),
-      sceneData: encoded,
-      commands: sceneHistory.length,
-      objects: objects.length,
-      publishedAt: Date.now(),
-      version: 1
-    };
-    
-    // Store in localStorage (will use backend API later)
-    existing.push(gameData);
-    localStorage.setItem('crate_published_games', JSON.stringify(existing));
-    
-    // Create the playable page URL
-    var playUrl = window.location.origin + '/play/' + finalSlug;
-    
-    // Also store as a shareable hash URL that works now
-    var shareUrl = window.location.origin + '/?scene=' + finalSlug + '#' + encoded;
+    var gameData = await publishSceneToLocalLibrary({ title: title, description: desc, slug: finalSlug, tags: tags });
+    if (!gameData) {
+      btn.textContent = 'Publish Live';
+      btn.style.opacity = '1';
+      return;
+    }
+    var shareUrl = gameData.shareUrl;
     
     setTimeout(function() {
       modal.innerHTML = 
@@ -15064,16 +15176,17 @@ function showShareModal(url, cmdCount) {
 function loadSharedScene() {
   // Check hash first (new format: /s#encoded or #scene-name or #encoded)
   var hash = window.location.hash.replace('#', '');
+  var params = new URLSearchParams(window.location.search);
+  var publishedSlug = params.get('published') || '';
   if (!hash) {
     // Fallback: check query params (old format)
-    var params = new URLSearchParams(window.location.search);
     hash = params.get('scene') || '';
   }
-  if (!hash) return;
+  if (!hash && !publishedSlug) return;
   
   // Check if it's a preset scene name (e.g. "cyberpunk-city")
   var sceneName = hash.replace(/-/g, ' ').toLowerCase();
-  if (typeof getSceneCommands === 'function') {
+  if (hash && typeof getSceneCommands === 'function') {
     var presetCmds = getSceneCommands(sceneName);
     // Check if it returned a real preset (not the default fallback)
     var isPreset = presetCmds && !(presetCmds.length === 3 && presetCmds[0] === 'add 5 trees');
@@ -15088,8 +15201,26 @@ function loadSharedScene() {
   }
   
   // Try decoding as a shared scene
-  var decoded = decompressScene(hash);
+  var decoded = hash ? decompressScene(hash) : null;
   if (decoded) {
+    try {
+      var parsedProject = JSON.parse(decoded);
+      if (parsedProject && (Array.isArray(parsedProject.objects) || Array.isArray(parsedProject.commands))) {
+        var projectCommands = Array.isArray(parsedProject.commands) ? parsedProject.commands.length : 0;
+        var projectObjects = Array.isArray(parsedProject.objects) ? parsedProject.objects.length : 0;
+        logOutput('info', 'Loading published project (' + projectObjects + ' objects, ' + projectCommands + ' commands)...');
+        showRemixBanner(projectCommands || projectObjects);
+        deserializeScene(decoded);
+        window._lastSharedSceneLoad = {
+          status: 'project',
+          objects: projectObjects,
+          commands: projectCommands,
+          slug: publishedSlug || params.get('scene') || '',
+          loadedAt: Date.now()
+        };
+        return;
+      }
+    } catch(e) {}
     var commands = decoded.split('|').filter(function(c) { return c.trim(); });
     if (commands.length > 0) {
       logOutput('info', '🔗 Loading shared scene (' + commands.length + ' commands)...');
@@ -15100,7 +15231,28 @@ function loadSharedScene() {
       return;
     }
   }
+
+  if (publishedSlug) {
+    var game = getPublishedGamesLibrary().find(function(item) { return item && item.slug === publishedSlug; });
+    if (game && game.projectData) {
+      logOutput('info', 'Loading local published game: ' + (game.title || publishedSlug));
+      showRemixBanner(game.commands || game.objects || 0);
+      deserializeScene(game.projectData);
+      window._lastSharedSceneLoad = {
+        status: 'local-published',
+        objects: game.objects || 0,
+        commands: game.commands || 0,
+        slug: publishedSlug,
+        loadedAt: Date.now()
+      };
+      return;
+    }
+  }
 }
+
+window._loadSharedScene = loadSharedScene;
+window._compressScene = compressScene;
+window._decompressScene = decompressScene;
 
 function showRemixBanner(cmdCount) {
   var banner = document.createElement('div');
@@ -15906,6 +16058,12 @@ window._showImportExport = function(tab) {
           </button>
           <button id="ie-export-playable" onclick="if(window._exportPlayablePackage)window._exportPlayablePackage();this.closest('#ie-modal').remove()" style="padding:12px;background:#10251a;border:1px solid #2f7d4b;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>Playable Web Package</strong><br><span style="color:#8ecfa4;font-size:0.75rem">Single HTML with embedded project data, runtime controls, and asset-host links</span>
+          </button>
+          <button id="ie-export-publish" onclick="if(window._publishLocalGame)window._publishLocalGame({title:'Untitled Game'}).then(function(){if(window._showPublishedGames)window._showPublishedGames();});this.closest('#ie-modal').remove()" style="padding:12px;background:#13233a;border:1px solid #3b82f6;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>Publish to Game Library</strong><br><span style="color:#93c5fd;font-size:0.75rem">Create a playable public link and save it in your published games list</span>
+          </button>
+          <button id="ie-export-library" onclick="if(window._showPublishedGames)window._showPublishedGames();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>Published Games</strong><br><span style="color:#666;font-size:0.75rem">Manage copied links, slugs, and local published builds</span>
           </button>
           <button id="ie-export-crate" onclick="if(window._exportCrateFile)window._exportCrateFile();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>📦 Download .crate File</strong><br><span style="color:#666;font-size:0.75rem">JSON scene file — share with other Crate Engine users</span>
