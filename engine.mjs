@@ -14993,6 +14993,22 @@ function renderPublishedGameRows(games, source) {
   }).join('');
 }
 
+function filterPublishedGames(games, query) {
+  var needle = String(query || '').trim().toLowerCase();
+  if (!needle) return games.slice();
+  return games.filter(function(game) {
+    var haystack = [
+      game?.title,
+      game?.slug,
+      game?.description,
+      Array.isArray(game?.tags) ? game.tags.join(' ') : game?.tags,
+      game?.source,
+      game?.cloudStatus,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.indexOf(needle) >= 0;
+  });
+}
+
 async function loadPublishedGameIntoEditor(game, source) {
   if (!game) throw new Error('Published game is missing.');
   var slug = game.slug || '';
@@ -15123,23 +15139,61 @@ function showPublishedGamesLibrary() {
   var modal = document.createElement('div');
   modal.id = 'published-games-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:100006;display:flex;align-items:center;justify-content:center;font-family:JetBrains Mono,monospace';
-  var localRows = renderPublishedGameRows(games, 'local');
+  var cloudGames = [];
   modal.innerHTML = '<div style="width:min(720px,94vw);max-height:86vh;overflow:auto;background:#090d10;border:1px solid #2d3a42;border-radius:14px;padding:18px">' +
     '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px"><div><div style="color:#fff;font-size:18px;font-weight:700">Published Games</div><div style="color:#7d8c94;font-size:12px">Cloud games from CrateShip plus portable links saved on this browser.</div></div><div style="display:flex;gap:8px;align-items:center"><button id="published-refresh" style="padding:8px 10px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer;font-size:12px">Refresh Cloud</button><button id="published-close" style="background:none;border:0;color:#7d8c94;font-size:24px;cursor:pointer">x</button></div></div>' +
+    '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px"><input id="published-search" placeholder="Search published games" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #263238;border-radius:8px;background:#05080a;color:#e7eef2;font-size:12px"><div id="published-source-filters" style="display:flex;gap:6px"><button data-published-source-filter="all" style="padding:8px 9px;border:1px solid #2d3a42;border-radius:7px;background:#7ddf9e;color:#061009;font-size:11px;font-weight:700;cursor:pointer">All</button><button data-published-source-filter="cloud" style="padding:8px 9px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;font-size:11px;cursor:pointer">Cloud</button><button data-published-source-filter="local" style="padding:8px 9px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;font-size:11px;cursor:pointer">Browser</button></div></div>' +
+    '<div id="published-filter-summary" style="min-height:16px;color:#8fa0a8;font-size:11px;margin-bottom:6px"></div>' +
     '<div id="published-library-status" style="min-height:16px;color:#8fa0a8;font-size:11px;margin-bottom:10px"></div>' +
-    '<div style="color:#7d8c94;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">Cloud Library</div>' +
-    '<div id="published-cloud-list" data-status="loading" style="min-height:42px"><div style="color:#77838a;padding:16px;border:1px dashed #263238;border-radius:10px;text-align:center">Loading cloud games...</div></div>' +
-    '<div style="color:#7d8c94;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">This Browser</div>' +
-    '<div id="published-local-list">' + localRows + '</div>' +
+    '<div id="published-cloud-section"><div style="color:#7d8c94;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">Cloud Library</div>' +
+    '<div id="published-cloud-list" data-status="loading" style="min-height:42px"><div style="color:#77838a;padding:16px;border:1px dashed #263238;border-radius:10px;text-align:center">Loading cloud games...</div></div></div>' +
+    '<div id="published-local-section"><div style="color:#7d8c94;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">This Browser</div>' +
+    '<div id="published-local-list"></div></div>' +
     '</div>';
   document.body.appendChild(modal);
   document.getElementById('published-close').onclick = function() { modal.remove(); };
+  modal.dataset.publishedActiveSource = 'all';
+  function applyPublishedFilters() {
+    var query = modal.querySelector('#published-search')?.value || '';
+    var sourceFilter = modal.dataset.publishedActiveSource || 'all';
+    var cloudSection = modal.querySelector('#published-cloud-section');
+    var localSection = modal.querySelector('#published-local-section');
+    var cloudList = modal.querySelector('#published-cloud-list');
+    var localList = modal.querySelector('#published-local-list');
+    var summary = modal.querySelector('#published-filter-summary');
+    var filteredCloud = filterPublishedGames(cloudGames, query);
+    var filteredLocal = filterPublishedGames(games, query);
+    if (cloudSection) cloudSection.style.display = sourceFilter === 'local' ? 'none' : '';
+    if (localSection) localSection.style.display = sourceFilter === 'cloud' ? 'none' : '';
+    modal.querySelectorAll('[data-published-source-filter]').forEach(function(button) {
+      var active = button.dataset.publishedSourceFilter === sourceFilter;
+      button.style.background = active ? '#7ddf9e' : '#121a20';
+      button.style.color = active ? '#061009' : '#e7eef2';
+      button.style.fontWeight = active ? '700' : '400';
+    });
+    if (cloudList && cloudList.dataset.status === 'loaded') cloudList.innerHTML = renderPublishedGameRows(filteredCloud, 'cloud');
+    if (localList) localList.innerHTML = renderPublishedGameRows(filteredLocal, 'local');
+    window._lastPublishedFilter = {
+      query: String(query || '').trim().toLowerCase(),
+      source: sourceFilter,
+      cloudShown: filteredCloud.length,
+      localShown: filteredLocal.length,
+      cloudTotal: cloudGames.length,
+      localTotal: games.length,
+    };
+    if (summary) {
+      var visible = [];
+      if (sourceFilter !== 'local') visible.push(filteredCloud.length + ' cloud');
+      if (sourceFilter !== 'cloud') visible.push(filteredLocal.length + ' browser');
+      summary.textContent = visible.join(' / ') + ' shown';
+    }
+  }
   async function loadCloudList() {
     var cloudList = modal.querySelector('#published-cloud-list');
     cloudList.dataset.status = 'loading';
     cloudList.innerHTML = '<div style="color:#77838a;padding:16px;border:1px dashed #263238;border-radius:10px;text-align:center">Loading cloud games...</div>';
     try {
-      var cloudGames = await fetchCloudPublishedGames({ limit: 24 });
+      cloudGames = await fetchCloudPublishedGames({ limit: 24 });
       var lastSlug = window._lastPublishedGame?.slug || '';
       if (lastSlug && !cloudGames.some(function(game) { return game && game.slug === lastSlug; })) {
         var directGames = await fetchCloudPublishedGames({ slug: lastSlug });
@@ -15149,16 +15203,25 @@ function showPublishedGamesLibrary() {
       }
       window._lastCloudPublishedGames = cloudGames;
       cloudList.dataset.status = 'loaded';
-      cloudList.innerHTML = renderPublishedGameRows(cloudGames, 'cloud');
+      applyPublishedFilters();
     } catch(e) {
+      cloudGames = [];
       window._lastCloudPublishedGames = [];
       cloudList.dataset.status = 'failed';
       cloudList.innerHTML = '<div style="color:#f59e0b;padding:16px;border:1px dashed #5a3a12;border-radius:10px;text-align:center">Cloud library unavailable: ' + escapeProjectHtml(e?.message || String(e || 'Unknown error')) + '</div>';
+      applyPublishedFilters();
     }
   }
   document.getElementById('published-refresh').onclick = loadCloudList;
+  modal.querySelector('#published-search')?.addEventListener('input', applyPublishedFilters);
   modal.addEventListener('click', function(e) {
     if (e.target === modal) { modal.remove(); return; }
+    var filterButton = e.target.closest('[data-published-source-filter]');
+    if (filterButton) {
+      modal.dataset.publishedActiveSource = filterButton.dataset.publishedSourceFilter || 'all';
+      applyPublishedFilters();
+      return;
+    }
     var loadButton = e.target.closest('[data-publish-load]');
     if (loadButton) {
       var slug = loadButton.dataset.publishLoad || '';
@@ -15192,6 +15255,7 @@ function showPublishedGamesLibrary() {
     var openButton = e.target.closest('[data-publish-open]');
     if (openButton) window.open(openButton.dataset.publishOpen, '_blank');
   });
+  applyPublishedFilters();
   loadCloudList();
   return modal;
 }
