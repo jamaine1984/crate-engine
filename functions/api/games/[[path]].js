@@ -356,12 +356,13 @@ async function ensureAuditSchema(db) {
   return true;
 }
 
-async function persistModerationAudit(context, record, entry) {
+async function persistModerationAudit(context, record, entry, index = 0) {
   const db = getAuditStore(context.env);
   if (!db?.prepare || !record?.slug || !entry) return { ok: false, source: 'kv-only' };
   const clean = cleanAuditEvent(entry, 0);
   await ensureAuditSchema(db);
-  const id = clean.id || `${record.slug}:${clean.at}:${crypto.randomUUID()}`;
+  const rawId = cleanText(entry.id || '', 96);
+  const id = rawId || `${record.slug}:${clean.at || 'unknown'}:${index}:${clean.fields.join('-') || clean.action}`;
   await db.prepare(`INSERT OR REPLACE INTO moderation_audit
     (id, slug, at, actor, admin_id, admin_name, admin_role, action, fields_json, changes_json, note, title, visibility, moderation_status, featured)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -682,6 +683,62 @@ async function listGames(context) {
   });
 }
 
+async function backfillAdminAudit(context) {
+  const store = getStore(context.env);
+  if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
+  const adminAuth = await adminAuthorization(context);
+  if (!adminAuth) {
+    return json({ ok: false, error: 'Admin authorization is required to backfill moderation audit history.' }, { status: 403 });
+  }
+  if (cleanAdminRole(adminAuth.admin?.role) !== 'admin') {
+    return json({ ok: false, error: 'Only admin role can backfill moderation audit history.' }, { status: 403 });
+  }
+  const db = getAuditStore(context.env);
+  if (!db?.prepare) return json({ ok: false, error: 'CRATE_AUDIT D1 binding is not configured.' }, { status: 503 });
+  await ensureAuditSchema(db);
+
+  const url = new URL(context.request.url);
+  const limit = cleanLimit(url.searchParams.get('limit'), 50);
+  const cursorParam = cleanText(url.searchParams.get('cursor') || '', 512);
+  const dryRun = url.searchParams.get('dryRun') === 'true';
+  const batch = await store.list({
+    prefix: GAME_PREFIX,
+    limit,
+    ...(cursorParam ? { cursor: cursorParam } : {}),
+  });
+
+  let scanned = 0;
+  let auditEvents = 0;
+  let written = 0;
+  const games = [];
+  for (const key of batch.keys || []) {
+    const slug = key.name.replace(GAME_PREFIX, '');
+    const record = await store.get(key.name, 'json');
+    scanned += 1;
+    const events = Array.isArray(record?.auditTrail) ? record.auditTrail.filter(Boolean) : [];
+    auditEvents += events.length;
+    games.push({ slug, events: events.length });
+    if (dryRun) continue;
+    for (let index = 0; index < events.length; index += 1) {
+      await persistModerationAudit(context, record, events[index], index);
+      written += 1;
+    }
+  }
+
+  return json({
+    ok: true,
+    admin: adminAuth.admin,
+    scanned,
+    auditEvents,
+    written,
+    dryRun,
+    games,
+    cursor: batch.list_complete ? null : batch.cursor || null,
+    listComplete: !!batch.list_complete || !batch.cursor,
+    source: 'kv-to-d1',
+  });
+}
+
 function adminGameFromMetadata(key, origin) {
   const slug = key.metadata?.slug || key.name.replace(GAME_PREFIX, '');
   const visibility = cleanVisibility(key.metadata?.visibility);
@@ -995,6 +1052,9 @@ export async function onRequest(context) {
     }
     if (context.request.method === 'GET' && parts.length === 3 && parts[0] === 'admin' && parts[1] === 'audit') {
       return getAdminAudit(context, parts[2]);
+    }
+    if (context.request.method === 'POST' && parts.length === 3 && parts[0] === 'admin' && parts[1] === 'audit' && parts[2] === 'backfill') {
+      return backfillAdminAudit(context);
     }
     if (context.request.method === 'GET' && parts.length === 0) {
       return listGames(context);

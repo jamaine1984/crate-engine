@@ -1053,24 +1053,36 @@ async function runBrowserSmoke() {
     const adminAuditBlockedResponse = await fetch(new URL('/api/games/admin/audit/production-smoke-published-game?limit=5', baseUrl).href, {
       headers: { Accept: 'application/json' },
     });
+    const adminAuditBackfillBlockedResponse = await fetch(new URL('/api/games/admin/audit/backfill?dryRun=true', baseUrl).href, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    });
     let adminBlockedPayload = {};
     let adminAuditBlockedPayload = {};
+    let adminAuditBackfillBlockedPayload = {};
     try {
       adminBlockedPayload = await adminBlockedResponse.json();
     } catch {}
     try {
       adminAuditBlockedPayload = await adminAuditBlockedResponse.json();
     } catch {}
+    try {
+      adminAuditBackfillBlockedPayload = await adminAuditBackfillBlockedResponse.json();
+    } catch {}
     const adminGuardState = {
       blockedStatus: adminBlockedResponse.status,
       blockedError: adminBlockedPayload?.error || '',
       auditBlockedStatus: adminAuditBlockedResponse.status,
       auditBlockedError: adminAuditBlockedPayload?.error || '',
+      auditBackfillBlockedStatus: adminAuditBackfillBlockedResponse.status,
+      auditBackfillBlockedError: adminAuditBackfillBlockedPayload?.error || '',
     };
     if (adminGuardState.blockedStatus !== 403 ||
         !/admin authorization/i.test(adminGuardState.blockedError) ||
         adminGuardState.auditBlockedStatus !== 403 ||
-        !/admin authorization/i.test(adminGuardState.auditBlockedError)) {
+        !/admin authorization/i.test(adminGuardState.auditBlockedError) ||
+        adminGuardState.auditBackfillBlockedStatus !== 403 ||
+        !/admin authorization/i.test(adminGuardState.auditBackfillBlockedError)) {
       throw new Error(`Admin moderation API guard failed: ${JSON.stringify(adminGuardState)}`);
     }
 
@@ -2021,6 +2033,7 @@ async function runBrowserSmoke() {
     state.gameDetailHasStats = gameDetailState.hasStats;
     state.adminApiGuardStatus = adminGuardState.blockedStatus;
     state.adminAuditApiGuardStatus = adminGuardState.auditBlockedStatus;
+    state.adminAuditBackfillGuardStatus = adminGuardState.auditBackfillBlockedStatus;
     state.adminDashboardStatus = adminDashboardState.status;
     state.adminDashboardHasTokenInput = adminDashboardState.hasTokenInput;
     state.adminDashboardHasControls = adminDashboardState.hasControls;
@@ -2252,6 +2265,7 @@ async function runBrowserSmoke() {
         !state.gameDetailRemixHref.includes('/play?published=production-smoke-published-game') ||
         state.adminApiGuardStatus !== 403 ||
         state.adminAuditApiGuardStatus !== 403 ||
+        state.adminAuditBackfillGuardStatus !== 403 ||
         state.adminDashboardStatus !== 'locked' ||
         !state.adminDashboardHasTokenInput ||
         !state.adminDashboardHasControls ||
@@ -2375,7 +2389,7 @@ console.log(`Published metadata: creator ${browserState.publishedDetailCreatorNa
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
 console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games, admin featured ${(browserState.marketplaceDiscoveryAdminFeaturedSlugs || []).length}`);
 console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components, featured ${browserState.gameDetailFeatured ? 'yes' : 'no'})`);
-console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
+console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, backfill guard ${browserState.adminAuditBackfillGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);
