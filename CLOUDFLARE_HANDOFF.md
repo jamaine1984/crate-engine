@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `0f0789cf`
+- Current deployed source commit for the public engine code: `5fefd03b`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -27,10 +27,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `3e04786d-eb8c-4ee0-b524-7be1b637df9f`
-- Latest production deployment URL: `https://3e04786d.crateship-games.pages.dev`
+- Latest production deployment ID: `10d6f2e4-33a0-4b96-9ed9-9fb63c3185f4`
+- Latest production deployment URL: `https://10d6f2e4.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `0f0789c`
+- Source shown by Cloudflare: `5fefd03`
 - Main live page bundle after the deploy: `/assets/play-ovN8zwhf.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -907,6 +907,35 @@ Follow-up production deploys on 2026-05-19 added admin-featured game curation me
   - Smoke URL was `https://crateshipgames.com/play?verify=featured-curation-0f0789cf`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-featured-curation-0f0789cf.png`.
 
+Follow-up production deploys on 2026-05-19 added the admin moderation dashboard:
+
+- `admin.html`
+  - Added a dedicated Published Game Moderation dashboard.
+  - Uses the same browser-local admin token key as the Published Games modal: `crate_publish_admin_token`.
+  - Shows moderation totals for total, listed, unlisted, hidden, featured, and owner-managed games.
+  - Provides search, status filter, sort controls, and row actions for Feature/Unfeature, List/Unlist, Hide/Restore, Details, and Open.
+  - Exposes `window._crateAdminDashboard` for production smoke verification without exposing token values.
+- `functions/api/games/[[path]].js`
+  - Added admin-only `GET /api/games/admin/list`.
+  - Returns metadata-only rows plus counts, filtering, sorting, paging, featured state, moderation state, and last audit fields.
+  - Keeps unauthenticated admin-list requests blocked with `403`.
+  - Stores compact admin audit entries in each KV record when admin changes visibility, moderation status, or featured state.
+- `vite.config.mjs`
+  - Added `admin.html` as a Vite build input so it ships with the static app.
+- `scripts/smoke-production.mjs`
+  - Verifies `/admin.html` returns `200 text/html` on the custom domain.
+  - Verifies `/api/games/admin/list` returns `403` without an admin token.
+  - Verifies the dashboard renders the locked state with token, filter, sort, refresh, save, clear, table, and Review Queue controls.
+  - Supports optional `CRATE_SMOKE_ADMIN_TOKEN`; when provided, the smoke logs into the dashboard and verifies the smoke game appears in the admin list.
+- Final app deployment `10d6f2e4-33a0-4b96-9ed9-9fb63c3185f4`
+  - Source `5fefd03`; bundle stayed `/assets/play-ovN8zwhf.js` because this pass did not change the engine runtime bundle.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; `.deploy` had no `/models` or `/textures` and did include `admin.html`.
+  - The app upload uploaded `2` changed files, reused `107` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, inline HTML script parsing for `admin.html`, `marketplace.html`, and `game.html`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Admin moderation: API guard 403, dashboard locked, controls ready`.
+  - Smoke URL was `https://crateshipgames.com/play?verify=admin-moderation-5fefd03b`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-moderation-5fefd03b.png`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -1125,6 +1154,8 @@ Expected current results:
 - The Published Games cloud detail panel exposes a Feature/Unfeature control when a Cloudflare admin token is saved in the modal.
 - `/marketplace.html` exposes the public Published Games browser backed by `/api/games`, supports Featured Builds, Recent Publishes, Top Systems, search, tag/category filters, sorting, pagination, and detail links, and unlisted games are excluded from that public browser.
 - `/game.html?slug=<published-game-slug>` loads a public game detail page from `/api/games/<slug>` with Play Game, Open in Engine, and Featured status.
+- `/admin.html` loads the Published Game Moderation dashboard, stays locked without the Cloudflare admin token, and uses `GET /api/games/admin/list` plus existing `PATCH /api/games/<slug>` actions for admin moderation.
+- `GET /api/games/admin/list` returns `403` without admin authorization and returns metadata-only rows with counts, filters, sorting, featured status, moderation status, and last audit fields when authorized.
 
 Browser verification history:
 
@@ -1662,6 +1693,20 @@ Browser verification history:
   - Smoke verified `Marketplace discovery: loaded 3 cards from 1 games, admin featured 0`.
   - Smoke verified `Game detail: production-smoke-published-game by Production Smoke Creator (411 objects, 14 components, featured no)`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-featured-curation-0f0789cf.png`.
+- Final custom-domain verification after deployment `10d6f2e4-33a0-4b96-9ed9-9fb63c3185f4`:
+  - Cloudflare source showed `5fefd03`.
+  - `/play?verify=admin-moderation-5fefd03b` served `/assets/play-ovN8zwhf.js`.
+  - `/play?verify=admin-moderation-5fefd03b` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/admin.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories and did include `admin.html`.
+  - The deploy uploaded `2` changed files, reused `107` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, inline HTML script parsing, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified unauthenticated `GET /api/games/admin/list` returned `403`.
+  - Smoke verified `/admin.html` rendered the locked dashboard with token, filter, sort, refresh, save, clear, table, and Review Queue controls.
+  - Smoke verified `Admin moderation: API guard 403, dashboard locked, controls ready`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-moderation-5fefd03b.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1697,6 +1742,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+5fefd03b Add published game moderation dashboard
 0f0789cf Add featured game curation metadata
 1255806e Add published game discovery rails
 f60bb86e Add published game detail pages
@@ -1777,6 +1823,7 @@ M  .gitignore
 M  _headers
 A  _routes.json
 A  404.html
+A  admin.html
 A  asset-url.mjs
 A  functions/api/games/[[path]].js
 A  game-builder-ui.mjs
@@ -1797,7 +1844,7 @@ does not change the public website bundle unless it is intentionally deployed.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Continue productizing the publish system: connect real signed-in owner
-   accounts, add a moderation queue, add a featured-game audit trail, and build
-   a dedicated admin moderation dashboard instead of relying only on the modal.
+   accounts, add account-based admin roles, move longer audit history to D1, and
+   add review notes/reasons for hide, restore, feature, and unfeature actions.
 5. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and export/import hardening.
