@@ -739,6 +739,71 @@ async function backfillAdminAudit(context) {
   });
 }
 
+async function verifyAdminAuditStore(context) {
+  const adminAuth = await adminAuthorization(context);
+  if (!adminAuth) {
+    return json({ ok: false, error: 'Admin authorization is required to verify moderation audit storage.' }, { status: 403 });
+  }
+  if (cleanAdminRole(adminAuth.admin?.role) !== 'admin') {
+    return json({ ok: false, error: 'Only admin role can verify moderation audit storage.' }, { status: 403 });
+  }
+  const db = getAuditStore(context.env);
+  if (!db?.prepare) return json({ ok: false, error: 'CRATE_AUDIT D1 binding is not configured.' }, { status: 503 });
+  await ensureAuditSchema(db);
+
+  const now = new Date().toISOString();
+  const probeId = `audit-probe:${crypto.randomUUID()}`;
+  const probeSlug = '__audit_probe__';
+  let inserted = false;
+  let deleted = false;
+
+  try {
+    await db.prepare(`INSERT OR REPLACE INTO moderation_audit
+      (id, slug, at, actor, admin_id, admin_name, admin_role, action, fields_json, changes_json, note, title, visibility, moderation_status, featured)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(
+        probeId,
+        probeSlug,
+        now,
+        'admin',
+        adminAuth.admin?.id || '',
+        adminAuth.admin?.name || 'Admin',
+        adminAuth.admin?.role || 'admin',
+        'audit-storage-probe',
+        JSON.stringify(['d1']),
+        JSON.stringify([{ field: 'd1', before: 'unverified', after: 'verified' }]),
+        'Temporary audit storage probe.',
+        'Audit storage probe',
+        'unlisted',
+        'hidden',
+        0
+      ).run();
+
+    const row = await db.prepare('SELECT id, slug, action FROM moderation_audit WHERE id = ?')
+      .bind(probeId)
+      .first();
+    inserted = row?.id === probeId && row?.slug === probeSlug && row?.action === 'audit-storage-probe';
+  } finally {
+    try {
+      await db.prepare('DELETE FROM moderation_audit WHERE id = ?').bind(probeId).run();
+      const remaining = await db.prepare('SELECT id FROM moderation_audit WHERE id = ?').bind(probeId).first();
+      deleted = !remaining;
+    } catch (err) {}
+  }
+
+  const writeVerified = inserted && deleted;
+  return json({
+    ok: writeVerified,
+    admin: adminAuth.admin,
+    source: 'd1',
+    mode: 'temporary-probe',
+    probeSlug,
+    inserted,
+    deleted,
+    writeVerified,
+  }, writeVerified ? {} : { status: 500 });
+}
+
 function adminGameFromMetadata(key, origin) {
   const slug = key.metadata?.slug || key.name.replace(GAME_PREFIX, '');
   const visibility = cleanVisibility(key.metadata?.visibility);
@@ -1052,6 +1117,9 @@ export async function onRequest(context) {
     }
     if (context.request.method === 'GET' && parts.length === 3 && parts[0] === 'admin' && parts[1] === 'audit') {
       return getAdminAudit(context, parts[2]);
+    }
+    if (context.request.method === 'POST' && parts.length === 3 && parts[0] === 'admin' && parts[1] === 'audit' && parts[2] === 'verify') {
+      return verifyAdminAuditStore(context);
     }
     if (context.request.method === 'POST' && parts.length === 3 && parts[0] === 'admin' && parts[1] === 'audit' && parts[2] === 'backfill') {
       return backfillAdminAudit(context);
