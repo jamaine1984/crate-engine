@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `1255806e`
+- Current deployed source commit for the public engine code: `0f0789cf`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -27,11 +27,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `ab9765be-0bbb-4cbf-9bf0-f26d11049844`
-- Latest production deployment URL: `https://ab9765be.crateship-games.pages.dev`
+- Latest production deployment ID: `3e04786d-eb8c-4ee0-b524-7be1b637df9f`
+- Latest production deployment URL: `https://3e04786d.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `1255806`
-- Main live page bundle after the deploy: `/assets/play-jPFx6JZK.js`
+- Source shown by Cloudflare: `0f0789c`
+- Main live page bundle after the deploy: `/assets/play-ovN8zwhf.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -877,6 +877,36 @@ Follow-up production deploys on 2026-05-19 added public marketplace discovery ra
   - Production smoke verified `Marketplace discovery: loaded 3 cards from 1 games`.
   - Production smoke still verified marketplace filters, public game details, published metadata, owner/delete guardrails, clean cloud link loading, playable export, all live gameplay systems, and remote asset-host checks.
 
+Follow-up production deploys on 2026-05-19 added admin-featured game curation metadata:
+
+- `functions/api/games/[[path]].js`
+  - Added `featured` and `featuredAt` fields to published-game records, KV metadata, public list responses, and game detail responses.
+  - Preserves existing featured state when a game is republished.
+  - Requires Cloudflare admin authorization for featured changes; owner tokens can still update safe owner metadata but get `403` when trying to feature a game.
+- `marketplace.html`
+  - Featured Builds now puts admin-featured games first, then falls back to the existing richness score when no admin picks exist.
+  - Added a compact Featured badge for promoted games on cards and rail rows.
+  - Expanded `window._cratePublishedDiscovery` with admin-featured slugs and featured flags for smoke verification.
+- `game.html`
+  - Public game detail pages now show Featured status and expose it through `window._crateGameDetail`.
+- `engine.mjs`
+  - Published Games cloud detail panel now shows Featured status and a Feature/Unfeature admin button.
+  - The admin token field already stored in the Published Games modal is used through `X-Crate-Admin-Token`.
+- `scripts/smoke-production.mjs`
+  - Verifies owner-token attempts to set `featured` are blocked with `403`.
+  - Verifies the Published Games detail panel includes the featured curation control.
+  - Logs featured state on marketplace discovery and public game detail smoke output.
+- Final app deployment `3e04786d-eb8c-4ee0-b524-7be1b637df9f`
+  - Source `0f0789c`; bundle `/assets/play-ovN8zwhf.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; `.deploy` had no `/models` or `/textures`.
+  - The app upload uploaded `8` changed files, reused `99` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, inline HTML script parsing for `marketplace.html` and `game.html`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Published metadata: creator Production Smoke Creator, visibility public, unlisted guard 200/unlisted, featured guard 403, featured toggle ready`.
+  - Production smoke verified `Marketplace discovery: loaded 3 cards from 1 games, admin featured 0`.
+  - Production smoke verified `Game detail: production-smoke-published-game by Production Smoke Creator (411 objects, 14 components, featured no)`.
+  - Smoke URL was `https://crateshipgames.com/play?verify=featured-curation-0f0789cf`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-featured-curation-0f0789cf.png`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -1091,8 +1121,10 @@ Expected current results:
 - Missing asset-host model paths return `404 Not Found`, not `200 text/html`.
 - The Published Games modal exposes search/filter, row Edit, row Details, creator/admin settings, detail-panel Duplicate, List/Unlist, and guarded Delete/Remove controls.
 - The published-game API marks owner-managed records, blocks unmanaged deletes with `403`, accepts matching owner-token deletes with `200`, returns `404` after successful delete, and supports owner-token metadata updates with public/unlisted visibility.
+- The published-game API exposes `featured` and `featuredAt`, requires admin authorization for featured changes, and blocks owner-token-only featured updates with `403`.
+- The Published Games cloud detail panel exposes a Feature/Unfeature control when a Cloudflare admin token is saved in the modal.
 - `/marketplace.html` exposes the public Published Games browser backed by `/api/games`, supports Featured Builds, Recent Publishes, Top Systems, search, tag/category filters, sorting, pagination, and detail links, and unlisted games are excluded from that public browser.
-- `/game.html?slug=<published-game-slug>` loads a public game detail page from `/api/games/<slug>` with Play Game and Open in Engine actions.
+- `/game.html?slug=<published-game-slug>` loads a public game detail page from `/api/games/<slug>` with Play Game, Open in Engine, and Featured status.
 
 Browser verification history:
 
@@ -1616,6 +1648,20 @@ Browser verification history:
   - Smoke verified `Marketplace discovery: loaded 3 cards from 1 games`.
   - Smoke still verified marketplace search/tag/sort/pagination/detail link, public game detail page, published metadata, owner/delete guardrails, cloud clean-link loading, playable export, all live gameplay systems, and remote asset-host checks.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-discovery-rails-1255806e.png`.
+- Final custom-domain verification after deployment `3e04786d-eb8c-4ee0-b524-7be1b637df9f`:
+  - Cloudflare source showed `0f0789c`.
+  - `/play?verify=featured-curation-0f0789cf` served `/assets/play-ovN8zwhf.js`.
+  - `/play?verify=featured-curation-0f0789cf` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - The deploy uploaded `8` changed files, reused `99` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, inline HTML script parsing, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified owner-token-only featured updates are blocked with `403` and the cloud detail panel exposes the featured curation button.
+  - Smoke verified `Published metadata: creator Production Smoke Creator, visibility public, unlisted guard 200/unlisted, featured guard 403, featured toggle ready`.
+  - Smoke verified `Marketplace discovery: loaded 3 cards from 1 games, admin featured 0`.
+  - Smoke verified `Game detail: production-smoke-published-game by Production Smoke Creator (411 objects, 14 components, featured no)`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-featured-curation-0f0789cf.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1651,6 +1697,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+0f0789cf Add featured game curation metadata
 1255806e Add published game discovery rails
 f60bb86e Add published game detail pages
 1eb0e04d Add marketplace game discovery filters
@@ -1750,7 +1797,7 @@ does not change the public website bundle unless it is intentionally deployed.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Continue productizing the publish system: connect real signed-in owner
-   accounts, add a moderation queue, and add manual featured curation controls
-   for the public Published Games browser.
+   accounts, add a moderation queue, add a featured-game audit trail, and build
+   a dedicated admin moderation dashboard instead of relying only on the modal.
 5. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and export/import hardening.
