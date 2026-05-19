@@ -1,13 +1,15 @@
 const MAX_BODY_BYTES = 900000;
 const MAX_TITLE_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 1200;
+const MAX_CREATOR_LENGTH = 80;
+const MAX_CREATOR_URL_LENGTH = 220;
 const MAX_TAGS = 12;
 const GAME_PREFIX = 'game:';
 
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Crate-Owner-Token, X-Crate-Admin-Token',
     'Access-Control-Max-Age': '86400',
   };
@@ -49,6 +51,36 @@ function cleanTags(tags) {
     .filter(Boolean)
     .filter((tag, index, arr) => arr.indexOf(tag) === index)
     .slice(0, MAX_TAGS);
+}
+
+function cleanVisibility(value) {
+  const normalized = cleanText(value || 'public', 24).toLowerCase();
+  return normalized === 'unlisted' ? 'unlisted' : 'public';
+}
+
+function cleanModerationStatus(value) {
+  const normalized = cleanText(value || 'active', 24).toLowerCase();
+  return normalized === 'hidden' ? 'hidden' : 'active';
+}
+
+function cleanCreator(value = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const website = cleanText(source.website || source.url || '', MAX_CREATOR_URL_LENGTH);
+  let cleanWebsite = '';
+  if (website) {
+    try {
+      const parsed = new URL(website);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') cleanWebsite = parsed.href.slice(0, MAX_CREATOR_URL_LENGTH);
+    } catch {}
+  }
+  return {
+    name: cleanText(source.name || source.displayName || '', MAX_CREATOR_LENGTH),
+    website: cleanWebsite,
+  };
+}
+
+function isListVisible(record) {
+  return record && cleanVisibility(record.visibility) === 'public' && cleanModerationStatus(record.moderationStatus) === 'active';
 }
 
 function keyForSlug(slug) {
@@ -142,6 +174,7 @@ function summarizeProject(projectData) {
 }
 
 function publicGameSummary(record) {
+  const creator = cleanCreator(record.creator);
   return {
     format: record.format,
     version: record.version,
@@ -160,6 +193,10 @@ function publicGameSummary(record) {
     updatedAt: record.updatedAt,
     source: record.source,
     ownerManaged: !!record.ownerHash,
+    creatorName: creator.name,
+    creatorUrl: creator.website,
+    visibility: cleanVisibility(record.visibility),
+    moderationStatus: cleanModerationStatus(record.moderationStatus),
   };
 }
 
@@ -199,6 +236,10 @@ async function publishGame(context) {
   }
   const ownerToken = cleanToken(payload.ownerToken || '');
   const ownerHash = ownerToken ? await hashToken(ownerToken) : (existing?.ownerHash || '');
+  const creator = cleanCreator(payload.creator || {
+    name: payload.creatorName,
+    website: payload.creatorUrl || payload.creatorWebsite,
+  });
   const projectSummary = projectData ? summarizeProject(projectData) : {};
   const now = new Date().toISOString();
   const origin = new URL(context.request.url).origin;
@@ -226,6 +267,9 @@ async function publishGame(context) {
     assetBaseUrl: payload.assetBaseUrl || 'https://crateship-games-assets.pages.dev',
     source: 'cloudflare-pages-kv',
     ownerHash,
+    creator: creator.name || creator.website ? creator : (existing?.creator || { name: '', website: '' }),
+    visibility: cleanVisibility(payload.visibility || existing?.visibility || 'public'),
+    moderationStatus: cleanModerationStatus(existing?.moderationStatus || 'active'),
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -239,6 +283,9 @@ async function publishGame(context) {
       components: record.components,
       updatedAt: now,
       ownerManaged: !!record.ownerHash,
+      creatorName: record.creator?.name || '',
+      visibility: record.visibility,
+      moderationStatus: record.moderationStatus,
     },
   });
 
@@ -252,6 +299,10 @@ async function getGame(context, slug) {
   if (!cleanSlug) return json({ ok: false, error: 'Missing game slug.' }, { status: 400 });
   const record = await store.get(keyForSlug(cleanSlug), 'json');
   if (!record) return json({ ok: false, error: 'Game not found.' }, { status: 404 });
+  if (cleanModerationStatus(record.moderationStatus) === 'hidden') {
+    const auth = await authorizeManagedGame(context, record);
+    if (!auth.ok) return json({ ok: false, error: 'Game not found.' }, { status: 404 });
+  }
   return json({ ok: true, game: publicGameDetails(record) }, { cacheControl: 'public, max-age=30' });
 }
 
@@ -264,7 +315,7 @@ async function listGames(context) {
     const record = await store.get(keyForSlug(requestedSlug), 'json');
     return json({
       ok: true,
-      games: record ? [publicGameSummary(record)] : [],
+      games: record && cleanModerationStatus(record.moderationStatus) !== 'hidden' ? [publicGameSummary(record)] : [],
       cursor: null,
       listComplete: true,
     });
@@ -272,6 +323,7 @@ async function listGames(context) {
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 24, 1), 50);
   const listed = await store.list({ prefix: GAME_PREFIX, limit });
   const games = listed.keys
+    .filter((key) => cleanVisibility(key.metadata?.visibility) === 'public' && cleanModerationStatus(key.metadata?.moderationStatus) === 'active')
     .map((key) => ({
       slug: key.metadata?.slug || key.name.replace(GAME_PREFIX, ''),
       title: key.metadata?.title || key.name.replace(GAME_PREFIX, ''),
@@ -282,9 +334,63 @@ async function listGames(context) {
       url: `${url.origin}/play?published=${encodeURIComponent(key.metadata?.slug || key.name.replace(GAME_PREFIX, ''))}`,
       source: 'cloudflare-pages-kv',
       ownerManaged: !!key.metadata?.ownerManaged,
+      creatorName: key.metadata?.creatorName || '',
+      visibility: cleanVisibility(key.metadata?.visibility),
+      moderationStatus: cleanModerationStatus(key.metadata?.moderationStatus),
     }))
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   return json({ ok: true, games, cursor: listed.cursor || null, listComplete: listed.list_complete });
+}
+
+async function updateGame(context, slug) {
+  const store = getStore(context.env);
+  if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
+  const cleanSlug = slugify(slug);
+  if (!cleanSlug) return json({ ok: false, error: 'Missing game slug.' }, { status: 400 });
+  const key = keyForSlug(cleanSlug);
+  const record = await store.get(key, 'json');
+  if (!record) return json({ ok: false, error: 'Game not found.' }, { status: 404 });
+  const payload = await readJson(context.request);
+  const auth = await authorizeManagedGame(context, record, payload);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, { status: auth.status });
+
+  if (payload.title != null) record.title = cleanText(payload.title, MAX_TITLE_LENGTH) || record.title;
+  if (payload.description != null) record.description = cleanText(payload.description, MAX_DESCRIPTION_LENGTH);
+  if (payload.tags != null) record.tags = cleanTags(payload.tags);
+  if (payload.visibility != null) record.visibility = cleanVisibility(payload.visibility);
+  if (payload.creator != null || payload.creatorName != null || payload.creatorUrl != null || payload.creatorWebsite != null) {
+    record.creator = cleanCreator(payload.creator || {
+      name: payload.creatorName,
+      website: payload.creatorUrl || payload.creatorWebsite,
+    });
+  }
+  if (payload.moderationStatus != null) {
+    if (auth.mode !== 'admin') {
+      return json({ ok: false, error: 'Admin authorization is required to change moderation status.' }, { status: 403 });
+    }
+    record.moderationStatus = cleanModerationStatus(payload.moderationStatus);
+  } else {
+    record.moderationStatus = cleanModerationStatus(record.moderationStatus);
+  }
+  record.visibility = cleanVisibility(record.visibility);
+  record.updatedAt = new Date().toISOString();
+
+  await store.put(key, JSON.stringify(record), {
+    metadata: {
+      slug: record.slug,
+      title: record.title,
+      objects: record.objects,
+      commands: record.commands,
+      components: record.components,
+      updatedAt: record.updatedAt,
+      ownerManaged: !!record.ownerHash,
+      creatorName: record.creator?.name || '',
+      visibility: record.visibility,
+      moderationStatus: record.moderationStatus,
+    },
+  });
+
+  return json({ ok: true, game: publicGameSummary(record), authorization: auth.mode });
 }
 
 async function deleteGame(context, slug) {
@@ -316,6 +422,9 @@ export async function onRequest(context) {
     }
     if (context.request.method === 'GET' && parts.length === 1) {
       return getGame(context, parts[0]);
+    }
+    if (context.request.method === 'PATCH' && parts.length === 1) {
+      return updateGame(context, parts[0]);
     }
     if (context.request.method === 'DELETE' && parts.length === 1) {
       return deleteGame(context, parts[0]);
