@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `4c8b8179`
+- Current deployed source commit for the public engine code: `face24d3`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 
@@ -26,11 +26,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `b8b2adb0-dc89-4aaf-95e8-a873ef7a72af`
-- Latest production deployment URL: `https://b8b2adb0.crateship-games.pages.dev`
+- Latest production deployment ID: `adbf2876-0a00-4da6-9948-4f2d53091739`
+- Latest production deployment URL: `https://adbf2876.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `4c8b817`
-- Main live page bundle after the deploy: `/assets/play-BBnOxDb9.js`
+- Source shown by Cloudflare: `face24d`
+- Main live page bundle after the deploy: `/assets/play-V6Rd-gpY.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -588,6 +588,26 @@ Follow-up production deploys on 2026-05-18 added NPC Dialogue and Merchant syste
   - Production smoke verified Merchant runtime: `Smoke vendor sold smoke cloak for 25 score (4 armor power)`.
   - Production smoke verified gameplay components: `merchant, npc, equipmentItem, enemySpawn, waveController, missionStep, missionReward, missionGate, door, triggerZone, pickup, checkpoint, winCondition, spawnPoint`.
 
+Follow-up production deploys on 2026-05-18 added Playable Web Package export:
+
+- `project-tools.mjs`
+  - Added `exportPlayablePackage()` to turn the current project snapshot into a single playable HTML package.
+  - The package embeds the `.crate` project data, object/component manifest, shared asset-host URL, Three.js player runtime, WASD movement, NPC dialogue, merchant purchase, pickup/equipment collection, and simple combat interaction.
+  - The export also prepares `game.crate` and `README.md` payloads in `window._lastPlayableExport` for diagnostics and future zip packaging.
+- `engine.mjs`
+  - Added a `Playable Web Package` button to the Export Scene modal.
+  - Exposed `exportAsHTML`, `exportForUnity`, `exportForUnreal`, and `_exportPlayablePackage` on `window` so inline export actions can call the module wrappers reliably.
+- `scripts/smoke-production.mjs`
+  - Requires the live export modal to include the playable package button.
+  - Calls `_exportPlayablePackage({ download:false })` on the real custom domain and fails unless the output includes embedded project data, runtime controls, NPC/merchant support, the asset-host URL, and a large enough playable HTML payload.
+- Final app deployment `adbf2876-0a00-4da6-9948-4f2d53091739`
+  - Source `face24d`; bundle `/assets/play-V6Rd-gpY.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`.
+  - The main app upload skipped bundled `/models` and `/textures`, uploaded `8` changed files, reused `97` already-uploaded files, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check project-tools.mjs`, `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Production smoke verified playable export `production-smoke-game-playable.html` with `411` objects, `14` components, and `209790` HTML bytes.
+  - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, and remote asset-host checks.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -1118,6 +1138,22 @@ Browser verification history:
   - Smoke verified Inventory runtime: `smoke blade equipped smoke blade (7 power, 22 attack, 5 items)`.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-npc-4c8b8179.png`.
+- Final custom-domain verification after deployment `adbf2876-0a00-4da6-9948-4f2d53091739`:
+  - Cloudflare source showed `face24d`.
+  - `/play?verify=export-face24d3` served `/assets/play-V6Rd-gpY.js`.
+  - `/play?verify=export-face24d3` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - The upload set changed `8` app files, reused `97` already-uploaded files, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check project-tools.mjs`, `node --check scripts/smoke-production.mjs`, `npm run check`, `npm run check:assets`, `npm run build`, and `npm run smoke:production` passed.
+  - Smoke verified Game Systems reported `inventory:Installed, hud:Ready, quest:Ready, runtime:Installed, pickups:1 tagged, equipment:1 tagged, npcs:1 tagged, merchants:1 tagged, objectives:Ready, missions:1 tagged, rewards:1 tagged, gates:1 tagged, enemySpawns:1 tagged, waves:1 tagged, checkpoints:1 tagged, win:1 tagged, doors:1 tagged, triggers:1 tagged, spawns:1 tagged, damage:Ready`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 412 objects, 2 scripts, 14 components, Edit mode`.
+  - Playable export verified `production-smoke-game-playable.html` with `411` objects, `14` components, and `209790` HTML bytes.
+  - Project load restored NPC and merchant components plus equipment, pickup, door, trigger, mission, reward, gate, enemy spawn, wave, checkpoint, win, and spawn components.
+  - Smoke verified NPC runtime: `Smoke guide said "The city needs a real quest giver." and granted smoke note`.
+  - Smoke verified Merchant runtime: `Smoke vendor sold smoke cloak for 25 score (4 armor power)`.
+  - Smoke verified Inventory runtime: `smoke blade equipped smoke blade (7 power, 22 attack, 5 items)`.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-export-face24d3.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1152,6 +1188,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+face24d3 Add playable web package export
 4c8b8179 Add NPC merchant gameplay systems
 d7df45a3 Add inventory equipment progression
 e7bc20de Add enemy wave systems
