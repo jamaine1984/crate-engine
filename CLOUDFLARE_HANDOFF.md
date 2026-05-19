@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `59900900`
+- Current deployed source commit for the public engine code: `5da8d53b`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -27,10 +27,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `355eeee0-9a64-457f-8a76-a2558c1488a1`
-- Latest production deployment URL: `https://355eeee0.crateship-games.pages.dev`
+- Latest production deployment ID: `f461b43d-8d29-493b-a9e4-3ad6d041f149`
+- Latest production deployment URL: `https://f461b43d.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `5990090`
+- Source shown by Cloudflare: `5da8d53`
 - Main live page bundle after the deploy: `/assets/play-ovN8zwhf.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -1740,6 +1740,24 @@ Browser verification history:
   - Smoke verified `Admin moderation: API guard 403, dashboard locked, controls ready, actor ready, review notes ready`.
   - Smoke still verified build-city output, separate asset-host loading, furniture placement, published game export/load, marketplace discovery, game details, mode/editor separation, and runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-identity-59900900.png`.
+- Final custom-domain verification after deployment `f461b43d-8d29-493b-a9e4-3ad6d041f149`:
+  - Cloudflare source showed `5da8d53`.
+  - `/play?verify=admin-audit-5da8d53b` served `/assets/play-ovN8zwhf.js`.
+  - `/play?verify=admin-audit-5da8d53b` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/admin.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had `111` files, no `/models` or `/textures` directories, and did include `admin.html` and `play.html`.
+  - The deploy uploaded `1` changed file, reused `108` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, inline HTML script parsing, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - `GET /api/games/admin/audit/<slug>` now returns a sanitized moderation audit timeline for authorized admins.
+  - `admin.html` now has an Audit History panel and row-level Audit buttons.
+  - The audit API uses the D1 binding `CRATE_AUDIT` when available and falls back to the KV record audit trail when D1 is not bound or has no rows.
+  - `migrations/0001_moderation_audit.sql` documents the D1 table/index schema for the future `moderation_audit` store.
+  - Smoke verified unauthenticated admin list and admin audit endpoints both returned `403`.
+  - Smoke verified `Admin moderation: API guard 403, audit guard 403, dashboard locked, controls ready, actor ready, audit panel ready, review notes ready`.
+  - Smoke still verified build-city output, separate asset-host loading, furniture placement, published game export/load, marketplace discovery, game details, mode/editor separation, and runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-audit-5da8d53b.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1764,6 +1782,11 @@ Browser verification history:
 - Asset-host uploads are large. If Wrangler hits `UND_ERR_SOCKET` during the
   first upload, retry the same `wrangler pages deploy .deploy-assets` command;
   the successful retry uploaded the same asset set after the first partial attempt.
+- `npx wrangler d1 list` returned Cloudflare API authentication error code
+  `10000` on 2026-05-19 even though `wrangler whoami` showed `d1 (write)`.
+  Until that is cleared, the audit-history API stays production-safe by using
+  the existing KV record trail and optional D1 code only when `CRATE_AUDIT` is
+  bound.
 - `.mjs` files have aggressive immutable caching in `_headers`. When editing
   directly loaded modules, cache-bust imports or ensure Vite emits a new hashed
   bundle.
@@ -1775,6 +1798,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+5da8d53b Add moderation audit history view
 59900900 Add admin identity roles to moderation
 f174b263 Add admin review notes to moderation actions
 5fefd03b Add published game moderation dashboard
@@ -1862,6 +1886,7 @@ A  admin.html
 A  asset-url.mjs
 A  functions/api/games/[[path]].js
 A  game-builder-ui.mjs
+A  migrations/0001_moderation_audit.sql
 A  scripts/check-assets.mjs
 A  CLOUDFLARE_HANDOFF.md
 ```
@@ -1878,8 +1903,8 @@ does not change the public website bundle unless it is intentionally deployed.
    can see which asset pack the live editor is using.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
-4. Continue productizing the publish system: connect real signed-in owner
-   accounts, move longer moderation audit history to D1, and add an admin
-   audit-history detail view.
+4. Continue productizing the publish system: clear the Cloudflare D1 API auth
+   issue, create/bind `CRATE_AUDIT`, run `migrations/0001_moderation_audit.sql`,
+   and backfill existing KV audit entries into D1.
 5. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and export/import hardening.
