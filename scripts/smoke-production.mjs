@@ -15,6 +15,7 @@ const timeoutMs = parseInt(process.env.CRATE_SMOKE_TIMEOUT_MS || '120000', 10);
 const headless = process.env.CRATE_SMOKE_HEADLESS !== 'false';
 const screenshotDir = path.resolve(process.env.CRATE_SMOKE_SCREENSHOT_DIR || path.join(rootDir, 'output', 'playwright'));
 const screenshotPath = path.join(screenshotDir, `production-smoke-${verify}.png`);
+const smokeAdminToken = String(process.env.CRATE_SMOKE_ADMIN_TOKEN || '').trim();
 
 function normalizeBaseUrl(value) {
   return value.replace(/\/+$/, '');
@@ -1046,6 +1047,93 @@ async function runBrowserSmoke() {
     ).then((handle) => handle.jsonValue());
     await marketplaceContext.close();
 
+    const adminBlockedResponse = await fetch(new URL('/api/games/admin/list?limit=5', baseUrl).href, {
+      headers: { Accept: 'application/json' },
+    });
+    let adminBlockedPayload = {};
+    try {
+      adminBlockedPayload = await adminBlockedResponse.json();
+    } catch {}
+    const adminGuardState = {
+      blockedStatus: adminBlockedResponse.status,
+      blockedError: adminBlockedPayload?.error || '',
+    };
+    if (adminGuardState.blockedStatus !== 403 || !/admin authorization/i.test(adminGuardState.blockedError)) {
+      throw new Error(`Admin moderation API guard failed: ${JSON.stringify(adminGuardState)}`);
+    }
+
+    const adminContext = await browser.newContext({
+      viewport: { width: 1365, height: 900 },
+      deviceScaleFactor: 1,
+      serviceWorkers: 'block',
+    });
+    const adminPage = await adminContext.newPage();
+    const adminUrl = `${baseUrl}/admin.html?verify=${encodeURIComponent(verify + '-admin')}`;
+    await adminPage.goto(adminUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    const adminDashboardState = await adminPage.waitForFunction(
+      () => {
+        const state = window._crateAdminDashboard || {};
+        if (!state.hasTokenInput || !state.hasControls || !state.hasTable) return null;
+        return {
+          status: state.status || '',
+          tokenStored: state.tokenStored === true,
+          hasTokenInput: state.hasTokenInput === true,
+          hasControls: state.hasControls === true,
+          hasTable: state.hasTable === true,
+          rowSlugs: state.rowSlugs || [],
+          summary: document.querySelector('#table-summary')?.textContent || '',
+          hasSearch: !!document.querySelector('#admin-search'),
+          hasFilter: !!document.querySelector('#admin-filter'),
+          hasSort: !!document.querySelector('#admin-sort'),
+          hasRefresh: !!document.querySelector('#refresh-admin'),
+          hasSave: !!document.querySelector('#save-token'),
+          hasClear: !!document.querySelector('#clear-token'),
+          hasReviewQueue: /Review Queue/i.test(document.body.textContent || ''),
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    if (adminDashboardState.status !== 'locked' ||
+        adminDashboardState.tokenStored ||
+        !adminDashboardState.hasSearch ||
+        !adminDashboardState.hasFilter ||
+        !adminDashboardState.hasSort ||
+        !adminDashboardState.hasRefresh ||
+        !adminDashboardState.hasSave ||
+        !adminDashboardState.hasClear ||
+        !adminDashboardState.hasReviewQueue) {
+      throw new Error(`Admin dashboard locked state failed: ${JSON.stringify(adminDashboardState)}`);
+    }
+
+    let adminDashboardAuthedState = null;
+    if (smokeAdminToken) {
+      await adminPage.locator('#admin-token').fill(smokeAdminToken);
+      await adminPage.locator('#save-token').click({ timeout: timeoutMs });
+      adminDashboardAuthedState = await adminPage.waitForFunction(
+        () => {
+          const state = window._crateAdminDashboard || {};
+          if (state.status !== 'loaded') return null;
+          return {
+            status: state.status || '',
+            total: Number(state.total) || 0,
+            shown: Number(state.shown) || 0,
+            rowSlugs: state.rowSlugs || [],
+            counts: state.counts || {},
+            auditRows: Number(state.auditRows) || 0,
+            featuredRows: Number(state.featuredRows) || 0,
+            hiddenRows: Number(state.hiddenRows) || 0,
+          };
+        },
+        undefined,
+        { timeout: timeoutMs }
+      ).then((handle) => handle.jsonValue());
+      if (!adminDashboardAuthedState.rowSlugs.includes('production-smoke-published-game')) {
+        throw new Error(`Admin dashboard did not list smoke published game: ${JSON.stringify(adminDashboardAuthedState)}`);
+      }
+    }
+    await adminContext.close();
+
     const publishedLoadContext = await browser.newContext({
       viewport: { width: 1365, height: 900 },
       deviceScaleFactor: 1,
@@ -1880,6 +1968,16 @@ async function runBrowserSmoke() {
     state.gameDetailHasRemix = gameDetailState.hasRemix;
     state.gameDetailHasMarketplace = gameDetailState.hasMarketplace;
     state.gameDetailHasStats = gameDetailState.hasStats;
+    state.adminApiGuardStatus = adminGuardState.blockedStatus;
+    state.adminDashboardStatus = adminDashboardState.status;
+    state.adminDashboardHasTokenInput = adminDashboardState.hasTokenInput;
+    state.adminDashboardHasControls = adminDashboardState.hasControls;
+    state.adminDashboardHasTable = adminDashboardState.hasTable;
+    state.adminDashboardHasReviewQueue = adminDashboardState.hasReviewQueue;
+    state.adminDashboardAuthedStatus = adminDashboardAuthedState?.status || '';
+    state.adminDashboardAuthedTotal = adminDashboardAuthedState?.total || 0;
+    state.adminDashboardAuthedSmokeListed = adminDashboardAuthedState?.rowSlugs?.includes('production-smoke-published-game') || false;
+    state.adminSmokeTokenProvided = !!smokeAdminToken;
     state.publishedFilterQuery = publishedFilterState.query;
     state.publishedFilterSource = publishedFilterState.source;
     state.publishedFilterCloudShown = publishedFilterState.cloudShown;
@@ -2086,6 +2184,13 @@ async function runBrowserSmoke() {
         !state.gameDetailHasStats ||
         !state.gameDetailPlayHref.includes('/play?published=production-smoke-published-game') ||
         !state.gameDetailRemixHref.includes('/play?published=production-smoke-published-game') ||
+        state.adminApiGuardStatus !== 403 ||
+        state.adminDashboardStatus !== 'locked' ||
+        !state.adminDashboardHasTokenInput ||
+        !state.adminDashboardHasControls ||
+        !state.adminDashboardHasTable ||
+        !state.adminDashboardHasReviewQueue ||
+        (state.adminSmokeTokenProvided && (state.adminDashboardAuthedStatus !== 'loaded' || !state.adminDashboardAuthedSmokeListed)) ||
         state.publishedFilterQuery !== 'production smoke' ||
         state.publishedFilterSource !== 'all' ||
         state.publishedFilterCloudShown < 1 ||
@@ -2158,6 +2263,7 @@ const assetBaseUrl = play.assetBaseUrl;
 const assetManifest = await checkAssetManifest(assetBaseUrl);
 const httpChecks = [
   await checkHttp('/marketplace.html', 200, 'text/html', baseUrl),
+  await checkHttp('/admin.html', 200, 'text/html', baseUrl),
   await checkHttp('/game.html?slug=production-smoke-published-game', 200, 'text/html', baseUrl),
   await checkHttp('/asset-manifest.json', 200, 'application/json', assetBaseUrl),
   await checkHttp('/models/kenney_cars/sedan.glb', 200, 'model/gltf-binary', assetBaseUrl),
@@ -2197,6 +2303,7 @@ console.log(`Published metadata: creator ${browserState.publishedDetailCreatorNa
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
 console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games, admin featured ${(browserState.marketplaceDiscoveryAdminFeaturedSlugs || []).length}`);
 console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components, featured ${browserState.gameDetailFeatured ? 'yes' : 'no'})`);
+console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

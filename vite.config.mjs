@@ -80,6 +80,7 @@ export default defineConfig({
         }
       },
       input: {
+        admin: path.join(rootDir, 'admin.html'),
         index: path.join(rootDir, 'index.html'),
         play: path.join(rootDir, 'play.html'),
         compare: path.join(rootDir, 'compare.html'),

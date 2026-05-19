@@ -88,6 +88,16 @@ function cleanLimit(value, fallback = 24) {
   return Math.min(Math.max(Number.parseInt(value, 10) || fallback, 1), 50);
 }
 
+function cleanAdminFilter(value) {
+  const normalized = cleanText(value || 'all', 32).toLowerCase();
+  return ['all', 'listed', 'unlisted', 'hidden', 'featured', 'owner-managed'].includes(normalized) ? normalized : 'all';
+}
+
+function cleanAdminSort(value) {
+  const normalized = cleanText(value || 'updated', 32).toLowerCase();
+  return ['updated', 'featured', 'title', 'objects', 'components', 'scripts'].includes(normalized) ? normalized : 'updated';
+}
+
 function cleanCreator(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   const website = cleanText(source.website || source.url || '', MAX_CREATOR_URL_LENGTH);
@@ -109,6 +119,8 @@ function isListVisible(record) {
 }
 
 function recordMetadata(record) {
+  const auditTrail = Array.isArray(record.auditTrail) ? record.auditTrail : [];
+  const lastAudit = auditTrail[auditTrail.length - 1] || null;
   return {
     slug: record.slug,
     title: record.title,
@@ -125,6 +137,9 @@ function recordMetadata(record) {
     moderationStatus: record.moderationStatus,
     featured: !!record.featured,
     featuredAt: record.featuredAt || '',
+    auditCount: auditTrail.length,
+    lastAdminAction: Array.isArray(lastAudit?.fields) ? lastAudit.fields.join(', ') : (lastAudit?.action || ''),
+    lastAdminActionAt: lastAudit?.at || '',
   };
 }
 
@@ -140,6 +155,10 @@ function pathParts(params) {
 
 function bytes(value) {
   return new TextEncoder().encode(String(value || '')).length;
+}
+
+function cleanAuditTrail(record) {
+  return Array.isArray(record?.auditTrail) ? record.auditTrail.filter(Boolean).slice(-24) : [];
 }
 
 function cleanToken(value) {
@@ -319,6 +338,7 @@ async function publishGame(context) {
     moderationStatus: cleanModerationStatus(existing?.moderationStatus || 'active'),
     featured: !!existing?.featured,
     featuredAt: existing?.featuredAt || '',
+    auditTrail: cleanAuditTrail(existing),
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -451,6 +471,131 @@ async function listGames(context) {
   });
 }
 
+function adminGameFromMetadata(key, origin) {
+  const slug = key.metadata?.slug || key.name.replace(GAME_PREFIX, '');
+  const visibility = cleanVisibility(key.metadata?.visibility);
+  const moderationStatus = cleanModerationStatus(key.metadata?.moderationStatus);
+  return {
+    slug,
+    title: key.metadata?.title || slug,
+    description: key.metadata?.description || '',
+    tags: Array.isArray(key.metadata?.tags) ? key.metadata.tags : [],
+    objects: Number(key.metadata?.objects) || 0,
+    commands: Number(key.metadata?.commands) || 0,
+    scripts: Number(key.metadata?.scripts) || 0,
+    components: Number(key.metadata?.components) || 0,
+    updatedAt: key.metadata?.updatedAt || '',
+    url: `${origin}/play?published=${encodeURIComponent(slug)}`,
+    source: 'cloudflare-pages-kv',
+    ownerManaged: !!key.metadata?.ownerManaged,
+    creatorName: key.metadata?.creatorName || '',
+    visibility,
+    moderationStatus,
+    featured: !!key.metadata?.featured,
+    featuredAt: key.metadata?.featuredAt || '',
+    auditCount: Number(key.metadata?.auditCount) || 0,
+    lastAdminAction: key.metadata?.lastAdminAction || '',
+    lastAdminActionAt: key.metadata?.lastAdminActionAt || '',
+  };
+}
+
+function adminCounts(games) {
+  return {
+    total: games.length,
+    listed: games.filter((game) => game.visibility === 'public' && game.moderationStatus === 'active').length,
+    unlisted: games.filter((game) => game.visibility === 'unlisted').length,
+    hidden: games.filter((game) => game.moderationStatus === 'hidden').length,
+    featured: games.filter((game) => game.featured).length,
+    ownerManaged: games.filter((game) => game.ownerManaged).length,
+  };
+}
+
+function matchesAdminFilter(game, filter) {
+  if (filter === 'listed') return game.visibility === 'public' && game.moderationStatus === 'active';
+  if (filter === 'unlisted') return game.visibility === 'unlisted';
+  if (filter === 'hidden') return game.moderationStatus === 'hidden';
+  if (filter === 'featured') return !!game.featured;
+  if (filter === 'owner-managed') return !!game.ownerManaged;
+  return true;
+}
+
+async function listAdminGames(context) {
+  const store = getStore(context.env);
+  if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
+  if (!(await isAdminRequest(context))) {
+    return json({ ok: false, error: 'Admin authorization is required to view published-game moderation.' }, { status: 403 });
+  }
+
+  const url = new URL(context.request.url);
+  const query = cleanText(url.searchParams.get('q') || '', 80).toLowerCase();
+  const filter = cleanAdminFilter(url.searchParams.get('filter') || 'all');
+  const sort = cleanAdminSort(url.searchParams.get('sort') || 'updated');
+  const limit = cleanLimit(url.searchParams.get('limit'), 50);
+  const requestedPage = cleanPage(url.searchParams.get('page'));
+  const keys = [];
+  let cursor = '';
+  let listComplete = true;
+  do {
+    const batch = await store.list({
+      prefix: GAME_PREFIX,
+      limit: Math.min(1000, MAX_LIST_SCAN - keys.length),
+      ...(cursor ? { cursor } : {}),
+    });
+    keys.push(...batch.keys);
+    cursor = batch.cursor || '';
+    listComplete = !!batch.list_complete || !cursor;
+  } while (!listComplete && keys.length < MAX_LIST_SCAN);
+
+  const allGames = keys.map((key) => adminGameFromMetadata(key, url.origin));
+  const counts = adminCounts(allGames);
+  const filteredGames = allGames
+    .filter((game) => matchesAdminFilter(game, filter))
+    .filter((game) => {
+      if (!query) return true;
+      return [game.title, game.slug, game.description, game.creatorName, game.visibility, game.moderationStatus, ...(Array.isArray(game.tags) ? game.tags : [])]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    })
+    .sort((a, b) => {
+      if (sort === 'featured') {
+        const af = a.featured ? 1 : 0;
+        const bf = b.featured ? 1 : 0;
+        if (af !== bf) return bf - af;
+        return String(b.featuredAt || b.updatedAt || '').localeCompare(String(a.featuredAt || a.updatedAt || ''));
+      }
+      if (sort === 'title') return String(a.title).localeCompare(String(b.title));
+      if (sort === 'objects') return (Number(b.objects) || 0) - (Number(a.objects) || 0);
+      if (sort === 'components') return (Number(b.components) || 0) - (Number(a.components) || 0);
+      if (sort === 'scripts') return (Number(b.scripts) || 0) - (Number(a.scripts) || 0);
+      return String(b.updatedAt).localeCompare(String(a.updatedAt));
+    });
+
+  const total = filteredGames.length;
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(requestedPage, pages);
+  const offset = (page - 1) * limit;
+  const games = filteredGames.slice(offset, offset + limit);
+  return json({
+    ok: true,
+    games,
+    counts,
+    query,
+    filter,
+    sort,
+    page,
+    pageSize: limit,
+    total,
+    pages,
+    hasNext: page < pages,
+    hasPrev: page > 1,
+    cursor: listComplete ? null : cursor,
+    listComplete,
+    scanLimit: MAX_LIST_SCAN,
+  });
+}
+
 async function updateGame(context, slug) {
   const store = getStore(context.env);
   if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
@@ -462,6 +607,13 @@ async function updateGame(context, slug) {
   const payload = await readJson(context.request);
   const auth = await authorizeManagedGame(context, record, payload);
   if (!auth.ok) return json({ ok: false, error: auth.error }, { status: auth.status });
+
+  const beforeAdminFields = {
+    visibility: cleanVisibility(record.visibility),
+    moderationStatus: cleanModerationStatus(record.moderationStatus),
+    featured: !!record.featured,
+  };
+  const now = new Date().toISOString();
 
   if (payload.title != null) record.title = cleanText(payload.title, MAX_TITLE_LENGTH) || record.title;
   if (payload.description != null) record.description = cleanText(payload.description, MAX_DESCRIPTION_LENGTH);
@@ -486,13 +638,37 @@ async function updateGame(context, slug) {
       return json({ ok: false, error: 'Admin authorization is required to feature games.' }, { status: 403 });
     }
     record.featured = cleanFeatured(payload.featured);
-    record.featuredAt = record.featured ? (cleanFeaturedAt(payload.featuredAt) || record.featuredAt || new Date().toISOString()) : '';
+    record.featuredAt = record.featured ? (cleanFeaturedAt(payload.featuredAt) || record.featuredAt || now) : '';
   } else {
     record.featured = !!record.featured;
     record.featuredAt = record.featuredAt || '';
   }
   record.visibility = cleanVisibility(record.visibility);
-  record.updatedAt = new Date().toISOString();
+  if (auth.mode === 'admin') {
+    const afterAdminFields = {
+      visibility: cleanVisibility(record.visibility),
+      moderationStatus: cleanModerationStatus(record.moderationStatus),
+      featured: !!record.featured,
+    };
+    const changes = Object.keys(beforeAdminFields)
+      .filter((field) => beforeAdminFields[field] !== afterAdminFields[field])
+      .map((field) => ({ field, before: beforeAdminFields[field], after: afterAdminFields[field] }));
+    if (changes.length) {
+      record.auditTrail = cleanAuditTrail(record);
+      record.auditTrail.push({
+        at: now,
+        actor: 'admin',
+        action: 'published-game-moderation',
+        fields: changes.map((change) => change.field),
+        changes,
+      });
+    } else {
+      record.auditTrail = cleanAuditTrail(record);
+    }
+  } else {
+    record.auditTrail = cleanAuditTrail(record);
+  }
+  record.updatedAt = now;
 
   await store.put(key, JSON.stringify(record), {
     metadata: recordMetadata(record),
@@ -524,6 +700,9 @@ export async function onRequest(context) {
     const parts = pathParts(context.params);
     if (context.request.method === 'POST' && parts.length === 1 && parts[0] === 'publish') {
       return publishGame(context);
+    }
+    if (context.request.method === 'GET' && parts.length === 2 && parts[0] === 'admin' && parts[1] === 'list') {
+      return listAdminGames(context);
     }
     if (context.request.method === 'GET' && parts.length === 0) {
       return listGames(context);
