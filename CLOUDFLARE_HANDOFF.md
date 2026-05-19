@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `295390cf`
+- Current deployed source commit for the public engine code: `0155d9b5`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -27,11 +27,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `2c8e6ec0-a4d3-48fc-9c67-38fe20a84192`
-- Latest production deployment URL: `https://2c8e6ec0.crateship-games.pages.dev`
+- Latest production deployment ID: `587cfc81-130c-4bbf-a0e6-01a6eb6882ed`
+- Latest production deployment URL: `https://587cfc81.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `295390c`
-- Main live page bundle after the deploy: `/assets/play-BoyOU95c.js`
+- Source shown by Cloudflare: `0155d9b`
+- Main live page bundle after the deploy: `/assets/play-LnmMuJtF.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -725,6 +725,39 @@ Follow-up production deploys on 2026-05-19 added published-game search/filter an
   - Production smoke verified `Published API: cloudflare-pages-kv 200 (cloud-published, 411 objects loaded)`.
   - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, and remote asset-host checks.
 
+Follow-up production deploys on 2026-05-19 added published-game management guardrails:
+
+- `functions/api/games/[[path]].js`
+  - Added `DELETE /api/games/<slug>` for published-game cleanup.
+  - Added owner-token and admin-token authorization helpers while storing only a SHA-256 owner token hash in KV.
+  - Publish now preserves existing ownership and requires the matching owner token or admin token before overwriting an owner-managed slug.
+  - Published game detail responses return full scene/project/playable data but never expose the stored owner hash.
+  - List/detail metadata now marks owner-managed games with `ownerManaged`.
+- `engine.mjs`
+  - Added a browser-local owner token for publishing from the editor.
+  - Syncs the owner token to Cloudflare publish requests so the same browser can later manage its own published game.
+  - Added a Published Games detail panel with metadata, object/component/script counts, asset/tag summaries, readonly URL, Edit, Duplicate, Copy, Open, and Delete/Remove actions.
+  - Cloud rows can now fetch full details before rendering, duplicate a published game back into the editor, and delete from Cloudflare when the owner token matches.
+  - Browser-local rows can be removed locally without touching the cloud library.
+- `scripts/smoke-production.mjs`
+  - Verifies the publish API and list API both return `ownerManaged`.
+  - Publishes a temporary delete-guard game, confirms an unauthenticated delete returns `403`, confirms owner-token delete returns `200`, and confirms the deleted game then returns `404`.
+  - Runs the expected `403/404` delete-guard requests from Node-side fetch instead of the browser so expected API guard responses do not pollute the browser console error gate.
+  - Opens the Published Games detail panel and verifies the loaded cloud detail includes project data plus Duplicate and Delete controls.
+- Intermediate app deployment `c255ae77-3834-41c2-989e-118c9e71bb1e`
+  - Source `454dd47`; bundle `/assets/play-LnmMuJtF.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the app upload uploaded `6` changed files and reused `99` already-uploaded files.
+  - Superseded because production smoke correctly failed after the in-browser delete-guard test caused expected `403` and `404` API responses to appear as browser console resource errors.
+- Final app deployment `587cfc81-130c-4bbf-a0e6-01a6eb6882ed`
+  - Source `0155d9b`; bundle `/assets/play-LnmMuJtF.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; `.deploy` had no `/models` or `/textures`.
+  - The final upload reused all `105` static files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Published management: detail loaded, owner managed, delete guard 403/200/404`.
+  - Production smoke verified `Published library UI: 1 cloud rows, 2 local rows, 3 edit buttons`.
+  - Production smoke verified `Published editor load: cloud-published production-smoke-published-game (411 objects, filter production smoke)`.
+  - Production smoke still verified NPC, merchant, enemy wave, inventory/equipment, mission, door/trigger, respawn, project save/load, playable export, and remote asset-host checks.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -849,6 +882,7 @@ Recovered model cache summary:
 - Readiness-panel main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 - Game-systems main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
 - Checkpoint-win main-app deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `102` already-uploaded files, and refreshed `_headers`.
+- Published-management main-app deploy skipped bundled `/models` and `/textures`, reused all `105` static files on the final upload, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -904,7 +938,7 @@ Expected current results:
 
 - `npm run check:assets` passes from this app-only checkout by validating `114` remote asset URLs and `107` catalog references against `https://crateship-games-assets.pages.dev`.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-DGlRyrjF.js`.
+- `/play` references `/assets/play-LnmMuJtF.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -931,6 +965,8 @@ Expected current results:
 - Saved projects use `version: 3` and include object snapshots, asset paths, builder components, and installed user scripts.
 - The served app-assets bundle contains the asset resolver exports and `_crateAssetUrl` support.
 - Missing asset-host model paths return `404 Not Found`, not `200 text/html`.
+- The Published Games modal exposes search/filter, row Edit, row Details, detail-panel Duplicate, and guarded Delete/Remove controls.
+- The published-game API marks owner-managed records, blocks unmanaged deletes with `403`, accepts matching owner-token deletes with `200`, and returns `404` after successful delete.
 
 Browser verification history:
 
@@ -1363,6 +1399,28 @@ Browser verification history:
   - Project load restored NPC and merchant components plus equipment, pickup, door, trigger, mission, reward, gate, enemy spawn, wave, checkpoint, win, and spawn components.
   - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-published-search-295390cf.png`.
+- Intermediate custom-domain verification after deployment `c255ae77-3834-41c2-989e-118c9e71bb1e`:
+  - Cloudflare source showed `454dd47`.
+  - `/play?verify=published-guard-454dd47a` served `/assets/play-LnmMuJtF.js`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - `npm run smoke:production` failed because the in-browser delete-guard check intentionally generated expected `403` and `404` API responses, which Chrome surfaced as console resource errors.
+  - The smoke was fixed to run those expected guard checks from Node-side fetch and this deployment was superseded by `587cfc81-130c-4bbf-a0e6-01a6eb6882ed`.
+- Final custom-domain verification after deployment `587cfc81-130c-4bbf-a0e6-01a6eb6882ed`:
+  - Cloudflare source showed `0155d9b`.
+  - `/play?verify=published-guard-0155d9b5` served `/assets/play-LnmMuJtF.js`.
+  - `/play?verify=published-guard-0155d9b5` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; the staged `.deploy` directory had no `/models` or `/textures` directories.
+  - The final upload reused all `105` static files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `node --check functions/api/games/[[path]].js`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified published-game ownership metadata, the cloud detail panel, Duplicate and Delete controls, and delete guard responses `403/200/404`.
+  - Smoke verified `Published library UI: 1 cloud rows, 2 local rows, 3 edit buttons`.
+  - Smoke verified `Published editor load: cloud-published production-smoke-published-game (411 objects, filter production smoke)`.
+  - Smoke verified Game Builder Readiness reported `Ready to test, 411 objects, 2 scripts, 14 components, Edit mode`.
+  - Playable export verified `production-smoke-game-playable.html` with `411` objects, `14` components, and `209796` HTML bytes.
+  - Published game verified `production-smoke-published-game` with `411` objects, `14` components, and a `209824` byte playable package.
+  - Project load restored NPC and merchant components plus equipment, pickup, door, trigger, mission, reward, gate, enemy spawn, wave, checkpoint, win, and spawn components.
+  - Critical HTTP checks passed: sedan GLB `200`, furniture chair GLB `200`, FAB street props GLB `200`, modular seating `.bin` `200`, modular seating texture `200`, missing model `404`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-published-guard-0155d9b5.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1398,6 +1456,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+0155d9b5 Add published game management guardrails
 295390cf Add published games search and edit smoke
 6f58dc8d Add published game editor actions
 8d6f6ea8 Add cloud published games library UI
@@ -1491,6 +1550,6 @@ does not change the public website bundle unless it is intentionally deployed.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Continue productizing the publish system: add owner accounts, moderation,
-   edit/delete controls, and marketplace/library UI fed from `/api/games`.
+   marketplace/library browsing, and safer admin tools fed from `/api/games`.
 5. Continue productizing the editor: a richer component inspector, project
    format, safe scripting runtime, and export/import hardening.
