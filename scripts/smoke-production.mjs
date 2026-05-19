@@ -126,6 +126,7 @@ async function runBrowserSmoke() {
     const context = await browser.newContext({
       viewport: { width: 1365, height: 900 },
       deviceScaleFactor: 1,
+      serviceWorkers: 'block',
     });
 
     if (forcedAssetBaseUrl) {
@@ -748,7 +749,12 @@ async function runBrowserSmoke() {
       throw new Error(`Published game library did not create a portable playable link: ${JSON.stringify(publishedState)}`);
     }
 
-    const publishedLoadPage = await context.newPage();
+    const publishedLoadContext = await browser.newContext({
+      viewport: { width: 1365, height: 900 },
+      deviceScaleFactor: 1,
+      serviceWorkers: 'block',
+    });
+    const publishedLoadPage = await publishedLoadContext.newPage();
     publishedLoadPage.on('console', (message) => {
       const text = summarizeConsoleMessage(message);
       if (
@@ -790,7 +796,7 @@ async function runBrowserSmoke() {
       undefined,
       { timeout: timeoutMs }
     ).then((handle) => handle.jsonValue());
-    await publishedLoadPage.close();
+    await publishedLoadContext.close();
 
     await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
