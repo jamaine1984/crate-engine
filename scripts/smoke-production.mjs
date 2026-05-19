@@ -798,6 +798,53 @@ async function runBrowserSmoke() {
     ).then((handle) => handle.jsonValue());
     await publishedLoadContext.close();
 
+    await page.evaluate(() => window._showPublishedGames?.());
+    await page.waitForSelector('#published-games-modal', { timeout: timeoutMs });
+    await page.waitForFunction(
+      () => document.querySelector('#published-cloud-list')?.dataset.status === 'loaded' &&
+        Array.isArray(window._lastCloudPublishedGames) &&
+        window._lastCloudPublishedGames.some((game) => game?.slug === 'production-smoke-published-game'),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const publishedLibraryState = await page.evaluate(() => {
+      const modal = document.querySelector('#published-games-modal');
+      const cloudRows = [...document.querySelectorAll('#published-cloud-list [data-published-row]')];
+      const localRows = [...document.querySelectorAll('#published-local-list [data-published-row]')];
+      const cloudRow = cloudRows.find((row) => row.dataset.publishedRow === 'production-smoke-published-game');
+      const localRow = localRows.find((row) => row.dataset.publishedRow === 'production-smoke-published-game');
+      const cloudUrl = cloudRow?.querySelector('input')?.value || '';
+      const localUrl = localRow?.querySelector('input')?.value || '';
+      const copyButtons = modal ? modal.querySelectorAll('[data-publish-copy]').length : 0;
+      const openButtons = modal ? modal.querySelectorAll('[data-publish-open]').length : 0;
+      return {
+        modalOpen: !!modal,
+        cloudStatus: document.querySelector('#published-cloud-list')?.dataset.status || '',
+        cloudCount: cloudRows.length,
+        localCount: localRows.length,
+        hasCloudSmoke: !!cloudRow,
+        hasLocalSmoke: !!localRow,
+        cloudUrl,
+        localUrl,
+        lastCloudCount: window._lastCloudPublishedGames?.length || 0,
+        copyButtons,
+        openButtons,
+      };
+    });
+    if (!publishedLibraryState.modalOpen ||
+        publishedLibraryState.cloudStatus !== 'loaded' ||
+        !publishedLibraryState.hasCloudSmoke ||
+        !publishedLibraryState.hasLocalSmoke ||
+        !publishedLibraryState.cloudUrl.includes('/play?published=production-smoke-published-game') ||
+        publishedLibraryState.cloudUrl.includes('#') ||
+        !publishedLibraryState.localUrl.includes('/play?published=production-smoke-published-game') ||
+        publishedLibraryState.lastCloudCount < 1 ||
+        publishedLibraryState.copyButtons < 2 ||
+        publishedLibraryState.openButtons < 2) {
+      throw new Error(`Published Games modal did not show cloud/local library: ${JSON.stringify(publishedLibraryState)}`);
+    }
+    await page.locator('#published-close').click({ timeout: timeoutMs });
+
     await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
       const pickupObj = objects.find((obj) => obj?.userData?.gbComponents?.pickup);
@@ -1309,6 +1356,13 @@ async function runBrowserSmoke() {
     state.publishedLoadObjectCount = publishedLoadState.objectCount;
     state.publishedLoadProjectStatus = publishedLoadState.projectStatus;
     state.publishedLoadRestoredObjects = publishedLoadState.restoredObjects;
+    state.publishedLibraryCloudStatus = publishedLibraryState.cloudStatus;
+    state.publishedLibraryCloudCount = publishedLibraryState.cloudCount;
+    state.publishedLibraryLocalCount = publishedLibraryState.localCount;
+    state.publishedLibraryHasCloudSmoke = publishedLibraryState.hasCloudSmoke;
+    state.publishedLibraryHasLocalSmoke = publishedLibraryState.hasLocalSmoke;
+    state.publishedLibraryCopyButtons = publishedLibraryState.copyButtons;
+    state.publishedLibraryOpenButtons = publishedLibraryState.openButtons;
     state.respawnHealth = afterRespawnState.health;
     state.respawnCount = afterRespawnState.respawns;
     state.openedDoor = doorTriggerState.openedDoor;
@@ -1424,7 +1478,12 @@ async function runBrowserSmoke() {
         state.publishedLoadStatus !== 'cloud-published' ||
         state.publishedLoadSlug !== 'production-smoke-published-game' ||
         state.publishedLoadObjectCount < 100 ||
-        state.publishedLoadProjectStatus !== 'loaded') {
+        state.publishedLoadProjectStatus !== 'loaded' ||
+        state.publishedLibraryCloudStatus !== 'loaded' ||
+        !state.publishedLibraryHasCloudSmoke ||
+        !state.publishedLibraryHasLocalSmoke ||
+        state.publishedLibraryCopyButtons < 2 ||
+        state.publishedLibraryOpenButtons < 2) {
       throw new Error(`Published game library did not finish with a runtime-ready game: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
@@ -1518,6 +1577,7 @@ console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${br
 console.log(`Playable export: ${browserState.playableExportFilename || 'missing'} (${browserState.playableExportObjectCount} objects, ${browserState.playableExportComponentCount} components, ${browserState.playableExportHtmlBytes} html bytes)`);
 console.log(`Published game: ${browserState.publishedSlug || 'missing'} (${browserState.publishedObjects} objects, ${browserState.publishedComponents} components, package ${browserState.publishedPlayableHtmlBytes} html bytes)`);
 console.log(`Published API: ${browserState.publishedCloudSource || 'missing'} ${browserState.publishedApiStatus} (${browserState.publishedLoadStatus || 'missing'}, ${browserState.publishedLoadObjectCount} objects loaded)`);
+console.log(`Published library UI: ${browserState.publishedLibraryCloudCount} cloud rows, ${browserState.publishedLibraryLocalCount} local rows`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

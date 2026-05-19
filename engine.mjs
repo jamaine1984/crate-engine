@@ -14953,6 +14953,46 @@ async function fetchPublishedGameFromCloudflare(slug) {
   return result.game;
 }
 
+async function fetchCloudPublishedGames(options) {
+  options = options || {};
+  var params = new URLSearchParams();
+  if (options.slug) params.set('slug', options.slug);
+  else params.set('limit', String(options.limit || 24));
+  var response = await fetch('/api/games?' + params.toString(), { headers: { 'Accept': 'application/json' } });
+  var result = null;
+  try { result = await response.json(); } catch(e) { result = null; }
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error || ('Published games API failed with HTTP ' + response.status));
+  }
+  return Array.isArray(result.games) ? result.games : [];
+}
+
+function getPublishedGameUrl(game) {
+  if (game?.url) return game.url;
+  if (game?.shareUrl) return game.shareUrl;
+  var slug = game?.slug || 'game';
+  var url = window.location.origin + '/play?published=' + encodeURIComponent(slug);
+  if (game?.sceneData && game?.cloudStatus !== 'synced') url += '#' + game.sceneData;
+  return url;
+}
+
+function renderPublishedGameRows(games, source) {
+  if (!games.length) {
+    return '<div style="color:#77838a;padding:16px;border:1px dashed #263238;border-radius:10px;text-align:center">No games found.</div>';
+  }
+  return games.map(function(game) {
+    var url = getPublishedGameUrl(game);
+    var isCloud = source === 'cloud';
+    var sourceLabel = isCloud ? 'Cloud library' : (game.cloudStatus === 'synced' ? 'Cloud synced' : 'Portable local link');
+    return '<div data-published-row="' + escapeProjectHtml(game.slug || '') + '" data-published-source="' + source + '" style="border:1px solid #263238;background:#0b1014;border-radius:10px;padding:12px;margin-bottom:8px;text-align:left">' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong style="color:#f5f7f8">' + escapeProjectHtml(game.title || game.slug || 'Untitled Game') + '</strong><span style="color:#7ddf9e;font-size:11px">' + escapeProjectHtml(game.slug || '') + '</span></div>' +
+      '<div style="color:#a5b2b9;font-size:11px;margin-top:5px">' + (game.objects || 0) + ' objects | ' + (game.components || 0) + ' components | ' + (game.scripts || 0) + ' scripts | ' + sourceLabel + '</div>' +
+      '<input readonly value="' + escapeProjectHtml(url) + '" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px;background:#05080a;border:1px solid #1f2933;border-radius:7px;color:#7ddf9e;font-size:11px" onclick="this.select()">' +
+      '<div style="display:flex;gap:8px;margin-top:8px"><button data-publish-copy="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:0;border-radius:7px;background:#7ddf9e;color:#061009;font-weight:700;cursor:pointer">Copy Link</button><button data-publish-open="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer">Open</button></div>' +
+      '</div>';
+  }).join('');
+}
+
 async function loadPublishedSceneFromCloudflare(slug) {
   window._lastSharedSceneLoad = { status: 'loading-cloud', slug: slug, startedAt: Date.now() };
   try {
@@ -15056,38 +15096,59 @@ function showPublishedGamesLibrary() {
   var modal = document.createElement('div');
   modal.id = 'published-games-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:100006;display:flex;align-items:center;justify-content:center;font-family:JetBrains Mono,monospace';
-  var rows = games.length ? games.map(function(game) {
-    var url = game.shareUrl || (window.location.origin + '/play?published=' + encodeURIComponent(game.slug || 'game') + '#' + (game.sceneData || ''));
-    var syncLabel = game.cloudStatus === 'synced' ? 'Cloud synced' : 'Portable local link';
-    return '<div style="border:1px solid #263238;background:#0b1014;border-radius:10px;padding:12px;margin-bottom:8px;text-align:left">' +
-      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong style="color:#f5f7f8">' + escapeProjectHtml(game.title || 'Untitled Game') + '</strong><span style="color:#7ddf9e;font-size:11px">' + escapeProjectHtml(game.slug || '') + '</span></div>' +
-      '<div style="color:#a5b2b9;font-size:11px;margin-top:5px">' + (game.objects || 0) + ' objects | ' + (game.components || 0) + ' components | ' + (game.scripts || 0) + ' scripts | ' + syncLabel + '</div>' +
-      '<input readonly value="' + escapeProjectHtml(url) + '" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px;background:#05080a;border:1px solid #1f2933;border-radius:7px;color:#7ddf9e;font-size:11px" onclick="this.select()">' +
-      '<div style="display:flex;gap:8px;margin-top:8px"><button data-publish-copy="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:0;border-radius:7px;background:#7ddf9e;color:#061009;font-weight:700;cursor:pointer">Copy Link</button><button data-publish-open="' + escapeProjectHtml(url) + '" style="flex:1;padding:8px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer">Open</button></div>' +
-      '</div>';
-  }).join('') : '<div style="color:#77838a;padding:22px">No published games yet.</div>';
-  modal.innerHTML = '<div style="width:min(620px,94vw);max-height:86vh;overflow:auto;background:#090d10;border:1px solid #2d3a42;border-radius:14px;padding:18px">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="color:#fff;font-size:18px;font-weight:700">Published Games</div><div style="color:#7d8c94;font-size:12px">Portable playable links saved on this browser.</div></div><button id="published-close" style="background:none;border:0;color:#7d8c94;font-size:24px;cursor:pointer">x</button></div>' +
-    rows +
+  var localRows = renderPublishedGameRows(games, 'local');
+  modal.innerHTML = '<div style="width:min(720px,94vw);max-height:86vh;overflow:auto;background:#090d10;border:1px solid #2d3a42;border-radius:14px;padding:18px">' +
+    '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px"><div><div style="color:#fff;font-size:18px;font-weight:700">Published Games</div><div style="color:#7d8c94;font-size:12px">Cloud games from CrateShip plus portable links saved on this browser.</div></div><div style="display:flex;gap:8px;align-items:center"><button id="published-refresh" style="padding:8px 10px;border:1px solid #2d3a42;border-radius:7px;background:#121a20;color:#e7eef2;cursor:pointer;font-size:12px">Refresh Cloud</button><button id="published-close" style="background:none;border:0;color:#7d8c94;font-size:24px;cursor:pointer">x</button></div></div>' +
+    '<div style="color:#7d8c94;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">Cloud Library</div>' +
+    '<div id="published-cloud-list" data-status="loading" style="min-height:42px"><div style="color:#77838a;padding:16px;border:1px dashed #263238;border-radius:10px;text-align:center">Loading cloud games...</div></div>' +
+    '<div style="color:#7d8c94;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">This Browser</div>' +
+    '<div id="published-local-list">' + localRows + '</div>' +
     '</div>';
   document.body.appendChild(modal);
   document.getElementById('published-close').onclick = function() { modal.remove(); };
-  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
-  modal.querySelectorAll('[data-publish-copy]').forEach(function(button) {
-    button.addEventListener('click', function() {
-      navigator.clipboard?.writeText(button.dataset.publishCopy).catch(function(){});
-      button.textContent = 'Copied';
-      setTimeout(function() { button.textContent = 'Copy Link'; }, 1200);
-    });
+  async function loadCloudList() {
+    var cloudList = modal.querySelector('#published-cloud-list');
+    cloudList.dataset.status = 'loading';
+    cloudList.innerHTML = '<div style="color:#77838a;padding:16px;border:1px dashed #263238;border-radius:10px;text-align:center">Loading cloud games...</div>';
+    try {
+      var cloudGames = await fetchCloudPublishedGames({ limit: 24 });
+      var lastSlug = window._lastPublishedGame?.slug || '';
+      if (lastSlug && !cloudGames.some(function(game) { return game && game.slug === lastSlug; })) {
+        var directGames = await fetchCloudPublishedGames({ slug: lastSlug });
+        directGames.forEach(function(game) {
+          if (game && !cloudGames.some(function(row) { return row && row.slug === game.slug; })) cloudGames.unshift(game);
+        });
+      }
+      window._lastCloudPublishedGames = cloudGames;
+      cloudList.dataset.status = 'loaded';
+      cloudList.innerHTML = renderPublishedGameRows(cloudGames, 'cloud');
+    } catch(e) {
+      window._lastCloudPublishedGames = [];
+      cloudList.dataset.status = 'failed';
+      cloudList.innerHTML = '<div style="color:#f59e0b;padding:16px;border:1px dashed #5a3a12;border-radius:10px;text-align:center">Cloud library unavailable: ' + escapeProjectHtml(e?.message || String(e || 'Unknown error')) + '</div>';
+    }
+  }
+  document.getElementById('published-refresh').onclick = loadCloudList;
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) { modal.remove(); return; }
+    var copyButton = e.target.closest('[data-publish-copy]');
+    if (copyButton) {
+      navigator.clipboard?.writeText(copyButton.dataset.publishCopy).catch(function(){});
+      copyButton.textContent = 'Copied';
+      setTimeout(function() { copyButton.textContent = 'Copy Link'; }, 1200);
+      return;
+    }
+    var openButton = e.target.closest('[data-publish-open]');
+    if (openButton) window.open(openButton.dataset.publishOpen, '_blank');
   });
-  modal.querySelectorAll('[data-publish-open]').forEach(function(button) {
-    button.addEventListener('click', function() { window.open(button.dataset.publishOpen, '_blank'); });
-  });
+  loadCloudList();
+  return modal;
 }
 
 window._publishLocalGame = publishSceneToLocalLibrary;
 window._showPublishedGames = showPublishedGamesLibrary;
 window._getPublishedGames = getPublishedGamesLibrary;
+window._fetchCloudPublishedGames = fetchCloudPublishedGames;
 
 // === PUBLISH TO .COM ===
 function publishScene() {
