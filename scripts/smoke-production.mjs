@@ -953,6 +953,9 @@ async function runBrowserSmoke() {
           status: state.status,
           total: Number(state.total) || 0,
           shown: Number(state.shown) || 0,
+          page: Number(state.page) || 0,
+          pages: Number(state.pages) || 0,
+          pageSize: Number(state.pageSize) || 0,
           query: state.query || '',
           tag: state.tag || '',
           sort: state.sort || '',
@@ -961,6 +964,7 @@ async function runBrowserSmoke() {
           hasSearch: !!document.querySelector('#published-market-search'),
           hasSort: !!document.querySelector('#published-market-sort'),
           hasTagFilters: document.querySelectorAll('[data-published-tag]').length,
+          hasPagination: !!document.querySelector('#published-market-pagination'),
           hasRefresh: !!document.querySelector('#published-market-refresh'),
           hasSmoke: !!row,
           hasUnlistedGuard: !!document.querySelector('[data-published-game="production-smoke-metadata-guard-game"]'),
@@ -968,7 +972,40 @@ async function runBrowserSmoke() {
           tagText: row.querySelector('.tags')?.textContent || '',
           playHref: row.querySelector('.actions a')?.getAttribute('href') || '',
           remixHref: row.querySelector('.actions a.secondary')?.getAttribute('href') || '',
+          detailHref: row.querySelector('.actions a.detail')?.getAttribute('href') || '',
           summary: document.querySelector('#published-market-summary')?.textContent || '',
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+
+    const gameDetailUrl = new URL(marketplaceState.detailHref, baseUrl).href;
+    await marketplacePage.goto(`${gameDetailUrl}${gameDetailUrl.includes('?') ? '&' : '?'}verify=${encodeURIComponent(verify + '-detail')}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: timeoutMs,
+    });
+    const gameDetailState = await marketplacePage.waitForFunction(
+      () => {
+        const state = window._crateGameDetail || {};
+        if (state.status !== 'loaded' || state.slug !== 'production-smoke-published-game') return null;
+        return {
+          status: state.status,
+          slug: state.slug || '',
+          title: state.title || '',
+          creatorName: state.creatorName || '',
+          visibility: state.visibility || '',
+          tags: state.tags || [],
+          systems: state.systems || [],
+          objects: Number(state.objects) || 0,
+          components: Number(state.components) || 0,
+          scripts: Number(state.scripts) || 0,
+          playHref: state.playHref || '',
+          remixHref: state.remixHref || '',
+          hasPlay: !!document.querySelector('[data-game-action="play"]'),
+          hasRemix: !!document.querySelector('[data-game-action="remix"]'),
+          hasMarketplace: !!document.querySelector('[data-game-action="marketplace"]'),
+          hasStats: document.querySelectorAll('.stat').length >= 4,
         };
       },
       undefined,
@@ -1753,6 +1790,9 @@ async function runBrowserSmoke() {
     state.marketplaceStatus = marketplaceState.status;
     state.marketplaceTotal = marketplaceState.total;
     state.marketplaceShown = marketplaceState.shown;
+    state.marketplacePage = marketplaceState.page;
+    state.marketplacePages = marketplaceState.pages;
+    state.marketplacePageSize = marketplaceState.pageSize;
     state.marketplaceQuery = marketplaceState.query;
     state.marketplaceTag = marketplaceState.tag;
     state.marketplaceSort = marketplaceState.sort;
@@ -1761,6 +1801,7 @@ async function runBrowserSmoke() {
     state.marketplaceHasSearch = marketplaceState.hasSearch;
     state.marketplaceHasSort = marketplaceState.hasSort;
     state.marketplaceHasTagFilters = marketplaceState.hasTagFilters;
+    state.marketplaceHasPagination = marketplaceState.hasPagination;
     state.marketplaceHasRefresh = marketplaceState.hasRefresh;
     state.marketplaceHasSmoke = marketplaceState.hasSmoke;
     state.marketplaceHasUnlistedGuard = marketplaceState.hasUnlistedGuard;
@@ -1768,7 +1809,24 @@ async function runBrowserSmoke() {
     state.marketplaceTagText = marketplaceState.tagText;
     state.marketplacePlayHref = marketplaceState.playHref;
     state.marketplaceRemixHref = marketplaceState.remixHref;
+    state.marketplaceDetailHref = marketplaceState.detailHref;
     state.marketplaceSummary = marketplaceState.summary;
+    state.gameDetailStatus = gameDetailState.status;
+    state.gameDetailSlug = gameDetailState.slug;
+    state.gameDetailTitle = gameDetailState.title;
+    state.gameDetailCreatorName = gameDetailState.creatorName;
+    state.gameDetailVisibility = gameDetailState.visibility;
+    state.gameDetailTags = gameDetailState.tags;
+    state.gameDetailSystems = gameDetailState.systems;
+    state.gameDetailObjects = gameDetailState.objects;
+    state.gameDetailComponents = gameDetailState.components;
+    state.gameDetailScripts = gameDetailState.scripts;
+    state.gameDetailPlayHref = gameDetailState.playHref;
+    state.gameDetailRemixHref = gameDetailState.remixHref;
+    state.gameDetailHasPlay = gameDetailState.hasPlay;
+    state.gameDetailHasRemix = gameDetailState.hasRemix;
+    state.gameDetailHasMarketplace = gameDetailState.hasMarketplace;
+    state.gameDetailHasStats = gameDetailState.hasStats;
     state.publishedFilterQuery = publishedFilterState.query;
     state.publishedFilterSource = publishedFilterState.source;
     state.publishedFilterCloudShown = publishedFilterState.cloudShown;
@@ -1935,9 +1993,12 @@ async function runBrowserSmoke() {
         !state.marketplaceHasSearch ||
         !state.marketplaceHasSort ||
         state.marketplaceHasTagFilters < 2 ||
+        !state.marketplaceHasPagination ||
         !state.marketplaceHasRefresh ||
         !state.marketplaceHasSmoke ||
         state.marketplaceHasUnlistedGuard ||
+        state.marketplacePage !== 1 ||
+        state.marketplacePageSize !== 12 ||
         state.marketplaceQuery !== 'production smoke' ||
         state.marketplaceTag !== 'smoke' ||
         state.marketplaceSort !== 'objects' ||
@@ -1948,6 +2009,23 @@ async function runBrowserSmoke() {
         !/smoke/.test(state.marketplaceTagText || '') ||
         !state.marketplacePlayHref.includes('/play?published=production-smoke-published-game') ||
         !state.marketplaceRemixHref.includes('/play?published=production-smoke-published-game') ||
+        !state.marketplaceDetailHref.includes('/game.html?slug=production-smoke-published-game') ||
+        state.gameDetailStatus !== 'loaded' ||
+        state.gameDetailSlug !== 'production-smoke-published-game' ||
+        state.gameDetailTitle !== 'Production Smoke Published Game' ||
+        state.gameDetailCreatorName !== 'Production Smoke Creator' ||
+        state.gameDetailVisibility !== 'public' ||
+        !Array.isArray(state.gameDetailTags) ||
+        !state.gameDetailTags.includes('smoke') ||
+        state.gameDetailObjects < 100 ||
+        state.gameDetailComponents < 14 ||
+        state.gameDetailScripts < 1 ||
+        !state.gameDetailHasPlay ||
+        !state.gameDetailHasRemix ||
+        !state.gameDetailHasMarketplace ||
+        !state.gameDetailHasStats ||
+        !state.gameDetailPlayHref.includes('/play?published=production-smoke-published-game') ||
+        !state.gameDetailRemixHref.includes('/play?published=production-smoke-published-game') ||
         state.publishedFilterQuery !== 'production smoke' ||
         state.publishedFilterSource !== 'all' ||
         state.publishedFilterCloudShown < 1 ||
@@ -2020,6 +2098,7 @@ const assetBaseUrl = play.assetBaseUrl;
 const assetManifest = await checkAssetManifest(assetBaseUrl);
 const httpChecks = [
   await checkHttp('/marketplace.html', 200, 'text/html', baseUrl),
+  await checkHttp('/game.html?slug=production-smoke-published-game', 200, 'text/html', baseUrl),
   await checkHttp('/asset-manifest.json', 200, 'application/json', assetBaseUrl),
   await checkHttp('/models/kenney_cars/sedan.glb', 200, 'model/gltf-binary', assetBaseUrl),
   await checkHttp('/models/house_interior_pack_chair_1.glb', 200, 'model/gltf-binary', assetBaseUrl),
@@ -2056,6 +2135,7 @@ console.log(`Published editor load: ${browserState.publishedEditorLoadStatus || 
 console.log(`Published management: detail ${browserState.publishedDetailPanelStatus || 'missing'}, owner ${browserState.publishedDetailOwnerManaged ? 'managed' : 'missing'}, delete guard ${browserState.publishedDeleteGuardBlockedStatus}/${browserState.publishedDeleteGuardDeletedStatus}/${browserState.publishedDeleteGuardMissingStatus}`);
 console.log(`Published metadata: creator ${browserState.publishedDetailCreatorName || 'missing'}, visibility ${browserState.publishedDetailVisibility || 'missing'}, unlisted guard ${browserState.publishedMetadataGuardUpdateStatus}/${browserState.publishedMetadataGuardVisibility || 'missing'}`);
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
+console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components)`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

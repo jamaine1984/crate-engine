@@ -82,6 +82,11 @@ a{color:#00ff88;text-decoration:none}
 .published-card .actions{display:flex;gap:8px;margin-top:auto}
 .published-card .actions a{flex:1;text-align:center;padding:9px;border-radius:9px;background:#00ff88;color:#00140b;font-weight:800;font-size:.8rem}
 .published-card .actions a.secondary{background:#13231b;color:#b8f8d4;border:1px solid #24483a}
+.published-card .actions a.detail{background:#07100c;color:#dfffee;border:1px solid #24483a}
+.published-pagination{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:16px;min-height:40px}
+.published-pagination button{padding:9px 13px;border-radius:9px;border:1px solid #24483a;background:#0f1f18;color:#00ff88;font-weight:800;cursor:pointer}
+.published-pagination button:disabled{opacity:.45;cursor:not-allowed;color:#6f837a}
+.published-pagination span{color:#91a19a;font-size:.84rem}
 .published-empty{border:1px dashed #24483a;border-radius:12px;padding:20px;text-align:center;color:#91a19a}
 /* Creator section */
 .creator-hero{background:linear-gradient(135deg,#1a1510 0%,#0a0a0f 100%);border:1px solid #f59e0b33;border-radius:20px;padding:50px 40px;text-align:center;margin-bottom:30px}
@@ -150,6 +155,11 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
     <div class="published-filter-row" id="published-market-tags" data-active-tag="">Loading categories...</div>
     <div class="published-summary" id="published-market-summary" data-status="idle">Loading public games...</div>
     <div class="published-grid" id="published-market-grid" data-status="loading"></div>
+    <div class="published-pagination" id="published-market-pagination" data-page="1">
+      <button type="button" data-published-page="prev" disabled>Previous</button>
+      <span id="published-market-page-label">Page 1 of 1</span>
+      <button type="button" data-published-page="next" disabled>Next</button>
+    </div>
   </div>
 </div>
 
@@ -213,8 +223,16 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
   const sort = document.getElementById('published-market-sort');
   const tagBar = document.getElementById('published-market-tags');
   const refresh = document.getElementById('published-market-refresh');
+  const pagination = document.getElementById('published-market-pagination');
+  const pageLabel = document.getElementById('published-market-page-label');
   let publishedGames = [];
+  let availableTags = [];
   let activeTag = '';
+  let currentPage = 1;
+  let currentPageSize = 12;
+  let pageInfo = { page: 1, pages: 1, pageSize: 12, total: 0, hasNext: false, hasPrev: false };
+  let pendingSearchTimer = 0;
+  let loadSerial = 0;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -236,6 +254,10 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
     return game.url || (window.location.origin + '/play?published=' + encodeURIComponent(game.slug || 'game'));
   }
 
+  function detailUrl(game) {
+    return '/game.html?slug=' + encodeURIComponent(game.slug || '');
+  }
+
   function getTags(game) {
     return Array.isArray(game?.tags) ? game.tags.filter(Boolean) : [];
   }
@@ -253,7 +275,7 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
 
   function renderTagFilters() {
     if (!tagBar) return;
-    const tags = [...new Set(publishedGames.flatMap(getTags))].sort();
+    const tags = availableTags.length ? availableTags : [...new Set(publishedGames.flatMap(getTags))].sort();
     tagBar.dataset.activeTag = activeTag;
     tagBar.innerHTML = [''].concat(tags).map((tag) => {
       const label = tag || 'All games';
@@ -340,16 +362,151 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
     }
   }
 
-  search?.addEventListener('input', renderPublishedGames);
-  sort?.addEventListener('change', renderPublishedGames);
+  function renderPagination() {
+    if (!pagination) return;
+    const page = Number(pageInfo.page) || 1;
+    const pages = Math.max(Number(pageInfo.pages) || 1, 1);
+    pagination.dataset.page = String(page);
+    pagination.dataset.pages = String(pages);
+    pagination.dataset.total = String(Number(pageInfo.total) || 0);
+    if (pageLabel) pageLabel.textContent = 'Page ' + page + ' of ' + pages;
+    const prev = pagination.querySelector('[data-published-page="prev"]');
+    const next = pagination.querySelector('[data-published-page="next"]');
+    if (prev) prev.disabled = !pageInfo.hasPrev;
+    if (next) next.disabled = !pageInfo.hasNext;
+  }
+
+  function updateMarketplaceState(status, rows) {
+    const query = (search?.value || '').trim().toLowerCase();
+    window._cratePublishedMarketplace = {
+      status,
+      total: Number(pageInfo.total) || rows.length,
+      shown: rows.length,
+      page: Number(pageInfo.page) || currentPage,
+      pages: Number(pageInfo.pages) || 1,
+      pageSize: Number(pageInfo.pageSize) || currentPageSize,
+      hasNext: !!pageInfo.hasNext,
+      hasPrev: !!pageInfo.hasPrev,
+      slugs: rows.map((game) => game.slug),
+      query,
+      tag: activeTag,
+      sort: sort?.value || 'updated',
+      availableTags: availableTags.slice(),
+    };
+  }
+
+  function renderPublishedRows(rows) {
+    if (!rows.length) {
+      grid.innerHTML = '<div class="published-empty">No public games match this search yet.</div>';
+      return;
+    }
+    grid.innerHTML = rows.map((game) => {
+      const url = gameUrl(game);
+      const creator = game.creatorName || 'Crate creator';
+      const description = game.description || 'A playable Crate Engine project published by the community.';
+      const tags = getTags(game);
+      return '<article class="published-card" data-published-game="' + escapeHtml(game.slug || '') + '">' +
+        '<h3>' + escapeHtml(game.title || game.slug || 'Untitled Game') + '</h3>' +
+        '<div class="creator">By ' + escapeHtml(creator) + '</div>' +
+        '<div class="desc">' + escapeHtml(description) + '</div>' +
+        (tags.length ? '<div class="tags">' + tags.slice(0, 4).map((tag) => '<span>' + escapeHtml(tag) + '</span>').join('') + '</div>' : '') +
+        '<div class="meta">' +
+          '<span>' + (Number(game.objects) || 0) + ' objects</span>' +
+          '<span>' + (Number(game.components) || 0) + ' components</span>' +
+          '<span>' + (Number(game.scripts) || 0) + ' scripts</span>' +
+          '<span>' + escapeHtml(formatDate(game.updatedAt)) + '</span>' +
+        '</div>' +
+        '<div class="actions">' +
+          '<a href="' + escapeHtml(url) + '">Play</a>' +
+          '<a class="secondary" href="/play?published=' + encodeURIComponent(game.slug || '') + '">Remix</a>' +
+          '<a class="detail" href="' + escapeHtml(detailUrl(game)) + '">Details</a>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+  }
+
+  renderPublishedGames = function() {
+    const rows = publishedGames;
+    grid.dataset.status = 'loaded';
+    updateMarketplaceState('loaded', rows);
+    summary.dataset.status = 'loaded';
+    const query = (search?.value || '').trim();
+    const total = Number(pageInfo.total) || rows.length;
+    summary.textContent = rows.length + ' of ' + total + ' public games shown' + (activeTag ? ' in ' + activeTag : '') + (query ? ' for "' + query + '"' : '') + ' - sorted by ' + (sort?.selectedOptions?.[0]?.textContent || 'Newest');
+    renderPagination();
+    renderPublishedRows(rows);
+  };
+
+  function scheduleLoad() {
+    clearTimeout(pendingSearchTimer);
+    pendingSearchTimer = setTimeout(() => loadPublishedGames({ resetPage: true }), 160);
+  }
+
+  loadPublishedGames = async function(options = {}) {
+    if (!grid || !summary) return;
+    if (options.resetPage) currentPage = 1;
+    const serial = ++loadSerial;
+    const params = new URLSearchParams();
+    params.set('limit', String(currentPageSize));
+    params.set('page', String(currentPage));
+    const query = (search?.value || '').trim();
+    if (query) params.set('q', query);
+    if (activeTag) params.set('tag', activeTag);
+    params.set('sort', sort?.value || 'updated');
+    grid.dataset.status = 'loading';
+    summary.dataset.status = 'loading';
+    summary.textContent = 'Loading public games...';
+    grid.innerHTML = '<div class="published-empty">Loading public games...</div>';
+    updateMarketplaceState('loading', []);
+    try {
+      const response = await fetch('/api/games?' + params.toString(), { headers: { 'Accept': 'application/json' } });
+      const payload = await response.json();
+      if (serial !== loadSerial) return;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Published games API failed.');
+      publishedGames = Array.isArray(payload.games) ? payload.games : [];
+      availableTags = Array.isArray(payload.tags) ? payload.tags : [];
+      pageInfo = {
+        page: Number(payload.page) || currentPage,
+        pages: Number(payload.pages) || 1,
+        pageSize: Number(payload.pageSize) || currentPageSize,
+        total: Number(payload.total) || publishedGames.length,
+        hasNext: !!payload.hasNext,
+        hasPrev: !!payload.hasPrev,
+      };
+      currentPage = pageInfo.page;
+      renderTagFilters();
+      renderPublishedGames();
+    } catch (err) {
+      if (serial !== loadSerial) return;
+      publishedGames = [];
+      availableTags = [];
+      pageInfo = { page: 1, pages: 1, pageSize: currentPageSize, total: 0, hasNext: false, hasPrev: false };
+      grid.dataset.status = 'failed';
+      summary.dataset.status = 'failed';
+      summary.textContent = 'Published games are unavailable right now.';
+      grid.innerHTML = '<div class="published-empty">Could not load public games: ' + escapeHtml(err?.message || err) + '</div>';
+      window._cratePublishedMarketplace = { status: 'failed', total: 0, shown: 0, slugs: [], error: err?.message || String(err || 'Unknown error') };
+      renderPagination();
+    }
+  };
+
+  search?.addEventListener('input', scheduleLoad);
+  sort?.addEventListener('change', () => loadPublishedGames({ resetPage: true }));
   tagBar?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-published-tag]');
     if (!button) return;
     activeTag = button.dataset.publishedTag || '';
     renderTagFilters();
-    renderPublishedGames();
+    loadPublishedGames({ resetPage: true });
   });
-  refresh?.addEventListener('click', loadPublishedGames);
+  pagination?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-published-page]');
+    if (!button || button.disabled) return;
+    if (button.dataset.publishedPage === 'prev' && pageInfo.hasPrev) currentPage = Math.max(1, currentPage - 1);
+    if (button.dataset.publishedPage === 'next' && pageInfo.hasNext) currentPage += 1;
+    loadPublishedGames();
+  });
+  refresh?.addEventListener('click', () => loadPublishedGames());
   window._loadPublishedMarketplace = loadPublishedGames;
   window.addEventListener('DOMContentLoaded', loadPublishedGames);
 })();

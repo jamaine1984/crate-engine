@@ -4,6 +4,7 @@ const MAX_DESCRIPTION_LENGTH = 1200;
 const MAX_CREATOR_LENGTH = 80;
 const MAX_CREATOR_URL_LENGTH = 220;
 const MAX_TAGS = 12;
+const MAX_LIST_SCAN = 1000;
 const GAME_PREFIX = 'game:';
 
 function corsHeaders() {
@@ -66,6 +67,14 @@ function cleanModerationStatus(value) {
 function cleanSort(value) {
   const normalized = cleanText(value || 'updated', 32).toLowerCase();
   return ['updated', 'title', 'objects', 'components', 'scripts'].includes(normalized) ? normalized : 'updated';
+}
+
+function cleanPage(value) {
+  return Math.max(Number.parseInt(value, 10) || 1, 1);
+}
+
+function cleanLimit(value, fallback = 24) {
+  return Math.min(Math.max(Number.parseInt(value, 10) || fallback, 1), 50);
 }
 
 function cleanCreator(value = {}) {
@@ -328,16 +337,41 @@ async function listGames(context) {
   const sort = cleanSort(url.searchParams.get('sort') || 'updated');
   if (requestedSlug) {
     const record = await store.get(keyForSlug(requestedSlug), 'json');
+    const games = record && cleanModerationStatus(record.moderationStatus) !== 'hidden' ? [publicGameSummary(record)] : [];
     return json({
       ok: true,
-      games: record && cleanModerationStatus(record.moderationStatus) !== 'hidden' ? [publicGameSummary(record)] : [],
+      games,
+      tags: Array.from(new Set(games.flatMap((game) => Array.isArray(game.tags) ? game.tags : []))).sort(),
+      sort,
+      query,
+      tag,
+      page: 1,
+      pageSize: games.length || 1,
+      total: games.length,
+      pages: 1,
+      hasNext: false,
+      hasPrev: false,
       cursor: null,
       listComplete: true,
     });
   }
-  const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 24, 1), 50);
-  const listed = await store.list({ prefix: GAME_PREFIX, limit });
-  const games = listed.keys
+  const limit = cleanLimit(url.searchParams.get('limit'), 24);
+  const requestedPage = cleanPage(url.searchParams.get('page'));
+  const keys = [];
+  let cursor = '';
+  let listComplete = true;
+  do {
+    const batch = await store.list({
+      prefix: GAME_PREFIX,
+      limit: Math.min(1000, MAX_LIST_SCAN - keys.length),
+      ...(cursor ? { cursor } : {}),
+    });
+    keys.push(...batch.keys);
+    cursor = batch.cursor || '';
+    listComplete = !!batch.list_complete || !cursor;
+  } while (!listComplete && keys.length < MAX_LIST_SCAN);
+
+  const visibleGames = keys
     .filter((key) => cleanVisibility(key.metadata?.visibility) === 'public' && cleanModerationStatus(key.metadata?.moderationStatus) === 'active')
     .map((key) => ({
       slug: key.metadata?.slug || key.name.replace(GAME_PREFIX, ''),
@@ -355,7 +389,9 @@ async function listGames(context) {
       creatorName: key.metadata?.creatorName || '',
       visibility: cleanVisibility(key.metadata?.visibility),
       moderationStatus: cleanModerationStatus(key.metadata?.moderationStatus),
-    }))
+    }));
+  const availableTags = Array.from(new Set(visibleGames.flatMap((game) => Array.isArray(game.tags) ? game.tags : []))).sort();
+  const filteredGames = visibleGames
     .filter((game) => {
       if (tag && !(Array.isArray(game.tags) && game.tags.includes(tag))) return false;
       if (!query) return true;
@@ -372,8 +408,28 @@ async function listGames(context) {
       if (sort === 'scripts') return (Number(b.scripts) || 0) - (Number(a.scripts) || 0);
       return String(b.updatedAt).localeCompare(String(a.updatedAt));
     });
-  const availableTags = Array.from(new Set(games.flatMap((game) => Array.isArray(game.tags) ? game.tags : []))).sort();
-  return json({ ok: true, games, tags: availableTags, sort, query, tag, cursor: listed.cursor || null, listComplete: listed.list_complete });
+  const total = filteredGames.length;
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(requestedPage, pages);
+  const offset = (page - 1) * limit;
+  const games = filteredGames.slice(offset, offset + limit);
+  return json({
+    ok: true,
+    games,
+    tags: availableTags,
+    sort,
+    query,
+    tag,
+    page,
+    pageSize: limit,
+    total,
+    pages,
+    hasNext: page < pages,
+    hasPrev: page > 1,
+    cursor: listComplete ? null : cursor,
+    listComplete,
+    scanLimit: MAX_LIST_SCAN,
+  });
 }
 
 async function updateGame(context, slug) {

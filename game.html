@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crate Engine - Published Game</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#080b0d;color:#e5f5ee;font-family:Inter,system-ui,-apple-system,sans-serif;min-height:100vh}
+a{color:#00ff88;text-decoration:none}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:16px 30px;border-bottom:1px solid #173326;background:#090f0c}
+.nav .logo{font-size:1.2rem;font-weight:800;color:#fff}
+.nav .logo span{color:#00ff88}
+.nav .links{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.nav .links a{color:#9bb4aa;font-size:.9rem}
+.nav .links a:hover{color:#00ff88}
+.shell{max-width:1120px;margin:0 auto;padding:42px 24px 64px}
+.crumb{display:inline-flex;align-items:center;gap:8px;color:#91a19a;font-size:.86rem;margin-bottom:22px}
+.hero{border:1px solid #173326;background:linear-gradient(180deg,#0d1c15 0%,#07100c 100%);border-radius:18px;padding:28px}
+.status{color:#00ff88;font-size:.76rem;text-transform:uppercase;font-weight:800;letter-spacing:.08em;margin-bottom:10px}
+h1{font-size:clamp(2rem,5vw,4rem);line-height:1.05;color:#fff;margin-bottom:12px}
+.creator{color:#00ff88;font-weight:700;margin-bottom:14px}
+.description{color:#aac0b7;line-height:1.6;max-width:780px}
+.tags{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 0}
+.tags span{border:1px solid #24483a;border-radius:999px;padding:5px 10px;color:#b8f8d4;background:#07100c;font-size:.78rem}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.actions a,.actions button{border:1px solid #24483a;border-radius:10px;padding:12px 16px;font-weight:900;font-size:.9rem;cursor:pointer}
+.actions a.primary{background:#00ff88;color:#00140b;border-color:#00ff88}
+.actions a.secondary,.actions button{background:#102018;color:#dfffee}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0}
+.stat{border:1px solid #173326;background:#0b1510;border-radius:12px;padding:16px}
+.stat .num{font-size:1.8rem;font-weight:900;color:#fff}
+.stat .label{color:#789087;font-size:.76rem;text-transform:uppercase;margin-top:4px}
+.panel{border:1px solid #173326;background:#0b1510;border-radius:14px;padding:20px;margin-top:18px}
+.panel h2{font-size:1.05rem;color:#fff;margin-bottom:12px}
+.systems{display:flex;gap:8px;flex-wrap:wrap}
+.systems span{border:1px solid #24483a;border-radius:999px;padding:6px 10px;color:#dfffee;background:#07100c;font-size:.8rem}
+.meta-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;color:#aac0b7;font-size:.9rem}
+.meta-list div{border-bottom:1px solid #173326;padding:8px 0}
+.empty{border:1px dashed #24483a;border-radius:14px;padding:28px;text-align:center;color:#91a19a;background:#07100c}
+@media (max-width:760px){
+  .nav{padding:14px 18px;align-items:flex-start;gap:12px;flex-direction:column}
+  .shell{padding:28px 16px 48px}
+  .hero{padding:22px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .meta-list{grid-template-columns:1fr}
+  .actions a,.actions button{width:100%;text-align:center}
+}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="logo"><span>Crate</span> Engine</div>
+  <div class="links">
+    <a href="/play">Engine</a>
+    <a href="/marketplace.html">Marketplace</a>
+    <a href="/creators.html">Creators</a>
+  </div>
+</nav>
+
+<main class="shell">
+  <a class="crumb" href="/marketplace.html">Back to marketplace</a>
+  <section id="game-detail" class="empty" data-status="loading">Loading published game...</section>
+</main>
+
+<script>
+(function() {
+  const root = document.getElementById('game-detail');
+  const params = new URLSearchParams(window.location.search);
+  const slug = (params.get('slug') || params.get('game') || '').trim();
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatDate(value) {
+    if (!value) return 'Recently';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Recently';
+    return date.toLocaleString();
+  }
+
+  function playHref(game) {
+    return game.url || ('/play?published=' + encodeURIComponent(game.slug || slug));
+  }
+
+  function setState(state) {
+    window._crateGameDetail = state;
+  }
+
+  function renderError(message) {
+    root.dataset.status = 'failed';
+    root.className = 'empty';
+    root.innerHTML = '<strong>Game unavailable.</strong><br>' + escapeHtml(message || 'This published game could not be loaded.');
+    setState({ status: 'failed', slug, error: message || 'Game unavailable' });
+  }
+
+  function renderGame(game) {
+    const tags = Array.isArray(game.tags) ? game.tags.filter(Boolean) : [];
+    const systems = Object.entries(game.componentTypes || {})
+      .filter((entry) => Number(entry[1]) > 0)
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      .slice(0, 18);
+    const play = playHref(game);
+    const remix = '/play?published=' + encodeURIComponent(game.slug || slug);
+    root.dataset.status = 'loaded';
+    root.className = 'detail';
+    root.innerHTML =
+      '<section class="hero">' +
+        '<div class="status">' + escapeHtml(game.visibility || 'public') + ' published game</div>' +
+        '<h1>' + escapeHtml(game.title || game.slug || 'Untitled Game') + '</h1>' +
+        '<div class="creator">By ' + escapeHtml(game.creatorName || 'Crate creator') + '</div>' +
+        '<p class="description">' + escapeHtml(game.description || 'A playable Crate Engine project published by the community.') + '</p>' +
+        (tags.length ? '<div class="tags">' + tags.map((tag) => '<span>' + escapeHtml(tag) + '</span>').join('') + '</div>' : '') +
+        '<div class="actions">' +
+          '<a class="primary" data-game-action="play" href="' + escapeHtml(play) + '">Play Game</a>' +
+          '<a class="secondary" data-game-action="remix" href="' + escapeHtml(remix) + '">Open in Engine</a>' +
+          '<a class="secondary" data-game-action="marketplace" href="/marketplace.html">Browse More Games</a>' +
+        '</div>' +
+      '</section>' +
+      '<section class="grid" aria-label="Game stats">' +
+        '<div class="stat"><div class="num">' + (Number(game.objects) || 0) + '</div><div class="label">Objects</div></div>' +
+        '<div class="stat"><div class="num">' + (Number(game.components) || 0) + '</div><div class="label">Components</div></div>' +
+        '<div class="stat"><div class="num">' + (Number(game.scripts) || 0) + '</div><div class="label">Scripts</div></div>' +
+        '<div class="stat"><div class="num">' + (Number(game.commands) || 0) + '</div><div class="label">Commands</div></div>' +
+      '</section>' +
+      '<section class="panel">' +
+        '<h2>Game systems</h2>' +
+        (systems.length ? '<div class="systems">' + systems.map(([name, count]) => '<span>' + escapeHtml(name) + ' x' + Number(count) + '</span>').join('') + '</div>' : '<div class="empty">No systems were tagged in this published game.</div>') +
+      '</section>' +
+      '<section class="panel">' +
+        '<h2>Publish details</h2>' +
+        '<div class="meta-list">' +
+          '<div><strong>Slug:</strong> ' + escapeHtml(game.slug || slug) + '</div>' +
+          '<div><strong>Source:</strong> ' + escapeHtml(game.source || 'cloudflare-pages-kv') + '</div>' +
+          '<div><strong>Updated:</strong> ' + escapeHtml(formatDate(game.updatedAt)) + '</div>' +
+          '<div><strong>Asset host:</strong> ' + escapeHtml(game.assetBaseUrl || 'https://crateship-games-assets.pages.dev') + '</div>' +
+        '</div>' +
+      '</section>';
+    setState({
+      status: 'loaded',
+      slug: game.slug || slug,
+      title: game.title || '',
+      creatorName: game.creatorName || '',
+      visibility: game.visibility || '',
+      tags,
+      systems: systems.map((entry) => entry[0]),
+      objects: Number(game.objects) || 0,
+      components: Number(game.components) || 0,
+      scripts: Number(game.scripts) || 0,
+      playHref: play,
+      remixHref: remix,
+      hasPlay: true,
+      hasRemix: true,
+      hasMarketplace: true,
+    });
+  }
+
+  async function load() {
+    if (!slug) {
+      renderError('Missing game slug.');
+      return;
+    }
+    setState({ status: 'loading', slug });
+    try {
+      const response = await fetch('/api/games/' + encodeURIComponent(slug), { headers: { Accept: 'application/json' } });
+      const payload = await response.json();
+      if (!response.ok || !payload?.ok || !payload.game) throw new Error(payload?.error || 'Published game API failed.');
+      renderGame(payload.game);
+    } catch (err) {
+      renderError(err?.message || String(err || 'Unknown error'));
+    }
+  }
+
+  window._loadCrateGameDetail = load;
+  load();
+})();
+</script>
+</body>
+</html>

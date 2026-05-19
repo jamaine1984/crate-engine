@@ -86,6 +86,7 @@ export default defineConfig({
         creators: path.join(rootDir, 'creators.html'),
         demo: path.join(rootDir, 'demo.html'),
         features: path.join(rootDir, 'features.html'),
+        game: path.join(rootDir, 'game.html'),
         marketplace: path.join(rootDir, 'marketplace.html'),
         pricing: path.join(rootDir, 'pricing.html'),
         generate_favicon: path.join(rootDir, 'generate_favicon.html'),
