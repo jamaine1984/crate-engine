@@ -1703,6 +1703,7 @@ let lastBlueprintSignature = '';
 let lastPlacementSignature = '';
 let lastAssetPackSignature = '';
 let lastReadinessSignature = '';
+let lastValidationSignature = '';
 let lastGameSystemsSignature = '';
 let assetManifestLoadStarted = false;
 
@@ -2276,6 +2277,121 @@ function createReadinessRow(label, value) {
   row.className = 'gb-readiness-row';
   row.append(createTextElement('span', '', label), createTextElement('strong', '', value));
   return row;
+}
+
+function createValidationSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  section.id = 'gb-validation';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Validation';
+  const status = document.createElement('div');
+  status.id = 'gb-validation-status';
+  status.className = 'gb-validation-status';
+  const list = document.createElement('div');
+  list.id = 'gb-validation-list';
+  list.className = 'gb-validation-list';
+  section.append(heading, status, list);
+  return section;
+}
+
+function getRenderableHotspots(objects) {
+  const hotspots = [];
+  const limit = Math.min(objects.length, 160);
+  for (let i = 0; i < limit; i += 1) {
+    const obj = objects[i];
+    const stats = countRenderableStats(obj);
+    if (stats.triangles >= 120000) {
+      hotspots.push({
+        name: getObjectName(obj, i),
+        triangles: stats.triangles,
+      });
+    }
+    if (hotspots.length >= 3) break;
+  }
+  return hotspots;
+}
+
+function collectSceneValidation(readinessInput) {
+  const readiness = readinessInput || collectReadiness();
+  const objects = getSceneObjects();
+  const scriptIds = getInstalledScriptIds();
+  const checks = [];
+  const addCheck = (level, label, detail) => checks.push({ level, label, detail });
+
+  if (readiness.assetStatus === 'failed') addCheck('error', 'Asset host', 'Manifest or remote asset host is not available.');
+  if (!readiness.objectCount) addCheck('error', 'World', 'Build a world or import scene objects.');
+  if (!readiness.scriptCount && !readiness.componentCount) addCheck('warning', 'Gameplay', 'Install a system or tag objects with components.');
+  if (readiness.objectCount && !readiness.spawnCount) addCheck('warning', 'Spawn', 'Add at least one player spawn point.');
+  if (readiness.componentCount && !readiness.checkpointCount) addCheck('suggestion', 'Checkpoint', 'Add a checkpoint so Play mode can recover progress.');
+  if (readiness.componentCount && !readiness.winConditionCount) addCheck('warning', 'Win goal', 'Add a win condition so exported games have an end state.');
+  if (readiness.doorCount && !readiness.triggerCount) addCheck('warning', 'Door link', 'Doors need trigger zones.');
+  if (readiness.triggerCount && !readiness.doorCount) addCheck('warning', 'Trigger link', 'Triggers need a door or explicit target.');
+  if ((readiness.rewardCount || readiness.gateCount) && !readiness.missionStepCount) addCheck('warning', 'Mission link', 'Rewards and gates need a mission step.');
+  if (readiness.missionStepCount && !readiness.rewardCount) addCheck('suggestion', 'Mission reward', 'Add a reward so mission progress gives feedback.');
+  if (readiness.waveCount && !readiness.enemySpawnCount) addCheck('warning', 'Wave link', 'Wave controllers need enemy spawns.');
+  if (readiness.enemySpawnCount && !readiness.waveCount) addCheck('warning', 'Enemy wave', 'Enemy spawns need a wave controller.');
+  if ((readiness.pickupCount || readiness.equipmentCount || readiness.rewardCount || readiness.npcCount || readiness.merchantCount) && !scriptIds.has('gb_inventory_hotbar')) {
+    addCheck('warning', 'Inventory runtime', 'Inventory-related components need the inventory system installed.');
+  }
+  if (readiness.componentCount && !((countComponents(objects).byType || {}).collider)) {
+    addCheck('suggestion', 'Collision', 'Tag solid walls, floors, or props with collider components.');
+  }
+
+  getRenderableHotspots(objects).forEach((item) => {
+    addCheck('suggestion', 'High triangles', item.name + ' has about ' + formatNumberShort(item.triangles) + ' triangles.');
+  });
+
+  const errors = checks.filter((check) => check.level === 'error').length;
+  const warnings = checks.filter((check) => check.level === 'warning').length;
+  const suggestions = checks.filter((check) => check.level === 'suggestion').length;
+  const status = errors ? 'blocked' : warnings ? 'warn' : 'ready';
+  const summary = status === 'ready'
+    ? 'Core game loop linked'
+    : status === 'warn'
+      ? warnings + ' warning' + (warnings === 1 ? '' : 's')
+      : errors + ' blocker' + (errors === 1 ? '' : 's');
+  return {
+    status,
+    summary,
+    errors,
+    warnings,
+    suggestions,
+    checks,
+  };
+}
+
+function createValidationRow(check) {
+  const row = document.createElement('div');
+  row.className = 'gb-validation-row';
+  row.dataset.level = check.level || 'info';
+  row.append(createTextElement('span', '', check.label || 'Check'), createTextElement('strong', '', check.detail || 'Ready'));
+  return row;
+}
+
+function renderValidationStatus() {
+  const status = document.getElementById('gb-validation-status');
+  const list = document.getElementById('gb-validation-list');
+  if (!status || !list) return;
+  const validation = collectSceneValidation(window._gameBuilderReadiness || collectReadiness());
+  const signature = JSON.stringify(validation);
+  window._gameBuilderValidation = validation;
+  if (signature === lastValidationSignature) return;
+  lastValidationSignature = signature;
+  status.dataset.status = validation.status;
+  status.dataset.summary = validation.summary;
+  status.dataset.errors = String(validation.errors);
+  status.dataset.warnings = String(validation.warnings);
+  status.dataset.suggestions = String(validation.suggestions);
+  status.setAttribute('aria-label', validation.summary);
+  status.replaceChildren(
+    createTextElement('strong', '', validation.status === 'ready' ? 'Scene Ready' : validation.status === 'warn' ? 'Needs Attention' : 'Blocked'),
+    createTextElement('span', '', validation.summary)
+  );
+  const rows = validation.checks.length
+    ? validation.checks.slice(0, 7).map(createValidationRow)
+    : [createValidationRow({ level: 'ready', label: 'Core loop', detail: 'Spawn, goals, systems, and links look ready.' })];
+  list.replaceChildren(...rows);
 }
 
 function createGameSystemsSection() {
@@ -3067,6 +3183,7 @@ function updateBuilderUi() {
   renderPlacementStatus();
   renderAssetPackStatus();
   renderReadinessStatus();
+  renderValidationStatus();
   renderGameSystems();
   renderInspector();
   renderBlueprintList();
@@ -3140,6 +3257,19 @@ function mount() {
     .gb-readiness-row{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
     .gb-readiness-row span{font-size:10px;line-height:14px;color:#8d979e}
     .gb-readiness-row strong{font-size:10px;line-height:14px;color:#dfe6ea;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-validation-status{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 8px 6px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
+    .gb-validation-status strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-validation-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap}
+    .gb-validation-status[data-status="ready"]{border-color:#2f6f44;background:#101a13}
+    .gb-validation-status[data-status="warn"]{border-color:#725a21;background:#1c1710}
+    .gb-validation-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
+    .gb-validation-list{display:flex;flex-direction:column;gap:5px;padding:0 8px 8px}
+    .gb-validation-row{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;align-items:center;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
+    .gb-validation-row[data-level="error"]{border-color:#7f2d2d;background:#211313}
+    .gb-validation-row[data-level="warning"]{border-color:#725a21;background:#1c1710}
+    .gb-validation-row[data-level="ready"]{border-color:#2f6f44;background:#101a13}
+    .gb-validation-row span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-validation-row strong{font-size:10px;line-height:14px;color:#dfe6ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-systems-list{display:flex;flex-direction:column;gap:7px;padding:8px}
     .gb-system-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
     .gb-system-card[data-status="installed"]{border-color:#2f6f44;background:#101a13}
@@ -3247,6 +3377,7 @@ function mount() {
   body.appendChild(createProjectSection());
   body.appendChild(createAssetPackSection());
   body.appendChild(createReadinessSection());
+  body.appendChild(createValidationSection());
   body.appendChild(createGameSystemsSection());
 
   const appendBuilderToolSections = () => {

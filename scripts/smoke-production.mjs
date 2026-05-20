@@ -1929,6 +1929,7 @@ async function runBrowserSmoke() {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
       const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj || null;
       const readiness = window._gameBuilderReadiness || {};
+      const validation = window._gameBuilderValidation || {};
       const gameSystems = window._gameBuilderSystems || [];
       return {
         engineReady: window._engineReady === true,
@@ -1950,6 +1951,7 @@ async function runBrowserSmoke() {
         hasProject: !!document.querySelector('#gb-project'),
         hasAssetPack: !!document.querySelector('#gb-asset-pack'),
         hasReadiness: !!document.querySelector('#gb-readiness'),
+        hasValidation: !!document.querySelector('#gb-validation'),
         hasSystems: !!document.querySelector('#gb-systems'),
         systemCardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
         installedSystems: gameSystems.filter((system) => system.status === 'installed').map((system) => system.id),
@@ -1977,6 +1979,12 @@ async function runBrowserSmoke() {
         readinessEnemySpawnCount: readiness.enemySpawnCount || 0,
         readinessWaveCount: readiness.waveCount || 0,
         readinessAssetStatus: readiness.assetStatus || '',
+        validationStatus: validation.status || document.querySelector('#gb-validation-status')?.dataset.status || '',
+        validationSummary: validation.summary || document.querySelector('#gb-validation-status')?.dataset.summary || '',
+        validationErrors: Number(validation.errors ?? document.querySelector('#gb-validation-status')?.dataset.errors) || 0,
+        validationWarnings: Number(validation.warnings ?? document.querySelector('#gb-validation-status')?.dataset.warnings) || 0,
+        validationSuggestions: Number(validation.suggestions ?? document.querySelector('#gb-validation-status')?.dataset.suggestions) || 0,
+        validationRows: document.querySelectorAll('#gb-validation-list .gb-validation-row').length,
         projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
         hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
@@ -2245,7 +2253,7 @@ async function runBrowserSmoke() {
     if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
-    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Systems, Inspector, or Blueprints section was missing');
+    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasValidation || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Validation, Systems, Inspector, or Blueprints section was missing');
     if (!state.hasInspectorHealth || state.inspectorHealthStatus !== 'ready' || state.inspectorHealthComponents < 4 || state.inspectorMetricCount < 3 || state.inspectorHealthIssues !== 0) {
       throw new Error(`Game Builder inspector health did not report the selected gameplay object as ready: ${JSON.stringify(state)}`);
     }
@@ -2290,6 +2298,12 @@ async function runBrowserSmoke() {
       state.readinessWaveCount < 1 ||
       state.readinessAssetStatus !== 'loaded') {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
+    }
+    if (state.validationStatus !== 'ready' ||
+      state.validationErrors !== 0 ||
+      state.validationWarnings !== 0 ||
+      state.validationRows < 1) {
+      throw new Error(`Game Builder validation did not report the scene as ready: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
     if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate || !state.savedProjectHasEnemySpawn || !state.savedProjectHasWaveController || !state.savedProjectHasEquipmentItem || !state.savedProjectHasNpc || !state.savedProjectHasMerchant) {
@@ -2520,6 +2534,7 @@ console.log(`Asset base: ${assetBaseUrl}`);
 console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
+console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);
 console.log(`Game systems: ${browserState.systemSummary}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
