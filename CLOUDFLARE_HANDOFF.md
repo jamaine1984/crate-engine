@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `b658c534`
+- Current deployed source commit for the public engine code: `966f49ec`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -28,11 +28,12 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `a2d75412-8b19-4828-aca8-286c0ae2deef`
-- Latest production deployment URL: `https://a2d75412.crateship-games.pages.dev`
+- Latest production deployment ID: `8bb1604a-09bf-4ce7-af68-81380dae5c66`
+- Latest production deployment URL: `https://8bb1604a.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `b658c53`
-- Main live page bundle after the deploy: `/assets/play-BiLHJ67T.js`
+- Source shown by Cloudflare: `966f49e`
+- Main live page bundle after the deploy: `/assets/play-DmEADF1c.js`
+- Lazy App Builder chunk after the deploy: `/assets/app-builder-DxV98xDK.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-CZs6NKSQ.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -2026,6 +2027,30 @@ Browser verification history:
   - `node --check city-builder.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
   - Smoke still verified build-city output, separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-city-perf-b658c534.png`.
+- Intermediate custom-domain verification after deployment `dbc8c7dd-495d-4213-bdc4-74a218da1a6c`:
+  - Cloudflare source showed `7ff1a57`.
+  - `/play?verify=prop-proxy-7ff1a576` served `/assets/play-Dlv-oEdc.js`.
+  - `city-builder.mjs` added lightweight procedural proxy props and vehicles for the balanced web profile, skipped preloading those proxy-backed GLBs, and reduced balanced traffic cars to avoid shipping repeated high-draw-call prop models into every generated city.
+  - Smoke verified `Performance: blocked (22.5 FPS, 44.4 ms, 59 calls, 346 tris)`.
+  - Smoke verified `City performance profile: balanced (procedural props on, procedural vehicles on, renderer 59 calls/346 tris)`.
+  - A direct raw Build City profile after this deploy still showed about `1,706` calls and `234,042` triangles because additional small multi-mesh GLBs such as flowers, palms, traffic lights, and signs were still entering the city.
+- Final custom-domain verification after deployment `8bb1604a-09bf-4ce7-af68-81380dae5c66`:
+  - Cloudflare source showed `966f49e`.
+  - `/play?verify=nature-proxy-966f49ec` served `/assets/play-DmEADF1c.js`.
+  - The build also emitted `/assets/app-builder-DxV98xDK.js` and kept `/assets/game-builder-ui-CZs6NKSQ.js` as a lazy chunk.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and included `admin.html`, `play.html`, the new play bundle, and lazy app/builder chunks.
+  - `city-builder.mjs` now also uses procedural proxies for default balanced nature, traffic lights, signs, and small city props, and procedural traffic vehicles now use fewer meshes per vehicle.
+  - `scripts/smoke-production.mjs` now reads live renderer counters more directly and verifies procedural props, procedural vehicles, and procedural nature are all active in the balanced city profile.
+  - Smoke verified `Performance: blocked (26.5 FPS, 37.8 ms, 618 calls, 234312 tris)`.
+  - Smoke verified `City performance profile: balanced (procedural props on, vehicles on, nature on, renderer 618 calls/234312 tris)`.
+  - Smoke verified `Readiness: Ready to test, 281 objects, 2 scripts, 40 components, Edit mode`.
+  - Smoke verified `Validation: ready (0 errors, 0 warnings, 0 suggestions)`.
+  - Smoke verified `Validation fixes: link-missions, link-waves, add-colliders, add-colliders (24 colliders, undo restored 279)`.
+  - Smoke verified `Project snapshot: v3 279 objects 2 scripts 3 commands, 4 validation fixes`.
+  - The remote `moderation_audit` table still has `0` rows after deploy.
+  - `node --check city-builder.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke still verified build-city output, separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-nature-proxy-966f49ec.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2071,6 +2096,9 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+966f49ec Proxy city nature and traffic assets
+7ff1a576 Add lightweight city prop proxies
+cefcfd86 Update handoff for city performance deploy
 b658c534 Optimize city build and lazy load builder UI
 a803c4f5 Update handoff for validation preview deploy
 adebace1 Add validation previews and performance panel
@@ -2193,14 +2221,20 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke improved to `18.8 FPS`, `53.2 ms` average frame time,
-     `74` draw calls, and `11,896` triangles after Build City.
+   - Current live smoke improved to `26.5 FPS`, `37.8 ms` average frame time,
+     `618` draw calls, and `234,312` triangles after Build City with
+     procedural props, vehicles, and nature enabled.
+   - Earlier direct raw profiling before the proxy tightening showed about
+     `1,706` calls and `234,042` triangles, while the pre-optimization direct
+     profile showed about `2,013` calls and `2,252,712` triangles.
    - Previous smoke before the city optimization was `14.3 FPS`, `69.8 ms`,
-     `1,863` draw calls, and `3,608,266` triangles.
+     `1,863` draw calls, and `3,608,266` triangles; the first city optimization
+     smoke reached `18.8 FPS`, `53.2 ms`, `74` draw calls, and `11,896`
+     triangles before the smoke counters were hardened.
    - Profile `https://crateshipgames.com/play` on desktop and mobile widths.
-   - Find the remaining frame-time bottleneck after geometry reduction: check
-     animation loops, post-processing, renderer timing, browser throttling, and
-     script work during Play/Edit mode.
+   - Find the remaining frame-time bottleneck after geometry and prop-proxy
+     reduction: check animation loops, post-processing, renderer timing,
+     browser throttling, and script work during Play/Edit mode.
    - Continue adding object pooling, instancing for repeated props, culling, LOD
      selection, and lazy loading for heavy assets.
 2. Asset pipeline hardening
@@ -2254,9 +2288,9 @@ The remaining work to make it feel like a sellable full game engine is:
 
 ## Recommended Next Steps
 
-1. Start the next optimization batch from the remaining frame-time bottleneck:
-   measure animation loops, post-processing, render timing, and script work now
-   that draw calls and triangles are much lower.
+1. Profile and trim per-frame script work and animation loops now that default
+   city content is proxy-lowered; add a raw Build City performance probe to
+   smoke if the live panel counters diverge again.
 2. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
