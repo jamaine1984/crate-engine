@@ -1,6 +1,6 @@
 # CrateShip Games Cloudflare Handoff
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 This file is the operational handoff for the real CrateShip Games web engine at
 `https://crateshipgames.com/play`. Use it before changing or deploying the web
@@ -2134,6 +2134,79 @@ A  CLOUDFLARE_HANDOFF.md
 After the latest public deploy was pushed, this handoff file was updated again
 to record the final Cloudflare deployment metadata. That handoff-only update
 does not change the public website bundle unless it is intentionally deployed.
+
+## Remaining Fully Working Engine Roadmap
+
+The live engine now has the core web-editor loop working on the custom
+Cloudflare domain: split asset hosting, Build City smoke coverage, Edit /
+Explore / Play mode separation, Game Builder systems, published game export and
+load, marketplace/detail pages, admin guardrails, scene readiness, scene
+validation, and first safe one-click validation fixes.
+
+The remaining work to make it feel like a sellable full game engine is:
+
+1. Validation safety and undo
+   - Add preview/undo for one-click Validation fixes before project save/export.
+   - Show exactly which objects will be changed by collider, mission, wave, and
+     trigger helpers.
+   - Persist a fix history in project saves so builders can audit automatic
+     changes.
+2. Performance profiling and frame stability
+   - Add a live performance overlay with FPS, frame time, draw calls, triangle
+     count, texture memory, asset load time, and slow-script warnings.
+   - Profile `https://crateshipgames.com/play` on desktop and mobile widths.
+   - Add object pooling, instancing for repeated props, culling, LOD selection,
+     and lazy loading for heavy assets.
+   - Code-split the large play bundle and lazy-load editor-only panels outside
+     Play mode.
+3. Asset pipeline hardening
+   - Move large long-lived GLB assets to R2 when the Pages asset project becomes
+     too large or slow to manage.
+   - Add browser import validation for user GLB uploads: size limit, triangle
+     budget, texture budget, animation check, collision proxy check, and
+     manifest entry creation.
+   - Add automatic optimization jobs for user imports before assets enter a
+     published game.
+4. Project format and export/import
+   - Lock a versioned `.crate` project schema with migration tests.
+   - Add project integrity checks before save, load, publish, and playable
+     package export.
+   - Add import conflict handling for duplicate object IDs, missing assets,
+     missing scripts, and incompatible project versions.
+5. Gameplay runtime completeness
+   - Expand components for player controller presets, camera presets, health,
+     damage, inventory, quests, dialogue, enemies, waves, checkpoints, win/lose
+     states, doors, triggers, UI/HUD, audio, and save points.
+   - Add reusable genre templates such as survival, racing, platformer,
+     adventure, shooter, RPG, tycoon, and multiplayer lobby.
+   - Make Play mode run from a clean runtime snapshot so editor state cannot
+     leak into gameplay.
+6. Editor UX polish
+   - Build richer side menus for presets, inventory, NPCs, quests, enemies,
+     UI/HUD, physics, lighting, terrain, audio, and publish settings.
+   - Add drag/drop placement, search, filters, component presets, prefab save,
+     prefab apply, and batch edit tools.
+   - Make mobile/tablet controls usable for testing, even if heavy authoring
+     stays desktop-first.
+7. Scripting and AI safety
+   - Sandbox user scripts so bad code cannot break the editor or leak secrets.
+   - Add script validation, safe APIs, templates, examples, and runtime error
+     reporting.
+   - Keep AI generation as an assistant for builders, but make every generated
+     change inspectable, reversible, and validated.
+8. Multiplayer and cloud features
+   - Decide which game types need real-time multiplayer, then add Durable
+     Objects or another Cloudflare-backed session layer.
+   - Add accounts, ownership, quotas, team projects, project sharing, and
+     permissions.
+   - Add published-game analytics, crash reports, moderation workflows, and
+     creator dashboards.
+9. QA and release gates
+   - Put `npm run smoke:production` and asset checks into CI/deploy checklists.
+   - Add targeted tests for save/load migrations, project import/export,
+     published-game APIs, Game Builder components, mode separation, and
+     validation fixes.
+   - Add browser performance budgets so regressions fail before deployment.
 
 ## Recommended Next Steps
 
