@@ -2598,9 +2598,14 @@ async function runBrowserSmoke() {
         hasPerformance: !!document.querySelector('#gb-performance'),
         hasValidation: !!document.querySelector('#gb-validation'),
         hasTemplates: !!document.querySelector('#gb-templates'),
+        hasStarterKits: !!document.querySelector('#gb-starter-kits'),
         hasSystems: !!document.querySelector('#gb-systems'),
         templateCount: document.querySelectorAll('#gb-templates [data-gb-template]').length,
         templateIds: [...document.querySelectorAll('#gb-templates [data-gb-template]')].map((card) => card.dataset.gbTemplate),
+        starterKitCount: document.querySelectorAll('#gb-starter-kits [data-gb-starter-kit]').length,
+        starterKitIds: [...document.querySelectorAll('#gb-starter-kits [data-gb-starter-kit]')].map((card) => card.dataset.gbStarterKit),
+        starterKitStatus: document.querySelector('#gb-starter-kit-status')?.textContent || '',
+        starterKitLatest: window._lastStarterKit || null,
         systemCardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
         installedSystems: gameSystems.filter((system) => system.status === 'installed').map((system) => system.id),
         systemSummary: gameSystems.map((system) => system.id + ':' + system.statusText).join(', '),
@@ -2955,11 +2960,14 @@ async function runBrowserSmoke() {
     if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
-    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasPerformance || !state.hasValidation || !state.hasTemplates || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Performance, Validation, Templates, Systems, Inspector, or Blueprints section was missing');
+    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasPerformance || !state.hasValidation || !state.hasTemplates || !state.hasStarterKits || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Performance, Validation, Templates, Starter Kits, Systems, Inspector, or Blueprints section was missing');
     if (state.templateCount < 6 || !state.templateIds.includes('survival') || !state.templateIds.includes('rpg') || !state.templateIds.includes('tycoon')) {
       throw new Error(`Game Builder templates were missing starter genres: ${JSON.stringify(state)}`);
     }
-    if (!state.hasInspectorHealth || state.inspectorHealthStatus !== 'ready' || state.inspectorHealthComponents < 4 || state.inspectorMetricCount < 3 || state.inspectorHealthIssues !== 0) {
+    if (state.starterKitCount < 3 || !state.starterKitIds.includes('adventure-loop') || state.starterKitLatest?.id !== 'adventure-loop' || !/Adventure Loop added/i.test(state.starterKitStatus)) {
+      throw new Error(`Game Builder starter kits were not available or did not apply: ${JSON.stringify(state)}`);
+    }
+    if (!state.hasInspectorHealth || state.inspectorHealthStatus !== 'ready' || state.inspectorHealthComponents < 2 || state.inspectorMetricCount < 3 || state.inspectorHealthIssues !== 0) {
       throw new Error(`Game Builder inspector health did not report the selected gameplay object as ready: ${JSON.stringify(state)}`);
     }
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
@@ -3216,8 +3224,8 @@ async function runBrowserSmoke() {
     }
     if (state.objectCount < 100) throw new Error(`Expected build city to create at least 100 objects, got ${state.objectCount}`);
     if (state.sceneRows < 1) throw new Error('Game Builder Scene list did not populate after build city');
-    if (!state.selectedComponents.includes('pickup') || !state.selectedComponents.includes('checkpoint') || !state.selectedComponents.includes('winCondition') || !state.selectedComponents.includes('spawnPoint')) {
-      throw new Error(`Required gameplay components were not applied to the selected object: ${JSON.stringify(state.selectedComponents)}`);
+    if (!state.gameplayComponents.includes('pickup') || !state.gameplayComponents.includes('checkpoint') || !state.gameplayComponents.includes('winCondition') || !state.gameplayComponents.includes('spawnPoint')) {
+      throw new Error(`Required starter gameplay components were not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
     }
     if (!state.gameplayComponents.includes('door') || !state.gameplayComponents.includes('triggerZone')) {
       throw new Error(`Door/Trigger components were not present in the live scene: ${JSON.stringify(state.gameplayComponents)}`);
