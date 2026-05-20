@@ -1853,25 +1853,77 @@ async function runBrowserSmoke() {
       throw new Error(`Engine bridge selected an object in Play mode: ${JSON.stringify(bridgePlaySelectState)}`);
     }
 
-    const doorTriggerState = await page.waitForFunction(
-      () => {
+    let doorTriggerState;
+    try {
+      doorTriggerState = await page.waitForFunction(
+        () => {
+          const runtime = window._userScriptScope?.gbRuntime || {};
+          const doors = Object.values(runtime.doors || {});
+          const triggers = Object.values(runtime.triggers || {});
+          const openedDoor = doors.find((door) => door.open === true && (door.progress || 0) > 0);
+          const firedTrigger = triggers.find((trigger) => (trigger.fireCount || 0) > 0);
+          if (!openedDoor || !firedTrigger || !runtime.lastTrigger?.targetDoor) return null;
+          return {
+            openedDoor: openedDoor.label || '',
+            doorProgress: openedDoor.progress || 0,
+            firedTrigger: firedTrigger.label || '',
+            triggerFireCount: firedTrigger.fireCount || 0,
+            lastTriggerTarget: runtime.lastTrigger.targetDoor || '',
+          };
+        },
+        undefined,
+        { timeout: timeoutMs }
+      ).then((handle) => handle.jsonValue());
+    } catch (err) {
+      const debug = await page.evaluate(() => {
         const runtime = window._userScriptScope?.gbRuntime || {};
-        const doors = Object.values(runtime.doors || {});
-        const triggers = Object.values(runtime.triggers || {});
-        const openedDoor = doors.find((door) => door.open === true && (door.progress || 0) > 0);
-        const firedTrigger = triggers.find((trigger) => (trigger.fireCount || 0) > 0);
-        if (!openedDoor || !firedTrigger || !runtime.lastTrigger?.targetDoor) return null;
+        const objects = window._engineBridge?.objects || window._sceneObjects || [];
+        const frameProfile = window._crateFrameProfile || {};
         return {
-          openedDoor: openedDoor.label || '',
-          doorProgress: openedDoor.progress || 0,
-          firedTrigger: firedTrigger.label || '',
-          triggerFireCount: firedTrigger.fireCount || 0,
-          lastTriggerTarget: runtime.lastTrigger.targetDoor || '',
+          mode: window._currentMode || '',
+          playMode: window._playMode === true,
+          scripts: (window._userScripts || []).map((script) => ({
+            id: script.id,
+            enabled: script.enabled,
+            running: script._running,
+            hasUpdate: typeof script._onUpdate === 'function',
+          })),
+          doors: Object.values(runtime.doors || {}).map((door) => ({
+            id: door.id,
+            label: door.label,
+            open: door.open,
+            progress: door.progress,
+          })),
+          triggers: Object.values(runtime.triggers || {}).map((trigger) => ({
+            id: trigger.id,
+            label: trigger.label,
+            fired: trigger.fired,
+            fireCount: trigger.fireCount,
+            inside: trigger.inside,
+            targetDoorId: trigger.targetDoorId,
+          })),
+          lastTrigger: runtime.lastTrigger || null,
+          componentCounts: objects.reduce((counts, obj) => {
+            Object.keys(obj?.userData?.gbComponents || {}).forEach((key) => {
+              counts[key] = (counts[key] || 0) + 1;
+            });
+            return counts;
+          }, {}),
+          frameProfile: {
+            mode: frameProfile.mode || '',
+            fps: Number(frameProfile.fps) || 0,
+            avgFrameMs: Number(frameProfile.avgFrameMs) || 0,
+            avgUpdateMs: Number(frameProfile.avgUpdateMs) || 0,
+            avgRenderMs: Number(frameProfile.avgRenderMs) || 0,
+            calls: Number(frameProfile.calls) || 0,
+            triangles: Number(frameProfile.triangles) || 0,
+            objects: Number(frameProfile.objects) || 0,
+            samples: Array.isArray(frameProfile.samples) ? frameProfile.samples.length : 0,
+          },
         };
-      },
-      undefined,
-      { timeout: timeoutMs }
-    ).then((handle) => handle.jsonValue());
+      });
+      throw new Error(`Door/Trigger runtime wait timed out: ${JSON.stringify(debug)}; pageErrors=${JSON.stringify(pageErrors.slice(-5))}; badConsole=${JSON.stringify(badConsole.slice(-5))}; ${err.message}`);
+    }
     if (!doorTriggerState.openedDoor || doorTriggerState.doorProgress <= 0 || doorTriggerState.triggerFireCount < 1) {
       throw new Error(`Door/Trigger runtime did not fire cleanly: ${JSON.stringify(doorTriggerState)}`);
     }

@@ -12955,6 +12955,7 @@ function updateSmartTraffic(dt) {
   for (let i = window._trafficCars.length - 1; i >= 0; i--) {
     const car = window._trafficCars[i];
     if (!car.mesh || !car.mesh.parent) { window._trafficCars.splice(i, 1); continue; }
+    if (!car.direction || typeof car.direction.clone !== 'function' || typeof car.direction.set !== 'function') continue;
     
     const pos = car.mesh.position;
     let shouldStop = false;
