@@ -130,7 +130,32 @@ setTimeout(()=>{const l=document.querySelector('.engine-loader');if(l&&l.offsetH
 </script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
 <script type="module" src="engine.mjs?v=20260517-builder1"></script>
-<script type="module" src="game-builder-ui.mjs?v=20260517-builder1"></script>
+<script type="module">
+let gameBuilderUiPromise = null;
+const loadGameBuilderUi = () => {
+  if (!gameBuilderUiPromise) {
+    gameBuilderUiPromise = import('./game-builder-ui.mjs?v=20260520-perf1')
+      .catch((err) => {
+        gameBuilderUiPromise = null;
+        console.warn('[GameBuilder] UI failed to load:', err);
+      });
+  }
+  return gameBuilderUiPromise;
+};
+window._loadGameBuilderUi = loadGameBuilderUi;
+const waitForEngineThenLoadBuilder = () => {
+  if (window._engineReady === true || window._engineBridge) {
+    loadGameBuilderUi();
+    return;
+  }
+  window.setTimeout(waitForEngineThenLoadBuilder, 100);
+};
+if ('requestIdleCallback' in window) {
+  window.requestIdleCallback(waitForEngineThenLoadBuilder, { timeout: 1000 });
+} else {
+  window.setTimeout(waitForEngineThenLoadBuilder, 250);
+}
+</script>
 <script type="module">
 const mountAccountBadge = () => {
   import('./auth.mjs')

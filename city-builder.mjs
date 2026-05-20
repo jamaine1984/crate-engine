@@ -42,6 +42,34 @@ function objects() { return _objects || []; }
 function showToast(msg, duration) { _showToast(msg, duration); }
 function loadGLBModel(...args) { if (_loadGLBModel) return _loadGLBModel(...args); }
 
+function getCityPerformanceSettings() {
+  let profile = 'balanced';
+  try {
+    profile = String(window.CRATESHIP_CITY_PERFORMANCE || localStorage.getItem('crate_city_performance') || 'balanced').toLowerCase();
+  } catch {
+    profile = 'balanced';
+  }
+  const quality = ['quality', 'high', 'cinematic'].includes(profile);
+  const fast = ['fast', 'low', 'performance'].includes(profile);
+  return {
+    profile,
+    shadows: quality,
+    proceduralBuildings: !quality,
+    preloadDistrictBuildings: quality,
+    preloadFurniture: quality,
+    cloudCount: quality ? 20 : fast ? 8 : 12,
+    streetLightsPerBlock: quality ? 2 : 1,
+    extraStreetLamps: quality,
+    staticTrafficLights: quality,
+    propDetail: quality ? 1 : fast ? 0.45 : 0.65,
+    natureDetail: quality ? 1 : fast ? 0.45 : 0.65,
+    trafficCars: quality ? 20 : fast ? 8 : 12,
+    parkedCarChance: quality ? 0.4 : fast ? 0.18 : 0.25,
+    maxParkedPerBlock: quality ? 2 : 1,
+    pedestrianScale: quality ? 1 : fast ? 0.35 : 0.6,
+  };
+}
+
 function buildGerstnerLake(radius, preset) {
   // Use the WATER_PRESETS system for consistent, good-looking water
   const presetName = preset || 'calm';
@@ -620,6 +648,9 @@ async function buildCityWorld3() {
     const rand = () => { _seed = (_seed * 16807) % 2147483647; return (_seed - 1) / 2147483646; };
     const pick = arr => arr[Math.floor(rand() * arr.length)];
     const rr = (lo, hi) => lo + rand() * (hi - lo);
+    const cityPerf = getCityPerformanceSettings();
+    const maybeDetail = (probability, scale = cityPerf.propDetail) => rand() < Math.max(0, Math.min(1, probability * scale));
+    window._lastCityPerformanceSettings = cityPerf;
 
     // ═══ GRID CONSTANTS ═══
     const G = 4;                    // 4×4 city blocks
@@ -671,11 +702,13 @@ async function buildCityWorld3() {
     // Sun — warm key light with shadows
     const sun = new THREE.DirectionalLight(0xfff5e0, 2.5);
     sun.position.set(150, 200, 100);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
-    sun.shadow.camera.left = sun.shadow.camera.bottom = -400;
-    sun.shadow.camera.right = sun.shadow.camera.top = 400;
-    sun.shadow.camera.far = 800;
+    sun.castShadow = cityPerf.shadows;
+    if (cityPerf.shadows) {
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = sun.shadow.camera.bottom = -400;
+      sun.shadow.camera.right = sun.shadow.camera.top = 400;
+      sun.shadow.camera.far = 800;
+    }
     sun.userData.isAutoCityLight = true;
     scene.add(sun);
 
@@ -694,7 +727,7 @@ async function buildCityWorld3() {
     const _cloudGrp = new THREE.Group();
     _cloudGrp.userData.isAutoCity = true;
     const _cMat = new THREE.MeshLambertMaterial({color:0xffffff, transparent:true, opacity:0.82});
-    for (let ci = 0; ci < 20; ci++) {
+    for (let ci = 0; ci < cityPerf.cloudCount; ci++) {
       const cg = new THREE.Group();
       const puffs = 3 + Math.floor(Math.random() * 5);
       for (let p = 0; p < puffs; p++) {
@@ -906,6 +939,50 @@ async function buildCityWorld3() {
       return m;
     };
 
+    const placeProceduralBuilding = (district, x, z, tgtH, maxFP, ry) => {
+      const colors = {
+        downtown: 0xaeb7bd,
+        commercial: 0xc8bca8,
+        residential: 0xd5c7ad,
+        industrial: 0x8b8b82,
+      };
+      const footprint = Math.max(6, maxFP || 12);
+      const width = footprint * rr(0.72, 1.04);
+      const depth = footprint * rr(0.72, 1.02);
+      const height = Math.max(5, tgtH || 12);
+      const group = tag(new THREE.Group());
+      const texList = facadeTextures[district] || facadeTextures.commercial || [];
+      const mat = new THREE.MeshLambertMaterial({
+        color: colors[district] || 0xc8bca8,
+        map: texList.length ? pick(texList) : null,
+      });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
+      body.position.y = height / 2;
+      body.castShadow = cityPerf.shadows;
+      body.receiveShadow = cityPerf.shadows;
+      group.add(body);
+
+      const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(width * 1.05, 0.35, depth * 1.05),
+        new THREE.MeshLambertMaterial({ color: district === 'industrial' ? 0x555652 : 0x3e4650 })
+      );
+      roof.position.y = height + 0.18;
+      roof.castShadow = cityPerf.shadows;
+      roof.receiveShadow = cityPerf.shadows;
+      group.add(roof);
+
+      group.position.set(x, 0, z);
+      group.rotation.y = ry || 0;
+      group.userData = {
+        isAutoCity: true,
+        isBuilding: true,
+        isProceduralCityBuilding: true,
+        name: 'procedural_' + district + '_building',
+      };
+      scene.add(group); objects.push(group);
+      return group;
+    };
+
     // Place building — auto-scale to target height with footprint cap
     const placeBldg = (path, x, z, tgtH, maxFP, ry) => {
       const t = cache[path];
@@ -997,19 +1074,21 @@ async function buildCityWorld3() {
     // ═══ PRELOAD ALL MODELS ═══
     showToast('\ud83d\udce6 Loading city assets...');
     const allPaths = [];
-    if (assets.roads) Object.values(assets.roads).forEach(p => { if (typeof p === 'string') allPaths.push(p); });
-    if (assets.districts) Object.values(assets.districts).forEach(d => {
+    const addAssetPath = p => { if (typeof p === 'string') allPaths.push(p); };
+    if (assets.roads) Object.values(assets.roads).forEach(addAssetPath);
+    if (assets.districts) Object.entries(assets.districts).forEach(([districtName, d]) => {
+      if (cityPerf.proceduralBuildings && districtName !== 'government') return;
       if (d) Object.values(d).forEach(a => { if (Array.isArray(a)) a.forEach(p => allPaths.push(p)); });
     });
-    if (assets.props) Object.values(assets.props).forEach(p => { if (typeof p === 'string') allPaths.push(p); });
+    if (assets.props) Object.values(assets.props).forEach(addAssetPath);
     if (assets.nature) Object.values(assets.nature).forEach(v => {
       if (Array.isArray(v)) v.forEach(p => allPaths.push(p));
     });
     if (assets.vehicles) Object.values(assets.vehicles).forEach(v => {
       if (Array.isArray(v)) v.forEach(p => allPaths.push(p));
     });
-    if (assets.infrastructure) Object.values(assets.infrastructure).forEach(p => { if (typeof p === 'string') allPaths.push(p); });
-    if (assets.furniture) Object.values(assets.furniture).forEach(p => { if (typeof p === 'string') allPaths.push(p); });
+    if (assets.infrastructure) Object.values(assets.infrastructure).forEach(addAssetPath);
+    if (cityPerf.preloadFurniture && assets.furniture) Object.values(assets.furniture).forEach(addAssetPath);
 
     await batchPreload(allPaths, 'Loading models');
 
@@ -1104,7 +1183,7 @@ async function buildCityWorld3() {
           ...(da.commercial || []),
           ...(da.apartments || [])
         ].filter(p => p && !p.includes('kenney') && !p.includes('Toon_City'));
-        if (!pool.length) continue;
+        if (!pool.length && !cityPerf.proceduralBuildings) continue;
 
         const slots = bldgSlots[d] || bldgSlots.residential;
         // Fewer buildings per block = cleaner layout
@@ -1124,7 +1203,6 @@ async function buildCityWorld3() {
           });
           if (tooClose) continue;
 
-          const path = pick(pool);
           const ry = Math.floor(rand() * 4) * Math.PI / 2;
           let tH, mFP;
           // Tight footprint caps — buildings must not exceed slot spacing
@@ -1132,7 +1210,9 @@ async function buildCityWorld3() {
           else if (d === 'commercial') { tH = rr(15, 28); mFP = 11; }
           else if (d === 'residential') { tH = rr(8, 16);  mFP = 10; }
           else                          { tH = rr(10, 18); mFP = 12; }
-          const placed = placeBldg(path, bx, bz, tH, mFP, ry);
+          const placed = cityPerf.proceduralBuildings
+            ? placeProceduralBuilding(d, bx, bz, tH, mFP, ry)
+            : placeBldg(pick(pool), bx, bz, tH, mFP, ry);
           if (placed) _placedBldgs.push([bx, bz]);
         }
       }
@@ -1244,7 +1324,7 @@ async function buildCityWorld3() {
         const { x: cx, z: cz } = bc(c, r);
         // Two lights per block, on opposite sidewalk edges (inside block at ±15)
         placeGround(assets.props.street_light_double, cx - 15, cz - 10, rsc * 1.2, 0);
-        placeGround(assets.props.street_light_single, cx + 15, cz + 10, rsc * 1.2, Math.PI);
+        if (cityPerf.streetLightsPerBlock > 1) placeGround(assets.props.street_light_single, cx + 15, cz + 10, rsc * 1.2, Math.PI);
       }
     }
 
@@ -1253,8 +1333,10 @@ async function buildCityWorld3() {
       for (let nr = 1; nr < G; nr += 2) {
         const { x, z } = np(nc, nr);
         // Place on the sidewalk corner, not in the road
-        placeGround(assets.props.traffic_light_single, x + SEG/2 + 2, z + SEG/2 + 2, rsc * 1.0, 0);
-        placeGround(assets.props.traffic_light_curved, x - SEG/2 - 2, z - SEG/2 - 2, rsc * 1.0, Math.PI);
+        if (cityPerf.staticTrafficLights) {
+          placeGround(assets.props.traffic_light_single, x + SEG/2 + 2, z + SEG/2 + 2, rsc * 1.0, 0);
+          placeGround(assets.props.traffic_light_curved, x - SEG/2 - 2, z - SEG/2 - 2, rsc * 1.0, Math.PI);
+        }
       }
     }
 
@@ -1273,54 +1355,56 @@ async function buildCityWorld3() {
         const { x: cx, z: cz } = bc(c, r);
 
         // --- Universal sidewalk props (keep at ±16, well inside block edge) ---
-        if (rand() > 0.60) placeGround(assets.props.bench,        cx - 16, cz + rr(3, 12), rsc * 0.9, Math.PI / 2);
-        if (rand() > 0.70) placeGround(assets.props.fire_hydrant,  cx + 16, cz - rr(3, 12), rsc * 0.7, 0);
-        if (rand() > 0.80) placeGround(assets.props.garbage_bin,   cx - rr(14, 16), cz - 16, rsc * 0.7, 0);
-        if (rand() > 0.85) placeGround(assets.props.mailbox,       cx + rr(14, 16), cz + 16, rsc * 0.85, 0);
+        if (maybeDetail(0.40)) placeGround(assets.props.bench,        cx - 16, cz + rr(3, 12), rsc * 0.9, Math.PI / 2);
+        if (maybeDetail(0.30)) placeGround(assets.props.fire_hydrant,  cx + 16, cz - rr(3, 12), rsc * 0.7, 0);
+        if (maybeDetail(0.20)) placeGround(assets.props.garbage_bin,   cx - rr(14, 16), cz - 16, rsc * 0.7, 0);
+        if (maybeDetail(0.15)) placeGround(assets.props.mailbox,       cx + rr(14, 16), cz + 16, rsc * 0.85, 0);
 
         // --- Downtown: neon signs, food carts, street lamps ---
         if (d === 'downtown') {
-          if (rand() > 0.30) placeGround(assets.props.hot_dog_stand,   cx + 15, cz + rr(-3, 3), rsc * 0.8, -Math.PI / 2);
-          if (rand() > 0.30) placeGround(assets.props.subway_entrance, cx + rr(-4, 4), cz - 16, rsc * 1.0, Math.PI);
-          if (assets.props.sign_cyberpunk_1 && rand() > 0.30) placeGround(assets.props.sign_cyberpunk_1, cx - 14, cz + rr(-5, 5), rsc * 0.6, Math.PI / 2);
-          if (assets.props.sign_cyberpunk_2 && rand() > 0.40) placeGround(assets.props.sign_cyberpunk_2, cx + 14, cz + rr(-5, 5), rsc * 0.6, -Math.PI / 2);
-          if (assets.props.light_street_cyberpunk && rand() > 0.35) placeGround(assets.props.light_street_cyberpunk, cx + rr(-6, 6), cz + 16, rsc * 0.8, 0);
-          if (assets.props.sign_corner && rand() > 0.40) placeGround(assets.props.sign_corner, cx - 16, cz - 16, rsc * 0.5, 0);
+          if (maybeDetail(0.70)) placeGround(assets.props.hot_dog_stand,   cx + 15, cz + rr(-3, 3), rsc * 0.8, -Math.PI / 2);
+          if (maybeDetail(0.70)) placeGround(assets.props.subway_entrance, cx + rr(-4, 4), cz - 16, rsc * 1.0, Math.PI);
+          if (assets.props.sign_cyberpunk_1 && maybeDetail(0.70)) placeGround(assets.props.sign_cyberpunk_1, cx - 14, cz + rr(-5, 5), rsc * 0.6, Math.PI / 2);
+          if (assets.props.sign_cyberpunk_2 && maybeDetail(0.60)) placeGround(assets.props.sign_cyberpunk_2, cx + 14, cz + rr(-5, 5), rsc * 0.6, -Math.PI / 2);
+          if (assets.props.light_street_cyberpunk && maybeDetail(0.65)) placeGround(assets.props.light_street_cyberpunk, cx + rr(-6, 6), cz + 16, rsc * 0.8, 0);
+          if (assets.props.sign_corner && maybeDetail(0.60)) placeGround(assets.props.sign_corner, cx - 16, cz - 16, rsc * 0.5, 0);
         }
 
         // --- Commercial: outdoor seating, signs, flowers ---
         if (d === 'commercial') {
-          if (rand() > 0.35) placeGround(assets.props.outdoor_seating,  cx - rr(8, 12), cz + 16, rsc * 0.8, 0);
-          if (rand() > 0.40) placeGround(assets.props.speed_limit_sign, cx - 16, cz + rr(4, 10), rsc * 0.8, 0);
-          if (assets.props.flower_pot && rand() > 0.40) placeGround(assets.props.flower_pot, cx + 14, cz + rr(-4, 4), rsc * 0.15, 0);
-          if (assets.props.planter && rand() > 0.45) placeGround(assets.props.planter, cx - 14, cz + rr(-4, 4), rsc * 0.15, 0);
-          if (assets.props.sign_cyberpunk_3 && rand() > 0.50) placeGround(assets.props.sign_cyberpunk_3, cx + 15, cz - 12, rsc * 0.5, 0);
+          if (maybeDetail(0.65)) placeGround(assets.props.outdoor_seating,  cx - rr(8, 12), cz + 16, rsc * 0.8, 0);
+          if (maybeDetail(0.60)) placeGround(assets.props.speed_limit_sign, cx - 16, cz + rr(4, 10), rsc * 0.8, 0);
+          if (assets.props.flower_pot && maybeDetail(0.60)) placeGround(assets.props.flower_pot, cx + 14, cz + rr(-4, 4), rsc * 0.15, 0);
+          if (assets.props.planter && maybeDetail(0.55)) placeGround(assets.props.planter, cx - 14, cz + rr(-4, 4), rsc * 0.15, 0);
+          if (assets.props.sign_cyberpunk_3 && maybeDetail(0.50)) placeGround(assets.props.sign_cyberpunk_3, cx + 15, cz - 12, rsc * 0.5, 0);
         }
 
         // --- Industrial: fencing, containers, cones, barriers ---
         if (d === 'industrial') {
-          for (let f = -14; f <= 14; f += 8) {
+          for (let f = -14; f <= 14; f += (cityPerf.profile === 'balanced' ? 14 : 8)) {
             placeGround(assets.props.wired_fence, cx + f, cz - 17, rsc * 0.9, 0);
           }
-          if (rand() > 0.30) placeGround(assets.props.traffic_cone, cx + rr(-8, 8), cz + rr(-8, 8), rsc * 0.6, 0);
-          if (rand() > 0.25) placeGround(assets.props.dumpster,     cx - 13, cz - 13, rsc * 0.5, 0);
-          if (rand() > 0.30) placeGround(assets.props.road_block_a, cx + rr(5, 10), cz + 15, rsc * 0.8, 0);
-          if (rand() > 0.35) placeGround(assets.props.road_block_b, cx - rr(5, 10), cz - 15, rsc * 0.8, 0);
-          placeGround(assets.props.electrical_pole, cx + 17, cz, rsc * 1.0, 0);
-          if (rand() > 0.40) placeGround(assets.props.trash_bags,   cx + 13, cz - 13, rsc * 0.7, 0);
+          if (maybeDetail(0.70)) placeGround(assets.props.traffic_cone, cx + rr(-8, 8), cz + rr(-8, 8), rsc * 0.6, 0);
+          if (maybeDetail(0.75)) placeGround(assets.props.dumpster,     cx - 13, cz - 13, rsc * 0.5, 0);
+          if (maybeDetail(0.70)) placeGround(assets.props.road_block_a, cx + rr(5, 10), cz + 15, rsc * 0.8, 0);
+          if (maybeDetail(0.65)) placeGround(assets.props.road_block_b, cx - rr(5, 10), cz - 15, rsc * 0.8, 0);
+          if (maybeDetail(0.75)) placeGround(assets.props.electrical_pole, cx + 17, cz, rsc * 1.0, 0);
+          if (maybeDetail(0.60)) placeGround(assets.props.trash_bags,   cx + 13, cz - 13, rsc * 0.7, 0);
         }
 
         // --- Residential: fences, flowers, signs ---
         if (d === 'residential') {
-          if (rand() > 0.35) placeGround(assets.props.wooden_fence,    cx - 15, cz + rr(-6, 6), rsc * 0.8, 0);
-          if (rand() > 0.45) placeGround(assets.props.no_parking_sign, cx + 15, cz - 15, rsc * 0.8, 0);
-          if (assets.props.flower_pot && rand() > 0.35) placeGround(assets.props.flower_pot, cx + rr(-8, 8), cz + 14, rsc * 0.15, 0);
-          if (assets.props.planter && rand() > 0.40) placeGround(assets.props.planter, cx + rr(-8, 8), cz - 14, rsc * 0.15, 0);
+          if (maybeDetail(0.65)) placeGround(assets.props.wooden_fence,    cx - 15, cz + rr(-6, 6), rsc * 0.8, 0);
+          if (maybeDetail(0.55)) placeGround(assets.props.no_parking_sign, cx + 15, cz - 15, rsc * 0.8, 0);
+          if (assets.props.flower_pot && maybeDetail(0.65)) placeGround(assets.props.flower_pot, cx + rr(-8, 8), cz + 14, rsc * 0.15, 0);
+          if (assets.props.planter && maybeDetail(0.60)) placeGround(assets.props.planter, cx + rr(-8, 8), cz - 14, rsc * 0.15, 0);
         }
 
         // --- ALL districts: street lamp posts on sidewalk edges ---
-        placeGround(assets.props.street_light_single, cx - 16, cz - 10, rsc * 0.6, 0);
-        placeGround(assets.props.street_light_single, cx + 16, cz + 10, rsc * 0.6, Math.PI);
+        if (cityPerf.extraStreetLamps) {
+          placeGround(assets.props.street_light_single, cx - 16, cz - 10, rsc * 0.6, 0);
+          placeGround(assets.props.street_light_single, cx + 16, cz + 10, rsc * 0.6, Math.PI);
+        }
       }
     }
 
@@ -1333,11 +1417,11 @@ async function buildCityWorld3() {
     // Parked civilian cars along road edges (inside blocks at ±18)
     for (let c = 0; c < G; c++) {
       for (let r = 0; r < G; r++) {
-        if (rand() > 0.4) {
+        if (rand() < cityPerf.parkedCarChance) {
           const bpos = bc(c, r);
           placeGround(pick(civCars), bpos.x + 18, bpos.z + rr(-10, 10), rsc * 1.8, Math.PI / 2);
         }
-        if (rand() > 0.5) {
+        if (cityPerf.maxParkedPerBlock > 1 && rand() < cityPerf.parkedCarChance) {
           const bpos = bc(c, r);
           placeGround(pick(civCars), bpos.x - 18, bpos.z + rr(-10, 10), rsc * 1.8, -Math.PI / 2);
         }
@@ -1386,12 +1470,12 @@ async function buildCityWorld3() {
 
         if (d === 'residential') {
           // Yard trees — stay inside block (±14 max, well clear of roads at ±20)
-          const nt = 2 + Math.floor(rand() * 3);
+          const nt = Math.max(1, Math.round((2 + Math.floor(rand() * 3)) * cityPerf.natureDetail));
           for (let t = 0; t < nt; t++) {
             const tx = cx + rr(-13, 13), tz = cz + rr(-13, 13);
             if (!isOnRoad(tx, tz)) placeGround(pick(trees), tx, tz, rsc * rr(0.12, 0.2), rand() * 0.3);
           }
-          if (rand() > 0.4) {
+          if (maybeDetail(0.60, cityPerf.natureDetail)) {
             const bx = cx + rr(-10, 10), bz = cz + rr(-10, 10);
             if (!isOnRoad(bx, bz)) placeGround(pick(bushes), bx, bz, rsc * 0.1, 0);
           }
@@ -1399,18 +1483,18 @@ async function buildCityWorld3() {
 
         if (d === 'downtown' || d === 'commercial') {
           // Sidewalk palms — place on sidewalk edge (±17), NOT on road (±20+)
-          if (rand() > 0.45) {
+          if (maybeDetail(0.55, cityPerf.natureDetail)) {
             const px = cx - 17, pz = cz + rr(-6, 6);
             if (!isOnRoad(px, pz)) placeGround(pick(palms), px, pz, rsc * 0.15, rand() * 0.2);
           }
-          if (rand() > 0.45) {
+          if (maybeDetail(0.55, cityPerf.natureDetail)) {
             const px = cx + 17, pz = cz + rr(-6, 6);
             if (!isOnRoad(px, pz)) placeGround(pick(palms), px, pz, rsc * 0.15, rand() * 0.2);
           }
         }
 
         if (d === 'industrial') {
-          if (rand() > 0.75) {
+          if (maybeDetail(0.25, cityPerf.natureDetail)) {
             const tx = cx + rr(-12, 12), tz = cz + rr(-12, 12);
             if (!isOnRoad(tx, tz)) placeGround(pick(trees), tx, tz, rsc * 0.12, 0);
           }
@@ -1541,7 +1625,7 @@ async function buildCityWorld3() {
     // Preload car models
     await batchPreload(carModels, 'Cars');
     // Place cars on road lanes
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < cityPerf.trafficCars; i++) {
       const isEW = rand() > 0.5;
       const roadIdx = Math.floor(rand() * (G + 1));
       const lane = rand() > 0.5 ? 1 : -1;
@@ -1634,9 +1718,9 @@ async function buildCityWorld3() {
     const parkedCarPaths = ['kenney_cars/sedan.glb','kenney_cars/suv.glb','kenney_cars/van.glb','kenney_cars/hatchback-sports.glb','kenney_cars/truck.glb'];
     for (let c = 0; c < G; c++) {
       for (let r = 0; r < G; r++) {
-        if (rand() > 0.6) continue; // not every block
+        if (rand() >= cityPerf.parkedCarChance) continue; // not every block
         const bpos = bc(c, r);
-        const numParked = 1 + Math.floor(rand() * 2);
+        const numParked = cityPerf.maxParkedPerBlock;
         for (let pk = 0; pk < numParked; pk++) {
           const cp = parkedCarPaths[Math.floor(rand()*parkedCarPaths.length)];
           const side = Math.floor(rand()*4);
@@ -1668,6 +1752,7 @@ async function buildCityWorld3() {
         const d = getDist(c, r);
         const bpos = bc(c, r);
         let pCount = d === 'downtown' ? 2 : d === 'commercial' ? 1 : d === 'residential' ? 1 : 0;
+        pCount = Math.floor(pCount * cityPerf.pedestrianScale + (rand() < cityPerf.pedestrianScale ? 1 : 0));
         for (let p = 0; p < pCount; p++) {
           const g = new THREE.Group();
           const sk = new THREE.MeshLambertMaterial({color: skinT[Math.floor(rand()*skinT.length)]});
@@ -1748,8 +1833,21 @@ async function buildCityWorld3() {
 
     // Freeze static objects for performance
     let frozenCount = 0;
+    const dynamicCityObjects = new Set([
+      ...((window._trafficCars || []).map(c => c.mesh).filter(Boolean)),
+      ...((window._trafficLights || []).map(t => t.mesh).filter(Boolean)),
+      ...((window._peds || []).map(p => p.g).filter(Boolean)),
+    ]);
     for (const obj of objects) {
-      if (obj.userData.isAutoCity && !obj.userData.isGLB) {
+      if (obj.userData.isAutoCity && !dynamicCityObjects.has(obj)) {
+        if (!cityPerf.shadows) {
+          obj.traverse?.(n => {
+            if (n.isMesh) {
+              n.castShadow = false;
+              n.receiveShadow = false;
+            }
+          });
+        }
         obj.matrixAutoUpdate = false;
         obj.updateMatrix();
         frozenCount++;
