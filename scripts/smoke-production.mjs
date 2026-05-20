@@ -513,6 +513,102 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     );
 
+    await page.evaluate(() => {
+      const objects = window._engineBridge?.objects || window._sceneObjects || [];
+      const target = objects.find((obj) => {
+        const components = obj?.userData?.gbComponents || {};
+        return obj?.userData && !components.missionStep && !components.enemySpawn && !components.collider;
+      }) || objects[0];
+      if (!target) throw new Error('No object available for validation fix smoke');
+      target.userData = target.userData || {};
+      target.userData.gbComponents = target.userData.gbComponents || {};
+      target.userData.gbComponents.missionReward = {
+        id: 'smoke_bad_reward_' + (target.uuid || Date.now()),
+        label: 'Smoke bad reward',
+        item: 'bad smoke token',
+        score: 1,
+        xp: 0,
+        slot: '',
+        power: 0,
+        requiredStepId: 'missing_smoke_step',
+        radius: 0.1,
+      };
+      target.userData.gbComponents.waveController = {
+        id: 'smoke_bad_wave_' + (target.uuid || Date.now()),
+        label: 'Smoke bad wave',
+        wave: 2,
+        count: 1,
+        spawnGroup: 'missing_smoke_spawn',
+        enemySpeed: 0,
+        enemyDamage: 0,
+        enemyHealth: 0,
+        rewardScore: 0,
+        dropItem: '',
+        dropSlot: '',
+        dropPower: 0,
+        dropXp: 0,
+        dropScore: 0,
+        dropChance: 0,
+      };
+      window._engineBridge?.selectObject?.(target);
+      window._lastPlacedObj = target;
+      window._refreshGameBuilder?.();
+    });
+    await page.locator('#gb-validation [data-gb-validation-fix="link-missions"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => (window._gameBuilderValidationFixHistory || []).some((item) => item.action === 'link-missions' && item.applied > 0),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#gb-validation [data-gb-validation-fix="link-waves"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => (window._gameBuilderValidationFixHistory || []).some((item) => item.action === 'link-waves' && item.applied > 0),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#gb-validation [data-gb-validation-fix="add-colliders"]').click({ timeout: timeoutMs });
+    const validationFixState = await page.waitForFunction(
+      () => {
+        const history = window._gameBuilderValidationFixHistory || [];
+        const validation = window._gameBuilderValidation || {};
+        const objects = window._engineBridge?.objects || window._sceneObjects || [];
+        const colliderCount = objects.filter((obj) => obj?.userData?.gbComponents?.collider).length;
+        const actions = history.map((item) => item.action);
+        if (!actions.includes('link-missions') || !actions.includes('link-waves') || !actions.includes('add-colliders')) return null;
+        if (validation.status !== 'ready' || validation.errors !== 0 || validation.warnings !== 0 || validation.suggestions !== 0) return null;
+        if (!colliderCount) return null;
+        return {
+          actions,
+          colliderCount,
+          latest: history[history.length - 1],
+          summary: validation.summary,
+          rowCount: document.querySelectorAll('#gb-validation-list .gb-validation-row').length,
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+    await page.evaluate(() => {
+      const objects = window._engineBridge?.objects || window._sceneObjects || [];
+      const target = objects.find((obj) => {
+        const components = obj?.userData?.gbComponents || {};
+        return components.pickup && components.checkpoint && components.winCondition && components.spawnPoint;
+      });
+      if (!target) throw new Error('Could not reselect smoke gameplay object after validation fixes');
+      window._engineBridge?.selectObject?.(target);
+      window._lastPlacedObj = target;
+      window._refreshGameBuilder?.();
+    });
+    await page.waitForFunction(
+      () => {
+        const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj;
+        const components = selected?.userData?.gbComponents || {};
+        return !!components.pickup && !!components.checkpoint && !!components.winCondition && !!components.spawnPoint;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
+
     await page.locator('#gb-project button[data-gb-action="save"]').click({ timeout: timeoutMs });
     await page.waitForSelector('#sl-modal #sl-save-btn', { timeout: timeoutMs });
     await page.locator('#sl-name').fill('Production Smoke Project', { timeout: timeoutMs });
@@ -1997,6 +2093,11 @@ async function runBrowserSmoke() {
       };
     });
     state.savedProjectVersion = savedProjectState.version;
+    state.validationFixActions = validationFixState.actions;
+    state.validationFixColliderCount = validationFixState.colliderCount;
+    state.validationFixLatest = validationFixState.latest?.action || '';
+    state.validationFixSummary = validationFixState.summary;
+    state.validationFixRows = validationFixState.rowCount;
     state.savedProjectObjectCount = savedProjectState.objectCount;
     state.savedProjectScriptCount = savedProjectState.scriptCount;
     state.savedProjectCommandCount = savedProjectState.commandCount;
@@ -2302,8 +2403,16 @@ async function runBrowserSmoke() {
     if (state.validationStatus !== 'ready' ||
       state.validationErrors !== 0 ||
       state.validationWarnings !== 0 ||
+      state.validationSuggestions !== 0 ||
       state.validationRows < 1) {
       throw new Error(`Game Builder validation did not report the scene as ready: ${JSON.stringify(state)}`);
+    }
+    if (!Array.isArray(state.validationFixActions) ||
+      !state.validationFixActions.includes('link-missions') ||
+      !state.validationFixActions.includes('link-waves') ||
+      !state.validationFixActions.includes('add-colliders') ||
+      state.validationFixColliderCount < 1) {
+      throw new Error(`Game Builder validation fixes did not repair mission, wave, and collider checks: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
     if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate || !state.savedProjectHasEnemySpawn || !state.savedProjectHasWaveController || !state.savedProjectHasEquipmentItem || !state.savedProjectHasNpc || !state.savedProjectHasMerchant) {
@@ -2535,6 +2644,7 @@ console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);
+console.log(`Validation fixes: ${(browserState.validationFixActions || []).join(', ') || 'none'} (${browserState.validationFixColliderCount || 0} colliders)`);
 console.log(`Game systems: ${browserState.systemSummary}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);

@@ -2009,6 +2009,153 @@ async function markComponent(component) {
   updateBuilderUi();
 }
 
+async function markComponentOnObject(obj, component) {
+  if (!obj) return null;
+  selectObject(obj);
+  await markComponent(component);
+  return obj.userData?.gbComponents?.[component] || null;
+}
+
+function firstFixTarget(preferredComponents = []) {
+  return getFirstObjectWithAnyComponent(preferredComponents) || getTargetObject() || getSceneObjects()[0] || null;
+}
+
+function recordValidationFix(action, detail, applied) {
+  const result = { action, detail, applied, fixedAt: Date.now() };
+  window._lastGameBuilderValidationFix = result;
+  window._gameBuilderValidationFixHistory = Array.isArray(window._gameBuilderValidationFixHistory)
+    ? window._gameBuilderValidationFixHistory.concat(result).slice(-20)
+    : [result];
+  return result;
+}
+
+async function applyValidationFix(action) {
+  if (!requireEditAction('apply validation fixes')) return null;
+  let applied = 0;
+  let detail = 'No safe fix was available';
+
+  if (action === 'install-inventory-runtime') {
+    await installScript('inventory');
+    await ensureComponentRuntime();
+    applied = 1;
+    detail = 'Installed inventory and component runtime scripts';
+  } else if (action === 'add-colliders') {
+    const targets = findColliderTargets();
+    targets.forEach((obj) => {
+      const components = getComponentStore(obj);
+      components.collider = components.collider || { type: 'solid', createdAt: Date.now() };
+      applied += 1;
+    });
+    detail = 'Tagged ' + applied + ' likely solid object' + (applied === 1 ? '' : 's') + ' as colliders';
+  } else if (action === 'add-spawn-point') {
+    const target = firstFixTarget(['spawnPoint', 'checkpoint', 'winCondition', 'pickup']);
+    const component = await markComponentOnObject(target, 'spawnPoint');
+    if (component) {
+      applied = 1;
+      detail = 'Added a player spawn point';
+    }
+  } else if (action === 'add-checkpoint') {
+    const target = firstFixTarget(['spawnPoint', 'checkpoint', 'pickup']);
+    const component = await markComponentOnObject(target, 'checkpoint');
+    if (component) {
+      applied = 1;
+      detail = 'Added a checkpoint';
+    }
+  } else if (action === 'add-win-condition') {
+    const target = firstFixTarget(['winCondition', 'checkpoint', 'objective']);
+    const component = await markComponentOnObject(target, 'winCondition');
+    if (component) {
+      applied = 1;
+      detail = 'Added a win condition';
+    }
+  } else if (action === 'add-trigger-zone') {
+    const target = firstFixTarget(['door']);
+    const component = await markComponentOnObject(target, 'triggerZone');
+    const door = getObjectsWithComponent('door')[0]?.data;
+    if (component && door?.id) component.targetDoorId = door.id;
+    if (component) {
+      applied = 1;
+      detail = 'Added a trigger zone for the first door';
+    }
+  } else if (action === 'add-door') {
+    const target = firstFixTarget(['triggerZone']);
+    const component = await markComponentOnObject(target, 'door');
+    const trigger = getObjectsWithComponent('triggerZone')[0]?.data;
+    if (component && trigger) trigger.targetDoorId = component.id || 'nearest';
+    if (component) {
+      applied = 1;
+      detail = 'Added a door and linked the first trigger';
+    }
+  } else if (action === 'link-doors') {
+    const door = getObjectsWithComponent('door')[0]?.data;
+    if (door?.id) {
+      collectTriggerLinkIssues().forEach((entry) => {
+        entry.data.targetDoorId = door.id;
+        applied += 1;
+      });
+    }
+    detail = 'Linked ' + applied + ' trigger target' + (applied === 1 ? '' : 's');
+  } else if (action === 'add-mission-step') {
+    const target = firstFixTarget(['missionReward', 'missionGate', 'missionStep']);
+    const component = await markComponentOnObject(target, 'missionStep');
+    if (component) {
+      applied = 1;
+      detail = 'Added a mission step';
+    }
+  } else if (action === 'add-mission-reward') {
+    const target = firstFixTarget(['missionStep']);
+    const component = await markComponentOnObject(target, 'missionReward');
+    const step = target?.userData?.gbComponents?.missionStep;
+    if (component && step?.id) component.requiredStepId = step.id;
+    if (component) {
+      applied = 1;
+      detail = 'Added a mission reward linked to the first step';
+    }
+  } else if (action === 'link-missions') {
+    const step = getObjectsWithComponent('missionStep')[0]?.data;
+    if (step?.id) {
+      collectMissionLinkIssues().forEach((entry) => {
+        entry.data.requiredStepId = step.id;
+        applied += 1;
+      });
+    }
+    detail = 'Linked ' + applied + ' mission target' + (applied === 1 ? '' : 's');
+  } else if (action === 'add-enemy-spawn') {
+    const target = firstFixTarget(['waveController']);
+    const component = await markComponentOnObject(target, 'enemySpawn');
+    const wave = target?.userData?.gbComponents?.waveController;
+    if (component && wave) wave.spawnGroup = component.id || 'nearest';
+    if (component) {
+      applied = 1;
+      detail = 'Added an enemy spawn and linked the first wave';
+    }
+  } else if (action === 'add-wave-controller') {
+    const target = firstFixTarget(['enemySpawn']);
+    const component = await markComponentOnObject(target, 'waveController');
+    const spawn = target?.userData?.gbComponents?.enemySpawn;
+    if (component && spawn?.id) component.spawnGroup = spawn.id;
+    if (component) {
+      applied = 1;
+      detail = 'Added a wave controller linked to the first enemy spawn';
+    }
+  } else if (action === 'link-waves') {
+    const spawn = getObjectsWithComponent('enemySpawn')[0]?.data;
+    if (spawn?.id) {
+      collectWaveLinkIssues().forEach((entry) => {
+        entry.data.spawnGroup = spawn.id;
+        applied += 1;
+      });
+    }
+    detail = 'Linked ' + applied + ' wave target' + (applied === 1 ? '' : 's');
+  }
+
+  resetValidationUiState();
+  updateBuilderUi();
+  const result = recordValidationFix(action, detail, applied);
+  notify(applied ? detail : 'No validation fix applied');
+  return result;
+}
+
 function runAction(action) {
   if (action === 'play') {
     setBuilderMode('play');
@@ -2151,6 +2298,78 @@ function countComponents(objects) {
     });
     return counts;
   }, { total: 0, byType: {} });
+}
+
+function getObjectsWithComponent(component) {
+  return getSceneObjects()
+    .filter((obj) => obj?.userData?.gbComponents?.[component])
+    .map((obj) => ({ obj, data: obj.userData.gbComponents[component] }));
+}
+
+function getFirstObjectWithAnyComponent(components) {
+  return getSceneObjects().find((obj) => {
+    const store = obj?.userData?.gbComponents || {};
+    return components.some((component) => store[component]);
+  }) || null;
+}
+
+function resetValidationUiState() {
+  lastReadinessSignature = '';
+  lastValidationSignature = '';
+  lastGameSystemsSignature = '';
+  lastInspectorSignature = '';
+  lastSceneSignature = '';
+}
+
+function collectMissionLinkIssues() {
+  const steps = getObjectsWithComponent('missionStep');
+  const stepIds = new Set(steps.map((entry) => entry.data?.id).filter(Boolean));
+  const dependents = [
+    ...getObjectsWithComponent('missionReward').map((entry) => ({ ...entry, component: 'missionReward' })),
+    ...getObjectsWithComponent('missionGate').map((entry) => ({ ...entry, component: 'missionGate' })),
+  ];
+  return dependents.filter((entry) => {
+    const required = String(entry.data?.requiredStepId || '').trim();
+    return required && required !== 'all' && required !== 'none' && !stepIds.has(required);
+  });
+}
+
+function collectWaveLinkIssues() {
+  const spawns = getObjectsWithComponent('enemySpawn');
+  const spawnKeys = new Set();
+  spawns.forEach((entry) => {
+    [entry.data?.id, entry.data?.label].filter(Boolean).forEach((value) => spawnKeys.add(String(value).trim().toLowerCase()));
+  });
+  return getObjectsWithComponent('waveController').filter((entry) => {
+    const target = String(entry.data?.spawnGroup || '').trim().toLowerCase();
+    return target && target !== 'nearest' && !spawnKeys.has(target);
+  });
+}
+
+function collectTriggerLinkIssues() {
+  const doors = getObjectsWithComponent('door');
+  const doorKeys = new Set();
+  doors.forEach((entry) => {
+    [entry.data?.id, entry.data?.label].filter(Boolean).forEach((value) => doorKeys.add(String(value).trim().toLowerCase()));
+  });
+  return getObjectsWithComponent('triggerZone').filter((entry) => {
+    if (entry.data?.action && entry.data.action !== 'openDoor') return false;
+    const target = String(entry.data?.targetDoorId || '').trim().toLowerCase();
+    return target && target !== 'nearest' && !doorKeys.has(target);
+  });
+}
+
+function findColliderTargets() {
+  const names = ['ground', 'floor', 'wall', 'road', 'street', 'building', 'house', 'terrain', 'sidewalk', 'roof', 'door', 'gate', 'prop'];
+  const objects = getSceneObjects().filter((obj) => {
+    const components = obj?.userData?.gbComponents || {};
+    return !components.collider && !obj?.userData?.gbRuntimeEnemy;
+  });
+  const likely = objects.filter((obj) => {
+    const name = getObjectName(obj, 0).toLowerCase();
+    return names.some((token) => name.includes(token));
+  });
+  return (likely.length ? likely : objects).slice(0, 24);
 }
 
 function collectReadiness() {
@@ -2317,25 +2536,31 @@ function collectSceneValidation(readinessInput) {
   const objects = getSceneObjects();
   const scriptIds = getInstalledScriptIds();
   const checks = [];
-  const addCheck = (level, label, detail) => checks.push({ level, label, detail });
+  const addCheck = (level, label, detail, action, actionLabel) => checks.push({ level, label, detail, action, actionLabel });
+  const missionLinkIssues = collectMissionLinkIssues();
+  const waveLinkIssues = collectWaveLinkIssues();
+  const triggerLinkIssues = collectTriggerLinkIssues();
 
   if (readiness.assetStatus === 'failed') addCheck('error', 'Asset host', 'Manifest or remote asset host is not available.');
   if (!readiness.objectCount) addCheck('error', 'World', 'Build a world or import scene objects.');
   if (!readiness.scriptCount && !readiness.componentCount) addCheck('warning', 'Gameplay', 'Install a system or tag objects with components.');
-  if (readiness.objectCount && !readiness.spawnCount) addCheck('warning', 'Spawn', 'Add at least one player spawn point.');
-  if (readiness.componentCount && !readiness.checkpointCount) addCheck('suggestion', 'Checkpoint', 'Add a checkpoint so Play mode can recover progress.');
-  if (readiness.componentCount && !readiness.winConditionCount) addCheck('warning', 'Win goal', 'Add a win condition so exported games have an end state.');
-  if (readiness.doorCount && !readiness.triggerCount) addCheck('warning', 'Door link', 'Doors need trigger zones.');
-  if (readiness.triggerCount && !readiness.doorCount) addCheck('warning', 'Trigger link', 'Triggers need a door or explicit target.');
-  if ((readiness.rewardCount || readiness.gateCount) && !readiness.missionStepCount) addCheck('warning', 'Mission link', 'Rewards and gates need a mission step.');
-  if (readiness.missionStepCount && !readiness.rewardCount) addCheck('suggestion', 'Mission reward', 'Add a reward so mission progress gives feedback.');
-  if (readiness.waveCount && !readiness.enemySpawnCount) addCheck('warning', 'Wave link', 'Wave controllers need enemy spawns.');
-  if (readiness.enemySpawnCount && !readiness.waveCount) addCheck('warning', 'Enemy wave', 'Enemy spawns need a wave controller.');
+  if (readiness.objectCount && !readiness.spawnCount) addCheck('warning', 'Spawn', 'Add at least one player spawn point.', 'add-spawn-point');
+  if (readiness.componentCount && !readiness.checkpointCount) addCheck('suggestion', 'Checkpoint', 'Add a checkpoint so Play mode can recover progress.', 'add-checkpoint');
+  if (readiness.componentCount && !readiness.winConditionCount) addCheck('warning', 'Win goal', 'Add a win condition so exported games have an end state.', 'add-win-condition');
+  if (readiness.doorCount && !readiness.triggerCount) addCheck('warning', 'Door link', 'Doors need trigger zones.', 'add-trigger-zone');
+  if (readiness.triggerCount && !readiness.doorCount) addCheck('warning', 'Trigger link', 'Triggers need a door or explicit target.', 'add-door');
+  if (triggerLinkIssues.length) addCheck('warning', 'Trigger target', triggerLinkIssues.length + ' trigger target' + (triggerLinkIssues.length === 1 ? '' : 's') + ' point at missing doors.', 'link-doors', 'Link');
+  if ((readiness.rewardCount || readiness.gateCount) && !readiness.missionStepCount) addCheck('warning', 'Mission link', 'Rewards and gates need a mission step.', 'add-mission-step');
+  if (readiness.missionStepCount && !readiness.rewardCount) addCheck('suggestion', 'Mission reward', 'Add a reward so mission progress gives feedback.', 'add-mission-reward');
+  if (missionLinkIssues.length) addCheck('warning', 'Mission target', missionLinkIssues.length + ' mission target' + (missionLinkIssues.length === 1 ? '' : 's') + ' point at missing steps.', 'link-missions', 'Link');
+  if (readiness.waveCount && !readiness.enemySpawnCount) addCheck('warning', 'Wave link', 'Wave controllers need enemy spawns.', 'add-enemy-spawn');
+  if (readiness.enemySpawnCount && !readiness.waveCount) addCheck('warning', 'Enemy wave', 'Enemy spawns need a wave controller.', 'add-wave-controller');
+  if (waveLinkIssues.length) addCheck('warning', 'Wave target', waveLinkIssues.length + ' wave controller' + (waveLinkIssues.length === 1 ? '' : 's') + ' point at missing spawns.', 'link-waves', 'Link');
   if ((readiness.pickupCount || readiness.equipmentCount || readiness.rewardCount || readiness.npcCount || readiness.merchantCount) && !scriptIds.has('gb_inventory_hotbar')) {
-    addCheck('warning', 'Inventory runtime', 'Inventory-related components need the inventory system installed.');
+    addCheck('warning', 'Inventory runtime', 'Inventory-related components need the inventory system installed.', 'install-inventory-runtime');
   }
   if (readiness.componentCount && !((countComponents(objects).byType || {}).collider)) {
-    addCheck('suggestion', 'Collision', 'Tag solid walls, floors, or props with collider components.');
+    addCheck('suggestion', 'Collision', 'Tag solid walls, floors, or props with collider components.', 'add-colliders');
   }
 
   getRenderableHotspots(objects).forEach((item) => {
@@ -2345,6 +2570,7 @@ function collectSceneValidation(readinessInput) {
   const errors = checks.filter((check) => check.level === 'error').length;
   const warnings = checks.filter((check) => check.level === 'warning').length;
   const suggestions = checks.filter((check) => check.level === 'suggestion').length;
+  const fixes = checks.filter((check) => check.action).length;
   const status = errors ? 'blocked' : warnings ? 'warn' : 'ready';
   const summary = status === 'ready'
     ? 'Core game loop linked'
@@ -2357,6 +2583,7 @@ function collectSceneValidation(readinessInput) {
     errors,
     warnings,
     suggestions,
+    fixes,
     checks,
   };
 }
@@ -2365,7 +2592,13 @@ function createValidationRow(check) {
   const row = document.createElement('div');
   row.className = 'gb-validation-row';
   row.dataset.level = check.level || 'info';
+  row.dataset.hasAction = check.action ? 'true' : 'false';
   row.append(createTextElement('span', '', check.label || 'Check'), createTextElement('strong', '', check.detail || 'Ready'));
+  if (check.action) {
+    const button = createSmallButton(check.actionLabel || 'Fix', () => applyValidationFix(check.action), { editOnly: true, action: 'apply validation fixes' });
+    button.dataset.gbValidationFix = check.action;
+    row.appendChild(button);
+  }
   return row;
 }
 
@@ -2383,6 +2616,7 @@ function renderValidationStatus() {
   status.dataset.errors = String(validation.errors);
   status.dataset.warnings = String(validation.warnings);
   status.dataset.suggestions = String(validation.suggestions);
+  status.dataset.fixes = String(validation.fixes);
   status.setAttribute('aria-label', validation.summary);
   status.replaceChildren(
     createTextElement('strong', '', validation.status === 'ready' ? 'Scene Ready' : validation.status === 'warn' ? 'Needs Attention' : 'Blocked'),
@@ -3265,6 +3499,8 @@ function mount() {
     .gb-validation-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
     .gb-validation-list{display:flex;flex-direction:column;gap:5px;padding:0 8px 8px}
     .gb-validation-row{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;align-items:center;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
+    .gb-validation-row[data-has-action="true"]{grid-template-columns:70px minmax(0,1fr) 50px}
+    .gb-validation-row .gb-small-btn{width:50px;height:24px;padding:0 6px}
     .gb-validation-row[data-level="error"]{border-color:#7f2d2d;background:#211313}
     .gb-validation-row[data-level="warning"]{border-color:#725a21;background:#1c1710}
     .gb-validation-row[data-level="ready"]{border-color:#2f6f44;background:#101a13}
@@ -3448,13 +3684,19 @@ function mount() {
   document.body.appendChild(panel);
 
   repositionLegacyButtons(open);
+  window._applyGameBuilderValidationFix = applyValidationFix;
+  window._refreshGameBuilder = () => {
+    resetValidationUiState();
+    updateBuilderUi();
+  };
   window._refreshGameBuilderMode = () => {
-    lastInspectorSignature = '';
+    resetValidationUiState();
     updateModeControls();
     updateStats();
     updateProjectStatus();
     renderAssetPackStatus();
     renderReadinessStatus();
+    renderValidationStatus();
     renderGameSystems();
     renderInspector({ force: true });
     renderBlueprintList();
@@ -3463,8 +3705,10 @@ function mount() {
   };
   window._refreshGameBuilderPlacement = () => {
     lastPlacementSignature = '';
+    lastValidationSignature = '';
     renderPlacementStatus();
     renderReadinessStatus();
+    renderValidationStatus();
     renderGameSystems();
     renderInspector({ force: true });
     renderSceneList();
