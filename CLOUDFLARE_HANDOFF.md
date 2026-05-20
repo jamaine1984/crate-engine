@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `61e36512`
+- Current deployed source commit for the public engine code: `70de9a9d`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,13 +29,14 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `0c6d333f-1ce3-4b16-9c72-7d6af7eea274`
-- Latest production deployment URL: `https://0c6d333f.crateship-games.pages.dev`
+- Latest production deployment ID: `bff0f4dd-f25e-40c9-88b8-33d68ec0d60b`
+- Latest production deployment URL: `https://bff0f4dd.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `61e3651`
-- Main live page bundle after the deploy: `/assets/play-LE2y4und.js`
-- Lazy App Builder chunk after the deploy: `/assets/app-builder-Bd7rnI_C.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-DTRJCIV-.js`
+- Source shown by Cloudflare: `70de9a9`
+- Main live page bundle after the deploy: `/assets/play-hSMoJ33N.js`
+- Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-Cj1txR-0.js`
+- Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-BDuV1v3u.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -2173,6 +2174,23 @@ Browser verification history:
   - Smoke verified `Readiness: Ready to test, 106 objects, 2 scripts, 40 components, Edit mode`.
   - Smoke still verified separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-runtime-budget-61e36512.png`.
+- Follow-up production deployments on 2026-05-20 fixed live QA issues found in the editor:
+  - Superseded deployment `e0d8e0ee-c63f-431b-ae60-d4b0dbc3dd4f`, source `dd7bb2f`, served `/assets/play-LydZ3sKC.js`; smoke caught that the old editor pointerup path could re-enable OrbitControls during Play mode.
+  - Superseded deployment `edfce0df-5d0f-4277-86d7-ef2a94fbf311`, source `c1daad1`, served `/assets/play-C0RkabJt.js`; smoke passed, then hands-on `www` QA found the asset gallery was below the Game Builder panel and card clicks could be intercepted.
+  - Final deployment `bff0f4dd-f25e-40c9-88b8-33d68ec0d60b`, source `70de9a9`, serves `/assets/play-hSMoJ33N.js` with lazy asset browser `/assets/asset-browser-ui-BDuV1v3u.js`.
+  - `game-builder-ui.mjs` widened the Game Builder panel and changed system/readiness/performance/validation text rows to wrap instead of clipping labels.
+  - `asset-browser-ui.mjs` now resolves thumbnail URLs through the same asset-host resolver used by the runtime and raises the gallery overlay above the Game Builder panel.
+  - `engine.mjs` now disables editor OrbitControls in Play mode, locks camera roll for camera-only Play, captures Play-mode wheel input, and only re-enables OrbitControls on pointerup when still in Edit mode.
+  - `play.html` now labels the third top mode as `Explore` instead of `View`.
+  - `scripts/smoke-production.mjs` now fails if visible Game Builder system labels are clipped or if Play mode scroll/drag reintroduces camera roll or re-enables OrbitControls.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures`, had `113` files, and included `admin.html` and `play.html`.
+  - During this pass `node --check engine.mjs`, `node --check game-builder-ui.mjs`, `node --check asset-browser-ui.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Final smoke on `https://crateshipgames.com/play?verify=asset-gallery-70de9a9d` verified bundle `/assets/play-hSMoJ33N.js`, asset manifest `6f09cc09da2f`, `Readiness: Ready to test, 106 objects, 2 scripts, 40 components, Edit mode`, and `Validation: ready (0 errors, 0 warnings, 0 suggestions)`.
+  - Final smoke verified the live editor Performance panel at `129.9 FPS`, `7.7 ms`, `27` calls, and `5,052` triangles.
+  - Final smoke verified the raw Build City frame probe at `71.9 FPS`, `13.9 ms` average frame time, `0.5 ms` update time, `13.4 ms` render time, `316` calls, and `283,478` triangles.
+  - Final smoke verified phone viewport performance at `400 FPS`, `2.5 ms`, `105` calls, `78,694` triangles, DPR `3->1.25`, and tablet viewport performance at `61 FPS`, `16.4 ms`, `285` calls, `201,950` triangles, DPR `2->1`.
+  - Final `www` hands-on QA at `https://www.crateshipgames.com/play?verify=www-hands-on-70de9a9d` verified zero clipped system labels, Furniture gallery placement of `Bathroom Bathtub`, no model/texture HTTP errors, and Play camera stayed at roll `0` with controls disabled before and after scroll/drag.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-asset-gallery-70de9a9d.png` and `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\www-hands-on-70de9a9d.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
