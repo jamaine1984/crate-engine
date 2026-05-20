@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `ba017dd9`
+- Current deployed source commit for the public engine code: `4b1e3e11`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,13 +29,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `ced94f30-9c75-4240-b9da-5c42195ccac0`
-- Latest production deployment URL: `https://ced94f30.crateship-games.pages.dev`
+- Latest production deployment ID: `cc79ff03-de44-4176-9573-6bf3e54dcc82`
+- Latest production deployment URL: `https://cc79ff03.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `ba017dd`
-- Main live page bundle after the deploy: `/assets/play-DV3nZ-s8.js`
+- Source shown by Cloudflare: `4b1e3e1`
+- Main live page bundle after the deploy: `/assets/play-CxgPiKlg.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BTsf52SW.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BdwXDnOB.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-CAOy79B3.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -43,6 +43,43 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-20:
+
+- Commit deployed: `4b1e3e11` (`Refresh builder validation before production smoke summary`)
+- Cloudflare deployment: `cc79ff03-de44-4176-9573-6bf3e54dcc82`
+- App deploy command:
+
+```powershell
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=4b1e3e11 --commit-message="Refresh builder validation before production smoke summary" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`
+- Final source-tag deploy uploaded `0` new static files and reused `111` existing files; the app bundle had already been uploaded by deployment `2acbb6e8-84ec-44cb-9458-f79f457379fe` from commit `0b395ff1`.
+- Primary smoke passed sequentially: `https://crateshipgames.com/play?verify=starter-kit-layout-4b1e3e11-seq`
+- WWW smoke passed sequentially: `https://www.crateshipgames.com/play?verify=www-starter-kit-layout-4b1e3e11-seq`
+- Visual Starter Kits layout check passed: `https://crateshipgames.com/play?verify=starter-kit-layout-visual-1779319691667`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-starter-kit-layout-4b1e3e11-seq.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-starter-kit-layout-4b1e3e11-seq.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\starter-kit-layout-visual-1779319691667.png`
+- Smoke bundle: `/assets/play-CxgPiKlg.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Production smokes must run sequentially until the smoke slugs are namespaced. Parallel apex/`www` runs share the same Cloudflare smoke records and can race each other during metadata delete/update checks.
+
+What changed in this deploy:
+
+- `game-builder-ui.mjs`
+  - Added `Starter Kits` in the Builder panel: `Adventure Loop`, `Combat Loop`, and `Inventory Loop`.
+  - `Adventure Loop` creates a player spawn, guide NPC, mission step, reward chest, mission gate, checkpoint, and finish goal, and installs Inventory, HUD, Quest, and Component Runtime scripts.
+  - `Combat Loop` creates a spawn, weapon pickup, enemy spawn, wave controller, checkpoint, and finish goal.
+  - `Inventory Loop` creates a spawn, pickup, equipment item, merchant, checkpoint, and finish goal.
+  - Fixed Builder section clipping by preventing sections from flex-shrinking inside the scroll body; this keeps Starter Kit cards and labels visible.
+- `scripts/smoke-production.mjs`
+  - Applies the `Adventure Loop` starter kit and verifies generated gameplay components/scripts.
+  - Fails if the Starter Kits section collapses or clips its cards.
+  - Refreshes Builder validation before the final smoke summary and records row-level validation messages when a warning is real.
+
+Previous app-only deploy on 2026-05-20:
 
 - Commit deployed: `ba017dd9` (`Add persistent mode dock and clean asset picker`)
 - Cloudflare deployment: `ced94f30-9c75-4240-b9da-5c42195ccac0`
