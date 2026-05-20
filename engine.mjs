@@ -14554,6 +14554,19 @@ function serializeProjectScripts() {
     : [];
 }
 
+function serializeValidationFixHistory() {
+  return Array.isArray(window._gameBuilderValidationFixHistory)
+    ? window._gameBuilderValidationFixHistory.slice(-20).map(fix => ({
+        action: fix.action || '',
+        detail: fix.detail || '',
+        applied: Number(fix.applied) || 0,
+        fixedAt: fix.fixedAt || 0,
+        undoAvailable: fix.undoAvailable === true && fix.undone !== true,
+        undone: fix.undone === true,
+      })).filter(fix => fix.action)
+    : [];
+}
+
 function serializeProjectObject(obj, index) {
   if (!obj || !obj.userData || !obj.position) return null;
   const components = cloneProjectJson(obj.userData.gbComponents || {}, {});
@@ -14799,6 +14812,7 @@ function serializeScene() {
     commands: sceneHistory.filter(c => c !== 'clear' && c !== 'reset'),
     objects: objectState,
     userScripts: serializeProjectScripts(),
+    validationFixHistory: serializeValidationFixHistory(),
     weather: weatherSystem || null,
     time: null, // TODO: track time of day
   });

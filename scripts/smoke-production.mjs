@@ -556,17 +556,59 @@ async function runBrowserSmoke() {
     });
     await page.locator('#gb-validation [data-gb-validation-fix="link-missions"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
+      () => window._pendingGameBuilderValidationFix?.action === 'link-missions' &&
+        document.querySelector('#gb-validation-review')?.dataset.state === 'pending',
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#gb-validation [data-gb-validation-apply="link-missions"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
       () => (window._gameBuilderValidationFixHistory || []).some((item) => item.action === 'link-missions' && item.applied > 0),
       undefined,
       { timeout: timeoutMs }
     );
     await page.locator('#gb-validation [data-gb-validation-fix="link-waves"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
+      () => window._pendingGameBuilderValidationFix?.action === 'link-waves' &&
+        document.querySelector('#gb-validation-review')?.dataset.state === 'pending',
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#gb-validation [data-gb-validation-apply="link-waves"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
       () => (window._gameBuilderValidationFixHistory || []).some((item) => item.action === 'link-waves' && item.applied > 0),
       undefined,
       { timeout: timeoutMs }
     );
     await page.locator('#gb-validation [data-gb-validation-fix="add-colliders"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => window._pendingGameBuilderValidationFix?.action === 'add-colliders' &&
+        (window._pendingGameBuilderValidationFix?.count || 0) > 0,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#gb-validation [data-gb-validation-apply="add-colliders"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => (window._gameBuilderValidationFixHistory || []).some((item) => item.action === 'add-colliders' && item.applied > 0 && item.undoAvailable),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#gb-validation [data-gb-validation-undo="add-colliders"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => window._lastGameBuilderValidationUndo?.restoredObjects > 0 &&
+        (window._gameBuilderValidation?.suggestions || 0) > 0 &&
+        !!document.querySelector('#gb-validation [data-gb-validation-fix="add-colliders"]'),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#gb-validation [data-gb-validation-fix="add-colliders"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => window._pendingGameBuilderValidationFix?.action === 'add-colliders' &&
+        (window._pendingGameBuilderValidationFix?.count || 0) > 0,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.locator('#gb-validation [data-gb-validation-apply="add-colliders"]').click({ timeout: timeoutMs });
     const validationFixState = await page.waitForFunction(
       () => {
         const history = window._gameBuilderValidationFixHistory || [];
@@ -574,6 +616,7 @@ async function runBrowserSmoke() {
         const objects = window._engineBridge?.objects || window._sceneObjects || [];
         const colliderCount = objects.filter((obj) => obj?.userData?.gbComponents?.collider).length;
         const actions = history.map((item) => item.action);
+        const undo = window._lastGameBuilderValidationUndo || {};
         if (!actions.includes('link-missions') || !actions.includes('link-waves') || !actions.includes('add-colliders')) return null;
         if (validation.status !== 'ready' || validation.errors !== 0 || validation.warnings !== 0 || validation.suggestions !== 0) return null;
         if (!colliderCount) return null;
@@ -581,6 +624,8 @@ async function runBrowserSmoke() {
           actions,
           colliderCount,
           latest: history[history.length - 1],
+          undoRestoredObjects: undo.restoredObjects || 0,
+          previewState: document.querySelector('#gb-validation-review')?.dataset.state || '',
           summary: validation.summary,
           rowCount: document.querySelectorAll('#gb-validation-list .gb-validation-row').length,
         };
@@ -633,9 +678,10 @@ async function runBrowserSmoke() {
         const hasMerchant = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.components?.merchant);
         const hasAssetPath = Array.isArray(parsed.objects) && parsed.objects.some((obj) => obj?.assetPath);
         const hasScripts = Array.isArray(parsed.userScripts) && parsed.userScripts.length >= 1;
+        const hasValidationFixHistory = Array.isArray(parsed.validationFixHistory) && parsed.validationFixHistory.some((fix) => fix?.action === 'add-colliders' && fix?.applied > 0);
         const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
         const hasBuildCityCommand = commands.some((cmd) => /^(?:build (?:a |the )?(?:city|full city|the city)|generate city|city world|new city)$/i.test(String(cmd || '').trim()));
-        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasMissionStep || !hasMissionReward || !hasMissionGate || !hasEnemySpawn || !hasWaveController || !hasEquipmentItem || !hasNpc || !hasMerchant || !hasAssetPath || !hasScripts || !hasBuildCityCommand) return null;
+        if (parsed.version !== 3 || !hasPickup || !hasSpawnPoint || !hasDoor || !hasTriggerZone || !hasMissionStep || !hasMissionReward || !hasMissionGate || !hasEnemySpawn || !hasWaveController || !hasEquipmentItem || !hasNpc || !hasMerchant || !hasAssetPath || !hasScripts || !hasValidationFixHistory || !hasBuildCityCommand) return null;
         return {
           version: parsed.version,
           objectCount: parsed.objects.length,
@@ -655,6 +701,8 @@ async function runBrowserSmoke() {
           hasNpc,
           hasMerchant,
           hasAssetPath,
+          validationFixHistoryCount: parsed.validationFixHistory.length,
+          hasValidationFixHistory,
         };
       },
       undefined,
@@ -2026,6 +2074,7 @@ async function runBrowserSmoke() {
       const selected = window._engineBridge?.getSelected?.() || window._lastPlacedObj || null;
       const readiness = window._gameBuilderReadiness || {};
       const validation = window._gameBuilderValidation || {};
+      const performancePanel = window._gameBuilderPerformance || {};
       const gameSystems = window._gameBuilderSystems || [];
       return {
         engineReady: window._engineReady === true,
@@ -2047,6 +2096,7 @@ async function runBrowserSmoke() {
         hasProject: !!document.querySelector('#gb-project'),
         hasAssetPack: !!document.querySelector('#gb-asset-pack'),
         hasReadiness: !!document.querySelector('#gb-readiness'),
+        hasPerformance: !!document.querySelector('#gb-performance'),
         hasValidation: !!document.querySelector('#gb-validation'),
         hasSystems: !!document.querySelector('#gb-systems'),
         systemCardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
@@ -2075,6 +2125,14 @@ async function runBrowserSmoke() {
         readinessEnemySpawnCount: readiness.enemySpawnCount || 0,
         readinessWaveCount: readiness.waveCount || 0,
         readinessAssetStatus: readiness.assetStatus || '',
+        performanceStatus: performancePanel.status || document.querySelector('#gb-performance-status')?.dataset.status || '',
+        performanceFps: Number(performancePanel.fps ?? document.querySelector('#gb-performance-status')?.dataset.fps) || 0,
+        performanceFrameMs: Number(performancePanel.frameMs ?? document.querySelector('#gb-performance-status')?.dataset.frameMs) || 0,
+        performanceCalls: Number(performancePanel.calls ?? document.querySelector('#gb-performance-status')?.dataset.calls) || 0,
+        performanceTriangles: Number(performancePanel.triangles ?? document.querySelector('#gb-performance-status')?.dataset.triangles) || 0,
+        performanceTextures: Number(performancePanel.textures ?? document.querySelector('#gb-performance-status')?.dataset.textures) || 0,
+        performanceRows: document.querySelectorAll('#gb-performance-list .gb-performance-row').length,
+        performanceWarnings: Array.isArray(performancePanel.warnings) ? performancePanel.warnings : [],
         validationStatus: validation.status || document.querySelector('#gb-validation-status')?.dataset.status || '',
         validationSummary: validation.summary || document.querySelector('#gb-validation-status')?.dataset.summary || '',
         validationErrors: Number(validation.errors ?? document.querySelector('#gb-validation-status')?.dataset.errors) || 0,
@@ -2098,6 +2156,8 @@ async function runBrowserSmoke() {
     state.validationFixLatest = validationFixState.latest?.action || '';
     state.validationFixSummary = validationFixState.summary;
     state.validationFixRows = validationFixState.rowCount;
+    state.validationFixUndoRestoredObjects = validationFixState.undoRestoredObjects;
+    state.validationFixPreviewState = validationFixState.previewState;
     state.savedProjectObjectCount = savedProjectState.objectCount;
     state.savedProjectScriptCount = savedProjectState.scriptCount;
     state.savedProjectCommandCount = savedProjectState.commandCount;
@@ -2113,6 +2173,8 @@ async function runBrowserSmoke() {
     state.savedProjectHasEquipmentItem = savedProjectState.hasEquipmentItem;
     state.savedProjectHasNpc = savedProjectState.hasNpc;
     state.savedProjectHasMerchant = savedProjectState.hasMerchant;
+    state.savedProjectValidationFixHistoryCount = savedProjectState.validationFixHistoryCount;
+    state.savedProjectHasValidationFixHistory = savedProjectState.hasValidationFixHistory;
     state.loadedProjectObjectCount = loadedProjectState.objectCount;
     state.loadedProjectScriptCount = loadedProjectState.scriptCount;
     state.loadedProjectPickupId = loadedProjectState.pickupId;
@@ -2354,7 +2416,7 @@ async function runBrowserSmoke() {
     if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
-    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasValidation || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Validation, Systems, Inspector, or Blueprints section was missing');
+    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasPerformance || !state.hasValidation || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Performance, Validation, Systems, Inspector, or Blueprints section was missing');
     if (!state.hasInspectorHealth || state.inspectorHealthStatus !== 'ready' || state.inspectorHealthComponents < 4 || state.inspectorMetricCount < 3 || state.inspectorHealthIssues !== 0) {
       throw new Error(`Game Builder inspector health did not report the selected gameplay object as ready: ${JSON.stringify(state)}`);
     }
@@ -2400,6 +2462,13 @@ async function runBrowserSmoke() {
       state.readinessAssetStatus !== 'loaded') {
       throw new Error(`Game Builder readiness did not report a testable game: ${JSON.stringify(state)}`);
     }
+    if (!state.performanceStatus ||
+      state.performanceFps <= 0 ||
+      state.performanceFrameMs <= 0 ||
+      state.performanceRows < 5 ||
+      state.performanceTriangles <= 0) {
+      throw new Error(`Game Builder performance panel did not report live renderer metrics: ${JSON.stringify(state)}`);
+    }
     if (state.validationStatus !== 'ready' ||
       state.validationErrors !== 0 ||
       state.validationWarnings !== 0 ||
@@ -2411,11 +2480,12 @@ async function runBrowserSmoke() {
       !state.validationFixActions.includes('link-missions') ||
       !state.validationFixActions.includes('link-waves') ||
       !state.validationFixActions.includes('add-colliders') ||
-      state.validationFixColliderCount < 1) {
-      throw new Error(`Game Builder validation fixes did not repair mission, wave, and collider checks: ${JSON.stringify(state)}`);
+      state.validationFixColliderCount < 1 ||
+      state.validationFixUndoRestoredObjects < 1) {
+      throw new Error(`Game Builder validation fixes did not preview, undo, and repair mission, wave, and collider checks: ${JSON.stringify(state)}`);
     }
     if (state.projectSaveCount < 1) throw new Error('Project save workflow did not create a saved project');
-    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate || !state.savedProjectHasEnemySpawn || !state.savedProjectHasWaveController || !state.savedProjectHasEquipmentItem || !state.savedProjectHasNpc || !state.savedProjectHasMerchant) {
+    if (state.savedProjectVersion !== 3 || state.savedProjectObjectCount < 100 || state.savedProjectScriptCount < 1 || !state.savedProjectHasBuildCityCommand || !state.savedProjectHasSpawnPoint || !state.savedProjectHasDoor || !state.savedProjectHasTriggerZone || !state.savedProjectHasMissionStep || !state.savedProjectHasMissionReward || !state.savedProjectHasMissionGate || !state.savedProjectHasEnemySpawn || !state.savedProjectHasWaveController || !state.savedProjectHasEquipmentItem || !state.savedProjectHasNpc || !state.savedProjectHasMerchant || !state.savedProjectHasValidationFixHistory) {
       throw new Error(`Project save did not capture rich scene state: ${JSON.stringify(state)}`);
     }
     if (state.loadedProjectObjectCount < 100 || state.loadedProjectScriptCount < state.savedProjectScriptCount || state.loadedProjectApplied < 1 || !state.loadedProjectPickupId || !state.loadedProjectDoorId || !state.loadedProjectTriggerId || !state.loadedProjectMissionId || !state.loadedProjectRewardId || !state.loadedProjectGateId || !state.loadedProjectEnemySpawnId || !state.loadedProjectWaveId || !state.loadedProjectEquipmentId || !state.loadedProjectNpcId || !state.loadedProjectMerchantId) {
@@ -2643,8 +2713,9 @@ console.log(`Asset base: ${assetBaseUrl}`);
 console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
+console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
 console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);
-console.log(`Validation fixes: ${(browserState.validationFixActions || []).join(', ') || 'none'} (${browserState.validationFixColliderCount || 0} colliders)`);
+console.log(`Validation fixes: ${(browserState.validationFixActions || []).join(', ') || 'none'} (${browserState.validationFixColliderCount || 0} colliders, undo restored ${browserState.validationFixUndoRestoredObjects || 0})`);
 console.log(`Game systems: ${browserState.systemSummary}`);
 console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
@@ -2655,7 +2726,7 @@ console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`
 console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
-console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands`);
+console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands, ${browserState.savedProjectValidationFixHistoryCount || 0} validation fixes`);
 console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${browserState.loadedProjectScriptCount} scripts (${browserState.loadedProjectApplied} applied, ${browserState.loadedProjectSpawned} spawned, pickup ${browserState.loadedProjectPickupId || 'missing'}, equipment ${browserState.loadedProjectEquipmentId || 'missing'}, npc ${browserState.loadedProjectNpcId || 'missing'}, merchant ${browserState.loadedProjectMerchantId || 'missing'}, door ${browserState.loadedProjectDoorId || 'missing'}, trigger ${browserState.loadedProjectTriggerId || 'missing'}, mission ${browserState.loadedProjectMissionId || 'missing'}, reward ${browserState.loadedProjectRewardId || 'missing'}, gate ${browserState.loadedProjectGateId || 'missing'}, enemy spawn ${browserState.loadedProjectEnemySpawnId || 'missing'}, wave ${browserState.loadedProjectWaveId || 'missing'})`);
 console.log(`Playable export: ${browserState.playableExportFilename || 'missing'} (${browserState.playableExportObjectCount} objects, ${browserState.playableExportComponentCount} components, ${browserState.playableExportHtmlBytes} html bytes)`);
 console.log(`Published game: ${browserState.publishedSlug || 'missing'} (${browserState.publishedObjects} objects, ${browserState.publishedComponents} components, package ${browserState.publishedPlayableHtmlBytes} html bytes)`);

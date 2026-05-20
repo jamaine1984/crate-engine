@@ -1704,8 +1704,13 @@ let lastPlacementSignature = '';
 let lastAssetPackSignature = '';
 let lastReadinessSignature = '';
 let lastValidationSignature = '';
+let lastPerformanceSignature = '';
 let lastGameSystemsSignature = '';
 let assetManifestLoadStarted = false;
+let pendingValidationFix = null;
+let performanceProbeStarted = false;
+let performanceLastFrame = 0;
+let performanceSamples = [];
 
 function isSmallScreen() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -1798,6 +1803,10 @@ function normalizeSceneObject(obj) {
 function getObjectName(obj, index) {
   const name = obj?.userData?.name || obj?.name || obj?.type || 'Object';
   return String(name).replace(/[_-]+/g, ' ').trim() || 'Object ' + (index + 1);
+}
+
+function getObjectStableId(obj, index = 0) {
+  return obj?.uuid || obj?.id || obj?.userData?.id || obj?.userData?.name || ('object_' + index);
 }
 
 function getTargetObject() {
@@ -2029,10 +2038,211 @@ function recordValidationFix(action, detail, applied) {
   return result;
 }
 
+function collectValidationUndoSnapshot() {
+  return getSceneObjects().map((obj, index) => {
+    const data = obj.userData || {};
+    return {
+      id: getObjectStableId(obj, index),
+      components: cloneJson(data.gbComponents || {}),
+      hadComponents: Object.prototype.hasOwnProperty.call(data, 'gbComponents'),
+      interactable: data.interactable,
+      hadInteractable: Object.prototype.hasOwnProperty.call(data, 'interactable'),
+      interactLabel: data.interactLabel,
+      hadInteractLabel: Object.prototype.hasOwnProperty.call(data, 'interactLabel'),
+    };
+  });
+}
+
+function restoreValidationUndoSnapshot(snapshot) {
+  const objects = getSceneObjects();
+  const byId = new Map(objects.map((obj, index) => [getObjectStableId(obj, index), obj]));
+  (snapshot || []).forEach((item) => {
+    const obj = byId.get(item.id);
+    if (!obj) return;
+    obj.userData = obj.userData || {};
+    if (item.hadComponents) obj.userData.gbComponents = cloneJson(item.components || {});
+    else delete obj.userData.gbComponents;
+    if (item.hadInteractable) obj.userData.interactable = item.interactable;
+    else delete obj.userData.interactable;
+    if (item.hadInteractLabel) obj.userData.interactLabel = item.interactLabel;
+    else delete obj.userData.interactLabel;
+  });
+}
+
+function getValidationUndoStack() {
+  window._gameBuilderValidationUndoStack = window._gameBuilderValidationUndoStack || {};
+  return window._gameBuilderValidationUndoStack;
+}
+
+function recordValidationFixWithUndo(action, detail, applied, snapshot) {
+  const result = recordValidationFix(action, detail, applied);
+  if (applied > 0 && snapshot && snapshot.length) {
+    const undoId = 'gb_fix_' + Date.now().toString(36);
+    getValidationUndoStack()[undoId] = snapshot;
+    result.undoId = undoId;
+    result.undoAvailable = true;
+  }
+  return result;
+}
+
+function undoValidationFix(undoId) {
+  if (!requireEditAction('undo validation fixes')) return null;
+  const stack = getValidationUndoStack();
+  const id = undoId || window._lastGameBuilderValidationFix?.undoId;
+  const snapshot = id ? stack[id] : null;
+  if (!snapshot) {
+    notify('No validation fix undo available');
+    return null;
+  }
+  restoreValidationUndoSnapshot(snapshot);
+  delete stack[id];
+  if (window._lastGameBuilderValidationFix && window._lastGameBuilderValidationFix.undoId === id) {
+    window._lastGameBuilderValidationFix.undoAvailable = false;
+    window._lastGameBuilderValidationFix.undone = true;
+  }
+  window._lastGameBuilderValidationUndo = { undoId: id, restoredAt: Date.now(), restoredObjects: snapshot.length };
+  pendingValidationFix = null;
+  window._pendingGameBuilderValidationFix = null;
+  resetValidationUiState();
+  updateBuilderUi();
+  notify('Validation fix undone');
+  return window._lastGameBuilderValidationUndo;
+}
+
+function getValidationFixPreview(action) {
+  const targetNames = [];
+  let title = 'Validation fix';
+  let detail = 'Review this automatic fix before it changes the scene.';
+  let count = 0;
+  const pushObject = (obj) => {
+    if (!obj) return;
+    targetNames.push(getObjectName(obj, targetNames.length));
+  };
+
+  if (action === 'install-inventory-runtime') {
+    title = 'Install inventory runtime';
+    detail = 'Install inventory and component runtime scripts for inventory-related components.';
+    count = 1;
+  } else if (action === 'add-colliders') {
+    const targets = findColliderTargets();
+    targets.slice(0, 8).forEach(pushObject);
+    title = 'Tag colliders';
+    detail = 'Tag likely solid scene objects so runtime checks know what should behave like collision geometry.';
+    count = targets.length;
+  } else if (action === 'link-missions') {
+    const issues = collectMissionLinkIssues();
+    issues.slice(0, 8).forEach((entry) => pushObject(entry.obj));
+    title = 'Link mission targets';
+    detail = 'Point rewards and gates with missing requirements to the first mission step.';
+    count = issues.length;
+  } else if (action === 'link-waves') {
+    const issues = collectWaveLinkIssues();
+    issues.slice(0, 8).forEach((entry) => pushObject(entry.obj));
+    title = 'Link wave targets';
+    detail = 'Point wave controllers with missing spawn groups to the first enemy spawn.';
+    count = issues.length;
+  } else if (action === 'link-doors') {
+    const issues = collectTriggerLinkIssues();
+    issues.slice(0, 8).forEach((entry) => pushObject(entry.obj));
+    title = 'Link trigger targets';
+    detail = 'Point triggers with missing door IDs to the first door.';
+    count = issues.length;
+  } else if (action === 'add-spawn-point') {
+    const target = firstFixTarget(['spawnPoint', 'checkpoint', 'winCondition', 'pickup']);
+    pushObject(target);
+    title = 'Add spawn point';
+    detail = 'Add a player spawn point to the selected or most relevant object.';
+    count = target ? 1 : 0;
+  } else if (action === 'add-checkpoint') {
+    const target = firstFixTarget(['spawnPoint', 'checkpoint', 'pickup']);
+    pushObject(target);
+    title = 'Add checkpoint';
+    detail = 'Add a checkpoint so Play mode can recover progress.';
+    count = target ? 1 : 0;
+  } else if (action === 'add-win-condition') {
+    const target = firstFixTarget(['winCondition', 'checkpoint', 'objective']);
+    pushObject(target);
+    title = 'Add win condition';
+    detail = 'Add a finish goal to the selected or most relevant object.';
+    count = target ? 1 : 0;
+  } else if (action === 'add-trigger-zone') {
+    const target = firstFixTarget(['door']);
+    pushObject(target);
+    title = 'Add trigger zone';
+    detail = 'Add a trigger and link it to the first door when possible.';
+    count = target ? 1 : 0;
+  } else if (action === 'add-door') {
+    const target = firstFixTarget(['triggerZone']);
+    pushObject(target);
+    title = 'Add door';
+    detail = 'Add a door and link the first trigger to it when possible.';
+    count = target ? 1 : 0;
+  } else if (action === 'add-mission-step') {
+    const target = firstFixTarget(['missionReward', 'missionGate', 'missionStep']);
+    pushObject(target);
+    title = 'Add mission step';
+    detail = 'Add a mission step required by rewards or gates.';
+    count = target ? 1 : 0;
+  } else if (action === 'add-mission-reward') {
+    const target = firstFixTarget(['missionStep']);
+    pushObject(target);
+    title = 'Add mission reward';
+    detail = 'Add a reward linked to the first mission step.';
+    count = target ? 1 : 0;
+  } else if (action === 'add-enemy-spawn') {
+    const target = firstFixTarget(['waveController']);
+    pushObject(target);
+    title = 'Add enemy spawn';
+    detail = 'Add an enemy spawn and link the first wave controller.';
+    count = target ? 1 : 0;
+  } else if (action === 'add-wave-controller') {
+    const target = firstFixTarget(['enemySpawn']);
+    pushObject(target);
+    title = 'Add wave controller';
+    detail = 'Add a wave controller linked to the first enemy spawn.';
+    count = target ? 1 : 0;
+  }
+
+  return {
+    action,
+    title,
+    detail,
+    count,
+    targets: targetNames,
+    createdAt: Date.now(),
+  };
+}
+
+function openValidationFixPreview(action) {
+  if (!requireEditAction('review validation fixes')) return null;
+  pendingValidationFix = getValidationFixPreview(action);
+  window._pendingGameBuilderValidationFix = pendingValidationFix;
+  lastValidationSignature = '';
+  renderValidationStatus();
+  notify('Review fix: ' + pendingValidationFix.title);
+  return pendingValidationFix;
+}
+
+function cancelValidationFixPreview() {
+  pendingValidationFix = null;
+  window._pendingGameBuilderValidationFix = null;
+  lastValidationSignature = '';
+  renderValidationStatus();
+}
+
+async function applyPendingValidationFix() {
+  const action = pendingValidationFix?.action;
+  if (!action) return null;
+  pendingValidationFix = null;
+  window._pendingGameBuilderValidationFix = null;
+  return applyValidationFix(action);
+}
+
 async function applyValidationFix(action) {
   if (!requireEditAction('apply validation fixes')) return null;
   let applied = 0;
   let detail = 'No safe fix was available';
+  const undoSnapshot = collectValidationUndoSnapshot();
 
   if (action === 'install-inventory-runtime') {
     await installScript('inventory');
@@ -2149,9 +2359,9 @@ async function applyValidationFix(action) {
     detail = 'Linked ' + applied + ' wave target' + (applied === 1 ? '' : 's');
   }
 
+  const result = recordValidationFixWithUndo(action, detail, applied, action === 'install-inventory-runtime' ? null : undoSnapshot);
   resetValidationUiState();
   updateBuilderUi();
-  const result = recordValidationFix(action, detail, applied);
   notify(applied ? detail : 'No validation fix applied');
   return result;
 }
@@ -2316,6 +2526,7 @@ function getFirstObjectWithAnyComponent(components) {
 function resetValidationUiState() {
   lastReadinessSignature = '';
   lastValidationSignature = '';
+  lastPerformanceSignature = '';
   lastGameSystemsSignature = '';
   lastInspectorSignature = '';
   lastSceneSignature = '';
@@ -2498,6 +2709,116 @@ function createReadinessRow(label, value) {
   return row;
 }
 
+function startPerformanceProbe() {
+  if (performanceProbeStarted) return;
+  performanceProbeStarted = true;
+  const tick = (now) => {
+    if (performanceLastFrame) {
+      const frameMs = Math.max(0, now - performanceLastFrame);
+      if (Number.isFinite(frameMs) && frameMs < 1000) {
+        performanceSamples.push(frameMs);
+        if (performanceSamples.length > 90) performanceSamples.shift();
+      }
+    }
+    performanceLastFrame = now;
+    window.requestAnimationFrame(tick);
+  };
+  window.requestAnimationFrame(tick);
+}
+
+function collectPerformanceMetrics() {
+  const renderer = window._renderer || window._engineBridge?.renderer;
+  const renderInfo = renderer?.info?.render || {};
+  const memoryInfo = renderer?.info?.memory || {};
+  const samples = performanceSamples.length ? performanceSamples : [16.7];
+  const avgFrameMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+  const worstFrameMs = Math.max(...samples);
+  const fps = avgFrameMs > 0 ? 1000 / avgFrameMs : 0;
+  const objects = getSceneObjects();
+  const componentCounts = countComponents(objects);
+  const triangleEstimate = Number(renderInfo.triangles) || objects.slice(0, 180).reduce((sum, obj) => sum + countRenderableStats(obj).triangles, 0);
+  const calls = Number(renderInfo.calls) || 0;
+  const textures = Number(memoryInfo.textures) || 0;
+  const geometries = Number(memoryInfo.geometries) || 0;
+  const assetStatus = window._crateAssetManifestStatus?.status || (window._crateAssetManifest?.version ? 'loaded' : 'idle');
+  const status = fps && fps < 28 ? 'blocked' : (fps < 45 || calls > 900 || triangleEstimate > 2000000 ? 'warn' : 'ready');
+  const summary = fps ? Math.round(fps) + ' FPS | ' + Math.round(avgFrameMs * 10) / 10 + ' ms' : 'Collecting frame data';
+  const warnings = [];
+  if (fps && fps < 45) warnings.push('Low FPS');
+  if (calls > 900) warnings.push('High draw calls');
+  if (triangleEstimate > 2000000) warnings.push('High triangles');
+  if (textures > 250) warnings.push('High texture count');
+  return {
+    status,
+    summary,
+    fps: Math.round(fps * 10) / 10,
+    frameMs: Math.round(avgFrameMs * 10) / 10,
+    worstFrameMs: Math.round(worstFrameMs * 10) / 10,
+    calls,
+    triangles: triangleEstimate,
+    textures,
+    geometries,
+    objects: objects.length,
+    components: componentCounts.total,
+    assetStatus,
+    warnings,
+  };
+}
+
+function createPerformanceSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  section.id = 'gb-performance';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Performance';
+  const status = document.createElement('div');
+  status.id = 'gb-performance-status';
+  status.className = 'gb-performance-status';
+  const list = document.createElement('div');
+  list.id = 'gb-performance-list';
+  list.className = 'gb-performance-list';
+  section.append(heading, status, list);
+  return section;
+}
+
+function createPerformanceRow(label, value) {
+  const row = document.createElement('div');
+  row.className = 'gb-performance-row';
+  row.append(createTextElement('span', '', label), createTextElement('strong', '', value));
+  return row;
+}
+
+function renderPerformanceStatus() {
+  const status = document.getElementById('gb-performance-status');
+  const list = document.getElementById('gb-performance-list');
+  if (!status || !list) return;
+  const metrics = collectPerformanceMetrics();
+  const signature = JSON.stringify(metrics);
+  window._gameBuilderPerformance = metrics;
+  if (signature === lastPerformanceSignature) return;
+  lastPerformanceSignature = signature;
+  status.dataset.status = metrics.status;
+  status.dataset.fps = String(metrics.fps);
+  status.dataset.frameMs = String(metrics.frameMs);
+  status.dataset.calls = String(metrics.calls);
+  status.dataset.triangles = String(metrics.triangles);
+  status.dataset.textures = String(metrics.textures);
+  status.dataset.summary = metrics.summary;
+  status.setAttribute('aria-label', metrics.summary);
+  status.replaceChildren(
+    createTextElement('strong', '', metrics.status === 'ready' ? 'Smooth' : metrics.status === 'warn' ? 'Watch' : 'Heavy'),
+    createTextElement('span', '', metrics.summary)
+  );
+  list.replaceChildren(
+    createPerformanceRow('Frame', metrics.frameMs + ' ms | worst ' + metrics.worstFrameMs + ' ms'),
+    createPerformanceRow('Renderer', formatNumberShort(metrics.calls) + ' calls | ' + formatNumberShort(metrics.triangles) + ' tris'),
+    createPerformanceRow('GPU memory', formatNumberShort(metrics.geometries) + ' geo | ' + formatNumberShort(metrics.textures) + ' tex'),
+    createPerformanceRow('Scene', formatNumberShort(metrics.objects) + ' objects | ' + formatNumberShort(metrics.components) + ' comps'),
+    createPerformanceRow('Assets', metrics.assetStatus),
+    createPerformanceRow('Warnings', metrics.warnings.length ? metrics.warnings.join(', ') : 'None')
+  );
+}
+
 function createValidationSection() {
   const section = document.createElement('section');
   section.className = 'gb-section';
@@ -2510,7 +2831,10 @@ function createValidationSection() {
   const list = document.createElement('div');
   list.id = 'gb-validation-list';
   list.className = 'gb-validation-list';
-  section.append(heading, status, list);
+  const review = document.createElement('div');
+  review.id = 'gb-validation-review';
+  review.className = 'gb-validation-review';
+  section.append(heading, status, review, list);
   return section;
 }
 
@@ -2595,11 +2919,59 @@ function createValidationRow(check) {
   row.dataset.hasAction = check.action ? 'true' : 'false';
   row.append(createTextElement('span', '', check.label || 'Check'), createTextElement('strong', '', check.detail || 'Ready'));
   if (check.action) {
-    const button = createSmallButton(check.actionLabel || 'Fix', () => applyValidationFix(check.action), { editOnly: true, action: 'apply validation fixes' });
+    const button = createSmallButton(check.actionLabel || 'Review', () => openValidationFixPreview(check.action), { editOnly: true, action: 'review validation fixes' });
     button.dataset.gbValidationFix = check.action;
     row.appendChild(button);
   }
   return row;
+}
+
+function renderValidationReview() {
+  const review = document.getElementById('gb-validation-review');
+  if (!review) return;
+  review.replaceChildren();
+  const latest = window._lastGameBuilderValidationFix || null;
+  if (!pendingValidationFix && !latest) {
+    review.dataset.state = 'empty';
+    return;
+  }
+
+  review.dataset.state = pendingValidationFix ? 'pending' : 'applied';
+  const head = document.createElement('div');
+  head.className = 'gb-validation-review-head';
+  const title = pendingValidationFix
+    ? pendingValidationFix.title
+    : (latest.applied > 0 ? 'Last fix applied' : 'Last fix');
+  const meta = pendingValidationFix
+    ? (pendingValidationFix.count + ' change' + (pendingValidationFix.count === 1 ? '' : 's'))
+    : (latest.applied + ' applied');
+  head.append(createTextElement('strong', '', title), createTextElement('span', '', meta));
+
+  const detail = createTextElement('div', 'gb-validation-review-detail', pendingValidationFix ? pendingValidationFix.detail : latest.detail);
+  review.append(head, detail);
+
+  if (pendingValidationFix?.targets?.length) {
+    const targets = document.createElement('div');
+    targets.className = 'gb-validation-targets';
+    pendingValidationFix.targets.slice(0, 4).forEach((name) => targets.appendChild(createTextElement('span', '', name)));
+    if (pendingValidationFix.targets.length > 4) targets.appendChild(createTextElement('span', '', '+' + (pendingValidationFix.targets.length - 4)));
+    review.appendChild(targets);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'gb-validation-review-actions';
+  if (pendingValidationFix) {
+    const apply = createSmallButton('Apply', () => applyPendingValidationFix(), { editOnly: true, action: 'apply validation fixes' });
+    apply.dataset.gbValidationApply = pendingValidationFix.action;
+    const cancel = createSmallButton('Cancel', () => cancelValidationFixPreview(), { editOnly: true, action: 'cancel validation fix preview' });
+    cancel.dataset.gbValidationCancel = pendingValidationFix.action;
+    actions.append(apply, cancel);
+  } else if (latest?.undoAvailable && !latest.undone) {
+    const undo = createSmallButton('Undo', () => undoValidationFix(latest.undoId), { editOnly: true, action: 'undo validation fixes' });
+    undo.dataset.gbValidationUndo = latest.action;
+    actions.appendChild(undo);
+  }
+  if (actions.childNodes.length) review.appendChild(actions);
 }
 
 function renderValidationStatus() {
@@ -2607,7 +2979,12 @@ function renderValidationStatus() {
   const list = document.getElementById('gb-validation-list');
   if (!status || !list) return;
   const validation = collectSceneValidation(window._gameBuilderReadiness || collectReadiness());
-  const signature = JSON.stringify(validation);
+  const latest = window._lastGameBuilderValidationFix || null;
+  const reviewSignature = JSON.stringify({
+    pending: pendingValidationFix ? [pendingValidationFix.action, pendingValidationFix.count, pendingValidationFix.createdAt] : null,
+    latest: latest ? [latest.action, latest.applied, latest.undoAvailable, latest.undone, latest.fixedAt] : null,
+  });
+  const signature = JSON.stringify(validation) + '|' + reviewSignature;
   window._gameBuilderValidation = validation;
   if (signature === lastValidationSignature) return;
   lastValidationSignature = signature;
@@ -2626,6 +3003,7 @@ function renderValidationStatus() {
     ? validation.checks.slice(0, 7).map(createValidationRow)
     : [createValidationRow({ level: 'ready', label: 'Core loop', detail: 'Spawn, goals, systems, and links look ready.' })];
   list.replaceChildren(...rows);
+  renderValidationReview();
 }
 
 function createGameSystemsSection() {
@@ -3417,6 +3795,7 @@ function updateBuilderUi() {
   renderPlacementStatus();
   renderAssetPackStatus();
   renderReadinessStatus();
+  renderPerformanceStatus();
   renderValidationStatus();
   renderGameSystems();
   renderInspector();
@@ -3491,12 +3870,33 @@ function mount() {
     .gb-readiness-row{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
     .gb-readiness-row span{font-size:10px;line-height:14px;color:#8d979e}
     .gb-readiness-row strong{font-size:10px;line-height:14px;color:#dfe6ea;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-performance-status{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 8px 6px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
+    .gb-performance-status strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-performance-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap}
+    .gb-performance-status[data-status="ready"]{border-color:#2f6f44;background:#101a13}
+    .gb-performance-status[data-status="warn"]{border-color:#725a21;background:#1c1710}
+    .gb-performance-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
+    .gb-performance-list{display:flex;flex-direction:column;gap:5px;padding:0 8px 8px}
+    .gb-performance-row{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
+    .gb-performance-row span{font-size:10px;line-height:14px;color:#8d979e}
+    .gb-performance-row strong{font-size:10px;line-height:14px;color:#dfe6ea;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-validation-status{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 8px 6px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
     .gb-validation-status strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-validation-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap}
     .gb-validation-status[data-status="ready"]{border-color:#2f6f44;background:#101a13}
     .gb-validation-status[data-status="warn"]{border-color:#725a21;background:#1c1710}
     .gb-validation-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
+    .gb-validation-review{display:flex;flex-direction:column;gap:6px;margin:0 8px 7px;border:1px solid #263138;background:#101213;border-radius:7px;padding:7px}
+    .gb-validation-review[data-state="empty"]{display:none}
+    .gb-validation-review[data-state="pending"]{border-color:#4a6f9c;background:#101722}
+    .gb-validation-review-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .gb-validation-review-head strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-validation-review-head span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap}
+    .gb-validation-review-detail{font-size:10px;line-height:14px;color:#aeb7bd}
+    .gb-validation-targets{display:flex;flex-wrap:wrap;gap:5px}
+    .gb-validation-targets span{border:1px solid #263138;background:#0d1012;border-radius:999px;padding:3px 6px;font-size:10px;line-height:13px;color:#aeb7bd;max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-validation-review-actions{display:flex;gap:6px}
+    .gb-validation-review-actions .gb-small-btn{width:auto;min-width:58px}
     .gb-validation-list{display:flex;flex-direction:column;gap:5px;padding:0 8px 8px}
     .gb-validation-row{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;align-items:center;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
     .gb-validation-row[data-has-action="true"]{grid-template-columns:70px minmax(0,1fr) 50px}
@@ -3613,6 +4013,7 @@ function mount() {
   body.appendChild(createProjectSection());
   body.appendChild(createAssetPackSection());
   body.appendChild(createReadinessSection());
+  body.appendChild(createPerformanceSection());
   body.appendChild(createValidationSection());
   body.appendChild(createGameSystemsSection());
 
@@ -3684,7 +4085,11 @@ function mount() {
   document.body.appendChild(panel);
 
   repositionLegacyButtons(open);
+  startPerformanceProbe();
   window._applyGameBuilderValidationFix = applyValidationFix;
+  window._previewGameBuilderValidationFix = openValidationFixPreview;
+  window._applyPendingGameBuilderValidationFix = applyPendingValidationFix;
+  window._undoLastGameBuilderValidationFix = undoValidationFix;
   window._refreshGameBuilder = () => {
     resetValidationUiState();
     updateBuilderUi();
@@ -3696,6 +4101,7 @@ function mount() {
     updateProjectStatus();
     renderAssetPackStatus();
     renderReadinessStatus();
+    renderPerformanceStatus();
     renderValidationStatus();
     renderGameSystems();
     renderInspector({ force: true });
@@ -3708,6 +4114,7 @@ function mount() {
     lastValidationSignature = '';
     renderPlacementStatus();
     renderReadinessStatus();
+    renderPerformanceStatus();
     renderValidationStatus();
     renderGameSystems();
     renderInspector({ force: true });
