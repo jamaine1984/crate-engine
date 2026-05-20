@@ -2850,6 +2850,7 @@ function collectPerformanceMetrics() {
   const graphicsQuality = normalizeQualityLevel(window._crateGraphicsQuality);
   const rendererBudget = window._crateRendererBudget || {};
   const performanceBudget = window._cratePerformanceBudget || {};
+  const cullingStats = window._crateCullingStats || {};
   const pixelRatio = Number(renderer?.getPixelRatio?.()) || Number(rendererBudget.pixelRatio) || 0;
   const samples = performanceSamples.length ? performanceSamples : [16.7];
   const sampledAvgFrameMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
@@ -2894,6 +2895,14 @@ function collectPerformanceMetrics() {
     renderPixels: Number(rendererBudget.pixels) || 0,
     shadowMapSize: Number(performanceBudget.shadowMapSize) || 0,
     shadowDistance: Number(performanceBudget.shadowDistance) || 0,
+    lodProcessed: Number(cullingStats.processed) || 0,
+    lodHidden: Number(cullingStats.hidden) || 0,
+    lodSkipped: Number(cullingStats.skipped) || 0,
+    lodNear: Number(cullingStats.near) || 0,
+    lodMid: Number(cullingStats.mid) || 0,
+    lodFar: Number(cullingStats.far) || 0,
+    lodCullDistance: Number(cullingStats.cullDistance) || 0,
+    lodPass: Number(cullingStats.maxPerPass) || 0,
     warnings,
   };
 }
@@ -2994,6 +3003,7 @@ function renderPerformanceStatus() {
     createPerformanceRow('Loop', metrics.engineUpdateMs + ' ms update | ' + metrics.engineRenderMs + ' ms render'),
     createPerformanceRow('Renderer', formatNumberShort(metrics.calls) + ' calls | ' + formatNumberShort(metrics.triangles) + ' tris'),
     createPerformanceRow('Quality', metrics.graphicsLabel + ' | ' + metrics.renderScale + ' | DPR ' + metrics.pixelRatio),
+    createPerformanceRow('LOD', metrics.lodProcessed ? (metrics.lodHidden + ' hidden | ' + metrics.lodFar + ' far | pass ' + metrics.lodPass) : 'Collecting'),
     createPerformanceRow('GPU memory', formatNumberShort(metrics.geometries) + ' geo | ' + formatNumberShort(metrics.textures) + ' tex'),
     createPerformanceRow('Scene', formatNumberShort(metrics.objects) + ' objects | ' + formatNumberShort(metrics.components) + ' comps'),
     createPerformanceRow('Assets', metrics.assetStatus),

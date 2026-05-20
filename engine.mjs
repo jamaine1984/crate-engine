@@ -11574,6 +11574,10 @@ function updateLOD(cameraPos, frame = null) {
   let visible = 0;
   let shadowOff = 0;
   let shadowOn = 0;
+  let skipped = 0;
+  let near = 0;
+  let mid = 0;
+  let far = 0;
 
   for (let step = 0; step < maxPerPass; step++) {
     const index = (_lodCursor + step) % sceneObjects.length;
@@ -11584,6 +11588,9 @@ function updateLOD(cameraPos, frame = null) {
     const dx = obj.position.x - cameraPos.x;
     const dz = obj.position.z - cameraPos.z;
     const distSq = dx * dx + dz * dz;
+    if (distSq <= shadowDistanceSq) near++;
+    else if (distSq <= hideDistanceSq) mid++;
+    else far++;
 
     if (obj.userData.isGLB || obj.userData.isAutoCity || obj.userData.isProceduralProxy || obj.userData.isProceduralProxyBatch) {
       const castShadow = distSq <= shadowDistanceSq;
@@ -11592,7 +11599,9 @@ function updateLOD(cameraPos, frame = null) {
       else shadowOff++;
     }
 
-    if (!shouldSkipVisibilityCull(obj)) {
+    if (shouldSkipVisibilityCull(obj)) {
+      skipped++;
+    } else {
       if (distSq > hideDistanceSq) {
         setCrateCulledVisibility(obj, false);
         hidden++;
@@ -11610,11 +11619,19 @@ function updateLOD(cameraPos, frame = null) {
     visible,
     shadowOff,
     shadowOn,
+    skipped,
+    near,
+    mid,
+    far,
     total: sceneObjects.length,
+    processedPercent: Math.round((processed / sceneObjects.length) * 1000) / 10,
+    culledPercent: processed ? Math.round((hidden / processed) * 1000) / 10 : 0,
     cursor: _lodCursor,
     level: budget.level,
     cullDistance: hideDistance,
     shadowDistance: budget.shadowDistance,
+    maxPerPass,
+    interval,
   };
 }
 window._updateLOD = updateLOD;
@@ -14816,6 +14833,137 @@ function cloneProjectJson(value, fallback = null) {
   }
 }
 
+const CRATE_PROJECT_FORMAT = 'crate-engine-project';
+const CRATE_PROJECT_VERSION = 3;
+const CRATE_PROJECT_LIMITS = {
+  maxBytes: 8 * 1024 * 1024,
+  maxCommands: 600,
+  maxObjects: 6000,
+  maxScripts: 80,
+  maxValidationFixes: 80,
+};
+
+function normalizeProjectVector(value, fallback) {
+  const source = Array.isArray(value) ? value : fallback;
+  return [0, 1, 2].map((index) => {
+    const next = Number(source?.[index]);
+    return Number.isFinite(next) ? next : Number(fallback?.[index]) || 0;
+  });
+}
+
+function normalizeProjectObjectSnapshot(snapshot, index, warnings) {
+  const item = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const components = item.components && typeof item.components === 'object' && !Array.isArray(item.components)
+    ? cloneProjectJson(item.components, {})
+    : {};
+  if (item.components && (!components || typeof components !== 'object')) warnings.push('Object ' + index + ' has invalid components.');
+  const assetPath = typeof item.assetPath === 'string' ? item.assetPath.slice(0, 2048) : '';
+  const assetFile = typeof item.assetFile === 'string' ? item.assetFile.slice(0, 256) : '';
+  return {
+    index: Number.isInteger(item.index) ? item.index : index,
+    id: typeof item.id === 'string' ? item.id.slice(0, 128) : '',
+    name: typeof item.name === 'string' ? item.name.slice(0, 160) : ('Object ' + (index + 1)),
+    type: typeof item.type === 'string' ? item.type.slice(0, 80) : '',
+    assetFile,
+    assetPath,
+    placementSource: typeof item.placementSource === 'string' ? item.placementSource.slice(0, 80) : '',
+    position: normalizeProjectVector(item.position, [0, 0, 0]),
+    rotation: normalizeProjectVector(item.rotation, [0, 0, 0]),
+    scale: normalizeProjectVector(item.scale, [1, 1, 1]),
+    components,
+    userData: item.userData && typeof item.userData === 'object' && !Array.isArray(item.userData)
+      ? cloneProjectJson(item.userData, {})
+      : {},
+  };
+}
+
+function validateCrateProjectData(parsed, options = {}) {
+  const warnings = [];
+  const source = options.source || 'project';
+  const result = {
+    ok: false,
+    source,
+    format: '',
+    version: 0,
+    commandCount: 0,
+    objectCount: 0,
+    scriptCount: 0,
+    warnings,
+    reason: '',
+    project: null,
+  };
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    result.reason = 'Project file must be a JSON object.';
+    return result;
+  }
+  const format = parsed.format || CRATE_PROJECT_FORMAT;
+  const version = Number(parsed.version) || 1;
+  result.format = String(format || '');
+  result.version = version;
+  if (format !== CRATE_PROJECT_FORMAT) {
+    result.reason = 'Unsupported project format: ' + format;
+    return result;
+  }
+  if (version > CRATE_PROJECT_VERSION) {
+    result.reason = 'Project version ' + version + ' is newer than this engine supports.';
+    return result;
+  }
+  const commands = Array.isArray(parsed.commands)
+    ? parsed.commands.map((cmd) => String(cmd || '').trim()).filter(Boolean)
+    : [];
+  const objects = Array.isArray(parsed.objects) ? parsed.objects : [];
+  const scripts = Array.isArray(parsed.userScripts) ? parsed.userScripts : [];
+  const validationFixHistory = Array.isArray(parsed.validationFixHistory) ? parsed.validationFixHistory : [];
+  result.commandCount = commands.length;
+  result.objectCount = objects.length;
+  result.scriptCount = scripts.length;
+  if (commands.length > CRATE_PROJECT_LIMITS.maxCommands) {
+    result.reason = 'Project has too many commands (' + commands.length + ').';
+    return result;
+  }
+  if (objects.length > CRATE_PROJECT_LIMITS.maxObjects) {
+    result.reason = 'Project has too many objects (' + objects.length + ').';
+    return result;
+  }
+  if (scripts.length > CRATE_PROJECT_LIMITS.maxScripts) {
+    result.reason = 'Project has too many scripts (' + scripts.length + ').';
+    return result;
+  }
+  if (!commands.length && !objects.length && !scripts.length) {
+    warnings.push('Project has no commands, objects, or scripts.');
+  }
+  const normalizedObjects = objects.map((obj, index) => normalizeProjectObjectSnapshot(obj, index, warnings));
+  const normalizedScripts = scripts.map((script, index) => ({
+    id: String(script?.id || ('script_' + index)).slice(0, 120),
+    name: String(script?.name || ('Script ' + (index + 1))).slice(0, 160),
+    description: String(script?.description || '').slice(0, 400),
+    code: String(script?.code || ''),
+    enabled: script?.enabled !== false,
+  })).filter((script) => script.id && script.code);
+  result.ok = true;
+  result.project = {
+    ...parsed,
+    format: CRATE_PROJECT_FORMAT,
+    version: CRATE_PROJECT_VERSION,
+    savedAt: parsed.savedAt || new Date().toISOString(),
+    commands,
+    objects: normalizedObjects,
+    userScripts: normalizedScripts,
+    validationFixHistory: validationFixHistory.slice(-CRATE_PROJECT_LIMITS.maxValidationFixes),
+    weather: parsed.weather || null,
+    time: parsed.time || null,
+  };
+  result.summary = commands.length + ' commands, ' + normalizedObjects.length + ' objects, ' + normalizedScripts.length + ' scripts';
+  return result;
+}
+
+window._validateCrateProjectData = validateCrateProjectData;
+window._crateProjectSchema = {
+  format: CRATE_PROJECT_FORMAT,
+  version: CRATE_PROJECT_VERSION,
+  limits: { ...CRATE_PROJECT_LIMITS },
+};
+
 function serializeProjectScripts() {
   return Array.isArray(window._userScripts)
     ? window._userScripts.map(script => ({
@@ -15006,37 +15154,70 @@ function restoreProjectScripts(scripts = []) {
 }
 
 function deserializeScene(data) {
-  // Clear current scene
-  clearProjectSceneForLoad();
-  
   let cmds;
   let projectObjects = [];
   let projectScripts = [];
+  let projectWeather = null;
+  let projectTime = null;
+  const raw = String(data || '');
+  const trimmed = raw.trim();
   try {
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed.commands)) {
-      cmds = parsed.commands || [];
-      projectObjects = Array.isArray(parsed.objects) ? parsed.objects : [];
-      projectScripts = Array.isArray(parsed.userScripts) ? parsed.userScripts : [];
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const validation = validateCrateProjectData(parsed, { source: 'deserialize' });
+      window._lastCrateProjectValidation = validation;
+      if (!validation.ok) {
+        window._lastProjectLoad = {
+          status: 'blocked',
+          error: validation.reason,
+          validation,
+          finishedAt: Date.now(),
+        };
+        logOutput('err', 'Project load blocked: ' + validation.reason);
+        if (typeof showToast === 'function') showToast('Project load blocked: ' + validation.reason);
+        return { status: 'blocked', validation };
+      }
+      const project = validation.project;
+      cmds = project.commands || [];
+      projectObjects = project.objects || [];
+      projectScripts = project.userScripts || [];
+      projectWeather = project.weather || null;
+      projectTime = project.time || null;
       window._lastProjectLoad = {
         status: 'loading',
         expectedObjects: projectObjects.length,
         expectedScripts: projectScripts.length,
         commandCount: cmds.length,
+        validation,
         startedAt: Date.now(),
       };
       // Restore weather/time after commands
       setTimeout(() => {
-        if (parsed.weather) setWeather(parsed.weather);
-        if (parsed.time) parseAndExecute('time ' + parsed.time);
+        if (projectWeather) setWeather(projectWeather);
+        if (projectTime) parseAndExecute('time ' + projectTime);
       }, cmds.length * 200 + 500);
     } else {
-      cmds = data.split('|').filter(Boolean);
+      cmds = raw.split('|').filter(Boolean);
     }
   } catch(e) {
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      const validation = { ok: false, source: 'deserialize', reason: 'Invalid project JSON: ' + e.message };
+      window._lastCrateProjectValidation = validation;
+      window._lastProjectLoad = {
+        status: 'blocked',
+        error: validation.reason,
+        validation,
+        finishedAt: Date.now(),
+      };
+      logOutput('err', 'Project load blocked: ' + validation.reason);
+      if (typeof showToast === 'function') showToast('Project load blocked: ' + validation.reason);
+      return { status: 'blocked', validation };
+    }
     // Legacy format: pipe-separated commands
-    cmds = data.split('|').filter(Boolean);
+    cmds = raw.split('|').filter(Boolean);
   }
+
+  clearProjectSceneForLoad();
   
   let i = 0;
   function next() {
@@ -15080,8 +15261,8 @@ function serializeScene() {
   const objectState = objects.map((obj, index) => serializeProjectObject(obj, index)).filter(Boolean);
   
   return JSON.stringify({
-    format: 'crate-engine-project',
-    version: 3,
+    format: CRATE_PROJECT_FORMAT,
+    version: CRATE_PROJECT_VERSION,
     savedAt: new Date().toISOString(),
     commands: sceneHistory.filter(c => c !== 'clear' && c !== 'reset'),
     objects: objectState,
@@ -15091,6 +15272,9 @@ function serializeScene() {
     time: null, // TODO: track time of day
   });
 }
+
+window._serializeCrateProject = serializeScene;
+window._deserializeCrateProject = deserializeScene;
 
 // Compress scene data for shorter URLs
 function compressScene(str) {
@@ -17122,12 +17306,19 @@ window._showImportExport = function(tab) {
   document.body.appendChild(overlay);
 
   if (!isExport) {
+    const finishImportAndClose = (result) => {
+      Promise.resolve(result).then((ok) => {
+        if (ok !== false) overlay.remove();
+      }).catch((err) => {
+        logOutput('err', 'Import failed: ' + (err?.message || String(err || 'Unknown error')));
+      });
+    };
     // Import GLB
     overlay.querySelector('#ie-import-glb').onclick = () => {
       const inp = document.createElement('input');
       inp.type = 'file'; inp.accept = '.glb,.gltf';
       inp.onchange = () => {
-        if (inp.files[0] && _importGLBFile(inp.files[0]) !== false) overlay.remove();
+        if (inp.files[0]) finishImportAndClose(_importGLBFile(inp.files[0]));
       };
       inp.click();
     };
@@ -17135,7 +17326,7 @@ window._showImportExport = function(tab) {
     overlay.querySelector('#ie-import-crate').onclick = () => {
       const inp = document.createElement('input');
       inp.type = 'file'; inp.accept = '.crate,.json';
-      inp.onchange = () => { if (inp.files[0]) _importCrateFile(inp.files[0]); overlay.remove(); };
+      inp.onchange = () => { if (inp.files[0]) finishImportAndClose(_importCrateFile(inp.files[0])); };
       inp.click();
     };
     // Drag and drop
@@ -17146,9 +17337,12 @@ window._showImportExport = function(tab) {
       e.preventDefault();
       const file = e.dataTransfer.files[0];
       if (!file) return;
-      if (file.name.endsWith('.crate') || file.name.endsWith('.json')) _importCrateFile(file);
+      if (file.name.endsWith('.crate') || file.name.endsWith('.json')) {
+        finishImportAndClose(_importCrateFile(file));
+        return;
+      }
       else if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) {
-        if (_importGLBFile(file) !== false) overlay.remove();
+        finishImportAndClose(_importGLBFile(file));
         return;
       }
       overlay.remove();
@@ -17158,12 +17352,28 @@ window._showImportExport = function(tab) {
 
 const USER_MODEL_IMPORT_MAX_BYTES = 50 * 1024 * 1024;
 const USER_MODEL_IMPORT_EXTENSIONS = ['glb', 'gltf'];
+const USER_MODEL_IMPORT_BUDGET = {
+  maxBytes: USER_MODEL_IMPORT_MAX_BYTES,
+  maxTriangles: 250000,
+  maxTextures: 24,
+  maxImages: 24,
+  maxMaterials: 128,
+  maxNodes: 1500,
+  maxAnimations: 32,
+};
 
 function formatImportBytes(bytes) {
   const value = Number(bytes) || 0;
   if (value >= 1024 * 1024) return (Math.round((value / (1024 * 1024)) * 10) / 10) + ' MB';
   if (value >= 1024) return Math.round(value / 1024) + ' KB';
   return value + ' B';
+}
+
+function formatImportCount(value) {
+  const count = Math.max(0, Number(value) || 0);
+  if (count >= 1000000) return (Math.round(count / 100000) / 10) + 'M';
+  if (count >= 1000) return (Math.round(count / 100) / 10) + 'k';
+  return String(Math.round(count));
 }
 
 function validateUserModelFile(file) {
@@ -17176,9 +17386,11 @@ function validateUserModelFile(file) {
     sizeBytes,
     maxBytes: USER_MODEL_IMPORT_MAX_BYTES,
     maxLabel: formatImportBytes(USER_MODEL_IMPORT_MAX_BYTES),
+    budget: { ...USER_MODEL_IMPORT_BUDGET },
     extension,
     allowedExtensions: USER_MODEL_IMPORT_EXTENSIONS.slice(),
     reason: '',
+    warnings: [],
   };
   if (!file || !name) {
     result.reason = 'Choose a GLB or GLTF file first.';
@@ -17195,20 +17407,121 @@ function validateUserModelFile(file) {
   result.ok = true;
   result.reason = 'Ready to import';
   if (extension === 'gltf') {
-    result.warning = 'GLTF imports work best when all referenced buffers and textures are embedded or available beside the file.';
+    result.warnings.push('GLTF imports work best when all referenced buffers and textures are embedded or available beside the file.');
   }
   return result;
 }
 
+function getGltfTriangleCount(json) {
+  const accessors = Array.isArray(json?.accessors) ? json.accessors : [];
+  let triangles = 0;
+  let primitives = 0;
+  (Array.isArray(json?.meshes) ? json.meshes : []).forEach((mesh) => {
+    (Array.isArray(mesh?.primitives) ? mesh.primitives : []).forEach((primitive) => {
+      primitives += 1;
+      const indexAccessor = accessors[primitive?.indices];
+      const positionAccessor = accessors[primitive?.attributes?.POSITION];
+      if (indexAccessor && Number(indexAccessor.count)) triangles += Math.floor(Number(indexAccessor.count) / 3);
+      else if (positionAccessor && Number(positionAccessor.count)) triangles += Math.floor(Number(positionAccessor.count) / 3);
+    });
+  });
+  return { triangles, primitives };
+}
+
+function analyzeGltfJson(json) {
+  const triangleState = getGltfTriangleCount(json || {});
+  const buffers = Array.isArray(json?.buffers) ? json.buffers : [];
+  const images = Array.isArray(json?.images) ? json.images : [];
+  const externalBuffers = buffers.filter((item) => item?.uri && !String(item.uri).startsWith('data:')).length;
+  const externalImages = images.filter((item) => item?.uri && !String(item.uri).startsWith('data:')).length;
+  return {
+    triangles: triangleState.triangles,
+    primitives: triangleState.primitives,
+    meshes: Array.isArray(json?.meshes) ? json.meshes.length : 0,
+    nodes: Array.isArray(json?.nodes) ? json.nodes.length : 0,
+    materials: Array.isArray(json?.materials) ? json.materials.length : 0,
+    textures: Array.isArray(json?.textures) ? json.textures.length : 0,
+    images: images.length,
+    animations: Array.isArray(json?.animations) ? json.animations.length : 0,
+    buffers: buffers.length,
+    externalBuffers,
+    externalImages,
+  };
+}
+
+function applyUserModelMetadataBudget(result, metrics) {
+  result.metrics = metrics;
+  const budget = USER_MODEL_IMPORT_BUDGET;
+  const blocks = [];
+  if (metrics.triangles > budget.maxTriangles) blocks.push('triangles ' + formatImportCount(metrics.triangles) + '/' + formatImportCount(budget.maxTriangles));
+  if (metrics.textures > budget.maxTextures) blocks.push('textures ' + metrics.textures + '/' + budget.maxTextures);
+  if (metrics.images > budget.maxImages) blocks.push('images ' + metrics.images + '/' + budget.maxImages);
+  if (metrics.materials > budget.maxMaterials) blocks.push('materials ' + metrics.materials + '/' + budget.maxMaterials);
+  if (metrics.nodes > budget.maxNodes) blocks.push('nodes ' + metrics.nodes + '/' + budget.maxNodes);
+  if (metrics.animations > budget.maxAnimations) blocks.push('animations ' + metrics.animations + '/' + budget.maxAnimations);
+  if (metrics.externalBuffers || metrics.externalImages) {
+    result.warnings.push('External GLTF references detected: ' + metrics.externalBuffers + ' buffers, ' + metrics.externalImages + ' images.');
+  }
+  if (blocks.length) {
+    result.ok = false;
+    result.reason = 'Model exceeds browser import budget: ' + blocks.join(', ') + '.';
+  } else if (result.ok) {
+    result.reason = 'Ready to import: ' + formatImportCount(metrics.triangles) + ' tris, ' + metrics.textures + ' textures, ' + metrics.nodes + ' nodes.';
+  }
+  return result;
+}
+
+function analyzeGlbArrayBuffer(buffer) {
+  const view = new DataView(buffer);
+  if (view.byteLength < 20) throw new Error('GLB file is too small.');
+  if (view.getUint32(0, true) !== 0x46546c67) throw new Error('Invalid GLB header.');
+  const version = view.getUint32(4, true);
+  if (version !== 2) throw new Error('Only GLB version 2 is supported.');
+  const jsonLength = view.getUint32(12, true);
+  const jsonType = view.getUint32(16, true);
+  if (jsonType !== 0x4e4f534a) throw new Error('GLB JSON chunk is missing.');
+  const jsonStart = 20;
+  const jsonEnd = jsonStart + jsonLength;
+  if (jsonEnd > view.byteLength) throw new Error('GLB JSON chunk is truncated.');
+  const text = new TextDecoder('utf-8').decode(new Uint8Array(buffer, jsonStart, jsonLength)).trim();
+  return analyzeGltfJson(JSON.parse(text));
+}
+
+async function inspectUserModelFile(file) {
+  const result = validateUserModelFile(file);
+  if (!result.ok) return result;
+  try {
+    if (result.extension === 'glb') {
+      const buffer = typeof file.arrayBuffer === 'function'
+        ? await file.arrayBuffer()
+        : await new Response(file).arrayBuffer();
+      return applyUserModelMetadataBudget(result, analyzeGlbArrayBuffer(buffer));
+    }
+    if (result.extension === 'gltf') {
+      const text = typeof file.text === 'function'
+        ? await file.text()
+        : await new Response(file).text();
+      return applyUserModelMetadataBudget(result, analyzeGltfJson(JSON.parse(text)));
+    }
+  } catch (err) {
+    result.ok = false;
+    result.reason = 'Could not inspect model metadata: ' + (err?.message || String(err || 'Unknown error'));
+  }
+  return result;
+}
+
+window._inspectUserModelFile = inspectUserModelFile;
+window._analyzeUserModelGltfJson = analyzeGltfJson;
+window._analyzeUserModelGlbArrayBuffer = analyzeGlbArrayBuffer;
 window._validateUserModelFile = validateUserModelFile;
 window._userModelImportLimits = {
-  maxBytes: USER_MODEL_IMPORT_MAX_BYTES,
+  ...USER_MODEL_IMPORT_BUDGET,
   maxLabel: formatImportBytes(USER_MODEL_IMPORT_MAX_BYTES),
   allowedExtensions: USER_MODEL_IMPORT_EXTENSIONS.slice(),
 };
 
-function _importGLBFile(file) {
-  const validation = validateUserModelFile(file);
+async function _importGLBFile(file) {
+  const validation = await inspectUserModelFile(file);
   window._lastUserImportValidation = validation;
   if (!validation.ok) {
     logOutput('err', 'Import blocked: ' + validation.reason);
@@ -17240,17 +17553,31 @@ function _importGLBFile(file) {
 }
 
 function _importCrateFile(file) {
+  if (file && Number(file.size) > CRATE_PROJECT_LIMITS.maxBytes) {
+    const validation = {
+      ok: false,
+      source: 'file-import',
+      reason: 'Project file is ' + formatImportBytes(file.size) + '. Keep .crate imports under ' + formatImportBytes(CRATE_PROJECT_LIMITS.maxBytes) + '.',
+    };
+    window._lastCrateProjectValidation = validation;
+    logOutput('err', 'Invalid .crate file: ' + validation.reason);
+    if (typeof showToast === 'function') showToast('Import blocked: ' + validation.reason);
+    return false;
+  }
   const reader = new FileReader();
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (!data.commands || !Array.isArray(data.commands)) throw new Error('Missing commands array');
-      logOutput('info', 'Loading .crate scene (' + data.commands.length + ' commands)...');
-      deserializeScene(JSON.stringify(data));
+      const validation = validateCrateProjectData(data, { source: 'file-import' });
+      window._lastCrateProjectValidation = validation;
+      if (!validation.ok) throw new Error(validation.reason);
+      logOutput('info', 'Loading .crate scene (' + validation.summary + ')...');
+      deserializeScene(JSON.stringify(validation.project));
       logOutput('ok', 'Scene loaded from ' + file.name);
     } catch (e) { logOutput('err', 'Invalid .crate file: ' + e.message); }
   };
   reader.readAsText(file);
+  return true;
 }
 
 window._exportCrateFile = function() {

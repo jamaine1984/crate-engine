@@ -225,8 +225,26 @@ async function runBrowserSmoke() {
       }
     }
 
-    const builderHardeningState = await page.evaluate(() => {
+    const builderHardeningState = await page.evaluate(async () => {
       const validator = typeof window._validateUserModelFile === 'function' ? window._validateUserModelFile : null;
+      const modelInspector = typeof window._inspectUserModelFile === 'function' ? window._inspectUserModelFile : null;
+      const projectValidator = typeof window._validateCrateProjectData === 'function' ? window._validateCrateProjectData : null;
+      const lightGltf = {
+        asset: { version: '2.0' },
+        accessors: [{ count: 3000 }],
+        meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+        nodes: [{ mesh: 0 }],
+      };
+      const heavyGltf = {
+        asset: { version: '2.0' },
+        accessors: [{ count: 900000 }],
+        meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+        nodes: Array.from({ length: 8 }, (_, index) => ({ mesh: index === 0 ? 0 : undefined })),
+        textures: Array.from({ length: 30 }, (_, index) => ({ source: index })),
+        images: Array.from({ length: 30 }, (_, index) => ({ uri: 'texture-' + index + '.png' })),
+      };
+      const lightFile = new File([JSON.stringify(lightGltf)], 'light.gltf', { type: 'model/gltf+json' });
+      const heavyFile = new File([JSON.stringify(heavyGltf)], 'heavy.gltf', { type: 'model/gltf+json' });
       return {
         qualityButtons: [...document.querySelectorAll('#gb-performance [data-gb-quality]')].map((button) => button.dataset.gbQuality),
         qualitySummary: document.querySelector('#gb-quality-summary')?.textContent || '',
@@ -238,6 +256,15 @@ async function runBrowserSmoke() {
         invalidImport: validator ? validator({ name: 'bad.txt', size: 10 }) : null,
         oversizedImport: validator ? validator({ name: 'huge.glb', size: 60 * 1024 * 1024 }) : null,
         validImport: validator ? validator({ name: 'chair.glb', size: 1024 * 1024 }) : null,
+        modelInspectorReady: !!modelInspector,
+        lightModelInspection: modelInspector ? await modelInspector(lightFile) : null,
+        heavyModelInspection: modelInspector ? await modelInspector(heavyFile) : null,
+        projectValidatorReady: !!projectValidator,
+        projectSchema: window._crateProjectSchema || null,
+        validProject: projectValidator ? projectValidator({ format: 'crate-engine-project', version: 3, commands: ['build city'], objects: [], userScripts: [] }, { source: 'smoke-valid' }) : null,
+        futureProject: projectValidator ? projectValidator({ format: 'crate-engine-project', version: 99, commands: ['build city'] }, { source: 'smoke-future' }) : null,
+        wrongProject: projectValidator ? projectValidator({ format: 'other-engine', version: 1, commands: ['build city'] }, { source: 'smoke-wrong' }) : null,
+        deserializeReady: typeof window._deserializeCrateProject === 'function',
       };
     });
     for (const level of ['low', 'medium', 'high', 'ultra']) {
@@ -255,6 +282,20 @@ async function runBrowserSmoke() {
     }
     if (!builderHardeningState.importValidatorReady || builderHardeningState.invalidImport?.ok !== false || builderHardeningState.oversizedImport?.ok !== false || builderHardeningState.validImport?.ok !== true) {
       throw new Error(`Import validation did not gate files correctly: ${JSON.stringify(builderHardeningState)}`);
+    }
+    if (!builderHardeningState.modelInspectorReady ||
+        builderHardeningState.lightModelInspection?.ok !== true ||
+        builderHardeningState.heavyModelInspection?.ok !== false ||
+        !/budget/i.test(builderHardeningState.heavyModelInspection?.reason || '')) {
+      throw new Error(`Model metadata budgets did not gate GLTF imports correctly: ${JSON.stringify(builderHardeningState)}`);
+    }
+    if (!builderHardeningState.projectValidatorReady ||
+        !builderHardeningState.deserializeReady ||
+        builderHardeningState.projectSchema?.version !== 3 ||
+        builderHardeningState.validProject?.ok !== true ||
+        builderHardeningState.futureProject?.ok !== false ||
+        builderHardeningState.wrongProject?.ok !== false) {
+      throw new Error(`Project schema validation did not gate project files correctly: ${JSON.stringify(builderHardeningState)}`);
     }
 
     await page.locator('#gb-performance [data-gb-quality="low"]').click({ timeout: timeoutMs });
@@ -2372,6 +2413,13 @@ async function runBrowserSmoke() {
         activeQuality: window._crateGraphicsQuality || '',
         performanceWarnings: Array.isArray(performancePanel.warnings) ? performancePanel.warnings : [],
         userImportValidatorReady: typeof window._validateUserModelFile === 'function',
+        userModelInspectorReady: typeof window._inspectUserModelFile === 'function',
+        projectValidatorReady: typeof window._validateCrateProjectData === 'function',
+        projectSchemaVersion: Number(window._crateProjectSchema?.version) || 0,
+        cullingProcessed: Number(window._crateCullingStats?.processed) || 0,
+        cullingSkipped: Number(window._crateCullingStats?.skipped) || 0,
+        cullingFar: Number(window._crateCullingStats?.far) || 0,
+        cullingMaxPerPass: Number(window._crateCullingStats?.maxPerPass) || 0,
         validationStatus: validation.status || document.querySelector('#gb-validation-status')?.dataset.status || '',
         validationSummary: validation.summary || document.querySelector('#gb-validation-status')?.dataset.summary || '',
         validationErrors: Number(validation.errors ?? document.querySelector('#gb-validation-status')?.dataset.errors) || 0,
@@ -2723,6 +2771,11 @@ async function runBrowserSmoke() {
       !state.qualityButtons.includes('high') ||
       !state.qualityButtons.includes('ultra') ||
       !state.userImportValidatorReady ||
+      !state.userModelInspectorReady ||
+      !state.projectValidatorReady ||
+      state.projectSchemaVersion !== 3 ||
+      state.cullingProcessed < 1 ||
+      state.cullingMaxPerPass < 1 ||
       state.performanceTriangles <= 0 ||
       state.performanceCalls > 900 ||
       state.performanceTriangles > 750000 ||
@@ -3135,6 +3188,7 @@ console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.asset
 console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
 console.log(`Runtime budget: ${browserState.performanceBudget?.level || 'missing'} (cull ${browserState.performanceBudget?.cullDistance || 0}, edit cull ${browserState.performanceBudget?.editCullDistance || 0}, shadow ${browserState.performanceBudget?.shadowDistance || 0}, pass ${browserState.performanceBudget?.maxLodObjectsPerPass || 0})`);
+console.log(`LOD pass: ${browserState.cullingProcessed || 0} processed, ${browserState.cullingFar || 0} far, ${browserState.cullingSkipped || 0} skipped, max ${browserState.cullingMaxPerPass || 0}`);
 console.log(`Raw Build City frame probe: ${browserState.rawBuildCityFps || 0} FPS, ${browserState.rawBuildCityFrameMs || 0} ms avg, ${browserState.rawBuildCityUpdateMs || 0} ms update, ${browserState.rawBuildCityRenderMs || 0} ms render, ${browserState.rawBuildCityCalls || 0} calls, ${browserState.rawBuildCityTriangles || 0} tris, ${browserState.rawBuildCitySamples || 0} samples`);
 for (const probeState of viewportProbeStates) {
   console.log(`Viewport ${probeState.label}: ${probeState.fps || 0} FPS, ${probeState.avgFrameMs || 0} ms avg, ${probeState.calls || 0} calls, ${probeState.triangles || 0} tris, DPR ${probeState.devicePixelRatio || 0}->${probeState.rendererPixelRatio || 0}, cull ${probeState.performanceBudget?.cullDistance || 0}, shadow ${probeState.performanceBudget?.shadowDistance || 0}, canvas ${probeState.canvasWidth || 0}x${probeState.canvasHeight || 0}, mobile controls ${probeState.mobileControls ? 'ready' : 'missing'}`);
