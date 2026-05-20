@@ -3342,10 +3342,43 @@ function getRendererPixelBudget(level = window._crateGraphicsQuality || 'medium'
   };
 }
 
+function getCratePerformanceBudget(level = window._crateGraphicsQuality || 'medium', rendererBudget = window._crateRendererBudget || getRendererPixelBudget(level)) {
+  const requestedLevel = String(level || rendererBudget?.level || 'medium').toLowerCase();
+  const profiles = {
+    low: { cullDistance: 170, editCullDistance: 360, shadowDistance: 45, lodIntervalEdit: 10, lodIntervalPlay: 5, maxLodObjectsPerPass: 80, shadowMapSize: 1024 },
+    medium: { cullDistance: 260, editCullDistance: 420, shadowDistance: 80, lodIntervalEdit: 12, lodIntervalPlay: 4, maxLodObjectsPerPass: 100, shadowMapSize: 2048 },
+    high: { cullDistance: 420, editCullDistance: 620, shadowDistance: 140, lodIntervalEdit: 10, lodIntervalPlay: 3, maxLodObjectsPerPass: 140, shadowMapSize: 4096 },
+    ultra: { cullDistance: 650, editCullDistance: 900, shadowDistance: 260, lodIntervalEdit: 8, lodIntervalPlay: 2, maxLodObjectsPerPass: 180, shadowMapSize: 8192 },
+  };
+  const base = profiles[requestedLevel] || profiles.medium;
+  const touchViewport = Boolean(rendererBudget?.touchViewport);
+  const largeViewport = Number(rendererBudget?.pixelArea) > 900000;
+  const budget = { ...base, level: requestedLevel, touchViewport, largeViewport };
+
+  if (touchViewport || largeViewport) {
+    budget.cullDistance = Math.min(budget.cullDistance, requestedLevel === 'low' ? 150 : 240);
+    budget.editCullDistance = Math.min(budget.editCullDistance, 520);
+    budget.shadowDistance = Math.min(budget.shadowDistance, 75);
+    budget.lodIntervalEdit = Math.max(budget.lodIntervalEdit, 14);
+    budget.lodIntervalPlay = Math.max(budget.lodIntervalPlay, 5);
+    budget.maxLodObjectsPerPass = Math.min(budget.maxLodObjectsPerPass, 90);
+    budget.shadowMapSize = Math.min(budget.shadowMapSize, 2048);
+  }
+
+  return budget;
+}
+
+function applyCratePerformanceBudget(reason = 'settings', level = window._crateGraphicsQuality || 'medium', rendererBudget = window._crateRendererBudget || getRendererPixelBudget(level)) {
+  const budget = getCratePerformanceBudget(level, rendererBudget);
+  window._cratePerformanceBudget = { ...budget, reason };
+  return budget;
+}
+
 function applyRendererPixelBudget(reason = 'resize', level = window._crateGraphicsQuality || 'medium') {
   const budget = getRendererPixelBudget(level);
   renderer.setPixelRatio(budget.pixelRatio);
   window._crateRendererBudget = { ...budget, reason };
+  applyCratePerformanceBudget(reason, budget.level, budget);
   return budget;
 }
 
@@ -3358,6 +3391,7 @@ function resizeCrateRenderer(width = canvas.clientWidth, height = canvas.clientH
 
 window._crateGraphicsQuality = window._crateGraphicsQuality || 'medium';
 window._applyCrateRendererPixelBudget = applyRendererPixelBudget;
+window._applyCratePerformanceBudget = applyCratePerformanceBudget;
 window._resizeCrateRenderer = resizeCrateRenderer;
 
 resizeCrateRenderer(canvas.clientWidth, canvas.clientHeight, 'initial');
@@ -3873,38 +3907,53 @@ function setSSAOSettings(kernelRadius, minDist, maxDist) {
   if (maxDist !== undefined) ssaoPass.maxDistance = maxDist;
 }
 
+function applyQualityBudgetEffects(level, reason) {
+  window._crateGraphicsQuality = String(level || 'medium').toLowerCase();
+  const rendererBudget = applyRendererPixelBudget(reason, window._crateGraphicsQuality);
+  const budget = applyCratePerformanceBudget(reason, window._crateGraphicsQuality, rendererBudget);
+  renderer.shadowMap.enabled = budget.shadowDistance > 0;
+  if (sunLight?.shadow?.mapSize) {
+    sunLight.shadow.mapSize.set(budget.shadowMapSize, budget.shadowMapSize);
+    sunLight.shadow.needsUpdate = true;
+  }
+  if (nearShadowLight?.shadow?.mapSize) {
+    const nearShadowSize = Math.min(2048, budget.shadowMapSize);
+    nearShadowLight.shadow.mapSize.set(nearShadowSize, nearShadowSize);
+    nearShadowLight.shadow.needsUpdate = true;
+  }
+  return budget;
+}
+
 // Preset quality levels
 function setGraphicsQuality(level) {
-  window._crateGraphicsQuality = String(level || 'medium').toLowerCase();
-  switch(level) {
+  const requestedLevel = String(level || 'medium').toLowerCase();
+  if (!['low', 'medium', 'high', 'ultra'].includes(requestedLevel)) return 'Unknown quality. Use: low, medium, high, ultra';
+  applyQualityBudgetEffects(requestedLevel, 'graphics-' + requestedLevel);
+  switch(requestedLevel) {
     case 'low':
       ppEnabled = false;
-      applyRendererPixelBudget('graphics-low', 'low');
       renderer.shadowMap.enabled = false;
+      if (ssaoPass) ssaoPass.enabled = false;
+      if (bloomPass) bloomPass.enabled = false;
       return 'Graphics: LOW — max performance';
     case 'medium':
       ppEnabled = true;
-      applyRendererPixelBudget('graphics-medium', 'medium');
       renderer.shadowMap.enabled = true;
       if (ssaoPass) ssaoPass.enabled = false;
-      if (bloomPass) { bloomPass.strength = 0.25; }
+      if (bloomPass) { bloomPass.enabled = true; bloomPass.strength = 0.25; bloomPass.radius = 0.45; }
       return 'Graphics: MEDIUM — balanced';
     case 'high':
       ppEnabled = true;
-      applyRendererPixelBudget('graphics-high', 'high');
       renderer.shadowMap.enabled = true;
       if (ssaoPass) ssaoPass.enabled = false; // SSAO off by default (type 'ssao on' to enable)
-      if (bloomPass) { bloomPass.strength = 0.4; }
+      if (bloomPass) { bloomPass.enabled = true; bloomPass.strength = 0.4; bloomPass.radius = 0.55; }
       return 'Graphics: HIGH — best quality';
     case 'ultra':
       ppEnabled = true;
-      applyRendererPixelBudget('graphics-ultra', 'ultra');
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFShadowMap;
       if (ssaoPass) { ssaoPass.enabled = true; ssaoPass.kernelRadius = 16; }
-      if (bloomPass) { bloomPass.strength = 0.5; bloomPass.radius = 0.7; }
-      sunLight.shadow.mapSize.set(8192, 8192);
-      sunLight.shadow.needsUpdate = true;
+      if (bloomPass) { bloomPass.enabled = true; bloomPass.strength = 0.5; bloomPass.radius = 0.7; }
       return 'Graphics: ULTRA — maximum fidelity';
     default:
       return 'Unknown quality. Use: low, medium, high, ultra';
@@ -11138,7 +11187,7 @@ function addInstancedObject(glbFile, positions) {
     instMesh.castShadow = true;
     instMesh.receiveShadow = true;
     
-    count = 0;
+    let count = 0;
     for (const pos of positions) {
       const matrix = new THREE.Matrix4();
       const scale = pos.scale || 1;
@@ -11442,31 +11491,102 @@ function updateDayNightCycle(dt) {
 
 
 // === DISTANCE-BASED LOD ===
-// Every 30 frames, adjust detail on distant objects
 let _lodFrame = 0;
-function updateLOD(cameraPos) {
-  _lodFrame++;
-  if (_lodFrame % 30 !== 0) return;
-  
-  const objects = window._sceneObjects || [];
-  for (const obj of objects) {
-    if (!obj || !obj.position) continue;
-    const dist = cameraPos.distanceTo(obj.position);
-    
-    // Far objects: disable shadows to save GPU
-    if (dist > 80) {
-      obj.traverse(c => { if (c.isMesh) { c.castShadow = false; } });
-    } else if (dist < 60) {
-      obj.traverse(c => { if (c.isMesh) { c.castShadow = true; } });
+let _lodCursor = 0;
+function shouldSkipVisibilityCull(obj) {
+  if (!obj?.userData) return true;
+  if (obj.userData.isWater || obj.userData.isGerstnerWater || obj.userData.isAnimatedWater) return true;
+  if (obj.userData.isPlayer || obj.userData.isCameraTarget || obj.userData.isSky || obj.userData.isGround) return true;
+  if (obj.userData.gbComponents && Object.keys(obj.userData.gbComponents).length) return true;
+  return false;
+}
+
+function setCrateCulledVisibility(obj, visible) {
+  if (!obj) return;
+  if (!visible) {
+    if (!obj.userData._crateCulledVisible) obj.userData._crateWasVisibleBeforeCull = obj.visible !== false;
+    obj.userData._crateCulledVisible = true;
+    obj.visible = false;
+    return;
+  }
+  if (obj.userData._crateCulledVisible) {
+    obj.visible = obj.userData._crateWasVisibleBeforeCull !== false;
+    delete obj.userData._crateCulledVisible;
+    delete obj.userData._crateWasVisibleBeforeCull;
+  }
+}
+
+function setCrateShadowState(obj, castShadow) {
+  if (!obj || obj.userData._crateShadowState === castShadow) return;
+  obj.traverse?.((child) => {
+    if (child.isMesh) {
+      child.castShadow = castShadow;
     }
-    
-    // Very far objects: hide completely
-    if (dist > 200) {
-      if (obj.visible) obj.visible = false;
-    } else if (!obj.visible) {
-      obj.visible = true;
+  });
+  obj.userData._crateShadowState = castShadow;
+}
+
+function updateLOD(cameraPos, frame = null) {
+  _lodFrame++;
+  const frameState = frame || { play: getEngineMode?.() === 'play', edit: getEngineMode?.() === 'edit' };
+  const budget = window._cratePerformanceBudget || applyCratePerformanceBudget('lod', window._crateGraphicsQuality || 'medium');
+  const interval = frameState.play ? budget.lodIntervalPlay : budget.lodIntervalEdit;
+  if (_lodFrame % Math.max(1, interval || 12) !== 0) return;
+
+  const sceneObjects = window._sceneObjects || objects || [];
+  if (!sceneObjects.length || !cameraPos) return;
+
+  const maxPerPass = Math.max(1, Math.min(sceneObjects.length, budget.maxLodObjectsPerPass || sceneObjects.length));
+  const hideDistance = frameState.edit ? budget.editCullDistance : budget.cullDistance;
+  const hideDistanceSq = hideDistance * hideDistance;
+  const shadowDistanceSq = budget.shadowDistance * budget.shadowDistance;
+  let processed = 0;
+  let hidden = 0;
+  let visible = 0;
+  let shadowOff = 0;
+  let shadowOn = 0;
+
+  for (let step = 0; step < maxPerPass; step++) {
+    const index = (_lodCursor + step) % sceneObjects.length;
+    const obj = sceneObjects[index];
+    if (!obj || !obj.position) continue;
+    processed++;
+
+    const dx = obj.position.x - cameraPos.x;
+    const dz = obj.position.z - cameraPos.z;
+    const distSq = dx * dx + dz * dz;
+
+    if (obj.userData.isGLB || obj.userData.isAutoCity || obj.userData.isProceduralProxy || obj.userData.isProceduralProxyBatch) {
+      const castShadow = distSq <= shadowDistanceSq;
+      setCrateShadowState(obj, castShadow);
+      if (castShadow) shadowOn++;
+      else shadowOff++;
+    }
+
+    if (!shouldSkipVisibilityCull(obj)) {
+      if (distSq > hideDistanceSq) {
+        setCrateCulledVisibility(obj, false);
+        hidden++;
+      } else {
+        setCrateCulledVisibility(obj, true);
+        if (obj.visible !== false) visible++;
+      }
     }
   }
+  _lodCursor = (_lodCursor + maxPerPass) % sceneObjects.length;
+  window._crateCullingStats = {
+    frame: _lodFrame,
+    processed,
+    hidden,
+    visible,
+    shadowOff,
+    shadowOn,
+    total: sceneObjects.length,
+    cursor: _lodCursor,
+    level: budget.level,
+    cullDistance: hideDistance,
+    shadowDistance: budget.shadowDistance,
+  };
 }
 window._updateLOD = updateLOD;
 
@@ -13450,17 +13570,8 @@ function animate() {
   if (window._physicsEnabled && physics.isReady()) physics.step(dt);
 
   // === DISTANCE-BASED SHADOW CULLING (LOD) — saves GPU on large scenes ===
-  if (!window._shadowCullFrame) window._shadowCullFrame = 0;
-  if (++window._shadowCullFrame % 30 === 0) {
-    const _camP = camera.position;
-    for (let _i = 0; _i < objects.length; _i++) {
-      const _o = objects[_i];
-      if (!_o.userData.isGLB) continue;
-      const _d = _camP.distanceTo(_o.position);
-      const _castShadow = _d < 80;
-      _o.traverse(c => { if (c.isMesh) c.castShadow = _castShadow; });
-    }
-  }
+  const lodDt = takeScheduledDelta('scene-lod', dt, crateFrame.play ? 4 : 12);
+  if (lodDt && window._updateLOD) window._updateLOD(camera.position, crateFrame);
 
   // Update animations
   animationMixers.forEach(mixer => mixer.update(dt));
@@ -13615,7 +13726,6 @@ function animate() {
       characterController.jumpVelocity = 0;
     }
     if (window._gamepad) window._gamepad.update();
-    if (window._updateLOD) window._updateLOD(camera.position);
     if (characterController) characterController.update(dt);
     if (npcController && characterController) {
       // Zone-based aggro — NPCs only engage when player enters their zone
@@ -18094,11 +18204,12 @@ parseAndExecute = async function(rawCmd) {
   
   // === PERFORMANCE PRESETS ===
   if (lower === 'graphics high' || lower === 'quality high' || lower === 'graphics ultra') {
+    const commandQualityLevel = lower.includes('ultra') ? 'ultra' : 'high';
     if (bloomPass) bloomPass.enabled = true;
     if (ssaoPass) ssaoPass.enabled = true;
     ppEnabled = true;
-    window._crateGraphicsQuality = 'high';
-    applyRendererPixelBudget('command-graphics-high', 'high');
+    window._crateGraphicsQuality = commandQualityLevel;
+    applyRendererPixelBudget('command-graphics-' + commandQualityLevel, commandQualityLevel);
     renderer.shadowMap.enabled = true;
     addMsg('🎨 Graphics: HIGH — bloom + SSAO + shadows enabled');
     return;

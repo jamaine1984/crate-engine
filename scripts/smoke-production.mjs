@@ -2254,6 +2254,8 @@ async function runBrowserSmoke() {
         performanceCalls,
         performanceTriangles,
         performanceTextures,
+        performanceBudget: window._cratePerformanceBudget || null,
+        cullingStats: window._crateCullingStats || null,
         rawFrameFps: Number(frameProfile.fps) || 0,
         rawFrameMs: Number(frameProfile.avgFrameMs) || 0,
         rawUpdateMs: Number(frameProfile.avgUpdateMs) || 0,
@@ -2613,6 +2615,9 @@ async function runBrowserSmoke() {
       state.performanceTriangles <= 0 ||
       state.performanceCalls > 900 ||
       state.performanceTriangles > 750000 ||
+      !state.performanceBudget ||
+      !Number.isFinite(Number(state.performanceBudget.cullDistance)) ||
+      !Number.isFinite(Number(state.performanceBudget.shadowDistance)) ||
       !state.cityPerformanceProceduralProps ||
       !state.cityPerformanceProceduralVehicles ||
       !state.cityPerformanceProceduralNature) {
@@ -2938,6 +2943,8 @@ async function runViewportBuildCityProbe(label, options) {
           devicePixelRatio: Number(window.devicePixelRatio) || 0,
           rendererPixelRatio: Number(renderer?.getPixelRatio?.()) || 0,
           rendererBudget: window._crateRendererBudget || null,
+          performanceBudget: window._cratePerformanceBudget || null,
+          cullingStats: window._crateCullingStats || null,
           mobileControls: !!document.querySelector('#mobile-controls'),
           canvasWidth: renderer?.domElement?.width || 0,
           canvasHeight: renderer?.domElement?.height || 0,
@@ -2960,6 +2967,9 @@ async function runViewportBuildCityProbe(label, options) {
     }
     if (!state.rendererBudget || state.rendererPixelRatio > (options.maxPixelRatio || 1.25)) {
       throw new Error(`${label} viewport renderer pixel budget was not enforced: ${JSON.stringify(state)}`);
+    }
+    if (!state.performanceBudget || !Number.isFinite(Number(state.performanceBudget.cullDistance)) || !Number.isFinite(Number(state.performanceBudget.shadowDistance))) {
+      throw new Error(`${label} viewport performance budget was not exposed: ${JSON.stringify(state)}`);
     }
 
     return { label, ...state };
@@ -3013,9 +3023,10 @@ console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
+console.log(`Runtime budget: ${browserState.performanceBudget?.level || 'missing'} (cull ${browserState.performanceBudget?.cullDistance || 0}, edit cull ${browserState.performanceBudget?.editCullDistance || 0}, shadow ${browserState.performanceBudget?.shadowDistance || 0}, pass ${browserState.performanceBudget?.maxLodObjectsPerPass || 0})`);
 console.log(`Raw Build City frame probe: ${browserState.rawBuildCityFps || 0} FPS, ${browserState.rawBuildCityFrameMs || 0} ms avg, ${browserState.rawBuildCityUpdateMs || 0} ms update, ${browserState.rawBuildCityRenderMs || 0} ms render, ${browserState.rawBuildCityCalls || 0} calls, ${browserState.rawBuildCityTriangles || 0} tris, ${browserState.rawBuildCitySamples || 0} samples`);
 for (const probeState of viewportProbeStates) {
-  console.log(`Viewport ${probeState.label}: ${probeState.fps || 0} FPS, ${probeState.avgFrameMs || 0} ms avg, ${probeState.calls || 0} calls, ${probeState.triangles || 0} tris, DPR ${probeState.devicePixelRatio || 0}->${probeState.rendererPixelRatio || 0}, canvas ${probeState.canvasWidth || 0}x${probeState.canvasHeight || 0}, mobile controls ${probeState.mobileControls ? 'ready' : 'missing'}`);
+  console.log(`Viewport ${probeState.label}: ${probeState.fps || 0} FPS, ${probeState.avgFrameMs || 0} ms avg, ${probeState.calls || 0} calls, ${probeState.triangles || 0} tris, DPR ${probeState.devicePixelRatio || 0}->${probeState.rendererPixelRatio || 0}, cull ${probeState.performanceBudget?.cullDistance || 0}, shadow ${probeState.performanceBudget?.shadowDistance || 0}, canvas ${probeState.canvasWidth || 0}x${probeState.canvasHeight || 0}, mobile controls ${probeState.mobileControls ? 'ready' : 'missing'}`);
 }
 console.log(`City performance profile: ${browserState.cityPerformanceProfile || 'missing'} (procedural props ${browserState.cityPerformanceProceduralProps ? 'on' : 'off'}, vehicles ${browserState.cityPerformanceProceduralVehicles ? 'on' : 'off'}, nature ${browserState.cityPerformanceProceduralNature ? 'on' : 'off'}, renderer ${browserState.rendererCalls || 0} calls/${browserState.rendererTriangles || 0} tris)`);
 console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);
