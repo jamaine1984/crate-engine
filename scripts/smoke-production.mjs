@@ -504,6 +504,24 @@ async function runBrowserSmoke() {
         !/Adventure Loop added/i.test(starterKitState.statusText)) {
       throw new Error(`Starter kit did not create a complete game loop: ${JSON.stringify(starterKitState)}`);
     }
+    const starterKitLayoutState = await page.evaluate(() => {
+      const section = document.querySelector('#gb-starter-kits');
+      const cards = [...document.querySelectorAll('#gb-starter-kits [data-gb-starter-kit]')];
+      return {
+        clientHeight: section?.clientHeight || 0,
+        scrollHeight: section?.scrollHeight || 0,
+        cardCount: cards.length,
+        visibleCards: cards.filter((card) => {
+          const rect = card.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }).length,
+      };
+    });
+    if (starterKitLayoutState.cardCount < 3 ||
+        starterKitLayoutState.visibleCards < 3 ||
+        starterKitLayoutState.scrollHeight > starterKitLayoutState.clientHeight + 2) {
+      throw new Error(`Starter kit cards were clipped in the Builder panel: ${JSON.stringify(starterKitLayoutState)}`);
+    }
 
     const beforePlacementCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
     await page.evaluate(() => window._placeCatalogAsset?.({
