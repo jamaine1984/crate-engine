@@ -920,12 +920,6 @@ async function buildCityWorld3() {
       flower: new THREE.SphereGeometry(0.22, 6, 4),
     };
     const staticProxyBatches = new Map();
-    const composeInstanceMatrix = (x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) => {
-      const position = new THREE.Vector3(x, y, z);
-      const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz));
-      const scale = new THREE.Vector3(sx, sy, sz);
-      return new THREE.Matrix4().compose(position, rotation, scale);
-    };
     const queueStaticInstance = (geometry, material, matrix, label = 'proxy') => {
       if (!geometry || !material || !matrix) return null;
       const key = geometry.uuid + '|' + material.uuid;
@@ -1175,31 +1169,6 @@ async function buildCityWorld3() {
       const width = footprint * rr(0.72, 1.04);
       const depth = footprint * rr(0.72, 1.02);
       const height = Math.max(5, tgtH || 12);
-      if (cityPerf.batchStaticProxies) {
-        const rot = ry || 0;
-        queueStaticInstance(
-          proxyGeo.box,
-          getProceduralBuildingMaterial(district),
-          composeInstanceMatrix(x, height / 2, z, width, height, depth, 0, rot, 0),
-          'procedural_' + district + '_building_body'
-        );
-        queueStaticInstance(
-          proxyGeo.box,
-          getProceduralRoofMaterial(district),
-          composeInstanceMatrix(x, height + 0.18, z, width * 1.05, 0.35, depth * 1.05, 0, rot, 0),
-          'procedural_' + district + '_building_roof'
-        );
-        return {
-          userData: {
-            isAutoCity: true,
-            isBuilding: true,
-            isProceduralCityBuilding: true,
-            name: 'procedural_' + district + '_building',
-          },
-          position: new THREE.Vector3(x, 0, z),
-          rotation: { y: rot },
-        };
-      }
       const group = tag(new THREE.Group());
       const texList = facadeTextures[district] || facadeTextures.commercial || [];
       const mat = new THREE.MeshLambertMaterial({
