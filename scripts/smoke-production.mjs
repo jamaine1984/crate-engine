@@ -876,6 +876,18 @@ async function runBrowserSmoke() {
       undefined,
       { timeout: timeoutMs }
     );
+    await page.evaluate(() => {
+      const objects = window._engineBridge?.objects || window._sceneObjects || [];
+      objects.forEach((obj) => {
+        if (obj?.userData?.gbComponents?.collider) delete obj.userData.gbComponents.collider;
+      });
+      window._refreshGameBuilder?.();
+    });
+    await page.waitForFunction(
+      () => !!document.querySelector('#gb-validation [data-gb-validation-fix="add-colliders"]'),
+      undefined,
+      { timeout: timeoutMs }
+    );
     await page.locator('#gb-validation [data-gb-validation-fix="add-colliders"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
       () => window._pendingGameBuilderValidationFix?.action === 'add-colliders' &&
