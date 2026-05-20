@@ -1418,6 +1418,51 @@ const GENRE_TEMPLATES = [
   },
 ];
 
+const STARTER_KITS = [
+  {
+    id: 'adventure-loop',
+    name: 'Adventure Loop',
+    detail: 'Spawn, guide NPC, mission step, reward, gate, checkpoint, and finish goal.',
+    scripts: ['inventory', 'hud', 'quest', 'components'],
+    objects: [
+      { key: 'spawn', name: 'Player Spawn', shape: 'cylinder', color: 0xf59e0b, position: { x: -4, z: 0 } },
+      { key: 'guide', name: 'Quest Guide', shape: 'sphere', color: 0x4a9eff, position: { x: -1, z: 0 } },
+      { key: 'reward', name: 'Reward Chest', shape: 'box', color: 0xf6c34a, position: { x: 2, z: 0 } },
+      { key: 'gate', name: 'Mission Gate', shape: 'gate', color: 0x9ca3af, position: { x: 5, z: 0 } },
+      { key: 'checkpoint', name: 'Checkpoint', shape: 'cylinder', color: 0x38bdf8, position: { x: 7, z: 1.8 } },
+      { key: 'finish', name: 'Finish Goal', shape: 'sphere', color: 0x38a169, position: { x: 9, z: 0 } },
+    ],
+  },
+  {
+    id: 'combat-loop',
+    name: 'Combat Loop',
+    detail: 'Player spawn, enemy spawn, wave controller, weapon pickup, checkpoint, and finish goal.',
+    scripts: ['inventory', 'hud', 'components'],
+    objects: [
+      { key: 'spawn', name: 'Combat Spawn', shape: 'cylinder', color: 0xf59e0b, position: { x: -5, z: -2 } },
+      { key: 'weapon', name: 'Starter Blade', shape: 'box', color: 0xa3e635, position: { x: -2, z: -2 } },
+      { key: 'enemySpawn', name: 'Enemy Spawn', shape: 'sphere', color: 0xef4444, position: { x: 3, z: -2 } },
+      { key: 'wave', name: 'Wave Controller', shape: 'box', color: 0x7c3aed, position: { x: 5.5, z: -2 } },
+      { key: 'checkpoint', name: 'Arena Checkpoint', shape: 'cylinder', color: 0x38bdf8, position: { x: 8, z: -2 } },
+      { key: 'finish', name: 'Arena Exit', shape: 'sphere', color: 0x38a169, position: { x: 10, z: -2 } },
+    ],
+  },
+  {
+    id: 'inventory-loop',
+    name: 'Inventory Loop',
+    detail: 'Collectible, equipment, merchant, reward, checkpoint, and finish goal.',
+    scripts: ['inventory', 'hud', 'quest', 'components'],
+    objects: [
+      { key: 'spawn', name: 'Market Spawn', shape: 'cylinder', color: 0xf59e0b, position: { x: -4, z: 2.4 } },
+      { key: 'pickup', name: 'Coin Pickup', shape: 'sphere', color: 0xfacc15, position: { x: -1.5, z: 2.4 } },
+      { key: 'equipment', name: 'Iron Armor', shape: 'box', color: 0x94a3b8, position: { x: 1, z: 2.4 } },
+      { key: 'merchant', name: 'Market Merchant', shape: 'sphere', color: 0x22c55e, position: { x: 3.5, z: 2.4 } },
+      { key: 'checkpoint', name: 'Market Checkpoint', shape: 'cylinder', color: 0x38bdf8, position: { x: 6, z: 2.4 } },
+      { key: 'finish', name: 'Market Goal', shape: 'sphere', color: 0x38a169, position: { x: 8.5, z: 2.4 } },
+    ],
+  },
+];
+
 const GAME_SYSTEMS = [
   {
     id: 'inventory',
@@ -2139,6 +2184,152 @@ async function markComponentOnObject(obj, component) {
   selectObject(obj);
   await markComponent(component);
   return obj.userData?.gbComponents?.[component] || null;
+}
+
+function getStarterKitAnchor() {
+  const target = getTargetObject();
+  if (target?.position) return { x: target.position.x + 2, z: target.position.z + 2 };
+  const camera = window._engine?.camera || window._engineBridge?.camera;
+  if (camera?.position) return { x: camera.position.x, z: camera.position.z - 8 };
+  return { x: 0, z: 0 };
+}
+
+function createStarterGeometry(THREE, shape) {
+  if (shape === 'sphere') return new THREE.SphereGeometry(0.5, 18, 12);
+  if (shape === 'cylinder') return new THREE.CylinderGeometry(0.55, 0.55, 0.22, 18);
+  if (shape === 'gate') return new THREE.BoxGeometry(1.4, 2.0, 0.28);
+  return new THREE.BoxGeometry(0.85, 0.85, 0.85);
+}
+
+function getStarterObjectHeight(shape) {
+  if (shape === 'gate') return 1;
+  if (shape === 'cylinder') return 0.11;
+  if (shape === 'sphere') return 0.5;
+  return 0.425;
+}
+
+function createStarterKitObject(def, components, anchor) {
+  const THREE = window.THREE;
+  const scene = window._engineBridge?.scene || window._engine?.scene;
+  const objects = window._engineBridge?.objects || window._engine?.objects || [];
+  if (!THREE || !scene || !Array.isArray(objects)) return null;
+
+  const geometry = createStarterGeometry(THREE, def.shape);
+  const material = new THREE.MeshStandardMaterial({
+    color: def.color || 0x4a9eff,
+    emissive: def.color || 0x4a9eff,
+    emissiveIntensity: 0.18,
+    roughness: 0.78,
+    metalness: 0.08,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = def.name;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.position.set(
+    anchor.x + (Number(def.position?.x) || 0),
+    getStarterObjectHeight(def.shape),
+    anchor.z + (Number(def.position?.z) || 0)
+  );
+  mesh.userData = {
+    name: def.name,
+    isGameBuilderStarterKit: true,
+    gbComponents: cloneJson(components || {}),
+  };
+  if (Object.keys(mesh.userData.gbComponents).some((key) => ['npc', 'merchant', 'missionStep', 'missionReward', 'checkpoint', 'winCondition', 'spawnPoint', 'pickup', 'equipmentItem', 'enemySpawn', 'waveController'].includes(key))) {
+    mesh.userData.interactable = true;
+    mesh.userData.interactLabel = def.name;
+  }
+  scene.add(mesh);
+  objects.push(mesh);
+  return mesh;
+}
+
+function buildStarterKitComponents(kit, def, ids) {
+  const componentId = (suffix) => 'kit_' + kit.id.replace(/[^a-z0-9]+/gi, '_') + '_' + suffix + '_' + Date.now().toString(36);
+  const stepId = ids.step || componentId('step');
+  const enemySpawnId = ids.enemySpawn || componentId('enemy_spawn');
+  const result = { collider: { type: 'trigger', createdAt: Date.now() } };
+
+  if (def.key === 'spawn') {
+    result.spawnPoint = { id: componentId('spawn'), label: def.name, kind: 'player', radius: 1.5 };
+  } else if (def.key === 'guide') {
+    result.npc = {
+      id: componentId('npc'),
+      name: def.name,
+      role: 'Guide',
+      dialogue: 'Start here, complete the objective, then claim your reward.',
+      questId: 'quest_' + stepId,
+      requiredStepId: 'none',
+      rewardItem: '',
+      rewardSlot: '',
+      rewardPower: 0,
+      rewardScore: 0,
+      rewardXp: 0,
+      radius: 3,
+    };
+    result.missionStep = { id: stepId, label: 'Talk to the guide', order: 1, requiredStepId: 'none', radius: 3 };
+  } else if (def.key === 'reward') {
+    result.missionReward = { id: componentId('reward'), label: def.name, item: 'Quest Token', score: 50, xp: 20, slot: '', power: 0, requiredStepId: stepId, radius: 3 };
+    result.pickup = { item: 'Quest Token', score: 10, xp: 5, slot: '', power: 0, radius: 2.5 };
+  } else if (def.key === 'gate') {
+    result.missionGate = { id: componentId('gate'), label: def.name, requiredStepId: stepId, axis: 'y', distance: 3, speed: 2.5 };
+  } else if (def.key === 'checkpoint') {
+    result.checkpoint = { id: componentId('checkpoint'), label: def.name, radius: 3 };
+  } else if (def.key === 'finish') {
+    result.winCondition = { id: componentId('win'), label: def.name, radius: 3 };
+  } else if (def.key === 'weapon') {
+    result.equipmentItem = { item: def.name, slot: 'weapon', power: 7, score: 0, xp: 15, radius: 2.5 };
+    result.pickup = { item: def.name, score: 0, xp: 5, slot: 'weapon', power: 7, radius: 2.5 };
+  } else if (def.key === 'enemySpawn') {
+    result.enemySpawn = { id: enemySpawnId, label: def.name, enemyType: 'crawler', count: 3, radius: 2.5, speed: 1.2, damage: 5, health: 30, attackRadius: 2.3, attackCooldown: 1.2, dropItem: 'Scrap', dropSlot: '', dropPower: 0, dropXp: 10, dropScore: 5, dropChance: 1 };
+  } else if (def.key === 'wave') {
+    result.waveController = { id: componentId('wave'), label: def.name, wave: 1, count: 3, spawnGroup: enemySpawnId, enemySpeed: 0, enemyDamage: 0, enemyHealth: 0, rewardScore: 50, dropItem: 'Scrap', dropSlot: '', dropPower: 0, dropXp: 10, dropScore: 5, dropChance: 1 };
+  } else if (def.key === 'pickup') {
+    result.pickup = { item: def.name, score: 10, xp: 5, slot: '', power: 0, radius: 2.5 };
+  } else if (def.key === 'equipment') {
+    result.equipmentItem = { item: def.name, slot: 'armor', power: 4, score: 0, xp: 10, radius: 2.5 };
+  } else if (def.key === 'merchant') {
+    result.merchant = { id: componentId('merchant'), name: def.name, item: 'Health Charm', price: 25, slot: 'trinket', power: 2, xp: 5, stock: 1, radius: 3 };
+  }
+
+  return result;
+}
+
+async function applyStarterKit(kitId) {
+  if (!requireEditAction('apply starter kits')) return null;
+  const kit = STARTER_KITS.find((item) => item.id === kitId);
+  if (!kit) return null;
+  const anchor = getStarterKitAnchor();
+  const ids = {
+    step: 'kit_' + kit.id.replace(/[^a-z0-9]+/gi, '_') + '_step_' + Date.now().toString(36),
+    enemySpawn: 'kit_' + kit.id.replace(/[^a-z0-9]+/gi, '_') + '_enemy_spawn_' + Date.now().toString(36),
+  };
+
+  for (const script of kit.scripts || []) await installScript(script);
+
+  const created = [];
+  for (const def of kit.objects || []) {
+    const components = buildStarterKitComponents(kit, def, ids);
+    const obj = createStarterKitObject(def, components, anchor);
+    if (obj) created.push(obj);
+  }
+
+  if (created.length) {
+    window._lastPlacedObj = created[created.length - 1];
+    window._engineBridge?.selectObject?.(created[created.length - 1]);
+  }
+  window._lastStarterKit = {
+    id: kit.id,
+    name: kit.name,
+    objectCount: created.length,
+    scripts: kit.scripts || [],
+    appliedAt: Date.now(),
+  };
+  resetValidationUiState();
+  updateBuilderUi();
+  notify('Starter kit applied: ' + kit.name);
+  return window._lastStarterKit;
 }
 
 function firstFixTarget(preferredComponents = []) {
@@ -3252,6 +3443,57 @@ function createTemplatesSection() {
   return section;
 }
 
+function createStarterKitsSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  section.id = 'gb-starter-kits';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Starter Kits';
+  const status = document.createElement('div');
+  status.id = 'gb-starter-kit-status';
+  status.className = 'gb-starter-kit-status';
+  const list = document.createElement('div');
+  list.className = 'gb-kit-list';
+  STARTER_KITS.forEach((kit) => {
+    const card = document.createElement('div');
+    card.className = 'gb-kit-card';
+    card.dataset.gbStarterKit = kit.id;
+    const info = document.createElement('div');
+    info.className = 'gb-kit-info';
+    info.append(
+      createTextElement('strong', '', kit.name),
+      createTextElement('span', '', kit.detail)
+    );
+    const button = createSmallButton('Add Kit', async () => {
+      setBusy(button, true);
+      await applyStarterKit(kit.id);
+      setBusy(button, false);
+    }, { editOnly: true, action: 'apply starter kits' });
+    button.dataset.gbStarterKitAction = kit.id;
+    card.append(info, button);
+    list.appendChild(card);
+  });
+  section.append(heading, status, list);
+  window._gameBuilderStarterKits = STARTER_KITS.map((kit) => ({
+    id: kit.id,
+    name: kit.name,
+    scripts: kit.scripts.slice(),
+    objectCount: kit.objects.length,
+  }));
+  return section;
+}
+
+function renderStarterKitStatus() {
+  const status = document.getElementById('gb-starter-kit-status');
+  if (!status) return;
+  const latest = window._lastStarterKit || null;
+  const text = latest
+    ? latest.name + ' added ' + latest.objectCount + ' objects'
+    : STARTER_KITS.length + ' ready kits';
+  status.textContent = text;
+  status.dataset.status = latest ? 'applied' : 'ready';
+}
+
 function createGameSystemsSection() {
   const section = document.createElement('section');
   section.className = 'gb-section';
@@ -4071,6 +4313,7 @@ function updateBuilderUi() {
   renderReadinessStatus();
   renderPerformanceStatus();
   renderValidationStatus();
+  renderStarterKitStatus();
   renderGameSystems();
   renderInspector();
   renderBlueprintList();
@@ -4198,6 +4441,14 @@ function mount() {
     .gb-template-info strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:normal;overflow-wrap:anywhere}
     .gb-template-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
     .gb-template-card .gb-small-btn{width:58px;min-width:58px}
+    .gb-starter-kit-status{padding:0 8px 7px;color:#8d979e;font-size:10px;line-height:14px;white-space:normal;overflow-wrap:anywhere}
+    .gb-starter-kit-status[data-status="applied"]{color:#93c5fd}
+    .gb-kit-list{display:flex;flex-direction:column;gap:7px;padding:8px}
+    .gb-kit-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #263138;background:#111722;border-radius:7px;padding:8px}
+    .gb-kit-info{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .gb-kit-info strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:normal;overflow-wrap:anywhere}
+    .gb-kit-info span{font-size:10px;line-height:14px;color:#a0aab3;white-space:normal;overflow-wrap:anywhere}
+    .gb-kit-card .gb-small-btn{width:70px;min-width:70px}
     .gb-systems-list{display:flex;flex-direction:column;gap:7px;padding:8px}
     .gb-system-card{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-items:start;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
     .gb-system-card[data-status="installed"]{border-color:#2f6f44;background:#101a13}
@@ -4311,6 +4562,7 @@ function mount() {
   body.appendChild(createPerformanceSection());
   body.appendChild(createValidationSection());
   body.appendChild(createTemplatesSection());
+  body.appendChild(createStarterKitsSection());
   body.appendChild(createGameSystemsSection());
 
   const appendBuilderToolSections = () => {
@@ -4386,6 +4638,7 @@ function mount() {
   window._previewGameBuilderValidationFix = openValidationFixPreview;
   window._applyPendingGameBuilderValidationFix = applyPendingValidationFix;
   window._undoLastGameBuilderValidationFix = undoValidationFix;
+  window._applyGameBuilderStarterKit = applyStarterKit;
   window._setGameBuilderGraphicsQuality = setBuilderGraphicsQuality;
   window._applyGameBuilderTemplate = (id) => applyGenreTemplate(GENRE_TEMPLATES.find((template) => template.id === id));
   window._refreshGameBuilder = () => {
@@ -4401,6 +4654,7 @@ function mount() {
     renderReadinessStatus();
     renderPerformanceStatus();
     renderValidationStatus();
+    renderStarterKitStatus();
     renderGameSystems();
     renderInspector({ force: true });
     renderBlueprintList();
@@ -4414,6 +4668,7 @@ function mount() {
     renderReadinessStatus();
     renderPerformanceStatus();
     renderValidationStatus();
+    renderStarterKitStatus();
     renderGameSystems();
     renderInspector({ force: true });
     renderSceneList();

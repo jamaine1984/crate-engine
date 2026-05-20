@@ -459,6 +459,52 @@ async function runBrowserSmoke() {
       throw new Error(`Game Builder asset menu did not place the picked asset: ${JSON.stringify(builderMenuPlacementState)}`);
     }
 
+    const beforeStarterKitCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
+    await page.locator('[data-gb-starter-kit-action="adventure-loop"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      (before) => {
+        const latest = window._lastStarterKit || {};
+        return latest.id === 'adventure-loop' &&
+          latest.objectCount >= 6 &&
+          (window._engineBridge?.objects?.length || 0) >= before + latest.objectCount;
+      },
+      beforeStarterKitCount,
+      { timeout: timeoutMs }
+    );
+    const starterKitState = await page.evaluate((before) => {
+      const objects = window._engineBridge?.objects || [];
+      const kitObjects = objects.filter((obj) => obj?.userData?.isGameBuilderStarterKit);
+      const components = new Set();
+      kitObjects.forEach((obj) => Object.keys(obj.userData?.gbComponents || {}).forEach((key) => components.add(key)));
+      const scripts = (window._userScripts || []).map((script) => script.id);
+      return {
+        before,
+        after: objects.length,
+        latest: window._lastStarterKit || null,
+        kitObjects: kitObjects.length,
+        components: [...components].sort(),
+        hasInventory: scripts.includes('gb_inventory_hotbar'),
+        hasHud: scripts.includes('gb_game_hud'),
+        hasQuest: scripts.includes('gb_quest_tracker'),
+        hasRuntime: scripts.includes('gb_component_runtime'),
+        statusText: document.querySelector('#gb-starter-kit-status')?.textContent || '',
+      };
+    }, beforeStarterKitCount);
+    if (starterKitState.kitObjects < 6 ||
+        !starterKitState.components.includes('spawnPoint') ||
+        !starterKitState.components.includes('missionStep') ||
+        !starterKitState.components.includes('missionReward') ||
+        !starterKitState.components.includes('missionGate') ||
+        !starterKitState.components.includes('checkpoint') ||
+        !starterKitState.components.includes('winCondition') ||
+        !starterKitState.hasInventory ||
+        !starterKitState.hasHud ||
+        !starterKitState.hasQuest ||
+        !starterKitState.hasRuntime ||
+        !/Adventure Loop added/i.test(starterKitState.statusText)) {
+      throw new Error(`Starter kit did not create a complete game loop: ${JSON.stringify(starterKitState)}`);
+    }
+
     const beforePlacementCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
     await page.evaluate(() => window._placeCatalogAsset?.({
       file: 'house_interior_pack_chair_1.glb',
