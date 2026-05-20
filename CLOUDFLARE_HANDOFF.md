@@ -13,10 +13,10 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Cloudflare account email: `koikes2021@gmail.com`
 - Cloudflare account ID: `6573d98c25150fd7b4602e56a0926767`
 - Custom domain: `crateshipgames.com`
-- `www` hostname: `www.crateshipgames.com` is associated with the `crateship-games` Pages project but is pending DNS. Create a DNS `CNAME` record named `www` pointing to `crateship-games.pages.dev`, then retry validation if needed.
+- `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `a07c194e`
+- Current deployed source commit for the public engine code: `61e36512`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,11 +29,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `2ec24744-3316-40da-a7ac-852caad5b39c`
-- Latest production deployment URL: `https://2ec24744.crateship-games.pages.dev`
+- Latest production deployment ID: `0c6d333f-1ce3-4b16-9c72-7d6af7eea274`
+- Latest production deployment URL: `https://0c6d333f.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `a07c194`
-- Main live page bundle after the deploy: `/assets/play-CkPiLj4T.js`
+- Source shown by Cloudflare: `61e3651`
+- Main live page bundle after the deploy: `/assets/play-LE2y4und.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-Bd7rnI_C.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-DTRJCIV-.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
@@ -2158,6 +2158,21 @@ Browser verification history:
   - Smoke verified `Readiness: Ready to test, 106 objects, 2 scripts, 40 components, Edit mode`.
   - Smoke still verified separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-responsive-budget-a07c194e.png`.
+- Follow-up production deployment `0c6d333f-1ce3-4b16-9c72-7d6af7eea274`, source `61e3651`, added runtime performance budgets:
+  - `/play?verify=61e36512` served `/assets/play-LE2y4und.js`.
+  - `https://www.crateshipgames.com/play?verify=www-61e36512` also returned `200` and served `/assets/play-LE2y4und.js`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and did include `admin.html` and `play.html`.
+  - `engine.mjs` now exposes `window._cratePerformanceBudget`, ties culling/shadow distances to graphics quality and viewport size, chunks LOD/culling work across frames, preserves manually hidden objects when auto-culling restores visibility, and fixes the existing strict-mode `count` bug in the instancing helper.
+  - `scripts/smoke-production.mjs` now fails if the runtime performance budget is not exposed, and prints the active cull/shadow budget for desktop, phone, and tablet probes.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified the live editor Performance panel at `84.7 FPS`, `11.8 ms`, `9` calls, and `732` triangles.
+  - Smoke verified runtime budget `low` after auto-quality with cull `150`, edit cull `360`, shadow `45`, and pass size `80`.
+  - Smoke verified the raw Build City frame probe at `53.5 FPS`, `18.7 ms` average frame time, `0.7 ms` update time, `18 ms` render time, `316` calls, and `283,478` triangles.
+  - Smoke verified phone viewport performance at `333.3 FPS`, `3 ms`, `105` calls, `78,694` triangles, DPR `3->1.25`, cull `240`, shadow `75`, canvas `487x976`, and mobile controls ready.
+  - Smoke verified tablet viewport performance at `50 FPS`, `20 ms`, `285` calls, `201,950` triangles, DPR `2->1`, cull `240`, shadow `75`, canvas `820x1116`, and mobile controls ready.
+  - Smoke verified `Readiness: Ready to test, 106 objects, 2 scripts, 40 components, Edit mode`.
+  - Smoke still verified separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-runtime-budget-61e36512.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2198,17 +2213,17 @@ Browser verification history:
 - Use live browser/network checks after deploy. The user explicitly wants the
   real Cloudflare website updated, not a local-only preview.
 - `www.crateshipgames.com` was added to the `crateship-games` Pages project on
-  2026-05-20 through the Cloudflare Pages domains API. The local Wrangler OAuth
-  token has `pages:write` and `zone:read`, but not DNS edit access, so the
-  required `www` DNS record could not be created from Codex. Until DNS is added,
-  `Resolve-DnsName www.crateshipgames.com` returns `DNS name does not exist` and
-  the Pages custom domain remains `pending`.
+  2026-05-20 through the Cloudflare Pages domains API. Cloudflare then validated
+  the hostname with a `www.crateshipgames.com` CNAME to
+  `crateship-games.pages.dev`; both `crateshipgames.com` and
+  `www.crateshipgames.com` are active on the Pages project.
 
 ## Git State After This Pass
 
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+61e36512 Add runtime performance budgets
 a07c194e Add responsive renderer budgets
 8638d104 Simplify balanced city dynamic props
 c8870486 Batch static city road surfaces
@@ -2346,16 +2361,23 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke reports the settled Performance panel at `80.6 FPS`,
-     `12.4 ms` average frame time, `27` draw calls, and `5,052` triangles after
-     project validation and responsive renderer budgeting.
-   - The desktop raw Build City probe now reports `56.5 FPS`, `17.7 ms` average
+   - Current live smoke reports the settled Performance panel at `84.7 FPS`,
+     `11.8 ms` average frame time, `9` draw calls, and `732` triangles after
+     project validation and runtime performance-budget culling.
+   - The desktop raw Build City probe now reports `53.5 FPS`, `18.7 ms` average
      frame time, `316` draw calls, and `283,478` triangles immediately after city
      generation, which is the current production desktop baseline.
-   - Phone viewport smoke reports `270.3 FPS`, `3.7 ms`, `107` draw calls,
-     `78,806` triangles, DPR `3->1.25`, and mobile controls ready.
-   - Tablet viewport smoke reports `59.2 FPS`, `16.9 ms`, `285` draw calls,
-     `201,950` triangles, DPR `2->1`, and mobile controls ready.
+   - Phone viewport smoke reports `333.3 FPS`, `3 ms`, `105` draw calls,
+     `78,694` triangles, DPR `3->1.25`, cull `240`, shadow `75`, and mobile
+     controls ready.
+   - Tablet viewport smoke reports `50 FPS`, `20 ms`, `285` draw calls,
+     `201,950` triangles, DPR `2->1`, cull `240`, shadow `75`, and mobile
+     controls ready.
+   - Runtime performance budgets are now exposed through
+     `window._cratePerformanceBudget` and production smoke verifies them.
+   - The previous live smoke before runtime performance budgets was `56.5 FPS`,
+     `17.7 ms`, `316` draw calls, and `283,478` triangles on desktop after
+     responsive renderer budgeting.
    - The previous live smoke before responsive renderer budgeting was
      `66.7 FPS`, `15 ms`, `316` draw calls, and `283,478` triangles on desktop
      after balanced dynamic-prop simplification.
@@ -2377,11 +2399,10 @@ The remaining work to make it feel like a sellable full game engine is:
      triangles before the smoke counters were hardened.
    - Keep profiling `https://crateshipgames.com/play` on desktop, phone, and
      tablet widths as part of every performance deploy.
-   - Next performance work should focus on culling, LODs, post-processing
-     controls, and runtime object pooling rather than more desktop-only
-     draw-call reduction.
-   - Continue adding object pooling, instancing for repeated props, culling, LOD
-     selection, and lazy loading for heavy assets.
+   - Next performance work should focus on object pooling, stronger LOD proxy
+     selection, post-processing quality UI, and lazy loading for heavy assets.
+   - Continue expanding instancing for repeated props and add budget-aware
+     import limits for user assets.
 2. Asset pipeline hardening
    - Move large long-lived GLB assets to R2 when the Pages asset project becomes
      too large or slow to manage.
@@ -2433,8 +2454,9 @@ The remaining work to make it feel like a sellable full game engine is:
 
 ## Recommended Next Steps
 
-1. Add culling, LOD selection, object pooling, and post-processing quality
-   controls now that desktop, phone, and tablet smoke probes are in place.
+1. Add object pooling, stronger LOD proxy selection, and post-processing quality
+   controls now that desktop, phone, and tablet smoke probes verify runtime
+   budgets.
 2. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
