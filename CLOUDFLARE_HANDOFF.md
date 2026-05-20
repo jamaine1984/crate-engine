@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `adebace1`
+- Current deployed source commit for the public engine code: `b658c534`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -28,11 +28,12 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `f90df452-92ae-4cff-a6aa-41d08d5595a8`
-- Latest production deployment URL: `https://f90df452.crateship-games.pages.dev`
+- Latest production deployment ID: `a2d75412-8b19-4828-aca8-286c0ae2deef`
+- Latest production deployment URL: `https://a2d75412.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `adebace`
-- Main live page bundle after the deploy: `/assets/play-DcYVH3yq.js`
+- Source shown by Cloudflare: `b658c53`
+- Main live page bundle after the deploy: `/assets/play-BiLHJ67T.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-CZs6NKSQ.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -2003,6 +2004,28 @@ Browser verification history:
   - `node --check game-builder-ui.mjs`, `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
   - Smoke still verified build-city output, separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-validation-preview-perf-adebace1.png`.
+- Final custom-domain verification after deployment `a2d75412-8b19-4828-aca8-286c0ae2deef`:
+  - Cloudflare source showed `b658c53`.
+  - `/play?verify=city-perf-b658c534` served `/assets/play-BiLHJ67T.js`.
+  - The build split `game-builder-ui.mjs` into `/assets/game-builder-ui-CZs6NKSQ.js`; the main `play` chunk dropped from about `607 KB` to about `465 KB`.
+  - `/play?verify=city-perf-b658c534` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/admin.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and included `admin.html`, `play.html`, the new play bundle, and the lazy Game Builder chunk.
+  - The app-only deploy uploaded `10` changed files, reused `101` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `city-builder.mjs` now defaults to a balanced web profile: regular block buildings are procedural low-triangle meshes, non-landmark district building/furniture preloads are skipped, city shadows are off unless quality mode is requested, and clouds, street props, traffic, parked cars, nature, and pedestrians are scaled down.
+  - Quality mode can still be forced before city generation with `localStorage.crate_city_performance = "quality"` or `window.CRATESHIP_CITY_PERFORMANCE = "quality"`.
+  - Smoke performance improved from `1,863` calls / `3,608,266` triangles to `74` calls / `11,896` triangles.
+  - Smoke still reported `Performance: blocked (18.8 FPS, 53.2 ms, 74 calls, 11896 tris)`, so the next optimization pass should target the remaining frame-time bottleneck after geometry/draw-call reduction.
+  - Smoke verified `Readiness: Ready to test, 295 objects, 2 scripts, 40 components, Edit mode`.
+  - Smoke verified `Validation: ready (0 errors, 0 warnings, 0 suggestions)`.
+  - Smoke verified `Validation fixes: link-missions, link-waves, add-colliders, add-colliders (24 colliders, undo restored 293)`.
+  - Smoke verified `Project snapshot: v3 293 objects 2 scripts 3 commands, 4 validation fixes`.
+  - The remote `moderation_audit` table still has `0` rows after deploy.
+  - `node --check city-builder.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke still verified build-city output, separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-city-perf-b658c534.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2048,6 +2071,8 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+b658c534 Optimize city build and lazy load builder UI
+a803c4f5 Update handoff for validation preview deploy
 adebace1 Add validation previews and performance panel
 3dbdcfcc Add one-click Game Builder validation fixes
 0cec1be3 Update handoff for scene validation deploy
@@ -2168,13 +2193,16 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke reported `14.3 FPS`, `69.8 ms` average frame time,
-     `1,863` draw calls, and `3,608,266` triangles after Build City.
+   - Current live smoke improved to `18.8 FPS`, `53.2 ms` average frame time,
+     `74` draw calls, and `11,896` triangles after Build City.
+   - Previous smoke before the city optimization was `14.3 FPS`, `69.8 ms`,
+     `1,863` draw calls, and `3,608,266` triangles.
    - Profile `https://crateshipgames.com/play` on desktop and mobile widths.
-   - Add object pooling, instancing for repeated props, culling, LOD selection,
-     and lazy loading for heavy assets.
-   - Code-split the large play bundle and lazy-load editor-only panels outside
-     Play mode.
+   - Find the remaining frame-time bottleneck after geometry reduction: check
+     animation loops, post-processing, renderer timing, browser throttling, and
+     script work during Play/Edit mode.
+   - Continue adding object pooling, instancing for repeated props, culling, LOD
+     selection, and lazy loading for heavy assets.
 2. Asset pipeline hardening
    - Move large long-lived GLB assets to R2 when the Pages asset project becomes
      too large or slow to manage.
@@ -2226,9 +2254,9 @@ The remaining work to make it feel like a sellable full game engine is:
 
 ## Recommended Next Steps
 
-1. Start the first real optimization batch: code-split editor-only panels,
-   reduce the Build City default scene budget, and add instancing/LOD/culling
-   for repeated city props. Use the Performance panel as the before/after gate.
+1. Start the next optimization batch from the remaining frame-time bottleneck:
+   measure animation loops, post-processing, render timing, and script work now
+   that draw calls and triangles are much lower.
 2. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
