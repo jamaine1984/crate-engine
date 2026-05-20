@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `f8934999`
+- Current deployed source commit for the public engine code: `f2a9a601`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,13 +29,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `63329f47-0866-4d73-a28e-471db6dc2ec2`
-- Latest production deployment URL: `https://63329f47.crateship-games.pages.dev`
+- Latest production deployment ID: `fb3ca344-ca95-44f7-8ba9-cd07dbd90975`
+- Latest production deployment URL: `https://fb3ca344.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `f893499`
-- Main live page bundle after the deploy: `/assets/play-Co4Rkdp6.js`
+- Source shown by Cloudflare: `f2a9a60`
+- Main live page bundle after the deploy: `/assets/play-C1q-ZNZe.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-DKbrJ6Mb.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-Cq16LzKH.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-BDuV1v3u.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -2205,6 +2205,22 @@ Browser verification history:
   - Smoke verified phone viewport performance at `156.3 FPS`, `6.4 ms`, `105` calls, `78,694` triangles, DPR `3->1.25`, and tablet viewport performance at `50.5 FPS`, `19.8 ms`, `285` calls, `201,950` triangles, DPR `2->1`.
   - `www` smoke on `https://www.crateshipgames.com/play?verify=www-templates-import-f8934999` also passed against the same `/assets/play-Co4Rkdp6.js` bundle.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-templates-import-f8934999.png` and `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-templates-import-f8934999.png`.
+- Follow-up production deployment on 2026-05-20 hardened project/model import budgets and LOD diagnostics:
+  - Final deployment `fb3ca344-ca95-44f7-8ba9-cd07dbd90975`, source `f2a9a60`, serves `/assets/play-C1q-ZNZe.js` with lazy Game Builder UI `/assets/game-builder-ui-Cq16LzKH.js`.
+  - `engine.mjs` now validates `.crate` project format/version/count limits before clearing the current scene; unsupported formats, future project versions, invalid JSON, oversized project files, too many commands, too many objects, or too many scripts are blocked.
+  - `engine.mjs` now exposes `window._crateProjectSchema`, `window._validateCrateProjectData`, `window._serializeCrateProject`, and `window._deserializeCrateProject` for smoke tests and future tooling.
+  - GLB/GLTF imports now inspect metadata before loading. Current browser import budgets are `50 MB`, `250,000` triangles, `24` textures, `24` images, `128` materials, `1,500` nodes, and `32` animations. External GLTF buffers/images are reported as warnings.
+  - LOD/culling stats now include processed, skipped, near/mid/far, max-per-pass, processed percent, and culled percent. The Game Builder Performance panel now shows an LOD row.
+  - `scripts/smoke-production.mjs` now creates light/heavy in-browser GLTF files and fails if metadata budgets do not allow the light file and block the heavy file. It also fails if project schema validation does not allow a valid v3 project and block future/wrong formats.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures`, and included `play.html`, `admin.html`, and bundle `/assets/play-C1q-ZNZe.js`.
+  - During this pass `node --check engine.mjs`, `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke on `https://crateshipgames.com/play?verify=schema-import-f2a9a601` verified bundle `/assets/play-C1q-ZNZe.js`, asset manifest `6f09cc09da2f`, `Readiness: Ready to test, 106 objects, 2 scripts, 40 components, Edit mode`, and `Validation: ready (0 errors, 0 warnings, 0 suggestions)`.
+  - Smoke verified the live editor Performance panel at `138.9 FPS`, `7.2 ms`, `1` call, and `1` triangle after runtime budget culling.
+  - Smoke verified the LOD pass at `80` processed, `0` far, `7` skipped, and max pass `80`.
+  - Smoke verified the raw Build City frame probe at `53.2 FPS`, `18.8 ms` average frame time, `5.6 ms` update time, `13.2 ms` render time, `1` call, and `1` triangle after runtime budget culling.
+  - Smoke verified phone viewport performance at `294.1 FPS`, `3.4 ms`, `105` calls, `78,694` triangles, DPR `3->1.25`, and tablet viewport performance at `61.3 FPS`, `16.3 ms`, `285` calls, `201,950` triangles, DPR `2->1`.
+  - `www` smoke on `https://www.crateshipgames.com/play?verify=www-schema-import-f2a9a601` also passed against the same `/assets/play-C1q-ZNZe.js` bundle.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-schema-import-f2a9a601.png` and `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-schema-import-f2a9a601.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2393,17 +2409,19 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke reports the settled Performance panel at `88.5 FPS`,
-     `11.3 ms` average frame time, `1` draw call, and `1` triangle after
+   - Current live smoke reports the settled Performance panel at `138.9 FPS`,
+     `7.2 ms` average frame time, `1` draw call, and `1` triangle after
      project validation and runtime performance-budget culling.
-   - The desktop raw Build City probe now reports `79.4 FPS`, `12.6 ms` average
+   - The current LOD/culling diagnostics report `80` processed objects, `0` far
+     objects, `7` skipped objects, and max pass `80`.
+   - The desktop raw Build City probe now reports `53.2 FPS`, `18.8 ms` average
      frame time, `1` draw call, and `1` triangle after runtime-budget culling,
      which is the current production desktop smoke baseline.
-   - Phone viewport smoke reports `156.3 FPS`, `6.4 ms`, `105` draw calls,
+   - Phone viewport smoke reports `294.1 FPS`, `3.4 ms`, `105` draw calls,
      `78,694` triangles, DPR `3->1.25`, cull `240`, shadow `75`, and mobile
      controls ready.
-   - Tablet viewport smoke reports `50.5 FPS`, `19.8 ms`, `285` draw calls,
-     `201,950` triangles, DPR `2->1`, cull `150`, shadow `45`, and mobile
+   - Tablet viewport smoke reports `61.3 FPS`, `16.3 ms`, `285` draw calls,
+     `201,950` triangles, DPR `2->1`, cull `240`, shadow `75`, and mobile
      controls ready.
    - Runtime performance budgets are now exposed through
      `window._cratePerformanceBudget` and production smoke verifies them.
@@ -2433,6 +2451,8 @@ The remaining work to make it feel like a sellable full game engine is:
      tablet widths as part of every performance deploy.
    - Low/Medium/High/Ultra quality controls are now exposed in the Game Builder
      Performance panel and production smoke verifies the buttons.
+   - LOD/culling diagnostics are now exposed through `window._crateCullingStats`
+     and surfaced in the Game Builder Performance panel.
    - Next performance work should focus on object pooling, stronger LOD proxy
      selection, deeper post-processing presets, and lazy loading for heavy
      assets.
@@ -2441,18 +2461,22 @@ The remaining work to make it feel like a sellable full game engine is:
 2. Asset pipeline hardening
    - Move large long-lived GLB assets to R2 when the Pages asset project becomes
      too large or slow to manage.
-   - Browser import validation now blocks non-GLB/GLTF files and browser model
-     imports over `50 MB`.
-   - Next import hardening should add triangle budget, texture budget, animation
-     check, collision proxy check, and manifest entry creation.
+   - Browser import validation now blocks non-GLB/GLTF files, browser model
+     imports over `50 MB`, and models over `250,000` triangles, `24` textures,
+     `24` images, `128` materials, `1,500` nodes, or `32` animations.
+   - External GLTF buffers/images are now surfaced as warnings before import.
+   - Next import hardening should add collision proxy checks, manifest entry
+     creation, and automatic optimization.
    - Add automatic optimization jobs for user imports before assets enter a
      published game.
 3. Project format and export/import
-   - Lock a versioned `.crate` project schema with migration tests.
-   - Add project integrity checks before save, load, publish, and playable
-     package export.
-   - Add import conflict handling for duplicate object IDs, missing assets,
-     missing scripts, and incompatible project versions.
+   - Basic versioned `.crate` project schema validation now blocks unsupported
+     formats, future versions, invalid JSON, oversized project files, too many
+     commands, too many objects, and too many scripts before clearing the scene.
+   - Next project-format work should add migration tests and project integrity
+     checks before save, publish, and playable package export.
+   - Add import conflict handling for duplicate object IDs, missing assets, and
+     missing scripts.
 4. Gameplay runtime completeness
    - Expand components for player controller presets, camera presets, health,
      damage, inventory, quests, dialogue, enemies, waves, checkpoints, win/lose
@@ -2505,6 +2529,6 @@ The remaining work to make it feel like a sellable full game engine is:
    button, and the admin dashboard `Dry Run Backfill` button execute against D1.
 5. Run the protected audit backfill after real moderation records exist in KV;
    the 2026-05-19 check found no old audit entries to migrate.
-6. Continue productizing the editor: stronger project format validation, safer
-   scripting runtime, triangle/texture import budgets, and export/import
-   hardening.
+6. Continue productizing the editor: project migration tests, safer scripting
+   runtime, collision-proxy import checks, automatic asset optimization, and
+   export/import conflict handling.
