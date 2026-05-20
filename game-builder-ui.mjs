@@ -2730,10 +2730,13 @@ function collectPerformanceMetrics() {
   const renderer = window._renderer || window._engineBridge?.renderer;
   const renderInfo = renderer?.info?.render || {};
   const memoryInfo = renderer?.info?.memory || {};
+  const engineProfile = window._crateFrameProfile || {};
   const samples = performanceSamples.length ? performanceSamples : [16.7];
-  const avgFrameMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
-  const worstFrameMs = Math.max(...samples);
-  const fps = avgFrameMs > 0 ? 1000 / avgFrameMs : 0;
+  const sampledAvgFrameMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+  const sampledWorstFrameMs = Math.max(...samples);
+  const avgFrameMs = Number(engineProfile.avgFrameMs) || sampledAvgFrameMs;
+  const worstFrameMs = Number(engineProfile.worstFrameMs) || sampledWorstFrameMs;
+  const fps = Number(engineProfile.fps) || (avgFrameMs > 0 ? 1000 / avgFrameMs : 0);
   const objects = getSceneObjects();
   const componentCounts = countComponents(objects);
   const triangleEstimate = Number(renderInfo.triangles) || objects.slice(0, 180).reduce((sum, obj) => sum + countRenderableStats(obj).triangles, 0);
@@ -2760,6 +2763,9 @@ function collectPerformanceMetrics() {
     geometries,
     objects: objects.length,
     components: componentCounts.total,
+    engineUpdateMs: Number(engineProfile.avgUpdateMs) || 0,
+    engineRenderMs: Number(engineProfile.avgRenderMs) || 0,
+    engineSamples: Array.isArray(engineProfile.samples) ? engineProfile.samples.length : 0,
     assetStatus,
     warnings,
   };
@@ -2803,6 +2809,9 @@ function renderPerformanceStatus() {
   status.dataset.calls = String(metrics.calls);
   status.dataset.triangles = String(metrics.triangles);
   status.dataset.textures = String(metrics.textures);
+  status.dataset.engineUpdateMs = String(metrics.engineUpdateMs);
+  status.dataset.engineRenderMs = String(metrics.engineRenderMs);
+  status.dataset.engineSamples = String(metrics.engineSamples);
   status.dataset.summary = metrics.summary;
   status.setAttribute('aria-label', metrics.summary);
   status.replaceChildren(
@@ -2811,6 +2820,7 @@ function renderPerformanceStatus() {
   );
   list.replaceChildren(
     createPerformanceRow('Frame', metrics.frameMs + ' ms | worst ' + metrics.worstFrameMs + ' ms'),
+    createPerformanceRow('Loop', metrics.engineUpdateMs + ' ms update | ' + metrics.engineRenderMs + ' ms render'),
     createPerformanceRow('Renderer', formatNumberShort(metrics.calls) + ' calls | ' + formatNumberShort(metrics.triangles) + ' tris'),
     createPerformanceRow('GPU memory', formatNumberShort(metrics.geometries) + ' geo | ' + formatNumberShort(metrics.textures) + ' tex'),
     createPerformanceRow('Scene', formatNumberShort(metrics.objects) + ' objects | ' + formatNumberShort(metrics.components) + ' comps'),

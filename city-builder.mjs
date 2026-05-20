@@ -24,6 +24,23 @@ let _parseAndExecute = null;
 let _HDRLoader = null;
 
 const gltfLoader = new GLTFLoader();
+const CITY_ANIMATION_STATE = {};
+
+function takeCityAnimationDelta(key, idleInterval = 3) {
+  const now = performance.now();
+  const state = CITY_ANIMATION_STATE[key] || { frame: 0, last: now };
+  state.frame += 1;
+  const mode = String(window._currentMode || (window._playMode ? 'play' : 'edit')).toLowerCase();
+  const interval = mode === 'play' ? 1 : Math.max(1, idleInterval);
+  if (state.frame % interval !== 0) {
+    CITY_ANIMATION_STATE[key] = state;
+    return 0;
+  }
+  const elapsed = Math.min(0.25, Math.max(0.001, (now - state.last) / 1000 || 0.016 * interval));
+  state.last = now;
+  CITY_ANIMATION_STATE[key] = state;
+  return elapsed;
+}
 
 export function setCityBuilderScene(s) { _scene = s; }
 export function setCityBuilderObjects(o) { _objects = o; }
@@ -749,8 +766,11 @@ async function buildCityWorld3() {
     if (window._cloudAnim) cancelAnimationFrame(window._cloudAnim);
     (function _acl() {
       window._cloudAnim = requestAnimationFrame(_acl);
+      const dt = takeCityAnimationDelta('city-clouds', 6);
+      if (!dt) return;
+      const step = dt * 60;
       for (const c of _cloudGrp.children) {
-        c.position.x += c.userData.cSpd;
+        c.position.x += c.userData.cSpd * step;
         if (c.position.x > 500) c.position.x = -500;
       }
     })();
@@ -1719,8 +1739,10 @@ async function buildCityWorld3() {
     (function _tlCycle() {
       window._tlFrame = requestAnimationFrame(_tlCycle);
       if (!window._trafficLights) return;
+      const dt = takeCityAnimationDelta('city-traffic-lights', 8);
+      if (!dt) return;
       for (const tl of window._trafficLights) {
-        tl.timer += 0.016;
+        tl.timer += dt;
         if (tl.timer > 6) { // 6 second cycle (faster, more visible)
           tl.state = tl.state === 'green' ? 'red' : 'green';
           tl.timer = 0;
@@ -1783,6 +1805,9 @@ async function buildCityWorld3() {
     (function _traf() {
       window._trafficFrame = requestAnimationFrame(_traf);
       if (!window._trafficCars) return;
+      const dt = takeCityAnimationDelta('city-traffic', 3);
+      if (!dt) return;
+      const step = dt * 60;
       for (const tc of window._trafficCars) {
         if (!tc.mesh || !tc.mesh.parent) continue;
         // Check traffic lights — stop at red
@@ -1818,13 +1843,13 @@ async function buildCityWorld3() {
         }
         if (!stopped) {
           if (tc.isEW) {
-            tc.mesh.position.x += tc.speed;
+            tc.mesh.position.x += tc.speed * step;
             // Snap to lane (prevent drift)
             tc.mesh.position.z = tc.laneZ || tc.mesh.position.z;
             if (tc.mesh.position.x > tc.bound) tc.mesh.position.x = -tc.bound;
             if (tc.mesh.position.x < -tc.bound) tc.mesh.position.x = tc.bound;
           } else {
-            tc.mesh.position.z += tc.speed;
+            tc.mesh.position.z += tc.speed * step;
             // Snap to lane
             tc.mesh.position.x = tc.laneX || tc.mesh.position.x;
             if (tc.mesh.position.z > tc.bound) tc.mesh.position.z = -tc.bound;
@@ -1915,11 +1940,14 @@ async function buildCityWorld3() {
     (function _pa() {
       window._pedFrame = requestAnimationFrame(_pa);
       if (!window._peds) return;
+      const dt = takeCityAnimationDelta('city-pedestrians', 4);
+      if (!dt) return;
+      const step = dt * 60;
       for (const p of window._peds) {
-        p.ph += 0.07; p.tm += 0.016;
+        p.ph += 0.07 * step; p.tm += dt;
         // Check if next position would be on a road
-        const nx = p.g.position.x + p.vx;
-        const nz = p.g.position.z + p.vz;
+        const nx = p.g.position.x + p.vx * step;
+        const nz = p.g.position.z + p.vz * step;
         if (window._isOnRoad && window._isOnRoad(nx, nz)) {
           p.vx *= -1; p.vz *= -1; p.g.rotation.y += Math.PI; p.tm = 0;
         } else {
@@ -2239,8 +2267,11 @@ function _stopCityVehicles() {
 function _startCityVehicles() {
   _stopCityVehicles();
   function tick() {
+    const dt = takeCityAnimationDelta('city-vehicles-legacy', 3);
+    const step = dt ? dt * 60 : 0;
     for (const v of window._cityVehicles) {
       if (!v.mesh) continue;
+      if (!step) continue;
       const wp = v.path[v.wpIdx];
       const dx = wp[0] - v.mesh.position.x;
       const dz = wp[1] - v.mesh.position.z;
@@ -2249,8 +2280,8 @@ function _startCityVehicles() {
         v.wpIdx = (v.wpIdx + 1) % v.path.length;
       } else {
         const nx = dx/dist, nz = dz/dist;
-        v.mesh.position.x += nx * v.spd;
-        v.mesh.position.z += nz * v.spd;
+        v.mesh.position.x += nx * v.spd * step;
+        v.mesh.position.z += nz * v.spd * step;
         v.mesh.rotation.y = Math.atan2(nx, nz);
       }
     }

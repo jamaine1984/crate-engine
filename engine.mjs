@@ -1336,7 +1336,8 @@ function getCurrentSelection() {
   return selectedObj || window._lastPlacedObj || sceneObjects[sceneObjects.length - 1] || null;
 }
 
-function selectSceneObject(obj) {
+function selectSceneObject(obj, options = {}) {
+  if (!options.force && !isEditInteractionMode()) return null;
   if (!obj) return null;
   let target = obj;
   while (target.parent && !objects.includes(target)) target = target.parent;
@@ -13111,10 +13112,78 @@ function snapBuildingOffRoad(x, z) {
 }
 window.snapBuildingOffRoad = snapBuildingOffRoad;
 
+const CRATE_FRAME_PROFILE_LIMIT = 150;
+let crateFrameIndex = 0;
+const crateScheduledDeltas = Object.create(null);
+const crateFrameProfile = {
+  samples: [],
+  mode: 'edit',
+  frame: 0,
+  avgFrameMs: 0,
+  worstFrameMs: 0,
+  avgUpdateMs: 0,
+  avgRenderMs: 0,
+  fps: 0,
+};
+window._crateFrameProfile = crateFrameProfile;
+
+function beginCrateFrame(dt) {
+  crateFrameIndex += 1;
+  const mode = getEngineMode();
+  return {
+    index: crateFrameIndex,
+    dt,
+    mode,
+    play: mode === 'play',
+    edit: mode === 'edit',
+    explore: mode === 'explore',
+  };
+}
+
+function takeScheduledDelta(name, dt, interval = 1) {
+  const safeInterval = Math.max(1, interval | 0);
+  const next = (crateScheduledDeltas[name] || 0) + dt;
+  if (safeInterval === 1 || crateFrameIndex % safeInterval === 0) {
+    crateScheduledDeltas[name] = 0;
+    return Math.min(next, 0.25);
+  }
+  crateScheduledDeltas[name] = Math.min(next, 0.25);
+  return 0;
+}
+
+function recordCrateFrameProfile(frame, updateMs, renderMs, totalMs) {
+  if (!Number.isFinite(totalMs)) return;
+  const sample = {
+    mode: frame.mode,
+    frameMs: Math.max(0, totalMs),
+    updateMs: Math.max(0, updateMs),
+    renderMs: Math.max(0, renderMs),
+    calls: Number(renderer?.info?.render?.calls) || 0,
+    triangles: Number(renderer?.info?.render?.triangles) || 0,
+    objects: objects.length,
+  };
+  crateFrameProfile.samples.push(sample);
+  if (crateFrameProfile.samples.length > CRATE_FRAME_PROFILE_LIMIT) crateFrameProfile.samples.shift();
+  const samples = crateFrameProfile.samples;
+  const avg = (key) => samples.reduce((sum, item) => sum + (Number(item[key]) || 0), 0) / Math.max(1, samples.length);
+  crateFrameProfile.mode = frame.mode;
+  crateFrameProfile.frame = frame.index;
+  crateFrameProfile.avgFrameMs = Math.round(avg('frameMs') * 10) / 10;
+  crateFrameProfile.worstFrameMs = Math.round(Math.max(...samples.map((item) => item.frameMs || 0)) * 10) / 10;
+  crateFrameProfile.avgUpdateMs = Math.round(avg('updateMs') * 10) / 10;
+  crateFrameProfile.avgRenderMs = Math.round(avg('renderMs') * 10) / 10;
+  crateFrameProfile.fps = crateFrameProfile.avgFrameMs > 0 ? Math.round((1000 / crateFrameProfile.avgFrameMs) * 10) / 10 : 0;
+  crateFrameProfile.calls = sample.calls;
+  crateFrameProfile.triangles = sample.triangles;
+  crateFrameProfile.objects = sample.objects;
+}
+
 function animate() {
   requestAnimationFrame(animate);
+  const frameStart = performance.now();
   const dt = clock.getDelta();
   const t = clock.getElapsedTime();
+  const crateFrame = beginCrateFrame(dt);
   
   // Rebuild collision octree if dirty (after object placement)
   collisionWorld.updateIfDirty();
@@ -13153,10 +13222,14 @@ function animate() {
     const fps = 1 / Math.max(dt, 0.001);
     const col = fps > 55 ? '#4ade80' : fps > 30 ? '#f59e0b' : '#ef4444';
     window._fpsEl.innerHTML = '<span style="color:' + col + '">' + fps.toFixed(0) + ' FPS</span> | ' + objects.length + ' obj | ' + (npcController ? npcController.npcs.length : 0) + ' npc | ' + renderer.info.render.triangles + ' tri';
-  updateSmartTraffic(dt);
+  }
+
+  const smartTrafficDt = takeScheduledDelta('smart-traffic', dt, crateFrame.play ? 1 : 3);
+  if (smartTrafficDt) updateSmartTraffic(smartTrafficDt);
 
   // Minimap render
-  if (window._minimapOn && window._minimapCtx && window._minimapCanvas) {
+  const minimapDt = takeScheduledDelta('minimap-render', dt, crateFrame.play ? 2 : 8);
+  if (minimapDt && window._minimapOn && window._minimapCtx && window._minimapCanvas) {
     const ctx = window._minimapCtx;
     const mc = window._minimapCanvas;
     const sz = mc.width;
@@ -13223,27 +13296,31 @@ function animate() {
     ctx.stroke();
   }
 
-  }
-
 
   if (window._godmode) window._godmode.updateBehaviors(dt, t);
   if (window._sound && window._sound.updateMusic) { window._sound.updateMusic(dt); } if (window._sound && window._sound.updateAmbient) { window._sound.updateAmbient(dt, window._currentBiome || 'peaceful'); }
   if (window._updateAmbientOneShots) window._updateAmbientOneShots(dt);
-  updateDayNightCycle(dt); updateHealthRegen(dt);
+  const dayNightDt = takeScheduledDelta('day-night', dt, crateFrame.play ? 1 : 4);
+  if (dayNightDt) updateDayNightCycle(dayNightDt);
+  updateHealthRegen(dt);
   updateDebris(dt);
   updatePickups(dt, t);
   updateGrapple(dt);
   updateSlide(dt);
-  updateInteractionPrompt();
-  updateCompass();
-  updateClouds(dt);
-  if (window._grassSystem) window._grassSystem.update(dt);
-  updateCoordDisplay(); recordReplayFrame();
-  updateHighlight();
+  if (crateFrame.play && takeScheduledDelta('interaction-prompt', dt, 5)) updateInteractionPrompt();
+  if (crateFrame.play && takeScheduledDelta('compass', dt, 4)) updateCompass();
+  const cloudDt = takeScheduledDelta('clouds', dt, crateFrame.play ? 1 : 4);
+  if (cloudDt) updateClouds(cloudDt);
+  const grassDt = takeScheduledDelta('grass', dt, crateFrame.play ? 1 : 3);
+  if (grassDt && window._grassSystem) window._grassSystem.update(grassDt);
+  if (crateFrame.play && takeScheduledDelta('coords', dt, 6)) updateCoordDisplay();
+  if (crateFrame.play) recordReplayFrame();
+  if (crateFrame.play && takeScheduledDelta('highlight', dt, 5)) updateHighlight();
   if (!playMode) controls.update();
   if (window._updateEditorCamera) window._updateEditorCamera(dt);
-  if (window._updateShadowCascades) window._updateShadowCascades();
-  updateAmbientParticles(dt || 0.016, camera.position);
+  if (window._updateShadowCascades && takeScheduledDelta('shadow-cascades', dt, crateFrame.play ? 2 : 6)) window._updateShadowCascades();
+  const ambientParticleDt = takeScheduledDelta('ambient-particles', dt, crateFrame.play ? 1 : 3);
+  if (ambientParticleDt) updateAmbientParticles(ambientParticleDt || 0.016, camera.position);
   if (activeVehicle) { updateVehicle(dt); updateVehiclePrompt(); if (activeVehicle) updateVehicleHUD(activeVehicle);
   // Swimming/buoyancy — keep player above water
   const _waterLevel = -0.1; // Just above ocean surface at -0.3
@@ -13272,7 +13349,7 @@ function animate() {
   if (typeof window._updateMiniMap === 'function') window._updateMiniMap(); }
       if (shooterMode) { updateBullets(dt); updateShooterHUD(); }
     updateWaterAnimation(performance.now() * 0.001);
-  if (userScriptsModule?.updateUserScripts) userScriptsModule.updateUserScripts(dt);
+  if (crateFrame.play && userScriptsModule?.updateUserScripts) userScriptsModule.updateUserScripts(dt);
   
   // Weather follows camera for full-scene coverage
   const _wcam = playMode && characterController && characterController.model ? characterController.position : camera.position;
@@ -13286,7 +13363,8 @@ function animate() {
   if (weatherModule?.updateLightning) weatherModule.updateLightning(dt, weatherSystem);
   updateNightLighting(t);
   // updateDrivingCars replaced by updateSmartTraffic
-  if (window._cityCarUpdate) window._cityCarUpdate(dt);
+  const cityCarDt = takeScheduledDelta('city-car-update', dt, crateFrame.play ? 1 : 3);
+  if (cityCarDt && window._cityCarUpdate) window._cityCarUpdate(cityCarDt);
   if (snowParticles) {
     snowParticles.position.x = _wcam.x;
     snowParticles.position.z = _wcam.z;
@@ -13594,19 +13672,22 @@ function animate() {
     if (xpBar) xpBar.style.display = 'none';
   }
   // Update procedural animations
-  for (let pi = 0; pi < objects.length; pi++) {
-    const po = objects[pi];
-    if (po.userData._procAnim) {
-      po.userData._procAnim.fn(po, t, dt);
+  const procAnimDt = takeScheduledDelta('procedural-animations', dt, crateFrame.play ? 1 : 3);
+  if (procAnimDt) {
+    for (let pi = 0; pi < objects.length; pi++) {
+      const po = objects[pi];
+      if (po.userData._procAnim) {
+        po.userData._procAnim.fn(po, t, procAnimDt);
+      }
     }
   }
-  updateTriggers();
-    updateVehiclePrompt();
-  updateHUD();
-  // NPC update — runs ALWAYS (editor + play mode)
+  if (crateFrame.play) updateTriggers();
+  if (crateFrame.play) updateVehiclePrompt();
+  if (takeScheduledDelta('hud', dt, crateFrame.play ? 4 : 12)) updateHUD();
+  // NPC runtime is play-only; Edit and Explore should not mutate gameplay state.
   const _nc = npcController || window.npcController;
   const npcHandledInPlayMode = playMode && characterController && npcController && _nc === npcController;
-  if (_nc && !npcHandledInPlayMode) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
+  if (crateFrame.play && _nc && !npcHandledInPlayMode) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
   // If character model was deleted, switch to camera-only mode
   if (characterController && !characterController.model && !characterController._cameraOnlyMode && playMode) {
     characterController._cameraOnlyMode = true;
@@ -13623,6 +13704,7 @@ function animate() {
     characterController.isGrounded = true;
   }
 
+  const renderStart = performance.now();
   if (ppEnabled && composer && !window._composerDisabled) {
       if (window._colorPass) window._colorPass.uniforms.time.value = performance.now() * 0.001;
       composer.render();
@@ -13634,6 +13716,8 @@ function animate() {
   if (characterController && characterController.renderFPWeapon) {
     characterController.renderFPWeapon(renderer);
   }
+  const frameEnd = performance.now();
+  recordCrateFrameProfile(crateFrame, renderStart - frameStart, frameEnd - renderStart, frameEnd - frameStart);
 }
 animate();
 
@@ -13671,7 +13755,7 @@ window._engineBridge = {
     scene.remove(obj);
   },
   getSelected() { return getCurrentSelection(); },
-  selectObject(obj) { return selectSceneObject(obj); },
+  selectObject(obj, options) { return selectSceneObject(obj, options); },
   
   // Player
   enterPlayMode: enterPlayMode,
@@ -16691,7 +16775,7 @@ window._engine = {
   setMode: (mode) => window._setMode?.(mode) || syncModeGlobals(mode),
   respawn: () => { if (characterController) characterController.respawn(); },
   exec: execSingle,
-  selectObject: selectSceneObject,
+  selectObject: (obj, options) => selectSceneObject(obj, options),
   get quests() { return questSystem; },
   get crafting() { return craftingSystem; },
   get levels() { return levelSystem; },

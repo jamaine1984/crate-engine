@@ -302,6 +302,32 @@ async function runBrowserSmoke() {
     );
     await page.waitForSelector('#gb-scene-list .gb-scene-row', { timeout: timeoutMs });
 
+    await page.evaluate(() => {
+      if (Array.isArray(window._crateFrameProfile?.samples)) window._crateFrameProfile.samples.length = 0;
+    });
+    const rawBuildCityPerformanceState = await page.waitForFunction(
+      () => {
+        const profile = window._crateFrameProfile || {};
+        const samples = Array.isArray(profile.samples) ? profile.samples : [];
+        const render = window._renderer?.info?.render || {};
+        if (samples.length < 45 || !render.calls || !render.triangles) return null;
+        return {
+          samples: samples.length,
+          fps: Number(profile.fps) || 0,
+          avgFrameMs: Number(profile.avgFrameMs) || 0,
+          worstFrameMs: Number(profile.worstFrameMs) || 0,
+          avgUpdateMs: Number(profile.avgUpdateMs) || 0,
+          avgRenderMs: Number(profile.avgRenderMs) || 0,
+          calls: Number(render.calls) || 0,
+          triangles: Number(render.triangles) || 0,
+          objects: window._engineBridge?.objects?.length || window._sceneObjects?.length || 0,
+          mode: window._currentMode || '',
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+
     await page.locator('#gb-scene-list .gb-scene-row .gb-scene-main').first().click({ timeout: timeoutMs });
     await page.locator('button[data-gb-component="pickup"]').click({ timeout: timeoutMs });
     await page.locator('#gb-systems [data-gb-system="checkpoints"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
@@ -1746,6 +1772,25 @@ async function runBrowserSmoke() {
         afterReadOnlyClick.componentCount !== beforeReadOnly.componentCount) {
       throw new Error(`Read-only editor controls mutated scene in Explore mode: ${JSON.stringify({ beforeReadOnly, afterReadOnlyClick })}`);
     }
+    const bridgeExploreSelectState = await page.evaluate(() => {
+      const objects = window._engineBridge?.objects || window._sceneObjects || [];
+      const before = window._lastPlacedObj?.uuid || '';
+      const target = objects.find((obj) => obj?.uuid && obj.uuid !== before);
+      const result = target ? window._engineBridge?.selectObject?.(target) : null;
+      return {
+        attempted: !!target,
+        resultSelected: !!result,
+        before,
+        after: window._lastPlacedObj?.uuid || '',
+        inspectorDisplay: document.querySelector('#inspector')?.style.display || '',
+      };
+    });
+    if (bridgeExploreSelectState.attempted &&
+        (bridgeExploreSelectState.resultSelected ||
+          bridgeExploreSelectState.after !== bridgeExploreSelectState.before ||
+          bridgeExploreSelectState.inspectorDisplay === 'flex')) {
+      throw new Error(`Engine bridge selected an object in Explore mode: ${JSON.stringify(bridgeExploreSelectState)}`);
+    }
     await page.mouse.click(680, 470);
     const exploreState = await page.evaluate(() => ({
       mode: window._currentMode,
@@ -1787,6 +1832,25 @@ async function runBrowserSmoke() {
     }
     if (playState.legacyInspectorDisplay === 'flex') {
       throw new Error('Play mode left the legacy object inspector visible');
+    }
+    const bridgePlaySelectState = await page.evaluate(() => {
+      const objects = window._engineBridge?.objects || window._sceneObjects || [];
+      const before = window._lastPlacedObj?.uuid || '';
+      const target = objects.find((obj) => obj?.uuid && obj.uuid !== before);
+      const result = target ? window._engineBridge?.selectObject?.(target) : null;
+      return {
+        attempted: !!target,
+        resultSelected: !!result,
+        before,
+        after: window._lastPlacedObj?.uuid || '',
+        inspectorDisplay: document.querySelector('#inspector')?.style.display || '',
+      };
+    });
+    if (bridgePlaySelectState.attempted &&
+        (bridgePlaySelectState.resultSelected ||
+          bridgePlaySelectState.after !== bridgePlaySelectState.before ||
+          bridgePlaySelectState.inspectorDisplay === 'flex')) {
+      throw new Error(`Engine bridge selected an object in Play mode: ${JSON.stringify(bridgePlaySelectState)}`);
     }
 
     const doorTriggerState = await page.waitForFunction(
@@ -2075,6 +2139,7 @@ async function runBrowserSmoke() {
       const readiness = window._gameBuilderReadiness || {};
       const validation = window._gameBuilderValidation || {};
       const performancePanel = window._gameBuilderPerformance || {};
+      const frameProfile = window._crateFrameProfile || {};
       const rendererRender = window._renderer?.info?.render || {};
       const rendererMemory = window._renderer?.info?.memory || {};
       const performanceCalls = Math.max(Number(performancePanel.calls) || 0, Number(rendererRender.calls) || 0);
@@ -2136,6 +2201,11 @@ async function runBrowserSmoke() {
         performanceCalls,
         performanceTriangles,
         performanceTextures,
+        rawFrameFps: Number(frameProfile.fps) || 0,
+        rawFrameMs: Number(frameProfile.avgFrameMs) || 0,
+        rawUpdateMs: Number(frameProfile.avgUpdateMs) || 0,
+        rawRenderMs: Number(frameProfile.avgRenderMs) || 0,
+        rawFrameSamples: Array.isArray(frameProfile.samples) ? frameProfile.samples.length : 0,
         rendererCalls: Number(rendererRender.calls) || 0,
         rendererTriangles: Number(rendererRender.triangles) || 0,
         cityPerformanceProfile: window._lastCityPerformanceSettings?.profile || '',
@@ -2162,6 +2232,16 @@ async function runBrowserSmoke() {
       };
     });
     state.savedProjectVersion = savedProjectState.version;
+    state.rawBuildCitySamples = rawBuildCityPerformanceState.samples;
+    state.rawBuildCityFps = rawBuildCityPerformanceState.fps;
+    state.rawBuildCityFrameMs = rawBuildCityPerformanceState.avgFrameMs;
+    state.rawBuildCityWorstFrameMs = rawBuildCityPerformanceState.worstFrameMs;
+    state.rawBuildCityUpdateMs = rawBuildCityPerformanceState.avgUpdateMs;
+    state.rawBuildCityRenderMs = rawBuildCityPerformanceState.avgRenderMs;
+    state.rawBuildCityCalls = rawBuildCityPerformanceState.calls;
+    state.rawBuildCityTriangles = rawBuildCityPerformanceState.triangles;
+    state.rawBuildCityObjects = rawBuildCityPerformanceState.objects;
+    state.rawBuildCityMode = rawBuildCityPerformanceState.mode;
     state.validationFixActions = validationFixState.actions;
     state.validationFixColliderCount = validationFixState.colliderCount;
     state.validationFixLatest = validationFixState.latest?.action || '';
@@ -2485,6 +2565,15 @@ async function runBrowserSmoke() {
       !state.cityPerformanceProceduralNature) {
       throw new Error(`Game Builder performance panel did not report live renderer metrics: ${JSON.stringify(state)}`);
     }
+    if (state.rawBuildCitySamples < 45 ||
+      state.rawBuildCityFps <= 0 ||
+      state.rawBuildCityFrameMs <= 0 ||
+      state.rawBuildCityCalls > 900 ||
+      state.rawBuildCityTriangles > 750000 ||
+      state.rawBuildCityObjects < 100 ||
+      state.rawBuildCityMode !== 'edit') {
+      throw new Error(`Raw Build City performance probe did not meet budget: ${JSON.stringify(state)}`);
+    }
     if (state.validationStatus !== 'ready' ||
       state.validationErrors !== 0 ||
       state.validationWarnings !== 0 ||
@@ -2730,6 +2819,7 @@ console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
+console.log(`Raw Build City frame probe: ${browserState.rawBuildCityFps || 0} FPS, ${browserState.rawBuildCityFrameMs || 0} ms avg, ${browserState.rawBuildCityUpdateMs || 0} ms update, ${browserState.rawBuildCityRenderMs || 0} ms render, ${browserState.rawBuildCityCalls || 0} calls, ${browserState.rawBuildCityTriangles || 0} tris, ${browserState.rawBuildCitySamples || 0} samples`);
 console.log(`City performance profile: ${browserState.cityPerformanceProfile || 'missing'} (procedural props ${browserState.cityPerformanceProceduralProps ? 'on' : 'off'}, vehicles ${browserState.cityPerformanceProceduralVehicles ? 'on' : 'off'}, nature ${browserState.cityPerformanceProceduralNature ? 'on' : 'off'}, renderer ${browserState.rendererCalls || 0} calls/${browserState.rendererTriangles || 0} tris)`);
 console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);
 console.log(`Validation fixes: ${(browserState.validationFixActions || []).join(', ') || 'none'} (${browserState.validationFixColliderCount || 0} colliders, undo restored ${browserState.validationFixUndoRestoredObjects || 0})`);
