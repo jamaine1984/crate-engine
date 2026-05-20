@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `e54549a5`
+- Current deployed source commit for the public engine code: `ba017dd9`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,20 +29,50 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `f2e8e2bb-91c0-4eeb-9811-1214f59d0831`
-- Latest production deployment URL: `https://f2e8e2bb.crateship-games.pages.dev`
+- Latest production deployment ID: `ced94f30-9c75-4240-b9da-5c42195ccac0`
+- Latest production deployment URL: `https://ced94f30.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `e54549a`
-- Main live page bundle after the deploy: `/assets/play-CTbbfF-h.js`
+- Source shown by Cloudflare: `ba017dd`
+- Main live page bundle after the deploy: `/assets/play-DV3nZ-s8.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-vFTMcIpn.js`
-- Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-BDuV1v3u.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BTsf52SW.js`
+- Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-CAOy79B3.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-20:
+
+- Commit deployed: `ba017dd9` (`Add persistent mode dock and clean asset picker`)
+- Cloudflare deployment: `ced94f30-9c75-4240-b9da-5c42195ccac0`
+- App deploy command:
+
+```powershell
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=ba017dd9 --commit-message="Add persistent mode dock and clean asset picker" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`
+- App-only deploy uploaded `10` changed app files and reused `101` existing files; the separate asset host stayed unchanged.
+- Primary smoke passed: `https://crateshipgames.com/play?verify=mode-dock-ba017dd9`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-mode-dock-ba017dd9`
+- Manual live playtest passed: `https://crateshipgames.com/play?verify=mode-dock-manual-1779310783926`
+- Smoke bundle: `/assets/play-DV3nZ-s8.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+
+What changed in this deploy:
+
+- `game-builder-ui.mjs`
+  - Added a persistent `Mode` dock so Edit, Explore, and Play remain reachable even when Play mode hides the Builder panel.
+  - The production smoke now verifies that the dock stays visible in Play and can return cleanly to Edit.
+- `asset-browser-ui.mjs`
+  - Removed duplicate category cards from the asset picker, added stable category/item data attributes, and let gallery item names wrap instead of truncating.
+  - Manual live test placed a furniture asset from the real picker with no model/texture errors.
+- `scripts/smoke-production.mjs`
+  - Verifies the global mode dock on both the main custom domain and the `www` hostname.
+
+Previous app-only deploy on 2026-05-20:
 
 - Commit deployed: `edb0293b` (`Harden imports and runtime effect pools`)
 - Cloudflare deployment: `9c7a3d97-f704-4dd1-8872-0fb530208c85`
@@ -75,7 +105,7 @@ What changed in this deploy:
   - Verifies legacy project migration and future-version rejection.
   - Exercises runtime effect pools and fails if they keep creating new transient objects instead of reusing them.
 
-Latest app-only deploy on 2026-05-20:
+Previous app-only deploy on 2026-05-20:
 
 - Commit deployed: `e54549a5` (`Fix builder asset placement and play camera mode`)
 - Cloudflare deployment: `f2e8e2bb-91c0-4eeb-9811-1214f59d0831`
