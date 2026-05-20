@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `1b8bd15a`
+- Current deployed source commit for the public engine code: `46de8726`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -28,11 +28,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `08079868-dd7e-4a22-80be-3bef73ad7cea`
-- Latest production deployment URL: `https://08079868.crateship-games.pages.dev`
+- Latest production deployment ID: `fa9cffcd-287f-404d-83df-43802303496d`
+- Latest production deployment URL: `https://fa9cffcd.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `1b8bd15`
-- Main live page bundle after the deploy: `/assets/play-BZjuct8L.js`
+- Source shown by Cloudflare: `46de872`
+- Main live page bundle after the deploy: `/assets/play-B4AHMaG6.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -1952,6 +1952,21 @@ Browser verification history:
   - `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
   - Smoke still verified build-city output, separate asset-host loading, furniture placement, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-inspector-health-1b8bd15a.png`.
+- Final custom-domain verification after deployment `fa9cffcd-287f-404d-83df-43802303496d`:
+  - Cloudflare source showed `46de872`.
+  - `/play?verify=scene-validation-46de8726` served `/assets/play-B4AHMaG6.js`.
+  - `/play?verify=scene-validation-46de8726` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/admin.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and included `admin.html` and `play.html`.
+  - The deploy uploaded `3` changed files, reused `106`, uploaded Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `game-builder-ui.mjs` now shows a `Validation` section that reports scene-level readiness, errors, warnings, and suggestions for missing spawns, goals, trigger/door links, mission chains, wave links, inventory runtime, colliders, and high-triangle hotspots.
+  - Smoke verified `Validation: ready (0 errors, 0 warnings, 1 suggestions)`.
+  - The remote `moderation_audit` table still has `0` rows after deploy.
+  - `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke still verified build-city output, separate asset-host loading, furniture placement, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-scene-validation-46de8726.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -1997,6 +2012,8 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+46de8726 Add Game Builder scene validation panel
+00bf437a Update handoff for inspector health deploy
 1b8bd15a Fix inspector health smoke threshold
 3145b17b Add Game Builder inspector health panel
 ee3a5749 Add admin audit backfill controls
@@ -2104,8 +2121,8 @@ does not change the public website bundle unless it is intentionally deployed.
 
 1. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
-2. Expand the new Inspector health panel into deeper scene validation, such as
-   missing collision, unlinked mission chains, and high-triangle warnings.
+2. Turn Validation suggestions into one-click fixes where safe, starting with
+   collider tagging and mission/wave link helpers.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Configure `CRATE_SMOKE_ADMIN_TOKEN` only in the local/CI smoke environment
