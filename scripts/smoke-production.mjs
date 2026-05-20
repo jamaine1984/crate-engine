@@ -423,6 +423,41 @@ async function runBrowserSmoke() {
     );
     await page.waitForSelector('#gb-placement-status', { timeout: timeoutMs });
 
+    const beforeBuilderMenuPlacementCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
+    await page.evaluate(() => {
+      window._smokeOriginalCategoryPicker = window._showCategoryPicker;
+      window._showCategoryPicker = () => Promise.resolve({
+        file: 'house_interior_pack_chair_1.glb',
+        name: 'Builder menu chair',
+        path: '/models/house_interior_pack_chair_1.glb',
+      });
+    });
+    await page.locator('button[data-gb-action="assets"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      (before) => {
+        const state = window._lastAssetPlacement || {};
+        return (window._engineBridge?.objects?.length || 0) > before &&
+          state.status === 'placed' &&
+          state.source === 'game-builder-assets' &&
+          /Builder menu chair/i.test(state.name || '');
+      },
+      beforeBuilderMenuPlacementCount,
+      { timeout: timeoutMs }
+    );
+    const builderMenuPlacementState = await page.evaluate(() => {
+      if (window._smokeOriginalCategoryPicker) {
+        window._showCategoryPicker = window._smokeOriginalCategoryPicker;
+        delete window._smokeOriginalCategoryPicker;
+      }
+      return {
+        objectCount: window._engineBridge?.objects?.length || 0,
+        placement: window._lastAssetPlacement || null,
+      };
+    });
+    if (builderMenuPlacementState.placement?.source !== 'game-builder-assets') {
+      throw new Error(`Game Builder asset menu did not place the picked asset: ${JSON.stringify(builderMenuPlacementState)}`);
+    }
+
     const beforePlacementCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
     await page.evaluate(() => window._placeCatalogAsset?.({
       file: 'house_interior_pack_chair_1.glb',
@@ -459,6 +494,24 @@ async function runBrowserSmoke() {
     }
     if (!/Smoke placement chair/i.test(placementState.statusText)) {
       throw new Error(`Placement status did not name the placed asset: ${JSON.stringify(placementState)}`);
+    }
+
+    const builderTextFitState = await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('#game-builder-panel button')].filter((button) => button.offsetParent !== null);
+      const clipped = buttons.filter((button) => button.scrollWidth > button.clientWidth + 2 || button.scrollHeight > button.clientHeight + 2)
+        .map((button) => ({
+          text: button.textContent.trim(),
+          className: button.className,
+          width: button.clientWidth,
+          scrollWidth: button.scrollWidth,
+          height: button.clientHeight,
+          scrollHeight: button.scrollHeight,
+        }))
+        .slice(0, 8);
+      return { count: clipped.length, clipped };
+    });
+    if (builderTextFitState.count) {
+      throw new Error(`Game Builder visible buttons are clipping text: ${JSON.stringify(builderTextFitState)}`);
     }
 
     const input = page.locator('#prompt-input');
@@ -917,7 +970,9 @@ async function runBrowserSmoke() {
       if (index < 0) throw new Error('Saved project was not found for load test');
       window._loadSaveSlot?.(index);
     });
-    const loadedProjectState = await page.waitForFunction(
+    let loadedProjectState;
+    try {
+      loadedProjectState = await page.waitForFunction(
       (saved) => {
         const load = window._lastProjectLoad || {};
         const objects = window._engineBridge?.objects || window._sceneObjects || [];
@@ -956,7 +1011,29 @@ async function runBrowserSmoke() {
       },
       savedProjectState,
       { timeout: timeoutMs }
-    ).then((handle) => handle.jsonValue());
+      ).then((handle) => handle.jsonValue());
+    } catch (err) {
+      const debug = await page.evaluate((saved) => {
+        const load = window._lastProjectLoad || {};
+        const objects = window._engineBridge?.objects || window._sceneObjects || [];
+        const componentCounts = objects.reduce((out, obj) => {
+          Object.keys(obj?.userData?.gbComponents || {}).forEach((key) => {
+            out[key] = (out[key] || 0) + 1;
+          });
+          return out;
+        }, {});
+        return {
+          saved,
+          load,
+          objectCount: objects.length,
+          scriptCount: Array.isArray(window._userScripts) ? window._userScripts.length : 0,
+          componentCounts,
+          lastCommands: (window._sceneHistory || []).slice(-8),
+          lastPlacement: window._lastAssetPlacement || null,
+        };
+      }, savedProjectState);
+      throw new Error(`Project load restore did not reach expected state: ${JSON.stringify(debug)}`);
+    }
 
     const playableExportState = await page.evaluate(async () => {
       const result = await window._exportPlayablePackage?.({ download: false, title: 'Production Smoke Game' });
@@ -2012,7 +2089,21 @@ async function runBrowserSmoke() {
       x: window._engine?.camera?.rotation.x || 0,
       y: window._engine?.camera?.rotation.y || 0,
       z: window._engine?.camera?.rotation.z || 0,
+      cameraOwned: window._isCharacterCameraOwned?.() === true,
+      cameraOnly: window._engine?.character?._cameraOnlyMode === true,
     }));
+    const playCameraGuardState = await page.evaluate(() => {
+      if (window._engine?.camera) window._engine.camera.rotation.z = 0.35;
+      window._lockPlayCameraRoll?.();
+      return {
+        z: window._engine?.camera?.rotation.z || 0,
+        cameraOwned: window._isCharacterCameraOwned?.() === true,
+        cameraOnly: window._engine?.character?._cameraOnlyMode === true,
+      };
+    });
+    if (Math.abs(playCameraGuardState.z) > 0.02) {
+      throw new Error(`Play camera roll guard did not flatten camera roll: ${JSON.stringify(playCameraGuardState)}`);
+    }
     await page.mouse.move(700, 470);
     await page.mouse.wheel(0, 700);
     await page.mouse.down({ button: 'left' });

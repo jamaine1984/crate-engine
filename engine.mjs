@@ -1532,6 +1532,10 @@ function isEditInteractionMode() {
   return getEngineMode() === 'edit';
 }
 
+function isCharacterCameraOwned() {
+  return !!(playMode && characterController && characterController.model && !characterController._cameraOnlyMode);
+}
+
 function clearEditorSelection() {
   try {
     if (selectedObj) {
@@ -1572,11 +1576,11 @@ function syncPlayCameraFromCurrentView() {
 }
 
 function lockPlayCameraRoll() {
-  if (!playMode || activeVehicle) return;
-  if (characterController && characterController.model) return;
+  if (!playMode || activeVehicle || window._crateAllowCameraRoll === true) return;
   camera.rotation.order = 'YXZ';
   camera.rotation.z = 0;
   camera.up.set(0, 1, 0);
+  camera.updateMatrixWorld();
 }
 
 window.addEventListener('keydown', e => { playKeys[e.key.toLowerCase()] = true; });
@@ -1822,11 +1826,13 @@ function exitPlayMode(nextMode = 'edit') {
 }
 
 window.exitPlayMode = exitPlayMode;
+window._lockPlayCameraRoll = lockPlayCameraRoll;
+window._isCharacterCameraOwned = isCharacterCameraOwned;
 
 function updatePlayMode(dt) {
   if (!playMode) return;
-  // Don't move camera independently when character controller is active
-  if (characterController && characterController.model) return;
+  // Don't move camera independently when an active character camera owns it.
+  if (isCharacterCameraOwned()) return;
   lockPlayCameraRoll();
   const speed = playSpeed * dt;
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -1868,8 +1874,8 @@ setTimeout(() => {
     });
         canvasEl.addEventListener('click', () => { if (playMode) canvasEl.requestPointerLock(); });
     document.addEventListener('pointermove', (e) => {
-      // Skip when character controller handles camera
-      if (typeof characterController !== 'undefined' && characterController && characterController.model) return;
+      // Skip only when an active character camera owns view control.
+      if (isCharacterCameraOwned()) return;
       if (playMode && document.pointerLockElement === canvasEl) {
         playYaw -= e.movementX * 0.002;
         const pitch = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x - e.movementY * 0.002));
@@ -2238,10 +2244,13 @@ document.addEventListener('wheel', function(e) {
   if (!playMode || activeVehicle) return;
   e.preventDefault();
   e.stopPropagation();
-  if (characterController && characterController.model) {
-    if (window._cameraDistance === undefined) window._cameraDistance = 5;
-    window._cameraDistance = Math.max(1.5, Math.min(12, window._cameraDistance + e.deltaY * 0.005));
+  if (isCharacterCameraOwned()) {
+    const current = Number(characterController.cameraDistance) || Number(window._cameraDistance) || 5;
+    const next = Math.max(1.5, Math.min(12, current + e.deltaY * 0.005));
+    characterController.cameraDistance = next;
+    window._cameraDistance = next;
   }
+  lockPlayCameraRoll();
 }, { passive: false, capture: true });
 
 // === OBJECT COUNTER HUD (v218) ===
@@ -13625,7 +13634,7 @@ function animate() {
   if (window._mp && window._mp.connected) window._mp.update(dt);
   if (colyseusBridge?.connected) syncColyseusPose();
   // Play mode + triggers
-  if (playMode && characterController && characterController.model) {
+  if (isCharacterCameraOwned()) {
     // === DEMO AUTO-PLAY ===
     if (window._demoMode && characterController) {
       window._demoTime = (window._demoTime || 0) + dt;
@@ -13772,7 +13781,10 @@ function animate() {
       characterController.jumpVelocity = 0;
     }
     if (window._gamepad) window._gamepad.update();
-    if (characterController) characterController.update(dt);
+    if (characterController) {
+      characterController.update(dt);
+      lockPlayCameraRoll();
+    }
     if (npcController && characterController) {
       // Zone-based aggro — NPCs only engage when player enters their zone
       const playerPos = characterController.position;
@@ -13893,7 +13905,7 @@ function animate() {
   if (takeScheduledDelta('hud', dt, crateFrame.play ? 4 : 12)) updateHUD();
   // NPC runtime is play-only; Edit and Explore should not mutate gameplay state.
   const _nc = npcController || window.npcController;
-  const npcHandledInPlayMode = playMode && characterController && npcController && _nc === npcController;
+  const npcHandledInPlayMode = isCharacterCameraOwned() && npcController && _nc === npcController;
   if (crateFrame.play && _nc && !npcHandledInPlayMode) { _nc.update(dt); _nc.updateHealthBarFacing(camera); }
   // If character model was deleted, switch to camera-only mode
   if (characterController && !characterController.model && !characterController._cameraOnlyMode && playMode) {
@@ -15126,6 +15138,57 @@ function waitForProjectCommandReplay(expectedObjects = 0) {
   });
 }
 
+const RESTORABLE_GAMEPLAY_COMPONENTS = new Set([
+  'pickup',
+  'equipmentItem',
+  'npc',
+  'merchant',
+  'objective',
+  'missionStep',
+  'missionReward',
+  'missionGate',
+  'enemySpawn',
+  'waveController',
+  'checkpoint',
+  'winCondition',
+  'door',
+  'triggerZone',
+  'spawnPoint',
+  'damage',
+]);
+
+function hasRestorableGameplayComponents(snapshot) {
+  const components = snapshot?.components || {};
+  return Object.keys(components).some((key) => RESTORABLE_GAMEPLAY_COMPONENTS.has(key));
+}
+
+function createProjectPlaceholderObject(snapshot) {
+  const components = snapshot?.components || {};
+  const color = components.winCondition ? 0x38a169 :
+    components.checkpoint ? 0x4a9eff :
+    components.spawnPoint ? 0xf59e0b :
+    components.pickup ? 0xffd166 :
+    0x7dd3fc;
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.8, 0.8, 0.8),
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.7,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0.72,
+    })
+  );
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.name = snapshot?.name || 'Restored gameplay object';
+  mesh.userData.gbRestoredPlaceholder = true;
+  mesh.userData.isProjectPlaceholder = true;
+  scene.add(mesh);
+  objects.push(mesh);
+  return mesh;
+}
+
 function applyProjectObjectSnapshots(snapshots = []) {
   if (!Array.isArray(snapshots) || !snapshots.length) return Promise.resolve({ expected: 0, applied: 0, spawned: 0 });
   const used = new Set();
@@ -15154,6 +15217,12 @@ function applyProjectObjectSnapshots(snapshots = []) {
     const obj = pickTarget(snapshot);
     if (obj) {
       if (applyProjectSnapshotToObject(obj, snapshot)) applied++;
+      return;
+    }
+    if (!snapshot.assetPath && hasRestorableGameplayComponents(snapshot)) {
+      const placeholder = createProjectPlaceholderObject(snapshot);
+      spawned++;
+      if (applyProjectSnapshotToObject(placeholder, snapshot)) applied++;
       return;
     }
     if (!snapshot.assetPath) return;
@@ -17183,6 +17252,7 @@ window._engine = {
   get mode() { return getEngineMode(); },
   get isEditMode() { return isEditInteractionMode(); },
   get isExploreMode() { return getEngineMode() === 'explore'; },
+  get isCharacterCameraOwned() { return isCharacterCameraOwned(); },
   get npcs() { return npcController; },
   get townBuilder() { return townBuilder; },
   enterPlayMode, exitPlayMode,

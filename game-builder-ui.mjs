@@ -2489,7 +2489,14 @@ function runAction(action) {
   }
   if (action === 'assets') {
     if (!requireEditAction('place assets')) return null;
-    if (window._showCategoryPicker) return window._showCategoryPicker();
+    if (window._showCategoryPicker) {
+      return window._showCategoryPicker().then((result) => {
+        if (result && result.file && window._placeCatalogAsset) {
+          return window._placeCatalogAsset(result, 'game-builder-assets');
+        }
+        return result;
+      });
+    }
     return runCommand('browse');
   }
   if (action === 'save') {
@@ -4077,7 +4084,7 @@ function mount() {
     .gb-section{border:1px solid #20262a;border-radius:8px;overflow:hidden;background:#0d0f10}
     .gb-section h3{margin:0;padding:9px 10px;font-size:11px;text-transform:uppercase;letter-spacing:0;color:#98a2a9;border-bottom:1px solid #20262a;background:#121516}
     .gb-mode-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px}
-    .gb-mode-btn{height:32px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:12px;cursor:pointer}
+    .gb-mode-btn{min-height:32px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:12px;line-height:14px;cursor:pointer;padding:5px 6px;white-space:normal;overflow-wrap:anywhere}
     .gb-mode-btn:hover{border-color:#4a9eff;color:#fff}
     .gb-mode-btn[data-selected="true"]{border-color:#4a9eff;background:#102033;color:#fff;font-weight:700}
     .gb-mode-btn[data-gb-mode="edit"][data-selected="true"]{border-color:#d9572b;background:#211a16}
@@ -4120,7 +4127,7 @@ function mount() {
     .gb-performance-row span{font-size:10px;line-height:14px;color:#8d979e;min-width:0}
     .gb-performance-row strong{font-size:10px;line-height:14px;color:#dfe6ea;text-align:right;white-space:normal;overflow-wrap:anywhere}
     .gb-quality-controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;padding:0 8px 6px}
-    .gb-quality-btn{height:28px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:11px;cursor:pointer}
+    .gb-quality-btn{min-height:28px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:11px;line-height:13px;cursor:pointer;padding:4px 5px;white-space:normal;overflow-wrap:anywhere}
     .gb-quality-btn:hover{border-color:#4a9eff;color:#fff}
     .gb-quality-btn[data-selected="true"]{border-color:#4a9eff;background:#102033;color:#fff;font-weight:700}
     .gb-quality-summary{padding:0 8px 7px;color:#8d979e;font-size:10px;line-height:14px;white-space:normal;overflow-wrap:anywhere}
@@ -4155,7 +4162,7 @@ function mount() {
     .gb-template-info{min-width:0;display:flex;flex-direction:column;gap:2px}
     .gb-template-info strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:normal;overflow-wrap:anywhere}
     .gb-template-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
-    .gb-template-card .gb-small-btn{width:58px}
+    .gb-template-card .gb-small-btn{width:58px;min-width:58px}
     .gb-systems-list{display:flex;flex-direction:column;gap:7px;padding:8px}
     .gb-system-card{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-items:start;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
     .gb-system-card[data-status="installed"]{border-color:#2f6f44;background:#101a13}
@@ -4165,11 +4172,11 @@ function mount() {
     .gb-system-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
     .gb-system-controls{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap}
     .gb-system-badge{font-size:10px;line-height:14px;color:#aeb7bd;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0;flex:1}
-    .gb-system-controls .gb-small-btn{width:82px}
+    .gb-system-controls .gb-small-btn{width:auto;min-width:92px}
     .gb-project-status{padding:0 8px 7px;color:#8d979e;font-size:10px;line-height:14px;white-space:normal;overflow-wrap:anywhere}
     .gb-project-grid{padding-top:0}
     .gb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
-    .gb-preset{height:34px;border:1px solid #2a3237;background:#161a1c;color:#eef2f3;border-radius:6px;font-size:12px;cursor:pointer;text-align:left;padding:0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-preset{min-height:34px;border:1px solid #2a3237;background:#161a1c;color:#eef2f3;border-radius:6px;font-size:12px;line-height:14px;cursor:pointer;text-align:left;padding:6px 9px;white-space:normal;overflow:visible;overflow-wrap:anywhere;display:flex;align-items:center}
     .gb-preset:hover{border-color:#d9572b;background:#211a16}
     .gb-preset:disabled{opacity:.55;cursor:progress}
     .gb-component-btn{border-color:#354044}
@@ -4181,7 +4188,7 @@ function mount() {
     .gb-scene-name{display:block;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-scene-meta{display:block;font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-scene-actions{display:flex;gap:4px}
-    .gb-scene-actions button,.gb-small-btn{height:28px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:11px;cursor:pointer;padding:0 7px}
+    .gb-scene-actions button,.gb-small-btn{min-height:28px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:11px;line-height:13px;cursor:pointer;padding:4px 7px;white-space:normal;overflow-wrap:anywhere}
     .gb-scene-actions button:hover,.gb-small-btn:hover{border-color:#d9572b;color:#fff}
     .gb-inspector{display:flex;flex-direction:column;gap:8px;padding:8px}
     .gb-inspector-summary{display:flex;flex-direction:column;gap:2px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
