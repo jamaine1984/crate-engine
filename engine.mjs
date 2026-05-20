@@ -868,8 +868,8 @@ function syncUtilityUiModule(mod = utilityUiModule) {
       }
     },
     applySettings: (settings) => {
-      const qualityMap = { low: 0.5, medium: 0.75, high: 1, ultra: window.devicePixelRatio || 1 };
-      renderer.setPixelRatio(qualityMap[settings.quality] || 1);
+      window._crateGraphicsQuality = settings.quality || 'medium';
+      applyRendererPixelBudget('settings', window._crateGraphicsQuality);
       renderer.shadowMap.enabled = settings.shadows;
       camera.fov = settings.fov;
       camera.updateProjectionMatrix();
@@ -3314,8 +3314,53 @@ if (!renderer) {
   window._isWebGPU = false;
 }
 
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
-renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+function getRendererPixelBudget(level = window._crateGraphicsQuality || 'medium', width = canvas.clientWidth, height = canvas.clientHeight) {
+  const viewportWidth = Math.max(1, Number(width) || window.innerWidth || 1);
+  const viewportHeight = Math.max(1, Number(height) || window.innerHeight || 1);
+  const devicePixelRatio = Math.max(1, Number(window.devicePixelRatio) || 1);
+  const touchViewport = Boolean(window.matchMedia?.('(pointer: coarse)')?.matches || navigator.maxTouchPoints > 0);
+  const longEdge = Math.max(viewportWidth, viewportHeight);
+  const pixelArea = viewportWidth * viewportHeight;
+  const requestedLevel = String(level || 'medium').toLowerCase();
+  const qualityCaps = { low: 1, medium: 1.25, high: 1.5, ultra: 2 };
+  let cap = qualityCaps[requestedLevel] || qualityCaps.medium;
+
+  if (touchViewport && longEdge >= 1000) cap = Math.min(cap, 1);
+  else if (touchViewport) cap = Math.min(cap, 1.25);
+  if (pixelArea > 900000) cap = Math.min(cap, 1);
+
+  const pixelRatio = Math.max(0.75, Math.min(devicePixelRatio, cap));
+  return {
+    level: requestedLevel,
+    pixelRatio,
+    devicePixelRatio,
+    cap,
+    touchViewport,
+    width: viewportWidth,
+    height: viewportHeight,
+    pixelArea,
+  };
+}
+
+function applyRendererPixelBudget(reason = 'resize', level = window._crateGraphicsQuality || 'medium') {
+  const budget = getRendererPixelBudget(level);
+  renderer.setPixelRatio(budget.pixelRatio);
+  window._crateRendererBudget = { ...budget, reason };
+  return budget;
+}
+
+function resizeCrateRenderer(width = canvas.clientWidth, height = canvas.clientHeight, reason = 'resize') {
+  const budget = applyRendererPixelBudget(reason);
+  renderer.setSize(width, height, false);
+  window._crateRendererBudget = { ...budget, reason, width, height };
+  return window._crateRendererBudget;
+}
+
+window._crateGraphicsQuality = window._crateGraphicsQuality || 'medium';
+window._applyCrateRendererPixelBudget = applyRendererPixelBudget;
+window._resizeCrateRenderer = resizeCrateRenderer;
+
+resizeCrateRenderer(canvas.clientWidth, canvas.clientHeight, 'initial');
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -3830,29 +3875,30 @@ function setSSAOSettings(kernelRadius, minDist, maxDist) {
 
 // Preset quality levels
 function setGraphicsQuality(level) {
+  window._crateGraphicsQuality = String(level || 'medium').toLowerCase();
   switch(level) {
     case 'low':
       ppEnabled = false;
-      renderer.setPixelRatio(1);
+      applyRendererPixelBudget('graphics-low', 'low');
       renderer.shadowMap.enabled = false;
       return 'Graphics: LOW — max performance';
     case 'medium':
       ppEnabled = true;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); // Capped for performance
+      applyRendererPixelBudget('graphics-medium', 'medium');
       renderer.shadowMap.enabled = true;
       if (ssaoPass) ssaoPass.enabled = false;
       if (bloomPass) { bloomPass.strength = 0.25; }
       return 'Graphics: MEDIUM — balanced';
     case 'high':
       ppEnabled = true;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      applyRendererPixelBudget('graphics-high', 'high');
       renderer.shadowMap.enabled = true;
       if (ssaoPass) ssaoPass.enabled = false; // SSAO off by default (type 'ssao on' to enable)
       if (bloomPass) { bloomPass.strength = 0.4; }
       return 'Graphics: HIGH — best quality';
     case 'ultra':
       ppEnabled = true;
-      renderer.setPixelRatio(window.devicePixelRatio);
+      applyRendererPixelBudget('graphics-ultra', 'ultra');
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFShadowMap;
       if (ssaoPass) { ssaoPass.enabled = true; ssaoPass.kernelRadius = 16; }
@@ -10017,7 +10063,7 @@ window.toggleFullscreen = function() {
     canvas.style.height = h + 'px';
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(w, h, false);
+    resizeCrateRenderer(w, h, 'fullscreen');
   }
   setTimeout(doResize, 50);
   setTimeout(doResize, 200);
@@ -10033,7 +10079,7 @@ document.addEventListener('fullscreenchange', () => {
     btn.textContent = '⛶ Expand';
     camera.aspect = canvas.clientWidth / canvas.clientHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    resizeCrateRenderer(canvas.clientWidth, canvas.clientHeight, 'fullscreen-exit');
   }
 });
 
@@ -13201,7 +13247,8 @@ function animate() {
     if (avgFps < 30 && !window._autoReducedQuality) {
       window._autoReducedQuality = true;
       // Reduce quality
-      renderer.setPixelRatio(1.0);
+      window._crateGraphicsQuality = 'low';
+      applyRendererPixelBudget('auto-quality', 'low');
       if (rainParticles && rainParticles.geometry.attributes.position.count > 3000) {
         // Cut rain particles in half
         scene.remove(rainParticles);
@@ -14579,7 +14626,7 @@ setTimeout(() => {
   if (c) {
     const w = c.clientWidth;
     const h = c.clientHeight;
-    renderer.setSize(w, h);
+    resizeCrateRenderer(w, h, 'startup-resize');
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     if (typeof composer !== 'undefined' && composer) composer.setSize(w, h);
@@ -14591,7 +14638,7 @@ setTimeout(() => {
 window.addEventListener('resize', () => {
   camera.aspect = canvas.clientWidth / canvas.clientHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+  resizeCrateRenderer(canvas.clientWidth, canvas.clientHeight, 'window-resize');
   if (typeof composer !== 'undefined' && composer) composer.setSize(canvas.clientWidth, canvas.clientHeight);
 });
 
@@ -18050,7 +18097,8 @@ parseAndExecute = async function(rawCmd) {
     if (bloomPass) bloomPass.enabled = true;
     if (ssaoPass) ssaoPass.enabled = true;
     ppEnabled = true;
-    renderer.setPixelRatio(window.devicePixelRatio);
+    window._crateGraphicsQuality = 'high';
+    applyRendererPixelBudget('command-graphics-high', 'high');
     renderer.shadowMap.enabled = true;
     addMsg('🎨 Graphics: HIGH — bloom + SSAO + shadows enabled');
     return;
@@ -18059,7 +18107,8 @@ parseAndExecute = async function(rawCmd) {
     if (bloomPass) bloomPass.enabled = true;
     if (ssaoPass) ssaoPass.enabled = false;
     ppEnabled = true;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    window._crateGraphicsQuality = 'medium';
+    applyRendererPixelBudget('command-graphics-medium', 'medium');
     renderer.shadowMap.enabled = true;
     addMsg('🎨 Graphics: MEDIUM — bloom on, SSAO off');
     return;
@@ -18068,7 +18117,8 @@ parseAndExecute = async function(rawCmd) {
     if (bloomPass) bloomPass.enabled = false;
     if (ssaoPass) ssaoPass.enabled = false;
     ppEnabled = false;
-    renderer.setPixelRatio(1);
+    window._crateGraphicsQuality = 'low';
+    applyRendererPixelBudget('command-graphics-low', 'low');
     renderer.shadowMap.enabled = false;
     addMsg('⚡ Graphics: LOW — all effects off, max performance');
     return;

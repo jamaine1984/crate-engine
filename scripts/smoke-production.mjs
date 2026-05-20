@@ -13,6 +13,7 @@ const verify = process.env.CRATE_SMOKE_VERIFY || Date.now().toString(36);
 const playUrl = `${baseUrl}/play?verify=${encodeURIComponent(verify)}`;
 const timeoutMs = parseInt(process.env.CRATE_SMOKE_TIMEOUT_MS || '120000', 10);
 const headless = process.env.CRATE_SMOKE_HEADLESS !== 'false';
+const viewportProbeEnabled = process.env.CRATE_SMOKE_VIEWPORT_PROBES !== 'false';
 const screenshotDir = path.resolve(process.env.CRATE_SMOKE_SCREENSHOT_DIR || path.join(rootDir, 'output', 'playwright'));
 const screenshotPath = path.join(screenshotDir, `production-smoke-${verify}.png`);
 const smokeAdminToken = String(process.env.CRATE_SMOKE_ADMIN_TOKEN || '').trim();
@@ -2846,6 +2847,127 @@ async function runBrowserSmoke() {
   }
 }
 
+async function runViewportBuildCityProbe(label, options) {
+  const executablePath = resolveChromeExecutable();
+  const browser = await chromium.launch({
+    headless,
+    executablePath,
+    channel: executablePath ? undefined : 'chrome',
+    args: [
+      '--disable-dev-shm-usage',
+      '--autoplay-policy=no-user-gesture-required',
+    ],
+  });
+
+  const badConsole = [];
+  const pageErrors = [];
+  const badAssetResponses = [];
+
+  try {
+    const context = await browser.newContext({
+      viewport: { width: options.width, height: options.height },
+      deviceScaleFactor: options.deviceScaleFactor || 1,
+      isMobile: options.isMobile === true,
+      hasTouch: options.hasTouch === true,
+      serviceWorkers: 'block',
+    });
+
+    if (forcedAssetBaseUrl) {
+      await context.addInitScript((assetBaseUrl) => {
+        window.CRATESHIP_ASSET_BASE_URL = assetBaseUrl;
+        try {
+          window.localStorage.setItem('crate_asset_base_url', assetBaseUrl);
+        } catch {}
+      }, forcedAssetBaseUrl);
+    }
+
+    const page = await context.newPage();
+    page.on('console', (message) => {
+      const text = summarizeConsoleMessage(message);
+      if (
+        message.type() === 'error' ||
+        /RGBELoader|Couldn't load texture|Error creating WebGL|Engine error|ReferenceError|TypeError|SyntaxError/i.test(text)
+      ) {
+        badConsole.push(text);
+      }
+    });
+    page.on('pageerror', (error) => pageErrors.push(error.stack || error.message));
+    page.on('response', (response) => {
+      const url = response.url();
+      if ((url.includes('/models/') || url.includes('/textures/')) && response.status() >= 400) {
+        badAssetResponses.push(`${response.status()} ${url}`);
+      }
+    });
+
+    const probeUrl = `${baseUrl}/play?verify=${encodeURIComponent(`${verify}-${label}`)}`;
+    await page.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    await page.waitForFunction(
+      () => window._engineReady === true && window._engineBridge && window._crateAssetUrl && document.querySelector('#game-builder-panel'),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.waitForSelector('#prompt-input', { timeout: timeoutMs });
+    await page.locator('#prompt-input').fill('build city', { timeout: timeoutMs });
+    await page.locator('#prompt-input').press('Enter', { timeout: timeoutMs });
+    await page.waitForFunction(
+      () => (window._engineBridge?.objects?.length || window._sceneObjects?.length || 0) >= 100,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    await page.evaluate(() => {
+      if (Array.isArray(window._crateFrameProfile?.samples)) window._crateFrameProfile.samples.length = 0;
+    });
+    const state = await page.waitForFunction(
+      () => {
+        const profile = window._crateFrameProfile || {};
+        const samples = Array.isArray(profile.samples) ? profile.samples : [];
+        const renderer = window._renderer;
+        const render = renderer?.info?.render || {};
+        if (samples.length < 45 || !render.calls || !render.triangles) return null;
+        return {
+          samples: samples.length,
+          fps: Number(profile.fps) || 0,
+          avgFrameMs: Number(profile.avgFrameMs) || 0,
+          worstFrameMs: Number(profile.worstFrameMs) || 0,
+          avgUpdateMs: Number(profile.avgUpdateMs) || 0,
+          avgRenderMs: Number(profile.avgRenderMs) || 0,
+          calls: Number(render.calls) || 0,
+          triangles: Number(render.triangles) || 0,
+          objects: window._engineBridge?.objects?.length || window._sceneObjects?.length || 0,
+          mode: window._currentMode || '',
+          devicePixelRatio: Number(window.devicePixelRatio) || 0,
+          rendererPixelRatio: Number(renderer?.getPixelRatio?.()) || 0,
+          rendererBudget: window._crateRendererBudget || null,
+          mobileControls: !!document.querySelector('#mobile-controls'),
+          canvasWidth: renderer?.domElement?.width || 0,
+          canvasHeight: renderer?.domElement?.height || 0,
+          canvasClientWidth: renderer?.domElement?.clientWidth || 0,
+          canvasClientHeight: renderer?.domElement?.clientHeight || 0,
+        };
+      },
+      undefined,
+      { timeout: timeoutMs }
+    ).then((handle) => handle.jsonValue());
+
+    if (pageErrors.length) throw new Error(`${label} viewport page errors:\n${pageErrors.join('\n')}`);
+    if (badAssetResponses.length) throw new Error(`${label} viewport bad model/texture responses:\n${badAssetResponses.join('\n')}`);
+    if (badConsole.length) throw new Error(`${label} viewport console smoke failures:\n${badConsole.join('\n')}`);
+    if (state.avgFrameMs <= 0 || state.avgFrameMs > (options.maxFrameMs || 40) || state.calls > (options.maxCalls || 900) || state.triangles > (options.maxTriangles || 750000) || state.objects < 100 || state.mode !== 'edit') {
+      throw new Error(`${label} viewport Build City performance failed: ${JSON.stringify(state)}`);
+    }
+    if (options.hasTouch && !state.mobileControls) {
+      throw new Error(`${label} viewport did not initialize mobile controls: ${JSON.stringify(state)}`);
+    }
+    if (!state.rendererBudget || state.rendererPixelRatio > (options.maxPixelRatio || 1.25)) {
+      throw new Error(`${label} viewport renderer pixel budget was not enforced: ${JSON.stringify(state)}`);
+    }
+
+    return { label, ...state };
+  } finally {
+    await browser.close();
+  }
+}
+
 const play = await checkPlayHtml();
 const assetBaseUrl = play.assetBaseUrl;
 const assetManifest = await checkAssetManifest(assetBaseUrl);
@@ -2862,6 +2984,26 @@ const httpChecks = [
   await checkHttp('/models/__definitely_missing__.glb', 404, '', assetBaseUrl),
 ];
 const browserState = await runBrowserSmoke();
+const viewportProbeStates = viewportProbeEnabled ? [
+  await runViewportBuildCityProbe('phone', {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+    maxFrameMs: 40,
+    maxPixelRatio: 1.25,
+  }),
+  await runViewportBuildCityProbe('tablet', {
+    width: 820,
+    height: 1180,
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    maxFrameMs: 40,
+    maxPixelRatio: 1,
+  }),
+] : [];
 
 console.log('Production smoke passed.');
 console.log(`URL: ${playUrl}`);
@@ -2872,6 +3014,9 @@ console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.asset
 console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
 console.log(`Raw Build City frame probe: ${browserState.rawBuildCityFps || 0} FPS, ${browserState.rawBuildCityFrameMs || 0} ms avg, ${browserState.rawBuildCityUpdateMs || 0} ms update, ${browserState.rawBuildCityRenderMs || 0} ms render, ${browserState.rawBuildCityCalls || 0} calls, ${browserState.rawBuildCityTriangles || 0} tris, ${browserState.rawBuildCitySamples || 0} samples`);
+for (const probeState of viewportProbeStates) {
+  console.log(`Viewport ${probeState.label}: ${probeState.fps || 0} FPS, ${probeState.avgFrameMs || 0} ms avg, ${probeState.calls || 0} calls, ${probeState.triangles || 0} tris, DPR ${probeState.devicePixelRatio || 0}->${probeState.rendererPixelRatio || 0}, canvas ${probeState.canvasWidth || 0}x${probeState.canvasHeight || 0}, mobile controls ${probeState.mobileControls ? 'ready' : 'missing'}`);
+}
 console.log(`City performance profile: ${browserState.cityPerformanceProfile || 'missing'} (procedural props ${browserState.cityPerformanceProceduralProps ? 'on' : 'off'}, vehicles ${browserState.cityPerformanceProceduralVehicles ? 'on' : 'off'}, nature ${browserState.cityPerformanceProceduralNature ? 'on' : 'off'}, renderer ${browserState.rendererCalls || 0} calls/${browserState.rendererTriangles || 0} tris)`);
 console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);
 console.log(`Validation fixes: ${(browserState.validationFixActions || []).join(', ') || 'none'} (${browserState.validationFixColliderCount || 0} colliders, undo restored ${browserState.validationFixUndoRestoredObjects || 0})`);
