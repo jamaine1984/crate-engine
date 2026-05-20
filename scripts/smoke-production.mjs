@@ -1940,6 +1940,12 @@ async function runBrowserSmoke() {
           document.querySelector('#gb-stats')?.getAttribute('aria-label') ||
           document.querySelector('#gb-stats')?.textContent?.trim() || '',
         hasInspector: !!document.querySelector('#gb-inspector'),
+        hasInspectorHealth: !!document.querySelector('#gb-object-health'),
+        inspectorHealthStatus: document.querySelector('#gb-object-health')?.dataset.status || '',
+        inspectorHealthSummary: document.querySelector('#gb-object-health')?.dataset.summary || '',
+        inspectorHealthComponents: Number(document.querySelector('#gb-object-health')?.dataset.components) || 0,
+        inspectorHealthIssues: Number(document.querySelector('#gb-object-health')?.dataset.issues) || 0,
+        inspectorMetricCount: document.querySelectorAll('#gb-object-health .gb-object-metric').length,
         hasBlueprints: !!document.querySelector('#gb-blueprints'),
         hasProject: !!document.querySelector('#gb-project'),
         hasAssetPack: !!document.querySelector('#gb-asset-pack'),
@@ -2240,6 +2246,9 @@ async function runBrowserSmoke() {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
     if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Systems, Inspector, or Blueprints section was missing');
+    if (!state.hasInspectorHealth || state.inspectorHealthStatus !== 'ready' || state.inspectorHealthComponents < 10 || state.inspectorMetricCount < 3 || state.inspectorHealthIssues !== 0) {
+      throw new Error(`Game Builder inspector health did not report the selected gameplay object as ready: ${JSON.stringify(state)}`);
+    }
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
       throw new Error(`Asset Pack diagnostics did not load the production manifest: ${JSON.stringify(state)}`);
     }
@@ -2516,6 +2525,7 @@ console.log(`Objects: ${browserState.objectCount}`);
 console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);
 console.log(`Mode: ${browserState.mode}`);
+console.log(`Inspector health: ${browserState.inspectorHealthStatus || 'missing'} (${browserState.inspectorHealthComponents || 0} components, ${browserState.inspectorMetricCount || 0} metrics)`);
 console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`);
 console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
 console.log(`Scripts: ${browserState.scriptCount}`);

@@ -2612,6 +2612,116 @@ function formatComponentList(obj) {
   return components.length ? components.join(', ') : 'No components';
 }
 
+function formatNumberShort(value) {
+  const number = Math.max(0, Math.round(Number(value) || 0));
+  if (number >= 1000000) return Math.round(number / 100000) / 10 + 'm';
+  if (number >= 1000) return Math.round(number / 100) / 10 + 'k';
+  return String(number);
+}
+
+function countRenderableStats(obj) {
+  const stats = { meshes: 0, materials: 0, triangles: 0 };
+  const materials = new Set();
+  const visit = (node) => {
+    if (!node || !node.isMesh) return;
+    stats.meshes += 1;
+    const materialList = Array.isArray(node.material) ? node.material : [node.material];
+    materialList.filter(Boolean).forEach((material) => materials.add(material.uuid || material.name || material));
+    const geometry = node.geometry || {};
+    const positionCount = Number(geometry.attributes?.position?.count) || 0;
+    const indexCount = Number(geometry.index?.count) || 0;
+    stats.triangles += Math.floor((indexCount || positionCount) / 3);
+  };
+  if (typeof obj?.traverse === 'function') obj.traverse(visit);
+  else visit(obj);
+  stats.materials = materials.size;
+  return stats;
+}
+
+function getObjectAssetSource(obj) {
+  const data = obj?.userData || {};
+  return data.assetPath || data.modelPath || data.modelUrl || data.url || data.src || data.source || data.path || '';
+}
+
+function collectObjectHealth(obj) {
+  const components = obj?.userData?.gbComponents || {};
+  const componentNames = Object.keys(components);
+  const allCounts = countComponents(getSceneObjects()).byType || {};
+  const issues = [];
+  if (components.triggerZone && !allCounts.door) issues.push('Trigger needs a door');
+  if (components.door && !allCounts.triggerZone) issues.push('Door needs a trigger');
+  if ((components.missionReward || components.missionGate) && !allCounts.missionStep) issues.push('Mission link needs a step');
+  if (components.waveController && !allCounts.enemySpawn) issues.push('Wave needs an enemy spawn');
+  if (components.enemySpawn && !allCounts.waveController) issues.push('Enemy spawn needs a wave');
+  const renderStats = countRenderableStats(obj);
+  const status = componentNames.length ? (issues.length ? 'warn' : 'ready') : 'empty';
+  const summary = status === 'ready'
+    ? componentNames.length + ' components ready'
+    : status === 'warn'
+      ? issues.length + ' setup issue' + (issues.length === 1 ? '' : 's')
+      : 'No gameplay components';
+  return {
+    status,
+    summary,
+    componentNames,
+    issues,
+    renderStats,
+    interactable: obj?.userData?.interactable === true,
+    interactLabel: obj?.userData?.interactLabel || '',
+    assetSource: getObjectAssetSource(obj),
+  };
+}
+
+function createObjectMetric(label, value) {
+  const row = document.createElement('div');
+  row.className = 'gb-object-metric';
+  row.append(createTextElement('span', '', label), createTextElement('strong', '', value));
+  return row;
+}
+
+function renderObjectHealth(health) {
+  const panel = document.createElement('div');
+  panel.id = 'gb-object-health';
+  panel.className = 'gb-object-health';
+  panel.dataset.status = health.status;
+  panel.dataset.summary = health.summary;
+  panel.dataset.components = String(health.componentNames.length);
+  panel.dataset.issues = String(health.issues.length);
+
+  const head = document.createElement('div');
+  head.className = 'gb-object-health-head';
+  head.append(createTextElement('strong', '', health.status === 'ready' ? 'Ready for Play' : health.status === 'warn' ? 'Needs links' : 'No gameplay yet'), createTextElement('span', '', health.summary));
+
+  const metrics = document.createElement('div');
+  metrics.className = 'gb-object-metrics';
+  metrics.append(
+    createObjectMetric('Meshes', formatNumberShort(health.renderStats.meshes)),
+    createObjectMetric('Tris', formatNumberShort(health.renderStats.triangles)),
+    createObjectMetric('Materials', formatNumberShort(health.renderStats.materials))
+  );
+
+  const chips = document.createElement('div');
+  chips.className = 'gb-component-chips';
+  const labels = health.componentNames.length ? health.componentNames.map(formatComponentLabel) : ['Add component'];
+  labels.slice(0, 8).forEach((label) => chips.appendChild(createTextElement('span', '', label)));
+  if (labels.length > 8) chips.appendChild(createTextElement('span', '', '+' + (labels.length - 8)));
+
+  panel.append(head, metrics, chips);
+  if (health.interactable || health.interactLabel) {
+    panel.appendChild(createTextElement('div', 'gb-health-detail', 'Interact: ' + (health.interactLabel || 'Enabled')));
+  }
+  if (health.assetSource) {
+    panel.appendChild(createTextElement('div', 'gb-health-detail', 'Asset: ' + shortAssetValue(health.assetSource)));
+  }
+  if (health.issues.length) {
+    const issueList = document.createElement('div');
+    issueList.className = 'gb-health-issues';
+    health.issues.slice(0, 4).forEach((issue) => issueList.appendChild(createTextElement('span', '', issue)));
+    panel.appendChild(issueList);
+  }
+  return panel;
+}
+
 function createTextElement(tag, className, text) {
   const el = document.createElement(tag);
   if (className) el.className = className;
@@ -2767,6 +2877,7 @@ function renderInspector(options = {}) {
   if (!options.force && document.activeElement?.closest?.('#gb-inspector')) return;
   const target = getTargetObject();
   const edit = isEditMode();
+  const objectHealth = target ? collectObjectHealth(target) : null;
   const signature = target ? [
     edit ? 'edit' : 'readonly',
     target.uuid || target.id || 'object',
@@ -2777,6 +2888,7 @@ function renderInspector(options = {}) {
     target.rotation?.y?.toFixed(2),
     target.scale?.x?.toFixed(2),
     JSON.stringify(target.userData?.gbComponents || {}),
+    JSON.stringify(objectHealth),
   ].join('|') : 'empty';
   if (signature === lastInspectorSignature) return;
   lastInspectorSignature = signature;
@@ -2797,6 +2909,7 @@ function renderInspector(options = {}) {
   const meta = createTextElement('span', '', formatPosition(target));
   summary.append(title, meta);
   inspector.appendChild(summary);
+  inspector.appendChild(renderObjectHealth(objectHealth));
 
   inspector.appendChild(createField('Name', createTextInput(getObjectName(target, 0), (next) => {
     target.userData.name = next || getObjectName(target, 0);
@@ -3058,6 +3171,21 @@ function mount() {
     .gb-inspector-summary{display:flex;flex-direction:column;gap:2px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
     .gb-inspector-summary strong{font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-inspector-summary span{font-size:10px;color:#8d979e;line-height:14px}
+    .gb-object-health{display:flex;flex-direction:column;gap:7px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
+    .gb-object-health[data-status="ready"]{border-color:#2f6f44;background:#101a13}
+    .gb-object-health[data-status="warn"]{border-color:#725a21;background:#1c1710}
+    .gb-object-health-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .gb-object-health-head strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:nowrap}
+    .gb-object-health-head span{font-size:10px;line-height:14px;color:#8d979e;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-object-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+    .gb-object-metric{display:flex;flex-direction:column;gap:2px;border:1px solid #20262a;background:#0d0f10;border-radius:6px;padding:5px 6px;min-width:0}
+    .gb-object-metric span{font-size:9px;line-height:12px;color:#7f8b92;white-space:nowrap}
+    .gb-object-metric strong{font-size:11px;line-height:14px;color:#dfe6ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-component-chips{display:flex;flex-wrap:wrap;gap:5px}
+    .gb-component-chips span{border:1px solid #263138;background:#0d1012;border-radius:999px;padding:3px 6px;font-size:10px;line-height:13px;color:#aeb7bd;max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-health-detail{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gb-health-issues{display:flex;flex-direction:column;gap:4px}
+    .gb-health-issues span{font-size:10px;line-height:14px;color:#f0c36d}
     .gb-field{display:flex;flex-direction:column;gap:4px;font-size:10px;line-height:12px;color:#8d979e}
     .gb-field input{min-width:0;height:28px;border:1px solid #2a3237;background:#0b0d0e;color:#eef2f3;border-radius:6px;padding:0 7px;font:inherit;font-size:12px}
     .gb-field input:focus{outline:1px solid #d9572b;border-color:#d9572b}
