@@ -268,7 +268,7 @@ window._userScripts = window._userScripts || [];
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { installAssetFetchPipeline, installAssetPipeline } from './asset-url.mjs';
+import { installAssetFetchPipeline, installAssetPipeline, resolveAssetUrl } from './asset-url.mjs';
 
 // ═══ POST-PROCESSING — Lazy loaded to prevent boot crashes ═══
 let EffectComposer, RenderPass, UnrealBloomPass, SMAAPass, ShaderPass, OutputPass, SSAOPass, HDRLoader, BokehPass;
@@ -1004,6 +1004,7 @@ function syncAssetBrowserModule(mod = assetBrowserModule) {
     getCharacterCount: async () => (await loadCharacterGalleryModule()).getCharacterLibrary().length,
     showCharacterGallery: () => showCharacterGallery(),
     getGltfLoader: () => gltfLoader,
+    resolveAssetUrl: (url) => resolveAssetUrl(url),
     showToast: (msg, duration) => showToast(msg, duration),
   });
 }
@@ -1560,6 +1561,24 @@ const playKeys = {};
 const playSpeed = 8;
 let playYaw = 0;
 
+function syncPlayCameraFromCurrentView() {
+  if (!camera) return;
+  camera.up.set(0, 1, 0);
+  const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+  playYaw = euler.y;
+  const pitch = THREE.MathUtils.clamp(euler.x, -Math.PI / 2.2, Math.PI / 2.2);
+  camera.rotation.set(pitch, playYaw, 0, 'YXZ');
+  camera.updateMatrixWorld();
+}
+
+function lockPlayCameraRoll() {
+  if (!playMode || activeVehicle) return;
+  if (characterController && characterController.model) return;
+  camera.rotation.order = 'YXZ';
+  camera.rotation.z = 0;
+  camera.up.set(0, 1, 0);
+}
+
 window.addEventListener('keydown', e => { playKeys[e.key.toLowerCase()] = true; });
 window.addEventListener('keyup', e => { playKeys[e.key.toLowerCase()] = false; });
 
@@ -1696,14 +1715,11 @@ function _activatePlayMode() {
   // ALWAYS start in camera mode — user spawns NPC when ready
   if (characterController) characterController._cameraOnlyMode = true;
   
-  // Enable smooth orbit controls (like editor but faster)
+  // Play mode owns camera input. Keep editor orbit controls off so scroll/drag cannot tilt the world.
   try { 
-    controls.enabled = true;
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.1;
-    controls.rotateSpeed = 0.8;
-    controls.zoomSpeed = 1.5;
-    controls.panSpeed = 1.0;
+    syncPlayCameraFromCurrentView();
+    controls.enabled = false;
+    controls.enableDamping = false;
   } catch(e) {}
   
   // Camera mode — no character spawn needed
@@ -1761,11 +1777,11 @@ function _activatePlayMode() {
   
   // Camera defaults set when user spawns a character
   
-  // Camera mode — no pointer lock needed, orbit controls handle it
+  // Camera mode uses pointer lock for mouse look.
   
   // Disable post-processing for play mode FPS
   window._composerDisabled = true;
-  showToast('🎮 Play mode ON! (fast mode)');
+  showToast('🎮 Play mode ON! Click the viewport for mouse look.');
 }
 
 function exitPlayMode(nextMode = 'edit') {
@@ -1778,8 +1794,13 @@ function exitPlayMode(nextMode = 'edit') {
   ['fps-counter','char-select-btn','click-to-play','city-minimap','rain-overlay'].forEach(id => {
     const el = document.getElementById(id); if (el) el.remove();
   });
-  // Re-enable orbit controls
-  try { controls.enabled = true; controls.update(); } catch(e) {}
+  // Re-enable editor orbit controls
+  try {
+    controls.enabled = true;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.update();
+  } catch(e) {}
   // Show editor UI
   _showEditorUI();
   showToast(_currentMode === 'explore' ? 'Explore mode - camera only' : 'Back to editor mode');
@@ -1806,6 +1827,7 @@ function updatePlayMode(dt) {
   if (!playMode) return;
   // Don't move camera independently when character controller is active
   if (characterController && characterController.model) return;
+  lockPlayCameraRoll();
   const speed = playSpeed * dt;
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -1854,6 +1876,8 @@ setTimeout(() => {
         camera.rotation.order = 'YXZ';
         camera.rotation.y = playYaw;
         camera.rotation.x = pitch;
+        camera.rotation.z = 0;
+        camera.up.set(0, 1, 0);
       }
     });
   }
@@ -2212,9 +2236,13 @@ window.damagePlayer = damagePlayer;
 // === CAMERA SCROLL ZOOM (v218) ===
 document.addEventListener('wheel', function(e) {
   if (!playMode || activeVehicle) return;
-  if (window._cameraDistance === undefined) window._cameraDistance = 5;
-  window._cameraDistance = Math.max(1.5, Math.min(12, window._cameraDistance + e.deltaY * 0.005));
-}, { passive: true });
+  e.preventDefault();
+  e.stopPropagation();
+  if (characterController && characterController.model) {
+    if (window._cameraDistance === undefined) window._cameraDistance = 5;
+    window._cameraDistance = Math.max(1.5, Math.min(12, window._cameraDistance + e.deltaY * 0.005));
+  }
+}, { passive: false, capture: true });
 
 // === OBJECT COUNTER HUD (v218) ===
 function updateObjectCounter() {

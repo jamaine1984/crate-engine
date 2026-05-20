@@ -5,6 +5,7 @@ let context = {
   getCharacterCount: async () => 0,
   showCharacterGallery: () => Promise.resolve(null),
   getGltfLoader: () => null,
+  resolveAssetUrl: (url) => url,
   showToast: () => {},
 };
 
@@ -29,6 +30,20 @@ const CAT_META = {
 };
 
 let thumbRenderer = null;
+
+function normalizeModelUrl(file) {
+  const raw = String(file || '').trim();
+  if (!raw) return '';
+  if (/^(?:https?:|data:|blob:)/i.test(raw)) return raw;
+  if (/^\/?models\//i.test(raw)) return raw.startsWith('/') ? raw : '/' + raw;
+  if (raw.startsWith('/')) return raw;
+  return '/models/' + (raw.endsWith('.glb') ? raw : raw + '.glb');
+}
+
+function resolveModelUrl(file) {
+  const normalized = normalizeModelUrl(file);
+  return context.resolveAssetUrl?.(normalized) || window._crateAssetUrl?.(normalized) || normalized;
+}
 
 export function setAssetBrowserContext(nextContext = {}) {
   context = { ...context, ...nextContext };
@@ -65,7 +80,7 @@ function renderThumb(file, container) {
   light.position.set(2, 4, 3);
   scene.add(light);
 
-  loader.load('/models/' + (file.endsWith('.glb') ? file : file + '.glb'), (gltf) => {
+  loader.load(resolveModelUrl(file), (gltf) => {
     const model = gltf.scene;
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
@@ -99,6 +114,9 @@ function renderThumb(file, container) {
       }
     });
   }, undefined, () => {
+    container.title = 'Preview unavailable';
+    container.style.fontSize = '11px';
+    container.style.padding = '10px';
     container.textContent = '❌';
   });
 }
@@ -175,6 +193,9 @@ export function showGallery(category, options = {}) {
 
       pageItems.forEach((item) => {
         const card = document.createElement('div');
+        card.className = 'asset-gallery-card';
+        card.dataset.assetFile = item.file || '';
+        card.dataset.assetPath = item.path || '';
         card.style.cssText = 'background:#111;border:2px solid transparent;border-radius:10px;overflow:hidden;cursor:pointer;transition:all 0.2s;';
         card.onmouseenter = () => {
           card.style.borderColor = meta.color;

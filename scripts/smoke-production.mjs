@@ -179,6 +179,37 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     );
 
+    const clippedBuilderLabels = await page.evaluate(() => {
+      const targets = [
+        ...document.querySelectorAll('#gb-systems .gb-system-info span,#gb-systems .gb-system-info strong,#gb-systems .gb-system-badge'),
+        ...document.querySelectorAll('#gb-readiness-status strong,#gb-performance-status strong,#gb-validation-status strong'),
+      ];
+      return targets
+        .filter((el) => {
+          const rect = el.getBoundingClientRect();
+          const style = getComputedStyle(el);
+          return rect.width > 0 &&
+            rect.height > 0 &&
+            rect.bottom > 0 &&
+            rect.top < window.innerHeight &&
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1);
+        })
+        .map((el) => ({
+          text: (el.textContent || '').trim().slice(0, 90),
+          className: String(el.className || ''),
+          width: el.clientWidth,
+          scrollWidth: el.scrollWidth,
+          height: el.clientHeight,
+          scrollHeight: el.scrollHeight,
+        }))
+        .slice(0, 8);
+    });
+    if (clippedBuilderLabels.length) {
+      throw new Error(`Visible Game Builder labels are clipped: ${JSON.stringify(clippedBuilderLabels)}`);
+    }
+
     const projectControls = await page.evaluate(() => ({
       hasProject: !!document.querySelector('#gb-project'),
       actions: [...document.querySelectorAll('#gb-project button[data-gb-action]')].map((button) => button.dataset.gbAction),
@@ -1821,6 +1852,7 @@ async function runBrowserSmoke() {
       browserPlayHidden: document.querySelector('#model-browser-button')?.dataset.playHidden || '',
       promptDisplay: document.querySelector('#prompt-input')?.parentElement?.style.display || '',
       legacyInspectorDisplay: document.querySelector('#inspector')?.style.display || '',
+      controlsEnabled: window._engine?.controls?.enabled,
     }));
     if (playState.builderDisplay !== 'none' || playState.builderPlayHidden !== 'true') {
       throw new Error(`Play mode did not hide Game Builder: ${JSON.stringify(playState)}`);
@@ -1833,6 +1865,30 @@ async function runBrowserSmoke() {
     }
     if (playState.legacyInspectorDisplay === 'flex') {
       throw new Error('Play mode left the legacy object inspector visible');
+    }
+    if (playState.controlsEnabled !== false) {
+      throw new Error(`Play mode left editor OrbitControls enabled: ${JSON.stringify(playState)}`);
+    }
+
+    const playCameraBefore = await page.evaluate(() => ({
+      x: window._engine?.camera?.rotation.x || 0,
+      y: window._engine?.camera?.rotation.y || 0,
+      z: window._engine?.camera?.rotation.z || 0,
+    }));
+    await page.mouse.move(700, 470);
+    await page.mouse.wheel(0, 700);
+    await page.mouse.down({ button: 'left' });
+    await page.mouse.move(930, 590, { steps: 8 });
+    await page.mouse.up({ button: 'left' });
+    await page.waitForTimeout(400);
+    const playCameraAfter = await page.evaluate(() => ({
+      x: window._engine?.camera?.rotation.x || 0,
+      y: window._engine?.camera?.rotation.y || 0,
+      z: window._engine?.camera?.rotation.z || 0,
+      controlsEnabled: window._engine?.controls?.enabled,
+    }));
+    if (Math.abs(playCameraAfter.z) > 0.02 || playCameraAfter.controlsEnabled !== false) {
+      throw new Error(`Play camera scroll/drag introduced roll or re-enabled orbit controls: ${JSON.stringify({ before: playCameraBefore, after: playCameraAfter })}`);
     }
     const bridgePlaySelectState = await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
