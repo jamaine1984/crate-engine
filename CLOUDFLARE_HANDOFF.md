@@ -13,6 +13,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Cloudflare account email: `koikes2021@gmail.com`
 - Cloudflare account ID: `6573d98c25150fd7b4602e56a0926767`
 - Custom domain: `crateshipgames.com`
+- `www` hostname: `www.crateshipgames.com` is associated with the `crateship-games` Pages project but is pending DNS. Create a DNS `CNAME` record named `www` pointing to `crateship-games.pages.dev`, then retry validation if needed.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
 - Current deployed source commit for the public engine code: `a07c194e`
@@ -2196,6 +2197,12 @@ Browser verification history:
   bundle.
 - Use live browser/network checks after deploy. The user explicitly wants the
   real Cloudflare website updated, not a local-only preview.
+- `www.crateshipgames.com` was added to the `crateship-games` Pages project on
+  2026-05-20 through the Cloudflare Pages domains API. The local Wrangler OAuth
+  token has `pages:write` and `zone:read`, but not DNS edit access, so the
+  required `www` DNS record could not be created from Codex. Until DNS is added,
+  `Resolve-DnsName www.crateshipgames.com` returns `DNS name does not exist` and
+  the Pages custom domain remains `pending`.
 
 ## Git State After This Pass
 
