@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `966f49ec`
+- Current deployed source commit for the public engine code: `ded2a368`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -28,13 +28,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `8bb1604a-09bf-4ce7-af68-81380dae5c66`
-- Latest production deployment URL: `https://8bb1604a.crateship-games.pages.dev`
+- Latest production deployment ID: `8ef07d4e-230c-4e8b-a054-6cc2380f4718`
+- Latest production deployment URL: `https://8ef07d4e.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `966f49e`
-- Main live page bundle after the deploy: `/assets/play-DmEADF1c.js`
-- Lazy App Builder chunk after the deploy: `/assets/app-builder-DxV98xDK.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-CZs6NKSQ.js`
+- Source shown by Cloudflare: `ded2a36`
+- Main live page bundle after the deploy: `/assets/play-C3NW8f4Y.js`
+- Lazy App Builder chunk after the deploy: `/assets/app-builder-Dd7P-lAB.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-DTRJCIV-.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -1010,6 +1010,46 @@ Follow-up production deploys on 2026-05-19 surfaced audit storage verification i
   - D1 row count after deploy remained `0`.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-storage-cb419225.png`.
 
+Follow-up production deploys on 2026-05-20 added frame-budget probes and fixed Build City steady-state performance:
+
+- `engine.mjs`
+  - Added `window._crateFrameProfile` with sampled frame time, update time, render time, FPS, draw calls, triangles, and object counts.
+  - Scheduled heavy editor/runtime updates differently in Edit, Explore, and Play so non-play modes do less per-frame work.
+  - Moved smart traffic out from the FPS-counter-only block, then guarded it so it skips simpler city-builder traffic cars that do not use smart `direction` vectors.
+  - Kept programmatic object selection blocked outside Edit mode unless explicitly forced.
+- `city-builder.mjs`
+  - Added static procedural proxy batching with `THREE.InstancedMesh` for repeated balanced-profile props such as lamps, signs, fences, trees, flowers, barrels, and parked proxy vehicles.
+  - Left animated traffic lights and moving vehicles as separate objects so their state and animation remain editable/testable.
+- `game-builder-ui.mjs`
+  - Performance diagnostics now read the engine frame profile and show update/render loop timing.
+- `scripts/smoke-production.mjs`
+  - Added a raw Build City frame probe that resets frame samples after `build city`, reads live renderer counters directly, and fails if draw calls/triangles exceed the production budget.
+  - Added Explore/Play bridge-selection checks so programmatic selection cannot mutate editor state outside Edit.
+  - Added concise Door/Trigger timeout diagnostics that report runtime/component/frame state without dumping large frame arrays.
+- Superseded app deployment `0adaaa21-4db8-47f3-a8c1-d3688b361f62`
+  - Source `4e9eb4a`; bundle `/assets/play-DZRofMvR.js`.
+  - Added the first frame-profile/raw-probe pass.
+  - Production smoke failed after entering Play because the newly un-gated smart traffic loop hit city-builder cars without `direction.clone()`.
+- Superseded app deployment `eb3288a3-8e9d-4616-a4c6-ee88f2f244ee`
+  - Source `e7cd940`; bundle `/assets/play-BDVa3m9_.js`.
+  - Kept component runtime metadata refreshed outside Play and made Spin/Float mutate only in Play.
+  - Production smoke still failed on the same Play-frame smart traffic crash.
+- Superseded app deployment `02a96039-11ac-4e53-81d6-1d71e5db5abd`
+  - Source `913384b`; bundle `/assets/play-Byn16iFg.js`.
+  - Fixed the smart traffic crash by skipping non-smart city-builder traffic entries.
+  - Production smoke reached the gameplay/runtime checks but failed the new raw Build City budget with about `1,120` immediate draw calls.
+- Final app deployment `8ef07d4e-230c-4e8b-a054-6cc2380f4718`
+  - Source `ded2a36`; bundle `/assets/play-C3NW8f4Y.js`.
+  - Was staged with `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and did include `admin.html` and `play.html`.
+  - The app-only deploy uploaded `8` changed files, reused `103` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `node --check engine.mjs`, `node --check city-builder.mjs`, `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Production smoke verified `Performance: ready (71.4 FPS, 14 ms, 73 calls, 4932 tris)`.
+  - Production smoke verified raw Build City frame budget: `20.1 FPS`, `49.7 ms` average, `742` calls, `286,222` triangles, `45` samples.
+  - Production smoke verified `Readiness: Ready to test, 192 objects, 2 scripts, 40 components, Edit mode`.
+  - Production smoke verified project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
+  - Remote D1 `moderation_audit` row count after deploy remained `0`.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-city-batch-ded2a368.png`.
+
 ## Deploy Workflow
 
 Run these from the repo:
@@ -1019,7 +1059,7 @@ cd C:\Users\koike\Downloads\crate-engine-web-latest
 npm run check
 npm run check:assets
 npm run build
-npx wrangler pages functions build functions --build-output-directory dist --outdir .wrangler\functions-build --output-routes-path .wrangler\functions-routes.json --compatibility-date 2026-05-19
+npx wrangler pages functions build
 $env:CRATE_DEPLOY_INCLUDE_ASSETS='false'
 npm run prepare:deploy
 npx wrangler pages deploy .deploy `
@@ -1176,6 +1216,7 @@ Recovered model cache summary:
 - Marketplace filters deploy skipped bundled `/models` and `/textures`, uploaded `1` changed file, reused `104` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 - Published-game detail-pages deploy skipped bundled `/models` and `/textures`, uploaded `3` changed files, reused `104` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 - Published-game discovery-rails deploy skipped bundled `/models` and `/textures`, uploaded `1` changed file, reused `106` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+- Frame-budget and city-batching deploys skipped bundled `/models` and `/textures`; the final `ded2a368` app-only deploy uploaded `8` changed files, reused `103` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
 
 Critical city assets verified after deploy:
 
@@ -1231,7 +1272,7 @@ Expected current results:
 
 - `npm run check:assets` passes from this app-only checkout by validating `114` remote asset URLs and `107` catalog references against `https://crateship-games-assets.pages.dev`.
 - `npm run smoke:production` passes against `https://crateshipgames.com/play` and reports `Asset base: https://crateship-games-assets.pages.dev` plus `Asset manifest: 6f09cc09da2f`.
-- `/play` references `/assets/play-ovN8zwhf.js`.
+- `/play` references `/assets/play-C3NW8f4Y.js`.
 - `/play` includes `<meta name="crate-asset-base" content="https://crateship-games-assets.pages.dev">`.
 - `/asset-manifest.json` returns `200 OK`, `application/json`, and `Cache-Control: no-store`.
 - Existing `.glb` models return `200 OK` and `model/gltf-binary` on the asset host.
@@ -1246,13 +1287,16 @@ Expected current results:
 - The served play bundle contains `data-gb-edit-only`, `gb-readonly-note`, and the forced inspector refresh used by the Edit/Explore/Play lock.
 - Explore mode disables Game Builder mutation controls, and forced clicks on those disabled controls do not change object count, selection, or components.
 - The served play bundle contains `gb-project`, `data-gb-action="import"`, `data-gb-action="export"`, and the project Save/Load modal IDs used by smoke tests.
-- The Game Builder stats summary reads with clear separators, for example `411 objects, 9 components, 2 scripts, Edit mode`.
-- The served play bundle contains `gb-readiness`, `window._gameBuilderReadiness`, and readiness smoke output like `Ready to test, 411 objects, 2 scripts, 9 components, Edit mode`.
+- The Game Builder stats summary reads with clear separators, for example `192 objects, 40 components, 2 scripts, Edit mode`.
+- The served play bundle contains `gb-readiness`, `window._gameBuilderReadiness`, and readiness smoke output like `Ready to test, 192 objects, 2 scripts, 40 components, Edit mode`.
+- The served play bundle contains `window._crateFrameProfile`, and production smoke verifies both the Game Builder Performance panel and the raw Build City frame budget.
+- Current production smoke reports the settled Performance panel as `71.4 FPS`, `14 ms`, `73` calls, and `4,932` triangles.
+- Current production smoke reports raw Build City as `20.1 FPS`, `49.7 ms`, `742` calls, and `286,222` triangles.
 - The served play bundle contains `gb-systems`, `window._gameBuilderSystems`, and systems smoke output with Inventory installed, Runtime installed, Pickup tagged, Mission tagged, Reward tagged, Gate tagged, Checkpoint tagged, Win Condition tagged, Door tagged, Trigger tagged, and Spawn Point tagged.
 - The served play bundle contains `checkpoint`, `winCondition`, `spawnPoint`, `door`, `triggerZone`, `missionStep`, `missionReward`, `missionGate`, and Component Runtime support for active checkpoints, active player spawns, respawns, door opening, trigger zones, mission steps, reward claims, mission gates, and game-complete/game-over states.
 - Installed scripts expose active runtime hooks through `onUpdate`, so the Component Runtime actually ticks in Play mode.
 - The production smoke forces runtime health to `0` in Play mode and expects the Spawn/Checkpoint runtime to respawn back to `100` HP.
-- The production smoke verifies Trigger opens Door in Play mode and prints `Door trigger runtime: Group trigger opened Group door`.
+- The production smoke verifies Trigger opens Door in Play mode and prints the opened door/trigger labels from the selected smoke object.
 - The production smoke verifies Mission Step grants Reward and opens Mission Gate in Play mode and prints `Mission runtime: Smoke mission step -> Smoke reward -> Smoke gate (75 score)`.
 - The Project section can save a named project, open Import, open Export, and keeps Import disabled in Explore while Export stays enabled.
 - Saved projects use `version: 3` and include object snapshots, asset paths, builder components, and installed user scripts.
@@ -2051,6 +2095,32 @@ Browser verification history:
   - `node --check city-builder.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
   - Smoke still verified build-city output, separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-nature-proxy-966f49ec.png`.
+- Superseded custom-domain verification after deployment `0adaaa21-4db8-47f3-a8c1-d3688b361f62`:
+  - Cloudflare source showed `4e9eb4a`.
+  - `/play?verify=frame-budget-4e9eb4a5` served `/assets/play-DZRofMvR.js`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures`.
+  - Smoke failed after Play mode because the newly un-gated smart traffic update tried to call `clone()` on city-builder traffic cars that do not have a smart `direction` vector.
+- Superseded custom-domain verification after deployment `eb3288a3-8e9d-4616-a4c6-ee88f2f244ee`:
+  - Cloudflare source showed `e7cd940`.
+  - `/play?verify=runtime-refresh-e7cd9404` served `/assets/play-BDVa3m9_.js`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures`.
+  - Smoke still failed on the same Play-mode smart traffic `undefined.clone` frame error.
+- Superseded custom-domain verification after deployment `02a96039-11ac-4e53-81d6-1d71e5db5abd`:
+  - Cloudflare source showed `913384b`.
+  - `/play?verify=smart-traffic-913384bb` served `/assets/play-Byn16iFg.js`.
+  - The Play-mode smart traffic crash was fixed and smoke reached the runtime checks.
+  - Smoke failed the new raw Build City performance budget with `1,120` immediate draw calls, even though later panel metrics were lower.
+- Final custom-domain verification after deployment `8ef07d4e-230c-4e8b-a054-6cc2380f4718`:
+  - Cloudflare source showed `ded2a36`.
+  - `/play?verify=city-batch-ded2a368` served `/assets/play-C3NW8f4Y.js`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and did include `admin.html` and `play.html`.
+  - `node --check engine.mjs`, `node --check city-builder.mjs`, `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified the raw Build City budget at `742` calls and `286,222` triangles.
+  - Smoke verified settled Performance panel metrics at `71.4 FPS`, `14 ms`, `73` calls, and `4,932` triangles.
+  - Smoke verified `Readiness: Ready to test, 192 objects, 2 scripts, 40 components, Edit mode`.
+  - Smoke still verified separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
+  - The remote `moderation_audit` table still has `0` rows after deploy.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-city-batch-ded2a368.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2096,6 +2166,11 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+ded2a368 Batch static city proxies
+913384bb Guard smart traffic frame updates
+e7cd9404 Keep runtime catalog refreshed outside play
+4e9eb4a5 Add frame budgets and raw city probe
+72099f40 Update handoff for city proxy deploy
 966f49ec Proxy city nature and traffic assets
 7ff1a576 Add lightweight city prop proxies
 cefcfd86 Update handoff for city performance deploy
@@ -2221,8 +2296,14 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke improved to `26.5 FPS`, `37.8 ms` average frame time,
-     `618` draw calls, and `234,312` triangles after Build City with
+   - Current live smoke reports the settled Performance panel at `71.4 FPS`,
+     `14 ms` average frame time, `73` draw calls, and `4,932` triangles after
+     project validation and proxy batching.
+   - The raw Build City probe now reports `20.1 FPS`, `49.7 ms` average frame
+     time, `742` draw calls, and `286,222` triangles immediately after city
+     generation, which is inside the current production smoke budget.
+   - The previous live smoke before static proxy batching was `26.5 FPS`,
+     `37.8 ms`, `618` draw calls, and `234,312` triangles after Build City with
      procedural props, vehicles, and nature enabled.
    - Earlier direct raw profiling before the proxy tightening showed about
      `1,706` calls and `234,042` triangles, while the pre-optimization direct
@@ -2232,9 +2313,9 @@ The remaining work to make it feel like a sellable full game engine is:
      smoke reached `18.8 FPS`, `53.2 ms`, `74` draw calls, and `11,896`
      triangles before the smoke counters were hardened.
    - Profile `https://crateshipgames.com/play` on desktop and mobile widths.
-   - Find the remaining frame-time bottleneck after geometry and prop-proxy
-     reduction: check animation loops, post-processing, renderer timing,
-     browser throttling, and script work during Play/Edit mode.
+   - Find the remaining raw Build City frame-time bottleneck after draw-call
+     reduction: check material/shader cost, first-second renderer warmup,
+     animation loops, browser throttling, and post-processing.
    - Continue adding object pooling, instancing for repeated props, culling, LOD
      selection, and lazy loading for heavy assets.
 2. Asset pipeline hardening
@@ -2288,9 +2369,9 @@ The remaining work to make it feel like a sellable full game engine is:
 
 ## Recommended Next Steps
 
-1. Profile and trim per-frame script work and animation loops now that default
-   city content is proxy-lowered; add a raw Build City performance probe to
-   smoke if the live panel counters diverge again.
+1. Profile raw Build City render time now that static proxy batching is live;
+   the draw-call budget passes, but immediate post-generation frame time is
+   still around `49.7 ms`.
 2. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
