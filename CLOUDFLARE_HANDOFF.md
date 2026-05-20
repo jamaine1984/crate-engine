@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `3dbdcfcc`
+- Current deployed source commit for the public engine code: `adebace1`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -28,11 +28,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `2fee9333-cbd4-4027-921f-d0691f30a272`
-- Latest production deployment URL: `https://2fee9333.crateship-games.pages.dev`
+- Latest production deployment ID: `f90df452-92ae-4cff-a6aa-41d08d5595a8`
+- Latest production deployment URL: `https://f90df452.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `3dbdcfc`
-- Main live page bundle after the deploy: `/assets/play-Mz3KQ-fv.js`
+- Source shown by Cloudflare: `adebace`
+- Main live page bundle after the deploy: `/assets/play-DcYVH3yq.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
@@ -1983,6 +1983,26 @@ Browser verification history:
   - `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
   - Smoke still verified build-city output, separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-mpdc2a7h.png`.
+- Final custom-domain verification after deployment `f90df452-92ae-4cff-a6aa-41d08d5595a8`:
+  - Cloudflare source showed `adebace`.
+  - `/play?verify=validation-preview-perf-adebace1` served `/assets/play-DcYVH3yq.js`.
+  - `/play?verify=validation-preview-perf-adebace1` included `crate-asset-base` pointing at `https://crateship-games-assets.pages.dev`.
+  - `/marketplace.html` returned `200 OK` and `text/html`.
+  - `/admin.html` returned `200 OK` and `text/html`.
+  - `/game.html?slug=production-smoke-published-game` returned `200 OK` and `text/html`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and included `admin.html` and `play.html`.
+  - The app-only deploy uploaded `6` changed files, reused `103` already-uploaded files, uploaded the Functions bundle and `_routes.json`, and refreshed `_headers`.
+  - `game-builder-ui.mjs` now opens a review card before automatic Validation fixes, shows target objects when available, applies fixes only after confirmation, and exposes Undo for the latest component-level fix.
+  - `engine.mjs` now persists sanitized `validationFixHistory` in project saves so automatic builder changes are auditable without storing undo snapshots.
+  - `game-builder-ui.mjs` now shows a live `Performance` section with FPS, frame time, worst frame, draw calls, triangle estimate, geometry/texture counts, scene/component totals, asset status, and warnings.
+  - Smoke verified `Performance: blocked (14.3 FPS, 69.8 ms, 1863 calls, 3608266 tris)`, which means the next batch should optimize the city scene and play bundle rather than add more editor surface.
+  - Smoke verified `Validation: ready (0 errors, 0 warnings, 0 suggestions)`.
+  - Smoke verified `Validation fixes: link-missions, link-waves, add-colliders, add-colliders (24 colliders, undo restored 411)`.
+  - Smoke verified `Project snapshot: v3 411 objects 2 scripts 3 commands, 4 validation fixes`.
+  - The remote `moderation_audit` table still has `0` rows after deploy.
+  - `node --check game-builder-ui.mjs`, `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke still verified build-city output, separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, and runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-validation-preview-perf-adebace1.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2028,6 +2048,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+adebace1 Add validation previews and performance panel
 3dbdcfcc Add one-click Game Builder validation fixes
 0cec1be3 Update handoff for scene validation deploy
 46de8726 Add Game Builder scene validation panel
@@ -2141,25 +2162,20 @@ The live engine now has the core web-editor loop working on the custom
 Cloudflare domain: split asset hosting, Build City smoke coverage, Edit /
 Explore / Play mode separation, Game Builder systems, published game export and
 load, marketplace/detail pages, admin guardrails, scene readiness, scene
-validation, and first safe one-click validation fixes.
+validation, preview/apply/undo Validation fixes, project fix-history saves, and
+live performance diagnostics.
 
 The remaining work to make it feel like a sellable full game engine is:
 
-1. Validation safety and undo
-   - Add preview/undo for one-click Validation fixes before project save/export.
-   - Show exactly which objects will be changed by collider, mission, wave, and
-     trigger helpers.
-   - Persist a fix history in project saves so builders can audit automatic
-     changes.
-2. Performance profiling and frame stability
-   - Add a live performance overlay with FPS, frame time, draw calls, triangle
-     count, texture memory, asset load time, and slow-script warnings.
+1. Performance optimization and frame stability
+   - Current live smoke reported `14.3 FPS`, `69.8 ms` average frame time,
+     `1,863` draw calls, and `3,608,266` triangles after Build City.
    - Profile `https://crateshipgames.com/play` on desktop and mobile widths.
    - Add object pooling, instancing for repeated props, culling, LOD selection,
      and lazy loading for heavy assets.
    - Code-split the large play bundle and lazy-load editor-only panels outside
      Play mode.
-3. Asset pipeline hardening
+2. Asset pipeline hardening
    - Move large long-lived GLB assets to R2 when the Pages asset project becomes
      too large or slow to manage.
    - Add browser import validation for user GLB uploads: size limit, triangle
@@ -2167,13 +2183,13 @@ The remaining work to make it feel like a sellable full game engine is:
      manifest entry creation.
    - Add automatic optimization jobs for user imports before assets enter a
      published game.
-4. Project format and export/import
+3. Project format and export/import
    - Lock a versioned `.crate` project schema with migration tests.
    - Add project integrity checks before save, load, publish, and playable
      package export.
    - Add import conflict handling for duplicate object IDs, missing assets,
      missing scripts, and incompatible project versions.
-5. Gameplay runtime completeness
+4. Gameplay runtime completeness
    - Expand components for player controller presets, camera presets, health,
      damage, inventory, quests, dialogue, enemies, waves, checkpoints, win/lose
      states, doors, triggers, UI/HUD, audio, and save points.
@@ -2181,27 +2197,27 @@ The remaining work to make it feel like a sellable full game engine is:
      adventure, shooter, RPG, tycoon, and multiplayer lobby.
    - Make Play mode run from a clean runtime snapshot so editor state cannot
      leak into gameplay.
-6. Editor UX polish
+5. Editor UX polish
    - Build richer side menus for presets, inventory, NPCs, quests, enemies,
      UI/HUD, physics, lighting, terrain, audio, and publish settings.
    - Add drag/drop placement, search, filters, component presets, prefab save,
      prefab apply, and batch edit tools.
    - Make mobile/tablet controls usable for testing, even if heavy authoring
      stays desktop-first.
-7. Scripting and AI safety
+6. Scripting and AI safety
    - Sandbox user scripts so bad code cannot break the editor or leak secrets.
    - Add script validation, safe APIs, templates, examples, and runtime error
      reporting.
    - Keep AI generation as an assistant for builders, but make every generated
      change inspectable, reversible, and validated.
-8. Multiplayer and cloud features
+7. Multiplayer and cloud features
    - Decide which game types need real-time multiplayer, then add Durable
      Objects or another Cloudflare-backed session layer.
    - Add accounts, ownership, quotas, team projects, project sharing, and
      permissions.
    - Add published-game analytics, crash reports, moderation workflows, and
      creator dashboards.
-9. QA and release gates
+8. QA and release gates
    - Put `npm run smoke:production` and asset checks into CI/deploy checklists.
    - Add targeted tests for save/load migrations, project import/export,
      published-game APIs, Game Builder components, mode separation, and
@@ -2210,10 +2226,11 @@ The remaining work to make it feel like a sellable full game engine is:
 
 ## Recommended Next Steps
 
-1. Put `npm run smoke:production` into CI or a deploy checklist so every
+1. Start the first real optimization batch: code-split editor-only panels,
+   reduce the Build City default scene budget, and add instancing/LOD/culling
+   for repeated city props. Use the Performance panel as the before/after gate.
+2. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
-2. Add an undo/preview layer for Validation fixes so builders can review batch
-   collider tags and link changes before saving or exporting.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
    grows beyond the current recovered cache.
 4. Configure `CRATE_SMOKE_ADMIN_TOKEN` only in the local/CI smoke environment
