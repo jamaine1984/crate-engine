@@ -243,8 +243,23 @@ async function runBrowserSmoke() {
         textures: Array.from({ length: 30 }, (_, index) => ({ source: index })),
         images: Array.from({ length: 30 }, (_, index) => ({ uri: 'texture-' + index + '.png' })),
       };
+      const heavyNeedsProxyGltf = {
+        asset: { version: '2.0' },
+        accessors: [{ count: 180000 }],
+        meshes: [{ name: 'Hero mesh', primitives: [{ attributes: { POSITION: 0 } }] }],
+        nodes: Array.from({ length: 140 }, (_, index) => ({ name: 'Hero node ' + index, mesh: index === 0 ? 0 : undefined })),
+        textures: [],
+        images: [],
+      };
+      const heavyProxyGltf = {
+        ...heavyNeedsProxyGltf,
+        meshes: [{ name: 'UCX_Hero_Collision', primitives: [{ attributes: { POSITION: 0 } }] }],
+        nodes: [{ name: 'UCX_Hero_Collision', mesh: 0 }],
+      };
       const lightFile = new File([JSON.stringify(lightGltf)], 'light.gltf', { type: 'model/gltf+json' });
       const heavyFile = new File([JSON.stringify(heavyGltf)], 'heavy.gltf', { type: 'model/gltf+json' });
+      const needsProxyFile = new File([JSON.stringify(heavyNeedsProxyGltf)], 'needs-proxy.gltf', { type: 'model/gltf+json' });
+      const hasProxyFile = new File([JSON.stringify(heavyProxyGltf)], 'has-proxy.gltf', { type: 'model/gltf+json' });
       return {
         qualityButtons: [...document.querySelectorAll('#gb-performance [data-gb-quality]')].map((button) => button.dataset.gbQuality),
         qualitySummary: document.querySelector('#gb-quality-summary')?.textContent || '',
@@ -259,9 +274,13 @@ async function runBrowserSmoke() {
         modelInspectorReady: !!modelInspector,
         lightModelInspection: modelInspector ? await modelInspector(lightFile) : null,
         heavyModelInspection: modelInspector ? await modelInspector(heavyFile) : null,
+        proxyWarningInspection: modelInspector ? await modelInspector(needsProxyFile) : null,
+        proxyReadyInspection: modelInspector ? await modelInspector(hasProxyFile) : null,
         projectValidatorReady: !!projectValidator,
         projectSchema: window._crateProjectSchema || null,
+        migrateHelperReady: typeof window._migrateCrateProjectData === 'function',
         validProject: projectValidator ? projectValidator({ format: 'crate-engine-project', version: 3, commands: ['build city'], objects: [], userScripts: [] }, { source: 'smoke-valid' }) : null,
+        migratedProject: projectValidator ? projectValidator({ version: 1, commands: 'build city|add chair' }, { source: 'smoke-migrate' }) : null,
         futureProject: projectValidator ? projectValidator({ format: 'crate-engine-project', version: 99, commands: ['build city'] }, { source: 'smoke-future' }) : null,
         wrongProject: projectValidator ? projectValidator({ format: 'other-engine', version: 1, commands: ['build city'] }, { source: 'smoke-wrong' }) : null,
         deserializeReady: typeof window._deserializeCrateProject === 'function',
@@ -289,13 +308,50 @@ async function runBrowserSmoke() {
         !/budget/i.test(builderHardeningState.heavyModelInspection?.reason || '')) {
       throw new Error(`Model metadata budgets did not gate GLTF imports correctly: ${JSON.stringify(builderHardeningState)}`);
     }
+    if (builderHardeningState.proxyWarningInspection?.ok !== true ||
+        !builderHardeningState.proxyWarningInspection?.warnings?.some((warning) => /collision proxy/i.test(warning))) {
+      throw new Error(`Collision proxy warnings did not flag heavy physics GLTF imports: ${JSON.stringify(builderHardeningState)}`);
+    }
+    if (builderHardeningState.proxyReadyInspection?.ok !== true ||
+        builderHardeningState.proxyReadyInspection?.warnings?.some((warning) => /No collision proxy/i.test(warning))) {
+      throw new Error(`Collision proxy hints did not clear heavy physics GLTF imports: ${JSON.stringify(builderHardeningState)}`);
+    }
     if (!builderHardeningState.projectValidatorReady ||
+        !builderHardeningState.migrateHelperReady ||
         !builderHardeningState.deserializeReady ||
         builderHardeningState.projectSchema?.version !== 3 ||
         builderHardeningState.validProject?.ok !== true ||
+        builderHardeningState.migratedProject?.ok !== true ||
+        builderHardeningState.migratedProject?.project?.version !== 3 ||
+        builderHardeningState.migratedProject?.project?.commands?.length !== 2 ||
+        !builderHardeningState.migratedProject?.migrations?.includes('v1-to-v3') ||
         builderHardeningState.futureProject?.ok !== false ||
         builderHardeningState.wrongProject?.ok !== false) {
       throw new Error(`Project schema validation did not gate project files correctly: ${JSON.stringify(builderHardeningState)}`);
+    }
+
+    const runtimePoolState = await page.evaluate(async () => {
+      const readStats = () => ({ ...(window._crateRuntimePools?.stats?.() || window._crateObjectPoolStats || {}) });
+      const before = readStats();
+      if (typeof window._exerciseCrateRuntimePools !== 'function') {
+        return { ready: false, before };
+      }
+      const firstImmediate = window._exerciseCrateRuntimePools();
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+      const afterFirst = readStats();
+      window._exerciseCrateRuntimePools();
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+      const afterSecond = readStats();
+      return { ready: true, before, firstImmediate, afterFirst, afterSecond };
+    });
+    if (!runtimePoolState.ready ||
+        runtimePoolState.afterFirst?.damageNumberPool < 1 ||
+        runtimePoolState.afterFirst?.impactPool < 1 ||
+        runtimePoolState.afterFirst?.muzzleFlashPool < 1 ||
+        runtimePoolState.afterSecond?.damageNumberCreated > runtimePoolState.afterFirst?.damageNumberCreated ||
+        runtimePoolState.afterSecond?.impactCreated > runtimePoolState.afterFirst?.impactCreated ||
+        runtimePoolState.afterSecond?.muzzleFlashCreated > runtimePoolState.afterFirst?.muzzleFlashCreated) {
+      throw new Error(`Runtime object pools did not reuse combat effects: ${JSON.stringify(runtimePoolState)}`);
     }
 
     await page.locator('#gb-performance [data-gb-quality="low"]').click({ timeout: timeoutMs });
@@ -2397,6 +2453,7 @@ async function runBrowserSmoke() {
         performanceTextures,
         performanceBudget: window._cratePerformanceBudget || null,
         cullingStats: window._crateCullingStats || null,
+        objectPoolStats: window._crateObjectPoolStats || null,
         rawFrameFps: Number(frameProfile.fps) || 0,
         rawFrameMs: Number(frameProfile.avgFrameMs) || 0,
         rawUpdateMs: Number(frameProfile.avgUpdateMs) || 0,
@@ -2420,6 +2477,9 @@ async function runBrowserSmoke() {
         cullingSkipped: Number(window._crateCullingStats?.skipped) || 0,
         cullingFar: Number(window._crateCullingStats?.far) || 0,
         cullingMaxPerPass: Number(window._crateCullingStats?.maxPerPass) || 0,
+        poolDamageCreated: Number(window._crateObjectPoolStats?.damageNumberCreated) || 0,
+        poolImpactCreated: Number(window._crateObjectPoolStats?.impactCreated) || 0,
+        poolMuzzleCreated: Number(window._crateObjectPoolStats?.muzzleFlashCreated) || 0,
         validationStatus: validation.status || document.querySelector('#gb-validation-status')?.dataset.status || '',
         validationSummary: validation.summary || document.querySelector('#gb-validation-status')?.dataset.summary || '',
         validationErrors: Number(validation.errors ?? document.querySelector('#gb-validation-status')?.dataset.errors) || 0,
@@ -2776,6 +2836,10 @@ async function runBrowserSmoke() {
       state.projectSchemaVersion !== 3 ||
       state.cullingProcessed < 1 ||
       state.cullingMaxPerPass < 1 ||
+      !state.objectPoolStats ||
+      state.poolDamageCreated < 1 ||
+      state.poolImpactCreated < 1 ||
+      state.poolMuzzleCreated < 1 ||
       state.performanceTriangles <= 0 ||
       state.performanceCalls > 900 ||
       state.performanceTriangles > 750000 ||
@@ -3189,6 +3253,7 @@ console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
 console.log(`Runtime budget: ${browserState.performanceBudget?.level || 'missing'} (cull ${browserState.performanceBudget?.cullDistance || 0}, edit cull ${browserState.performanceBudget?.editCullDistance || 0}, shadow ${browserState.performanceBudget?.shadowDistance || 0}, pass ${browserState.performanceBudget?.maxLodObjectsPerPass || 0})`);
 console.log(`LOD pass: ${browserState.cullingProcessed || 0} processed, ${browserState.cullingFar || 0} far, ${browserState.cullingSkipped || 0} skipped, max ${browserState.cullingMaxPerPass || 0}`);
+console.log(`Runtime pools: damage ${browserState.objectPoolStats?.damageNumberPool || 0}/${browserState.poolDamageCreated || 0}, impact ${browserState.objectPoolStats?.impactPool || 0}/${browserState.poolImpactCreated || 0}, flash ${browserState.objectPoolStats?.muzzleFlashPool || 0}/${browserState.poolMuzzleCreated || 0}`);
 console.log(`Raw Build City frame probe: ${browserState.rawBuildCityFps || 0} FPS, ${browserState.rawBuildCityFrameMs || 0} ms avg, ${browserState.rawBuildCityUpdateMs || 0} ms update, ${browserState.rawBuildCityRenderMs || 0} ms render, ${browserState.rawBuildCityCalls || 0} calls, ${browserState.rawBuildCityTriangles || 0} tris, ${browserState.rawBuildCitySamples || 0} samples`);
 for (const probeState of viewportProbeStates) {
   console.log(`Viewport ${probeState.label}: ${probeState.fps || 0} FPS, ${probeState.avgFrameMs || 0} ms avg, ${probeState.calls || 0} calls, ${probeState.triangles || 0} tris, DPR ${probeState.devicePixelRatio || 0}->${probeState.rendererPixelRatio || 0}, cull ${probeState.performanceBudget?.cullDistance || 0}, shadow ${probeState.performanceBudget?.shadowDistance || 0}, canvas ${probeState.canvasWidth || 0}x${probeState.canvasHeight || 0}, mobile controls ${probeState.mobileControls ? 'ready' : 'missing'}`);

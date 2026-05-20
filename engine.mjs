@@ -14843,6 +14843,39 @@ const CRATE_PROJECT_LIMITS = {
   maxValidationFixes: 80,
 };
 
+function migrateCrateProjectData(parsed) {
+  const input = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  const originalVersion = Number(input.version) || 1;
+  const migrations = [];
+  const migrated = { ...input };
+  if (!migrated.format) {
+    migrated.format = CRATE_PROJECT_FORMAT;
+    migrations.push('legacy-format');
+  }
+  if (!Array.isArray(migrated.commands)) {
+    if (typeof migrated.commands === 'string') migrated.commands = migrated.commands.split('|').filter(Boolean);
+    else migrated.commands = [];
+    migrations.push('commands-array');
+  }
+  if (!Array.isArray(migrated.objects)) {
+    migrated.objects = [];
+    migrations.push('objects-array');
+  }
+  if (!Array.isArray(migrated.userScripts)) {
+    migrated.userScripts = [];
+    migrations.push('scripts-array');
+  }
+  if (!Array.isArray(migrated.validationFixHistory)) {
+    migrated.validationFixHistory = [];
+    migrations.push('validation-history');
+  }
+  if (originalVersion < CRATE_PROJECT_VERSION) {
+    migrations.push('v' + originalVersion + '-to-v' + CRATE_PROJECT_VERSION);
+  }
+  migrated.version = originalVersion;
+  return { project: migrated, migrations, originalVersion };
+}
+
 function normalizeProjectVector(value, fallback) {
   const source = Array.isArray(value) ? value : fallback;
   return [0, 1, 2].map((index) => {
@@ -14880,6 +14913,8 @@ function normalizeProjectObjectSnapshot(snapshot, index, warnings) {
 function validateCrateProjectData(parsed, options = {}) {
   const warnings = [];
   const source = options.source || 'project';
+  const migration = migrateCrateProjectData(parsed);
+  const input = migration.project;
   const result = {
     ok: false,
     source,
@@ -14888,6 +14923,8 @@ function validateCrateProjectData(parsed, options = {}) {
     commandCount: 0,
     objectCount: 0,
     scriptCount: 0,
+    migrations: migration.migrations,
+    originalVersion: migration.originalVersion,
     warnings,
     reason: '',
     project: null,
@@ -14896,8 +14933,8 @@ function validateCrateProjectData(parsed, options = {}) {
     result.reason = 'Project file must be a JSON object.';
     return result;
   }
-  const format = parsed.format || CRATE_PROJECT_FORMAT;
-  const version = Number(parsed.version) || 1;
+  const format = input.format || CRATE_PROJECT_FORMAT;
+  const version = Number(input.version) || 1;
   result.format = String(format || '');
   result.version = version;
   if (format !== CRATE_PROJECT_FORMAT) {
@@ -14908,12 +14945,12 @@ function validateCrateProjectData(parsed, options = {}) {
     result.reason = 'Project version ' + version + ' is newer than this engine supports.';
     return result;
   }
-  const commands = Array.isArray(parsed.commands)
-    ? parsed.commands.map((cmd) => String(cmd || '').trim()).filter(Boolean)
+  const commands = Array.isArray(input.commands)
+    ? input.commands.map((cmd) => String(cmd || '').trim()).filter(Boolean)
     : [];
-  const objects = Array.isArray(parsed.objects) ? parsed.objects : [];
-  const scripts = Array.isArray(parsed.userScripts) ? parsed.userScripts : [];
-  const validationFixHistory = Array.isArray(parsed.validationFixHistory) ? parsed.validationFixHistory : [];
+  const objects = Array.isArray(input.objects) ? input.objects : [];
+  const scripts = Array.isArray(input.userScripts) ? input.userScripts : [];
+  const validationFixHistory = Array.isArray(input.validationFixHistory) ? input.validationFixHistory : [];
   result.commandCount = commands.length;
   result.objectCount = objects.length;
   result.scriptCount = scripts.length;
@@ -14942,22 +14979,25 @@ function validateCrateProjectData(parsed, options = {}) {
   })).filter((script) => script.id && script.code);
   result.ok = true;
   result.project = {
-    ...parsed,
+    ...input,
     format: CRATE_PROJECT_FORMAT,
     version: CRATE_PROJECT_VERSION,
-    savedAt: parsed.savedAt || new Date().toISOString(),
+    migratedFromVersion: migration.originalVersion < CRATE_PROJECT_VERSION ? migration.originalVersion : undefined,
+    migrations: migration.migrations.slice(),
+    savedAt: input.savedAt || new Date().toISOString(),
     commands,
     objects: normalizedObjects,
     userScripts: normalizedScripts,
     validationFixHistory: validationFixHistory.slice(-CRATE_PROJECT_LIMITS.maxValidationFixes),
-    weather: parsed.weather || null,
-    time: parsed.time || null,
+    weather: input.weather || null,
+    time: input.time || null,
   };
   result.summary = commands.length + ' commands, ' + normalizedObjects.length + ' objects, ' + normalizedScripts.length + ' scripts';
   return result;
 }
 
 window._validateCrateProjectData = validateCrateProjectData;
+window._migrateCrateProjectData = migrateCrateProjectData;
 window._crateProjectSchema = {
   format: CRATE_PROJECT_FORMAT,
   version: CRATE_PROJECT_VERSION,
@@ -17428,8 +17468,25 @@ function getGltfTriangleCount(json) {
   return { triangles, primitives };
 }
 
+function hasCollisionProxyName(value) {
+  return /(^|[_\-. ])(collider|collision|proxy|ucx|ubx|ucp|convex|hull|phys|physics)([_\-. ]|$)/i.test(String(value || ''));
+}
+
+function countCollisionProxyHints(json) {
+  let nodes = 0;
+  let meshes = 0;
+  (Array.isArray(json?.nodes) ? json.nodes : []).forEach((node) => {
+    if (hasCollisionProxyName(node?.name)) nodes += 1;
+  });
+  (Array.isArray(json?.meshes) ? json.meshes : []).forEach((mesh) => {
+    if (hasCollisionProxyName(mesh?.name)) meshes += 1;
+  });
+  return { nodes, meshes, total: nodes + meshes };
+}
+
 function analyzeGltfJson(json) {
   const triangleState = getGltfTriangleCount(json || {});
+  const proxyHints = countCollisionProxyHints(json || {});
   const buffers = Array.isArray(json?.buffers) ? json.buffers : [];
   const images = Array.isArray(json?.images) ? json.images : [];
   const externalBuffers = buffers.filter((item) => item?.uri && !String(item.uri).startsWith('data:')).length;
@@ -17446,6 +17503,9 @@ function analyzeGltfJson(json) {
     buffers: buffers.length,
     externalBuffers,
     externalImages,
+    collisionProxyCount: proxyHints.total,
+    collisionProxyNodes: proxyHints.nodes,
+    collisionProxyMeshes: proxyHints.meshes,
   };
 }
 
@@ -17461,6 +17521,10 @@ function applyUserModelMetadataBudget(result, metrics) {
   if (metrics.animations > budget.maxAnimations) blocks.push('animations ' + metrics.animations + '/' + budget.maxAnimations);
   if (metrics.externalBuffers || metrics.externalImages) {
     result.warnings.push('External GLTF references detected: ' + metrics.externalBuffers + ' buffers, ' + metrics.externalImages + ' images.');
+  }
+  const needsCollisionProxy = metrics.triangles > 50000 || metrics.meshes > 20 || metrics.nodes > 120;
+  if (needsCollisionProxy && !metrics.collisionProxyCount) {
+    result.warnings.push('No collision proxy node found. Add a collider, collision, UCX, convex, hull, or physics proxy mesh before publishing physics-heavy games.');
   }
   if (blocks.length) {
     result.ok = false;
@@ -17513,6 +17577,7 @@ async function inspectUserModelFile(file) {
 window._inspectUserModelFile = inspectUserModelFile;
 window._analyzeUserModelGltfJson = analyzeGltfJson;
 window._analyzeUserModelGlbArrayBuffer = analyzeGlbArrayBuffer;
+window._hasUserModelCollisionProxyName = hasCollisionProxyName;
 window._validateUserModelFile = validateUserModelFile;
 window._userModelImportLimits = {
   ...USER_MODEL_IMPORT_BUDGET,
@@ -19024,6 +19089,54 @@ function toggleCombatHUD(show) {
 }
 
 // Spawn floating damage number
+const damageNumberPool = [];
+const impactParticlePool = [];
+const muzzleFlashPool = [];
+let damageNumberCreated = 0;
+let impactCreated = 0;
+let muzzleFlashCreated = 0;
+const CRATE_DAMAGE_NUMBER_POOL_LIMIT = 24;
+const CRATE_IMPACT_POOL_LIMIT = 16;
+const CRATE_MUZZLE_FLASH_POOL_LIMIT = 8;
+const IMPACT_PARTICLE_COUNT = 8;
+
+function syncRuntimePoolStats() {
+  window._crateObjectPoolStats = {
+    damageNumberPool: damageNumberPool.length,
+    damageNumberCreated,
+    impactPool: impactParticlePool.length,
+    impactCreated,
+    muzzleFlashPool: muzzleFlashPool.length,
+    muzzleFlashCreated,
+  };
+  return window._crateObjectPoolStats;
+}
+
+function acquireDamageNumberElement() {
+  const pooled = damageNumberPool.pop();
+  if (pooled) {
+    pooled.dataset.pooled = 'true';
+    syncRuntimePoolStats();
+    return pooled;
+  }
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;z-index:9003;pointer-events:none;font-family:monospace;font-weight:bold;text-shadow:0 1px 3px rgba(0,0,0,0.8);transition:all 1s;';
+  el.dataset.pooled = 'false';
+  damageNumberCreated += 1;
+  syncRuntimePoolStats();
+  return el;
+}
+
+function releaseDamageNumberElement(el) {
+  if (!el) return;
+  el.remove();
+  el.style.transform = '';
+  el.style.opacity = '1';
+  el.textContent = '';
+  if (damageNumberPool.length < CRATE_DAMAGE_NUMBER_POOL_LIMIT) damageNumberPool.push(el);
+  syncRuntimePoolStats();
+}
+
 function spawnDamageNumber(position, damage, isCrit) {
   const canvas = document.querySelector('canvas');
   if (!canvas) return;
@@ -19031,12 +19144,13 @@ function spawnDamageNumber(position, damage, isCrit) {
   const x = (vec.x * 0.5 + 0.5) * canvas.clientWidth;
   const y = (-vec.y * 0.5 + 0.5) * canvas.clientHeight;
   
-  const el = document.createElement('div');
-  el.style.cssText = 'position:fixed;z-index:9003;pointer-events:none;font-family:monospace;font-weight:bold;text-shadow:0 1px 3px rgba(0,0,0,0.8);transition:all 1s;';
+  const el = acquireDamageNumberElement();
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   el.style.fontSize = isCrit ? '28px' : '20px';
   el.style.color = isCrit ? '#ffd700' : '#fff';
+  el.style.opacity = '1';
+  el.style.transform = '';
   el.textContent = (isCrit ? '💥 ' : '') + Math.round(damage);
   document.body.appendChild(el);
   
@@ -19044,7 +19158,7 @@ function spawnDamageNumber(position, damage, isCrit) {
     el.style.transform = 'translateY(-60px)';
     el.style.opacity = '0';
   });
-  setTimeout(() => el.remove(), 1000);
+  setTimeout(() => releaseDamageNumberElement(el), 1000);
 }
 
 // Show hit marker
@@ -19136,33 +19250,101 @@ function shootRaycast() {
   combatState.spreadAccum = Math.min(combatState.spreadAccum + wd.spread * 0.5, wd.spread * 4);
   
   // Muzzle flash (brief light)
-  const flashLight = new THREE.PointLight(0xffaa33, 3, 10);
+  const flashLight = acquireMuzzleFlashLight();
   flashLight.position.copy(camera.position);
   scene.add(flashLight);
-  setTimeout(() => scene.remove(flashLight), 50);
+  setTimeout(() => releaseMuzzleFlashLight(flashLight), 50);
 }
 
 // Impact particle effect
-function createImpactEffect(position, normal) {
-  const count = 8;
+function createImpactParticleObject() {
   const geo = new THREE.BufferGeometry();
-  const positions = new Float32Array(count * 3);
-  const velocities = [];
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(IMPACT_PARTICLE_COUNT * 3), 3));
+  const mat = new THREE.PointsMaterial({ color: 0xffaa33, size: 0.15, transparent: true, opacity: 1 });
+  const particles = new THREE.Points(geo, mat);
+  particles.visible = false;
+  particles.userData._impactVelocities = Array.from({ length: IMPACT_PARTICLE_COUNT }, () => new THREE.Vector3());
+  particles.userData._pooledImpact = true;
+  impactCreated += 1;
+  syncRuntimePoolStats();
+  return particles;
+}
+
+function acquireImpactParticles() {
+  const particles = impactParticlePool.pop() || createImpactParticleObject();
+  particles.visible = true;
+  particles.material.opacity = 1;
+  syncRuntimePoolStats();
+  return particles;
+}
+
+function releaseImpactParticles(particles) {
+  if (!particles) return;
+  scene.remove(particles);
+  particles.visible = false;
+  particles.material.opacity = 1;
+  const positionAttribute = particles.geometry?.attributes?.position;
+  if (positionAttribute?.array) {
+    positionAttribute.array.fill(0);
+    positionAttribute.needsUpdate = true;
+  }
+  if (impactParticlePool.length < CRATE_IMPACT_POOL_LIMIT) {
+    impactParticlePool.push(particles);
+  } else {
+    particles.geometry?.dispose?.();
+    particles.material?.dispose?.();
+  }
+  syncRuntimePoolStats();
+}
+
+function acquireMuzzleFlashLight() {
+  const light = muzzleFlashPool.pop() || new THREE.PointLight(0xffaa33, 3, 10);
+  if (!light.userData._pooledMuzzleFlash) {
+    light.userData._pooledMuzzleFlash = true;
+    muzzleFlashCreated += 1;
+  }
+  light.color.set(0xffaa33);
+  light.intensity = 3;
+  light.distance = 10;
+  light.visible = true;
+  syncRuntimePoolStats();
+  return light;
+}
+
+function releaseMuzzleFlashLight(light) {
+  if (!light) return;
+  scene.remove(light);
+  light.visible = false;
+  if (muzzleFlashPool.length < CRATE_MUZZLE_FLASH_POOL_LIMIT) muzzleFlashPool.push(light);
+  syncRuntimePoolStats();
+}
+
+window._crateRuntimePools = {
+  damageNumberPool,
+  impactParticlePool,
+  muzzleFlashPool,
+  stats: syncRuntimePoolStats,
+};
+
+function createImpactEffect(position, normal) {
+  const count = IMPACT_PARTICLE_COUNT;
+  const particles = acquireImpactParticles();
+  const geo = particles.geometry;
+  const positions = geo.attributes.position.array;
+  const velocities = particles.userData._impactVelocities;
   for (let i = 0; i < count; i++) {
     positions[i * 3] = position.x;
     positions[i * 3 + 1] = position.y;
     positions[i * 3 + 2] = position.z;
-    velocities.push(new THREE.Vector3((Math.random()-0.5)*0.3, Math.random()*0.3, (Math.random()-0.5)*0.3));
+    velocities[i].set((Math.random()-0.5)*0.3, Math.random()*0.3, (Math.random()-0.5)*0.3);
   }
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({ color: 0xffaa33, size: 0.15, transparent: true, opacity: 1 });
-  const particles = new THREE.Points(geo, mat);
+  geo.attributes.position.needsUpdate = true;
   scene.add(particles);
   
   let life = 1.0;
   const animateImpact = () => {
     life -= 0.05;
-    if (life <= 0) { scene.remove(particles); geo.dispose(); mat.dispose(); return; }
+    if (life <= 0) { releaseImpactParticles(particles); return; }
     const pos = geo.attributes.position.array;
     for (let i = 0; i < count; i++) {
       pos[i*3] += velocities[i].x;
@@ -19171,11 +19353,25 @@ function createImpactEffect(position, normal) {
       velocities[i].y -= 0.015;
     }
     geo.attributes.position.needsUpdate = true;
-    mat.opacity = life;
+    particles.material.opacity = life;
     requestAnimationFrame(animateImpact);
   };
   requestAnimationFrame(animateImpact);
 }
+
+window._exerciseCrateRuntimePools = function exerciseCrateRuntimePools() {
+  const base = camera?.position?.clone ? camera.position.clone() : new THREE.Vector3();
+  const position = base.add(new THREE.Vector3(0, 0, -5));
+  spawnDamageNumber(position, 12, false);
+  createImpactEffect(position, null);
+  const flash = acquireMuzzleFlashLight();
+  flash.position.copy(position);
+  scene.add(flash);
+  releaseMuzzleFlashLight(flash);
+  return syncRuntimePoolStats();
+};
+
+syncRuntimePoolStats();
 
 // Melee attack
 function meleeAttack(heavy) {

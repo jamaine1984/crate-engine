@@ -2851,6 +2851,7 @@ function collectPerformanceMetrics() {
   const rendererBudget = window._crateRendererBudget || {};
   const performanceBudget = window._cratePerformanceBudget || {};
   const cullingStats = window._crateCullingStats || {};
+  const poolStats = window._crateObjectPoolStats || {};
   const pixelRatio = Number(renderer?.getPixelRatio?.()) || Number(rendererBudget.pixelRatio) || 0;
   const samples = performanceSamples.length ? performanceSamples : [16.7];
   const sampledAvgFrameMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
@@ -2903,6 +2904,12 @@ function collectPerformanceMetrics() {
     lodFar: Number(cullingStats.far) || 0,
     lodCullDistance: Number(cullingStats.cullDistance) || 0,
     lodPass: Number(cullingStats.maxPerPass) || 0,
+    poolDamage: Number(poolStats.damageNumberPool) || 0,
+    poolDamageCreated: Number(poolStats.damageNumberCreated) || 0,
+    poolImpact: Number(poolStats.impactPool) || 0,
+    poolImpactCreated: Number(poolStats.impactCreated) || 0,
+    poolMuzzle: Number(poolStats.muzzleFlashPool) || 0,
+    poolMuzzleCreated: Number(poolStats.muzzleFlashCreated) || 0,
     warnings,
   };
 }
@@ -3004,6 +3011,7 @@ function renderPerformanceStatus() {
     createPerformanceRow('Renderer', formatNumberShort(metrics.calls) + ' calls | ' + formatNumberShort(metrics.triangles) + ' tris'),
     createPerformanceRow('Quality', metrics.graphicsLabel + ' | ' + metrics.renderScale + ' | DPR ' + metrics.pixelRatio),
     createPerformanceRow('LOD', metrics.lodProcessed ? (metrics.lodHidden + ' hidden | ' + metrics.lodFar + ' far | pass ' + metrics.lodPass) : 'Collecting'),
+    createPerformanceRow('Pools', 'damage ' + metrics.poolDamage + ' | impact ' + metrics.poolImpact + ' | flash ' + metrics.poolMuzzle),
     createPerformanceRow('GPU memory', formatNumberShort(metrics.geometries) + ' geo | ' + formatNumberShort(metrics.textures) + ' tex'),
     createPerformanceRow('Scene', formatNumberShort(metrics.objects) + ' objects | ' + formatNumberShort(metrics.components) + ' comps'),
     createPerformanceRow('Assets', metrics.assetStatus),
