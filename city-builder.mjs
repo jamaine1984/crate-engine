@@ -81,6 +81,7 @@ function getCityPerformanceSettings() {
     proceduralProps: !quality,
     proceduralVehicles: !quality,
     proceduralNature: !quality,
+    batchStaticProxies: !quality,
     propDetail: quality ? 1 : fast ? 0.45 : 0.65,
     natureDetail: quality ? 1 : fast ? 0.45 : 0.65,
     trafficCars: quality ? 20 : fast ? 6 : 8,
@@ -902,12 +903,68 @@ async function buildCityWorld3() {
       glass: new THREE.MeshLambertMaterial({ color: 0x5f8fa8 }),
       tire: new THREE.MeshLambertMaterial({ color: 0x181a1c }),
       wood: new THREE.MeshLambertMaterial({ color: 0x735336 }),
+      leaf: new THREE.MeshLambertMaterial({ color: 0x3f7b45 }),
+      bush: new THREE.MeshLambertMaterial({ color: 0x3c7a3c }),
+      flower: new THREE.MeshLambertMaterial({ color: 0xd95f8d }),
     };
     const proxyGeo = {
       pole: new THREE.CylinderGeometry(0.06, 0.08, 5.2, 6),
       bulb: new THREE.SphereGeometry(0.18, 8, 6),
       box: new THREE.BoxGeometry(1, 1, 1),
       wheel: new THREE.CylinderGeometry(0.18, 0.18, 0.14, 8),
+      barrel: new THREE.CylinderGeometry(0.28, 0.28, 0.75, 10),
+      treeTrunk: new THREE.CylinderGeometry(0.12, 0.16, 1.4, 6),
+      treeCrown: new THREE.ConeGeometry(0.75, 1.35, 7),
+      bush: new THREE.SphereGeometry(0.48, 8, 5),
+      flower: new THREE.SphereGeometry(0.22, 6, 4),
+    };
+    const staticProxyBatches = new Map();
+    const queueStaticProxyGroup = (group, path = '') => {
+      group.updateMatrixWorld(true);
+      group.traverse((node) => {
+        if (!node.isMesh || !node.geometry || !node.material) return;
+        const materials = Array.isArray(node.material) ? node.material : [node.material];
+        for (const material of materials) {
+          if (!material) continue;
+          const key = node.geometry.uuid + '|' + material.uuid;
+          let batch = staticProxyBatches.get(key);
+          if (!batch) {
+            batch = {
+              geometry: node.geometry,
+              material,
+              matrices: [],
+              label: String(path || group.userData?.name || 'proxy').replace(/[^a-z0-9]+/gi, '_').slice(0, 48),
+            };
+            staticProxyBatches.set(key, batch);
+          }
+          batch.matrices.push(node.matrixWorld.clone());
+        }
+      });
+      return group;
+    };
+    const flushStaticProxyBatches = () => {
+      let batchIndex = 0;
+      for (const batch of staticProxyBatches.values()) {
+        if (!batch.matrices.length) continue;
+        const instanced = new THREE.InstancedMesh(batch.geometry, batch.material, batch.matrices.length);
+        batch.matrices.forEach((matrix, index) => instanced.setMatrixAt(index, matrix));
+        instanced.instanceMatrix.needsUpdate = true;
+        instanced.frustumCulled = true;
+        instanced.castShadow = cityPerf.shadows;
+        instanced.receiveShadow = cityPerf.shadows;
+        instanced.userData = {
+          isAutoCity: true,
+          isProceduralProxyBatch: true,
+          isProceduralProxy: true,
+          name: 'procedural_proxy_batch_' + batch.label + '_' + batchIndex,
+        };
+        tag(instanced);
+        scene.add(instanced);
+        objects.push(instanced);
+        batchIndex += 1;
+      }
+      staticProxyBatches.clear();
+      return batchIndex;
     };
     const addProxyBox = (group, sx, sy, sz, x, y, z, material) => {
       const mesh = new THREE.Mesh(proxyGeo.box, material);
@@ -960,7 +1017,7 @@ async function buildCityWorld3() {
           addProxyBox(group, 0.08, 0.8, 0.08, -0.55, 1.25, -0.35, proxyMat.dark);
           addProxyBox(group, 0.08, 0.8, 0.08, 0.55, 1.25, -0.35, proxyMat.dark);
         } else if (/barrel/i.test(path)) {
-          const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.75, 10), /01/.test(path) ? proxyMat.red : proxyMat.dark);
+          const mesh = new THREE.Mesh(proxyGeo.barrel, /01/.test(path) ? proxyMat.red : proxyMat.dark);
           mesh.position.y = 0.38;
           group.add(mesh);
         } else if (/fence/i.test(path)) {
@@ -968,19 +1025,19 @@ async function buildCityWorld3() {
           addProxyBox(group, 0.07, 0.85, 0.07, -0.8, 0.45, 0, proxyMat.metal);
           addProxyBox(group, 0.07, 0.85, 0.07, 0.8, 0.45, 0, proxyMat.metal);
         } else if (/tree_|palm_/i.test(path)) {
-          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1.4, 6), proxyMat.wood);
+          const trunk = new THREE.Mesh(proxyGeo.treeTrunk, proxyMat.wood);
           trunk.position.y = 0.7;
           group.add(trunk);
-          const crown = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.35, 7), new THREE.MeshLambertMaterial({ color: 0x3f7b45 }));
+          const crown = new THREE.Mesh(proxyGeo.treeCrown, proxyMat.leaf);
           crown.position.y = 1.7;
           group.add(crown);
         } else if (/bush_/i.test(path)) {
-          const bush = new THREE.Mesh(new THREE.SphereGeometry(0.48, 8, 5), new THREE.MeshLambertMaterial({ color: 0x3c7a3c }));
+          const bush = new THREE.Mesh(proxyGeo.bush, proxyMat.bush);
           bush.scale.y = 0.55;
           bush.position.y = 0.28;
           group.add(bush);
         } else if (/flower_/i.test(path)) {
-          const flower = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 4), new THREE.MeshLambertMaterial({ color: 0xd95f8d }));
+          const flower = new THREE.Mesh(proxyGeo.flower, proxyMat.flower);
           flower.scale.y = 0.55;
           flower.position.y = 0.18;
           group.add(flower);
@@ -995,6 +1052,9 @@ async function buildCityWorld3() {
       }
       group.position.set(x, 0, z);
       group.rotation.y = ry || 0;
+      if (cityPerf.batchStaticProxies && !/traffic-lights/i.test(path)) {
+        return queueStaticProxyGroup(group, path);
+      }
       scene.add(group); objects.push(group);
       return group;
     };
@@ -1979,6 +2039,9 @@ async function buildCityWorld3() {
     if (window._ctrl) { window._ctrl.target.set(0, 0, 0); window._ctrl.update(); window._ctrl.enabled = true; }
     // Re-enable orbit controls so user can look around
     try { controls.enabled = true; controls.update(); } catch(e) {}
+
+    const proxyBatchCount = flushStaticProxyBatches();
+    if (proxyBatchCount) console.log('[city] Batched static procedural proxies into', proxyBatchCount, 'draw groups');
 
     // Freeze static objects for performance
     let frozenCount = 0;
