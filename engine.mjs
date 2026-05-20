@@ -10237,7 +10237,7 @@ canvas.addEventListener('pointermove', (e) => {
 
 canvas.addEventListener('pointerup', () => {
   isDragging = false;
-  controls.enabled = true;
+  controls.enabled = isEditInteractionMode();
 });
 
 
@@ -13880,7 +13880,7 @@ function animate() {
   // If character model was deleted, switch to camera-only mode
   if (characterController && !characterController.model && !characterController._cameraOnlyMode && playMode) {
     characterController._cameraOnlyMode = true;
-    try { controls.enabled = true; } catch(e) {}
+    try { controls.enabled = false; } catch(e) {}
     showToast('📷 Character removed — camera mode');
   }
   // Hard floor — prevent character from falling through world
