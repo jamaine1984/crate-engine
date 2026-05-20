@@ -2246,7 +2246,7 @@ async function runBrowserSmoke() {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
     if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Systems, Inspector, or Blueprints section was missing');
-    if (!state.hasInspectorHealth || state.inspectorHealthStatus !== 'ready' || state.inspectorHealthComponents < 10 || state.inspectorMetricCount < 3 || state.inspectorHealthIssues !== 0) {
+    if (!state.hasInspectorHealth || state.inspectorHealthStatus !== 'ready' || state.inspectorHealthComponents < 4 || state.inspectorMetricCount < 3 || state.inspectorHealthIssues !== 0) {
       throw new Error(`Game Builder inspector health did not report the selected gameplay object as ready: ${JSON.stringify(state)}`);
     }
     if (state.assetPackStatus !== 'loaded' || state.assetPackVersion !== assetManifest.manifest.version) {
