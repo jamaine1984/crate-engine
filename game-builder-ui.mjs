@@ -1366,6 +1366,58 @@ const PROJECT_ACTIONS = [
   { label: 'Settings', action: 'settings', title: 'Open engine settings.' },
 ];
 
+const GRAPHICS_QUALITY_LEVELS = [
+  { id: 'low', label: 'Low', detail: 'Best for laptops and heavy worlds.' },
+  { id: 'medium', label: 'Medium', detail: 'Balanced default for editing.' },
+  { id: 'high', label: 'High', detail: 'Sharper shadows and effects.' },
+  { id: 'ultra', label: 'Ultra', detail: 'Maximum visual fidelity.' },
+];
+
+const GENRE_TEMPLATES = [
+  {
+    id: 'survival',
+    name: 'Survival Quest',
+    detail: 'Forest world, inventory, HUD, quests, pickups, and component runtime.',
+    commands: ['build forest', 'zombie game'],
+    scripts: ['inventory', 'hud', 'quest', 'pickups', 'components'],
+  },
+  {
+    id: 'shooter',
+    name: 'Shooter Arena',
+    detail: 'Combat controls, HUD, runtime components, and arena-friendly setup.',
+    commands: ['build arena', 'fps mode'],
+    scripts: ['hud', 'components'],
+  },
+  {
+    id: 'rpg',
+    name: 'RPG Village',
+    detail: 'Village world with inventory, quest tracker, NPC flow, and rewards.',
+    commands: ['build medieval village', 'dialogue editor'],
+    scripts: ['inventory', 'hud', 'quest', 'components'],
+  },
+  {
+    id: 'racing',
+    name: 'City Racer',
+    detail: 'City layout with vehicle catalog entry points and readable HUD.',
+    commands: ['build city', 'show vehicles'],
+    scripts: ['hud', 'components'],
+  },
+  {
+    id: 'space',
+    name: 'Space Adventure',
+    detail: 'Space station world with quest, HUD, inventory, and runtime systems.',
+    commands: ['build space station'],
+    scripts: ['inventory', 'hud', 'quest', 'components'],
+  },
+  {
+    id: 'tycoon',
+    name: 'Tycoon Starter',
+    detail: 'City base with inventory, objectives, rewards, and save-ready systems.',
+    commands: ['build city', 'autosave on'],
+    scripts: ['inventory', 'hud', 'quest', 'components'],
+  },
+];
+
 const GAME_SYSTEMS = [
   {
     id: 'inventory',
@@ -1785,6 +1837,70 @@ async function installScript(key) {
   } catch (err) {
     notify(err.message || 'Script install failed');
   }
+}
+
+function normalizeQualityLevel(level) {
+  const next = String(level || window._crateGraphicsQuality || 'medium').toLowerCase();
+  return GRAPHICS_QUALITY_LEVELS.some((item) => item.id === next) ? next : 'medium';
+}
+
+function getQualityLabel(level) {
+  const item = GRAPHICS_QUALITY_LEVELS.find((entry) => entry.id === normalizeQualityLevel(level));
+  return item ? item.label : 'Medium';
+}
+
+async function setBuilderGraphicsQuality(level) {
+  const next = normalizeQualityLevel(level);
+  let result = null;
+  if (typeof window._setCrateGraphicsQuality === 'function') {
+    result = window._setCrateGraphicsQuality(next);
+  } else {
+    result = await runCommand('graphics ' + next);
+  }
+  window._crateGraphicsQuality = next;
+  window._lastGameBuilderQuality = {
+    quality: next,
+    result: String(result || ''),
+    changedAt: Date.now(),
+  };
+  lastPerformanceSignature = '';
+  renderPerformanceStatus();
+  notify('Graphics quality: ' + getQualityLabel(next));
+  return result;
+}
+
+async function applyGenreTemplate(template) {
+  if (!template || !requireEditAction('apply templates')) return null;
+  const state = {
+    id: template.id,
+    name: template.name,
+    status: 'running',
+    commands: [],
+    scripts: [],
+    startedAt: Date.now(),
+  };
+  window._lastGameBuilderTemplate = state;
+  try {
+    for (const script of template.scripts || []) {
+      await installScript(script);
+      state.scripts.push(script);
+    }
+    for (const command of template.commands || []) {
+      await runCommand(command);
+      state.commands.push(command);
+    }
+    state.status = 'done';
+    state.finishedAt = Date.now();
+    notify('Template applied: ' + template.name);
+  } catch (err) {
+    state.status = 'failed';
+    state.error = err?.message || String(err || 'Template failed');
+    notify(state.error);
+  }
+  lastGameSystemsSignature = '';
+  resetValidationUiState();
+  updateBuilderUi();
+  return state;
 }
 
 function getSceneObjects() {
@@ -2731,6 +2847,10 @@ function collectPerformanceMetrics() {
   const renderInfo = renderer?.info?.render || {};
   const memoryInfo = renderer?.info?.memory || {};
   const engineProfile = window._crateFrameProfile || {};
+  const graphicsQuality = normalizeQualityLevel(window._crateGraphicsQuality);
+  const rendererBudget = window._crateRendererBudget || {};
+  const performanceBudget = window._cratePerformanceBudget || {};
+  const pixelRatio = Number(renderer?.getPixelRatio?.()) || Number(rendererBudget.pixelRatio) || 0;
   const samples = performanceSamples.length ? performanceSamples : [16.7];
   const sampledAvgFrameMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
   const sampledWorstFrameMs = Math.max(...samples);
@@ -2767,8 +2887,55 @@ function collectPerformanceMetrics() {
     engineRenderMs: Number(engineProfile.avgRenderMs) || 0,
     engineSamples: Array.isArray(engineProfile.samples) ? engineProfile.samples.length : 0,
     assetStatus,
+    graphicsQuality,
+    graphicsLabel: getQualityLabel(graphicsQuality),
+    pixelRatio: Math.round(pixelRatio * 100) / 100,
+    renderScale: Math.round((Number(rendererBudget.scale) || 1) * 100) + '%',
+    renderPixels: Number(rendererBudget.pixels) || 0,
+    shadowMapSize: Number(performanceBudget.shadowMapSize) || 0,
+    shadowDistance: Number(performanceBudget.shadowDistance) || 0,
     warnings,
   };
+}
+
+function createPerformanceQualityControls() {
+  const wrap = document.createElement('div');
+  wrap.id = 'gb-quality-controls';
+  wrap.className = 'gb-quality-controls';
+  GRAPHICS_QUALITY_LEVELS.forEach((level) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'gb-quality-btn';
+    button.dataset.gbQuality = level.id;
+    button.textContent = level.label;
+    button.title = level.detail;
+    button.addEventListener('click', async () => {
+      setBusy(button, true);
+      await setBuilderGraphicsQuality(level.id);
+      setBusy(button, false);
+    });
+    wrap.appendChild(button);
+  });
+  return wrap;
+}
+
+function renderPerformanceQualityControls(metrics) {
+  const quality = normalizeQualityLevel(metrics?.graphicsQuality);
+  const wrap = document.getElementById('gb-quality-controls');
+  if (wrap) {
+    wrap.dataset.quality = quality;
+    wrap.querySelectorAll('[data-gb-quality]').forEach((button) => {
+      const selected = button.dataset.gbQuality === quality;
+      button.dataset.selected = selected ? 'true' : 'false';
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+  }
+  const status = document.getElementById('gb-quality-summary');
+  if (status && metrics) {
+    const renderScale = metrics.renderScale || '100%';
+    const shadow = metrics.shadowMapSize ? metrics.shadowMapSize + ' shadows' : 'shadows off';
+    status.textContent = metrics.graphicsLabel + ' | ' + renderScale + ' render | ' + shadow;
+  }
 }
 
 function createPerformanceSection() {
@@ -2783,7 +2950,11 @@ function createPerformanceSection() {
   const list = document.createElement('div');
   list.id = 'gb-performance-list';
   list.className = 'gb-performance-list';
-  section.append(heading, status, list);
+  const controls = createPerformanceQualityControls();
+  const qualitySummary = document.createElement('div');
+  qualitySummary.id = 'gb-quality-summary';
+  qualitySummary.className = 'gb-quality-summary';
+  section.append(heading, status, controls, qualitySummary, list);
   return section;
 }
 
@@ -2822,11 +2993,13 @@ function renderPerformanceStatus() {
     createPerformanceRow('Frame', metrics.frameMs + ' ms | worst ' + metrics.worstFrameMs + ' ms'),
     createPerformanceRow('Loop', metrics.engineUpdateMs + ' ms update | ' + metrics.engineRenderMs + ' ms render'),
     createPerformanceRow('Renderer', formatNumberShort(metrics.calls) + ' calls | ' + formatNumberShort(metrics.triangles) + ' tris'),
+    createPerformanceRow('Quality', metrics.graphicsLabel + ' | ' + metrics.renderScale + ' | DPR ' + metrics.pixelRatio),
     createPerformanceRow('GPU memory', formatNumberShort(metrics.geometries) + ' geo | ' + formatNumberShort(metrics.textures) + ' tex'),
     createPerformanceRow('Scene', formatNumberShort(metrics.objects) + ' objects | ' + formatNumberShort(metrics.components) + ' comps'),
     createPerformanceRow('Assets', metrics.assetStatus),
     createPerformanceRow('Warnings', metrics.warnings.length ? metrics.warnings.join(', ') : 'None')
   );
+  renderPerformanceQualityControls(metrics);
 }
 
 function createValidationSection() {
@@ -3014,6 +3187,44 @@ function renderValidationStatus() {
     : [createValidationRow({ level: 'ready', label: 'Core loop', detail: 'Spawn, goals, systems, and links look ready.' })];
   list.replaceChildren(...rows);
   renderValidationReview();
+}
+
+function createTemplatesSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section';
+  section.id = 'gb-templates';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Templates';
+  const list = document.createElement('div');
+  list.id = 'gb-template-list';
+  list.className = 'gb-template-list';
+  GENRE_TEMPLATES.forEach((template) => {
+    const card = document.createElement('div');
+    card.className = 'gb-template-card';
+    card.dataset.gbTemplate = template.id;
+    const info = document.createElement('div');
+    info.className = 'gb-template-info';
+    info.append(
+      createTextElement('strong', '', template.name),
+      createTextElement('span', '', template.detail)
+    );
+    const button = createSmallButton('Apply', async () => {
+      setBusy(button, true);
+      await applyGenreTemplate(template);
+      setBusy(button, false);
+    }, { editOnly: true, action: 'apply templates' });
+    button.dataset.gbTemplateAction = template.id;
+    card.append(info, button);
+    list.appendChild(card);
+  });
+  section.append(heading, list);
+  window._gameBuilderTemplates = GENRE_TEMPLATES.map((template) => ({
+    id: template.id,
+    name: template.name,
+    commands: template.commands.slice(),
+    scripts: template.scripts.slice(),
+  }));
+  return section;
 }
 
 function createGameSystemsSection() {
@@ -3890,6 +4101,11 @@ function mount() {
     .gb-performance-row{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #20262a;background:#101213;border-radius:6px;padding:6px 7px}
     .gb-performance-row span{font-size:10px;line-height:14px;color:#8d979e;min-width:0}
     .gb-performance-row strong{font-size:10px;line-height:14px;color:#dfe6ea;text-align:right;white-space:normal;overflow-wrap:anywhere}
+    .gb-quality-controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;padding:0 8px 6px}
+    .gb-quality-btn{height:28px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:11px;cursor:pointer}
+    .gb-quality-btn:hover{border-color:#4a9eff;color:#fff}
+    .gb-quality-btn[data-selected="true"]{border-color:#4a9eff;background:#102033;color:#fff;font-weight:700}
+    .gb-quality-summary{padding:0 8px 7px;color:#8d979e;font-size:10px;line-height:14px;white-space:normal;overflow-wrap:anywhere}
     .gb-validation-status{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:8px 8px 6px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
     .gb-validation-status strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:normal;overflow-wrap:anywhere}
     .gb-validation-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;text-align:right}
@@ -3916,6 +4132,12 @@ function mount() {
     .gb-validation-row[data-level="ready"]{border-color:#2f6f44;background:#101a13}
     .gb-validation-row span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
     .gb-validation-row strong{font-size:10px;line-height:14px;color:#dfe6ea;white-space:normal;overflow-wrap:anywhere}
+    .gb-template-list{display:flex;flex-direction:column;gap:7px;padding:8px}
+    .gb-template-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
+    .gb-template-info{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .gb-template-info strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:normal;overflow-wrap:anywhere}
+    .gb-template-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
+    .gb-template-card .gb-small-btn{width:58px}
     .gb-systems-list{display:flex;flex-direction:column;gap:7px;padding:8px}
     .gb-system-card{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-items:start;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
     .gb-system-card[data-status="installed"]{border-color:#2f6f44;background:#101a13}
@@ -4025,6 +4247,7 @@ function mount() {
   body.appendChild(createReadinessSection());
   body.appendChild(createPerformanceSection());
   body.appendChild(createValidationSection());
+  body.appendChild(createTemplatesSection());
   body.appendChild(createGameSystemsSection());
 
   const appendBuilderToolSections = () => {
@@ -4100,6 +4323,8 @@ function mount() {
   window._previewGameBuilderValidationFix = openValidationFixPreview;
   window._applyPendingGameBuilderValidationFix = applyPendingValidationFix;
   window._undoLastGameBuilderValidationFix = undoValidationFix;
+  window._setGameBuilderGraphicsQuality = setBuilderGraphicsQuality;
+  window._applyGameBuilderTemplate = (id) => applyGenreTemplate(GENRE_TEMPLATES.find((template) => template.id === id));
   window._refreshGameBuilder = () => {
     resetValidationUiState();
     updateBuilderUi();

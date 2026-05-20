@@ -3987,6 +3987,7 @@ function setGraphicsQuality(level) {
       return 'Unknown quality. Use: low, medium, high, ultra';
   }
 }
+window._setCrateGraphicsQuality = setGraphicsQuality;
 
 if (window._loadProgress) window._loadProgress(50, "Loading assets...");
 // Initialize everything
@@ -17125,7 +17126,9 @@ window._showImportExport = function(tab) {
     overlay.querySelector('#ie-import-glb').onclick = () => {
       const inp = document.createElement('input');
       inp.type = 'file'; inp.accept = '.glb,.gltf';
-      inp.onchange = () => { if (inp.files[0]) _importGLBFile(inp.files[0]); overlay.remove(); };
+      inp.onchange = () => {
+        if (inp.files[0] && _importGLBFile(inp.files[0]) !== false) overlay.remove();
+      };
       inp.click();
     };
     // Import .crate
@@ -17144,19 +17147,96 @@ window._showImportExport = function(tab) {
       const file = e.dataTransfer.files[0];
       if (!file) return;
       if (file.name.endsWith('.crate') || file.name.endsWith('.json')) _importCrateFile(file);
-      else if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) _importGLBFile(file);
+      else if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) {
+        if (_importGLBFile(file) !== false) overlay.remove();
+        return;
+      }
       overlay.remove();
     };
   }
 };
 
+const USER_MODEL_IMPORT_MAX_BYTES = 50 * 1024 * 1024;
+const USER_MODEL_IMPORT_EXTENSIONS = ['glb', 'gltf'];
+
+function formatImportBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value >= 1024 * 1024) return (Math.round((value / (1024 * 1024)) * 10) / 10) + ' MB';
+  if (value >= 1024) return Math.round(value / 1024) + ' KB';
+  return value + ' B';
+}
+
+function validateUserModelFile(file) {
+  const name = String(file?.name || '').trim();
+  const sizeBytes = Math.max(0, Number(file?.size) || 0);
+  const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+  const result = {
+    ok: false,
+    name,
+    sizeBytes,
+    maxBytes: USER_MODEL_IMPORT_MAX_BYTES,
+    maxLabel: formatImportBytes(USER_MODEL_IMPORT_MAX_BYTES),
+    extension,
+    allowedExtensions: USER_MODEL_IMPORT_EXTENSIONS.slice(),
+    reason: '',
+  };
+  if (!file || !name) {
+    result.reason = 'Choose a GLB or GLTF file first.';
+    return result;
+  }
+  if (!USER_MODEL_IMPORT_EXTENSIONS.includes(extension)) {
+    result.reason = 'Only GLB and GLTF models can be imported.';
+    return result;
+  }
+  if (sizeBytes > USER_MODEL_IMPORT_MAX_BYTES) {
+    result.reason = 'Model is ' + formatImportBytes(sizeBytes) + '. Keep browser imports under ' + result.maxLabel + '.';
+    return result;
+  }
+  result.ok = true;
+  result.reason = 'Ready to import';
+  if (extension === 'gltf') {
+    result.warning = 'GLTF imports work best when all referenced buffers and textures are embedded or available beside the file.';
+  }
+  return result;
+}
+
+window._validateUserModelFile = validateUserModelFile;
+window._userModelImportLimits = {
+  maxBytes: USER_MODEL_IMPORT_MAX_BYTES,
+  maxLabel: formatImportBytes(USER_MODEL_IMPORT_MAX_BYTES),
+  allowedExtensions: USER_MODEL_IMPORT_EXTENSIONS.slice(),
+};
+
 function _importGLBFile(file) {
+  const validation = validateUserModelFile(file);
+  window._lastUserImportValidation = validation;
+  if (!validation.ok) {
+    logOutput('err', 'Import blocked: ' + validation.reason);
+    if (typeof showToast === 'function') showToast('Import blocked: ' + validation.reason);
+    window._lastUserImportStatus = { status: 'blocked', ...validation, checkedAt: Date.now() };
+    return false;
+  }
   const url = URL.createObjectURL(file);
   const name = file.name.replace(/\.\w+$/, '');
   if (typeof _loadGLBFromUrl === 'function') {
-    _loadGLBFromUrl(name, url, 0, 0, null, file.name, () => URL.revokeObjectURL(url));
+    window._lastUserImportStatus = { status: 'loading', ...validation, checkedAt: Date.now() };
+    _loadGLBFromUrl(name, url, 0, 0, null, file.name, (model, error) => {
+      URL.revokeObjectURL(url);
+      window._lastUserImportStatus = {
+        status: error ? 'failed' : 'loaded',
+        ...validation,
+        objectName: model?.userData?.name || name,
+        error: error?.message || '',
+        finishedAt: Date.now(),
+      };
+    });
     logOutput('ok', 'Imported model: ' + file.name);
+    return true;
   }
+  URL.revokeObjectURL(url);
+  window._lastUserImportStatus = { status: 'failed', ...validation, error: 'Model loader unavailable', finishedAt: Date.now() };
+  logOutput('err', 'Import failed: model loader unavailable');
+  return false;
 }
 
 function _importCrateFile(file) {

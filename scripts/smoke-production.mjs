@@ -170,6 +170,8 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#gb-inspector', { timeout: timeoutMs });
     await page.waitForSelector('#gb-blueprints', { timeout: timeoutMs });
     await page.waitForSelector('#gb-readiness', { timeout: timeoutMs });
+    await page.waitForSelector('#gb-performance [data-gb-quality="medium"]', { timeout: timeoutMs });
+    await page.waitForSelector('#gb-templates [data-gb-template="survival"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-systems', { timeout: timeoutMs });
     await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-project button[data-gb-action="save"]', { timeout: timeoutMs });
@@ -182,6 +184,8 @@ async function runBrowserSmoke() {
     const clippedBuilderLabels = await page.evaluate(() => {
       const targets = [
         ...document.querySelectorAll('#gb-systems .gb-system-info span,#gb-systems .gb-system-info strong,#gb-systems .gb-system-badge'),
+        ...document.querySelectorAll('#gb-templates .gb-template-info span,#gb-templates .gb-template-info strong'),
+        ...document.querySelectorAll('#gb-performance .gb-quality-btn,#gb-quality-summary'),
         ...document.querySelectorAll('#gb-readiness-status strong,#gb-performance-status strong,#gb-validation-status strong'),
       ];
       return targets
@@ -220,6 +224,43 @@ async function runBrowserSmoke() {
         throw new Error(`Project controls missing ${action}: ${JSON.stringify(projectControls)}`);
       }
     }
+
+    const builderHardeningState = await page.evaluate(() => {
+      const validator = typeof window._validateUserModelFile === 'function' ? window._validateUserModelFile : null;
+      return {
+        qualityButtons: [...document.querySelectorAll('#gb-performance [data-gb-quality]')].map((button) => button.dataset.gbQuality),
+        qualitySummary: document.querySelector('#gb-quality-summary')?.textContent || '',
+        templateIds: [...document.querySelectorAll('#gb-templates [data-gb-template]')].map((card) => card.dataset.gbTemplate),
+        templateExports: (window._gameBuilderTemplates || []).map((template) => template.id),
+        templateApplyReady: typeof window._applyGameBuilderTemplate === 'function',
+        qualitySetterReady: typeof window._setGameBuilderGraphicsQuality === 'function',
+        importValidatorReady: !!validator,
+        invalidImport: validator ? validator({ name: 'bad.txt', size: 10 }) : null,
+        oversizedImport: validator ? validator({ name: 'huge.glb', size: 60 * 1024 * 1024 }) : null,
+        validImport: validator ? validator({ name: 'chair.glb', size: 1024 * 1024 }) : null,
+      };
+    });
+    for (const level of ['low', 'medium', 'high', 'ultra']) {
+      if (!builderHardeningState.qualityButtons.includes(level)) {
+        throw new Error(`Performance quality controls missing ${level}: ${JSON.stringify(builderHardeningState)}`);
+      }
+    }
+    for (const template of ['survival', 'shooter', 'rpg', 'racing', 'space', 'tycoon']) {
+      if (!builderHardeningState.templateIds.includes(template) || !builderHardeningState.templateExports.includes(template)) {
+        throw new Error(`Game template missing ${template}: ${JSON.stringify(builderHardeningState)}`);
+      }
+    }
+    if (!builderHardeningState.templateApplyReady || !builderHardeningState.qualitySetterReady) {
+      throw new Error(`Builder hardening helpers missing: ${JSON.stringify(builderHardeningState)}`);
+    }
+    if (!builderHardeningState.importValidatorReady || builderHardeningState.invalidImport?.ok !== false || builderHardeningState.oversizedImport?.ok !== false || builderHardeningState.validImport?.ok !== true) {
+      throw new Error(`Import validation did not gate files correctly: ${JSON.stringify(builderHardeningState)}`);
+    }
+
+    await page.locator('#gb-performance [data-gb-quality="low"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(() => window._crateGraphicsQuality === 'low', undefined, { timeout: timeoutMs });
+    await page.locator('#gb-performance [data-gb-quality="medium"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(() => window._crateGraphicsQuality === 'medium', undefined, { timeout: timeoutMs });
 
     await page.waitForFunction(
       () => Array.isArray(window._gameBuilderSystems) &&
@@ -2277,7 +2318,10 @@ async function runBrowserSmoke() {
         hasReadiness: !!document.querySelector('#gb-readiness'),
         hasPerformance: !!document.querySelector('#gb-performance'),
         hasValidation: !!document.querySelector('#gb-validation'),
+        hasTemplates: !!document.querySelector('#gb-templates'),
         hasSystems: !!document.querySelector('#gb-systems'),
+        templateCount: document.querySelectorAll('#gb-templates [data-gb-template]').length,
+        templateIds: [...document.querySelectorAll('#gb-templates [data-gb-template]')].map((card) => card.dataset.gbTemplate),
         systemCardCount: document.querySelectorAll('#gb-systems [data-gb-system]').length,
         installedSystems: gameSystems.filter((system) => system.status === 'installed').map((system) => system.id),
         systemSummary: gameSystems.map((system) => system.id + ':' + system.statusText).join(', '),
@@ -2324,7 +2368,10 @@ async function runBrowserSmoke() {
         cityPerformanceProceduralVehicles: window._lastCityPerformanceSettings?.proceduralVehicles === true,
         cityPerformanceProceduralNature: window._lastCityPerformanceSettings?.proceduralNature === true,
         performanceRows: document.querySelectorAll('#gb-performance-list .gb-performance-row').length,
+        qualityButtons: [...document.querySelectorAll('#gb-performance [data-gb-quality]')].map((button) => button.dataset.gbQuality),
+        activeQuality: window._crateGraphicsQuality || '',
         performanceWarnings: Array.isArray(performancePanel.warnings) ? performancePanel.warnings : [],
+        userImportValidatorReady: typeof window._validateUserModelFile === 'function',
         validationStatus: validation.status || document.querySelector('#gb-validation-status')?.dataset.status || '',
         validationSummary: validation.summary || document.querySelector('#gb-validation-status')?.dataset.summary || '',
         validationErrors: Number(validation.errors ?? document.querySelector('#gb-validation-status')?.dataset.errors) || 0,
@@ -2618,7 +2665,10 @@ async function runBrowserSmoke() {
     if (forcedAssetBaseUrl && state.assetBaseUrl !== forcedAssetBaseUrl) {
       throw new Error(`Expected browser asset base ${forcedAssetBaseUrl}, got ${state.assetBaseUrl || 'empty'}`);
     }
-    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasPerformance || !state.hasValidation || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Performance, Validation, Systems, Inspector, or Blueprints section was missing');
+    if (!state.hasInspector || !state.hasBlueprints || !state.hasProject || !state.hasAssetPack || !state.hasReadiness || !state.hasPerformance || !state.hasValidation || !state.hasTemplates || !state.hasSystems) throw new Error('Game Builder Project, Asset Pack, Readiness, Performance, Validation, Templates, Systems, Inspector, or Blueprints section was missing');
+    if (state.templateCount < 6 || !state.templateIds.includes('survival') || !state.templateIds.includes('rpg') || !state.templateIds.includes('tycoon')) {
+      throw new Error(`Game Builder templates were missing starter genres: ${JSON.stringify(state)}`);
+    }
     if (!state.hasInspectorHealth || state.inspectorHealthStatus !== 'ready' || state.inspectorHealthComponents < 4 || state.inspectorMetricCount < 3 || state.inspectorHealthIssues !== 0) {
       throw new Error(`Game Builder inspector health did not report the selected gameplay object as ready: ${JSON.stringify(state)}`);
     }
@@ -2668,6 +2718,11 @@ async function runBrowserSmoke() {
       state.performanceFps <= 0 ||
       state.performanceFrameMs <= 0 ||
       state.performanceRows < 5 ||
+      !state.qualityButtons.includes('low') ||
+      !state.qualityButtons.includes('medium') ||
+      !state.qualityButtons.includes('high') ||
+      !state.qualityButtons.includes('ultra') ||
+      !state.userImportValidatorReady ||
       state.performanceTriangles <= 0 ||
       state.performanceCalls > 900 ||
       state.performanceTriangles > 750000 ||
