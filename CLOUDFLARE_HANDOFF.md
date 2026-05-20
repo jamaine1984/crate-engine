@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `edb0293b`
+- Current deployed source commit for the public engine code: `e54549a5`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,13 +29,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `9c7a3d97-f704-4dd1-8872-0fb530208c85`
-- Latest production deployment URL: `https://9c7a3d97.crateship-games.pages.dev`
+- Latest production deployment ID: `f2e8e2bb-91c0-4eeb-9811-1214f59d0831`
+- Latest production deployment URL: `https://f2e8e2bb.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `edb0293`
-- Main live page bundle after the deploy: `/assets/play-Bac2DHpz.js`
+- Source shown by Cloudflare: `e54549a`
+- Main live page bundle after the deploy: `/assets/play-CTbbfF-h.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BiWteUfT.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-vFTMcIpn.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-BDuV1v3u.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -74,6 +74,35 @@ What changed in this deploy:
   - Verifies collision-proxy warnings and proxy-ready model metadata.
   - Verifies legacy project migration and future-version rejection.
   - Exercises runtime effect pools and fails if they keep creating new transient objects instead of reusing them.
+
+Latest app-only deploy on 2026-05-20:
+
+- Commit deployed: `e54549a5` (`Fix builder asset placement and play camera mode`)
+- Cloudflare deployment: `f2e8e2bb-91c0-4eeb-9811-1214f59d0831`
+- App deploy command:
+
+```powershell
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=e54549a5 --commit-message="Fix builder asset placement and play camera mode" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=asset-camera-e54549a5`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-asset-camera-e54549a5`
+- Smoke bundle: `/assets/play-CTbbfF-h.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+
+What changed in this deploy:
+
+- `game-builder-ui.mjs`
+  - Fixed the `Asset Library` Builder action so the selected catalog asset is actually placed through `window._placeCatalogAsset`.
+  - Relaxed fixed-height Builder buttons so preset, mode, quality, and system action labels wrap instead of clipping.
+- `engine.mjs`
+  - Split camera-only Play mode from character-owned camera mode so Play can move/look without editor orbit controls fighting it.
+  - Added a Play camera roll guard to keep scroll/drag from tilting the world.
+  - Restores unmatched saved gameplay objects as lightweight placeholders when project command replay returns fewer objects than the saved `.crate` snapshot.
+- `scripts/smoke-production.mjs`
+  - Verifies Builder asset-button placement, visible button text fit, Play camera roll guard behavior, and project-load placeholder restoration.
 
 Check the latest deployment with:
 
