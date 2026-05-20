@@ -74,8 +74,8 @@ function getCityPerformanceSettings() {
     proceduralBuildings: !quality,
     preloadDistrictBuildings: quality,
     preloadFurniture: quality,
-    cloudCount: quality ? 20 : fast ? 6 : 8,
-    cloudPuffs: quality ? 5 : fast ? 2 : 3,
+    cloudCount: quality ? 20 : fast ? 6 : 6,
+    cloudPuffs: quality ? 5 : 2,
     streetLightsPerBlock: quality ? 2 : 1,
     extraStreetLamps: quality,
     staticTrafficLights: quality,
@@ -1181,14 +1181,16 @@ async function buildCityWorld3() {
       body.receiveShadow = cityPerf.shadows;
       group.add(body);
 
-      const roof = new THREE.Mesh(
-        new THREE.BoxGeometry(width * 1.05, 0.35, depth * 1.05),
-        new THREE.MeshLambertMaterial({ color: district === 'industrial' ? 0x555652 : 0x3e4650 })
-      );
-      roof.position.y = height + 0.18;
-      roof.castShadow = cityPerf.shadows;
-      roof.receiveShadow = cityPerf.shadows;
-      group.add(roof);
+      if (cityPerf.profile === 'quality') {
+        const roof = new THREE.Mesh(
+          new THREE.BoxGeometry(width * 1.05, 0.35, depth * 1.05),
+          new THREE.MeshLambertMaterial({ color: district === 'industrial' ? 0x555652 : 0x3e4650 })
+        );
+        roof.position.y = height + 0.18;
+        roof.castShadow = cityPerf.shadows;
+        roof.receiveShadow = cityPerf.shadows;
+        group.add(roof);
+      }
 
       group.position.set(x, 0, z);
       group.rotation.y = ry || 0;
