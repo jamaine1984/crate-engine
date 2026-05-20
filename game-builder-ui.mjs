@@ -872,8 +872,8 @@ onUpdate = function(dt, time) {
     const components = obj && obj.userData && obj.userData.gbComponents;
     if (!components) return;
 
-    if (components.spin) obj.rotation.y += dt * (components.spin.speed || 1.2);
-    if (components.float) {
+    if (isPlaying && components.spin) obj.rotation.y += dt * (components.spin.speed || 1.2);
+    if (isPlaying && components.float) {
       const baseY = components.float.baseY ?? obj.position.y;
       components.float.baseY = baseY;
       obj.position.y = baseY + Math.sin(time * (components.float.speed || 1.8)) * (components.float.height || 0.45);

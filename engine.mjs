@@ -13349,7 +13349,10 @@ function animate() {
   if (typeof window._updateMiniMap === 'function') window._updateMiniMap(); }
       if (shooterMode) { updateBullets(dt); updateShooterHUD(); }
     updateWaterAnimation(performance.now() * 0.001);
-  if (crateFrame.play && userScriptsModule?.updateUserScripts) userScriptsModule.updateUserScripts(dt);
+  const userScriptIdleDt = crateFrame.play ? dt : takeScheduledDelta('user-scripts-idle', dt, 12);
+  if ((crateFrame.play || userScriptIdleDt) && userScriptsModule?.updateUserScripts) {
+    userScriptsModule.updateUserScripts(crateFrame.play ? dt : Math.min(userScriptIdleDt, 0.05));
+  }
   
   // Weather follows camera for full-scene coverage
   const _wcam = playMode && characterController && characterController.model ? characterController.position : camera.position;
