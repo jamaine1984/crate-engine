@@ -2141,6 +2141,7 @@ async function runBrowserSmoke() {
         cityPerformanceProfile: window._lastCityPerformanceSettings?.profile || '',
         cityPerformanceProceduralProps: window._lastCityPerformanceSettings?.proceduralProps === true,
         cityPerformanceProceduralVehicles: window._lastCityPerformanceSettings?.proceduralVehicles === true,
+        cityPerformanceProceduralNature: window._lastCityPerformanceSettings?.proceduralNature === true,
         performanceRows: document.querySelectorAll('#gb-performance-list .gb-performance-row').length,
         performanceWarnings: Array.isArray(performancePanel.warnings) ? performancePanel.warnings : [],
         validationStatus: validation.status || document.querySelector('#gb-validation-status')?.dataset.status || '',
@@ -2480,7 +2481,8 @@ async function runBrowserSmoke() {
       state.performanceCalls > 900 ||
       state.performanceTriangles > 750000 ||
       !state.cityPerformanceProceduralProps ||
-      !state.cityPerformanceProceduralVehicles) {
+      !state.cityPerformanceProceduralVehicles ||
+      !state.cityPerformanceProceduralNature) {
       throw new Error(`Game Builder performance panel did not report live renderer metrics: ${JSON.stringify(state)}`);
     }
     if (state.validationStatus !== 'ready' ||
@@ -2728,7 +2730,7 @@ console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
-console.log(`City performance profile: ${browserState.cityPerformanceProfile || 'missing'} (procedural props ${browserState.cityPerformanceProceduralProps ? 'on' : 'off'}, procedural vehicles ${browserState.cityPerformanceProceduralVehicles ? 'on' : 'off'}, renderer ${browserState.rendererCalls || 0} calls/${browserState.rendererTriangles || 0} tris)`);
+console.log(`City performance profile: ${browserState.cityPerformanceProfile || 'missing'} (procedural props ${browserState.cityPerformanceProceduralProps ? 'on' : 'off'}, vehicles ${browserState.cityPerformanceProceduralVehicles ? 'on' : 'off'}, nature ${browserState.cityPerformanceProceduralNature ? 'on' : 'off'}, renderer ${browserState.rendererCalls || 0} calls/${browserState.rendererTriangles || 0} tris)`);
 console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);
 console.log(`Validation fixes: ${(browserState.validationFixActions || []).join(', ') || 'none'} (${browserState.validationFixColliderCount || 0} colliders, undo restored ${browserState.validationFixUndoRestoredObjects || 0})`);
 console.log(`Game systems: ${browserState.systemSummary}`);

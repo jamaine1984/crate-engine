@@ -63,9 +63,10 @@ function getCityPerformanceSettings() {
     staticTrafficLights: quality,
     proceduralProps: !quality,
     proceduralVehicles: !quality,
+    proceduralNature: !quality,
     propDetail: quality ? 1 : fast ? 0.45 : 0.65,
     natureDetail: quality ? 1 : fast ? 0.45 : 0.65,
-    trafficCars: quality ? 20 : fast ? 8 : 12,
+    trafficCars: quality ? 20 : fast ? 6 : 8,
     parkedCarChance: quality ? 0.4 : fast ? 0.18 : 0.25,
     maxParkedPerBlock: quality ? 2 : 1,
     pedestrianScale: quality ? 1 : fast ? 0.35 : 0.6,
@@ -867,8 +868,9 @@ async function buildCityWorld3() {
     const isVehicleAsset = (path = '') => /(?:kenney_cars\/|dl_low_polly|dl_morris|sedan|suv|truck|taxi|van|delivery|ambulance|police|firetruck)/i.test(path);
     const shouldUseProceduralProxy = (path = '') => {
       if (cityPerf.proceduralVehicles && isVehicleAsset(path)) return true;
+      if (cityPerf.proceduralNature && /(?:tree_|palm_|bush_|flower_)/i.test(path)) return true;
       if (!cityPerf.proceduralProps) return false;
-      return /ph_street_lamp|ph_concrete_road_barrier|ph_modular_electricity_poles|ph_CoffeeCart|barrel_0|dl_cargo_container|street_pack_sign|construction-|crate_0|fence\.glb|cyberpunk_pack_fence/i.test(path);
+      return /ph_street_lamp|ph_concrete_road_barrier|ph_modular_electricity_poles|ph_CoffeeCart|barrel_0|dl_cargo_container|street_pack_sign|construction-|crate_0|fence\.glb|cyberpunk_pack_fence|cyberpunk_pack_sign|cyberpunk_pack_light|traffic-lights/i.test(path);
     };
 
     const proxyMat = {
@@ -900,14 +902,6 @@ async function buildCityWorld3() {
       const bodyMat = isService ? proxyMat.red : proxyMat.yellow;
       addProxyBox(group, 1.4, 0.35, 0.7, 0, 0.42, 0, bodyMat);
       addProxyBox(group, 0.75, 0.28, 0.55, -0.08, 0.78, 0, proxyMat.glass);
-      for (const x of [-0.48, 0.48]) {
-        for (const z of [-0.42, 0.42]) {
-          const wheel = new THREE.Mesh(proxyGeo.wheel, proxyMat.tire);
-          wheel.rotation.z = Math.PI / 2;
-          wheel.position.set(x, 0.25, z);
-          group.add(wheel);
-        }
-      }
       group.scale.setScalar(scale);
       group.userData = { isAutoCity: true, isProceduralProxy: true, name: 'procedural_vehicle' };
       return group;
@@ -931,6 +925,12 @@ async function buildCityWorld3() {
           group.add(pole);
           addProxyBox(group, 1.8, 0.08, 0.08, 0, 6.5, 0, proxyMat.wood);
           addProxyBox(group, 0.06, 0.06, 1.5, 0, 6.25, 0, proxyMat.dark);
+        } else if (/traffic-lights/i.test(path)) {
+          const pole = new THREE.Mesh(proxyGeo.pole, proxyMat.dark);
+          pole.scale.set(0.8, 0.72, 0.8);
+          pole.position.y = 1.9;
+          group.add(pole);
+          addProxyBox(group, 0.28, 0.55, 0.2, 0, 3.7, 0.16, proxyMat.dark);
         } else if (/barrier|construction-/i.test(path)) {
           addProxyBox(group, 2.2, 0.45, 0.25, 0, 0.45, 0, proxyMat.concrete);
           if (/construction/i.test(path)) addProxyBox(group, 2.0, 0.08, 0.08, 0, 0.9, 0, proxyMat.red);
@@ -947,6 +947,26 @@ async function buildCityWorld3() {
           addProxyBox(group, 1.8, 0.08, 0.08, 0, 0.85, 0, proxyMat.metal);
           addProxyBox(group, 0.07, 0.85, 0.07, -0.8, 0.45, 0, proxyMat.metal);
           addProxyBox(group, 0.07, 0.85, 0.07, 0.8, 0.45, 0, proxyMat.metal);
+        } else if (/tree_|palm_/i.test(path)) {
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1.4, 6), proxyMat.wood);
+          trunk.position.y = 0.7;
+          group.add(trunk);
+          const crown = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.35, 7), new THREE.MeshLambertMaterial({ color: 0x3f7b45 }));
+          crown.position.y = 1.7;
+          group.add(crown);
+        } else if (/bush_/i.test(path)) {
+          const bush = new THREE.Mesh(new THREE.SphereGeometry(0.48, 8, 5), new THREE.MeshLambertMaterial({ color: 0x3c7a3c }));
+          bush.scale.y = 0.55;
+          bush.position.y = 0.28;
+          group.add(bush);
+        } else if (/flower_/i.test(path)) {
+          const flower = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 4), new THREE.MeshLambertMaterial({ color: 0xd95f8d }));
+          flower.scale.y = 0.55;
+          flower.position.y = 0.18;
+          group.add(flower);
+        } else if (/sign/i.test(path)) {
+          addProxyBox(group, 0.08, 1.25, 0.08, 0, 0.62, 0, proxyMat.dark);
+          addProxyBox(group, 0.72, 0.35, 0.05, 0, 1.2, 0, proxyMat.red);
         } else {
           addProxyBox(group, 0.7, 0.7, 0.7, 0, 0.35, 0, proxyMat.concrete);
         }
