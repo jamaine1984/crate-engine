@@ -947,6 +947,18 @@ async function buildCityWorld3() {
       });
       return group;
     };
+    const addCityStaticMesh = (geometry, material, setup, label = 'static') => {
+      const mesh = tag(new THREE.Mesh(geometry, material));
+      if (typeof setup === 'function') setup(mesh);
+      if (cityPerf.batchStaticProxies) {
+        mesh.updateMatrix();
+        queueStaticInstance(geometry, material, mesh.matrix, label);
+        return mesh;
+      }
+      scene.add(mesh);
+      objects.push(mesh);
+      return mesh;
+    };
     const flushStaticProxyBatches = () => {
       let batchIndex = 0;
       for (const batch of staticProxyBatches.values()) {
@@ -1321,48 +1333,62 @@ async function buildCityWorld3() {
 
     const roadMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
     const lineMat = new THREE.MeshLambertMaterial({ color: 0xf0d020 });
+    const intersectionMat = new THREE.MeshLambertMaterial({ color: 0x4a4a4a });
+    const roadEWGeo = new THREE.PlaneGeometry(HALF * 2, SEG);
+    const roadNSGeo = new THREE.PlaneGeometry(SEG, HALF * 2);
+    const laneEWGeo = new THREE.PlaneGeometry(HALF * 2, 0.3);
+    const laneNSGeo = new THREE.PlaneGeometry(0.3, HALF * 2);
+    const intersectionGeo = new THREE.PlaneGeometry(SEG + 1, SEG + 1);
 
     // E-W full-width road strips
     for (let r = 0; r <= G; r++) {
       const rz = -HALF + r * CELL;
-      const road = tag(new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2, SEG), roadMat));
-      road.rotation.x = -Math.PI / 2; road.position.set(0, 0.02, rz); road.receiveShadow = true;
-      scene.add(road); objects.push(road);
-      const line = tag(new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2, 0.3), lineMat));
-      line.rotation.x = -Math.PI / 2; line.position.set(0, 0.05, rz);
-      scene.add(line); objects.push(line);
+      addCityStaticMesh(roadEWGeo, roadMat, (road) => {
+        road.rotation.x = -Math.PI / 2;
+        road.position.set(0, 0.02, rz);
+        road.receiveShadow = true;
+      }, 'road_ew');
+      addCityStaticMesh(laneEWGeo, lineMat, (line) => {
+        line.rotation.x = -Math.PI / 2;
+        line.position.set(0, 0.05, rz);
+      }, 'lane_ew');
     }
     // N-S full-width road strips
     for (let c = 0; c <= G; c++) {
       const rx = -HALF + c * CELL;
-      const road = tag(new THREE.Mesh(new THREE.PlaneGeometry(SEG, HALF * 2), roadMat));
-      road.rotation.x = -Math.PI / 2; road.position.set(rx, 0.03, 0); road.receiveShadow = true;
-      scene.add(road); objects.push(road);
-      const line = tag(new THREE.Mesh(new THREE.PlaneGeometry(0.3, HALF * 2), lineMat));
-      line.rotation.x = -Math.PI / 2; line.position.set(rx, 0.06, 0);
-      scene.add(line); objects.push(line);
+      addCityStaticMesh(roadNSGeo, roadMat, (road) => {
+        road.rotation.x = -Math.PI / 2;
+        road.position.set(rx, 0.03, 0);
+        road.receiveShadow = true;
+      }, 'road_ns');
+      addCityStaticMesh(laneNSGeo, lineMat, (line) => {
+        line.rotation.x = -Math.PI / 2;
+        line.position.set(rx, 0.06, 0);
+      }, 'lane_ns');
     }
     // Intersection squares + crosswalks
     for (let c = 0; c <= G; c++) {
       for (let r = 0; r <= G; r++) {
         const ix = -HALF + c * CELL, iz = -HALF + r * CELL;
-        const isq = tag(new THREE.Mesh(new THREE.PlaneGeometry(SEG + 1, SEG + 1), new THREE.MeshLambertMaterial({ color: 0x4a4a4a })));
-        isq.rotation.x = -Math.PI / 2; isq.position.set(ix, 0.04, iz);
-        scene.add(isq); objects.push(isq);
+        addCityStaticMesh(intersectionGeo, intersectionMat, (isq) => {
+          isq.rotation.x = -Math.PI / 2;
+          isq.position.set(ix, 0.04, iz);
+        }, 'road_intersection');
 
       }
     }
 
     // ═══ SIDEWALK PADS (concrete base per block) ═══
     const padMat = new THREE.MeshLambertMaterial({ color: 0x999088 });
+    const padGeo = new THREE.PlaneGeometry(BLK, BLK);
     for (let c = 0; c < G; c++) {
       for (let r = 0; r < G; r++) {
         const { x, z } = bc(c, r);
-        const pad = tag(new THREE.Mesh(new THREE.PlaneGeometry(BLK, BLK), padMat));
-        pad.rotation.x = -Math.PI / 2;
-        pad.position.set(x, 0.05, z);
-        pad.receiveShadow = true;
-        scene.add(pad); objects.push(pad);
+        addCityStaticMesh(padGeo, padMat, (pad) => {
+          pad.rotation.x = -Math.PI / 2;
+          pad.position.set(x, 0.05, z);
+          pad.receiveShadow = true;
+        }, 'sidewalk_pad');
       }
     }
 
@@ -1744,36 +1770,46 @@ async function buildCityWorld3() {
     // ═══ TRAFFIC LIGHTS at intersections ═══
     // ═══ CURBS — simplified long strips ═══
     const curbMat = new THREE.MeshLambertMaterial({color: 0xaaa898});
+    const curbEWGeo = new THREE.BoxGeometry(HALF*2, 0.12, 0.25);
+    const curbNSGeo = new THREE.BoxGeometry(0.25, 0.12, HALF*2);
     // E-W curbs along each road
     for (let r = 0; r <= G; r++) {
       const rz = -HALF + r * CELL;
-      const cn = tag(new THREE.Mesh(new THREE.BoxGeometry(HALF*2, 0.12, 0.25), curbMat));
-      cn.position.set(0, 0.06, rz + SEG/2 + 0.3); scene.add(cn); objects.push(cn);
-      const cs = tag(new THREE.Mesh(new THREE.BoxGeometry(HALF*2, 0.12, 0.25), curbMat));
-      cs.position.set(0, 0.06, rz - SEG/2 - 0.3); scene.add(cs); objects.push(cs);
+      addCityStaticMesh(curbEWGeo, curbMat, (cn) => {
+        cn.position.set(0, 0.06, rz + SEG/2 + 0.3);
+      }, 'curb_ew');
+      addCityStaticMesh(curbEWGeo, curbMat, (cs) => {
+        cs.position.set(0, 0.06, rz - SEG/2 - 0.3);
+      }, 'curb_ew');
     }
     // N-S curbs
     for (let c = 0; c <= G; c++) {
       const rx = -HALF + c * CELL;
-      const ce = tag(new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.12, HALF*2), curbMat));
-      ce.position.set(rx + SEG/2 + 0.3, 0.06, 0); scene.add(ce); objects.push(ce);
-      const cw = tag(new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.12, HALF*2), curbMat));
-      cw.position.set(rx - SEG/2 - 0.3, 0.06, 0); scene.add(cw); objects.push(cw);
+      addCityStaticMesh(curbNSGeo, curbMat, (ce) => {
+        ce.position.set(rx + SEG/2 + 0.3, 0.06, 0);
+      }, 'curb_ns');
+      addCityStaticMesh(curbNSGeo, curbMat, (cw) => {
+        cw.position.set(rx - SEG/2 - 0.3, 0.06, 0);
+      }, 'curb_ns');
     }
 
     // ═══ CENTER LINES on roads — solid yellow ═══
     const dashMat = new THREE.MeshLambertMaterial({color: 0xf0d020});
+    const dashEWGeo = new THREE.PlaneGeometry(HALF*2, 0.2);
+    const dashNSGeo = new THREE.PlaneGeometry(0.2, HALF*2);
     for (let r = 0; r <= G; r++) {
       const rz = -HALF + r * CELL;
-      const line = tag(new THREE.Mesh(new THREE.PlaneGeometry(HALF*2, 0.2), dashMat));
-      line.rotation.x = -Math.PI/2; line.position.set(0, 0.07, rz);
-      scene.add(line); objects.push(line);
+      addCityStaticMesh(dashEWGeo, dashMat, (line) => {
+        line.rotation.x = -Math.PI/2;
+        line.position.set(0, 0.07, rz);
+      }, 'center_line_ew');
     }
     for (let c = 0; c <= G; c++) {
       const rx = -HALF + c * CELL;
-      const line = tag(new THREE.Mesh(new THREE.PlaneGeometry(0.2, HALF*2), dashMat));
-      line.rotation.x = -Math.PI/2; line.position.set(rx, 0.07, 0);
-      scene.add(line); objects.push(line);
+      addCityStaticMesh(dashNSGeo, dashMat, (line) => {
+        line.rotation.x = -Math.PI/2;
+        line.position.set(rx, 0.07, 0);
+      }, 'center_line_ns');
     }
 
 
