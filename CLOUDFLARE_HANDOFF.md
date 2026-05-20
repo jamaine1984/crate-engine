@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `ded2a368`
+- Current deployed source commit for the public engine code: `c8870486`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -28,12 +28,12 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `8ef07d4e-230c-4e8b-a054-6cc2380f4718`
-- Latest production deployment URL: `https://8ef07d4e.crateship-games.pages.dev`
+- Latest production deployment ID: `4116f1ed-1c43-4e19-bd0d-4882fb615074`
+- Latest production deployment URL: `https://4116f1ed.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `ded2a36`
-- Main live page bundle after the deploy: `/assets/play-C3NW8f4Y.js`
-- Lazy App Builder chunk after the deploy: `/assets/app-builder-Dd7P-lAB.js`
+- Source shown by Cloudflare: `c887048`
+- Main live page bundle after the deploy: `/assets/play-B06mzDQf.js`
+- Lazy App Builder chunk after the deploy: `/assets/app-builder-NxtaW9El.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-DTRJCIV-.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -2121,6 +2121,19 @@ Browser verification history:
   - Smoke still verified separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
   - The remote `moderation_audit` table still has `0` rows after deploy.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-city-batch-ded2a368.png`.
+- Follow-up production deploys on 2026-05-20 improved the raw Build City frame budget:
+  - Superseded deployment `bc14dbeb-c51c-4864-9ff9-dbef3996775c`, source `6b0cd98`, tested procedural building instancing with `/assets/play-CKSiuqgl.js`. Smoke passed, but raw Build City regressed to `13.9 FPS`, `72.2 ms`, `596` calls, and `304,034` triangles, so it was not kept as the final baseline.
+  - Deployment `91e967e7-2592-40de-86d6-55c175d6cd35`, source `6cbb638`, backed out the building-instancing regression while keeping the balanced cloud trim. Smoke returned to `20.3 FPS`, `49.2 ms`, `742` calls, and `286,222` triangles on `/assets/play-CaUy8nPN.js`.
+  - Deployment `fb7447e8-8145-4a66-b507-a9ea16902566`, source `01500bc`, trimmed balanced cloud puffs and skipped extra procedural roof meshes outside quality mode. Smoke passed on `/assets/play-BA_05dvK.js`; it reduced raw calls to `666` but did not materially improve frame time, so it was followed by the road-surface pass.
+  - Final deployment `4116f1ed-1c43-4e19-bd0d-4882fb615074`, source `c887048`, serves `/assets/play-B06mzDQf.js`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and did include `admin.html` and `play.html`.
+  - `city-builder.mjs` now batches balanced-profile static road strips, lane lines, intersection pads, sidewalk pads, curbs, and center lines into instanced static draw groups. Quality mode keeps the older unbatched meshes.
+  - `node --check city-builder.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified the live editor Performance panel at `62.5 FPS`, `16 ms`, `27` calls, and `4,994` triangles.
+  - Smoke verified the raw Build City frame probe at `37.7 FPS`, `26.5 ms` average frame time, `0.8 ms` update time, `25.7 ms` render time, `504` calls, and `285,310` triangles.
+  - Smoke verified `Readiness: Ready to test, 111 objects, 2 scripts, 40 components, Edit mode`.
+  - Smoke still verified separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-road-batch-c8870486.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2166,6 +2179,11 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+c8870486 Batch static city road surfaces
+01500bc6 Trim balanced city roof meshes
+6cbb638c Trim balanced city clouds
+6b0cd983 Batch procedural city buildings
+3082523d Update handoff for frame budget deploy
 ded2a368 Batch static city proxies
 913384bb Guard smart traffic frame updates
 e7cd9404 Keep runtime catalog refreshed outside play
@@ -2296,15 +2314,18 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke reports the settled Performance panel at `71.4 FPS`,
-     `14 ms` average frame time, `73` draw calls, and `4,932` triangles after
-     project validation and proxy batching.
-   - The raw Build City probe now reports `20.1 FPS`, `49.7 ms` average frame
-     time, `742` draw calls, and `286,222` triangles immediately after city
-     generation, which is inside the current production smoke budget.
-   - The previous live smoke before static proxy batching was `26.5 FPS`,
-     `37.8 ms`, `618` draw calls, and `234,312` triangles after Build City with
-     procedural props, vehicles, and nature enabled.
+   - Current live smoke reports the settled Performance panel at `62.5 FPS`,
+     `16 ms` average frame time, `27` draw calls, and `4,994` triangles after
+     project validation and road-surface batching.
+   - The raw Build City probe now reports `37.7 FPS`, `26.5 ms` average frame
+     time, `504` draw calls, and `285,310` triangles immediately after city
+     generation, which is the current production baseline.
+   - The previous live smoke before road-surface batching was `20.3 FPS`,
+     `49.2 ms`, `742` draw calls, and `286,222` triangles on the restored
+     static-proxy baseline.
+   - The procedural building instancing experiment reduced calls but regressed
+     frame time to `13.9 FPS` and `72.2 ms`, so it was superseded rather than
+     treated as the working baseline.
    - Earlier direct raw profiling before the proxy tightening showed about
      `1,706` calls and `234,042` triangles, while the pre-optimization direct
      profile showed about `2,013` calls and `2,252,712` triangles.
@@ -2313,8 +2334,8 @@ The remaining work to make it feel like a sellable full game engine is:
      smoke reached `18.8 FPS`, `53.2 ms`, `74` draw calls, and `11,896`
      triangles before the smoke counters were hardened.
    - Profile `https://crateshipgames.com/play` on desktop and mobile widths.
-   - Find the remaining raw Build City frame-time bottleneck after draw-call
-     reduction: check material/shader cost, first-second renderer warmup,
+   - Find the remaining raw Build City frame-time bottleneck after the road
+     batching pass: check material/shader cost, first-second renderer warmup,
      animation loops, browser throttling, and post-processing.
    - Continue adding object pooling, instancing for repeated props, culling, LOD
      selection, and lazy loading for heavy assets.
@@ -2369,9 +2390,9 @@ The remaining work to make it feel like a sellable full game engine is:
 
 ## Recommended Next Steps
 
-1. Profile raw Build City render time now that static proxy batching is live;
+1. Profile raw Build City render time now that road-surface batching is live;
    the draw-call budget passes, but immediate post-generation frame time is
-   still around `49.7 ms`.
+   still around `26.5 ms`.
 2. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
