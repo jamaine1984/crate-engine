@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `f2a9a601`
+- Current deployed source commit for the public engine code: `edb0293b`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,18 +29,51 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `fb3ca344-ca95-44f7-8ba9-cd07dbd90975`
-- Latest production deployment URL: `https://fb3ca344.crateship-games.pages.dev`
+- Latest production deployment ID: `9c7a3d97-f704-4dd1-8872-0fb530208c85`
+- Latest production deployment URL: `https://9c7a3d97.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `f2a9a60`
-- Main live page bundle after the deploy: `/assets/play-C1q-ZNZe.js`
+- Source shown by Cloudflare: `edb0293`
+- Main live page bundle after the deploy: `/assets/play-Bac2DHpz.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-Cq16LzKH.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BiWteUfT.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-BDuV1v3u.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
+
+Latest app-only deploy on 2026-05-20:
+
+- Commit deployed: `edb0293b` (`Harden imports and runtime effect pools`)
+- Cloudflare deployment: `9c7a3d97-f704-4dd1-8872-0fb530208c85`
+- App deploy command:
+
+```powershell
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`
+- App-only deploy reused the separate asset host and uploaded `0` new app files on the final clean deploy.
+- Primary smoke passed: `https://crateshipgames.com/play?verify=runtime-pools-edb0293b`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-runtime-pools-edb0293b`
+- Smoke bundle: `/assets/play-Bac2DHpz.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+
+What changed in this deploy:
+
+- `engine.mjs`
+  - Added `.crate` project migration from legacy/v1-style saves into schema version `3`.
+  - Keeps future project versions blocked instead of silently downgrading them.
+  - Added GLTF collision-proxy detection for imported models using names like `collider`, `collision`, `UCX`, `convex`, `hull`, or `physics`.
+  - Warns when a heavy physics model has no collision proxy metadata.
+  - Added runtime pools for damage-number DOM nodes, impact particles, and muzzle-flash lights.
+- `game-builder-ui.mjs`
+  - Added runtime pool counts to the Builder `Performance` panel.
+- `scripts/smoke-production.mjs`
+  - Verifies collision-proxy warnings and proxy-ready model metadata.
+  - Verifies legacy project migration and future-version rejection.
+  - Exercises runtime effect pools and fails if they keep creating new transient objects instead of reusing them.
 
 Check the latest deployment with:
 
