@@ -2576,6 +2576,18 @@ async function runBrowserSmoke() {
       undefined,
       { timeout: timeoutMs }
     );
+    await page.evaluate(() => window._refreshGameBuilder?.());
+    await page.waitForFunction(
+      () => {
+        const validation = window._gameBuilderValidation || {};
+        const readiness = window._gameBuilderReadiness || {};
+        return !!validation.status &&
+          !!readiness.status &&
+          document.querySelector('#gb-validation-list .gb-validation-row');
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
 
     await mkdir(screenshotDir, { recursive: true });
     await page.screenshot({ path: screenshotPath, fullPage: false });
@@ -2691,6 +2703,11 @@ async function runBrowserSmoke() {
         validationWarnings: Number(validation.warnings ?? document.querySelector('#gb-validation-status')?.dataset.warnings) || 0,
         validationSuggestions: Number(validation.suggestions ?? document.querySelector('#gb-validation-status')?.dataset.suggestions) || 0,
         validationRows: document.querySelectorAll('#gb-validation-list .gb-validation-row').length,
+        validationMessages: [...document.querySelectorAll('#gb-validation-list .gb-validation-row')].map((row) => ({
+          level: row.dataset.level || '',
+          text: row.textContent?.replace(/\s+/g, ' ').trim() || '',
+          action: row.querySelector('[data-gb-validation-fix]')?.dataset.gbValidationFix || '',
+        })),
         projectSaveCount: JSON.parse(localStorage.getItem('crate-saves') || '[]').length,
         mode: window._currentMode || '',
         hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
