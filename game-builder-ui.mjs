@@ -3468,6 +3468,34 @@ function createModeSection() {
   return section;
 }
 
+function createModeDock() {
+  const dock = document.createElement('div');
+  dock.id = 'gb-mode-dock';
+  dock.setAttribute('aria-label', 'Mode switcher');
+
+  const label = document.createElement('span');
+  label.className = 'gb-mode-dock-label';
+  label.textContent = 'Mode';
+  dock.appendChild(label);
+
+  [
+    { mode: 'edit', label: 'Edit', title: 'Select, move, inspect, and change objects' },
+    { mode: 'explore', label: 'Explore', title: 'Move the camera without selecting objects' },
+    { mode: 'play', label: 'Play', title: 'Run the game without editor interactions' },
+  ].forEach((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'gb-mode-dock-btn';
+    button.dataset.gbMode = item.mode;
+    button.textContent = item.label;
+    button.title = item.title;
+    button.addEventListener('click', () => setBuilderMode(item.mode));
+    dock.appendChild(button);
+  });
+
+  return dock;
+}
+
 function createPlacementSection() {
   const section = document.createElement('section');
   section.className = 'gb-section';
@@ -4089,6 +4117,13 @@ function mount() {
     .gb-mode-btn[data-selected="true"]{border-color:#4a9eff;background:#102033;color:#fff;font-weight:700}
     .gb-mode-btn[data-gb-mode="edit"][data-selected="true"]{border-color:#d9572b;background:#211a16}
     .gb-mode-btn[data-gb-mode="play"][data-selected="true"]{border-color:#38a169;background:#102318}
+    #gb-mode-dock{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:13000;display:flex;align-items:center;gap:5px;padding:5px;background:rgba(10,11,12,.92);border:1px solid #293137;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.38);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e9edf0;backdrop-filter:blur(12px);pointer-events:auto}
+    .gb-mode-dock-label{padding:0 5px;color:#8a9298;font-size:10px;line-height:18px;text-transform:uppercase;font-weight:700}
+    .gb-mode-dock-btn{min-width:66px;min-height:30px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:12px;line-height:14px;cursor:pointer;padding:5px 8px;white-space:normal;overflow-wrap:anywhere}
+    .gb-mode-dock-btn:hover{border-color:#4a9eff;color:#fff}
+    .gb-mode-dock-btn[data-selected="true"]{border-color:#4a9eff;background:#102033;color:#fff;font-weight:700}
+    .gb-mode-dock-btn[data-gb-mode="edit"][data-selected="true"]{border-color:#d9572b;background:#211a16}
+    .gb-mode-dock-btn[data-gb-mode="play"][data-selected="true"]{border-color:#38a169;background:#102318}
     #game-builder-panel[data-edit-mode="false"] .gb-section:has([data-gb-edit-only="true"]) h3::after{content:"Read only";float:right;text-transform:none;font-weight:600;color:#75808a}
     [data-gb-edit-only="true"]:disabled{opacity:.42!important;cursor:not-allowed!important}
     .gb-readonly-note{margin-bottom:8px;border:1px solid #374151;background:#111827;color:#c7d2fe;border-radius:7px;padding:7px 8px;font-size:11px;line-height:15px}
@@ -4227,9 +4262,12 @@ function mount() {
     .gb-blueprint-info{min-width:0;display:flex;flex-direction:column;gap:2px}
     .gb-blueprint-info strong{font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-blueprint-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    @media (max-width:900px){#game-builder-panel{top:70px;left:8px;right:8px;bottom:auto;width:auto;max-height:58vh}#game-builder-panel[data-open="false"]{width:48px;right:auto}.gb-grid{grid-template-columns:1fr 1fr 1fr}}
+    @media (max-width:900px){#game-builder-panel{top:70px;left:8px;right:8px;bottom:auto;width:auto;max-height:58vh}#game-builder-panel[data-open="false"]{width:48px;right:auto}.gb-grid{grid-template-columns:1fr 1fr 1fr}#gb-mode-dock{top:auto;bottom:44px;left:50%;max-width:calc(100vw - 16px)}.gb-mode-dock-label{display:none}.gb-mode-dock-btn{min-width:0;flex:1}}
   `;
   document.head.appendChild(style);
+
+  const modeDock = createModeDock();
+  document.body.appendChild(modeDock);
 
   const panel = document.createElement('aside');
   panel.id = 'game-builder-panel';

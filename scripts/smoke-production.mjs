@@ -174,6 +174,7 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#gb-templates [data-gb-template="survival"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-systems', { timeout: timeoutMs });
     await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
+    await page.waitForSelector('#gb-mode-dock [data-gb-mode="edit"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-project button[data-gb-action="save"]', { timeout: timeoutMs });
     await page.waitForFunction(
       () => window._crateAssetManifest?.version && document.querySelector('#gb-asset-pack-status')?.dataset.status === 'loaded',
@@ -2052,7 +2053,7 @@ async function runBrowserSmoke() {
       throw new Error('Explore mode button did not reflect the active mode');
     }
 
-    await page.locator('[data-gb-mode="play"]').click({ timeout: timeoutMs });
+    await page.locator('#gb-mode-dock [data-gb-mode="play"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
       () => window._currentMode === 'play' && window._playMode === true,
       undefined,
@@ -2068,6 +2069,8 @@ async function runBrowserSmoke() {
       promptDisplay: document.querySelector('#prompt-input')?.parentElement?.style.display || '',
       legacyInspectorDisplay: document.querySelector('#inspector')?.style.display || '',
       controlsEnabled: window._engine?.controls?.enabled,
+      modeDockDisplay: getComputedStyle(document.querySelector('#gb-mode-dock') || document.createElement('div')).display || '',
+      modeDockSelected: document.querySelector('#gb-mode-dock [data-gb-mode="play"]')?.dataset.selected || '',
     }));
     if (playState.builderDisplay !== 'none' || playState.builderPlayHidden !== 'true') {
       throw new Error(`Play mode did not hide Game Builder: ${JSON.stringify(playState)}`);
@@ -2084,6 +2087,36 @@ async function runBrowserSmoke() {
     if (playState.controlsEnabled !== false) {
       throw new Error(`Play mode left editor OrbitControls enabled: ${JSON.stringify(playState)}`);
     }
+    if (playState.modeDockDisplay === 'none' || playState.modeDockSelected !== 'true') {
+      throw new Error(`Play mode did not keep the global mode dock available: ${JSON.stringify(playState)}`);
+    }
+
+    await page.locator('#gb-mode-dock [data-gb-mode="edit"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => window._currentMode === 'edit' && window._playMode !== true,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const playExitState = await page.evaluate(() => ({
+      mode: window._currentMode,
+      playMode: window._playMode === true,
+      builderDisplay: document.querySelector('#game-builder-panel')?.style.display || '',
+      builderPlayHidden: document.querySelector('#game-builder-panel')?.dataset.playHidden || '',
+      promptDisplay: document.querySelector('#prompt-input')?.parentElement?.style.display || '',
+      modeDockSelected: document.querySelector('#gb-mode-dock [data-gb-mode="edit"]')?.dataset.selected || '',
+    }));
+    if (playExitState.builderDisplay === 'none' ||
+        playExitState.builderPlayHidden === 'true' ||
+        playExitState.promptDisplay === 'none' ||
+        playExitState.modeDockSelected !== 'true') {
+      throw new Error(`Global mode dock did not return from Play to Edit cleanly: ${JSON.stringify(playExitState)}`);
+    }
+    await page.locator('#gb-mode-dock [data-gb-mode="play"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      () => window._currentMode === 'play' && window._playMode === true,
+      undefined,
+      { timeout: timeoutMs }
+    );
 
     const playCameraBefore = await page.evaluate(() => ({
       x: window._engine?.camera?.rotation.x || 0,

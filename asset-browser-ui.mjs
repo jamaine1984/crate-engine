@@ -194,8 +194,10 @@ export function showGallery(category, options = {}) {
       pageItems.forEach((item) => {
         const card = document.createElement('div');
         card.className = 'asset-gallery-card';
+        card.dataset.assetCard = 'true';
         card.dataset.assetFile = item.file || '';
         card.dataset.assetPath = item.path || '';
+        card.dataset.assetName = item.name || '';
         card.style.cssText = 'background:#111;border:2px solid transparent;border-radius:10px;overflow:hidden;cursor:pointer;transition:all 0.2s;';
         card.onmouseenter = () => {
           card.style.borderColor = meta.color;
@@ -220,7 +222,7 @@ export function showGallery(category, options = {}) {
         observer.observe(card);
 
         const nameEl = document.createElement('div');
-        nameEl.style.cssText = 'padding:8px 10px;font-size:11px;color:#bbb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        nameEl.style.cssText = 'min-height:38px;padding:7px 10px;font-size:11px;line-height:14px;color:#bbb;white-space:normal;overflow-wrap:anywhere;display:flex;align-items:center;';
         nameEl.textContent = item.name;
         nameEl.title = item.name;
         card.appendChild(nameEl);
@@ -285,6 +287,11 @@ export function showCategoryPicker() {
     }
 
     const characterCount = await context.getCharacterCount?.();
+    const categories = [...new Set(['characters', ...Object.keys(catalog || {})])];
+    const totalModels = categories.reduce((sum, category) => {
+      if (category === 'characters') return sum + (Number(characterCount) || 0);
+      return sum + (catalog?.[category]?.length || 0);
+    }, 0);
     const overlay = document.createElement('div');
     overlay.id = '_catPicker';
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.96);z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
@@ -293,20 +300,23 @@ export function showCategoryPicker() {
     header.style.cssText = 'text-align:center;padding:24px 24px 16px;flex-shrink:0;width:100%;';
     header.innerHTML = '<div style="font-size:28px;color:#ffd700;margin-bottom:6px;">📦 ASSET LIBRARY</div><div style="font-size:13px;color:#555;margin-bottom:16px;">4,122 models across 26 categories</div><input id="_catSearch" placeholder="🔍  Search categories..." style="background:#111;border:1px solid #333;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;width:260px;outline:none;" />';
     overlay.appendChild(header);
+    const summaryEl = header.querySelector('div:nth-child(2)');
+    if (summaryEl) summaryEl.textContent = totalModels.toLocaleString() + ' models across ' + categories.length + ' categories';
 
     const scrollWrap = document.createElement('div');
     scrollWrap.style.cssText = 'flex:1;overflow-y:auto;width:100%;padding:0 24px 24px;box-sizing:border-box;';
     const grid = document.createElement('div');
     grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,180px);gap:16px;justify-content:center;max-width:960px;margin:0 auto;';
 
-    ['characters', ...Object.keys(catalog || {})].forEach((category) => {
+    categories.forEach((category) => {
       const meta = CAT_META[category] || { icon: '📦', color: '#888', label: category };
       const count = category === 'characters' ? characterCount : (catalog[category]?.length || 0);
       if (!count) return;
 
       const card = document.createElement('div');
       card.dataset.cat = (category + ' ' + meta.label).toLowerCase();
-      card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + meta.color + '30;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s;';
+      card.dataset.assetCategory = category;
+      card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + meta.color + '30;border-radius:8px;cursor:pointer;text-align:center;transition:all 0.2s;';
       card.onmouseenter = () => {
         card.style.borderColor = meta.color;
         card.style.transform = 'scale(1.04)';
