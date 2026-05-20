@@ -995,7 +995,7 @@ async function buildCityWorld3() {
       const isService = /police|ambulance|fire|delivery|truck/i.test(path);
       const bodyMat = isService ? proxyMat.red : proxyMat.yellow;
       addProxyBox(group, 1.4, 0.35, 0.7, 0, 0.42, 0, bodyMat);
-      addProxyBox(group, 0.75, 0.28, 0.55, -0.08, 0.78, 0, proxyMat.glass);
+      if (cityPerf.profile === 'quality') addProxyBox(group, 0.75, 0.28, 0.55, -0.08, 0.78, 0, proxyMat.glass);
       group.scale.setScalar(scale);
       group.userData = { isAutoCity: true, isProceduralProxy: true, name: 'procedural_vehicle' };
       return group;
@@ -1069,7 +1069,7 @@ async function buildCityWorld3() {
       }
       group.position.set(x, 0, z);
       group.rotation.y = ry || 0;
-      if (cityPerf.batchStaticProxies && !/traffic-lights/i.test(path)) {
+      if (cityPerf.batchStaticProxies) {
         return queueStaticProxyGroup(group, path);
       }
       scene.add(group); objects.push(group);
@@ -1828,7 +1828,7 @@ async function buildCityWorld3() {
           const oz = corner === 0 ? SEG/2 + 1 : -SEG/2 - 1;
           const tl = placeGround(tlPaths[0], ix + ox, iz + oz, 1, corner * Math.PI);
           if (tl) {
-            const tlData = { mesh: tl, x: ix, z: iz, state: rand() > 0.5 ? 'green' : 'red', timer: rand() * 8 };
+            const tlData = { mesh: tl.parent ? tl : null, x: ix, z: iz, state: rand() > 0.5 ? 'green' : 'red', timer: rand() * 8 };
             window._trafficLights.push(tlData);
           }
         }
@@ -1837,7 +1837,7 @@ async function buildCityWorld3() {
     // Traffic light cycle with visual indicators
     // Add colored light indicators to traffic light models
     for (const tl of window._trafficLights) {
-      if (!tl.mesh) continue;
+      if (!tl.mesh || !tl.mesh.parent) continue;
       const redLight = new THREE.Mesh(
         new THREE.SphereGeometry(0.3, 8, 6),
         new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 1})
@@ -2011,6 +2011,10 @@ async function buildCityWorld3() {
     window._peds = [];
     const skinT = [0xFFDBAC,0xD2A06B,0x8D5524,0xC68642,0xF1C27D,0x4A2912];
     const outfitC = [0xFF6B9D,0x4488CC,0xFFD700,0xFF4500,0x00CED1,0x9D4EDD,0x44AA44,0xEE8833,0xCC3366,0x6688BB];
+    const simplePedGeo = THREE.CapsuleGeometry
+      ? new THREE.CapsuleGeometry(0.22, 0.85, 3, 6)
+      : new THREE.BoxGeometry(0.45, 1.25, 0.28);
+    const simplePedMats = outfitC.map(color => new THREE.MeshLambertMaterial({ color }));
     for (let c = 0; c < G; c++) {
       for (let r = 0; r < G; r++) {
         const d = getDist(c, r);
@@ -2018,17 +2022,24 @@ async function buildCityWorld3() {
         let pCount = d === 'downtown' ? 2 : d === 'commercial' ? 1 : d === 'residential' ? 1 : 0;
         pCount = Math.floor(pCount * cityPerf.pedestrianScale + (rand() < cityPerf.pedestrianScale ? 1 : 0));
         for (let p = 0; p < pCount; p++) {
-          const g = new THREE.Group();
-          const sk = new THREE.MeshLambertMaterial({color: skinT[Math.floor(rand()*skinT.length)]});
-          const bd = new THREE.MeshLambertMaterial({color: outfitC[Math.floor(rand()*outfitC.length)]});
-          const lg = new THREE.MeshLambertMaterial({color: 0x222233});
-          const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 5), sk); head.position.y = 1.6; g.add(head);
-          const torso = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.25), bd); torso.position.y = 1.15; g.add(torso);
-          const la = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), bd); la.position.set(-0.3, 1.1, 0); g.add(la);
-          const ra = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), bd); ra.position.set(0.3, 1.1, 0); g.add(ra);
-          const ll = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); ll.position.set(-0.1, 0.45, 0); g.add(ll);
-          const rl = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); rl.position.set(0.1, 0.45, 0); g.add(rl);
-          g.traverse(n => { if(n.isMesh) n.castShadow = true; });
+          let g, la = null, ra = null, ll = null, rl = null;
+          if (cityPerf.profile === 'quality') {
+            g = new THREE.Group();
+            const sk = new THREE.MeshLambertMaterial({color: skinT[Math.floor(rand()*skinT.length)]});
+            const bd = new THREE.MeshLambertMaterial({color: outfitC[Math.floor(rand()*outfitC.length)]});
+            const lg = new THREE.MeshLambertMaterial({color: 0x222233});
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 5), sk); head.position.y = 1.6; g.add(head);
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.25), bd); torso.position.y = 1.15; g.add(torso);
+            la = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), bd); la.position.set(-0.3, 1.1, 0); g.add(la);
+            ra = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), bd); ra.position.set(0.3, 1.1, 0); g.add(ra);
+            ll = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); ll.position.set(-0.1, 0.45, 0); g.add(ll);
+            rl = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.15), lg); rl.position.set(0.1, 0.45, 0); g.add(rl);
+            g.traverse(n => { if(n.isMesh) n.castShadow = true; });
+          } else {
+            g = new THREE.Mesh(simplePedGeo, pick(simplePedMats));
+            g.castShadow = false;
+            g.receiveShadow = false;
+          }
           // Place on sidewalk strips (±17 to ±19 from block center)
           const side = rand() > 0.5 ? 1 : -1;
           const swOff = 17 + rand() * 2; // 17-19 from center
@@ -2045,7 +2056,7 @@ async function buildCityWorld3() {
             a = side > 0 ? 0 : Math.PI;
             a += (rand() - 0.5) * 0.3;
           }
-          g.position.set(px, 0, pz);
+          g.position.set(px, cityPerf.profile === 'quality' ? 0 : 0.8, pz);
           g.rotation.y = a;
           g.userData.isAutoCity = true;
           tag(g); scene.add(g); objects.push(g);
@@ -2077,8 +2088,10 @@ async function buildCityWorld3() {
           if (Math.abs(p.g.position.z - p.bz) > 17) { p.vz *= -1; p.g.rotation.y += Math.PI; }
         }
         const sw = Math.sin(p.ph) * 0.35;
-        p.la.rotation.x = sw; p.ra.rotation.x = -sw;
-        p.ll.rotation.x = -sw*0.5; p.rl.rotation.x = sw*0.5;
+        if (p.la && p.ra && p.ll && p.rl) {
+          p.la.rotation.x = sw; p.ra.rotation.x = -sw;
+          p.ll.rotation.x = -sw*0.5; p.rl.rotation.x = sw*0.5;
+        }
         if (p.tm > 3 + Math.random()*4) {
           const a2 = Math.random()*Math.PI*2;
           p.vx = Math.cos(a2)*0.03; p.vz = Math.sin(a2)*0.03;
