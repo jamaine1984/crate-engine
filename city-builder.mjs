@@ -74,7 +74,8 @@ function getCityPerformanceSettings() {
     proceduralBuildings: !quality,
     preloadDistrictBuildings: quality,
     preloadFurniture: quality,
-    cloudCount: quality ? 20 : fast ? 8 : 12,
+    cloudCount: quality ? 20 : fast ? 6 : 8,
+    cloudPuffs: quality ? 5 : fast ? 2 : 3,
     streetLightsPerBlock: quality ? 2 : 1,
     extraStreetLamps: quality,
     staticTrafficLights: quality,
@@ -750,7 +751,7 @@ async function buildCityWorld3() {
     const _cMat = new THREE.MeshLambertMaterial({color:0xffffff, transparent:true, opacity:0.82});
     for (let ci = 0; ci < cityPerf.cloudCount; ci++) {
       const cg = new THREE.Group();
-      const puffs = 3 + Math.floor(Math.random() * 5);
+      const puffs = cityPerf.cloudPuffs + Math.floor(Math.random() * (cityPerf.profile === 'quality' ? 3 : 2));
       for (let p = 0; p < puffs; p++) {
         const sz = 8 + Math.random() * 18;
         const pf = new THREE.Mesh(new THREE.SphereGeometry(sz, 7, 5), _cMat);
@@ -919,25 +920,35 @@ async function buildCityWorld3() {
       flower: new THREE.SphereGeometry(0.22, 6, 4),
     };
     const staticProxyBatches = new Map();
+    const composeInstanceMatrix = (x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) => {
+      const position = new THREE.Vector3(x, y, z);
+      const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz));
+      const scale = new THREE.Vector3(sx, sy, sz);
+      return new THREE.Matrix4().compose(position, rotation, scale);
+    };
+    const queueStaticInstance = (geometry, material, matrix, label = 'proxy') => {
+      if (!geometry || !material || !matrix) return null;
+      const key = geometry.uuid + '|' + material.uuid;
+      let batch = staticProxyBatches.get(key);
+      if (!batch) {
+        batch = {
+          geometry,
+          material,
+          matrices: [],
+          label: String(label || 'proxy').replace(/[^a-z0-9]+/gi, '_').slice(0, 48),
+        };
+        staticProxyBatches.set(key, batch);
+      }
+      batch.matrices.push(matrix.clone ? matrix.clone() : matrix);
+      return batch;
+    };
     const queueStaticProxyGroup = (group, path = '') => {
       group.updateMatrixWorld(true);
       group.traverse((node) => {
         if (!node.isMesh || !node.geometry || !node.material) return;
         const materials = Array.isArray(node.material) ? node.material : [node.material];
         for (const material of materials) {
-          if (!material) continue;
-          const key = node.geometry.uuid + '|' + material.uuid;
-          let batch = staticProxyBatches.get(key);
-          if (!batch) {
-            batch = {
-              geometry: node.geometry,
-              material,
-              matrices: [],
-              label: String(path || group.userData?.name || 'proxy').replace(/[^a-z0-9]+/gi, '_').slice(0, 48),
-            };
-            staticProxyBatches.set(key, batch);
-          }
-          batch.matrices.push(node.matrixWorld.clone());
+          queueStaticInstance(node.geometry, material, node.matrixWorld, path || group.userData?.name || 'proxy');
         }
       });
       return group;
@@ -1138,21 +1149,61 @@ async function buildCityWorld3() {
       return m;
     };
 
+    const proceduralBuildingColors = {
+      downtown: 0xaeb7bd,
+      commercial: 0xc8bca8,
+      residential: 0xd5c7ad,
+      industrial: 0x8b8b82,
+    };
+    const proceduralBuildingMaterials = new Map();
+    const getProceduralBuildingMaterial = (district) => {
+      const key = 'body:' + district;
+      if (!proceduralBuildingMaterials.has(key)) {
+        proceduralBuildingMaterials.set(key, new THREE.MeshLambertMaterial({ color: proceduralBuildingColors[district] || 0xc8bca8 }));
+      }
+      return proceduralBuildingMaterials.get(key);
+    };
+    const getProceduralRoofMaterial = (district) => {
+      const key = 'roof:' + district;
+      if (!proceduralBuildingMaterials.has(key)) {
+        proceduralBuildingMaterials.set(key, new THREE.MeshLambertMaterial({ color: district === 'industrial' ? 0x555652 : 0x3e4650 }));
+      }
+      return proceduralBuildingMaterials.get(key);
+    };
     const placeProceduralBuilding = (district, x, z, tgtH, maxFP, ry) => {
-      const colors = {
-        downtown: 0xaeb7bd,
-        commercial: 0xc8bca8,
-        residential: 0xd5c7ad,
-        industrial: 0x8b8b82,
-      };
       const footprint = Math.max(6, maxFP || 12);
       const width = footprint * rr(0.72, 1.04);
       const depth = footprint * rr(0.72, 1.02);
       const height = Math.max(5, tgtH || 12);
+      if (cityPerf.batchStaticProxies) {
+        const rot = ry || 0;
+        queueStaticInstance(
+          proxyGeo.box,
+          getProceduralBuildingMaterial(district),
+          composeInstanceMatrix(x, height / 2, z, width, height, depth, 0, rot, 0),
+          'procedural_' + district + '_building_body'
+        );
+        queueStaticInstance(
+          proxyGeo.box,
+          getProceduralRoofMaterial(district),
+          composeInstanceMatrix(x, height + 0.18, z, width * 1.05, 0.35, depth * 1.05, 0, rot, 0),
+          'procedural_' + district + '_building_roof'
+        );
+        return {
+          userData: {
+            isAutoCity: true,
+            isBuilding: true,
+            isProceduralCityBuilding: true,
+            name: 'procedural_' + district + '_building',
+          },
+          position: new THREE.Vector3(x, 0, z),
+          rotation: { y: rot },
+        };
+      }
       const group = tag(new THREE.Group());
       const texList = facadeTextures[district] || facadeTextures.commercial || [];
       const mat = new THREE.MeshLambertMaterial({
-        color: colors[district] || 0xc8bca8,
+        color: proceduralBuildingColors[district] || 0xc8bca8,
         map: texList.length ? pick(texList) : null,
       });
       const body = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
