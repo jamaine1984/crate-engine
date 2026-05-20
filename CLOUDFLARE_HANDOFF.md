@@ -15,7 +15,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - Custom domain: `crateshipgames.com`
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `8638d104`
+- Current deployed source commit for the public engine code: `a07c194e`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -28,11 +28,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `6f5498f8-5fa1-4142-822c-d198896cbbc4`
-- Latest production deployment URL: `https://6f5498f8.crateship-games.pages.dev`
+- Latest production deployment ID: `2ec24744-3316-40da-a7ac-852caad5b39c`
+- Latest production deployment URL: `https://2ec24744.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `8638d10`
-- Main live page bundle after the deploy: `/assets/play-eHA0ckO_.js`
+- Source shown by Cloudflare: `a07c194`
+- Main live page bundle after the deploy: `/assets/play-CkPiLj4T.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-Bd7rnI_C.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-DTRJCIV-.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
@@ -2144,6 +2144,19 @@ Browser verification history:
   - Smoke verified `Readiness: Ready to test, 106 objects, 2 scripts, 40 components, Edit mode`.
   - Smoke still verified separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-dynamic-props-8638d104.png`.
+- Follow-up production deployment `2ec24744-3316-40da-a7ac-852caad5b39c`, source `a07c194`, added responsive renderer budgets and viewport smoke probes:
+  - `/play?verify=a07c194e` served `/assets/play-CkPiLj4T.js`.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures` and did include `admin.html` and `play.html`.
+  - `engine.mjs` now applies a renderer pixel budget instead of blindly rendering at full device pixel ratio. The helper caps high-DPR phones at `1.25`, large touch/tablet viewports at `1`, and exposes the active budget through `window._crateRendererBudget`.
+  - `scripts/smoke-production.mjs` now runs phone and tablet Build City probes after the main live custom-domain smoke so viewport performance regressions fail before a deploy is considered good.
+  - `node --check engine.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke verified the live editor Performance panel at `80.6 FPS`, `12.4 ms`, `27` calls, and `5,052` triangles.
+  - Smoke verified the raw Build City frame probe at `56.5 FPS`, `17.7 ms` average frame time, `0.6 ms` update time, `17.1 ms` render time, `316` calls, and `283,478` triangles.
+  - Smoke verified phone viewport performance at `270.3 FPS`, `3.7 ms`, `107` calls, `78,806` triangles, DPR `3->1.25`, canvas `487x976`, and mobile controls ready.
+  - Smoke verified tablet viewport performance at `59.2 FPS`, `16.9 ms`, `285` calls, `201,950` triangles, DPR `2->1`, canvas `820x1116`, and mobile controls ready.
+  - Smoke verified `Readiness: Ready to test, 106 objects, 2 scripts, 40 components, Edit mode`.
+  - Smoke still verified separate asset-host loading, furniture placement, project save/load, playable package export, published game export/load, marketplace discovery, game details, admin guardrails, mode/editor separation, Door/Trigger, Mission, NPC, Merchant, Enemy Wave, Inventory, and Respawn runtime systems.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-responsive-budget-a07c194e.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2189,6 +2202,7 @@ Browser verification history:
 The deployed source changes were committed and pushed to GitHub:
 
 ```text
+a07c194e Add responsive renderer budgets
 8638d104 Simplify balanced city dynamic props
 c8870486 Batch static city road surfaces
 01500bc6 Trim balanced city roof meshes
@@ -2325,13 +2339,20 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke reports the settled Performance panel at `93.5 FPS`,
-     `10.7 ms` average frame time, `27` draw calls, and `5,052` triangles after
-     project validation and balanced dynamic-prop simplification.
-   - The raw Build City probe now reports `66.7 FPS`, `15 ms` average frame
-     time, `316` draw calls, and `283,478` triangles immediately after city
-     generation, which is the current production baseline.
-   - The previous live smoke before dynamic-prop simplification was `37.7 FPS`,
+   - Current live smoke reports the settled Performance panel at `80.6 FPS`,
+     `12.4 ms` average frame time, `27` draw calls, and `5,052` triangles after
+     project validation and responsive renderer budgeting.
+   - The desktop raw Build City probe now reports `56.5 FPS`, `17.7 ms` average
+     frame time, `316` draw calls, and `283,478` triangles immediately after city
+     generation, which is the current production desktop baseline.
+   - Phone viewport smoke reports `270.3 FPS`, `3.7 ms`, `107` draw calls,
+     `78,806` triangles, DPR `3->1.25`, and mobile controls ready.
+   - Tablet viewport smoke reports `59.2 FPS`, `16.9 ms`, `285` draw calls,
+     `201,950` triangles, DPR `2->1`, and mobile controls ready.
+   - The previous live smoke before responsive renderer budgeting was
+     `66.7 FPS`, `15 ms`, `316` draw calls, and `283,478` triangles on desktop
+     after balanced dynamic-prop simplification.
+   - The live smoke before dynamic-prop simplification was `37.7 FPS`,
      `26.5 ms`, `504` draw calls, and `285,310` triangles after road-surface
      batching.
    - The live smoke before road-surface batching was `20.3 FPS`, `49.2 ms`,
@@ -2347,10 +2368,11 @@ The remaining work to make it feel like a sellable full game engine is:
      `1,863` draw calls, and `3,608,266` triangles; the first city optimization
      smoke reached `18.8 FPS`, `53.2 ms`, `74` draw calls, and `11,896`
      triangles before the smoke counters were hardened.
-   - Profile `https://crateshipgames.com/play` on desktop and mobile widths.
-   - Next performance work should focus on mobile/tablet profiling, viewport
-     scaling, culling, LODs, and post-processing controls rather than more
-     desktop draw-call reduction.
+   - Keep profiling `https://crateshipgames.com/play` on desktop, phone, and
+     tablet widths as part of every performance deploy.
+   - Next performance work should focus on culling, LODs, post-processing
+     controls, and runtime object pooling rather than more desktop-only
+     draw-call reduction.
    - Continue adding object pooling, instancing for repeated props, culling, LOD
      selection, and lazy loading for heavy assets.
 2. Asset pipeline hardening
@@ -2404,8 +2426,8 @@ The remaining work to make it feel like a sellable full game engine is:
 
 ## Recommended Next Steps
 
-1. Profile Build City on mobile and tablet viewport sizes now that desktop raw
-   Build City is back under frame budget at about `15 ms`.
+1. Add culling, LOD selection, object pooling, and post-processing quality
+   controls now that desktop, phone, and tablet smoke probes are in place.
 2. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
