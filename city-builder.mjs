@@ -61,6 +61,8 @@ function getCityPerformanceSettings() {
     streetLightsPerBlock: quality ? 2 : 1,
     extraStreetLamps: quality,
     staticTrafficLights: quality,
+    proceduralProps: !quality,
+    proceduralVehicles: !quality,
     propDetail: quality ? 1 : fast ? 0.45 : 0.65,
     natureDetail: quality ? 1 : fast ? 0.45 : 0.65,
     trafficCars: quality ? 20 : fast ? 8 : 12,
@@ -862,6 +864,101 @@ async function buildCityWorld3() {
       });
     });
 
+    const isVehicleAsset = (path = '') => /(?:kenney_cars\/|dl_low_polly|dl_morris|sedan|suv|truck|taxi|van|delivery|ambulance|police|firetruck)/i.test(path);
+    const shouldUseProceduralProxy = (path = '') => {
+      if (cityPerf.proceduralVehicles && isVehicleAsset(path)) return true;
+      if (!cityPerf.proceduralProps) return false;
+      return /ph_street_lamp|ph_concrete_road_barrier|ph_modular_electricity_poles|ph_CoffeeCart|barrel_0|dl_cargo_container|street_pack_sign|construction-|crate_0|fence\.glb|cyberpunk_pack_fence/i.test(path);
+    };
+
+    const proxyMat = {
+      dark: new THREE.MeshLambertMaterial({ color: 0x2f3438 }),
+      metal: new THREE.MeshLambertMaterial({ color: 0x777b80 }),
+      concrete: new THREE.MeshLambertMaterial({ color: 0x9a9489 }),
+      yellow: new THREE.MeshLambertMaterial({ color: 0xd9b84a }),
+      red: new THREE.MeshLambertMaterial({ color: 0xb94737 }),
+      glass: new THREE.MeshLambertMaterial({ color: 0x5f8fa8 }),
+      tire: new THREE.MeshLambertMaterial({ color: 0x181a1c }),
+      wood: new THREE.MeshLambertMaterial({ color: 0x735336 }),
+    };
+    const proxyGeo = {
+      pole: new THREE.CylinderGeometry(0.06, 0.08, 5.2, 6),
+      bulb: new THREE.SphereGeometry(0.18, 8, 6),
+      box: new THREE.BoxGeometry(1, 1, 1),
+      wheel: new THREE.CylinderGeometry(0.18, 0.18, 0.14, 8),
+    };
+    const addProxyBox = (group, sx, sy, sz, x, y, z, material) => {
+      const mesh = new THREE.Mesh(proxyGeo.box, material);
+      mesh.scale.set(sx, sy, sz);
+      mesh.position.set(x || 0, y || 0, z || 0);
+      group.add(mesh);
+      return mesh;
+    };
+    const createProceduralVehicle = (path = '', scale = 1) => {
+      const group = new THREE.Group();
+      const isService = /police|ambulance|fire|delivery|truck/i.test(path);
+      const bodyMat = isService ? proxyMat.red : proxyMat.yellow;
+      addProxyBox(group, 1.4, 0.35, 0.7, 0, 0.42, 0, bodyMat);
+      addProxyBox(group, 0.75, 0.28, 0.55, -0.08, 0.78, 0, proxyMat.glass);
+      for (const x of [-0.48, 0.48]) {
+        for (const z of [-0.42, 0.42]) {
+          const wheel = new THREE.Mesh(proxyGeo.wheel, proxyMat.tire);
+          wheel.rotation.z = Math.PI / 2;
+          wheel.position.set(x, 0.25, z);
+          group.add(wheel);
+        }
+      }
+      group.scale.setScalar(scale);
+      group.userData = { isAutoCity: true, isProceduralProxy: true, name: 'procedural_vehicle' };
+      return group;
+    };
+    const placeProceduralProp = (path, x, z, sc, ry) => {
+      if (!shouldUseProceduralProxy(path)) return null;
+      const group = isVehicleAsset(path) ? createProceduralVehicle(path, sc || 1) : new THREE.Group();
+      if (!isVehicleAsset(path)) {
+        if (/street_lamp/i.test(path)) {
+          const pole = new THREE.Mesh(proxyGeo.pole, proxyMat.metal);
+          pole.position.y = 2.6;
+          group.add(pole);
+          addProxyBox(group, 0.85, 0.06, 0.06, 0.38, 5.05, 0, proxyMat.metal);
+          const bulb = new THREE.Mesh(proxyGeo.bulb, proxyMat.yellow);
+          bulb.position.set(0.78, 4.9, 0);
+          group.add(bulb);
+        } else if (/electricity_poles/i.test(path)) {
+          const pole = new THREE.Mesh(proxyGeo.pole, proxyMat.wood);
+          pole.scale.set(1.4, 1.35, 1.4);
+          pole.position.y = 3.45;
+          group.add(pole);
+          addProxyBox(group, 1.8, 0.08, 0.08, 0, 6.5, 0, proxyMat.wood);
+          addProxyBox(group, 0.06, 0.06, 1.5, 0, 6.25, 0, proxyMat.dark);
+        } else if (/barrier|construction-/i.test(path)) {
+          addProxyBox(group, 2.2, 0.45, 0.25, 0, 0.45, 0, proxyMat.concrete);
+          if (/construction/i.test(path)) addProxyBox(group, 2.0, 0.08, 0.08, 0, 0.9, 0, proxyMat.red);
+        } else if (/CoffeeCart/i.test(path)) {
+          addProxyBox(group, 1.3, 0.8, 0.75, 0, 0.8, 0, proxyMat.red);
+          addProxyBox(group, 1.55, 0.08, 0.95, 0, 1.65, 0, proxyMat.yellow);
+          addProxyBox(group, 0.08, 0.8, 0.08, -0.55, 1.25, -0.35, proxyMat.dark);
+          addProxyBox(group, 0.08, 0.8, 0.08, 0.55, 1.25, -0.35, proxyMat.dark);
+        } else if (/barrel/i.test(path)) {
+          const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.75, 10), /01/.test(path) ? proxyMat.red : proxyMat.dark);
+          mesh.position.y = 0.38;
+          group.add(mesh);
+        } else if (/fence/i.test(path)) {
+          addProxyBox(group, 1.8, 0.08, 0.08, 0, 0.85, 0, proxyMat.metal);
+          addProxyBox(group, 0.07, 0.85, 0.07, -0.8, 0.45, 0, proxyMat.metal);
+          addProxyBox(group, 0.07, 0.85, 0.07, 0.8, 0.45, 0, proxyMat.metal);
+        } else {
+          addProxyBox(group, 0.7, 0.7, 0.7, 0, 0.35, 0, proxyMat.concrete);
+        }
+        group.scale.setScalar(sc || 1);
+        group.userData = { isAutoCity: true, isProceduralProxy: true, name: 'procedural_' + String(path || 'prop').replace(/[^a-z0-9]+/gi, '_') };
+      }
+      group.position.set(x, 0, z);
+      group.rotation.y = ry || 0;
+      scene.add(group); objects.push(group);
+      return group;
+    };
+
     const batchPreload = async (paths, label) => {
       const uniq = [...new Set(paths.filter(Boolean))];
       for (let i = 0; i < uniq.length; i += 15) {
@@ -873,6 +970,8 @@ async function buildCityWorld3() {
 
     // Place model grounded (bottom of bounding box touches y=0)
     const placeGround = (path, x, z, sc, ry) => {
+      const proxy = placeProceduralProp(path, x, z, sc, ry);
+      if (proxy) return proxy;
       const t = cache[path];
       if (!t) return null;
       const m = t.clone();
@@ -1074,7 +1173,9 @@ async function buildCityWorld3() {
     // ═══ PRELOAD ALL MODELS ═══
     showToast('\ud83d\udce6 Loading city assets...');
     const allPaths = [];
-    const addAssetPath = p => { if (typeof p === 'string') allPaths.push(p); };
+    const addAssetPath = p => {
+      if (typeof p === 'string' && !shouldUseProceduralProxy(p)) allPaths.push(p);
+    };
     if (assets.roads) Object.values(assets.roads).forEach(addAssetPath);
     if (assets.districts) Object.entries(assets.districts).forEach(([districtName, d]) => {
       if (cityPerf.proceduralBuildings && districtName !== 'government') return;
@@ -1084,7 +1185,7 @@ async function buildCityWorld3() {
     if (assets.nature) Object.values(assets.nature).forEach(v => {
       if (Array.isArray(v)) v.forEach(p => allPaths.push(p));
     });
-    if (assets.vehicles) Object.values(assets.vehicles).forEach(v => {
+    if (!cityPerf.proceduralVehicles && assets.vehicles) Object.values(assets.vehicles).forEach(v => {
       if (Array.isArray(v)) v.forEach(p => allPaths.push(p));
     });
     if (assets.infrastructure) Object.values(assets.infrastructure).forEach(addAssetPath);
@@ -1631,10 +1732,10 @@ async function buildCityWorld3() {
       const lane = rand() > 0.5 ? 1 : -1;
       const carPath = carModels[Math.floor(rand() * carModels.length)];
       const carModel = cache[carPath];
-      if (!carModel) continue;
-      const car = carModel.clone();
-      car.scale.setScalar(1.8);
-      car.traverse(n => { if(n.isMesh) n.castShadow = true; });
+      if (!carModel && !cityPerf.proceduralVehicles) continue;
+      const car = cityPerf.proceduralVehicles ? createProceduralVehicle(carPath, 1.8) : carModel.clone();
+      if (!cityPerf.proceduralVehicles) car.scale.setScalar(1.8);
+      car.traverse(n => { if(n.isMesh) n.castShadow = cityPerf.shadows; });
       let cx2, cz2, ry2;
       if (isEW) {
         cx2 = (rand()-0.5) * HALF * 1.6;

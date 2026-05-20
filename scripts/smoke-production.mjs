@@ -2075,6 +2075,11 @@ async function runBrowserSmoke() {
       const readiness = window._gameBuilderReadiness || {};
       const validation = window._gameBuilderValidation || {};
       const performancePanel = window._gameBuilderPerformance || {};
+      const rendererRender = window._renderer?.info?.render || {};
+      const rendererMemory = window._renderer?.info?.memory || {};
+      const performanceCalls = Math.max(Number(performancePanel.calls) || 0, Number(rendererRender.calls) || 0);
+      const performanceTriangles = Math.max(Number(performancePanel.triangles) || 0, Number(rendererRender.triangles) || 0);
+      const performanceTextures = Math.max(Number(performancePanel.textures) || 0, Number(rendererMemory.textures) || 0);
       const gameSystems = window._gameBuilderSystems || [];
       return {
         engineReady: window._engineReady === true,
@@ -2128,9 +2133,14 @@ async function runBrowserSmoke() {
         performanceStatus: performancePanel.status || document.querySelector('#gb-performance-status')?.dataset.status || '',
         performanceFps: Number(performancePanel.fps ?? document.querySelector('#gb-performance-status')?.dataset.fps) || 0,
         performanceFrameMs: Number(performancePanel.frameMs ?? document.querySelector('#gb-performance-status')?.dataset.frameMs) || 0,
-        performanceCalls: Number(performancePanel.calls ?? document.querySelector('#gb-performance-status')?.dataset.calls) || 0,
-        performanceTriangles: Number(performancePanel.triangles ?? document.querySelector('#gb-performance-status')?.dataset.triangles) || 0,
-        performanceTextures: Number(performancePanel.textures ?? document.querySelector('#gb-performance-status')?.dataset.textures) || 0,
+        performanceCalls,
+        performanceTriangles,
+        performanceTextures,
+        rendererCalls: Number(rendererRender.calls) || 0,
+        rendererTriangles: Number(rendererRender.triangles) || 0,
+        cityPerformanceProfile: window._lastCityPerformanceSettings?.profile || '',
+        cityPerformanceProceduralProps: window._lastCityPerformanceSettings?.proceduralProps === true,
+        cityPerformanceProceduralVehicles: window._lastCityPerformanceSettings?.proceduralVehicles === true,
         performanceRows: document.querySelectorAll('#gb-performance-list .gb-performance-row').length,
         performanceWarnings: Array.isArray(performancePanel.warnings) ? performancePanel.warnings : [],
         validationStatus: validation.status || document.querySelector('#gb-validation-status')?.dataset.status || '',
@@ -2466,7 +2476,11 @@ async function runBrowserSmoke() {
       state.performanceFps <= 0 ||
       state.performanceFrameMs <= 0 ||
       state.performanceRows < 5 ||
-      state.performanceTriangles <= 0) {
+      state.performanceTriangles <= 0 ||
+      state.performanceCalls > 900 ||
+      state.performanceTriangles > 750000 ||
+      !state.cityPerformanceProceduralProps ||
+      !state.cityPerformanceProceduralVehicles) {
       throw new Error(`Game Builder performance panel did not report live renderer metrics: ${JSON.stringify(state)}`);
     }
     if (state.validationStatus !== 'ready' ||
@@ -2714,6 +2728,7 @@ console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
+console.log(`City performance profile: ${browserState.cityPerformanceProfile || 'missing'} (procedural props ${browserState.cityPerformanceProceduralProps ? 'on' : 'off'}, procedural vehicles ${browserState.cityPerformanceProceduralVehicles ? 'on' : 'off'}, renderer ${browserState.rendererCalls || 0} calls/${browserState.rendererTriangles || 0} tris)`);
 console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);
 console.log(`Validation fixes: ${(browserState.validationFixActions || []).join(', ') || 'none'} (${browserState.validationFixColliderCount || 0} colliders, undo restored ${browserState.validationFixUndoRestoredObjects || 0})`);
 console.log(`Game systems: ${browserState.systemSummary}`);
