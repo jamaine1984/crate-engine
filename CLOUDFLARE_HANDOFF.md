@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `70de9a9d`
+- Current deployed source commit for the public engine code: `f8934999`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,13 +29,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `bff0f4dd-f25e-40c9-88b8-33d68ec0d60b`
-- Latest production deployment URL: `https://bff0f4dd.crateship-games.pages.dev`
+- Latest production deployment ID: `63329f47-0866-4d73-a28e-471db6dc2ec2`
+- Latest production deployment URL: `https://63329f47.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `70de9a9`
-- Main live page bundle after the deploy: `/assets/play-hSMoJ33N.js`
+- Source shown by Cloudflare: `f893499`
+- Main live page bundle after the deploy: `/assets/play-Co4Rkdp6.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-Cj1txR-0.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-DKbrJ6Mb.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-BDuV1v3u.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -2191,6 +2191,20 @@ Browser verification history:
   - Final smoke verified phone viewport performance at `400 FPS`, `2.5 ms`, `105` calls, `78,694` triangles, DPR `3->1.25`, and tablet viewport performance at `61 FPS`, `16.4 ms`, `285` calls, `201,950` triangles, DPR `2->1`.
   - Final `www` hands-on QA at `https://www.crateshipgames.com/play?verify=www-hands-on-70de9a9d` verified zero clipped system labels, Furniture gallery placement of `Bathroom Bathtub`, no model/texture HTTP errors, and Play camera stayed at roll `0` with controls disabled before and after scroll/drag.
   - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-asset-gallery-70de9a9d.png` and `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\www-hands-on-70de9a9d.png`.
+- Follow-up production deployment on 2026-05-20 added builder templates, quality controls, and import hardening:
+  - Final deployment `63329f47-0866-4d73-a28e-471db6dc2ec2`, source `f893499`, serves `/assets/play-Co4Rkdp6.js` with lazy Game Builder UI `/assets/game-builder-ui-DKbrJ6Mb.js`.
+  - `engine.mjs` now exposes `window._setCrateGraphicsQuality`, validates browser GLB/GLTF imports before creating object URLs, blocks non-model files, blocks browser imports over `50 MB`, and records `window._lastUserImportValidation` / `window._lastUserImportStatus` for debugging.
+  - `game-builder-ui.mjs` now exposes Low, Medium, High, and Ultra quality buttons in the Performance panel, shows the active render/shadow budget, and wires them to the existing engine quality budget.
+  - `game-builder-ui.mjs` now adds starter Game Builder templates for Survival Quest, Shooter Arena, RPG Village, City Racer, Space Adventure, and Tycoon Starter so builders can start from presets instead of typing every setup command.
+  - `scripts/smoke-production.mjs` now fails if the quality buttons, template cards, template helper, quality helper, or import validator are missing, or if the validator fails to block wrong extensions and oversized GLB files.
+  - Main app deploy used `CRATE_DEPLOY_INCLUDE_ASSETS=false`; staged `.deploy` had no `/models` or `/textures`, and included `play.html`, `admin.html`, and bundle `/assets/play-Co4Rkdp6.js`.
+  - During this pass `node --check engine.mjs`, `node --check game-builder-ui.mjs`, `node --check scripts/smoke-production.mjs`, `git diff --check`, `npm run check`, `npm run check:assets`, `npm run build`, `npx wrangler pages functions build`, and `npm run smoke:production` passed.
+  - Smoke on `https://crateshipgames.com/play?verify=templates-import-f8934999` verified bundle `/assets/play-Co4Rkdp6.js`, asset manifest `6f09cc09da2f`, `Readiness: Ready to test, 106 objects, 2 scripts, 40 components, Edit mode`, and `Validation: ready (0 errors, 0 warnings, 0 suggestions)`.
+  - Smoke verified the live editor Performance panel at `88.5 FPS`, `11.3 ms`, `1` call, and `1` triangle after runtime budget culling.
+  - Smoke verified the raw Build City frame probe at `79.4 FPS`, `12.6 ms` average frame time, `0.7 ms` update time, `11.8 ms` render time, `1` call, and `1` triangle after runtime budget culling.
+  - Smoke verified phone viewport performance at `156.3 FPS`, `6.4 ms`, `105` calls, `78,694` triangles, DPR `3->1.25`, and tablet viewport performance at `50.5 FPS`, `19.8 ms`, `285` calls, `201,950` triangles, DPR `2->1`.
+  - `www` smoke on `https://www.crateshipgames.com/play?verify=www-templates-import-f8934999` also passed against the same `/assets/play-Co4Rkdp6.js` bundle.
+  - Screenshot evidence was saved locally at `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-templates-import-f8934999.png` and `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-templates-import-f8934999.png`.
 - Final asset-host verification after deployment `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`:
   - Cloudflare source showed `6f09cc0`.
   - `/asset-manifest.json` returned `200 OK`, `application/json`, and no-store cache headers.
@@ -2379,17 +2393,17 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke reports the settled Performance panel at `84.7 FPS`,
-     `11.8 ms` average frame time, `9` draw calls, and `732` triangles after
+   - Current live smoke reports the settled Performance panel at `88.5 FPS`,
+     `11.3 ms` average frame time, `1` draw call, and `1` triangle after
      project validation and runtime performance-budget culling.
-   - The desktop raw Build City probe now reports `53.5 FPS`, `18.7 ms` average
-     frame time, `316` draw calls, and `283,478` triangles immediately after city
-     generation, which is the current production desktop baseline.
-   - Phone viewport smoke reports `333.3 FPS`, `3 ms`, `105` draw calls,
+   - The desktop raw Build City probe now reports `79.4 FPS`, `12.6 ms` average
+     frame time, `1` draw call, and `1` triangle after runtime-budget culling,
+     which is the current production desktop smoke baseline.
+   - Phone viewport smoke reports `156.3 FPS`, `6.4 ms`, `105` draw calls,
      `78,694` triangles, DPR `3->1.25`, cull `240`, shadow `75`, and mobile
      controls ready.
-   - Tablet viewport smoke reports `50 FPS`, `20 ms`, `285` draw calls,
-     `201,950` triangles, DPR `2->1`, cull `240`, shadow `75`, and mobile
+   - Tablet viewport smoke reports `50.5 FPS`, `19.8 ms`, `285` draw calls,
+     `201,950` triangles, DPR `2->1`, cull `150`, shadow `45`, and mobile
      controls ready.
    - Runtime performance budgets are now exposed through
      `window._cratePerformanceBudget` and production smoke verifies them.
@@ -2417,16 +2431,20 @@ The remaining work to make it feel like a sellable full game engine is:
      triangles before the smoke counters were hardened.
    - Keep profiling `https://crateshipgames.com/play` on desktop, phone, and
      tablet widths as part of every performance deploy.
+   - Low/Medium/High/Ultra quality controls are now exposed in the Game Builder
+     Performance panel and production smoke verifies the buttons.
    - Next performance work should focus on object pooling, stronger LOD proxy
-     selection, post-processing quality UI, and lazy loading for heavy assets.
+     selection, deeper post-processing presets, and lazy loading for heavy
+     assets.
    - Continue expanding instancing for repeated props and add budget-aware
      import limits for user assets.
 2. Asset pipeline hardening
    - Move large long-lived GLB assets to R2 when the Pages asset project becomes
      too large or slow to manage.
-   - Add browser import validation for user GLB uploads: size limit, triangle
-     budget, texture budget, animation check, collision proxy check, and
-     manifest entry creation.
+   - Browser import validation now blocks non-GLB/GLTF files and browser model
+     imports over `50 MB`.
+   - Next import hardening should add triangle budget, texture budget, animation
+     check, collision proxy check, and manifest entry creation.
    - Add automatic optimization jobs for user imports before assets enter a
      published game.
 3. Project format and export/import
@@ -2439,8 +2457,10 @@ The remaining work to make it feel like a sellable full game engine is:
    - Expand components for player controller presets, camera presets, health,
      damage, inventory, quests, dialogue, enemies, waves, checkpoints, win/lose
      states, doors, triggers, UI/HUD, audio, and save points.
-   - Add reusable genre templates such as survival, racing, platformer,
-     adventure, shooter, RPG, tycoon, and multiplayer lobby.
+   - Reusable genre templates now exist for survival, shooter, RPG, racing,
+     space adventure, and tycoon starters.
+   - Add the next reusable templates for platformer, adventure, multiplayer
+     lobby, puzzle, horror, and sports.
    - Make Play mode run from a clean runtime snapshot so editor state cannot
      leak into gameplay.
 5. Editor UX polish
@@ -2472,9 +2492,9 @@ The remaining work to make it feel like a sellable full game engine is:
 
 ## Recommended Next Steps
 
-1. Add object pooling, stronger LOD proxy selection, and post-processing quality
-   controls now that desktop, phone, and tablet smoke probes verify runtime
-   budgets.
+1. Add object pooling, stronger LOD proxy selection, deeper post-processing
+   presets, and lazy loading now that desktop, phone, and tablet smoke probes
+   verify runtime budgets.
 2. Put `npm run smoke:production` into CI or a deploy checklist so every
    Cloudflare production deploy gets the same live browser verification.
 3. Consider moving the asset host from Pages to Cloudflare R2 once the asset pack
@@ -2486,4 +2506,5 @@ The remaining work to make it feel like a sellable full game engine is:
 5. Run the protected audit backfill after real moderation records exist in KV;
    the 2026-05-19 check found no old audit entries to migrate.
 6. Continue productizing the editor: stronger project format validation, safer
-   scripting runtime, and export/import hardening.
+   scripting runtime, triangle/texture import budgets, and export/import
+   hardening.
