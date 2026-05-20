@@ -137,7 +137,7 @@ export function showGallery(category, options = {}) {
 
     const overlay = document.createElement('div');
     overlay.id = 'asset-gallery-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:10005;display:flex;flex-direction:column;font-family:monospace;color:#e0e0e0;';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:2147483647;display:flex;flex-direction:column;font-family:monospace;color:#e0e0e0;';
 
     const header = document.createElement('div');
     header.style.cssText = 'padding:16px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #222;flex-shrink:0;';
