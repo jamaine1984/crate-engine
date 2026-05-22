@@ -1606,14 +1606,41 @@ async function runBrowserSmoke() {
     await marketplacePage.locator('#published-market-search').fill('production smoke');
     await marketplacePage.locator('[data-published-tag="smoke"]').click({ timeout: timeoutMs });
     await marketplacePage.locator('#published-market-sort').selectOption('objects', { timeout: timeoutMs });
+    await marketplacePage.waitForFunction(
+      () => {
+        const state = window._cratePublishedMarketplace || {};
+        return state.status === 'loaded' &&
+          state.query === 'production smoke' &&
+          state.tag === 'smoke' &&
+          state.sort === 'objects';
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
     for (let pageIndex = 0; pageIndex < 6; pageIndex++) {
       const visible = await marketplacePage.locator(`[data-published-game="${smokePublishedSlug}"]`).count();
       if (visible > 0) break;
-      const nextButton = marketplacePage.locator('[data-published-page="next"]');
-      const canAdvance = await nextButton.isEnabled().catch(() => false);
-      if (!canAdvance) break;
-      await nextButton.click({ timeout: timeoutMs });
-      await marketplacePage.waitForTimeout(400);
+      const pageBefore = await marketplacePage.evaluate(() => Number(window._cratePublishedMarketplace?.page) || 0);
+      const advanced = await marketplacePage.evaluate(() => {
+        const state = window._cratePublishedMarketplace || {};
+        const next = document.querySelector('[data-published-page="next"]');
+        if (state.status !== 'loaded' || !state.hasNext || !next || next.disabled) return false;
+        next.click();
+        return true;
+      });
+      if (!advanced) break;
+      await marketplacePage.waitForFunction(
+        (previousPage) => {
+          const state = window._cratePublishedMarketplace || {};
+          return state.status === 'loaded' &&
+            state.query === 'production smoke' &&
+            state.tag === 'smoke' &&
+            state.sort === 'objects' &&
+            Number(state.page) > Number(previousPage || 0);
+        },
+        pageBefore,
+        { timeout: timeoutMs }
+      );
     }
     const marketplaceState = await marketplacePage.waitForFunction(
       () => {
