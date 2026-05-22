@@ -620,26 +620,19 @@ async function listGames(context) {
     listComplete = !!batch.list_complete || !cursor;
   } while (!listComplete && keys.length < MAX_LIST_SCAN);
 
-  const visibleGames = keys
-    .filter((key) => cleanVisibility(key.metadata?.visibility) === 'public' && cleanModerationStatus(key.metadata?.moderationStatus) === 'active')
-    .map((key) => ({
-      slug: key.metadata?.slug || key.name.replace(GAME_PREFIX, ''),
-      title: key.metadata?.title || key.name.replace(GAME_PREFIX, ''),
-      description: key.metadata?.description || '',
-      tags: Array.isArray(key.metadata?.tags) ? key.metadata.tags : [],
-      objects: Number(key.metadata?.objects) || 0,
-      commands: Number(key.metadata?.commands) || 0,
-      scripts: Number(key.metadata?.scripts) || 0,
-      components: Number(key.metadata?.components) || 0,
-      updatedAt: key.metadata?.updatedAt || '',
-      url: `${url.origin}/play?published=${encodeURIComponent(key.metadata?.slug || key.name.replace(GAME_PREFIX, ''))}`,
-      source: 'cloudflare-pages-kv',
-      ownerManaged: !!key.metadata?.ownerManaged,
-      creatorName: key.metadata?.creatorName || '',
-      visibility: cleanVisibility(key.metadata?.visibility),
-      moderationStatus: cleanModerationStatus(key.metadata?.moderationStatus),
-      featured: !!key.metadata?.featured,
-      featuredAt: key.metadata?.featuredAt || '',
+  const records = await Promise.all(keys.map(async (key) => {
+    try {
+      return await store.get(key.name, 'json');
+    } catch {
+      return null;
+    }
+  }));
+  const visibleGames = records
+    .filter(isListVisible)
+    .map((record) => ({
+      ...publicGameSummary(record),
+      url: record.url || `${url.origin}/play?published=${encodeURIComponent(record.slug)}`,
+      source: record.source || 'cloudflare-pages-kv',
     }));
   const availableTags = Array.from(new Set(visibleGames.flatMap((game) => Array.isArray(game.tags) ? game.tags : []))).sort();
   const filteredGames = visibleGames
