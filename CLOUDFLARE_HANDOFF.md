@@ -1,6 +1,6 @@
 # CrateShip Games Cloudflare Handoff
 
-Last updated: 2026-05-20
+Last updated: 2026-05-22
 
 This file is the operational handoff for the real CrateShip Games web engine at
 `https://crateshipgames.com/play`. Use it before changing or deploying the web
@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `4b1e3e11`
+- Current deployed source commit for the public engine code: `1ed1faa8`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,20 +29,62 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `cc79ff03-de44-4176-9573-6bf3e54dcc82`
-- Latest production deployment URL: `https://cc79ff03.crateship-games.pages.dev`
+- Latest production deployment ID: `ddfd35df-1f96-4540-b85c-46b4363c930a`
+- Latest production deployment URL: `https://ddfd35df.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `4b1e3e1`
-- Main live page bundle after the deploy: `/assets/play-CxgPiKlg.js`
+- Source shown by Cloudflare: `1ed1faa`
+- Main live page bundle after the deploy: `/assets/play-Gh-UhNtc.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BdwXDnOB.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-cSxJVtDQ.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-CAOy79B3.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
 
-Latest app-only deploy on 2026-05-20:
+Latest app-only deploy on 2026-05-22:
+
+- Final commit deployed: `1ed1faa8` (`Stabilize public game listing smoke`)
+- Final Cloudflare deployment: `ddfd35df-1f96-4540-b85c-46b4363c930a`
+- Final deployment URL: `https://ddfd35df.crateship-games.pages.dev`
+- This batch also deployed:
+  - `92ef091d` (`Harden production smoke and mode selection`) as `12da66f3-a630-44f3-8c2a-beffda1dc48c`.
+  - `84269ca3` (`Repair restored gameplay links`) as `828978d2-950e-4d3c-9873-bdd814de3e73`.
+- App deploy command:
+
+```powershell
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=1ed1faa816599fef7c6611323459245441104422 --commit-message="Stabilize public game listing smoke" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`
+- Final source-tag deploy uploaded `0` new static files and reused `111` existing files; it uploaded a new Functions bundle for the public-game listing fix.
+- Main app bundle: `/assets/play-Gh-UhNtc.js`
+- Game Builder UI chunk: `/assets/game-builder-ui-cSxJVtDQ.js`
+- Asset Browser chunk: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed in parallel: `https://crateshipgames.com/play?verify=listing-smoke-1ed1faa`
+- WWW smoke passed in parallel: `https://www.crateshipgames.com/play?verify=www-listing-smoke-1ed1faa`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-listing-smoke-1ed1faa.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-listing-smoke-1ed1faa.png`
+- Production smokes are now namespaced per run and passed concurrently on apex and `www`; the old fixed-slug race is resolved.
+
+What changed in this deploy:
+
+- `engine.mjs`
+  - Added `window._retryLastAssetPlacement` and wired asset-placement retry state for failed catalog loads.
+  - Added `window._engineBridge.getSelectedOrLast()` for edit-only fallback selection and made `getSelected()` return no editor selection outside Edit mode.
+  - Repairs dangling restored mission, wave, and trigger links after project/published-game load so saved games return to a validation-ready state instead of keeping stale component IDs.
+- `game-builder-ui.mjs`
+  - Shows a `Retry` button in the placement status panel when the last asset placement failed.
+- `functions/api/games/[[path]].js`
+  - Public game listings now read the current KV record before filtering visibility/moderation, so unlisted games do not stay visible because KV list metadata lagged.
+- `scripts/smoke-production.mjs`
+  - Smoke records use per-run slugs injected into every browser context, allowing apex and `www` production smokes to run in parallel.
+  - Smoke verifies the asset retry hook, no editor selection leaks into Explore/Play, restored project validation is ready, metadata guards are consistent, and published games load back into the editor.
+
+Previous app-only deploy on 2026-05-20:
 
 - Commit deployed: `4b1e3e11` (`Refresh builder validation before production smoke summary`)
 - Cloudflare deployment: `cc79ff03-de44-4176-9573-6bf3e54dcc82`
@@ -64,7 +106,7 @@ npx wrangler pages deploy .deploy --project-name crateship-games --branch=main -
   - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\starter-kit-layout-visual-1779319691667.png`
 - Smoke bundle: `/assets/play-CxgPiKlg.js`
 - Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
-- Production smokes must run sequentially until the smoke slugs are namespaced. Parallel apex/`www` runs share the same Cloudflare smoke records and can race each other during metadata delete/update checks.
+- Historical note: this older deploy still required sequential production smokes because the smoke slugs were fixed. That limitation was removed by the 2026-05-22 deploy.
 
 What changed in this deploy:
 
@@ -2538,15 +2580,17 @@ live performance diagnostics.
 The remaining work to make it feel like a sellable full game engine is:
 
 1. Performance optimization and frame stability
-   - Current live smoke reports the settled Performance panel at `138.9 FPS`,
-     `7.2 ms` average frame time, `1` draw call, and `1` triangle after
+   - Current apex live smoke reports the settled Performance panel at `56.5 FPS`,
+     `17.7 ms` average frame time, `1` draw call, and `1` triangle after
      project validation and runtime performance-budget culling.
-   - The current LOD/culling diagnostics report `80` processed objects, `0` far
-     objects, `7` skipped objects, and max pass `80`.
-   - The desktop raw Build City probe now reports `53.2 FPS`, `18.8 ms` average
+   - The current apex LOD/culling diagnostics report `80` processed objects,
+     `0` far objects, `10` skipped objects, and max pass `80`.
+   - The desktop raw Build City probe now reports `70.4 FPS`, `14.2 ms` average
      frame time, `1` draw call, and `1` triangle after runtime-budget culling,
      which is the current production desktop smoke baseline.
-   - Phone viewport smoke reports `294.1 FPS`, `3.4 ms`, `105` draw calls,
+   - The parallel `www` smoke reported `50 FPS`, `20 ms`, `1` draw call, and
+     `1` triangle, with a raw Build City probe of `66.2 FPS` and `15.1 ms`.
+   - Phone viewport smoke reports `238.1 FPS`, `4.2 ms`, `105` draw calls,
      `78,694` triangles, DPR `3->1.25`, cull `240`, shadow `75`, and mobile
      controls ready.
    - Tablet viewport smoke reports `61.3 FPS`, `16.3 ms`, `285` draw calls,
