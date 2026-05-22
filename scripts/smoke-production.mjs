@@ -288,6 +288,10 @@ async function runBrowserSmoke() {
         templateExports: (window._gameBuilderTemplates || []).map((template) => template.id),
         templateApplyReady: typeof window._applyGameBuilderTemplate === 'function',
         qualitySetterReady: typeof window._setGameBuilderGraphicsQuality === 'function',
+        userImportReady: typeof window._importGLBFile === 'function',
+        userImportListReady: typeof window._listUserImportedModels === 'function',
+        userImportPlaceReady: typeof window._placeUserImportedModel === 'function',
+        userImportDeleteReady: typeof window._deleteUserImportedModel === 'function',
         importValidatorReady: !!validator,
         invalidImport: validator ? validator({ name: 'bad.txt', size: 10 }) : null,
         oversizedImport: validator ? validator({ name: 'huge.glb', size: 60 * 1024 * 1024 }) : null,
@@ -319,6 +323,12 @@ async function runBrowserSmoke() {
     }
     if (!builderHardeningState.templateApplyReady || !builderHardeningState.qualitySetterReady) {
       throw new Error(`Builder hardening helpers missing: ${JSON.stringify(builderHardeningState)}`);
+    }
+    if (!builderHardeningState.userImportReady ||
+        !builderHardeningState.userImportListReady ||
+        !builderHardeningState.userImportPlaceReady ||
+        !builderHardeningState.userImportDeleteReady) {
+      throw new Error(`User import library helpers missing: ${JSON.stringify(builderHardeningState)}`);
     }
     if (!builderHardeningState.importValidatorReady || builderHardeningState.invalidImport?.ok !== false || builderHardeningState.oversizedImport?.ok !== false || builderHardeningState.validImport?.ok !== true) {
       throw new Error(`Import validation did not gate files correctly: ${JSON.stringify(builderHardeningState)}`);
@@ -404,6 +414,8 @@ async function runBrowserSmoke() {
     await page.locator('#gb-project button[data-gb-action="import"]').click({ timeout: timeoutMs });
     await page.waitForSelector('#ie-modal #ie-import-glb', { timeout: timeoutMs });
     await page.waitForSelector('#ie-modal #ie-import-crate', { timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-import-library', { timeout: timeoutMs });
+    await page.waitForSelector('#ie-modal #ie-refresh-imports', { timeout: timeoutMs });
     await page.locator('#ie-close').click({ timeout: timeoutMs });
 
     await page.locator('#gb-project button[data-gb-action="export"]').click({ timeout: timeoutMs });
@@ -477,6 +489,61 @@ async function runBrowserSmoke() {
     });
     if (builderMenuPlacementState.placement?.source !== 'game-builder-assets') {
       throw new Error(`Game Builder asset menu did not place the picked asset: ${JSON.stringify(builderMenuPlacementState)}`);
+    }
+
+    const userImportState = await page.evaluate(async () => {
+      const before = window._engineBridge?.objects?.length || 0;
+      if (typeof window._importGLBFile !== 'function' ||
+          typeof window._listUserImportedModels !== 'function' ||
+          typeof window._placeUserImportedModel !== 'function' ||
+          typeof window._deleteUserImportedModel !== 'function') {
+        return { ready: false, before };
+      }
+      const assetUrl = typeof window._crateAssetUrl === 'function'
+        ? window._crateAssetUrl('/models/house_interior_pack_chair_1.glb')
+        : '/models/house_interior_pack_chair_1.glb';
+      const response = await fetch(assetUrl, { cache: 'no-store' });
+      if (!response.ok) return { ready: true, fetchOk: false, status: response.status, assetUrl, before };
+      const blob = await response.blob();
+      const file = new File([blob], 'smoke-user-import-chair.glb', { type: 'model/gltf-binary' });
+      const imported = await window._importGLBFile(file, { source: 'smoke-user-import' });
+      const status = window._lastUserImportStatus || {};
+      const afterImport = window._engineBridge?.objects?.length || 0;
+      const savedId = status.savedModel?.id || '';
+      const list = await window._listUserImportedModels();
+      const listed = !!savedId && list.some((item) => item.id === savedId);
+      const placed = savedId ? await window._placeUserImportedModel(savedId) : false;
+      const afterPlace = window._engineBridge?.objects?.length || 0;
+      const deleted = savedId ? await window._deleteUserImportedModel(savedId) : false;
+      const afterDeleteList = await window._listUserImportedModels();
+      return {
+        ready: true,
+        fetchOk: true,
+        imported,
+        importStatus: status.status || '',
+        savedId,
+        listed,
+        placed,
+        deleted,
+        stillListed: !!savedId && afterDeleteList.some((item) => item.id === savedId),
+        before,
+        afterImport,
+        afterPlace,
+        libraryCount: list.length,
+      };
+    });
+    if (!userImportState.ready ||
+        !userImportState.fetchOk ||
+        userImportState.imported !== true ||
+        userImportState.importStatus !== 'loaded' ||
+        !userImportState.savedId ||
+        !userImportState.listed ||
+        userImportState.placed !== true ||
+        userImportState.deleted !== true ||
+        userImportState.stillListed ||
+        userImportState.afterImport <= userImportState.before ||
+        userImportState.afterPlace <= userImportState.afterImport) {
+      throw new Error(`User imported GLB did not persist, place, and delete cleanly: ${JSON.stringify(userImportState)}`);
     }
 
     const beforeStarterKitCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
@@ -2195,6 +2262,8 @@ async function runBrowserSmoke() {
       controlsEnabled: window._engine?.controls?.enabled,
       modeDockDisplay: getComputedStyle(document.querySelector('#gb-mode-dock') || document.createElement('div')).display || '',
       modeDockSelected: document.querySelector('#gb-mode-dock [data-gb-mode="play"]')?.dataset.selected || '',
+      cameraResetVisible: !!document.querySelector('#play-camera-reset-btn'),
+      cameraResetReady: typeof window._resetPlayCameraView === 'function',
     }));
     if (playState.builderDisplay !== 'none' || playState.builderPlayHidden !== 'true') {
       throw new Error(`Play mode did not hide Game Builder: ${JSON.stringify(playState)}`);
@@ -2216,6 +2285,9 @@ async function runBrowserSmoke() {
     }
     if (playState.modeDockDisplay === 'none' || playState.modeDockSelected !== 'true') {
       throw new Error(`Play mode did not keep the global mode dock available: ${JSON.stringify(playState)}`);
+    }
+    if (!playState.cameraResetVisible || !playState.cameraResetReady) {
+      throw new Error(`Play mode camera reset control was missing: ${JSON.stringify(playState)}`);
     }
 
     await page.locator('#gb-mode-dock [data-gb-mode="edit"]').click({ timeout: timeoutMs });
@@ -2263,6 +2335,22 @@ async function runBrowserSmoke() {
     });
     if (Math.abs(playCameraGuardState.z) > 0.02) {
       throw new Error(`Play camera roll guard did not flatten camera roll: ${JSON.stringify(playCameraGuardState)}`);
+    }
+    const playCameraResetState = await page.evaluate(() => {
+      if (window._engine?.camera) window._engine.camera.rotation.z = 0.42;
+      const result = window._resetPlayCameraView?.() || null;
+      return {
+        ready: typeof window._resetPlayCameraView === 'function',
+        buttonVisible: !!document.querySelector('#play-camera-reset-btn'),
+        z: window._engine?.camera?.rotation.z || 0,
+        result,
+      };
+    });
+    if (!playCameraResetState.ready ||
+        !playCameraResetState.buttonVisible ||
+        Math.abs(playCameraResetState.z) > 0.02 ||
+        Math.abs(playCameraResetState.result?.z || 0) > 0.02) {
+      throw new Error(`Play camera reset did not flatten camera roll: ${JSON.stringify(playCameraResetState)}`);
     }
     await page.mouse.move(700, 470);
     await page.mouse.wheel(0, 700);
@@ -3414,6 +3502,28 @@ async function runViewportBuildCityProbe(label, options) {
       { timeout: timeoutMs }
     );
     await page.waitForSelector('#prompt-input', { timeout: timeoutMs });
+    const builderMobileLayout = await page.evaluate(() => {
+      const grid = document.querySelector('#gb-project .gb-grid') || document.querySelector('.gb-grid');
+      const columns = grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length : 0;
+      const clipped = [...document.querySelectorAll('#game-builder-panel button')]
+        .filter((button) => button.offsetParent !== null)
+        .filter((button) => button.scrollWidth > button.clientWidth + 2 || button.scrollHeight > button.clientHeight + 2)
+        .map((button) => ({
+          text: button.textContent.trim(),
+          width: button.clientWidth,
+          scrollWidth: button.scrollWidth,
+          height: button.clientHeight,
+          scrollHeight: button.scrollHeight,
+        }))
+        .slice(0, 8);
+      return { columns, clipped };
+    });
+    if (options.width <= 900 && builderMobileLayout.columns > 2) {
+      throw new Error(`${label} viewport Builder grid did not collapse to two columns: ${JSON.stringify(builderMobileLayout)}`);
+    }
+    if (builderMobileLayout.clipped.length) {
+      throw new Error(`${label} viewport Builder buttons are clipping text: ${JSON.stringify(builderMobileLayout)}`);
+    }
     await page.locator('#prompt-input').fill('build city', { timeout: timeoutMs });
     await page.locator('#prompt-input').press('Enter', { timeout: timeoutMs });
     await page.waitForFunction(

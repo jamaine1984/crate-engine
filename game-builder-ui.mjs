@@ -4521,7 +4521,7 @@ function mount() {
     .gb-blueprint-info{min-width:0;display:flex;flex-direction:column;gap:2px}
     .gb-blueprint-info strong{font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-blueprint-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    @media (max-width:900px){#game-builder-panel{top:70px;left:8px;right:8px;bottom:auto;width:auto;max-height:58vh}#game-builder-panel[data-open="false"]{width:48px;right:auto}.gb-grid{grid-template-columns:1fr 1fr 1fr}#gb-mode-dock{top:auto;bottom:44px;left:50%;max-width:calc(100vw - 16px)}.gb-mode-dock-label{display:none}.gb-mode-dock-btn{min-width:0;flex:1}}
+    @media (max-width:900px){#game-builder-panel{top:70px;left:8px;right:8px;bottom:auto;width:auto;max-height:58vh}#game-builder-panel[data-open="false"]{width:48px;right:auto}.gb-grid{grid-template-columns:1fr 1fr}.gb-preset,.gb-mode-btn,.gb-small-btn{min-height:36px}#gb-mode-dock{top:auto;bottom:44px;left:50%;max-width:calc(100vw - 16px)}.gb-mode-dock-label{display:none}.gb-mode-dock-btn{min-width:0;flex:1}}
   `;
   document.head.appendChild(style);
 

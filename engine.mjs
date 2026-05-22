@@ -1586,6 +1586,27 @@ function lockPlayCameraRoll() {
   camera.updateMatrixWorld();
 }
 
+function resetPlayCameraView() {
+  if (!camera) return null;
+  camera.up.set(0, 1, 0);
+  const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+  playYaw = Number.isFinite(euler.y) ? euler.y : playYaw;
+  const pitch = THREE.MathUtils.clamp(Number.isFinite(euler.x) ? euler.x : 0, -Math.PI / 2.4, Math.PI / 2.4);
+  camera.rotation.set(pitch, playYaw, 0, 'YXZ');
+  camera.updateMatrixWorld();
+  if (characterController && typeof characterController.cameraPitch === 'number') {
+    characterController.cameraPitch = THREE.MathUtils.clamp(characterController.cameraPitch, -1.05, 1.05);
+  }
+  window._lastPlayCameraReset = {
+    mode: getEngineMode(),
+    x: camera.rotation.x,
+    y: camera.rotation.y,
+    z: camera.rotation.z,
+    finishedAt: Date.now(),
+  };
+  return window._lastPlayCameraReset;
+}
+
 window.addEventListener('keydown', e => { playKeys[e.key.toLowerCase()] = true; });
 window.addEventListener('keyup', e => { playKeys[e.key.toLowerCase()] = false; });
 
@@ -1761,6 +1782,20 @@ function _activatePlayMode() {
     };
     document.body.appendChild(btn);
   }
+
+  if (!document.getElementById('play-camera-reset-btn')) {
+    const resetBtn = document.createElement('button');
+    resetBtn.id = 'play-camera-reset-btn';
+    resetBtn.type = 'button';
+    resetBtn.textContent = 'Reset View';
+    resetBtn.title = 'Flatten camera roll and keep the world level';
+    resetBtn.style.cssText = 'position:fixed;right:14px;bottom:58px;z-index:9998;border:1px solid rgba(255,255,255,0.24);background:rgba(0,0,0,0.62);color:#fff;border-radius:6px;padding:7px 10px;font-family:monospace;font-size:12px;cursor:pointer';
+    resetBtn.onclick = () => {
+      resetPlayCameraView();
+      showToast('Camera reset');
+    };
+    document.body.appendChild(resetBtn);
+  }
   
   // FPS counter for debugging performance
   if (!document.getElementById('fps-counter')) {
@@ -1798,7 +1833,7 @@ function exitPlayMode(nextMode = 'edit') {
   syncModeGlobals(targetMode === 'play' ? 'edit' : targetMode);
   window._composerDisabled = false;
   // Clean up play mode HUD elements
-  ['fps-counter','char-select-btn','click-to-play','city-minimap','rain-overlay'].forEach(id => {
+  ['fps-counter','char-select-btn','play-camera-reset-btn','click-to-play','city-minimap','rain-overlay'].forEach(id => {
     const el = document.getElementById(id); if (el) el.remove();
   });
   // Re-enable editor orbit controls
@@ -1830,6 +1865,7 @@ function exitPlayMode(nextMode = 'edit') {
 
 window.exitPlayMode = exitPlayMode;
 window._lockPlayCameraRoll = lockPlayCameraRoll;
+window._resetPlayCameraView = resetPlayCameraView;
 window._isCharacterCameraOwned = isCharacterCameraOwned;
 
 function updatePlayMode(dt) {
@@ -6902,14 +6938,25 @@ const _modelDB = {
       req.onerror = () => reject(req.error);
     });
   },
-  async save(id, name, category, blob) {
+  async save(id, name, category, blob, metadata = {}) {
     const db = await this.open();
     const reader = new FileReader();
     return new Promise((resolve) => {
       reader.onload = () => {
         const tx = db.transaction('models', 'readwrite');
-        tx.objectStore('models').put({ id, name, category, data_b64: reader.result.split(',')[1], created: Date.now() });
+        tx.objectStore('models').put({
+          id,
+          name,
+          category,
+          data_b64: reader.result.split(',')[1],
+          created: Date.now(),
+          sizeBytes: Number(metadata.sizeBytes) || Number(blob?.size) || 0,
+          source: metadata.source || 'user-import',
+          fileName: metadata.fileName || '',
+          metrics: cloneProjectJson(metadata.metrics || null, null),
+        });
         tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
       };
       reader.readAsDataURL(blob);
     });
@@ -6930,6 +6977,15 @@ const _modelDB = {
       const req = tx.objectStore('models').getAll();
       req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => resolve([]);
+    });
+  },
+  async delete(id) {
+    const db = await this.open();
+    return new Promise((resolve) => {
+      const tx = db.transaction('models', 'readwrite');
+      tx.objectStore('models').delete(id);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
     });
   },
   blobFromB64(b64) {
@@ -17445,7 +17501,7 @@ window._showImportExport = function(tab) {
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
   overlay.innerHTML = `
-    <div style="background:#111;border:1px solid #333;border-radius:12px;width:460px;max-width:95vw;padding:24px">
+    <div style="background:#111;border:1px solid #333;border-radius:12px;width:560px;max-width:95vw;max-height:88vh;overflow:auto;padding:22px;box-sizing:border-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <h2 style="color:#fff;margin:0;font-size:1.1rem">${isExport ? '📤 Export Scene' : '📥 Import Assets'}</h2>
         <button id="ie-close" onclick="this.closest('#ie-modal').remove()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer">✕</button>
@@ -17491,6 +17547,13 @@ window._showImportExport = function(tab) {
           <div style="border:2px dashed #333;border-radius:8px;padding:24px;text-align:center;color:#555;font-size:0.8rem" id="ie-dropzone">
             Or drag & drop files here<br><span style="font-size:0.7rem">.glb, .gltf, .crate</span>
           </div>
+          <div id="ie-import-library" style="border:1px solid #242a2e;border-radius:8px;background:#0c0f12;padding:10px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <strong style="color:#eef2f3;font-size:0.82rem;line-height:1.2">Imported Models</strong>
+              <button id="ie-refresh-imports" type="button" style="border:1px solid #334155;background:#111827;color:#dbeafe;border-radius:6px;padding:5px 8px;font-size:0.72rem;cursor:pointer">Refresh</button>
+            </div>
+            <div id="ie-import-library-list" style="display:flex;flex-direction:column;gap:6px;color:#7f8b92;font-size:0.76rem;line-height:1.35">Loading imported models...</div>
+          </div>
         </div>
       `}
     </div>
@@ -17499,8 +17562,44 @@ window._showImportExport = function(tab) {
   document.body.appendChild(overlay);
 
   if (!isExport) {
+    const renderImportLibrary = async () => {
+      const list = overlay.querySelector('#ie-import-library-list');
+      if (!list) return;
+      const rows = typeof listUserImportedModels === 'function' ? await listUserImportedModels() : [];
+      if (!rows.length) {
+        list.innerHTML = '<div style="color:#7f8b92;font-size:0.76rem;line-height:1.35">Imported GLB/GLTF files will appear here after they load successfully.</div>';
+        return;
+      }
+      list.innerHTML = rows.slice(0, 8).map((item) => (
+        '<div data-user-import-row="' + escapeProjectHtml(item.id) + '" style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;border:1px solid #222a30;background:#12161a;border-radius:7px;padding:7px">' +
+          '<div style="min-width:0">' +
+            '<div style="color:#eef2f3;font-size:0.8rem;line-height:1.25;white-space:normal;overflow-wrap:anywhere">' + escapeProjectHtml(item.name) + '</div>' +
+            '<div style="color:#7f8b92;font-size:0.68rem;line-height:1.25;white-space:normal;overflow-wrap:anywhere">' + escapeProjectHtml(item.sizeLabel || '') + (item.metrics?.triangles ? ' | ' + formatImportCount(item.metrics.triangles) + ' tris' : '') + '</div>' +
+          '</div>' +
+          '<button data-user-import-place="' + escapeProjectHtml(item.id) + '" type="button" style="border:1px solid #2f7d4b;background:#10251a;color:#c8f7d2;border-radius:6px;padding:5px 8px;font-size:0.72rem;cursor:pointer">Place</button>' +
+          '<button data-user-import-delete="' + escapeProjectHtml(item.id) + '" type="button" style="border:1px solid #4b2730;background:#211013;color:#ffc9d0;border-radius:6px;padding:5px 8px;font-size:0.72rem;cursor:pointer">Delete</button>' +
+        '</div>'
+      )).join('');
+      list.querySelectorAll('[data-user-import-place]').forEach((button) => {
+        button.onclick = async () => {
+          button.disabled = true;
+          await placeUserImportedModel(button.dataset.userImportPlace);
+          button.disabled = false;
+        };
+      });
+      list.querySelectorAll('[data-user-import-delete]').forEach((button) => {
+        button.onclick = async () => {
+          button.disabled = true;
+          await deleteUserImportedModel(button.dataset.userImportDelete);
+          await renderImportLibrary();
+        };
+      });
+    };
+    overlay.querySelector('#ie-refresh-imports')?.addEventListener('click', renderImportLibrary);
+    renderImportLibrary();
     const finishImportAndClose = (result) => {
       Promise.resolve(result).then((ok) => {
+        renderImportLibrary();
         if (ok !== false) overlay.remove();
       }).catch((err) => {
         logOutput('err', 'Import failed: ' + (err?.message || String(err || 'Unknown error')));
@@ -17535,7 +17634,7 @@ window._showImportExport = function(tab) {
         return;
       }
       else if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) {
-        finishImportAndClose(_importGLBFile(file));
+        finishImportAndClose(_importGLBFile(file, { source: 'import-modal-drop' }));
         return;
       }
       overlay.remove();
@@ -17738,7 +17837,138 @@ window._userModelImportLimits = {
   allowedExtensions: USER_MODEL_IMPORT_EXTENSIONS.slice(),
 };
 
-async function _importGLBFile(file) {
+function cleanUserImportName(file) {
+  return String(file?.name || 'Imported model')
+    .replace(/\.(glb|gltf)$/i, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80) || 'Imported model';
+}
+
+function createUserImportId(file) {
+  const base = cleanUserImportName(file)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 42) || 'model';
+  return 'user_import_' + base + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+function summarizeUserImportRecord(record) {
+  if (!record) return null;
+  return {
+    id: record.id || '',
+    name: record.name || record.id || 'Imported model',
+    category: record.category || 'my-models',
+    source: record.source || 'user-import',
+    fileName: record.fileName || '',
+    sizeBytes: Number(record.sizeBytes) || 0,
+    sizeLabel: formatImportBytes(record.sizeBytes || 0),
+    created: record.created || 0,
+    metrics: record.metrics || null,
+  };
+}
+
+async function listUserImportedModels() {
+  try {
+    const rows = await _modelDB.getAll();
+    return rows
+      .filter((row) => row?.category === 'my-models' || row?.source === 'user-import')
+      .map(summarizeUserImportRecord)
+      .filter(Boolean)
+      .sort((a, b) => (Number(b.created) || 0) - (Number(a.created) || 0));
+  } catch {
+    return [];
+  }
+}
+
+async function saveUserImportedModel(file, validation) {
+  if (!file) return null;
+  const id = createUserImportId(file);
+  const name = cleanUserImportName(file);
+  const saved = await _modelDB.save(id, name, 'my-models', file, {
+    source: 'user-import',
+    fileName: file.name || '',
+    sizeBytes: file.size || validation?.sizeBytes || 0,
+    metrics: validation?.metrics || null,
+  });
+  if (!saved) return null;
+  _assetCatalog = null;
+  return summarizeUserImportRecord({
+    id,
+    name,
+    category: 'my-models',
+    source: 'user-import',
+    fileName: file.name || '',
+    sizeBytes: file.size || validation?.sizeBytes || 0,
+    metrics: validation?.metrics || null,
+    created: Date.now(),
+  });
+}
+
+async function deleteUserImportedModel(id) {
+  const ok = await _modelDB.delete(id);
+  if (ok) _assetCatalog = null;
+  window._lastUserImportLibraryAction = { action: 'delete', id, ok, finishedAt: Date.now() };
+  return ok;
+}
+
+async function placeUserImportedModel(id) {
+  if (!ensureEditModeForAssetPlacement('user-import-library')) return false;
+  const entry = await _modelDB.get(id);
+  if (!entry?.data_b64) {
+    window._lastUserImportStatus = { status: 'failed', id, error: 'Imported model was not found', finishedAt: Date.now() };
+    return false;
+  }
+  const blob = _modelDB.blobFromB64(entry.data_b64);
+  const url = URL.createObjectURL(blob);
+  const point = getEditorPlacementPoint();
+  setAssetPlacementState({
+    status: 'loading',
+    name: entry.name || id,
+    file: id,
+    path: 'indexeddb:' + id,
+    source: 'user-import-library',
+    x: point.x,
+    z: point.z,
+  });
+  return new Promise((resolve) => {
+    _loadGLBFromUrl(entry.name || id, url, point.x, point.z, null, id, (model, error) => {
+      URL.revokeObjectURL(url);
+      if (model) {
+        model.userData.isImported = true;
+        model.userData.userImportId = id;
+        recordSceneCommand('add ' + id);
+      }
+      window._lastUserImportLibraryAction = {
+        action: 'place',
+        id,
+        status: error ? 'failed' : 'placed',
+        objectId: model?.uuid || '',
+        error: error?.message || '',
+        finishedAt: Date.now(),
+      };
+      resolve(!error && !!model);
+    }, {
+      trackPlacement: true,
+      selectAfterLoad: true,
+      notify: true,
+      displayName: entry.name || id,
+      source: 'user-import-library',
+      file: id,
+      path: 'indexeddb:' + id,
+    });
+  });
+}
+
+window._listUserImportedModels = listUserImportedModels;
+window._saveUserImportedModel = saveUserImportedModel;
+window._deleteUserImportedModel = deleteUserImportedModel;
+window._placeUserImportedModel = placeUserImportedModel;
+
+async function _importGLBFile(file, options = {}) {
+  if (!ensureEditModeForAssetPlacement(options.source || 'user-import')) return false;
   const validation = await inspectUserModelFile(file);
   window._lastUserImportValidation = validation;
   if (!validation.ok) {
@@ -17748,27 +17978,62 @@ async function _importGLBFile(file) {
     return false;
   }
   const url = URL.createObjectURL(file);
-  const name = file.name.replace(/\.\w+$/, '');
+  const name = cleanUserImportName(file);
   if (typeof _loadGLBFromUrl === 'function') {
+    const point = getEditorPlacementPoint();
     window._lastUserImportStatus = { status: 'loading', ...validation, checkedAt: Date.now() };
-    _loadGLBFromUrl(name, url, 0, 0, null, file.name, (model, error) => {
-      URL.revokeObjectURL(url);
-      window._lastUserImportStatus = {
-        status: error ? 'failed' : 'loaded',
-        ...validation,
-        objectName: model?.userData?.name || name,
-        error: error?.message || '',
-        finishedAt: Date.now(),
-      };
+    setAssetPlacementState({
+      status: 'loading',
+      name,
+      file: file.name || name,
+      path: 'local-file:' + (file.name || name),
+      source: options.source || 'user-import',
+      x: point.x,
+      z: point.z,
     });
-    logOutput('ok', 'Imported model: ' + file.name);
-    return true;
+    return new Promise((resolve) => {
+      _loadGLBFromUrl(name, url, point.x, point.z, null, file.name, async (model, error) => {
+        URL.revokeObjectURL(url);
+        let savedModel = null;
+        if (model && !error) {
+          model.userData.isImported = true;
+          savedModel = await saveUserImportedModel(file, validation);
+          if (savedModel?.id) model.userData.userImportId = savedModel.id;
+          if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
+        }
+        window._lastUserImportStatus = {
+          status: error ? 'failed' : 'loaded',
+          ...validation,
+          objectName: model?.userData?.name || name,
+          objectId: model?.uuid || '',
+          savedModel,
+          libraryCount: (await listUserImportedModels()).length,
+          error: error?.message || '',
+          finishedAt: Date.now(),
+        };
+        if (error) {
+          logOutput('err', 'Import failed: ' + (error?.message || 'Model load failed'));
+        } else {
+          logOutput('ok', 'Imported model: ' + file.name);
+        }
+        resolve(!error && !!model);
+      }, {
+        trackPlacement: true,
+        selectAfterLoad: true,
+        notify: true,
+        displayName: name,
+        source: options.source || 'user-import',
+        file: file.name || name,
+        path: 'local-file:' + (file.name || name),
+      });
+    });
   }
   URL.revokeObjectURL(url);
   window._lastUserImportStatus = { status: 'failed', ...validation, error: 'Model loader unavailable', finishedAt: Date.now() };
   logOutput('err', 'Import failed: model loader unavailable');
   return false;
 }
+window._importGLBFile = _importGLBFile;
 
 function _importCrateFile(file) {
   if (file && Number(file.size) > CRATE_PROJECT_LIMITS.maxBytes) {
@@ -18550,6 +18815,19 @@ let dragCounter = 0;
     e.preventDefault();
     dropOverlay.style.display = 'none';
     dragCounter = 0;
+
+    const importedFiles = [...e.dataTransfer.files].filter((file) => /\.(glb|gltf|crate|json)$/i.test(file.name || ''));
+    if (!importedFiles.length) { alert('Please drop .glb, .gltf, or .crate files'); return; }
+    importedFiles.forEach((file) => {
+      if (/\.(crate|json)$/i.test(file.name || '')) {
+        _importCrateFile(file);
+        return;
+      }
+      _importGLBFile(file, { source: 'viewport-drop' }).then((ok) => {
+        if (!ok) console.warn('[Import] Dropped model was blocked or failed:', file.name);
+      });
+    });
+    return;
     
     const files = [...e.dataTransfer.files].filter(f => f.name.endsWith('.glb') || f.name.endsWith('.gltf'));
     if (!files.length) { alert('Please drop .glb or .gltf files'); return; }
