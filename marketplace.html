@@ -578,7 +578,13 @@ footer{text-align:center;padding:40px;color:#444;font-size:.8rem;border-top:1px 
     params.set('limit', String(currentPageSize));
     params.set('page', String(currentPage));
     const query = (search?.value || '').trim();
-    if (query) params.set('q', query);
+    if (query) {
+      params.set('q', query);
+      const slugQuery = query.toLowerCase();
+      if (slugQuery.includes('-') && /^[a-z0-9][a-z0-9-]{2,95}$/.test(slugQuery)) {
+        params.set('slug', slugQuery);
+      }
+    }
     if (activeTag) params.set('tag', activeTag);
     params.set('sort', sort?.value || 'updated');
     grid.dataset.status = 'loading';

@@ -586,23 +586,45 @@ async function listGames(context) {
   const sort = cleanSort(url.searchParams.get('sort') || 'updated');
   if (requestedSlug) {
     const record = await store.get(keyForSlug(requestedSlug), 'json');
-    const games = record && cleanModerationStatus(record.moderationStatus) !== 'hidden' ? [publicGameSummary(record)] : [];
-    return json({
-      ok: true,
-      games,
-      tags: Array.from(new Set(games.flatMap((game) => Array.isArray(game.tags) ? game.tags : []))).sort(),
-      sort,
-      query,
-      tag,
-      page: 1,
-      pageSize: games.length || 1,
-      total: games.length,
-      pages: 1,
-      hasNext: false,
-      hasPrev: false,
-      cursor: null,
-      listComplete: true,
-    });
+    if (record && cleanModerationStatus(record.moderationStatus) !== 'hidden') {
+      const game = publicGameSummary(record);
+      const matchesTag = !tag || (Array.isArray(game.tags) && game.tags.includes(tag));
+      const games = matchesTag ? [game] : [];
+      return json({
+        ok: true,
+        games,
+        tags: Array.from(new Set(games.flatMap((item) => Array.isArray(item.tags) ? item.tags : []))).sort(),
+        sort,
+        query,
+        tag,
+        page: 1,
+        pageSize: games.length || 1,
+        total: games.length,
+        pages: 1,
+        hasNext: false,
+        hasPrev: false,
+        cursor: null,
+        listComplete: true,
+      });
+    }
+    if (!query) {
+      return json({
+        ok: true,
+        games: [],
+        tags: [],
+        sort,
+        query,
+        tag,
+        page: 1,
+        pageSize: 1,
+        total: 0,
+        pages: 1,
+        hasNext: false,
+        hasPrev: false,
+        cursor: null,
+        listComplete: true,
+      });
+    }
   }
   const limit = cleanLimit(url.searchParams.get('limit'), 24);
   const requestedPage = cleanPage(url.searchParams.get('page'));
