@@ -1643,10 +1643,7 @@ async function runBrowserSmoke() {
       );
     }
     const marketplaceState = await marketplacePage.waitForFunction(
-      () => {
-        const smoke = window.__CRATE_SMOKE || {};
-        const publishedSlug = smoke.publishedSlug || 'production-smoke-published-game';
-        const metadataGuardSlug = smoke.metadataGuardSlug || 'production-smoke-metadata-guard-game';
+      ({ publishedSlug, metadataGuardSlug }) => {
         const state = window._cratePublishedMarketplace || {};
         const discovery = window._cratePublishedDiscovery || {};
         const grid = document.querySelector('#published-market-grid');
@@ -1689,7 +1686,7 @@ async function runBrowserSmoke() {
           summary: document.querySelector('#published-market-summary')?.textContent || '',
         };
       },
-      undefined,
+      { publishedSlug: smokePublishedSlug, metadataGuardSlug: smokeMetadataGuardSlug },
       { timeout: timeoutMs }
     ).then((handle) => handle.jsonValue());
 
@@ -1699,8 +1696,7 @@ async function runBrowserSmoke() {
       timeout: timeoutMs,
     });
     const gameDetailState = await marketplacePage.waitForFunction(
-      () => {
-        const publishedSlug = window.__CRATE_SMOKE?.publishedSlug || 'production-smoke-published-game';
+      (publishedSlug) => {
         const state = window._crateGameDetail || {};
         if (state.status !== 'loaded' || state.slug !== publishedSlug) return null;
         return {
@@ -1724,7 +1720,7 @@ async function runBrowserSmoke() {
           hasStats: document.querySelectorAll('.stat').length >= 4,
         };
       },
-      undefined,
+      smokePublishedSlug,
       { timeout: timeoutMs }
     ).then((handle) => handle.jsonValue());
     await marketplaceContext.close();
