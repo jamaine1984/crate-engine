@@ -1606,6 +1606,15 @@ async function runBrowserSmoke() {
     await marketplacePage.locator('#published-market-search').fill('production smoke');
     await marketplacePage.locator('[data-published-tag="smoke"]').click({ timeout: timeoutMs });
     await marketplacePage.locator('#published-market-sort').selectOption('objects', { timeout: timeoutMs });
+    for (let pageIndex = 0; pageIndex < 6; pageIndex++) {
+      const visible = await marketplacePage.locator(`[data-published-game="${smokePublishedSlug}"]`).count();
+      if (visible > 0) break;
+      const nextButton = marketplacePage.locator('[data-published-page="next"]');
+      const canAdvance = await nextButton.isEnabled().catch(() => false);
+      if (!canAdvance) break;
+      await nextButton.click({ timeout: timeoutMs });
+      await marketplacePage.waitForTimeout(400);
+    }
     const marketplaceState = await marketplacePage.waitForFunction(
       () => {
         const smoke = window.__CRATE_SMOKE || {};
