@@ -1332,7 +1332,10 @@ function getDefaultAIConfig() {
   return { provider: 'ollama', apiKey: '', model: DEFAULT_OLLAMA_MODEL };
 }
 
-function getCurrentSelection() {
+function getCurrentSelection(options = {}) {
+  if (!options.includeFallback && typeof isEditInteractionMode === 'function' && !isEditInteractionMode()) {
+    return selectedObj || null;
+  }
   const sceneObjects = window._sceneObjects || [];
   return selectedObj || window._lastPlacedObj || sceneObjects[sceneObjects.length - 1] || null;
 }
@@ -2731,6 +2734,16 @@ function handleAssetPlacementFailure(options = {}) {
     source: options.source || '',
     error: err?.message || String(err || 'Load failed'),
   });
+}
+
+function retryLastAssetPlacement() {
+  const state = window._lastAssetPlacement || {};
+  if (!state.file && !state.path) return null;
+  return placeCatalogAsset({
+    file: state.file || state.path,
+    name: state.name || state.file || 'asset',
+    path: state.path || '',
+  }, state.source || 'asset-retry');
 }
 
 function placeCatalogAsset(result, source = 'asset-library') {
@@ -13974,6 +13987,8 @@ window._engineBridge = {
     scene.remove(obj);
   },
   getSelected() { return getCurrentSelection(); },
+  getSelectedOrLast() { return getCurrentSelection({ includeFallback: true }); },
+  clearSelection: clearEditorSelection,
   selectObject(obj, options) { return selectSceneObject(obj, options); },
   
   // Player
@@ -14682,6 +14697,7 @@ window._engineReady = true;
 window.parseAndExecute = parseAndExecute;
 window._showCategoryPicker = showCategoryPicker;
 window._placeCatalogAsset = placeCatalogAsset;
+window._retryLastAssetPlacement = retryLastAssetPlacement;
 window._execCommand = parseAndExecute;
 // Apply template preset if on a template page
 if (window._templateMode) {

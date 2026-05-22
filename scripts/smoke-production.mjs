@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
@@ -17,9 +18,27 @@ const viewportProbeEnabled = process.env.CRATE_SMOKE_VIEWPORT_PROBES !== 'false'
 const screenshotDir = path.resolve(process.env.CRATE_SMOKE_SCREENSHOT_DIR || path.join(rootDir, 'output', 'playwright'));
 const screenshotPath = path.join(screenshotDir, `production-smoke-${verify}.png`);
 const smokeAdminToken = String(process.env.CRATE_SMOKE_ADMIN_TOKEN || '').trim();
+const smokeRunId = createHash('sha1')
+  .update([baseUrl, verify, process.pid, Date.now()].join('|'))
+  .digest('hex')
+  .slice(0, 10);
+const smokePublishedSlug = `production-smoke-published-game-${smokeRunId}`;
+const smokeDeleteGuardSlug = `production-smoke-delete-guard-game-${smokeRunId}`;
+const smokeMetadataGuardSlug = `production-smoke-metadata-guard-game-${smokeRunId}`;
+const smokeBrowserGlobals = {
+  publishedSlug: smokePublishedSlug,
+  deleteGuardSlug: smokeDeleteGuardSlug,
+  metadataGuardSlug: smokeMetadataGuardSlug,
+};
 
 function normalizeBaseUrl(value) {
   return value.replace(/\/+$/, '');
+}
+
+async function addSmokeGlobals(context) {
+  await context.addInitScript((data) => {
+    window.__CRATE_SMOKE = data;
+  }, smokeBrowserGlobals);
 }
 
 function extractMetaContent(html, names) {
@@ -130,6 +149,7 @@ async function runBrowserSmoke() {
       deviceScaleFactor: 1,
       serviceWorkers: 'block',
     });
+    await addSmokeGlobals(context);
 
     if (forcedAssetBaseUrl) {
       await context.addInitScript((assetBaseUrl) => {
@@ -548,6 +568,7 @@ async function runBrowserSmoke() {
         ...state,
         mode: window._currentMode || '',
         selectedId: selected?.uuid || '',
+        retryReady: typeof window._retryLastAssetPlacement === 'function',
         statusText: document.querySelector('#gb-placement-status')?.textContent?.trim() || '',
       };
     });
@@ -556,6 +577,9 @@ async function runBrowserSmoke() {
     }
     if (placementState.selectedId !== placementState.objectId) {
       throw new Error(`Placed asset was not selected: ${JSON.stringify(placementState)}`);
+    }
+    if (!placementState.retryReady) {
+      throw new Error(`Asset placement retry hook was not available: ${JSON.stringify(placementState)}`);
     }
     if (!/Smoke placement chair/i.test(placementState.statusText)) {
       throw new Error(`Placement status did not name the placed asset: ${JSON.stringify(placementState)}`);
@@ -1158,9 +1182,11 @@ async function runBrowserSmoke() {
     }
 
     const publishedState = await page.evaluate(async () => {
+      const smoke = window.__CRATE_SMOKE || {};
+      const publishedSlug = smoke.publishedSlug || 'production-smoke-published-game';
       const result = await window._publishLocalGame?.({
         title: 'Production Smoke Published Game',
-        slug: 'production-smoke-published-game',
+        slug: publishedSlug,
         description: 'Smoke test published build',
         tags: ['smoke', 'publish'],
         ownerToken: 'production-smoke-owner-token',
@@ -1231,25 +1257,25 @@ async function runBrowserSmoke() {
     });
     if (publishedState.format !== 'crate-published-game' ||
         publishedState.version < 2 ||
-        publishedState.slug !== 'production-smoke-published-game' ||
-        !publishedState.shareUrl.includes('/play?published=production-smoke-published-game') ||
+        publishedState.slug !== smokePublishedSlug ||
+        !publishedState.shareUrl.includes(`/play?published=${smokePublishedSlug}`) ||
         publishedState.shareUrl.includes('#') ||
         publishedState.cloudStatus !== 'synced' ||
-        !publishedState.cloudUrl.includes('/play?published=production-smoke-published-game') ||
+        !publishedState.cloudUrl.includes(`/play?published=${smokePublishedSlug}`) ||
         publishedState.cloudSource !== 'cloudflare-pages-kv' ||
         publishedState.objects < 100 ||
         publishedState.components < 14 ||
         publishedState.scripts < 1 ||
         !publishedState.hasPlayable ||
         publishedState.playableHtmlBytes < 50000 ||
-        publishedState.storedSlug !== 'production-smoke-published-game' ||
-        publishedState.lastPublishedSlug !== 'production-smoke-published-game' ||
+        publishedState.storedSlug !== smokePublishedSlug ||
+        publishedState.lastPublishedSlug !== smokePublishedSlug ||
         publishedState.decodedFormat !== 'crate-engine-project' ||
         publishedState.decodedObjects < 100 ||
         publishedState.decodedComponents < 14 ||
         publishedState.apiStatus !== 200 ||
         publishedState.apiFormat !== 'crate-cloud-published-game' ||
-        publishedState.apiSlug !== 'production-smoke-published-game' ||
+        publishedState.apiSlug !== smokePublishedSlug ||
         publishedState.apiObjects < 100 ||
         publishedState.apiComponents < 14 ||
         !publishedState.apiHasProjectData ||
@@ -1266,15 +1292,16 @@ async function runBrowserSmoke() {
     }
 
     const deleteGuardPublishState = await page.evaluate(async () => {
+      const smoke = window.__CRATE_SMOKE || {};
       const ownerToken = 'production-smoke-delete-owner-token';
       const result = await window._publishLocalGame?.({
         title: 'Production Smoke Delete Guard',
-        slug: 'production-smoke-delete-guard-game',
+        slug: smoke.deleteGuardSlug || 'production-smoke-delete-guard-game',
         description: 'Smoke test delete guard',
         tags: ['smoke', 'delete'],
         ownerToken,
       });
-      const slug = result?.slug || 'production-smoke-delete-guard-game';
+      const slug = result?.slug || smoke.deleteGuardSlug || 'production-smoke-delete-guard-game';
       return {
         slug,
         ownerToken,
@@ -1307,7 +1334,7 @@ async function runBrowserSmoke() {
       deletedAuthorization: ownerDeletePayload?.authorization || '',
       missingStatus: missingAfterDelete.status,
     };
-    if (deleteGuardState.slug !== 'production-smoke-delete-guard-game' ||
+    if (deleteGuardState.slug !== smokeDeleteGuardSlug ||
         deleteGuardState.publishStatus !== 'synced' ||
         deleteGuardState.publishSource !== 'cloudflare-pages-kv' ||
         !deleteGuardState.ownerManaged ||
@@ -1321,17 +1348,18 @@ async function runBrowserSmoke() {
     }
 
     const metadataGuardPublishState = await page.evaluate(async () => {
+      const smoke = window.__CRATE_SMOKE || {};
       const ownerToken = 'production-smoke-metadata-owner-token';
       const result = await window._publishLocalGame?.({
         title: 'Production Smoke Metadata Guard',
-        slug: 'production-smoke-metadata-guard-game',
+        slug: smoke.metadataGuardSlug || 'production-smoke-metadata-guard-game',
         description: 'Smoke test metadata guard',
         tags: ['smoke', 'metadata'],
         ownerToken,
         creator: { name: 'Smoke Metadata Creator', website: 'https://crateshipgames.com' },
         visibility: 'public',
       });
-      const slug = result?.slug || 'production-smoke-metadata-guard-game';
+      const slug = result?.slug || smoke.metadataGuardSlug || 'production-smoke-metadata-guard-game';
       return {
         slug,
         ownerToken,
@@ -1414,7 +1442,7 @@ async function runBrowserSmoke() {
       deletedStatus: metadataDelete.status,
       missingStatus: metadataMissing.status,
     };
-    if (metadataGuardState.slug !== 'production-smoke-metadata-guard-game' ||
+    if (metadataGuardState.slug !== smokeMetadataGuardSlug ||
         metadataGuardState.publishStatus !== 'synced' ||
         metadataGuardState.publishSource !== 'cloudflare-pages-kv' ||
         !metadataGuardState.ownerManaged ||
@@ -1445,6 +1473,7 @@ async function runBrowserSmoke() {
       deviceScaleFactor: 1,
       serviceWorkers: 'block',
     });
+    await addSmokeGlobals(marketplaceContext);
     const marketplacePage = await marketplaceContext.newPage();
     const marketplaceUrl = `${baseUrl}/marketplace.html?verify=${encodeURIComponent(verify + '-marketplace')}`;
     await marketplacePage.goto(marketplaceUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
@@ -1460,10 +1489,13 @@ async function runBrowserSmoke() {
     await marketplacePage.locator('#published-market-sort').selectOption('objects', { timeout: timeoutMs });
     const marketplaceState = await marketplacePage.waitForFunction(
       () => {
+        const smoke = window.__CRATE_SMOKE || {};
+        const publishedSlug = smoke.publishedSlug || 'production-smoke-published-game';
+        const metadataGuardSlug = smoke.metadataGuardSlug || 'production-smoke-metadata-guard-game';
         const state = window._cratePublishedMarketplace || {};
         const discovery = window._cratePublishedDiscovery || {};
         const grid = document.querySelector('#published-market-grid');
-        const row = document.querySelector('[data-published-game="production-smoke-published-game"]');
+        const row = document.querySelector(`[data-published-game="${publishedSlug}"]`);
         if (state.status !== 'loaded' || state.query !== 'production smoke' || state.tag !== 'smoke' || state.sort !== 'objects' || !row) return null;
         return {
           status: state.status,
@@ -1492,7 +1524,7 @@ async function runBrowserSmoke() {
           hasPagination: !!document.querySelector('#published-market-pagination'),
           hasRefresh: !!document.querySelector('#published-market-refresh'),
           hasSmoke: !!row,
-          hasUnlistedGuard: !!document.querySelector('[data-published-game="production-smoke-metadata-guard-game"]'),
+          hasUnlistedGuard: !!document.querySelector(`[data-published-game="${metadataGuardSlug}"]`),
           featuredBadgeCount: document.querySelectorAll('.featured-badge').length,
           creatorText: row.querySelector('.creator')?.textContent || '',
           tagText: row.querySelector('.tags')?.textContent || '',
@@ -1513,8 +1545,9 @@ async function runBrowserSmoke() {
     });
     const gameDetailState = await marketplacePage.waitForFunction(
       () => {
+        const publishedSlug = window.__CRATE_SMOKE?.publishedSlug || 'production-smoke-published-game';
         const state = window._crateGameDetail || {};
-        if (state.status !== 'loaded' || state.slug !== 'production-smoke-published-game') return null;
+        if (state.status !== 'loaded' || state.slug !== publishedSlug) return null;
         return {
           status: state.status,
           slug: state.slug || '',
@@ -1544,7 +1577,7 @@ async function runBrowserSmoke() {
     const adminBlockedResponse = await fetch(new URL('/api/games/admin/list?limit=5', baseUrl).href, {
       headers: { Accept: 'application/json' },
     });
-    const adminAuditBlockedResponse = await fetch(new URL('/api/games/admin/audit/production-smoke-published-game?limit=5', baseUrl).href, {
+    const adminAuditBlockedResponse = await fetch(new URL(`/api/games/admin/audit/${encodeURIComponent(smokePublishedSlug)}?limit=5`, baseUrl).href, {
       headers: { Accept: 'application/json' },
     });
     const adminAuditVerifyBlockedResponse = await fetch(new URL('/api/games/admin/audit/verify', baseUrl).href, {
@@ -1632,6 +1665,7 @@ async function runBrowserSmoke() {
       deviceScaleFactor: 1,
       serviceWorkers: 'block',
     });
+    await addSmokeGlobals(adminContext);
     const adminPage = await adminContext.newPage();
     const adminUrl = `${baseUrl}/admin.html?verify=${encodeURIComponent(verify + '-admin')}`;
     await adminPage.goto(adminUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
@@ -1738,7 +1772,7 @@ async function runBrowserSmoke() {
         undefined,
         { timeout: timeoutMs }
       ).then((handle) => handle.jsonValue());
-      if (!adminDashboardAuthedState.rowSlugs.includes('production-smoke-published-game')) {
+      if (!adminDashboardAuthedState.rowSlugs.includes(smokePublishedSlug)) {
         throw new Error(`Admin dashboard did not list smoke published game: ${JSON.stringify(adminDashboardAuthedState)}`);
       }
       await adminPage.locator('#verify-audit-storage').click({ timeout: timeoutMs });
@@ -1777,7 +1811,7 @@ async function runBrowserSmoke() {
       if (!adminDashboardBackfillState.dryRun || adminDashboardBackfillState.written !== 0) {
         throw new Error(`Admin dashboard D1 backfill dry run did not stay read-only: ${JSON.stringify(adminDashboardBackfillState)}`);
       }
-      await adminPage.locator('button[data-action="audit"][data-slug="production-smoke-published-game"]').click({ timeout: timeoutMs });
+      await adminPage.locator(`button[data-action="audit"][data-slug="${smokePublishedSlug}"]`).click({ timeout: timeoutMs });
       adminDashboardAuditState = await adminPage.waitForFunction(
         () => {
           const state = window._crateAdminDashboard || {};
@@ -1792,7 +1826,7 @@ async function runBrowserSmoke() {
         undefined,
         { timeout: timeoutMs }
       ).then((handle) => handle.jsonValue());
-      if (adminDashboardAuditState.slug !== 'production-smoke-published-game') {
+      if (adminDashboardAuditState.slug !== smokePublishedSlug) {
         throw new Error(`Admin dashboard audit detail did not load smoke game: ${JSON.stringify(adminDashboardAuditState)}`);
       }
     }
@@ -1803,6 +1837,7 @@ async function runBrowserSmoke() {
       deviceScaleFactor: 1,
       serviceWorkers: 'block',
     });
+    await addSmokeGlobals(publishedLoadContext);
     const publishedLoadPage = await publishedLoadContext.newPage();
     publishedLoadPage.on('console', (message) => {
       const text = summarizeConsoleMessage(message);
@@ -1850,18 +1885,22 @@ async function runBrowserSmoke() {
     await page.evaluate(() => window._showPublishedGames?.());
     await page.waitForSelector('#published-games-modal', { timeout: timeoutMs });
     await page.waitForFunction(
-      () => document.querySelector('#published-cloud-list')?.dataset.status === 'loaded' &&
-        Array.isArray(window._lastCloudPublishedGames) &&
-        window._lastCloudPublishedGames.some((game) => game?.slug === 'production-smoke-published-game'),
+      () => {
+        const publishedSlug = window.__CRATE_SMOKE?.publishedSlug || 'production-smoke-published-game';
+        return document.querySelector('#published-cloud-list')?.dataset.status === 'loaded' &&
+          Array.isArray(window._lastCloudPublishedGames) &&
+          window._lastCloudPublishedGames.some((game) => game?.slug === publishedSlug);
+      },
       undefined,
       { timeout: timeoutMs }
     );
     const publishedLibraryState = await page.evaluate(() => {
+      const publishedSlug = window.__CRATE_SMOKE?.publishedSlug || 'production-smoke-published-game';
       const modal = document.querySelector('#published-games-modal');
       const cloudRows = [...document.querySelectorAll('#published-cloud-list [data-published-row]')];
       const localRows = [...document.querySelectorAll('#published-local-list [data-published-row]')];
-      const cloudRow = cloudRows.find((row) => row.dataset.publishedRow === 'production-smoke-published-game');
-      const localRow = localRows.find((row) => row.dataset.publishedRow === 'production-smoke-published-game');
+      const cloudRow = cloudRows.find((row) => row.dataset.publishedRow === publishedSlug);
+      const localRow = localRows.find((row) => row.dataset.publishedRow === publishedSlug);
       const cloudUrl = cloudRow?.querySelector('input')?.value || '';
       const localUrl = localRow?.querySelector('input')?.value || '';
       const copyButtons = modal ? modal.querySelectorAll('[data-publish-copy]').length : 0;
@@ -1907,9 +1946,9 @@ async function runBrowserSmoke() {
         !publishedLibraryState.sourceFilters.includes('all') ||
         !publishedLibraryState.sourceFilters.includes('cloud') ||
         !publishedLibraryState.sourceFilters.includes('local') ||
-        !publishedLibraryState.cloudUrl.includes('/play?published=production-smoke-published-game') ||
+        !publishedLibraryState.cloudUrl.includes(`/play?published=${smokePublishedSlug}`) ||
         publishedLibraryState.cloudUrl.includes('#') ||
-        !publishedLibraryState.localUrl.includes('/play?published=production-smoke-published-game') ||
+        !publishedLibraryState.localUrl.includes(`/play?published=${smokePublishedSlug}`) ||
         publishedLibraryState.lastCloudCount < 1 ||
         publishedLibraryState.copyButtons < 2 ||
         publishedLibraryState.openButtons < 2 ||
@@ -1917,14 +1956,15 @@ async function runBrowserSmoke() {
       throw new Error(`Published Games modal did not show cloud/local library: ${JSON.stringify(publishedLibraryState)}`);
     }
 
-    await page.locator('#published-cloud-list [data-published-row="production-smoke-published-game"] [data-publish-details]').click({ timeout: timeoutMs });
+    await page.locator(`#published-cloud-list [data-published-row="${smokePublishedSlug}"] [data-publish-details]`).click({ timeout: timeoutMs });
     const publishedDetailState = await page.waitForFunction(
       () => {
+        const publishedSlug = window.__CRATE_SMOKE?.publishedSlug || 'production-smoke-published-game';
         const detail = window._lastPublishedDetail || {};
         const panel = document.querySelector('#published-detail-panel');
         if (panel?.dataset.status !== 'loaded' ||
             detail.status !== 'loaded' ||
-            detail.slug !== 'production-smoke-published-game' ||
+            detail.slug !== publishedSlug ||
             detail.objects < 100 ||
             detail.components < 14 ||
             detail.ownerManaged !== true) {
@@ -2002,15 +2042,16 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     ).then((handle) => handle.jsonValue());
 
-    await page.locator('#published-cloud-list [data-published-row="production-smoke-published-game"] [data-publish-load]').click({ timeout: timeoutMs });
+    await page.locator(`#published-cloud-list [data-published-row="${smokePublishedSlug}"] [data-publish-load]`).click({ timeout: timeoutMs });
     const publishedEditorLoadState = await page.waitForFunction(
       () => {
+        const publishedSlug = window.__CRATE_SMOKE?.publishedSlug || 'production-smoke-published-game';
         const editorLoad = window._lastPublishedEditorLoad || {};
         const projectLoad = window._lastProjectLoad || {};
         const objectCount = window._engineBridge?.objects?.length || 0;
         const scriptCount = Array.isArray(window._userScripts) ? window._userScripts.length : 0;
         if (editorLoad.status !== 'cloud-published' ||
-            editorLoad.slug !== 'production-smoke-published-game' ||
+            editorLoad.slug !== publishedSlug ||
             projectLoad.status !== 'loaded' ||
             objectCount < 100 ||
             scriptCount < 1 ||
@@ -2106,11 +2147,13 @@ async function runBrowserSmoke() {
         resultSelected: !!result,
         before,
         after: window._lastPlacedObj?.uuid || '',
+        bridgeSelectedId: window._engineBridge?.getSelected?.()?.uuid || '',
         inspectorDisplay: document.querySelector('#inspector')?.style.display || '',
       };
     });
     if (bridgeExploreSelectState.attempted &&
         (bridgeExploreSelectState.resultSelected ||
+          bridgeExploreSelectState.bridgeSelectedId ||
           bridgeExploreSelectState.after !== bridgeExploreSelectState.before ||
           bridgeExploreSelectState.inspectorDisplay === 'flex')) {
       throw new Error(`Engine bridge selected an object in Explore mode: ${JSON.stringify(bridgeExploreSelectState)}`);
@@ -2120,10 +2163,14 @@ async function runBrowserSmoke() {
       mode: window._currentMode,
       playMode: window._playMode === true,
       legacyInspectorDisplay: document.querySelector('#inspector')?.style.display || '',
+      bridgeSelectedId: window._engineBridge?.getSelected?.()?.uuid || '',
       selectedModeButton: document.querySelector('[data-gb-mode="explore"]')?.dataset.selected || '',
     }));
     if (exploreState.legacyInspectorDisplay === 'flex') {
       throw new Error('Explore mode canvas click opened the object inspector');
+    }
+    if (exploreState.bridgeSelectedId) {
+      throw new Error(`Explore mode canvas click left an editor selection active: ${JSON.stringify(exploreState)}`);
     }
     if (exploreState.selectedModeButton !== 'true') {
       throw new Error('Explore mode button did not reflect the active mode');
@@ -2144,6 +2191,7 @@ async function runBrowserSmoke() {
       browserPlayHidden: document.querySelector('#model-browser-button')?.dataset.playHidden || '',
       promptDisplay: document.querySelector('#prompt-input')?.parentElement?.style.display || '',
       legacyInspectorDisplay: document.querySelector('#inspector')?.style.display || '',
+      bridgeSelectedId: window._engineBridge?.getSelected?.()?.uuid || '',
       controlsEnabled: window._engine?.controls?.enabled,
       modeDockDisplay: getComputedStyle(document.querySelector('#gb-mode-dock') || document.createElement('div')).display || '',
       modeDockSelected: document.querySelector('#gb-mode-dock [data-gb-mode="play"]')?.dataset.selected || '',
@@ -2159,6 +2207,9 @@ async function runBrowserSmoke() {
     }
     if (playState.legacyInspectorDisplay === 'flex') {
       throw new Error('Play mode left the legacy object inspector visible');
+    }
+    if (playState.bridgeSelectedId) {
+      throw new Error(`Play mode left an editor selection active: ${JSON.stringify(playState)}`);
     }
     if (playState.controlsEnabled !== false) {
       throw new Error(`Play mode left editor OrbitControls enabled: ${JSON.stringify(playState)}`);
@@ -2929,7 +2980,7 @@ async function runBrowserSmoke() {
     state.adminDashboardAuthedTotal = adminDashboardAuthedState?.total || 0;
     state.adminDashboardAuthedAdminName = adminDashboardAuthedState?.adminName || '';
     state.adminDashboardAuthedAdminRole = adminDashboardAuthedState?.adminRole || '';
-    state.adminDashboardAuthedSmokeListed = adminDashboardAuthedState?.rowSlugs?.includes('production-smoke-published-game') || false;
+    state.adminDashboardAuthedSmokeListed = adminDashboardAuthedState?.rowSlugs?.includes(smokePublishedSlug) || false;
     state.adminDashboardLoadedAuditStatus = adminDashboardAuditState?.status || '';
     state.adminDashboardLoadedAuditSlug = adminDashboardAuditState?.slug || '';
     state.adminDashboardLoadedAuditRows = adminDashboardAuditState?.rows || 0;
@@ -3111,7 +3162,7 @@ async function runBrowserSmoke() {
       throw new Error(`Playable export package did not include a runtime-ready project: ${JSON.stringify(state)}`);
     }
     if (state.publishedFormat !== 'crate-published-game' ||
-        state.publishedSlug !== 'production-smoke-published-game' ||
+        state.publishedSlug !== smokePublishedSlug ||
         state.publishedObjects < 100 ||
         state.publishedComponents < 14 ||
         state.publishedScripts < 1 ||
@@ -3134,7 +3185,7 @@ async function runBrowserSmoke() {
         state.publishedDeleteGuardMissingStatus !== 404 ||
         state.publishedDeleteGuardAuthorization !== 'owner' ||
         state.publishedLoadStatus !== 'cloud-published' ||
-        state.publishedLoadSlug !== 'production-smoke-published-game' ||
+        state.publishedLoadSlug !== smokePublishedSlug ||
         state.publishedLoadObjectCount < 100 ||
         state.publishedLoadProjectStatus !== 'loaded' ||
         state.publishedLibraryCloudStatus !== 'loaded' ||
@@ -3154,7 +3205,7 @@ async function runBrowserSmoke() {
         state.publishedLibraryOpenButtons < 2 ||
         state.publishedLibraryLoadButtons < 2 ||
         state.publishedDetailPanelStatus !== 'loaded' ||
-        state.publishedDetailSlug !== 'production-smoke-published-game' ||
+        state.publishedDetailSlug !== smokePublishedSlug ||
         !state.publishedDetailOwnerManaged ||
         !state.publishedDetailHasProjectData ||
         !state.publishedDetailHasDuplicate ||
@@ -3186,17 +3237,17 @@ async function runBrowserSmoke() {
         !state.marketplaceHasDiscoveryRails ||
         state.marketplaceDiscoveryTotal < 1 ||
         state.marketplaceDiscoveryRailCards < 1 ||
-        !state.marketplaceDiscoveryFeaturedSlugs.includes('production-smoke-published-game') ||
-        !state.marketplaceDiscoveryRecentSlugs.includes('production-smoke-published-game') ||
-        !state.marketplaceDiscoverySystemsSlugs.includes('production-smoke-published-game') ||
+        !state.marketplaceDiscoveryFeaturedSlugs.includes(smokePublishedSlug) ||
+        !state.marketplaceDiscoveryRecentSlugs.includes(smokePublishedSlug) ||
+        !state.marketplaceDiscoverySystemsSlugs.includes(smokePublishedSlug) ||
         state.marketplaceShown < 1 ||
         !/Production Smoke Creator/.test(state.marketplaceCreatorText || '') ||
         !/smoke/.test(state.marketplaceTagText || '') ||
-        !state.marketplacePlayHref.includes('/play?published=production-smoke-published-game') ||
-        !state.marketplaceRemixHref.includes('/play?published=production-smoke-published-game') ||
-        !state.marketplaceDetailHref.includes('/game.html?slug=production-smoke-published-game') ||
+        !state.marketplacePlayHref.includes(`/play?published=${smokePublishedSlug}`) ||
+        !state.marketplaceRemixHref.includes(`/play?published=${smokePublishedSlug}`) ||
+        !state.marketplaceDetailHref.includes(`/game.html?slug=${smokePublishedSlug}`) ||
         state.gameDetailStatus !== 'loaded' ||
-        state.gameDetailSlug !== 'production-smoke-published-game' ||
+        state.gameDetailSlug !== smokePublishedSlug ||
         state.gameDetailTitle !== 'Production Smoke Published Game' ||
         state.gameDetailCreatorName !== 'Production Smoke Creator' ||
         state.gameDetailVisibility !== 'public' ||
@@ -3209,8 +3260,8 @@ async function runBrowserSmoke() {
         !state.gameDetailHasRemix ||
         !state.gameDetailHasMarketplace ||
         !state.gameDetailHasStats ||
-        !state.gameDetailPlayHref.includes('/play?published=production-smoke-published-game') ||
-        !state.gameDetailRemixHref.includes('/play?published=production-smoke-published-game') ||
+        !state.gameDetailPlayHref.includes(`/play?published=${smokePublishedSlug}`) ||
+        !state.gameDetailRemixHref.includes(`/play?published=${smokePublishedSlug}`) ||
         state.adminApiGuardStatus !== 403 ||
         state.adminAuditApiGuardStatus !== 403 ||
         state.adminAuditVerifyGuardStatus !== 403 ||
@@ -3237,13 +3288,13 @@ async function runBrowserSmoke() {
         !state.adminDashboardHasReviewQueue ||
         !state.adminDashboardHasReviewNoteInput ||
         !state.adminDashboardReviewNoteRequired ||
-        (state.adminSmokeTokenProvided && (state.adminDashboardAuthedStatus !== 'loaded' || !state.adminDashboardAuthedSmokeListed || !state.adminDashboardAuthedAdminName || !state.adminDashboardAuthedAdminRole || state.adminDashboardLoadedAuditStatus !== 'loaded' || state.adminDashboardLoadedAuditSlug !== 'production-smoke-published-game' || state.adminDashboardStorageProbeStatus !== 'verified' || state.adminDashboardStorageProbeSource !== 'd1' || !state.adminDashboardStorageProbeWriteVerified || state.adminDashboardBackfillProbeStatus !== 'dry-run' || !state.adminDashboardBackfillProbeDryRun || state.adminDashboardBackfillProbeWritten !== 0)) ||
+        (state.adminSmokeTokenProvided && (state.adminDashboardAuthedStatus !== 'loaded' || !state.adminDashboardAuthedSmokeListed || !state.adminDashboardAuthedAdminName || !state.adminDashboardAuthedAdminRole || state.adminDashboardLoadedAuditStatus !== 'loaded' || state.adminDashboardLoadedAuditSlug !== smokePublishedSlug || state.adminDashboardStorageProbeStatus !== 'verified' || state.adminDashboardStorageProbeSource !== 'd1' || !state.adminDashboardStorageProbeWriteVerified || state.adminDashboardBackfillProbeStatus !== 'dry-run' || !state.adminDashboardBackfillProbeDryRun || state.adminDashboardBackfillProbeWritten !== 0)) ||
         state.publishedFilterQuery !== 'production smoke' ||
         state.publishedFilterSource !== 'all' ||
         state.publishedFilterCloudShown < 1 ||
         state.publishedFilterLocalShown < 1 ||
         state.publishedEditorLoadStatus !== 'cloud-published' ||
-        state.publishedEditorLoadSlug !== 'production-smoke-published-game' ||
+        state.publishedEditorLoadSlug !== smokePublishedSlug ||
         state.publishedEditorLoadObjectCount < 100 ||
         state.publishedEditorLoadProjectStatus !== 'loaded' ||
         state.publishedEditorLoadMode !== 'edit') {
@@ -3437,7 +3488,7 @@ const assetManifest = await checkAssetManifest(assetBaseUrl);
 const httpChecks = [
   await checkHttp('/marketplace.html', 200, 'text/html', baseUrl),
   await checkHttp('/admin.html', 200, 'text/html', baseUrl),
-  await checkHttp('/game.html?slug=production-smoke-published-game', 200, 'text/html', baseUrl),
+  await checkHttp(`/game.html?slug=${encodeURIComponent(smokePublishedSlug)}`, 200, 'text/html', baseUrl),
   await checkHttp('/asset-manifest.json', 200, 'application/json', assetBaseUrl),
   await checkHttp('/models/kenney_cars/sedan.glb', 200, 'model/gltf-binary', assetBaseUrl),
   await checkHttp('/models/house_interior_pack_chair_1.glb', 200, 'model/gltf-binary', assetBaseUrl),

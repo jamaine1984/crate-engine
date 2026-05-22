@@ -3811,6 +3811,14 @@ function renderPlacementStatus() {
   box.append(title, item);
   if (position) box.appendChild(createTextElement('span', '', position));
   if (state.error) box.appendChild(createTextElement('span', 'gb-placement-error', state.error));
+  if (status === 'failed' && typeof window._retryLastAssetPlacement === 'function') {
+    const retry = createSmallButton('Retry', () => window._retryLastAssetPlacement?.(), {
+      editOnly: true,
+      action: 'retry asset placement',
+    });
+    retry.dataset.gbPlacementRetry = 'true';
+    box.appendChild(retry);
+  }
 }
 
 function renderAssetPackStatus() {
