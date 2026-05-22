@@ -1334,7 +1334,7 @@ function getDefaultAIConfig() {
 
 function getCurrentSelection(options = {}) {
   if (!options.includeFallback && typeof isEditInteractionMode === 'function' && !isEditInteractionMode()) {
-    return selectedObj || null;
+    return null;
   }
   const sceneObjects = window._sceneObjects || [];
   return selectedObj || window._lastPlacedObj || sceneObjects[sceneObjects.length - 1] || null;
@@ -15205,6 +15205,72 @@ function createProjectPlaceholderObject(snapshot) {
   return mesh;
 }
 
+function getRestoredComponentEntries(componentName) {
+  return objects
+    .map((obj, index) => ({ obj, index, data: obj?.userData?.gbComponents?.[componentName] || null }))
+    .filter((entry) => entry.data && typeof entry.data === 'object');
+}
+
+function repairRestoredGameplayLinks(reason = 'project-load') {
+  const repairs = [];
+  const missionSteps = getRestoredComponentEntries('missionStep');
+  const missionStepIds = new Set(missionSteps.map((entry) => String(entry.data.id || '').trim()).filter(Boolean));
+  const fallbackStepId = missionSteps.map((entry) => String(entry.data.id || '').trim()).find(Boolean) || '';
+
+  if (fallbackStepId) {
+    ['missionReward', 'missionGate'].forEach((componentName) => {
+      getRestoredComponentEntries(componentName).forEach((entry) => {
+        const required = String(entry.data.requiredStepId || '').trim();
+        if (!required || required === 'all' || required === 'none' || missionStepIds.has(required)) return;
+        entry.data.requiredStepId = fallbackStepId;
+        repairs.push({ component: componentName, field: 'requiredStepId', from: required, to: fallbackStepId, index: entry.index });
+      });
+    });
+  }
+
+  const enemySpawns = getRestoredComponentEntries('enemySpawn');
+  const spawnKeys = new Set();
+  enemySpawns.forEach((entry) => {
+    [entry.data.id, entry.data.label].filter(Boolean).forEach((value) => spawnKeys.add(String(value).trim().toLowerCase()));
+  });
+  const fallbackSpawn = enemySpawns.map((entry) => String(entry.data.id || entry.data.label || '').trim()).find(Boolean) || '';
+  if (fallbackSpawn) {
+    getRestoredComponentEntries('waveController').forEach((entry) => {
+      const target = String(entry.data.spawnGroup || '').trim();
+      const normalized = target.toLowerCase();
+      if (!target || normalized === 'nearest' || spawnKeys.has(normalized)) return;
+      entry.data.spawnGroup = fallbackSpawn;
+      repairs.push({ component: 'waveController', field: 'spawnGroup', from: target, to: fallbackSpawn, index: entry.index });
+    });
+  }
+
+  const doors = getRestoredComponentEntries('door');
+  const doorKeys = new Set();
+  doors.forEach((entry) => {
+    [entry.data.id, entry.data.label].filter(Boolean).forEach((value) => doorKeys.add(String(value).trim().toLowerCase()));
+  });
+  const fallbackDoor = doors.map((entry) => String(entry.data.id || entry.data.label || '').trim()).find(Boolean) || '';
+  if (fallbackDoor) {
+    getRestoredComponentEntries('triggerZone').forEach((entry) => {
+      if (entry.data.action && entry.data.action !== 'openDoor') return;
+      const target = String(entry.data.targetDoorId || '').trim();
+      const normalized = target.toLowerCase();
+      if (!target || normalized === 'nearest' || doorKeys.has(normalized)) return;
+      entry.data.targetDoorId = fallbackDoor;
+      repairs.push({ component: 'triggerZone', field: 'targetDoorId', from: target, to: fallbackDoor, index: entry.index });
+    });
+  }
+
+  const result = {
+    reason,
+    repaired: repairs.length,
+    repairs,
+    finishedAt: Date.now(),
+  };
+  window._lastProjectLinkRepair = result;
+  return result;
+}
+
 function applyProjectObjectSnapshots(snapshots = []) {
   if (!Array.isArray(snapshots) || !snapshots.length) return Promise.resolve({ expected: 0, applied: 0, spawned: 0 });
   const used = new Set();
@@ -15263,9 +15329,10 @@ function applyProjectObjectSnapshots(snapshots = []) {
   });
 
   return Promise.allSettled(pendingLoads).then(() => {
+    const linkRepair = repairRestoredGameplayLinks('project-load');
     if (typeof window._refreshGameBuilderMode === 'function') window._refreshGameBuilderMode();
     if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
-    return { expected: snapshots.length, applied, spawned };
+    return { expected: snapshots.length, applied, spawned, linkRepair };
   });
 }
 
