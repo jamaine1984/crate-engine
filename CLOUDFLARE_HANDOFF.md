@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `1ed1faa8`
+- Current deployed source commit for the public engine code: `696b36ff`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -29,13 +29,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `ddfd35df-1f96-4540-b85c-46b4363c930a`
-- Latest production deployment URL: `https://ddfd35df.crateship-games.pages.dev`
+- Latest production deployment ID: `8771c3e4-d70d-43d7-bb7d-4e1c681416d5`
+- Latest production deployment URL: `https://8771c3e4.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `1ed1faa`
-- Main live page bundle after the deploy: `/assets/play-Gh-UhNtc.js`
+- Source shown by Cloudflare: `696b36f`
+- Main live page bundle after the deploy: `/assets/play-Cnqgr37R.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-cSxJVtDQ.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-D-vHjpFi.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-CAOy79B3.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -43,6 +43,44 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-22:
+
+- Final commit deployed: `696b36ff` (`Harden user imports and play camera`)
+- Final Cloudflare deployment: `8771c3e4-d70d-43d7-bb7d-4e1c681416d5`
+- Final deployment URL: `https://8771c3e4.crateship-games.pages.dev`
+- App deploy command:
+
+```powershell
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=696b36f --commit-message="Harden user imports and play camera" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`
+- App-only deploy uploaded `8` changed files and reused `103` existing files; the separated GLB/texture asset host stayed unchanged.
+- Main app bundle: `/assets/play-Cnqgr37R.js`
+- Game Builder UI chunk: `/assets/game-builder-ui-D-vHjpFi.js`
+- Asset Browser chunk: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=import-camera-696b36f`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-import-camera-696b36f`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-import-camera-696b36f.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-import-camera-696b36f.png`
+- Production smoke now proves user GLB import persistence by fetching a real GLB from the separated asset host, importing it, listing it in Imported Models, placing it from IndexedDB, and deleting the saved library entry.
+- Apex smoke also verifies phone and tablet Builder layout so cramped menu buttons/labels fail the gate before deployment is considered good.
+
+What changed in this deploy:
+
+- `engine.mjs`
+  - User GLB/GLTF imports now go through the same validated placement path whether they come from the import modal or viewport drag/drop.
+  - Successful user imports are saved in IndexedDB with size/source/file/metric metadata and exposed through an Imported Models library with Place/Delete actions.
+  - Added `window._importGLBFile`, `window._listUserImportedModels`, `window._placeUserImportedModel`, and `window._deleteUserImportedModel` for smoke and future UI integrations.
+  - Added a Play-mode `Reset View` control plus `window._resetPlayCameraView` to flatten camera roll when scrolling/dragging makes the world look tilted.
+- `game-builder-ui.mjs`
+  - Mobile Builder grids collapse to two columns and key buttons get a minimum height so text is less likely to be covered or clipped.
+- `scripts/smoke-production.mjs`
+  - Verifies import modal library controls, real user import/place/delete, Play camera reset behavior, and mobile Builder text/grid layout.
+
+Previous app-only deploy on 2026-05-22:
 
 - Final commit deployed: `1ed1faa8` (`Stabilize public game listing smoke`)
 - Final Cloudflare deployment: `ddfd35df-1f96-4540-b85c-46b4363c930a`
