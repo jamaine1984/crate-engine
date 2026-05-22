@@ -6988,6 +6988,30 @@ const _modelDB = {
       tx.onerror = () => resolve(false);
     });
   },
+  async updateMetadata(id, metadata = {}) {
+    const db = await this.open();
+    return new Promise((resolve) => {
+      const tx = db.transaction('models', 'readwrite');
+      const store = tx.objectStore('models');
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const record = req.result;
+        if (!record) {
+          resolve(false);
+          return;
+        }
+        store.put({
+          ...record,
+          ...metadata,
+          metrics: metadata.metrics ? cloneProjectJson(metadata.metrics, null) : record.metrics,
+          updated: Date.now(),
+        });
+      };
+      req.onerror = () => resolve(false);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  },
   blobFromB64(b64) {
     const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
     return new Blob([bytes], { type: 'model/gltf-binary' });
@@ -14976,6 +15000,7 @@ function normalizeProjectObjectSnapshot(snapshot, index, warnings) {
   if (item.components && (!components || typeof components !== 'object')) warnings.push('Object ' + index + ' has invalid components.');
   const assetPath = typeof item.assetPath === 'string' ? item.assetPath.slice(0, 2048) : '';
   const assetFile = typeof item.assetFile === 'string' ? item.assetFile.slice(0, 256) : '';
+  const cloudAssetId = typeof item.cloudAssetId === 'string' ? item.cloudAssetId.slice(0, 128) : '';
   return {
     index: Number.isInteger(item.index) ? item.index : index,
     id: typeof item.id === 'string' ? item.id.slice(0, 128) : '',
@@ -14983,6 +15008,7 @@ function normalizeProjectObjectSnapshot(snapshot, index, warnings) {
     type: typeof item.type === 'string' ? item.type.slice(0, 80) : '',
     assetFile,
     assetPath,
+    cloudAssetId,
     placementSource: typeof item.placementSource === 'string' ? item.placementSource.slice(0, 80) : '',
     position: normalizeProjectVector(item.position, [0, 0, 0]),
     rotation: normalizeProjectVector(item.rotation, [0, 0, 0]),
@@ -15118,6 +15144,7 @@ function serializeProjectObject(obj, index) {
   const components = cloneProjectJson(obj.userData.gbComponents || {}, {});
   const assetPath = obj.userData.gbAssetPath || obj.userData.glbPath || obj.userData.assetPath || '';
   const assetFile = obj.userData.gbAssetFile || obj.userData.glbFile || (assetPath ? assetPath.split('/').pop() : '');
+  const cloudAssetId = obj.userData.gbCloudAssetId || obj.userData.cloudAssetId || '';
   const entry = {
     index,
     id: obj.uuid || '',
@@ -15151,6 +15178,7 @@ function serializeProjectObject(obj, index) {
   };
   if (assetFile) entry.assetFile = assetFile;
   if (assetPath) entry.assetPath = assetPath;
+  if (cloudAssetId) entry.cloudAssetId = String(cloudAssetId).slice(0, 128);
   return entry;
 }
 
@@ -15181,6 +15209,7 @@ function applyProjectSnapshotToObject(obj, snapshot) {
   if (meta.isSolid) obj.userData.isSolid = true;
   if (snapshot.assetFile) obj.userData.gbAssetFile = snapshot.assetFile;
   if (snapshot.assetPath) obj.userData.gbAssetPath = snapshot.assetPath;
+  if (snapshot.cloudAssetId) obj.userData.gbCloudAssetId = snapshot.cloudAssetId;
   if (snapshot.placementSource) obj.userData.gbPlacementSource = snapshot.placementSource;
   if (window._addToCollision && obj.userData.isSolid) window._addToCollision(obj);
   return true;
@@ -15355,6 +15384,15 @@ function applyProjectObjectSnapshots(snapshots = []) {
     const obj = pickTarget(snapshot);
     if (obj) {
       if (applyProjectSnapshotToObject(obj, snapshot)) applied++;
+      return;
+    }
+    const snapshotAssetPath = String(snapshot.assetPath || '');
+    const cloudAssetId = snapshot.cloudAssetId || (snapshotAssetPath.startsWith('crate-cloud-asset:') ? snapshotAssetPath.slice('crate-cloud-asset:'.length) : '');
+    if (cloudAssetId) {
+      spawned++;
+      pendingLoads.push(loadCloudAssetForProjectSnapshot(snapshot, cloudAssetId).then((model) => {
+        if (model && applyProjectSnapshotToObject(model, snapshot)) applied++;
+      }).catch(() => {}));
       return;
     }
     if (!snapshot.assetPath && hasRestorableGameplayComponents(snapshot)) {
@@ -17565,21 +17603,32 @@ window._showImportExport = function(tab) {
     const renderImportLibrary = async () => {
       const list = overlay.querySelector('#ie-import-library-list');
       if (!list) return;
-      const rows = typeof listUserImportedModels === 'function' ? await listUserImportedModels() : [];
+      const localRows = typeof listUserImportedModels === 'function' ? await listUserImportedModels() : [];
+      const cloudRows = typeof listCloudUserAssets === 'function' ? await listCloudUserAssets() : [];
+      const localCloudIds = new Set(localRows.map((item) => item.cloudAssetId).filter(Boolean));
+      const rows = [
+        ...localRows,
+        ...cloudRows.filter((item) => item.cloudAssetId && !localCloudIds.has(item.cloudAssetId)),
+      ];
       if (!rows.length) {
-        list.innerHTML = '<div style="color:#7f8b92;font-size:0.76rem;line-height:1.35">Imported GLB/GLTF files will appear here after they load successfully.</div>';
+        list.innerHTML = '<div style="color:#7f8b92;font-size:0.76rem;line-height:1.35">Imported GLB/GLTF files will appear here after they load successfully. Cloud sync uses this browser owner token so the same creator can restore assets later.</div>';
         return;
       }
-      list.innerHTML = rows.slice(0, 8).map((item) => (
-        '<div data-user-import-row="' + escapeProjectHtml(item.id) + '" style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;border:1px solid #222a30;background:#12161a;border-radius:7px;padding:7px">' +
+      list.innerHTML = rows.slice(0, 10).map((item) => {
+        const cloudId = item.cloudAssetId || item.id;
+        const isCloudOnly = item.storage === 'cloud';
+        const placeAttr = isCloudOnly ? 'data-cloud-import-place' : 'data-user-import-place';
+        const deleteAttr = isCloudOnly ? 'data-cloud-import-delete' : 'data-user-import-delete';
+        const storageLabel = isCloudOnly ? 'Cloud only' : (item.cloudAssetId ? 'Local + cloud' : 'Local only');
+        return '<div data-user-import-row="' + escapeProjectHtml(item.id) + '" style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;border:1px solid #222a30;background:#12161a;border-radius:7px;padding:7px">' +
           '<div style="min-width:0">' +
             '<div style="color:#eef2f3;font-size:0.8rem;line-height:1.25;white-space:normal;overflow-wrap:anywhere">' + escapeProjectHtml(item.name) + '</div>' +
-            '<div style="color:#7f8b92;font-size:0.68rem;line-height:1.25;white-space:normal;overflow-wrap:anywhere">' + escapeProjectHtml(item.sizeLabel || '') + (item.metrics?.triangles ? ' | ' + formatImportCount(item.metrics.triangles) + ' tris' : '') + '</div>' +
+            '<div style="color:#7f8b92;font-size:0.68rem;line-height:1.25;white-space:normal;overflow-wrap:anywhere">' + escapeProjectHtml(item.sizeLabel || '') + (item.metrics?.triangles ? ' | ' + formatImportCount(item.metrics.triangles) + ' tris' : '') + ' | ' + escapeProjectHtml(storageLabel) + '</div>' +
           '</div>' +
-          '<button data-user-import-place="' + escapeProjectHtml(item.id) + '" type="button" style="border:1px solid #2f7d4b;background:#10251a;color:#c8f7d2;border-radius:6px;padding:5px 8px;font-size:0.72rem;cursor:pointer">Place</button>' +
-          '<button data-user-import-delete="' + escapeProjectHtml(item.id) + '" type="button" style="border:1px solid #4b2730;background:#211013;color:#ffc9d0;border-radius:6px;padding:5px 8px;font-size:0.72rem;cursor:pointer">Delete</button>' +
-        '</div>'
-      )).join('');
+          '<button ' + placeAttr + '="' + escapeProjectHtml(isCloudOnly ? cloudId : item.id) + '" type="button" style="border:1px solid #2f7d4b;background:#10251a;color:#c8f7d2;border-radius:6px;padding:5px 8px;font-size:0.72rem;cursor:pointer">Place</button>' +
+          '<button ' + deleteAttr + '="' + escapeProjectHtml(isCloudOnly ? cloudId : item.id) + '" type="button" style="border:1px solid #4b2730;background:#211013;color:#ffc9d0;border-radius:6px;padding:5px 8px;font-size:0.72rem;cursor:pointer">Delete</button>' +
+        '</div>';
+      }).join('');
       list.querySelectorAll('[data-user-import-place]').forEach((button) => {
         button.onclick = async () => {
           button.disabled = true;
@@ -17591,6 +17640,20 @@ window._showImportExport = function(tab) {
         button.onclick = async () => {
           button.disabled = true;
           await deleteUserImportedModel(button.dataset.userImportDelete);
+          await renderImportLibrary();
+        };
+      });
+      list.querySelectorAll('[data-cloud-import-place]').forEach((button) => {
+        button.onclick = async () => {
+          button.disabled = true;
+          await placeCloudUserAsset(button.dataset.cloudImportPlace);
+          button.disabled = false;
+        };
+      });
+      list.querySelectorAll('[data-cloud-import-delete]').forEach((button) => {
+        button.onclick = async () => {
+          button.disabled = true;
+          await deleteCloudUserAsset(button.dataset.cloudImportDelete);
           await renderImportLibrary();
         };
       });
@@ -17857,6 +17920,7 @@ function createUserImportId(file) {
 
 function summarizeUserImportRecord(record) {
   if (!record) return null;
+  const cloudAsset = record.cloudAsset && typeof record.cloudAsset === 'object' ? record.cloudAsset : null;
   return {
     id: record.id || '',
     name: record.name || record.id || 'Imported model',
@@ -17867,7 +17931,240 @@ function summarizeUserImportRecord(record) {
     sizeLabel: formatImportBytes(record.sizeBytes || 0),
     created: record.created || 0,
     metrics: record.metrics || null,
+    storage: 'local',
+    cloudAssetId: record.cloudAssetId || cloudAsset?.id || '',
+    cloudAsset,
+    cloudSyncedAt: record.cloudSyncedAt || 0,
   };
+}
+
+const USER_ASSET_OWNER_TOKEN_KEY = 'crate_user_asset_owner_token';
+const CLOUD_USER_ASSET_PREFIX = 'crate-cloud-asset:';
+
+function getUserAssetOwnerToken() {
+  try {
+    let token = localStorage.getItem(USER_ASSET_OWNER_TOKEN_KEY);
+    if (!token) {
+      token = (crypto?.randomUUID?.() || ('asset-owner-' + Date.now() + '-' + Math.random().toString(36).slice(2))).replace(/[{}]/g, '');
+      localStorage.setItem(USER_ASSET_OWNER_TOKEN_KEY, token);
+    }
+    return token;
+  } catch {
+    return '';
+  }
+}
+
+function userAssetAuthHeaders() {
+  const token = getUserAssetOwnerToken();
+  return token ? { 'X-Crate-Owner-Token': token } : {};
+}
+
+function summarizeCloudUserAsset(asset) {
+  if (!asset) return null;
+  return {
+    id: asset.id || '',
+    name: asset.name || asset.fileName || asset.id || 'Cloud model',
+    category: 'my-models',
+    source: asset.source || 'cloud-user-asset',
+    fileName: asset.fileName || '',
+    sizeBytes: Number(asset.sizeBytes) || 0,
+    sizeLabel: formatImportBytes(asset.sizeBytes || 0),
+    created: Date.parse(asset.createdAt || '') || 0,
+    metrics: asset.metrics || null,
+    storage: 'cloud',
+    cloudAssetId: asset.id || '',
+    cloudAsset: asset,
+    cloudSyncedAt: Date.parse(asset.updatedAt || asset.createdAt || '') || 0,
+  };
+}
+
+async function listCloudUserAssets() {
+  try {
+    const response = await fetch('/api/assets', {
+      headers: userAssetAuthHeaders(),
+      cache: 'no-store',
+    });
+    const data = await response.json().catch(() => ({}));
+    window._lastUserAssetCloudList = {
+      ok: response.ok && data?.ok === true,
+      status: response.status,
+      count: Array.isArray(data?.assets) ? data.assets.length : 0,
+      checkedAt: Date.now(),
+      error: data?.error || '',
+    };
+    if (!response.ok || data?.ok !== true) return [];
+    return (data.assets || []).map(summarizeCloudUserAsset).filter(Boolean);
+  } catch (err) {
+    window._lastUserAssetCloudList = { ok: false, status: 0, count: 0, checkedAt: Date.now(), error: err?.message || String(err || 'Cloud list failed') };
+    return [];
+  }
+}
+
+async function uploadUserImportedModelToCloud(file, localModel, validation) {
+  if (!file) return null;
+  try {
+    const form = new FormData();
+    form.append('file', file, file.name || 'model.glb');
+    if (localModel?.id) form.append('id', localModel.id);
+    form.append('name', localModel?.name || cleanUserImportName(file));
+    form.append('source', 'user-import');
+    if (validation?.metrics) form.append('metrics', JSON.stringify(validation.metrics));
+    const response = await fetch('/api/assets', {
+      method: 'POST',
+      headers: userAssetAuthHeaders(),
+      body: form,
+    });
+    const data = await response.json().catch(() => ({}));
+    const asset = response.ok && data?.ok === true ? data.asset : null;
+    window._lastUserAssetCloudSync = {
+      ok: !!asset,
+      status: response.status,
+      asset,
+      localId: localModel?.id || '',
+      finishedAt: Date.now(),
+      error: data?.error || '',
+    };
+    if (asset?.id && localModel?.id) {
+      await _modelDB.updateMetadata(localModel.id, {
+        cloudAssetId: asset.id,
+        cloudAsset: asset,
+        cloudSyncedAt: Date.now(),
+      });
+      _assetCatalog = null;
+    }
+    return asset;
+  } catch (err) {
+    window._lastUserAssetCloudSync = {
+      ok: false,
+      status: 0,
+      asset: null,
+      localId: localModel?.id || '',
+      finishedAt: Date.now(),
+      error: err?.message || String(err || 'Cloud sync failed'),
+    };
+    return null;
+  }
+}
+
+async function deleteCloudUserAsset(id) {
+  if (!id) return false;
+  try {
+    const response = await fetch('/api/assets/' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: userAssetAuthHeaders(),
+    });
+    const data = await response.json().catch(() => ({}));
+    const ok = response.ok && data?.ok === true;
+    window._lastUserAssetCloudDelete = { ok, id, status: response.status, finishedAt: Date.now(), error: data?.error || '' };
+    return ok;
+  } catch (err) {
+    window._lastUserAssetCloudDelete = { ok: false, id, status: 0, finishedAt: Date.now(), error: err?.message || String(err || 'Cloud delete failed') };
+    return false;
+  }
+}
+
+async function fetchCloudUserAssetBlob(id) {
+  if (!id) return null;
+  const detailResponse = await fetch('/api/assets/' + encodeURIComponent(id), {
+    headers: userAssetAuthHeaders(),
+    cache: 'no-store',
+  });
+  const detail = await detailResponse.json().catch(() => ({}));
+  if (!detailResponse.ok || detail?.ok !== true) {
+    throw new Error(detail?.error || 'Cloud asset was not found.');
+  }
+  const downloadResponse = await fetch('/api/assets/' + encodeURIComponent(id) + '/download', {
+    headers: userAssetAuthHeaders(),
+    cache: 'no-store',
+  });
+  if (!downloadResponse.ok) {
+    throw new Error('Cloud asset download failed with HTTP ' + downloadResponse.status + '.');
+  }
+  return {
+    asset: detail.asset,
+    blob: await downloadResponse.blob(),
+  };
+}
+
+async function placeCloudUserAsset(id, options = {}) {
+  if (!ensureEditModeForAssetPlacement(options.source || 'cloud-user-asset')) return false;
+  try {
+    const { asset, blob } = await fetchCloudUserAssetBlob(id);
+    const url = URL.createObjectURL(blob);
+    const point = getEditorPlacementPoint();
+    setAssetPlacementState({
+      status: 'loading',
+      name: asset?.name || id,
+      file: asset?.fileName || id,
+      path: CLOUD_USER_ASSET_PREFIX + id,
+      source: options.source || 'cloud-user-asset',
+      x: point.x,
+      z: point.z,
+    });
+    return await new Promise((resolve) => {
+      _loadGLBFromUrl(asset?.name || id, url, point.x, point.z, null, asset?.fileName || id, (model, error) => {
+        URL.revokeObjectURL(url);
+        if (model) {
+          model.userData.isImported = true;
+          model.userData.gbCloudAssetId = id;
+          model.userData.cloudAssetId = id;
+          recordSceneCommand('add cloud asset ' + (asset?.name || id));
+        }
+        window._lastUserAssetCloudPlace = {
+          ok: !error && !!model,
+          id,
+          objectId: model?.uuid || '',
+          status: error ? 'failed' : 'placed',
+          error: error?.message || '',
+          finishedAt: Date.now(),
+        };
+        resolve(!error && !!model);
+      }, {
+        trackPlacement: true,
+        selectAfterLoad: true,
+        notify: true,
+        displayName: asset?.name || id,
+        source: options.source || 'cloud-user-asset',
+        file: asset?.fileName || id,
+        path: CLOUD_USER_ASSET_PREFIX + id,
+      });
+    });
+  } catch (err) {
+    window._lastUserAssetCloudPlace = {
+      ok: false,
+      id,
+      objectId: '',
+      status: 'failed',
+      error: err?.message || String(err || 'Cloud place failed'),
+      finishedAt: Date.now(),
+    };
+    return false;
+  }
+}
+
+async function loadCloudAssetForProjectSnapshot(snapshot, id) {
+  const { asset, blob } = await fetchCloudUserAssetBlob(id);
+  const url = URL.createObjectURL(blob);
+  const pos = Array.isArray(snapshot?.position) ? snapshot.position : [0, 0, 0];
+  const scale = Array.isArray(snapshot?.scale) ? snapshot.scale[0] : null;
+  return new Promise((resolve) => {
+    _loadGLBFromUrl(snapshot?.name || asset?.name || id, url, pos[0] || 0, pos[2] || 0, scale, snapshot?.assetFile || asset?.fileName || id, (model) => {
+      URL.revokeObjectURL(url);
+      if (model) {
+        model.userData.gbCloudAssetId = id;
+        model.userData.cloudAssetId = id;
+      }
+      resolve(model || null);
+    }, {
+      trackPlacement: false,
+      selectAfterLoad: false,
+      notify: false,
+      displayName: snapshot?.name || asset?.name || id,
+      source: 'project-cloud-asset',
+      file: snapshot?.assetFile || asset?.fileName || id,
+      path: CLOUD_USER_ASSET_PREFIX + id,
+    });
+  });
 }
 
 async function listUserImportedModels() {
@@ -17908,9 +18205,14 @@ async function saveUserImportedModel(file, validation) {
 }
 
 async function deleteUserImportedModel(id) {
+  const entry = await _modelDB.get(id);
   const ok = await _modelDB.delete(id);
+  let cloudDeleted = false;
+  if (entry?.cloudAssetId) {
+    cloudDeleted = await deleteCloudUserAsset(entry.cloudAssetId);
+  }
   if (ok) _assetCatalog = null;
-  window._lastUserImportLibraryAction = { action: 'delete', id, ok, finishedAt: Date.now() };
+  window._lastUserImportLibraryAction = { action: 'delete', id, ok, cloudAssetId: entry?.cloudAssetId || '', cloudDeleted, finishedAt: Date.now() };
   return ok;
 }
 
@@ -17939,6 +18241,11 @@ async function placeUserImportedModel(id) {
       if (model) {
         model.userData.isImported = true;
         model.userData.userImportId = id;
+        if (entry.cloudAssetId) {
+          model.userData.gbCloudAssetId = entry.cloudAssetId;
+          model.userData.cloudAssetId = entry.cloudAssetId;
+          model.userData.gbAssetPath = CLOUD_USER_ASSET_PREFIX + entry.cloudAssetId;
+        }
         recordSceneCommand('add ' + id);
       }
       window._lastUserImportLibraryAction = {
@@ -17963,6 +18270,11 @@ async function placeUserImportedModel(id) {
 }
 
 window._listUserImportedModels = listUserImportedModels;
+window._listCloudUserAssets = listCloudUserAssets;
+window._uploadUserImportedModelToCloud = uploadUserImportedModelToCloud;
+window._deleteCloudUserAsset = deleteCloudUserAsset;
+window._placeCloudUserAsset = placeCloudUserAsset;
+window._getUserAssetOwnerToken = getUserAssetOwnerToken;
 window._saveUserImportedModel = saveUserImportedModel;
 window._deleteUserImportedModel = deleteUserImportedModel;
 window._placeUserImportedModel = placeUserImportedModel;
@@ -17995,10 +18307,24 @@ async function _importGLBFile(file, options = {}) {
       _loadGLBFromUrl(name, url, point.x, point.z, null, file.name, async (model, error) => {
         URL.revokeObjectURL(url);
         let savedModel = null;
+        let cloudAsset = null;
         if (model && !error) {
           model.userData.isImported = true;
           savedModel = await saveUserImportedModel(file, validation);
-          if (savedModel?.id) model.userData.userImportId = savedModel.id;
+          if (savedModel?.id) {
+            model.userData.userImportId = savedModel.id;
+            if (options.syncCloud !== false) {
+              cloudAsset = await uploadUserImportedModelToCloud(file, savedModel, validation);
+              if (cloudAsset?.id) {
+                savedModel.cloudAssetId = cloudAsset.id;
+                savedModel.cloudAsset = cloudAsset;
+                savedModel.cloudSyncedAt = Date.now();
+                model.userData.gbCloudAssetId = cloudAsset.id;
+                model.userData.cloudAssetId = cloudAsset.id;
+                model.userData.gbAssetPath = CLOUD_USER_ASSET_PREFIX + cloudAsset.id;
+              }
+            }
+          }
           if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
         }
         window._lastUserImportStatus = {
@@ -18007,6 +18333,7 @@ async function _importGLBFile(file, options = {}) {
           objectName: model?.userData?.name || name,
           objectId: model?.uuid || '',
           savedModel,
+          cloudAsset,
           libraryCount: (await listUserImportedModels()).length,
           error: error?.message || '',
           finishedAt: Date.now(),

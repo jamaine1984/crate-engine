@@ -10,3 +10,7 @@ id = "cfd1bca8ac84439cadc2bb146a034d41"
 binding = "CRATE_AUDIT"
 database_name = "crateship-games-audit"
 database_id = "9cbee4e4-caa7-43fb-bbb7-9f0f7d7e2b9a"
+
+[[r2_buckets]]
+binding = "CRATE_USER_ASSETS"
+bucket_name = "crateship-games-user-assets"

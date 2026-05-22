@@ -292,6 +292,10 @@ async function runBrowserSmoke() {
         userImportListReady: typeof window._listUserImportedModels === 'function',
         userImportPlaceReady: typeof window._placeUserImportedModel === 'function',
         userImportDeleteReady: typeof window._deleteUserImportedModel === 'function',
+        cloudImportListReady: typeof window._listCloudUserAssets === 'function',
+        cloudImportPlaceReady: typeof window._placeCloudUserAsset === 'function',
+        cloudImportDeleteReady: typeof window._deleteCloudUserAsset === 'function',
+        cloudImportOwnerReady: typeof window._getUserAssetOwnerToken === 'function',
         importValidatorReady: !!validator,
         invalidImport: validator ? validator({ name: 'bad.txt', size: 10 }) : null,
         oversizedImport: validator ? validator({ name: 'huge.glb', size: 60 * 1024 * 1024 }) : null,
@@ -327,7 +331,11 @@ async function runBrowserSmoke() {
     if (!builderHardeningState.userImportReady ||
         !builderHardeningState.userImportListReady ||
         !builderHardeningState.userImportPlaceReady ||
-        !builderHardeningState.userImportDeleteReady) {
+        !builderHardeningState.userImportDeleteReady ||
+        !builderHardeningState.cloudImportListReady ||
+        !builderHardeningState.cloudImportPlaceReady ||
+        !builderHardeningState.cloudImportDeleteReady ||
+        !builderHardeningState.cloudImportOwnerReady) {
       throw new Error(`User import library helpers missing: ${JSON.stringify(builderHardeningState)}`);
     }
     if (!builderHardeningState.importValidatorReady || builderHardeningState.invalidImport?.ok !== false || builderHardeningState.oversizedImport?.ok !== false || builderHardeningState.validImport?.ok !== true) {
@@ -496,9 +504,14 @@ async function runBrowserSmoke() {
       if (typeof window._importGLBFile !== 'function' ||
           typeof window._listUserImportedModels !== 'function' ||
           typeof window._placeUserImportedModel !== 'function' ||
-          typeof window._deleteUserImportedModel !== 'function') {
+          typeof window._deleteUserImportedModel !== 'function' ||
+          typeof window._listCloudUserAssets !== 'function' ||
+          typeof window._placeCloudUserAsset !== 'function' ||
+          typeof window._deleteCloudUserAsset !== 'function') {
         return { ready: false, before };
       }
+      const cloudHealthResponse = await fetch('/api/assets/health', { cache: 'no-store' });
+      const cloudHealth = await cloudHealthResponse.json().catch(() => ({}));
       const assetUrl = typeof window._crateAssetUrl === 'function'
         ? window._crateAssetUrl('/models/house_interior_pack_chair_1.glb')
         : '/models/house_interior_pack_chair_1.glb';
@@ -510,40 +523,61 @@ async function runBrowserSmoke() {
       const status = window._lastUserImportStatus || {};
       const afterImport = window._engineBridge?.objects?.length || 0;
       const savedId = status.savedModel?.id || '';
+      const cloudId = status.cloudAsset?.id || status.savedModel?.cloudAssetId || '';
       const list = await window._listUserImportedModels();
       const listed = !!savedId && list.some((item) => item.id === savedId);
+      const cloudList = await window._listCloudUserAssets();
+      const cloudListed = !!cloudId && cloudList.some((item) => item.cloudAssetId === cloudId || item.id === cloudId);
       const placed = savedId ? await window._placeUserImportedModel(savedId) : false;
       const afterPlace = window._engineBridge?.objects?.length || 0;
+      const cloudPlaced = cloudId ? await window._placeCloudUserAsset(cloudId, { source: 'smoke-cloud-user-asset' }) : false;
+      const afterCloudPlace = window._engineBridge?.objects?.length || 0;
       const deleted = savedId ? await window._deleteUserImportedModel(savedId) : false;
       const afterDeleteList = await window._listUserImportedModels();
+      const cloudAfterDeleteList = await window._listCloudUserAssets();
       return {
         ready: true,
+        cloudHealthOk: cloudHealthResponse.ok && cloudHealth?.ok === true && cloudHealth?.binding === true,
+        cloudHealthStatus: cloudHealthResponse.status,
+        cloudHealth,
         fetchOk: true,
         imported,
         importStatus: status.status || '',
         savedId,
+        cloudId,
         listed,
+        cloudListed,
         placed,
+        cloudPlaced,
         deleted,
         stillListed: !!savedId && afterDeleteList.some((item) => item.id === savedId),
+        cloudStillListed: !!cloudId && cloudAfterDeleteList.some((item) => item.cloudAssetId === cloudId || item.id === cloudId),
         before,
         afterImport,
         afterPlace,
+        afterCloudPlace,
         libraryCount: list.length,
+        cloudLibraryCount: cloudList.length,
       };
     });
     if (!userImportState.ready ||
+        !userImportState.cloudHealthOk ||
         !userImportState.fetchOk ||
         userImportState.imported !== true ||
         userImportState.importStatus !== 'loaded' ||
         !userImportState.savedId ||
+        !userImportState.cloudId ||
         !userImportState.listed ||
+        !userImportState.cloudListed ||
         userImportState.placed !== true ||
+        userImportState.cloudPlaced !== true ||
         userImportState.deleted !== true ||
         userImportState.stillListed ||
+        userImportState.cloudStillListed ||
         userImportState.afterImport <= userImportState.before ||
-        userImportState.afterPlace <= userImportState.afterImport) {
-      throw new Error(`User imported GLB did not persist, place, and delete cleanly: ${JSON.stringify(userImportState)}`);
+        userImportState.afterPlace <= userImportState.afterImport ||
+        userImportState.afterCloudPlace <= userImportState.afterPlace) {
+      throw new Error(`User imported GLB did not persist, cloud sync, place, and delete cleanly: ${JSON.stringify(userImportState)}`);
     }
 
     const beforeStarterKitCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
