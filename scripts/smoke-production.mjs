@@ -529,9 +529,25 @@ async function runBrowserSmoke() {
       const cloudList = await window._listCloudUserAssets();
       const cloudListed = !!cloudId && cloudList.some((item) => item.cloudAssetId === cloudId || item.id === cloudId);
       const placed = savedId ? await window._placeUserImportedModel(savedId) : false;
+      const localPlaceState = window._lastUserImportLibraryAction || {};
       const afterPlace = window._engineBridge?.objects?.length || 0;
       const cloudPlaced = cloudId ? await window._placeCloudUserAsset(cloudId, { source: 'smoke-cloud-user-asset' }) : false;
+      const cloudPlaceState = window._lastUserAssetCloudPlace || {};
       const afterCloudPlace = window._engineBridge?.objects?.length || 0;
+      const removeObjectById = (id) => {
+        if (!id) return false;
+        const objects = window._engineBridge?.objects || window._sceneObjects || [];
+        const index = objects.findIndex((obj) => obj?.uuid === id);
+        if (index < 0) return false;
+        const [obj] = objects.splice(index, 1);
+        window._engine?.scene?.remove?.(obj);
+        return true;
+      };
+      const removedSmokeObjects = [
+        removeObjectById(status.objectId || ''),
+        removeObjectById(localPlaceState.objectId || ''),
+        removeObjectById(cloudPlaceState.objectId || ''),
+      ].filter(Boolean).length;
       const deleted = savedId ? await window._deleteUserImportedModel(savedId) : false;
       const afterDeleteList = await window._listUserImportedModels();
       const cloudAfterDeleteList = await window._listCloudUserAssets();
@@ -556,6 +572,7 @@ async function runBrowserSmoke() {
         afterImport,
         afterPlace,
         afterCloudPlace,
+        removedSmokeObjects,
         libraryCount: list.length,
         cloudLibraryCount: cloudList.length,
       };
@@ -576,7 +593,8 @@ async function runBrowserSmoke() {
         userImportState.cloudStillListed ||
         userImportState.afterImport <= userImportState.before ||
         userImportState.afterPlace <= userImportState.afterImport ||
-        userImportState.afterCloudPlace <= userImportState.afterPlace) {
+        userImportState.afterCloudPlace <= userImportState.afterPlace ||
+        userImportState.removedSmokeObjects < 3) {
       throw new Error(`User imported GLB did not persist, cloud sync, place, and delete cleanly: ${JSON.stringify(userImportState)}`);
     }
 
