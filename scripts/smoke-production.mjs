@@ -1603,18 +1603,18 @@ async function runBrowserSmoke() {
       undefined,
       { timeout: timeoutMs }
     );
-    await marketplacePage.locator('#published-market-search').fill('production smoke');
+    await marketplacePage.locator('#published-market-search').fill(smokePublishedSlug);
     await marketplacePage.locator('[data-published-tag="smoke"]').click({ timeout: timeoutMs });
     await marketplacePage.locator('#published-market-sort').selectOption('objects', { timeout: timeoutMs });
     await marketplacePage.waitForFunction(
-      () => {
+      (expectedQuery) => {
         const state = window._cratePublishedMarketplace || {};
         return state.status === 'loaded' &&
-          state.query === 'production smoke' &&
+          state.query === expectedQuery &&
           state.tag === 'smoke' &&
           state.sort === 'objects';
       },
-      undefined,
+      smokePublishedSlug,
       { timeout: timeoutMs }
     );
     for (let pageIndex = 0; pageIndex < 6; pageIndex++) {
@@ -1630,15 +1630,15 @@ async function runBrowserSmoke() {
       });
       if (!advanced) break;
       await marketplacePage.waitForFunction(
-        (previousPage) => {
+        ({ previousPage, expectedQuery }) => {
           const state = window._cratePublishedMarketplace || {};
           return state.status === 'loaded' &&
-            state.query === 'production smoke' &&
+            state.query === expectedQuery &&
             state.tag === 'smoke' &&
             state.sort === 'objects' &&
             Number(state.page) > Number(previousPage || 0);
         },
-        pageBefore,
+        { previousPage: pageBefore, expectedQuery: smokePublishedSlug },
         { timeout: timeoutMs }
       );
     }
@@ -1651,7 +1651,7 @@ async function runBrowserSmoke() {
         const discovery = window._cratePublishedDiscovery || {};
         const grid = document.querySelector('#published-market-grid');
         const row = document.querySelector(`[data-published-game="${publishedSlug}"]`);
-        if (state.status !== 'loaded' || state.query !== 'production smoke' || state.tag !== 'smoke' || state.sort !== 'objects' || !row) return null;
+        if (state.status !== 'loaded' || state.query !== publishedSlug || state.tag !== 'smoke' || state.sort !== 'objects' || !row) return null;
         return {
           status: state.status,
           total: Number(state.total) || 0,
@@ -3404,7 +3404,7 @@ async function runBrowserSmoke() {
         state.marketplaceHasUnlistedGuard ||
         state.marketplacePage !== 1 ||
         state.marketplacePageSize !== 12 ||
-        state.marketplaceQuery !== 'production smoke' ||
+        state.marketplaceQuery !== smokePublishedSlug ||
         state.marketplaceTag !== 'smoke' ||
         state.marketplaceSort !== 'objects' ||
         !state.marketplaceAvailableTags.includes('smoke') ||
