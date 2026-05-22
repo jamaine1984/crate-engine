@@ -16,11 +16,12 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `696b36ff`
+- Current deployed source commit for the public engine code: `9b8a22cc`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
 - Cloudflare D1 database for moderation audit history: `CRATE_AUDIT` / `crateship-games-audit` (`9cbee4e4-caa7-43fb-bbb7-9f0f7d7e2b9a`)
+- Cloudflare R2 bucket for user-imported GLB/GLTF assets: `crateship-games-user-assets` through binding `CRATE_USER_ASSETS`
 
 Do not treat `http://127.0.0.1:*` as proof that the real site is fixed. Local
 preview can be misleading because the repo's `models` entry is a Mac-path stub
@@ -29,11 +30,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `8771c3e4-d70d-43d7-bb7d-4e1c681416d5`
-- Latest production deployment URL: `https://8771c3e4.crateship-games.pages.dev`
+- Latest production deployment ID: `0133badf-5dc8-420a-9aa3-7f28eafabfae`
+- Latest production deployment URL: `https://0133badf.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `696b36f`
-- Main live page bundle after the deploy: `/assets/play-Cnqgr37R.js`
+- Source shown by Cloudflare: `9b8a22c`
+- Main live page bundle after the deploy: `/assets/play-Cwp9yIrc.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-D-vHjpFi.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-CAOy79B3.js`
@@ -43,6 +44,67 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-22:
+
+- Final commit deployed: `9b8a22cc` (`Handle exact marketplace smoke consistency`)
+- Final Cloudflare deployment: `0133badf-5dc8-420a-9aa3-7f28eafabfae`
+- Final deployment URL: `https://0133badf.crateship-games.pages.dev`
+- This batch also deployed:
+  - `1818c906` (`Add cloud user asset library`) as `https://aaaa1607.crateship-games.pages.dev`
+  - `69ef0c8a` (`Keep imported assets out of command replay`) as `https://36129ce3.crateship-games.pages.dev`
+  - `c416f0fa` (`Clean cloud asset smoke objects before delete`) as `https://ecbaa79d.crateship-games.pages.dev`
+  - `c1a7b4e8`, `d1bff253`, `321392e7`, and `c6c62bbc` as smoke hardening source-tag deploys
+  - `9cf6841b` (`Support exact slug marketplace search`) as `https://5c2571bd.crateship-games.pages.dev`
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=9b8a22cc241a0797f95fbb7d09cbc572f34a86d7 --commit-message="Handle exact marketplace smoke consistency" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Important deployment detail: run `npm run build` before `prepare:deploy` when any static HTML changes; `prepare:deploy` copies from `dist`.
+- Final app-only deploy uploaded a new Functions bundle and reused the already-uploaded static marketplace file from the corrected `9cf6841b` package.
+- Main app bundle: `/assets/play-Cwp9yIrc.js`
+- Game Builder UI chunk: `/assets/game-builder-ui-D-vHjpFi.js`
+- Asset Browser chunk: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=cloud-assets-9b8a22c`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-cloud-assets-9b8a22c`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-cloud-assets-9b8a22c.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-cloud-assets-9b8a22c.png`
+- Production smoke now proves user GLB import upload to R2, local IndexedDB import persistence, cloud-only library listing, local placement, cloud placement, cleanup before delete, and R2 delete verification.
+- The separated shipped asset host remained unchanged; user-uploaded assets now go to the separate R2 bucket instead of the app deploy package.
+
+What changed in this deploy:
+
+- `wrangler.toml`
+  - Added R2 binding `CRATE_USER_ASSETS` for bucket `crateship-games-user-assets`.
+- `functions/api/assets/[[path]].js`
+  - Added owner-token protected `/api/assets` routes for health, list, upload, download, and delete of GLB/GLTF user assets.
+- `engine.mjs`
+  - User imports now sync successful GLB/GLTF files to R2, store `cloudAssetId` metadata, and can place local-only, local-plus-cloud, or cloud-only imported assets.
+  - Project snapshots preserve `cloudAssetId`; project load can fetch `crate-cloud-asset:*` entries through `/api/assets/:id/download`.
+  - Imported/cloud asset placement is kept out of command replay so saved games do not try to load deleted smoke assets as bundled model paths.
+- `functions/api/games/[[path]].js` and `marketplace.html`
+  - Marketplace exact slug searches now use the direct slug API path, falling back to normal list search when no direct record exists. This avoids KV list consistency delays right after publishing.
+- `scripts/smoke-production.mjs`
+  - Added R2 cloud asset smoke coverage and made marketplace smoke deterministic with exact slug search.
+  - Smoke cleanup removes temporary imported objects before deleting the R2 smoke asset.
+
+Failed intermediate deploy notes from this batch:
+
+- `1818c906` initially failed smoke because cloud asset placement was recorded into command replay and later replayed as a bundled model URL.
+- `69ef0c8a` fixed command replay but smoke still deleted the R2 object while temporary scene objects referenced it.
+- `c416f0fa` passed apex, then `www` exposed marketplace smoke fragility because older production-smoke rows pushed the new game off page one.
+- The final fix was exact slug marketplace search plus direct slug API lookup; the smoke no longer depends on KV list freshness for the just-published row.
+
+Next recommended asset step:
+
+- Decide whether user-uploaded cloud assets become public when a game is published or whether private cloud assets are copied into a published-game package. Other players need a public/package-safe path that does not require the creator's owner token.
+
+Previous app-only deploy on 2026-05-22:
 
 - Final commit deployed: `696b36ff` (`Harden user imports and play camera`)
 - Final Cloudflare deployment: `8771c3e4-d70d-43d7-bb7d-4e1c681416d5`
