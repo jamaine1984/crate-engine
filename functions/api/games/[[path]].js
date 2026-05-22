@@ -584,6 +584,8 @@ async function listGames(context) {
   const query = cleanText(url.searchParams.get('q') || '', 80).toLowerCase();
   const tag = cleanText(url.searchParams.get('tag') || '', 36).toLowerCase();
   const sort = cleanSort(url.searchParams.get('sort') || 'updated');
+  const limit = cleanLimit(url.searchParams.get('limit'), 24);
+  const requestedPage = cleanPage(url.searchParams.get('page'));
   if (requestedSlug) {
     const record = await store.get(keyForSlug(requestedSlug), 'json');
     if (record && cleanModerationStatus(record.moderationStatus) !== 'hidden') {
@@ -598,7 +600,7 @@ async function listGames(context) {
         query,
         tag,
         page: 1,
-        pageSize: games.length || 1,
+        pageSize: limit,
         total: games.length,
         pages: 1,
         hasNext: false,
@@ -616,7 +618,7 @@ async function listGames(context) {
         query,
         tag,
         page: 1,
-        pageSize: 1,
+        pageSize: limit,
         total: 0,
         pages: 1,
         hasNext: false,
@@ -626,8 +628,6 @@ async function listGames(context) {
       });
     }
   }
-  const limit = cleanLimit(url.searchParams.get('limit'), 24);
-  const requestedPage = cleanPage(url.searchParams.get('page'));
   const keys = [];
   let cursor = '';
   let listComplete = true;

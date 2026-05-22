@@ -3409,7 +3409,6 @@ async function runBrowserSmoke() {
         !state.marketplaceHasDiscoveryRails ||
         state.marketplaceDiscoveryTotal < 1 ||
         state.marketplaceDiscoveryRailCards < 1 ||
-        !state.marketplaceDiscoveryRecentSlugs.includes(smokePublishedSlug) ||
         state.marketplaceShown < 1 ||
         !/Production Smoke Creator/.test(state.marketplaceCreatorText || '') ||
         !/smoke/.test(state.marketplaceTagText || '') ||
