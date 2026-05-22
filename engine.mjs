@@ -18108,7 +18108,6 @@ async function placeCloudUserAsset(id, options = {}) {
           model.userData.isImported = true;
           model.userData.gbCloudAssetId = id;
           model.userData.cloudAssetId = id;
-          recordSceneCommand('add cloud asset ' + (asset?.name || id));
         }
         window._lastUserAssetCloudPlace = {
           ok: !error && !!model,
@@ -18246,7 +18245,6 @@ async function placeUserImportedModel(id) {
           model.userData.cloudAssetId = entry.cloudAssetId;
           model.userData.gbAssetPath = CLOUD_USER_ASSET_PREFIX + entry.cloudAssetId;
         }
-        recordSceneCommand('add ' + id);
       }
       window._lastUserImportLibraryAction = {
         action: 'place',
