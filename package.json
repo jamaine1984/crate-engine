@@ -12,6 +12,8 @@
     "check:assets": "node ./scripts/check-assets.mjs",
     "check:deploy": "npm run check && npm run check:assets",
     "smoke:production": "node ./scripts/smoke-production.mjs",
+    "smoke:cleanup-worker": "node ./scripts/smoke-cleanup-worker.mjs",
+    "deploy:cleanup-worker": "wrangler deploy --config worker/public-asset-cleanup/wrangler.toml",
     "sync:legacy-web": "node ./scripts/sync-legacy-web.mjs",
     "prepare:deploy": "node ./scripts/prepare-deploy.mjs",
     "prepare:deploy:assets": "node ./scripts/prepare-assets-deploy.mjs",
