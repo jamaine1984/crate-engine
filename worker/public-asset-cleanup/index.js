@@ -225,6 +225,10 @@ function gameStore(env = {}) {
   return env.CRATE_GAMES || env.CRATEGAMES || null;
 }
 
+function auditStore(env = {}) {
+  return env.CRATE_AUDIT || env.CRATEGAMES_AUDIT || env.CRATE_GAMES_AUDIT || null;
+}
+
 function publicLastRun(record) {
   if (!record || typeof record !== 'object') return null;
   return {
@@ -248,11 +252,112 @@ function publicLastRun(record) {
   };
 }
 
+function publicLastRunFromD1(row) {
+  if (!row || typeof row !== 'object') return null;
+  return publicLastRun({
+    runId: row.run_id || row.runId || '',
+    ok: row.ok === true || row.ok === 1,
+    error: row.error || '',
+    reason: row.reason || '',
+    dryRun: row.dry_run !== 0 && row.dryRun !== false,
+    deleteEnabled: row.delete_enabled === 1 || row.deleteEnabled === true,
+    limit: row.limit_count || row.limit || 0,
+    scanned: row.scanned || 0,
+    orphaned: row.orphaned || 0,
+    deleted: row.deleted || 0,
+    errorCount: row.error_count || row.errorCount || 0,
+    startedAt: row.started_at || row.startedAt || '',
+    finishedAt: row.finished_at || row.finishedAt || '',
+    durationMs: row.duration_ms || row.durationMs || 0,
+    cron: row.cron || '',
+    scheduledTime: row.scheduled_time || row.scheduledTime || 0,
+    persistedAt: row.persisted_at || row.persistedAt || '',
+  });
+}
+
+async function ensureCleanupAuditSchema(db) {
+  if (!db?.prepare) return false;
+  await db.prepare(`CREATE TABLE IF NOT EXISTS cleanup_audit (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    persisted_at TEXT NOT NULL,
+    worker TEXT NOT NULL,
+    source TEXT,
+    ok INTEGER DEFAULT 0,
+    error TEXT,
+    reason TEXT,
+    dry_run INTEGER DEFAULT 1,
+    delete_enabled INTEGER DEFAULT 0,
+    limit_count INTEGER DEFAULT 0,
+    scanned INTEGER DEFAULT 0,
+    orphaned INTEGER DEFAULT 0,
+    deleted INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    errors_json TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT,
+    duration_ms INTEGER DEFAULT 0,
+    cron TEXT,
+    scheduled_time INTEGER DEFAULT 0,
+    admin_name TEXT,
+    admin_role TEXT
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_cleanup_audit_persisted_at ON cleanup_audit (persisted_at DESC)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_cleanup_audit_reason_persisted_at ON cleanup_audit (reason, persisted_at DESC)').run();
+  return true;
+}
+
+async function readD1CleanupHistory(env = {}, limit = HISTORY_LIMIT) {
+  const db = auditStore(env);
+  if (!db?.prepare) return { available: false, history: [] };
+  try {
+    await ensureCleanupAuditSchema(db);
+    const result = await db.prepare(`SELECT run_id, persisted_at, ok, error, reason, dry_run, delete_enabled,
+      limit_count, scanned, orphaned, deleted, error_count, started_at, finished_at, duration_ms, cron, scheduled_time
+      FROM cleanup_audit
+      ORDER BY persisted_at DESC
+      LIMIT ?`)
+      .bind(Math.min(Math.max(Number(limit) || HISTORY_LIMIT, 1), 100))
+      .all();
+    return {
+      available: true,
+      history: (result?.results || []).map(publicLastRunFromD1).filter(Boolean),
+    };
+  } catch (err) {
+    return { available: false, history: [], error: err?.message || String(err || 'cleanup audit D1 read failed') };
+  }
+}
+
+async function readCleanupHistoryState(env = {}) {
+  const d1 = await readD1CleanupHistory(env, HISTORY_LIMIT);
+  const kvHistory = await readCleanupHistoryFromKv(env);
+  if (d1.available && d1.history.length) {
+    return {
+      history: d1.history.slice(0, HISTORY_LIMIT),
+      source: 'd1',
+      d1Available: true,
+      hasAuditStore: !!auditStore(env),
+      kvHistoryCount: kvHistory.length,
+      error: '',
+    };
+  }
+  return {
+    history: kvHistory.slice(0, HISTORY_LIMIT),
+    source: d1.available && !kvHistory.length ? 'd1' : 'kv',
+    d1Available: d1.available,
+    hasAuditStore: !!auditStore(env),
+    kvHistoryCount: kvHistory.length,
+    error: d1.error || '',
+  };
+}
+
 async function readLastCleanupRun(env = {}) {
   const store = gameStore(env);
-  if (!store) return null;
-  const record = await store.get(LAST_RUN_KEY, 'json').catch(() => null);
-  return publicLastRun(record);
+  const record = store ? await store.get(LAST_RUN_KEY, 'json').catch(() => null) : null;
+  const kvRun = publicLastRun(record);
+  if (kvRun) return kvRun;
+  const d1 = await readD1CleanupHistory(env, 1);
+  return d1.history[0] || null;
 }
 
 function cleanupRunId(result = {}, metadata = {}) {
@@ -272,7 +377,7 @@ function cleanupHistoryRecords(raw) {
   return rows.filter((record) => record && typeof record === 'object');
 }
 
-async function readCleanupHistory(env = {}) {
+async function readCleanupHistoryFromKv(env = {}) {
   const store = gameStore(env);
   if (!store) return [];
   const raw = await store.get(HISTORY_KEY, 'json').catch(() => null);
@@ -282,10 +387,57 @@ async function readCleanupHistory(env = {}) {
     .slice(0, HISTORY_LIMIT);
 }
 
+async function readCleanupHistory(env = {}) {
+  return (await readCleanupHistoryState(env)).history;
+}
+
+async function persistCleanupRunToD1(env = {}, record = {}, metadata = {}) {
+  const db = auditStore(env);
+  if (!db?.prepare || !record?.runId) return { ok: false, source: 'missing-d1' };
+  try {
+    await ensureCleanupAuditSchema(db);
+    const errors = Array.isArray(record.errors) ? record.errors : [];
+    await db.prepare(`INSERT OR REPLACE INTO cleanup_audit
+      (id, run_id, persisted_at, worker, source, ok, error, reason, dry_run, delete_enabled,
+       limit_count, scanned, orphaned, deleted, error_count, errors_json, started_at, finished_at,
+       duration_ms, cron, scheduled_time, admin_name, admin_role)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(
+        record.runId,
+        record.runId,
+        record.persistedAt || new Date().toISOString(),
+        record.worker || 'crateship-public-asset-cleanup',
+        metadata.source || record.reason || 'cleanup-worker',
+        record.ok === true ? 1 : 0,
+        record.error || '',
+        record.reason || metadata.reason || '',
+        record.dryRun !== false ? 1 : 0,
+        record.deleteEnabled === true ? 1 : 0,
+        Number(record.limit) || 0,
+        Number(record.scanned) || 0,
+        Number(record.orphaned) || 0,
+        Number(record.deleted) || 0,
+        Number(record.errorCount) || errors.length || 0,
+        JSON.stringify(errors.slice(0, 20)),
+        record.startedAt || '',
+        record.finishedAt || '',
+        Number(record.durationMs) || 0,
+        record.cron || metadata.cron || '',
+        Number(record.scheduledTime || metadata.scheduledTime) || 0,
+        metadata.admin?.name || '',
+        metadata.admin?.role || ''
+      )
+      .run();
+    return { ok: true, source: 'd1' };
+  } catch (err) {
+    return { ok: false, source: 'd1', error: err?.message || String(err || 'cleanup audit D1 write failed') };
+  }
+}
+
 async function persistCleanupRun(env = {}, result = {}, metadata = {}) {
   const store = gameStore(env);
-  if (!store || !result || typeof result !== 'object') {
-    return { lastRunPersisted: false, historyPersisted: false, run: null, history: [] };
+  if (!result || typeof result !== 'object') {
+    return { lastRunPersisted: false, historyPersisted: false, d1HistoryPersisted: false, run: null, history: [], historySource: 'missing-result' };
   }
   const errors = Array.isArray(result.errors) ? result.errors : [];
   const persistedAt = new Date().toISOString();
@@ -317,31 +469,44 @@ async function persistCleanupRun(env = {}, result = {}, metadata = {}) {
   };
   let lastRunPersisted = false;
   let historyPersisted = false;
+  let d1HistoryPersisted = false;
+  let d1HistoryError = '';
   let history = [];
-  try {
-    await store.put(LAST_RUN_KEY, JSON.stringify(record));
-    lastRunPersisted = true;
-  } catch {}
-  try {
-    const rawHistory = await store.get(HISTORY_KEY, 'json').catch(() => null);
-    const previous = cleanupHistoryRecords(rawHistory);
-    const next = [
-      record,
-      ...previous.filter((entry) => String(entry.runId || '') !== record.runId),
-    ].slice(0, HISTORY_LIMIT);
-    await store.put(HISTORY_KEY, JSON.stringify({
-      format: 'crate-public-asset-cleanup-history',
-      version: 1,
-      updatedAt: persistedAt,
-      limit: HISTORY_LIMIT,
-      runs: next,
-    }));
-    historyPersisted = true;
-    history = next.map(publicLastRun).filter(Boolean);
-  } catch {}
+  if (store) {
+    try {
+      await store.put(LAST_RUN_KEY, JSON.stringify(record));
+      lastRunPersisted = true;
+    } catch {}
+    try {
+      const rawHistory = await store.get(HISTORY_KEY, 'json').catch(() => null);
+      const previous = cleanupHistoryRecords(rawHistory);
+      const next = [
+        record,
+        ...previous.filter((entry) => String(entry.runId || '') !== record.runId),
+      ].slice(0, HISTORY_LIMIT);
+      await store.put(HISTORY_KEY, JSON.stringify({
+        format: 'crate-public-asset-cleanup-history',
+        version: 1,
+        updatedAt: persistedAt,
+        limit: HISTORY_LIMIT,
+        runs: next,
+      }));
+      historyPersisted = true;
+      history = next.map(publicLastRun).filter(Boolean);
+    } catch {}
+  }
+  const d1 = await persistCleanupRunToD1(env, record, metadata);
+  d1HistoryPersisted = d1.ok === true;
+  d1HistoryError = d1.error || '';
+  const historyState = await readCleanupHistoryState(env);
+  if (historyState.history.length) history = historyState.history;
   return {
     lastRunPersisted,
     historyPersisted,
+    d1HistoryPersisted,
+    d1HistoryError,
+    historySource: historyState.source,
+    d1HistoryAvailable: historyState.d1Available,
     run: publicLastRun(record),
     history,
   };
@@ -444,7 +609,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
       const lastRun = await readLastCleanupRun(env);
-      const history = await readCleanupHistory(env);
+      const historyState = await readCleanupHistoryState(env);
       return json({
         ok: true,
         worker: 'crateship-public-asset-cleanup',
@@ -453,16 +618,22 @@ export default {
         limit: cleanupLimit(env.CRATE_PUBLIC_ASSET_CLEANUP_LIMIT),
         hasR2Binding: !!(env.CRATE_USER_ASSETS || env.CRATE_ASSETS),
         hasGameStore: !!gameStore(env),
+        hasAuditStore: !!auditStore(env),
         lastRun,
-        history,
+        history: historyState.history,
         historyLimit: HISTORY_LIMIT,
+        historySource: historyState.source,
+        d1HistoryAvailable: historyState.d1Available,
+        d1HistoryError: historyState.error || '',
+        kvHistoryCount: historyState.kvHistoryCount,
       });
     }
     if (request.method === 'GET' && (url.pathname === '/history' || url.pathname === '/history.csv')) {
       const admin = requireAdmin(request, env, {});
       if (!admin.ok) return admin.response;
       const lastRun = await readLastCleanupRun(env);
-      const history = await readCleanupHistory(env);
+      const historyState = await readCleanupHistoryState(env);
+      const history = historyState.history;
       const generatedAt = new Date().toISOString();
       const baseFileName = `crateship-cleanup-history-${generatedAt.slice(0, 10)}`;
       const wantsCsv = url.pathname === '/history.csv' ||
@@ -484,6 +655,10 @@ export default {
         history,
         total: history.length,
         historyLimit: HISTORY_LIMIT,
+        historySource: historyState.source,
+        d1HistoryAvailable: historyState.d1Available,
+        d1HistoryError: historyState.error || '',
+        kvHistoryCount: historyState.kvHistoryCount,
         exportFileName: `${baseFileName}.json`,
         csvExportFileName: `${baseFileName}.csv`,
       });
@@ -507,6 +682,10 @@ export default {
         admin: admin.admin,
         lastRunPersisted: persisted.lastRunPersisted,
         historyPersisted: persisted.historyPersisted,
+        d1HistoryPersisted: persisted.d1HistoryPersisted,
+        d1HistoryError: persisted.d1HistoryError,
+        d1HistoryAvailable: persisted.d1HistoryAvailable,
+        historySource: persisted.historySource,
         lastRun: persisted.run,
         history: persisted.history,
         historyLimit: HISTORY_LIMIT,
@@ -531,6 +710,9 @@ export default {
         scheduledTime: event.scheduledTime || 0,
         lastRunPersisted: persisted.lastRunPersisted,
         historyPersisted: persisted.historyPersisted,
+        d1HistoryPersisted: persisted.d1HistoryPersisted,
+        d1HistoryAvailable: persisted.d1HistoryAvailable,
+        historySource: persisted.historySource,
         historyCount: persisted.history.length,
         ...result,
       }));

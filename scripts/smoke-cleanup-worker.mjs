@@ -23,6 +23,9 @@ async function main() {
   if (health.hasR2Binding !== true || health.hasGameStore !== true) {
     throw new Error(`Cleanup worker bindings are missing: ${JSON.stringify(health)}`);
   }
+  if (health.hasAuditStore !== true || health.d1HistoryAvailable !== true || !health.historySource) {
+    throw new Error(`Cleanup worker D1 history binding is not ready: ${JSON.stringify(health)}`);
+  }
   if (health.deleteEnabled === true) {
     throw new Error(`Cleanup worker scheduled deletion is enabled; expected safe dry-run default: ${JSON.stringify(health)}`);
   }
@@ -85,9 +88,11 @@ async function main() {
       errors: Array.isArray(dryRun?.errors) ? dryRun.errors.length : 0,
       lastRunPersisted: dryRun?.lastRunPersisted === true,
       historyPersisted: dryRun?.historyPersisted === true,
+      d1HistoryPersisted: dryRun?.d1HistoryPersisted === true,
+      historySource: dryRun?.historySource || '',
       historyCount: Array.isArray(dryRun?.history) ? dryRun.history.length : 0,
     };
-    if (authed.status !== 200 || !authed.ok || !authed.dryRun || authed.deleted !== 0 || authed.errors !== 0 || !authed.lastRunPersisted || !authed.historyPersisted || authed.historyCount < 1) {
+    if (authed.status !== 200 || !authed.ok || !authed.dryRun || authed.deleted !== 0 || authed.errors !== 0 || !authed.lastRunPersisted || !authed.historyPersisted || !authed.d1HistoryPersisted || authed.historyCount < 1 || authed.historySource !== 'd1') {
       throw new Error(`Cleanup worker authenticated dry run failed: ${JSON.stringify(authed)}`);
     }
 
@@ -137,14 +142,14 @@ async function main() {
 
   console.log('Cleanup worker smoke passed.');
   console.log(`URL: ${workerUrl}`);
-  console.log(`Health: deleteEnabled=${health.deleteEnabled}, limit=${health.limit}, bindings=${health.hasR2Binding && health.hasGameStore ? 'ready' : 'missing'}`);
+  console.log(`Health: deleteEnabled=${health.deleteEnabled}, limit=${health.limit}, bindings=${health.hasR2Binding && health.hasGameStore && health.hasAuditStore ? 'ready' : 'missing'}, history=${health.historySource || 'missing'} d1=${health.d1HistoryAvailable ? 'ready' : 'missing'}`);
   console.log(healthLastRun
     ? `Last run: ${healthLastRun.reason || 'unknown'} scanned ${healthLastRun.scanned || 0}, orphaned ${healthLastRun.orphaned || 0}, deleted ${healthLastRun.deleted || 0}, errors ${healthLastRun.errorCount || 0}`
     : 'Last run: none persisted yet.');
   console.log(`History: ${Array.isArray(health.history) ? health.history.length : 0}/${health.historyLimit || 0} persisted runs`);
   console.log(`Guard: cleanup ${blockedResponse.status}, history ${blockedHistoryResponse.status}, csv ${blockedCsvResponse.status}`);
   if (authed) {
-    console.log(`Authed dry run: scanned ${authed.scanned}, orphaned ${authed.orphaned}, deleted ${authed.deleted}, errors ${authed.errors}, persisted ${authed.lastRunPersisted ? 'yes' : 'no'}, history ${authed.historyPersisted ? 'yes' : 'no'} (${authed.historyCount})`);
+    console.log(`Authed dry run: scanned ${authed.scanned}, orphaned ${authed.orphaned}, deleted ${authed.deleted}, errors ${authed.errors}, persisted ${authed.lastRunPersisted ? 'yes' : 'no'}, history ${authed.historyPersisted ? 'yes' : 'no'} (${authed.historyCount}), d1 ${authed.d1HistoryPersisted ? 'yes' : 'no'} source ${authed.historySource || 'missing'}`);
   } else {
     console.log('Authed dry run: skipped because no admin token env var is present.');
   }

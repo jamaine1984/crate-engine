@@ -1997,6 +1997,7 @@ async function runBrowserSmoke() {
           cleanupWorkerLimit: Number(state.cleanupWorkerLimit) || 0,
           cleanupWorkerHasR2Binding: state.cleanupWorkerHasR2Binding === true,
           cleanupWorkerHasGameStore: state.cleanupWorkerHasGameStore === true,
+          cleanupWorkerHasAuditStore: state.cleanupWorkerHasAuditStore === true,
           cleanupWorkerRunning: state.cleanupWorkerRunning === true,
           cleanupWorkerExporting: state.cleanupWorkerExporting === true,
           cleanupWorkerExportFormat: state.cleanupWorkerExportFormat || '',
@@ -2007,6 +2008,10 @@ async function runBrowserSmoke() {
           cleanupWorkerHistoryCount: Number(state.cleanupWorkerHistoryCount) || 0,
           cleanupWorkerHistoryLimit: Number(state.cleanupWorkerHistoryLimit) || 0,
           cleanupWorkerHistoryPersisted: state.cleanupWorkerHistoryPersisted === true,
+          cleanupWorkerD1HistoryAvailable: state.cleanupWorkerD1HistoryAvailable === true,
+          cleanupWorkerD1HistoryPersisted: state.cleanupWorkerD1HistoryPersisted === true,
+          cleanupWorkerHistorySource: state.cleanupWorkerHistorySource || '',
+          cleanupWorkerKvHistoryCount: Number(state.cleanupWorkerKvHistoryCount) || 0,
           cleanupWorkerExportCount: Number(state.cleanupWorkerExportCount) || 0,
           cleanupWorkerExportFileName: state.cleanupWorkerExportFileName || '',
           cleanupWorkerLatestHistoryReason: state.cleanupWorkerLatestHistoryReason || '',
@@ -2092,6 +2097,9 @@ async function runBrowserSmoke() {
         adminDashboardState.cleanupWorkerLimit <= 0 ||
         !adminDashboardState.cleanupWorkerHasR2Binding ||
         !adminDashboardState.cleanupWorkerHasGameStore ||
+        !adminDashboardState.cleanupWorkerHasAuditStore ||
+        !adminDashboardState.cleanupWorkerD1HistoryAvailable ||
+        !adminDashboardState.cleanupWorkerHistorySource ||
         !adminDashboardState.cleanupWorkerLastRunKnown ||
         !adminDashboardState.cleanupWorkerHistoryKnown ||
         adminDashboardState.cleanupWorkerHistoryLimit <= 0 ||
@@ -2209,6 +2217,9 @@ async function runBrowserSmoke() {
             historyKnown: state.cleanupWorkerHistoryKnown === true,
             historyCount: Number(state.cleanupWorkerHistoryCount) || 0,
             historyPersisted: state.cleanupWorkerHistoryPersisted === true,
+            d1HistoryAvailable: state.cleanupWorkerD1HistoryAvailable === true,
+            d1HistoryPersisted: state.cleanupWorkerD1HistoryPersisted === true,
+            historySource: state.cleanupWorkerHistorySource || '',
             latestHistoryReason: state.cleanupWorkerLatestHistoryReason || '',
             reason: state.cleanupWorkerLastRunReason || '',
             dryRun: state.cleanupWorkerLastRunDryRun === true,
@@ -2226,6 +2237,9 @@ async function runBrowserSmoke() {
           !adminDashboardCleanupWorkerDryRunState.lastRunPersisted ||
           !adminDashboardCleanupWorkerDryRunState.historyKnown ||
           !adminDashboardCleanupWorkerDryRunState.historyPersisted ||
+          !adminDashboardCleanupWorkerDryRunState.d1HistoryAvailable ||
+          !adminDashboardCleanupWorkerDryRunState.d1HistoryPersisted ||
+          adminDashboardCleanupWorkerDryRunState.historySource !== 'd1' ||
           adminDashboardCleanupWorkerDryRunState.historyCount < 1 ||
           adminDashboardCleanupWorkerDryRunState.latestHistoryReason !== 'manual-api' ||
           adminDashboardCleanupWorkerDryRunState.reason !== 'manual-api' ||
@@ -3554,12 +3568,17 @@ async function runBrowserSmoke() {
     state.adminDashboardCleanupWorkerLimit = adminDashboardState.cleanupWorkerLimit;
     state.adminDashboardCleanupWorkerHasR2Binding = adminDashboardState.cleanupWorkerHasR2Binding;
     state.adminDashboardCleanupWorkerHasGameStore = adminDashboardState.cleanupWorkerHasGameStore;
+    state.adminDashboardCleanupWorkerHasAuditStore = adminDashboardState.cleanupWorkerHasAuditStore;
     state.adminDashboardCleanupWorkerLastRunKnown = adminDashboardState.cleanupWorkerLastRunKnown;
     state.adminDashboardCleanupWorkerHasLastRun = adminDashboardState.cleanupWorkerHasLastRun;
     state.adminDashboardCleanupWorkerHistoryKnown = adminDashboardState.cleanupWorkerHistoryKnown;
     state.adminDashboardCleanupWorkerHistoryCount = adminDashboardState.cleanupWorkerHistoryCount;
     state.adminDashboardCleanupWorkerHistoryLimit = adminDashboardState.cleanupWorkerHistoryLimit;
     state.adminDashboardCleanupWorkerHistoryPersisted = adminDashboardState.cleanupWorkerHistoryPersisted;
+    state.adminDashboardCleanupWorkerD1HistoryAvailable = adminDashboardState.cleanupWorkerD1HistoryAvailable;
+    state.adminDashboardCleanupWorkerD1HistoryPersisted = adminDashboardState.cleanupWorkerD1HistoryPersisted;
+    state.adminDashboardCleanupWorkerHistorySource = adminDashboardState.cleanupWorkerHistorySource;
+    state.adminDashboardCleanupWorkerKvHistoryCount = adminDashboardState.cleanupWorkerKvHistoryCount;
     state.adminDashboardCleanupWorkerExportCount = adminDashboardState.cleanupWorkerExportCount;
     state.adminDashboardCleanupWorkerExportFileName = adminDashboardState.cleanupWorkerExportFileName;
     state.adminDashboardCleanupWorkerLatestHistoryReason = adminDashboardState.cleanupWorkerLatestHistoryReason;
@@ -3580,6 +3599,8 @@ async function runBrowserSmoke() {
     state.adminDashboardCleanupWorkerDryRunPersisted = adminDashboardCleanupWorkerDryRunState?.lastRunPersisted === true;
     state.adminDashboardCleanupWorkerDryRunHistoryPersisted = adminDashboardCleanupWorkerDryRunState?.historyPersisted === true;
     state.adminDashboardCleanupWorkerDryRunHistoryCount = adminDashboardCleanupWorkerDryRunState?.historyCount || 0;
+    state.adminDashboardCleanupWorkerDryRunD1Persisted = adminDashboardCleanupWorkerDryRunState?.d1HistoryPersisted === true;
+    state.adminDashboardCleanupWorkerDryRunHistorySource = adminDashboardCleanupWorkerDryRunState?.historySource || '';
     state.adminDashboardCleanupWorkerExportStatus = adminDashboardCleanupWorkerExportState?.ok ? 'ready' : '';
     state.adminDashboardCleanupWorkerExportedCount = adminDashboardCleanupWorkerExportState?.exportedCount || 0;
     state.adminDashboardCleanupWorkerExportedFileName = adminDashboardCleanupWorkerExportState?.fileName || '';
@@ -4232,11 +4253,11 @@ console.log(`Published metadata: creator ${browserState.publishedDetailCreatorNa
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
 console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games, admin featured ${(browserState.marketplaceDiscoveryAdminFeaturedSlugs || []).length}`);
 console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components, featured ${browserState.gameDetailFeatured ? 'yes' : 'no'})`);
-console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, verify guard ${browserState.adminAuditVerifyGuardStatus || 'missing'}, backfill guard ${browserState.adminAuditBackfillGuardStatus || 'missing'}, asset cleanup guard ${browserState.adminAssetCleanupGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, storage panel ${browserState.adminDashboardHasAuditStorage && browserState.adminDashboardHasAuditStorageVerify ? browserState.adminDashboardAuditStorageStatus || 'ready' : 'missing'}, backfill controls ${browserState.adminDashboardHasAuditBackfillDryRun && browserState.adminDashboardHasAuditBackfillRun ? browserState.adminDashboardAuditBackfillStatus || 'ready' : 'missing'}, asset cleanup controls ${browserState.adminDashboardHasAssetCleanupDryRun && browserState.adminDashboardHasAssetCleanupRun ? browserState.adminDashboardAssetCleanupStatus || 'ready' : 'missing'}, cleanup worker ${browserState.adminDashboardHasCleanupWorker ? browserState.adminDashboardCleanupWorkerStatus || 'ready' : 'missing'} delete ${browserState.adminDashboardCleanupWorkerDeleteEnabled ? 'enabled' : 'disabled'} limit ${browserState.adminDashboardCleanupWorkerLimit || 0}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, d1 verify ${browserState.adminAuditD1VerifyStatus || 'missing'} ${browserState.adminAuditD1WriteVerified ? 'verified' : 'missing'}, asset dry run ${browserState.adminAssetCleanupDryRunStatus || 'missing'} ${browserState.adminAssetCleanupDryRunOk ? 'ready' : 'missing'}, ui storage ${browserState.adminDashboardStorageProbeStatus || 'missing'} ${browserState.adminDashboardStorageProbeWriteVerified ? 'verified' : 'missing'}, ui backfill ${browserState.adminDashboardBackfillProbeStatus || 'missing'} ${browserState.adminDashboardBackfillProbeDryRun ? 'dry-run' : 'missing'} wrote ${browserState.adminDashboardBackfillProbeWritten || 0}, ui asset cleanup ${browserState.adminDashboardAssetCleanupProbeStatus || 'missing'} ${browserState.adminDashboardAssetCleanupProbeDryRun ? 'dry-run' : 'missing'} deleted ${browserState.adminDashboardAssetCleanupProbeDeleted || 0}, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
+console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, verify guard ${browserState.adminAuditVerifyGuardStatus || 'missing'}, backfill guard ${browserState.adminAuditBackfillGuardStatus || 'missing'}, asset cleanup guard ${browserState.adminAssetCleanupGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, storage panel ${browserState.adminDashboardHasAuditStorage && browserState.adminDashboardHasAuditStorageVerify ? browserState.adminDashboardAuditStorageStatus || 'ready' : 'missing'}, backfill controls ${browserState.adminDashboardHasAuditBackfillDryRun && browserState.adminDashboardHasAuditBackfillRun ? browserState.adminDashboardAuditBackfillStatus || 'ready' : 'missing'}, asset cleanup controls ${browserState.adminDashboardHasAssetCleanupDryRun && browserState.adminDashboardHasAssetCleanupRun ? browserState.adminDashboardAssetCleanupStatus || 'ready' : 'missing'}, cleanup worker ${browserState.adminDashboardHasCleanupWorker ? browserState.adminDashboardCleanupWorkerStatus || 'ready' : 'missing'} delete ${browserState.adminDashboardCleanupWorkerDeleteEnabled ? 'enabled' : 'disabled'} limit ${browserState.adminDashboardCleanupWorkerLimit || 0} history ${browserState.adminDashboardCleanupWorkerHistorySource || 'missing'} d1 ${browserState.adminDashboardCleanupWorkerD1HistoryAvailable ? 'ready' : 'missing'}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, d1 verify ${browserState.adminAuditD1VerifyStatus || 'missing'} ${browserState.adminAuditD1WriteVerified ? 'verified' : 'missing'}, asset dry run ${browserState.adminAssetCleanupDryRunStatus || 'missing'} ${browserState.adminAssetCleanupDryRunOk ? 'ready' : 'missing'}, ui storage ${browserState.adminDashboardStorageProbeStatus || 'missing'} ${browserState.adminDashboardStorageProbeWriteVerified ? 'verified' : 'missing'}, ui backfill ${browserState.adminDashboardBackfillProbeStatus || 'missing'} ${browserState.adminDashboardBackfillProbeDryRun ? 'dry-run' : 'missing'} wrote ${browserState.adminDashboardBackfillProbeWritten || 0}, ui asset cleanup ${browserState.adminDashboardAssetCleanupProbeStatus || 'missing'} ${browserState.adminDashboardAssetCleanupProbeDryRun ? 'dry-run' : 'missing'} deleted ${browserState.adminDashboardAssetCleanupProbeDeleted || 0}, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
 console.log(`Cleanup worker last run: ${browserState.adminDashboardCleanupWorkerLastRunKnown ? (browserState.adminDashboardCleanupWorkerHasLastRun ? `${browserState.adminDashboardCleanupWorkerLastRunReason || 'unknown'} scanned ${browserState.adminDashboardCleanupWorkerLastRunScanned || 0}, orphaned ${browserState.adminDashboardCleanupWorkerLastRunOrphaned || 0}, deleted ${browserState.adminDashboardCleanupWorkerLastRunDeleted || 0}, errors ${browserState.adminDashboardCleanupWorkerLastRunErrorCount || 0}` : 'none persisted yet') : 'missing health field'}`);
 console.log(`Cleanup worker history: ${browserState.adminDashboardCleanupWorkerHistoryKnown ? `${browserState.adminDashboardCleanupWorkerHistoryCount || 0}/${browserState.adminDashboardCleanupWorkerHistoryLimit || 0} runs, latest ${browserState.adminDashboardCleanupWorkerLatestHistoryReason || 'none'}` : 'missing health field'}`);
 if (browserState.adminSmokeTokenProvided) {
-  console.log(`Cleanup worker dry scan: ${browserState.adminDashboardCleanupWorkerDryRunPersisted ? 'persisted' : 'missing'} ${browserState.adminDashboardCleanupWorkerDryRunReason || 'missing'} scanned ${browserState.adminDashboardCleanupWorkerDryRunScanned || 0}, orphaned ${browserState.adminDashboardCleanupWorkerDryRunOrphaned || 0}, deleted ${browserState.adminDashboardCleanupWorkerDryRunDeleted || 0}, errors ${browserState.adminDashboardCleanupWorkerDryRunErrors || 0}, history ${browserState.adminDashboardCleanupWorkerDryRunHistoryPersisted ? 'persisted' : 'missing'} (${browserState.adminDashboardCleanupWorkerDryRunHistoryCount || 0})`);
+  console.log(`Cleanup worker dry scan: ${browserState.adminDashboardCleanupWorkerDryRunPersisted ? 'persisted' : 'missing'} ${browserState.adminDashboardCleanupWorkerDryRunReason || 'missing'} scanned ${browserState.adminDashboardCleanupWorkerDryRunScanned || 0}, orphaned ${browserState.adminDashboardCleanupWorkerDryRunOrphaned || 0}, deleted ${browserState.adminDashboardCleanupWorkerDryRunDeleted || 0}, errors ${browserState.adminDashboardCleanupWorkerDryRunErrors || 0}, history ${browserState.adminDashboardCleanupWorkerDryRunHistoryPersisted ? 'persisted' : 'missing'} (${browserState.adminDashboardCleanupWorkerDryRunHistoryCount || 0}), d1 ${browserState.adminDashboardCleanupWorkerDryRunD1Persisted ? 'persisted' : 'missing'} source ${browserState.adminDashboardCleanupWorkerDryRunHistorySource || 'missing'}`);
   console.log(`Cleanup worker export: ${browserState.adminDashboardCleanupWorkerExportStatus || 'missing'} ${browserState.adminDashboardCleanupWorkerExportedCount || 0} runs -> ${browserState.adminDashboardCleanupWorkerExportedFileName || 'missing'}`);
   console.log(`Cleanup worker CSV export: ${browserState.adminDashboardCleanupWorkerCsvExportStatus || 'missing'} ${browserState.adminDashboardCleanupWorkerCsvExportedCount || 0} rows -> ${browserState.adminDashboardCleanupWorkerCsvExportedFileName || 'missing'}`);
 }

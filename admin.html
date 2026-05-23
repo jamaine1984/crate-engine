@@ -324,7 +324,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditStorage: { status: 'locked', source: '', writeVerified: false },
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
-    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, exporting: false, exportFormat: '', lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, exportCount: 0, exportFileName: '', error: '' },
+    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, hasAuditStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, exporting: false, exportFormat: '', lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, d1HistoryAvailable: false, d1HistoryPersisted: false, historySource: '', kvHistoryCount: 0, exportCount: 0, exportFileName: '', error: '' },
     error: '',
   };
 
@@ -438,6 +438,7 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerLimit: Number(state.cleanupWorker?.limit) || 0,
       cleanupWorkerHasR2Binding: state.cleanupWorker?.hasR2Binding === true,
       cleanupWorkerHasGameStore: state.cleanupWorker?.hasGameStore === true,
+      cleanupWorkerHasAuditStore: state.cleanupWorker?.hasAuditStore === true,
       cleanupWorkerRunning: state.cleanupWorker?.running === true,
       cleanupWorkerExporting: state.cleanupWorker?.exporting === true,
       cleanupWorkerExportFormat: state.cleanupWorker?.exportFormat || '',
@@ -448,6 +449,10 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerHistoryCount: Array.isArray(state.cleanupWorker?.history) ? state.cleanupWorker.history.length : 0,
       cleanupWorkerHistoryLimit: Number(state.cleanupWorker?.historyLimit) || 0,
       cleanupWorkerHistoryPersisted: state.cleanupWorker?.historyPersisted === true,
+      cleanupWorkerD1HistoryAvailable: state.cleanupWorker?.d1HistoryAvailable === true,
+      cleanupWorkerD1HistoryPersisted: state.cleanupWorker?.d1HistoryPersisted === true,
+      cleanupWorkerHistorySource: state.cleanupWorker?.historySource || '',
+      cleanupWorkerKvHistoryCount: Number(state.cleanupWorker?.kvHistoryCount) || 0,
       cleanupWorkerExportCount: Number(state.cleanupWorker?.exportCount) || 0,
       cleanupWorkerExportFileName: state.cleanupWorker?.exportFileName || '',
       cleanupWorkerLatestHistoryReason: Array.isArray(state.cleanupWorker?.history) && state.cleanupWorker.history[0] ? state.cleanupWorker.history[0].reason || '' : '',
@@ -649,7 +654,7 @@ td{color:#dce7eb;font-size:.86rem}
     if (els.cleanupWorkerOpen) {
       els.cleanupWorkerOpen.href = (worker.url || CLEANUP_WORKER_URL) + '/health';
     }
-    const bindingsReady = worker.hasR2Binding === true && worker.hasGameStore === true;
+    const bindingsReady = worker.hasR2Binding === true && worker.hasGameStore === true && worker.hasAuditStore === true;
     if (els.cleanupWorkerSummary) {
       if (exporting) {
         els.cleanupWorkerSummary.textContent = 'Exporting cleanup history...';
@@ -658,7 +663,7 @@ td{color:#dce7eb;font-size:.86rem}
       } else if (status === 'checking') {
         els.cleanupWorkerSummary.textContent = 'Checking scheduled cleanup Worker health...';
       } else if (status === 'ready') {
-        els.cleanupWorkerSummary.textContent = 'Worker is live with R2/KV bindings ' + (bindingsReady ? 'ready' : 'missing') + ' and scheduled deletion ' + (worker.deleteEnabled ? 'enabled.' : 'disabled.');
+        els.cleanupWorkerSummary.textContent = 'Worker is live with R2/KV/D1 bindings ' + (bindingsReady ? 'ready' : 'missing') + ' and scheduled deletion ' + (worker.deleteEnabled ? 'enabled.' : 'disabled.');
       } else {
         els.cleanupWorkerSummary.textContent = worker.error || 'Scheduled cleanup Worker health check failed.';
       }
@@ -692,10 +697,11 @@ td{color:#dce7eb;font-size:.86rem}
         els.cleanupWorkerHistory.textContent = 'History will refresh after this dry scan finishes.';
       } else if (status === 'ready') {
         const historyText = cleanupHistorySummary(worker.history);
+        const source = worker.historySource ? ' (' + String(worker.historySource).toUpperCase() + ')' : '';
         if (historyText) {
-          els.cleanupWorkerHistory.textContent = 'Recent runs: ' + historyText + '.';
+          els.cleanupWorkerHistory.textContent = 'Recent runs' + source + ': ' + historyText + '.';
         } else if (worker.historyKnown) {
-          els.cleanupWorkerHistory.textContent = 'No cleanup history is persisted yet.';
+          els.cleanupWorkerHistory.textContent = 'No cleanup history is persisted yet' + source + '.';
         } else {
           els.cleanupWorkerHistory.textContent = 'Cleanup history is not available from the Worker yet.';
         }
@@ -715,6 +721,7 @@ td{color:#dce7eb;font-size:.86rem}
         limit: 0,
         hasR2Binding: false,
         hasGameStore: false,
+        hasAuditStore: false,
         worker: '',
         url: CLEANUP_WORKER_URL,
         running: false,
@@ -727,6 +734,10 @@ td{color:#dce7eb;font-size:.86rem}
         history: [],
         historyLimit: 0,
         historyPersisted: false,
+        d1HistoryAvailable: false,
+        d1HistoryPersisted: false,
+        historySource: '',
+        kvHistoryCount: 0,
         exportCount: 0,
         exportFileName: '',
         error: '',
@@ -745,6 +756,7 @@ td{color:#dce7eb;font-size:.86rem}
           limit: Number(payload.limit) || 0,
           hasR2Binding: payload.hasR2Binding === true,
           hasGameStore: payload.hasGameStore === true,
+          hasAuditStore: payload.hasAuditStore === true,
           worker: payload.worker || '',
           url: CLEANUP_WORKER_URL,
           running: false,
@@ -757,6 +769,10 @@ td{color:#dce7eb;font-size:.86rem}
           history: Array.isArray(payload.history) ? payload.history : [],
           historyLimit: Number(payload.historyLimit) || 0,
           historyPersisted: false,
+          d1HistoryAvailable: payload.d1HistoryAvailable === true,
+          d1HistoryPersisted: false,
+          historySource: payload.historySource || '',
+          kvHistoryCount: Number(payload.kvHistoryCount) || 0,
           exportCount: 0,
           exportFileName: '',
           error: '',
@@ -770,6 +786,7 @@ td{color:#dce7eb;font-size:.86rem}
           limit: 0,
           hasR2Binding: false,
           hasGameStore: false,
+          hasAuditStore: false,
           worker: '',
           url: CLEANUP_WORKER_URL,
           running: false,
@@ -782,6 +799,10 @@ td{color:#dce7eb;font-size:.86rem}
           history: [],
           historyLimit: 0,
           historyPersisted: false,
+          d1HistoryAvailable: false,
+          d1HistoryPersisted: false,
+          historySource: '',
+          kvHistoryCount: 0,
           exportCount: 0,
           exportFileName: '',
           error: err?.message || String(err || 'Cleanup Worker health failed'),
@@ -869,6 +890,7 @@ td{color:#dce7eb;font-size:.86rem}
           limit: Number(payload.limit) || Number(previous.limit) || 0,
           hasR2Binding: previous.hasR2Binding === true,
           hasGameStore: previous.hasGameStore === true,
+          hasAuditStore: previous.hasAuditStore === true,
           worker: previous.worker || payload.worker || 'crateship-public-asset-cleanup',
           url: CLEANUP_WORKER_URL,
           running: false,
@@ -881,6 +903,10 @@ td{color:#dce7eb;font-size:.86rem}
           history,
           historyLimit: Number(payload.historyLimit) || Number(previous.historyLimit) || 12,
           historyPersisted: payload.historyPersisted === true,
+          d1HistoryAvailable: payload.d1HistoryAvailable === true || previous.d1HistoryAvailable === true,
+          d1HistoryPersisted: payload.d1HistoryPersisted === true,
+          historySource: payload.historySource || previous.historySource || '',
+          kvHistoryCount: Number(payload.kvHistoryCount) || Number(previous.kvHistoryCount) || 0,
           exportCount: Number(previous.exportCount) || 0,
           exportFileName: previous.exportFileName || '',
           error: errorCount ? errorCount + ' cleanup errors were reported. Check Worker logs before deleting.' : '',
@@ -983,6 +1009,10 @@ td{color:#dce7eb;font-size:.86rem}
             status: 'ready',
             exporting: false,
             exportFormat: 'csv',
+            d1HistoryAvailable: previous.d1HistoryAvailable === true,
+            d1HistoryPersisted: previous.d1HistoryPersisted === true,
+            historySource: previous.historySource || '',
+            kvHistoryCount: Number(previous.kvHistoryCount) || 0,
             exportCount: rowCount,
             exportFileName: fileName,
             error: '',
@@ -1016,6 +1046,10 @@ td{color:#dce7eb;font-size:.86rem}
           history,
           historyLimit: Number(payload.historyLimit) || Number(previous.historyLimit) || 0,
           historyPersisted: false,
+          d1HistoryAvailable: payload.d1HistoryAvailable === true || previous.d1HistoryAvailable === true,
+          d1HistoryPersisted: previous.d1HistoryPersisted === true,
+          historySource: payload.historySource || previous.historySource || '',
+          kvHistoryCount: Number(payload.kvHistoryCount) || Number(previous.kvHistoryCount) || 0,
           exportCount: Number(payload.total) || history.length,
           exportFileName: fileName,
           error: '',
