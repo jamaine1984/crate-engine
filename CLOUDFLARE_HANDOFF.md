@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `2c94f64b`
+- Current deployed source commit for the public engine code: `e0032ab7`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,13 +36,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `6b239fde-0d0c-47d8-bf7e-64b0254581d5`
-- Latest production deployment URL: `https://6b239fde.crateship-games.pages.dev`
+- Latest production deployment ID: `ec9ce464-6a4e-4926-bb60-94dcdbd52a15`
+- Latest production deployment URL: `https://ec9ce464.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `2c94f64`
-- Main live page bundle after the deploy: `/assets/play-Dl4A4inQ.js`
+- Source shown by Cloudflare: `e0032ab`
+- Main live page bundle after the deploy: `/assets/play-BGui0INi.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui--3ebzf1Z.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BFE8gyJ-.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -50,6 +50,60 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `e0032ab7` (`Fix asset placement visibility and view mode`)
+- Final Cloudflare deployment: `ec9ce464-6a4e-4926-bb60-94dcdbd52a15`
+- Final deployment URL: `https://ec9ce464.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- App deploy command:
+
+```powershell
+npm run check
+git diff --check
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=e0032ab7b5a96fc6c93716effc54f7abada15015 --commit-message="Fix asset placement visibility and view mode" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Deploy upload evidence: uploaded `8` changed files, reused `103` already-uploaded files, uploaded the Functions bundle, `_headers`, and `_routes.json`.
+- Main app bundle after deploy: `/assets/play-BGui0INi.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui-BFE8gyJ-.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=placement-view-e0032ab`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-placement-view-e0032ab`
+- Targeted desktop placement/View probe passed: `https://crateshipgames.com/play?verify=targeted-placement-view-e0032ab`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-placement-view-e0032ab.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-placement-view-e0032ab.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\targeted-placement-view-e0032ab.png`
+- Production smoke evidence:
+  - Apex smoke loaded `/assets/play-BGui0INi.js`, asset host manifest `6f09cc09da2f`, and the separate asset host returned `200` for checked GLB/BIN/JPG assets and expected `404` for the missing asset check.
+  - Build City created at least `129` objects with `48` components and `4` scripts on apex; `www` created at least `128` objects with `48` components and `4` scripts.
+  - Apex phone and tablet viewport probes still placed `Bathroom Bathtub` from the Quick Tools asset path; gallery search stayed onscreen.
+  - Production smoke verified the Builder Quick Tools Asset Library button is visible at startup, all mode controls label the camera-only mode as `View`, and placed assets report `viewport.onScreen=true`.
+  - Targeted desktop probe verified side-menu labels `Edit`, `View`, `Play`; Quick Tools display `block`; selected Furniture asset `Bathroom Bathtub`; placement at `/models/house_interior_pack_bathroom_bathtub.glb`; viewport center `screenX 682`, `screenY 443`, `onScreen true`; and `0` bad model/texture responses.
+  - Targeted desktop probe switched to View mode, clicked the scene at `683,470`, and verified selection stayed empty, legacy inspector stayed `none`, and the mode label remained `View`.
+  - Apex raw Build City frame probe: `80.6 FPS`, `12.4 ms` average frame, `0.7 ms` update, `11.6 ms` render.
+  - WWW smoke passed publish, marketplace, game detail, project save/load, playable export, validation, admin guard, cleanup Worker readiness, asset host, inventory, mission, NPC, merchant, door trigger, enemy wave, and respawn flows.
+
+What changed in this deploy:
+
+- `engine.mjs`
+  - Asset placement now raycasts from the viewport center instead of relying only on the old camera-forward heuristic.
+  - After a GLB loads, the camera/OrbitControls target frame the placed object and `window._lastAssetPlacement.viewport` records whether it is visible onscreen.
+  - Camera-only mode user-facing text now says `View mode`.
+- `game-builder-ui.mjs`
+  - The Quick Tools section is visible on desktop and mobile, so Asset Library is available near the top of the side menu instead of buried far down the panel.
+  - Mode controls now show `Edit`, `View`, and `Play`.
+- `play.html`
+  - The top toolbar camera-only mode button now says `View`.
+- `scripts/smoke-production.mjs`
+  - Production smoke now fails if the quick Asset Library button is hidden, if mode controls do not say `View`, if Builder asset placement is not framed onscreen, or if View-mode canvas clicks leave an editor selection active.
+
+Previous app-only deploy on 2026-05-23:
 
 - Final commit deployed: `2c94f64b` (`Improve mobile asset menu access`)
 - Final Cloudflare deployment: `6b239fde-0d0c-47d8-bf7e-64b0254581d5`
