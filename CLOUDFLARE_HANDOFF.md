@@ -16,14 +16,14 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `57babc3e`
-- Current deployed source commit for the public asset cleanup Worker: `57babc3e`
+- Current deployed source commit for the public engine code: `31aae6dd`
+- Current deployed source commit for the public asset cleanup Worker: `31aae6dd`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare scheduled cleanup Worker: `crateship-public-asset-cleanup`
 - Cleanup Worker URL: `https://crateship-public-asset-cleanup.koikes2021.workers.dev`
 - Cleanup Worker cron: `17 9 * * *` (UTC daily)
-- Cleanup Worker version ID: `fe9cfd64-a456-461e-bb7a-c5f667b2cf1b`
+- Cleanup Worker version ID: `0b99d558-a1a1-47c6-9b38-842c672577fe`
 - Cleanup Worker safe default: `CRATE_PUBLIC_ASSET_CLEANUP_DELETE=false`, so the scheduled run scans but does not delete until the Cloudflare variable is changed to `true`.
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
 - Cloudflare D1 database for moderation audit history: `CRATE_AUDIT` / `crateship-games-audit` (`9cbee4e4-caa7-43fb-bbb7-9f0f7d7e2b9a`)
@@ -36,10 +36,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `9d0bf3e1-cc72-437b-928e-a6d14335ffad`
-- Latest production deployment URL: `https://9d0bf3e1.crateship-games.pages.dev`
+- Latest production deployment ID: `4d739d81-f716-4998-ae93-f7c36e8c8c07`
+- Latest production deployment URL: `https://4d739d81.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `57babc3`
+- Source shown by Cloudflare: `31aae6d`
 - Main live page bundle after the deploy: `/assets/play-D201ytkw.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-ZAqK_loq.js`
@@ -50,6 +50,101 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest Worker + app deploy on 2026-05-23:
+
+- Final commit deployed: `31aae6dd` (`Store cleanup history in D1`)
+- Final Cloudflare deployment: `4d739d81-f716-4998-ae93-f7c36e8c8c07`
+- Final deployment URL: `https://4d739d81.crateship-games.pages.dev`
+- Cleanup Worker version ID: `0b99d558-a1a1-47c6-9b38-842c672577fe`
+- D1 migration applied:
+
+```powershell
+npx wrangler d1 execute crateship-games-audit --remote --file migrations\0002_cleanup_audit.sql
+```
+
+- Remote D1 verification:
+
+```powershell
+npx wrangler d1 execute crateship-games-audit --remote --command "SELECT COUNT(*) AS cleanup_rows FROM cleanup_audit;"
+```
+
+- D1 evidence:
+  - Table `cleanup_audit` exists in `crateship-games-audit`.
+  - Row count after deploy remained `0` because no admin dry scan was run in this shell.
+  - The first `wrangler d1 execute` attempt returned Cloudflare API code `7403`; `npx wrangler whoami` and `npx wrangler d1 list` succeeded, then the migration retry succeeded.
+- Worker deploy command:
+
+```powershell
+npm run deploy:cleanup-worker
+```
+
+- Worker smoke passed:
+
+```powershell
+npm run smoke:cleanup-worker
+```
+
+- Worker smoke evidence:
+  - Health: `deleteEnabled=false`, `limit=200`, R2/KV/D1 bindings ready.
+  - History source reports `d1` and `d1HistoryAvailable=true`.
+  - Last run field is present and currently reports `none persisted yet`.
+  - History field is present and currently reports `0/12 persisted runs`.
+  - Guard: unauthenticated `POST /cleanup` returns `403`.
+  - Guard: unauthenticated `GET /history` returns `403`.
+  - Guard: unauthenticated `GET /history?format=csv` returns `403`.
+  - Authenticated dry run, JSON export, and CSV export verification skipped because no admin token env var was present in this shell.
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=31aae6dd487d394267b82f84fcbc3aae530de5d0 --commit-message="Store cleanup history in D1" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Main app bundle stayed unchanged: `/assets/play-D201ytkw.js`
+- Lazy App Builder chunk stayed unchanged: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk stayed unchanged: `/assets/game-builder-ui-ZAqK_loq.js`
+- Lazy Asset Browser chunk stayed unchanged: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=cleanup-d1-31aae6d`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-cleanup-d1-31aae6d`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-cleanup-d1-31aae6d.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-cleanup-d1-31aae6d.png`
+- Production smoke evidence:
+  - Build City created at least `127` objects with `48` components and `4` scripts in Edit mode.
+  - Asset host loaded manifest `6f09cc09da2f`.
+  - Published public asset lifecycle still passes: public GLB download `200`, cleanup removed public copy, post-delete download `404`.
+  - Admin page sees the cleanup Worker as ready, deletion disabled, limit `200`.
+  - Admin page reports cleanup history source `d1` with D1 ready.
+  - Admin page reads cleanup history and reports `0/12 runs` until a real admin dry scan or cron persists the first run.
+
+What changed in this deploy:
+
+- `migrations/0002_cleanup_audit.sql`
+  - Added the `cleanup_audit` D1 table and indexes for durable cleanup Worker run history.
+- `worker/public-asset-cleanup/wrangler.toml`
+  - Bound the existing `crateship-games-audit` D1 database to the cleanup Worker as `CRATE_AUDIT`.
+- `worker/public-asset-cleanup/index.js`
+  - Persists cleanup runs to D1 in addition to the rolling KV `cleanup:history` list.
+  - Reads cleanup history from D1 first and falls back to KV if D1 is unavailable or empty.
+  - Exposes `hasAuditStore`, `historySource`, `d1HistoryAvailable`, `d1HistoryPersisted`, and `kvHistoryCount` in health, cleanup, and export responses.
+  - Keeps cleanup safe if D1 is temporarily unavailable; KV persistence still works as fallback.
+- `admin.html`
+  - Shows Worker binding readiness as R2/KV/D1.
+  - Shows the cleanup history source next to recent run summaries.
+- `scripts/smoke-cleanup-worker.mjs`
+  - Requires the live Worker health endpoint to expose D1-backed cleanup history readiness.
+  - If an admin token is available, requires authenticated dry scan history to persist to D1.
+- `scripts/smoke-production.mjs`
+  - Requires the live Admin dashboard to see D1-backed cleanup history readiness while locked.
+  - If `CRATE_SMOKE_ADMIN_TOKEN` is available, requires the Admin dry scan path to persist cleanup history to D1.
+
+Next recommended asset step:
+
+- Run `/admin.html` with a real admin token or set `CRATE_SMOKE_ADMIN_TOKEN`, click `Run Dry Scan`, and confirm `cleanup_audit` row count increases above `0`. After that, add an Admin dashboard table for browsing/filtering D1 cleanup audit rows instead of only showing the top three run summaries.
+
+Previous Worker + app deploy on 2026-05-23:
 
 - Final commit deployed: `57babc3e` (`Add cleanup history CSV export`)
 - Final Cloudflare deployment: `9d0bf3e1-cc72-437b-928e-a6d14335ffad`
