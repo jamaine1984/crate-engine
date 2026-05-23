@@ -1,6 +1,8 @@
 const PUBLIC_ASSET_PREFIX = 'published-assets';
 const GAME_PREFIX = 'game:';
 const LAST_RUN_KEY = 'cleanup:last-run';
+const HISTORY_KEY = 'cleanup:history';
+const HISTORY_LIMIT = 12;
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
 
@@ -152,6 +154,7 @@ function gameStore(env = {}) {
 function publicLastRun(record) {
   if (!record || typeof record !== 'object') return null;
   return {
+    runId: record.runId || '',
     ok: record.ok === true,
     error: record.error || '',
     reason: record.reason || '',
@@ -178,15 +181,46 @@ async function readLastCleanupRun(env = {}) {
   return publicLastRun(record);
 }
 
-async function persistLastCleanupRun(env = {}, result = {}, metadata = {}) {
+function cleanupRunId(result = {}, metadata = {}) {
+  if (metadata.runId) return cleanId(metadata.runId);
+  try {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  } catch {}
+  const stamp = String(result.finishedAt || result.startedAt || new Date().toISOString())
+    .replace(/[^0-9]/g, '')
+    .slice(0, 14);
+  const reason = cleanId(result.reason || metadata.reason || 'run');
+  return `${stamp || Date.now()}-${reason || 'run'}`;
+}
+
+function cleanupHistoryRecords(raw) {
+  const rows = Array.isArray(raw) ? raw : (Array.isArray(raw?.runs) ? raw.runs : []);
+  return rows.filter((record) => record && typeof record === 'object');
+}
+
+async function readCleanupHistory(env = {}) {
   const store = gameStore(env);
-  if (!store || !result || typeof result !== 'object') return false;
+  if (!store) return [];
+  const raw = await store.get(HISTORY_KEY, 'json').catch(() => null);
+  return cleanupHistoryRecords(raw)
+    .map(publicLastRun)
+    .filter(Boolean)
+    .slice(0, HISTORY_LIMIT);
+}
+
+async function persistCleanupRun(env = {}, result = {}, metadata = {}) {
+  const store = gameStore(env);
+  if (!store || !result || typeof result !== 'object') {
+    return { lastRunPersisted: false, historyPersisted: false, run: null, history: [] };
+  }
   const errors = Array.isArray(result.errors) ? result.errors : [];
+  const persistedAt = new Date().toISOString();
   const record = {
     format: 'crate-public-asset-cleanup-last-run',
     version: 1,
+    runId: cleanupRunId(result, metadata),
     worker: 'crateship-public-asset-cleanup',
-    persistedAt: new Date().toISOString(),
+    persistedAt,
     ok: result.ok === true,
     error: result.error ? String(result.error).slice(0, 240) : '',
     reason: result.reason || metadata.reason || '',
@@ -207,12 +241,36 @@ async function persistLastCleanupRun(env = {}, result = {}, metadata = {}) {
     cron: metadata.cron || '',
     scheduledTime: Number(metadata.scheduledTime) || 0,
   };
+  let lastRunPersisted = false;
+  let historyPersisted = false;
+  let history = [];
   try {
     await store.put(LAST_RUN_KEY, JSON.stringify(record));
-    return true;
-  } catch {
-    return false;
-  }
+    lastRunPersisted = true;
+  } catch {}
+  try {
+    const rawHistory = await store.get(HISTORY_KEY, 'json').catch(() => null);
+    const previous = cleanupHistoryRecords(rawHistory);
+    const next = [
+      record,
+      ...previous.filter((entry) => String(entry.runId || '') !== record.runId),
+    ].slice(0, HISTORY_LIMIT);
+    await store.put(HISTORY_KEY, JSON.stringify({
+      format: 'crate-public-asset-cleanup-history',
+      version: 1,
+      updatedAt: persistedAt,
+      limit: HISTORY_LIMIT,
+      runs: next,
+    }));
+    historyPersisted = true;
+    history = next.map(publicLastRun).filter(Boolean);
+  } catch {}
+  return {
+    lastRunPersisted,
+    historyPersisted,
+    run: publicLastRun(record),
+    history,
+  };
 }
 
 async function listPublicAssetMetadata(bucket, limit) {
@@ -312,6 +370,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
       const lastRun = await readLastCleanupRun(env);
+      const history = await readCleanupHistory(env);
       return json({
         ok: true,
         worker: 'crateship-public-asset-cleanup',
@@ -321,6 +380,8 @@ export default {
         hasR2Binding: !!(env.CRATE_USER_ASSETS || env.CRATE_ASSETS),
         hasGameStore: !!gameStore(env),
         lastRun,
+        history,
+        historyLimit: HISTORY_LIMIT,
       });
     }
     if (request.method === 'POST' && url.pathname === '/cleanup') {
@@ -333,11 +394,19 @@ export default {
         limit: payload.limit,
         reason: 'manual-api',
       });
-      const lastRunPersisted = await persistLastCleanupRun(env, result, {
+      const persisted = await persistCleanupRun(env, result, {
         reason: 'manual-api',
         admin: admin.admin,
       });
-      return json({ ...result, admin: admin.admin, lastRunPersisted }, { status: result.ok ? 200 : 503 });
+      return json({
+        ...result,
+        admin: admin.admin,
+        lastRunPersisted: persisted.lastRunPersisted,
+        historyPersisted: persisted.historyPersisted,
+        lastRun: persisted.run,
+        history: persisted.history,
+        historyLimit: HISTORY_LIMIT,
+      }, { status: result.ok ? 200 : 503 });
     }
     return json({ ok: false, error: 'Not found.' }, { status: 404 });
   },
@@ -348,7 +417,7 @@ export default {
         dryRun: !scheduledDeleteEnabled(env),
         reason: 'scheduled',
       });
-      const lastRunPersisted = await persistLastCleanupRun(env, result, {
+      const persisted = await persistCleanupRun(env, result, {
         cron: event.cron || '',
         scheduledTime: event.scheduledTime || 0,
       });
@@ -356,7 +425,9 @@ export default {
         worker: 'crateship-public-asset-cleanup',
         cron: event.cron || '',
         scheduledTime: event.scheduledTime || 0,
-        lastRunPersisted,
+        lastRunPersisted: persisted.lastRunPersisted,
+        historyPersisted: persisted.historyPersisted,
+        historyCount: persisted.history.length,
         ...result,
       }));
     })());

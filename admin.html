@@ -172,6 +172,7 @@ td{color:#dce7eb;font-size:.86rem}
       <strong>Public asset cleanup Worker</strong>
       <p id="cleanup-worker-summary">Checking scheduled cleanup Worker health...</p>
       <p id="cleanup-worker-detail">The scheduled Worker should stay dry-run until an authenticated orphan scan is reviewed.</p>
+      <p id="cleanup-worker-history">Recent cleanup run history will appear here.</p>
     </div>
     <div class="storage-actions">
       <button id="dry-run-cleanup-worker" type="button">Run Dry Scan</button>
@@ -284,6 +285,7 @@ td{color:#dce7eb;font-size:.86rem}
     cleanupWorkerPanel: document.getElementById('cleanup-worker-panel'),
     cleanupWorkerSummary: document.getElementById('cleanup-worker-summary'),
     cleanupWorkerDetail: document.getElementById('cleanup-worker-detail'),
+    cleanupWorkerHistory: document.getElementById('cleanup-worker-history'),
     cleanupWorkerDryRun: document.getElementById('dry-run-cleanup-worker'),
     cleanupWorkerRefresh: document.getElementById('refresh-cleanup-worker'),
     cleanupWorkerOpen: document.getElementById('open-cleanup-worker'),
@@ -318,7 +320,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditStorage: { status: 'locked', source: '', writeVerified: false },
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
-    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, lastRunKnown: false, lastRun: null, lastRunPersisted: false, error: '' },
+    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, error: '' },
     error: '',
   };
 
@@ -364,6 +366,20 @@ td{color:#dce7eb;font-size:.86rem}
     if (reason === 'manual-api') return 'manual';
     if (reason === 'scheduled') return 'scheduled';
     return reason || 'cleanup';
+  }
+
+  function cleanupHistorySummary(history) {
+    const rows = Array.isArray(history) ? history.slice(0, 3) : [];
+    if (!rows.length) return '';
+    return rows.map((run) => {
+      const label = formatCleanupReason(run.reason);
+      const scanned = Number(run.scanned) || 0;
+      const orphaned = Number(run.orphaned) || 0;
+      const deleted = Number(run.deleted) || 0;
+      const errors = Number(run.errorCount) || 0;
+      const mode = run.dryRun === false ? 'delete' : 'dry';
+      return label + ' ' + mode + ': ' + scanned + ' scanned, ' + orphaned + ' orphaned, ' + deleted + ' deleted, ' + errors + ' errors';
+    }).join(' | ');
   }
 
   function setState(next) {
@@ -420,6 +436,11 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerLastRunKnown: state.cleanupWorker?.lastRunKnown === true,
       cleanupWorkerHasLastRun: !!state.cleanupWorker?.lastRun,
       cleanupWorkerLastRunPersisted: state.cleanupWorker?.lastRunPersisted === true,
+      cleanupWorkerHistoryKnown: state.cleanupWorker?.historyKnown === true,
+      cleanupWorkerHistoryCount: Array.isArray(state.cleanupWorker?.history) ? state.cleanupWorker.history.length : 0,
+      cleanupWorkerHistoryLimit: Number(state.cleanupWorker?.historyLimit) || 0,
+      cleanupWorkerHistoryPersisted: state.cleanupWorker?.historyPersisted === true,
+      cleanupWorkerLatestHistoryReason: Array.isArray(state.cleanupWorker?.history) && state.cleanupWorker.history[0] ? state.cleanupWorker.history[0].reason || '' : '',
       cleanupWorkerLastRunReason: state.cleanupWorker?.lastRun?.reason || '',
       cleanupWorkerLastRunFinishedAt: state.cleanupWorker?.lastRun?.finishedAt || '',
       cleanupWorkerLastRunScanned: Number(state.cleanupWorker?.lastRun?.scanned) || 0,
@@ -640,6 +661,24 @@ td{color:#dce7eb;font-size:.86rem}
         els.cleanupWorkerDetail.textContent = 'The scheduled Worker should stay dry-run until an authenticated orphan scan is reviewed.';
       }
     }
+    if (els.cleanupWorkerHistory) {
+      if (running) {
+        els.cleanupWorkerHistory.textContent = 'History will refresh after this dry scan finishes.';
+      } else if (status === 'ready') {
+        const historyText = cleanupHistorySummary(worker.history);
+        if (historyText) {
+          els.cleanupWorkerHistory.textContent = 'Recent runs: ' + historyText + '.';
+        } else if (worker.historyKnown) {
+          els.cleanupWorkerHistory.textContent = 'No cleanup history is persisted yet.';
+        } else {
+          els.cleanupWorkerHistory.textContent = 'Cleanup history is not available from the Worker yet.';
+        }
+      } else if (status === 'failed') {
+        els.cleanupWorkerHistory.textContent = 'Cleanup history is unavailable until Worker health is restored.';
+      } else {
+        els.cleanupWorkerHistory.textContent = 'Recent cleanup run history will appear here.';
+      }
+    }
   }
 
   async function loadCleanupWorkerStatus() {
@@ -656,6 +695,10 @@ td{color:#dce7eb;font-size:.86rem}
         lastRunKnown: false,
         lastRun: null,
         lastRunPersisted: false,
+        historyKnown: false,
+        history: [],
+        historyLimit: 0,
+        historyPersisted: false,
         error: '',
       },
     });
@@ -678,6 +721,10 @@ td{color:#dce7eb;font-size:.86rem}
           lastRunKnown: Object.prototype.hasOwnProperty.call(payload, 'lastRun'),
           lastRun: payload.lastRun && typeof payload.lastRun === 'object' ? payload.lastRun : null,
           lastRunPersisted: false,
+          historyKnown: Object.prototype.hasOwnProperty.call(payload, 'history'),
+          history: Array.isArray(payload.history) ? payload.history : [],
+          historyLimit: Number(payload.historyLimit) || 0,
+          historyPersisted: false,
           error: '',
         },
       });
@@ -695,6 +742,10 @@ td{color:#dce7eb;font-size:.86rem}
           lastRunKnown: false,
           lastRun: null,
           lastRunPersisted: false,
+          historyKnown: false,
+          history: [],
+          historyLimit: 0,
+          historyPersisted: false,
           error: err?.message || String(err || 'Cleanup Worker health failed'),
         },
       });
@@ -719,6 +770,16 @@ td{color:#dce7eb;font-size:.86rem}
       durationMs: Number(payload?.durationMs) || 0,
       persistedAt: new Date().toISOString(),
     };
+  }
+
+  function cleanupHistoryFromPayload(payload, lastRun, previous) {
+    if (Array.isArray(payload?.history)) return payload.history;
+    const existing = Array.isArray(previous?.history) ? previous.history : [];
+    const runId = lastRun?.runId || '';
+    return [
+      lastRun,
+      ...existing.filter((run) => run && (!runId || run.runId !== runId)),
+    ].filter(Boolean).slice(0, Number(payload?.historyLimit) || Number(previous?.historyLimit) || 12);
   }
 
   async function runCleanupWorkerDryRun(button) {
@@ -757,7 +818,10 @@ td{color:#dce7eb;font-size:.86rem}
         err.status = response.status;
         throw err;
       }
-      const lastRun = lastRunFromCleanupPayload(payload);
+      const lastRun = payload.lastRun && typeof payload.lastRun === 'object'
+        ? payload.lastRun
+        : lastRunFromCleanupPayload(payload);
+      const history = cleanupHistoryFromPayload(payload, lastRun, previous);
       const errorCount = Number(lastRun.errorCount) || 0;
       els.authStatus.textContent = 'Cleanup Worker dry scan finished.';
       setState({
@@ -773,6 +837,10 @@ td{color:#dce7eb;font-size:.86rem}
           lastRunKnown: true,
           lastRun,
           lastRunPersisted: payload.lastRunPersisted === true,
+          historyKnown: true,
+          history,
+          historyLimit: Number(payload.historyLimit) || Number(previous.historyLimit) || 12,
+          historyPersisted: payload.historyPersisted === true,
           error: errorCount ? errorCount + ' cleanup errors were reported. Check Worker logs before deleting.' : '',
         },
         error: '',
