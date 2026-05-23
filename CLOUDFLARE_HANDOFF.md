@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `33bbb92f`
+- Current deployed source commit for the public engine code: `34c34767`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -30,10 +30,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `ba863cd9-b0b0-408b-9960-2360867f5ab1`
-- Latest production deployment URL: `https://ba863cd9.crateship-games.pages.dev`
+- Latest production deployment ID: `789f791b-855e-4454-b6b6-fdd9ce52067b`
+- Latest production deployment URL: `https://789f791b.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `33bbb92`
+- Source shown by Cloudflare: `34c3476`
 - Main live page bundle after the deploy: `/assets/play-D201ytkw.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-ZAqK_loq.js`
@@ -44,6 +44,48 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-22:
+
+- Final commit deployed: `34c34767` (`Add admin public asset cleanup controls`)
+- Final Cloudflare deployment: `789f791b-855e-4454-b6b6-fdd9ce52067b`
+- Final deployment URL: `https://789f791b.crateship-games.pages.dev`
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=34c3476795cb327d8756be0ac52566297e0f5e89 --commit-message="Add admin public asset cleanup controls" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Main app bundle stayed unchanged: `/assets/play-D201ytkw.js`
+- Lazy App Builder chunk stayed unchanged: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk stayed unchanged: `/assets/game-builder-ui-ZAqK_loq.js`
+- Lazy Asset Browser chunk stayed unchanged: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=admin-asset-cleanup-34c3476`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-admin-asset-cleanup-34c3476`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-admin-asset-cleanup-34c3476.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-admin-asset-cleanup-34c3476.png`
+- Production smoke now proves the Admin page exposes locked public asset cleanup controls without an admin token: `asset cleanup controls locked`.
+- `CRATE_SMOKE_ADMIN_TOKEN` was not present in this shell, so the authenticated dry-run/delete cleanup was not executed from Codex. Use the Admin page with a valid Cloudflare admin token to run `Dry Run Assets`, then `Clean Orphans` only if the dry run finds orphaned public assets.
+
+What changed in this deploy:
+
+- `admin.html`
+  - Added a separate Published R2 public assets panel.
+  - The panel unlocks only after the admin token is accepted.
+  - Dry Run Assets scans `/api/assets/admin/public-cleanup` without deleting.
+  - Clean Orphans stays disabled until a dry run reports orphaned public assets.
+- `scripts/smoke-production.mjs`
+  - Added locked-state checks for the public asset cleanup panel.
+  - If `CRATE_SMOKE_ADMIN_TOKEN` is available, smoke now also clicks the Admin UI dry-run control and verifies it stays non-destructive.
+
+Next recommended asset step:
+
+- Run an authenticated dry run from `/admin.html`, then run Clean Orphans if the orphan count is correct. After that, add a scheduled Cloudflare cleanup job or recurring admin task so old public R2 copies do not accumulate.
+
+Previous app-only deploy on 2026-05-22:
 
 - Final commit deployed: `33bbb92f` (`Refresh storage usage after publish cleanup`)
 - Final Cloudflare deployment: `ba863cd9-b0b0-408b-9960-2360867f5ab1`
