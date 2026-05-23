@@ -174,6 +174,7 @@ td{color:#dce7eb;font-size:.86rem}
       <p id="cleanup-worker-detail">The scheduled Worker should stay dry-run until an authenticated orphan scan is reviewed.</p>
     </div>
     <div class="storage-actions">
+      <button id="dry-run-cleanup-worker" type="button">Run Dry Scan</button>
       <button id="refresh-cleanup-worker" type="button">Refresh Worker</button>
       <a id="open-cleanup-worker" href="https://crateship-public-asset-cleanup.koikes2021.workers.dev/health" target="_blank" rel="noopener noreferrer">Open Health</a>
     </div>
@@ -283,6 +284,7 @@ td{color:#dce7eb;font-size:.86rem}
     cleanupWorkerPanel: document.getElementById('cleanup-worker-panel'),
     cleanupWorkerSummary: document.getElementById('cleanup-worker-summary'),
     cleanupWorkerDetail: document.getElementById('cleanup-worker-detail'),
+    cleanupWorkerDryRun: document.getElementById('dry-run-cleanup-worker'),
     cleanupWorkerRefresh: document.getElementById('refresh-cleanup-worker'),
     cleanupWorkerOpen: document.getElementById('open-cleanup-worker'),
     rows: document.getElementById('admin-rows'),
@@ -316,7 +318,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditStorage: { status: 'locked', source: '', writeVerified: false },
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
-    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, lastRunKnown: false, lastRun: null, error: '' },
+    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, lastRunKnown: false, lastRun: null, lastRunPersisted: false, error: '' },
     error: '',
   };
 
@@ -388,6 +390,7 @@ td{color:#dce7eb;font-size:.86rem}
       hasAssetCleanupDryRun: !!els.assetCleanupDryRun,
       hasAssetCleanupRun: !!els.assetCleanupRun,
       hasCleanupWorker: !!els.cleanupWorkerPanel,
+      hasCleanupWorkerDryRun: !!els.cleanupWorkerDryRun,
       auditDetailStatus: state.auditDetail?.status || 'empty',
       auditDetailSlug: state.auditDetail?.slug || '',
       auditDetailRows: Number(state.auditDetail?.rows) || 0,
@@ -413,8 +416,10 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerLimit: Number(state.cleanupWorker?.limit) || 0,
       cleanupWorkerHasR2Binding: state.cleanupWorker?.hasR2Binding === true,
       cleanupWorkerHasGameStore: state.cleanupWorker?.hasGameStore === true,
+      cleanupWorkerRunning: state.cleanupWorker?.running === true,
       cleanupWorkerLastRunKnown: state.cleanupWorker?.lastRunKnown === true,
       cleanupWorkerHasLastRun: !!state.cleanupWorker?.lastRun,
+      cleanupWorkerLastRunPersisted: state.cleanupWorker?.lastRunPersisted === true,
       cleanupWorkerLastRunReason: state.cleanupWorker?.lastRun?.reason || '',
       cleanupWorkerLastRunFinishedAt: state.cleanupWorker?.lastRun?.finishedAt || '',
       cleanupWorkerLastRunScanned: Number(state.cleanupWorker?.lastRun?.scanned) || 0,
@@ -590,9 +595,15 @@ td{color:#dce7eb;font-size:.86rem}
     if (!els.cleanupWorkerPanel) return;
     const worker = state.cleanupWorker || {};
     const status = worker.status || 'checking';
+    const running = worker.running === true;
+    const locked = !readToken() || state.status !== 'loaded';
     els.cleanupWorkerPanel.dataset.status = status;
+    if (els.cleanupWorkerDryRun) {
+      els.cleanupWorkerDryRun.disabled = locked || status === 'checking' || running;
+      els.cleanupWorkerDryRun.textContent = running ? 'Scanning...' : 'Run Dry Scan';
+    }
     if (els.cleanupWorkerRefresh) {
-      els.cleanupWorkerRefresh.disabled = status === 'checking';
+      els.cleanupWorkerRefresh.disabled = status === 'checking' || running;
       els.cleanupWorkerRefresh.textContent = status === 'checking' ? 'Checking...' : 'Refresh Worker';
     }
     if (els.cleanupWorkerOpen) {
@@ -600,7 +611,9 @@ td{color:#dce7eb;font-size:.86rem}
     }
     const bindingsReady = worker.hasR2Binding === true && worker.hasGameStore === true;
     if (els.cleanupWorkerSummary) {
-      if (status === 'checking') {
+      if (running) {
+        els.cleanupWorkerSummary.textContent = 'Running the cleanup Worker dry scan...';
+      } else if (status === 'checking') {
         els.cleanupWorkerSummary.textContent = 'Checking scheduled cleanup Worker health...';
       } else if (status === 'ready') {
         els.cleanupWorkerSummary.textContent = 'Worker is live with R2/KV bindings ' + (bindingsReady ? 'ready' : 'missing') + ' and scheduled deletion ' + (worker.deleteEnabled ? 'enabled.' : 'disabled.');
@@ -609,7 +622,9 @@ td{color:#dce7eb;font-size:.86rem}
       }
     }
     if (els.cleanupWorkerDetail) {
-      if (status === 'ready') {
+      if (running) {
+        els.cleanupWorkerDetail.textContent = 'Calling the deployed Worker in dry-run mode. No public assets will be deleted.';
+      } else if (status === 'ready') {
         const lastRun = worker.lastRun || null;
         if (lastRun) {
           const finishedAt = lastRun.finishedAt || lastRun.persistedAt || '';
@@ -637,8 +652,10 @@ td{color:#dce7eb;font-size:.86rem}
         hasGameStore: false,
         worker: '',
         url: CLEANUP_WORKER_URL,
+        running: false,
         lastRunKnown: false,
         lastRun: null,
+        lastRunPersisted: false,
         error: '',
       },
     });
@@ -657,8 +674,10 @@ td{color:#dce7eb;font-size:.86rem}
           hasGameStore: payload.hasGameStore === true,
           worker: payload.worker || '',
           url: CLEANUP_WORKER_URL,
+          running: false,
           lastRunKnown: Object.prototype.hasOwnProperty.call(payload, 'lastRun'),
           lastRun: payload.lastRun && typeof payload.lastRun === 'object' ? payload.lastRun : null,
+          lastRunPersisted: false,
           error: '',
         },
       });
@@ -672,11 +691,105 @@ td{color:#dce7eb;font-size:.86rem}
           hasGameStore: false,
           worker: '',
           url: CLEANUP_WORKER_URL,
+          running: false,
           lastRunKnown: false,
           lastRun: null,
+          lastRunPersisted: false,
           error: err?.message || String(err || 'Cleanup Worker health failed'),
         },
       });
+    }
+  }
+
+  function lastRunFromCleanupPayload(payload) {
+    const errors = Array.isArray(payload?.errors) ? payload.errors.length : Number(payload?.errorCount) || 0;
+    return {
+      ok: payload?.ok === true,
+      error: payload?.error || '',
+      reason: payload?.reason || 'manual-api',
+      dryRun: payload?.dryRun !== false,
+      deleteEnabled: payload?.deleteEnabled === true,
+      limit: Number(payload?.limit) || 0,
+      scanned: Number(payload?.scanned) || 0,
+      orphaned: Number(payload?.orphaned) || 0,
+      deleted: Number(payload?.deleted) || 0,
+      errorCount: errors,
+      startedAt: payload?.startedAt || '',
+      finishedAt: payload?.finishedAt || '',
+      durationMs: Number(payload?.durationMs) || 0,
+      persistedAt: new Date().toISOString(),
+    };
+  }
+
+  async function runCleanupWorkerDryRun(button) {
+    const token = readToken();
+    if (!token) {
+      els.authStatus.textContent = 'Enter the admin token before running the cleanup Worker dry scan.';
+      els.token?.focus();
+      setState({
+        cleanupWorker: Object.assign({}, state.cleanupWorker || {}, {
+          running: false,
+          error: '',
+        }),
+      });
+      return;
+    }
+    const previous = state.cleanupWorker || {};
+    setState({
+      cleanupWorker: Object.assign({}, previous, {
+        running: true,
+        error: '',
+      }),
+      error: '',
+    });
+    try {
+      const response = await fetch(CLEANUP_WORKER_URL + '/cleanup', {
+        method: 'POST',
+        headers: headers(true),
+        body: JSON.stringify({
+          dryRun: true,
+          limit: Number(previous.limit) || 200,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true) {
+        const err = new Error(payload?.error || 'Cleanup Worker dry scan failed with HTTP ' + response.status);
+        err.status = response.status;
+        throw err;
+      }
+      const lastRun = lastRunFromCleanupPayload(payload);
+      const errorCount = Number(lastRun.errorCount) || 0;
+      els.authStatus.textContent = 'Cleanup Worker dry scan finished.';
+      setState({
+        cleanupWorker: {
+          status: 'ready',
+          deleteEnabled: previous.deleteEnabled === true,
+          limit: Number(payload.limit) || Number(previous.limit) || 0,
+          hasR2Binding: previous.hasR2Binding === true,
+          hasGameStore: previous.hasGameStore === true,
+          worker: previous.worker || payload.worker || 'crateship-public-asset-cleanup',
+          url: CLEANUP_WORKER_URL,
+          running: false,
+          lastRunKnown: true,
+          lastRun,
+          lastRunPersisted: payload.lastRunPersisted === true,
+          error: errorCount ? errorCount + ' cleanup errors were reported. Check Worker logs before deleting.' : '',
+        },
+        error: '',
+      });
+    } catch (err) {
+      const message = err?.message || String(err || 'Cleanup Worker dry scan failed');
+      els.authStatus.textContent = message;
+      setState({
+        cleanupWorker: Object.assign({}, previous, {
+          status: previous.status || 'failed',
+          running: false,
+          error: message,
+        }),
+        error: message,
+      });
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -1049,6 +1162,7 @@ td{color:#dce7eb;font-size:.86rem}
   els.backfillRun?.addEventListener('click', (event) => backfillAuditStorage(false, event.currentTarget));
   els.assetCleanupDryRun?.addEventListener('click', (event) => runPublicAssetCleanup(true, event.currentTarget));
   els.assetCleanupRun?.addEventListener('click', (event) => runPublicAssetCleanup(false, event.currentTarget));
+  els.cleanupWorkerDryRun?.addEventListener('click', (event) => runCleanupWorkerDryRun(event.currentTarget));
   els.cleanupWorkerRefresh?.addEventListener('click', () => loadCleanupWorkerStatus());
   els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {
