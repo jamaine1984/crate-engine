@@ -16,14 +16,14 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `ba936ebb`
-- Current deployed source commit for the public asset cleanup Worker: `ba936ebb`
+- Current deployed source commit for the public engine code: `7e41b420`
+- Current deployed source commit for the public asset cleanup Worker: `7e41b420`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare scheduled cleanup Worker: `crateship-public-asset-cleanup`
 - Cleanup Worker URL: `https://crateship-public-asset-cleanup.koikes2021.workers.dev`
 - Cleanup Worker cron: `17 9 * * *` (UTC daily)
-- Cleanup Worker version ID: `4d0e41c3-8ec2-4d93-925a-4aabdaa4a7d3`
+- Cleanup Worker version ID: `f732a254-c55d-4d42-8ce0-d3487f140ae4`
 - Cleanup Worker safe default: `CRATE_PUBLIC_ASSET_CLEANUP_DELETE=false`, so the scheduled run scans but does not delete until the Cloudflare variable is changed to `true`.
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
 - Cloudflare D1 database for moderation audit history: `CRATE_AUDIT` / `crateship-games-audit` (`9cbee4e4-caa7-43fb-bbb7-9f0f7d7e2b9a`)
@@ -36,10 +36,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `4e5fb74e-ebec-4391-97ca-8fe5ff538038`
-- Latest production deployment URL: `https://4e5fb74e.crateship-games.pages.dev`
+- Latest production deployment ID: `c645251c-7bf8-46c2-8e37-9fd96ca96aa8`
+- Latest production deployment URL: `https://c645251c.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `ba936eb`
+- Source shown by Cloudflare: `7e41b42`
 - Main live page bundle after the deploy: `/assets/play-D201ytkw.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-ZAqK_loq.js`
@@ -50,6 +50,78 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest Worker + app deploy on 2026-05-23:
+
+- Final commit deployed: `7e41b420` (`Add cleanup history export`)
+- Final Cloudflare deployment: `c645251c-7bf8-46c2-8e37-9fd96ca96aa8`
+- Final deployment URL: `https://c645251c.crateship-games.pages.dev`
+- Cleanup Worker version ID: `f732a254-c55d-4d42-8ce0-d3487f140ae4`
+- Worker deploy command:
+
+```powershell
+npm run deploy:cleanup-worker
+```
+
+- Worker smoke passed:
+
+```powershell
+npm run smoke:cleanup-worker
+```
+
+- Worker smoke evidence:
+  - Health: `deleteEnabled=false`, `limit=200`, bindings ready.
+  - Last run field is present and currently reports `none persisted yet`.
+  - History field is present and currently reports `0/12 persisted runs`.
+  - Guard: unauthenticated `POST /cleanup` returns `403`.
+  - Guard: unauthenticated `GET /history` returns `403`.
+  - Authenticated dry run and export verification skipped because no admin token env var was present in this shell.
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=7e41b420c1392ae6e7e1895a4af70976ab895061 --commit-message="Add cleanup history export" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Main app bundle stayed unchanged: `/assets/play-D201ytkw.js`
+- Lazy App Builder chunk stayed unchanged: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk stayed unchanged: `/assets/game-builder-ui-ZAqK_loq.js`
+- Lazy Asset Browser chunk stayed unchanged: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=cleanup-export-7e41b42`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-cleanup-export-7e41b42`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-cleanup-export-7e41b42.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-cleanup-export-7e41b42.png`
+- Production smoke evidence:
+  - Build City created at least `127` objects with `48` components and `4` scripts in Edit mode.
+  - Asset host loaded manifest `6f09cc09da2f`.
+  - Published public asset lifecycle still passes: public GLB download `200`, cleanup removed public copy, post-delete download `404`.
+  - Admin page sees the cleanup Worker as ready, deletion disabled, limit `200`.
+  - Admin page reads cleanup history and reports `0/12 runs` until a real admin dry scan or cron persists the first run.
+  - Admin page exposes the `Export History` control and keeps it locked without an accepted admin token.
+
+What changed in this deploy:
+
+- `worker/public-asset-cleanup/index.js`
+  - Added admin-protected `GET /history` for offline cleanup audit export.
+  - Export response includes `lastRun`, rolling `history`, `historyLimit`, `total`, and a dated JSON filename.
+- `admin.html`
+  - Added an `Export History` button to the Scheduled cleanup Worker panel.
+  - The button stays disabled until the admin token is accepted.
+  - The action downloads the Worker history JSON and stores the latest export in `window._crateCleanupHistoryExport` for smoke verification.
+- `scripts/smoke-cleanup-worker.mjs`
+  - Verifies unauthenticated `/history` is blocked.
+  - If an admin token is available, verifies authenticated `/history` returns the persisted manual dry-run history.
+- `scripts/smoke-production.mjs`
+  - Verifies the live Admin dashboard exposes the export control and keeps it disabled while locked.
+  - If `CRATE_SMOKE_ADMIN_TOKEN` is available, clicks the export button and verifies the downloaded JSON payload state.
+
+Next recommended asset step:
+
+- Run `/admin.html` with a real admin token, click `Run Dry Scan`, then click `Export History` to download the first JSON audit file. After that, the next useful hardening target is adding CSV export or moving cleanup history into D1 if long-term audit retention needs more than the current rolling KV list.
+
+Previous Worker + app deploy on 2026-05-23:
 
 - Final commit deployed: `ba936ebb` (`Track cleanup worker history`)
 - Final Cloudflare deployment: `4e5fb74e-ebec-4391-97ca-8fe5ff538038`
