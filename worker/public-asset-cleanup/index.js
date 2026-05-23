@@ -28,6 +28,30 @@ const HISTORY_CSV_COLUMNS = [
   'persistedAt',
   'error',
 ];
+const AUDIT_CSV_COLUMNS = [
+  'exportGeneratedAt',
+  'worker',
+  'adminName',
+  'adminRole',
+  'runId',
+  'ok',
+  'reason',
+  'dryRun',
+  'deleteEnabled',
+  'limit',
+  'scanned',
+  'orphaned',
+  'deleted',
+  'errorCount',
+  'startedAt',
+  'finishedAt',
+  'durationMs',
+  'cron',
+  'scheduledTime',
+  'persistedAt',
+  'source',
+  'error',
+];
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -119,6 +143,37 @@ function cleanupHistoryCsv(history, meta = {}) {
   return [
     HISTORY_CSV_COLUMNS.join(','),
     ...normalized.map((row) => HISTORY_CSV_COLUMNS.map((column) => csvCell(row[column])).join(',')),
+  ].join('\r\n') + '\r\n';
+}
+
+function cleanupAuditCsv(rows, meta = {}) {
+  const normalized = (Array.isArray(rows) ? rows : []).map((run) => ({
+    exportGeneratedAt: meta.generatedAt || '',
+    worker: run?.worker || meta.worker || 'crateship-public-asset-cleanup',
+    adminName: run?.adminName || '',
+    adminRole: run?.adminRole || '',
+    runId: run?.runId || '',
+    ok: run?.ok === true ? 'true' : 'false',
+    reason: run?.reason || '',
+    dryRun: run?.dryRun !== false ? 'true' : 'false',
+    deleteEnabled: run?.deleteEnabled === true ? 'true' : 'false',
+    limit: Number(run?.limit) || 0,
+    scanned: Number(run?.scanned) || 0,
+    orphaned: Number(run?.orphaned) || 0,
+    deleted: Number(run?.deleted) || 0,
+    errorCount: Number(run?.errorCount) || 0,
+    startedAt: run?.startedAt || '',
+    finishedAt: run?.finishedAt || '',
+    durationMs: Number(run?.durationMs) || 0,
+    cron: run?.cron || '',
+    scheduledTime: Number(run?.scheduledTime) || 0,
+    persistedAt: run?.persistedAt || '',
+    source: run?.source || '',
+    error: run?.error || '',
+  }));
+  return [
+    AUDIT_CSV_COLUMNS.join(','),
+    ...normalized.map((row) => AUDIT_CSV_COLUMNS.map((column) => csvCell(row[column])).join(',')),
   ].join('\r\n') + '\r\n';
 }
 
@@ -222,6 +277,11 @@ function cleanupAuditLimit(value) {
   return Math.min(Math.max(Math.floor(limit), 1), 100);
 }
 
+function cleanupAuditOffset(value) {
+  const offset = Number(value) || 0;
+  return Math.min(Math.max(Math.floor(offset), 0), 10000);
+}
+
 function cleanupAuditReason(value) {
   const reason = String(value || 'all').trim().toLowerCase();
   if (!reason || reason === 'all') return 'all';
@@ -233,6 +293,17 @@ function cleanupAuditReason(value) {
 function cleanupAuditMode(value) {
   const mode = String(value || 'all').trim().toLowerCase();
   return ['all', 'dry-run', 'delete'].includes(mode) ? mode : 'all';
+}
+
+function cleanupAuditDate(value, edge) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? `${text}${edge === 'end' ? 'T23:59:59.999Z' : 'T00:00:00.000Z'}`
+    : text;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString();
 }
 
 function scheduledDeleteEnabled(env = {}) {
@@ -364,6 +435,9 @@ async function readCleanupAuditRows(env = {}, options = {}) {
   const reason = cleanupAuditReason(options.reason);
   const mode = cleanupAuditMode(options.mode);
   const limit = cleanupAuditLimit(options.limit);
+  const offset = cleanupAuditOffset(options.offset);
+  const from = cleanupAuditDate(options.from, 'start');
+  const to = cleanupAuditDate(options.to, 'end');
   const conditions = [];
   const binds = [];
   if (reason !== 'all') {
@@ -372,6 +446,14 @@ async function readCleanupAuditRows(env = {}, options = {}) {
   }
   if (mode === 'dry-run') conditions.push('dry_run = 1');
   if (mode === 'delete') conditions.push('dry_run = 0');
+  if (from) {
+    conditions.push('persisted_at >= ?');
+    binds.push(from);
+  }
+  if (to) {
+    conditions.push('persisted_at <= ?');
+    binds.push(to);
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   try {
     await ensureCleanupAuditSchema(db);
@@ -381,11 +463,11 @@ async function readCleanupAuditRows(env = {}, options = {}) {
       FROM cleanup_audit
       ${where}
       ORDER BY persisted_at DESC
-      LIMIT ?`;
+      LIMIT ? OFFSET ?`;
     const countSql = `SELECT COUNT(*) AS total FROM cleanup_audit ${where}`;
     const rowStatement = db.prepare(rowsSql);
     const countStatement = db.prepare(countSql);
-    const result = await rowStatement.bind(...binds, limit).all();
+    const result = await rowStatement.bind(...binds, limit, offset).all();
     const count = binds.length
       ? await countStatement.bind(...binds).first()
       : await countStatement.first();
@@ -396,9 +478,12 @@ async function readCleanupAuditRows(env = {}, options = {}) {
       reason,
       mode,
       limit,
+      offset,
+      from,
+      to,
     };
   } catch (err) {
-    return { available: false, rows: [], total: 0, reason, mode, limit, error: err?.message || String(err || 'cleanup audit D1 read failed') };
+    return { available: false, rows: [], total: 0, reason, mode, limit, offset, from, to, error: err?.message || String(err || 'cleanup audit D1 read failed') };
   }
 }
 
@@ -737,13 +822,16 @@ export default {
         csvExportFileName: `${baseFileName}.csv`,
       });
     }
-    if (request.method === 'GET' && url.pathname === '/audit') {
+    if (request.method === 'GET' && (url.pathname === '/audit' || url.pathname === '/audit.csv')) {
       const admin = requireAdmin(request, env, {});
       if (!admin.ok) return admin.response;
       const reason = cleanupAuditReason(url.searchParams.get('reason'));
       const mode = cleanupAuditMode(url.searchParams.get('mode'));
       const limit = cleanupAuditLimit(url.searchParams.get('limit'));
-      const audit = await readCleanupAuditRows(env, { reason, mode, limit });
+      const offset = cleanupAuditOffset(url.searchParams.get('offset'));
+      const from = cleanupAuditDate(url.searchParams.get('from'), 'start');
+      const to = cleanupAuditDate(url.searchParams.get('to'), 'end');
+      const audit = await readCleanupAuditRows(env, { reason, mode, limit, offset, from, to });
       if (!audit.available) {
         return json({
           ok: false,
@@ -753,18 +841,36 @@ export default {
           error: audit.error || 'Cleanup audit D1 is unavailable.',
         }, { status: 503 });
       }
+      const generatedAt = new Date().toISOString();
+      const wantsCsv = url.pathname === '/audit.csv' ||
+        String(url.searchParams.get('format') || '').toLowerCase() === 'csv' ||
+        /\btext\/csv\b/i.test(request.headers.get('accept') || '');
+      const baseFileName = `crateship-cleanup-audit-${generatedAt.slice(0, 10)}`;
+      if (wantsCsv) {
+        return csv(cleanupAuditCsv(audit.rows, {
+          generatedAt,
+          worker: 'crateship-public-asset-cleanup',
+        }), `${baseFileName}.csv`);
+      }
       return json({
         ok: true,
         worker: 'crateship-public-asset-cleanup',
-        generatedAt: new Date().toISOString(),
+        generatedAt,
         admin: admin.admin,
         source: 'd1',
         rows: audit.rows,
         total: audit.total,
         limit: audit.limit,
+        offset: audit.offset,
+        hasPrevious: audit.offset > 0,
+        hasNext: audit.offset + audit.rows.length < audit.total,
         reason: audit.reason,
         mode: audit.mode,
+        from: audit.from,
+        to: audit.to,
         d1HistoryAvailable: true,
+        exportFileName: `${baseFileName}.json`,
+        csvExportFileName: `${baseFileName}.csv`,
       });
     }
     if (request.method === 'POST' && url.pathname === '/cleanup') {

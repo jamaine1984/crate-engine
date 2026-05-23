@@ -74,6 +74,14 @@ async function main() {
     throw new Error(`Cleanup worker audit guard failed: ${blockedAuditResponse.status} ${JSON.stringify(blockedAudit)}`);
   }
 
+  const blockedAuditCsvResponse = await fetch(`${workerUrl}/audit.csv`, {
+    headers: { Accept: 'text/csv' },
+  });
+  const blockedAuditCsv = await readJson(blockedAuditCsvResponse);
+  if (blockedAuditCsvResponse.status !== 403 || !/admin authorization/i.test(blockedAuditCsv?.error || '')) {
+    throw new Error(`Cleanup worker audit CSV guard failed: ${blockedAuditCsvResponse.status} ${JSON.stringify(blockedAuditCsv)}`);
+  }
+
   let authed = null;
   if (adminToken) {
     const dryRunResponse = await fetch(`${workerUrl}/cleanup`, {
@@ -162,10 +170,27 @@ async function main() {
         audit.source !== 'd1' ||
         !Array.isArray(audit.rows) ||
         audit.rows.length < 1 ||
+        Number(audit.limit) <= 0 ||
+        Number(audit.offset) !== 0 ||
+        audit.hasPrevious !== false ||
         latestAudit?.reason !== 'manual-api' ||
         latestAudit?.dryRun !== true ||
         (authed.runId && latestAudit?.runId !== authed.runId)) {
       throw new Error(`Cleanup worker authenticated audit browser failed: ${auditResponse.status} ${JSON.stringify(audit)}`);
+    }
+    const auditCsvResponse = await fetch(`${workerUrl}/audit.csv?limit=10&reason=manual-api&mode=dry-run`, {
+      headers: {
+        Accept: 'text/csv',
+        'X-Crate-Admin-Token': adminToken,
+      },
+    });
+    const auditCsv = await auditCsvResponse.text();
+    if (auditCsvResponse.status !== 200 ||
+        !/text\/csv/i.test(auditCsvResponse.headers.get('content-type') || '') ||
+        !/^exportGeneratedAt,worker,adminName,adminRole,runId,/i.test(auditCsv) ||
+        !/manual-api/i.test(auditCsv) ||
+        !/cleanup-audit/i.test(auditCsvResponse.headers.get('content-disposition') || '')) {
+      throw new Error(`Cleanup worker authenticated audit CSV export failed: ${auditCsvResponse.status} ${auditCsv.slice(0, 300)}`);
     }
   }
 
@@ -176,7 +201,7 @@ async function main() {
     ? `Last run: ${healthLastRun.reason || 'unknown'} scanned ${healthLastRun.scanned || 0}, orphaned ${healthLastRun.orphaned || 0}, deleted ${healthLastRun.deleted || 0}, errors ${healthLastRun.errorCount || 0}`
     : 'Last run: none persisted yet.');
   console.log(`History: ${Array.isArray(health.history) ? health.history.length : 0}/${health.historyLimit || 0} persisted runs`);
-  console.log(`Guard: cleanup ${blockedResponse.status}, history ${blockedHistoryResponse.status}, csv ${blockedCsvResponse.status}, audit ${blockedAuditResponse.status}`);
+  console.log(`Guard: cleanup ${blockedResponse.status}, history ${blockedHistoryResponse.status}, csv ${blockedCsvResponse.status}, audit ${blockedAuditResponse.status}, audit csv ${blockedAuditCsvResponse.status}`);
   if (authed) {
     console.log(`Authed dry run: scanned ${authed.scanned}, orphaned ${authed.orphaned}, deleted ${authed.deleted}, errors ${authed.errors}, persisted ${authed.lastRunPersisted ? 'yes' : 'no'}, history ${authed.historyPersisted ? 'yes' : 'no'} (${authed.historyCount}), d1 ${authed.d1HistoryPersisted ? 'yes' : 'no'} source ${authed.historySource || 'missing'}, audit rows ${authed.auditRows}`);
   } else {

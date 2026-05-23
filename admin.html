@@ -25,8 +25,8 @@ h1{font-size:clamp(1.8rem,3vw,3.1rem);margin:0;color:#fff;line-height:1.05}
 .status-pill.err{border-color:#713030;background:#251010;color:#fca5a5}
 .auth,.storage-panel,.toolbar,.review-note,.table-panel,.audit-detail{border:1px solid #1d2a31;background:#0b1116;border-radius:12px}
 .auth{display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;gap:10px;align-items:center;padding:14px;margin-bottom:14px}
-.auth input,.toolbar input,.toolbar select,.cleanup-audit select{width:100%;background:#05080a;border:1px solid #24323b;border-radius:9px;color:#e7eef2;padding:10px 11px;outline:none}
-.auth input:focus,.toolbar input:focus,.toolbar select:focus,.cleanup-audit select:focus{border-color:#7ddf9e}
+.auth input,.toolbar input,.toolbar select,.cleanup-audit select,.cleanup-audit input{width:100%;background:#05080a;border:1px solid #24323b;border-radius:9px;color:#e7eef2;padding:10px 11px;outline:none}
+.auth input:focus,.toolbar input:focus,.toolbar select:focus,.cleanup-audit select:focus,.cleanup-audit input:focus{border-color:#7ddf9e}
 button{border:1px solid #2d3a42;background:#121a20;color:#e7eef2;border-radius:9px;padding:10px 12px;cursor:pointer;font-weight:800}
 button.primary{background:#7ddf9e;color:#061009;border-color:#7ddf9e}
 button.warn{background:#221a08;color:#f7d774;border-color:#6e5317}
@@ -95,7 +95,7 @@ td{color:#dce7eb;font-size:.86rem}
 .audit-change{border:1px solid #263943;background:#101820;border-radius:999px;padding:4px 8px;color:#c8d5db;font-size:.72rem}
 .audit-note{color:#dce7eb;font-size:.8rem;line-height:1.4;margin-top:8px}
 .cleanup-audit .storage-actions{justify-content:flex-start}
-.cleanup-audit select{min-width:128px}
+.cleanup-audit select,.cleanup-audit input{min-width:128px}
 .cleanup-audit[data-status="loaded"]{border-color:#1f6847;background:#08140f}
 .cleanup-audit[data-status="failed"]{border-color:#713030;background:#160b0b}
 .cleanup-audit[data-status="loading"]{border-color:#775d18;background:#171307}
@@ -205,6 +205,11 @@ td{color:#dce7eb;font-size:.86rem}
           <option value="dry-run">Dry runs</option>
           <option value="delete">Delete runs</option>
         </select>
+        <input id="cleanup-audit-from" type="date" aria-label="Cleanup audit start date">
+        <input id="cleanup-audit-to" type="date" aria-label="Cleanup audit end date">
+        <button id="cleanup-audit-prev" type="button">Previous</button>
+        <button id="cleanup-audit-next" type="button">Next</button>
+        <button id="export-cleanup-audit-csv" type="button">Export CSV</button>
         <button id="refresh-cleanup-audit" type="button">Refresh Audit</button>
       </div>
     </div>
@@ -327,6 +332,11 @@ td{color:#dce7eb;font-size:.86rem}
     cleanupAuditSummary: document.getElementById('cleanup-audit-summary'),
     cleanupAuditReason: document.getElementById('cleanup-audit-reason'),
     cleanupAuditMode: document.getElementById('cleanup-audit-mode'),
+    cleanupAuditFrom: document.getElementById('cleanup-audit-from'),
+    cleanupAuditTo: document.getElementById('cleanup-audit-to'),
+    cleanupAuditPrevious: document.getElementById('cleanup-audit-prev'),
+    cleanupAuditNext: document.getElementById('cleanup-audit-next'),
+    cleanupAuditCsvExport: document.getElementById('export-cleanup-audit-csv'),
     cleanupAuditRefresh: document.getElementById('refresh-cleanup-audit'),
     cleanupAuditRows: document.getElementById('cleanup-audit-rows'),
     rows: document.getElementById('admin-rows'),
@@ -361,7 +371,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
     cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, hasAuditStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, exporting: false, exportFormat: '', lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, d1HistoryAvailable: false, d1HistoryPersisted: false, historySource: '', kvHistoryCount: 0, exportCount: 0, exportFileName: '', error: '' },
-    cleanupAudit: { status: 'locked', rows: [], total: 0, source: '', reason: 'all', mode: 'all', error: '' },
+    cleanupAudit: { status: 'locked', rows: [], total: 0, source: '', reason: 'all', mode: 'all', from: '', to: '', limit: 24, offset: 0, hasPrevious: false, hasNext: false, exporting: false, exportCount: 0, exportFileName: '', error: '' },
     error: '',
   };
 
@@ -452,6 +462,9 @@ td{color:#dce7eb;font-size:.86rem}
       hasCleanupWorkerCsvExport: !!els.cleanupWorkerCsvExport,
       hasCleanupAudit: !!els.cleanupAuditPanel,
       hasCleanupAuditRefresh: !!els.cleanupAuditRefresh,
+      hasCleanupAuditCsvExport: !!els.cleanupAuditCsvExport,
+      hasCleanupAuditPaging: !!(els.cleanupAuditPrevious && els.cleanupAuditNext),
+      hasCleanupAuditDateFilters: !!(els.cleanupAuditFrom && els.cleanupAuditTo),
       auditDetailStatus: state.auditDetail?.status || 'empty',
       auditDetailSlug: state.auditDetail?.slug || '',
       auditDetailRows: Number(state.auditDetail?.rows) || 0,
@@ -509,7 +522,19 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupAuditSource: state.cleanupAudit?.source || '',
       cleanupAuditReason: state.cleanupAudit?.reason || 'all',
       cleanupAuditMode: state.cleanupAudit?.mode || 'all',
+      cleanupAuditFrom: state.cleanupAudit?.from || '',
+      cleanupAuditTo: state.cleanupAudit?.to || '',
+      cleanupAuditLimit: Number(state.cleanupAudit?.limit) || 0,
+      cleanupAuditOffset: Number(state.cleanupAudit?.offset) || 0,
+      cleanupAuditHasPrevious: state.cleanupAudit?.hasPrevious === true,
+      cleanupAuditHasNext: state.cleanupAudit?.hasNext === true,
+      cleanupAuditExporting: state.cleanupAudit?.exporting === true,
+      cleanupAuditExportCount: Number(state.cleanupAudit?.exportCount) || 0,
+      cleanupAuditExportFileName: state.cleanupAudit?.exportFileName || '',
       cleanupAuditRefreshDisabled: els.cleanupAuditRefresh?.disabled === true,
+      cleanupAuditCsvExportDisabled: els.cleanupAuditCsvExport?.disabled === true,
+      cleanupAuditPreviousDisabled: els.cleanupAuditPrevious?.disabled === true,
+      cleanupAuditNextDisabled: els.cleanupAuditNext?.disabled === true,
       cleanupAuditEmptyVisible: !!els.cleanupAuditRows?.querySelector('.empty'),
       cleanupAuditLatestReason: Array.isArray(state.cleanupAudit?.rows) && state.cleanupAudit.rows[0] ? state.cleanupAudit.rows[0].reason || '' : '',
       cleanupAuditLatestDryRun: Array.isArray(state.cleanupAudit?.rows) && state.cleanupAudit.rows[0] ? state.cleanupAudit.rows[0].dryRun !== false : false,
@@ -773,17 +798,37 @@ td{color:#dce7eb;font-size:.86rem}
     const status = audit.status || (token ? 'ready' : 'locked');
     const locked = !token || state.status !== 'loaded';
     const loading = status === 'loading';
+    const exporting = audit.exporting === true;
+    const disabled = locked || loading || exporting;
     els.cleanupAuditPanel.dataset.status = locked ? 'locked' : status;
     if (els.cleanupAuditReason) {
-      els.cleanupAuditReason.disabled = locked || loading;
+      els.cleanupAuditReason.disabled = disabled;
       els.cleanupAuditReason.value = audit.reason || els.cleanupAuditReason.value || 'all';
     }
     if (els.cleanupAuditMode) {
-      els.cleanupAuditMode.disabled = locked || loading;
+      els.cleanupAuditMode.disabled = disabled;
       els.cleanupAuditMode.value = audit.mode || els.cleanupAuditMode.value || 'all';
     }
+    if (els.cleanupAuditFrom) {
+      els.cleanupAuditFrom.disabled = disabled;
+      els.cleanupAuditFrom.value = audit.from || '';
+    }
+    if (els.cleanupAuditTo) {
+      els.cleanupAuditTo.disabled = disabled;
+      els.cleanupAuditTo.value = audit.to || '';
+    }
+    if (els.cleanupAuditPrevious) {
+      els.cleanupAuditPrevious.disabled = disabled || audit.hasPrevious !== true;
+    }
+    if (els.cleanupAuditNext) {
+      els.cleanupAuditNext.disabled = disabled || audit.hasNext !== true;
+    }
+    if (els.cleanupAuditCsvExport) {
+      els.cleanupAuditCsvExport.disabled = disabled;
+      els.cleanupAuditCsvExport.textContent = exporting ? 'Exporting...' : 'Export CSV';
+    }
     if (els.cleanupAuditRefresh) {
-      els.cleanupAuditRefresh.disabled = locked || loading;
+      els.cleanupAuditRefresh.disabled = disabled;
       els.cleanupAuditRefresh.textContent = loading ? 'Loading...' : 'Refresh Audit';
     }
     if (els.cleanupAuditSummary) {
@@ -795,12 +840,16 @@ td{color:#dce7eb;font-size:.86rem}
         els.cleanupAuditSummary.textContent = 'Admin token rejected. Cleanup audit is locked.';
       } else if (loading) {
         els.cleanupAuditSummary.textContent = 'Loading cleanup audit rows from D1...';
+      } else if (exporting) {
+        els.cleanupAuditSummary.textContent = 'Preparing cleanup audit CSV export...';
       } else if (status === 'failed') {
         els.cleanupAuditSummary.textContent = audit.error || 'Cleanup audit failed to load.';
       } else if (status === 'loaded') {
         const total = Number(audit.total) || rows.length;
+        const offset = Number(audit.offset) || 0;
+        const end = offset + rows.length;
         els.cleanupAuditSummary.textContent = rows.length
-          ? 'D1 cleanup audit loaded ' + rows.length + ' of ' + total + ' matching rows.'
+          ? 'D1 cleanup audit showing ' + (offset + 1) + '-' + end + ' of ' + total + ' matching rows.'
           : 'No cleanup audit rows match the selected filters.';
       } else {
         els.cleanupAuditSummary.textContent = 'Refresh to browse cleanup Worker D1 audit rows.';
@@ -1043,7 +1092,7 @@ td{color:#dce7eb;font-size:.86rem}
         },
         error: '',
       });
-      loadCleanupAudit();
+      loadCleanupAudit({ offset: 0 });
     } catch (err) {
       const message = err?.message || String(err || 'Cleanup Worker dry scan failed');
       els.authStatus.textContent = message;
@@ -1203,26 +1252,41 @@ td{color:#dce7eb;font-size:.86rem}
     }
   }
 
-  async function loadCleanupAudit() {
+  function cleanupAuditFilterState(overrides) {
+    const next = overrides || {};
+    const limit = Number(next.limit) || Number(state.cleanupAudit?.limit) || 24;
+    return {
+      reason: next.reason || els.cleanupAuditReason?.value || state.cleanupAudit?.reason || 'all',
+      mode: next.mode || els.cleanupAuditMode?.value || state.cleanupAudit?.mode || 'all',
+      from: Object.prototype.hasOwnProperty.call(next, 'from') ? next.from : (els.cleanupAuditFrom?.value || state.cleanupAudit?.from || ''),
+      to: Object.prototype.hasOwnProperty.call(next, 'to') ? next.to : (els.cleanupAuditTo?.value || state.cleanupAudit?.to || ''),
+      limit,
+      offset: Math.max(0, Number(next.offset) || 0),
+    };
+  }
+
+  async function loadCleanupAudit(options) {
+    const filters = cleanupAuditFilterState(options);
     const token = readToken();
-    const reason = els.cleanupAuditReason?.value || state.cleanupAudit?.reason || 'all';
-    const mode = els.cleanupAuditMode?.value || state.cleanupAudit?.mode || 'all';
     if (!token || state.status !== 'loaded') {
       setState({
-        cleanupAudit: { status: 'locked', rows: [], total: 0, source: '', reason, mode, error: '' },
+        cleanupAudit: Object.assign({}, state.cleanupAudit || {}, filters, { status: 'locked', rows: [], total: 0, source: '', hasPrevious: false, hasNext: false, exporting: false, error: '' }),
       });
       return;
     }
     setState({
-      cleanupAudit: { status: 'loading', rows: [], total: 0, source: '', reason, mode, error: '' },
+      cleanupAudit: Object.assign({}, state.cleanupAudit || {}, filters, { status: 'loading', rows: [], total: 0, source: '', hasPrevious: false, hasNext: false, exporting: false, error: '' }),
       error: '',
     });
     try {
       const params = new URLSearchParams({
-        limit: '24',
-        reason,
-        mode,
+        limit: String(filters.limit),
+        offset: String(filters.offset),
+        reason: filters.reason,
+        mode: filters.mode,
       });
+      if (filters.from) params.set('from', filters.from);
+      if (filters.to) params.set('to', filters.to);
       const response = await fetch(CLEANUP_WORKER_URL + '/audit?' + params.toString(), {
         headers: headers(false),
       });
@@ -1238,8 +1302,15 @@ td{color:#dce7eb;font-size:.86rem}
           rows: payload.rows,
           total: Number(payload.total) || payload.rows.length,
           source: payload.source || 'd1',
-          reason: payload.reason || reason,
-          mode: payload.mode || mode,
+          reason: payload.reason || filters.reason,
+          mode: payload.mode || filters.mode,
+          from: filters.from,
+          to: filters.to,
+          limit: Number(payload.limit) || filters.limit,
+          offset: Number(payload.offset) || 0,
+          hasPrevious: payload.hasPrevious === true,
+          hasNext: payload.hasNext === true,
+          exporting: false,
           error: '',
         },
         error: '',
@@ -1247,9 +1318,72 @@ td{color:#dce7eb;font-size:.86rem}
     } catch (err) {
       const message = err?.message || String(err || 'Cleanup audit failed');
       setState({
-        cleanupAudit: { status: 'failed', rows: [], total: 0, source: '', reason, mode, error: message },
+        cleanupAudit: Object.assign({}, state.cleanupAudit || {}, filters, { status: 'failed', rows: [], total: 0, source: '', hasPrevious: false, hasNext: false, exporting: false, error: message }),
         error: message,
       });
+    }
+  }
+
+  async function exportCleanupAuditCsv(button) {
+    const token = readToken();
+    const filters = cleanupAuditFilterState({ offset: 0, limit: 100 });
+    if (!token || state.status !== 'loaded') {
+      els.authStatus.textContent = 'Enter the admin token before exporting cleanup audit rows.';
+      els.token?.focus();
+      setState({
+        cleanupAudit: Object.assign({}, state.cleanupAudit || {}, filters, { exporting: false, error: '' }),
+      });
+      return;
+    }
+    const previous = state.cleanupAudit || {};
+    setState({
+      cleanupAudit: Object.assign({}, previous, filters, { exporting: true, error: '' }),
+      error: '',
+    });
+    try {
+      const params = new URLSearchParams({
+        limit: String(filters.limit),
+        offset: '0',
+        reason: filters.reason,
+        mode: filters.mode,
+        format: 'csv',
+      });
+      if (filters.from) params.set('from', filters.from);
+      if (filters.to) params.set('to', filters.to);
+      const response = await fetch(CLEANUP_WORKER_URL + '/audit.csv?' + params.toString(), {
+        headers: Object.assign({}, headers(false), { Accept: 'text/csv' }),
+      });
+      const text = await response.text();
+      if (!response.ok || !/^exportGeneratedAt,worker,adminName,adminRole,runId,/i.test(text)) {
+        const message = /admin authorization/i.test(text) ? 'Admin authorization is required to export cleanup audit rows.' : 'Cleanup audit CSV export failed with HTTP ' + response.status;
+        const err = new Error(message);
+        err.status = response.status;
+        throw err;
+      }
+      const fileName = fileNameFromDisposition(response.headers.get('content-disposition'), 'crateship-cleanup-audit.csv');
+      const rowCount = exportRowCountFromCsv(text);
+      window._crateCleanupAuditCsvExport = { ok: true, text, fileName, rowCount };
+      downloadTextFile(text, fileName, 'text/csv');
+      els.authStatus.textContent = 'Cleanup audit CSV export prepared.';
+      setState({
+        cleanupAudit: Object.assign({}, previous, filters, {
+          status: previous.status || 'loaded',
+          exporting: false,
+          exportCount: rowCount,
+          exportFileName: fileName,
+          error: '',
+        }),
+        error: '',
+      });
+    } catch (err) {
+      const message = err?.message || String(err || 'Cleanup audit CSV export failed');
+      els.authStatus.textContent = message;
+      setState({
+        cleanupAudit: Object.assign({}, previous, filters, { exporting: false, error: message }),
+        error: message,
+      });
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -1349,7 +1483,7 @@ td{color:#dce7eb;font-size:.86rem}
         auditStorage: { status: 'locked', source: '', writeVerified: false },
         auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
         assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
-        cleanupAudit: { status: 'locked', rows: [], total: 0, source: '', reason: els.cleanupAuditReason?.value || 'all', mode: els.cleanupAuditMode?.value || 'all', error: '' },
+        cleanupAudit: { status: 'locked', rows: [], total: 0, source: '', reason: els.cleanupAuditReason?.value || 'all', mode: els.cleanupAuditMode?.value || 'all', from: els.cleanupAuditFrom?.value || '', to: els.cleanupAuditTo?.value || '', limit: 24, offset: 0, hasPrevious: false, hasNext: false, exporting: false, exportCount: 0, exportFileName: '', error: '' },
         error: '',
       });
       renderRows([]);
@@ -1408,7 +1542,7 @@ td{color:#dce7eb;font-size:.86rem}
         auditStorage: { status: unauthorized ? 'locked' : 'failed', source: '', writeVerified: false },
         auditBackfill: { status: unauthorized ? 'locked' : 'failed', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
         assetCleanup: { status: unauthorized ? 'locked' : 'failed', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
-        cleanupAudit: { status: unauthorized ? 'locked' : 'failed', rows: [], total: 0, source: '', reason: els.cleanupAuditReason?.value || 'all', mode: els.cleanupAuditMode?.value || 'all', error: err?.message || String(err || 'Admin load failed') },
+        cleanupAudit: { status: unauthorized ? 'locked' : 'failed', rows: [], total: 0, source: '', reason: els.cleanupAuditReason?.value || 'all', mode: els.cleanupAuditMode?.value || 'all', from: els.cleanupAuditFrom?.value || '', to: els.cleanupAuditTo?.value || '', limit: 24, offset: 0, hasPrevious: false, hasNext: false, exporting: false, exportCount: 0, exportFileName: '', error: err?.message || String(err || 'Admin load failed') },
         error: err?.message || String(err || 'Admin load failed'),
       });
       renderRows([]);
@@ -1629,9 +1763,14 @@ td{color:#dce7eb;font-size:.86rem}
   els.cleanupWorkerExport?.addEventListener('click', (event) => exportCleanupWorkerHistory(event.currentTarget, 'json'));
   els.cleanupWorkerCsvExport?.addEventListener('click', (event) => exportCleanupWorkerHistory(event.currentTarget, 'csv'));
   els.cleanupWorkerRefresh?.addEventListener('click', () => loadCleanupWorkerStatus());
-  els.cleanupAuditRefresh?.addEventListener('click', () => loadCleanupAudit());
-  els.cleanupAuditReason?.addEventListener('change', () => loadCleanupAudit());
-  els.cleanupAuditMode?.addEventListener('change', () => loadCleanupAudit());
+  els.cleanupAuditRefresh?.addEventListener('click', () => loadCleanupAudit({ offset: Number(state.cleanupAudit?.offset) || 0 }));
+  els.cleanupAuditReason?.addEventListener('change', () => loadCleanupAudit({ offset: 0 }));
+  els.cleanupAuditMode?.addEventListener('change', () => loadCleanupAudit({ offset: 0 }));
+  els.cleanupAuditFrom?.addEventListener('change', () => loadCleanupAudit({ offset: 0 }));
+  els.cleanupAuditTo?.addEventListener('change', () => loadCleanupAudit({ offset: 0 }));
+  els.cleanupAuditPrevious?.addEventListener('click', () => loadCleanupAudit({ offset: Math.max(0, (Number(state.cleanupAudit?.offset) || 0) - (Number(state.cleanupAudit?.limit) || 24)) }));
+  els.cleanupAuditNext?.addEventListener('click', () => loadCleanupAudit({ offset: (Number(state.cleanupAudit?.offset) || 0) + (Number(state.cleanupAudit?.limit) || 24) }));
+  els.cleanupAuditCsvExport?.addEventListener('click', (event) => exportCleanupAuditCsv(event.currentTarget));
   els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {
     if (els.noteCount) els.noteCount.textContent = String((els.note?.value || '').trim().length) + ' / 240';
