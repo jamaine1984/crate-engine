@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `c74bb62e`
+- Current deployed source commit for the public engine code: `353fe3b1`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -30,10 +30,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `84b7b236-1436-46c5-a8b2-a2edc5284a93`
-- Latest production deployment URL: `https://84b7b236.crateship-games.pages.dev`
+- Latest production deployment ID: `b1c55738-6279-4419-bf93-d5b453801419`
+- Latest production deployment URL: `https://b1c55738.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `c74bb62`
+- Source shown by Cloudflare: `353fe3b`
 - Main live page bundle after the deploy: `/assets/play-K36VOxZs.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-D-vHjpFi.js`
@@ -44,6 +44,47 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-22:
+
+- Final commit deployed: `353fe3b1` (`Clean up published public assets`)
+- Final Cloudflare deployment: `b1c55738-6279-4419-bf93-d5b453801419`
+- Final deployment URL: `https://b1c55738.crateship-games.pages.dev`
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=353fe3b1e40672a45a038887f77883c89cf6bb44 --commit-message="Clean up published public assets" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Main app bundle: `/assets/play-K36VOxZs.js`
+- Lazy App Builder chunk: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk: `/assets/game-builder-ui-D-vHjpFi.js`
+- Lazy Asset Browser chunk: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=asset-cleanup-353fe3b`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-asset-cleanup-353fe3b`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-asset-cleanup-353fe3b.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-asset-cleanup-353fe3b.png`
+- Production smoke now proves the published-game delete path removes the public R2 GLB object and metadata: `Published cleanup: game delete 200, public asset 404/404, removed 1/1`.
+- Publish updates now garbage-collect public assets no longer referenced by the new game record, and asset republish removes the old public object if the filename/key changes.
+
+What changed in this deploy:
+
+- `functions/api/assets/[[path]].js`
+  - Public asset republish reads the old public metadata and deletes the previous public R2 object when the public ID now points at a different object key.
+- `functions/api/games/[[path]].js`
+  - Published-game publish/delete paths clean up public R2 asset copies that are no longer referenced.
+  - Delete responses include `publicAssetCleanup` counts so operations and smokes can prove the cleanup result.
+- `scripts/smoke-production.mjs`
+  - Production smoke deletes its published game, checks the public asset detail/download routes both return 404, and checks the published game API returns 404 after delete.
+
+Next recommended asset step:
+
+- Add a creator-facing storage/quota panel for private and public R2 assets, plus a scheduled cleanup/backfill for older public assets created before lifecycle cleanup existed.
+
+Previous app-only deploy on 2026-05-22:
 
 - Final commit deployed: `c74bb62e` (`Check private asset rejection outside browser console`)
 - Final Cloudflare deployment: `84b7b236-1436-46c5-a8b2-a2edc5284a93`
