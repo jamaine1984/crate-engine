@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `457fd0fa`
+- Current deployed source commit for the public engine code: `2c94f64b`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,20 +36,72 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `5da7a94a-2d41-4758-9fcf-6f84c14c1407`
-- Latest production deployment URL: `https://5da7a94a.crateship-games.pages.dev`
+- Latest production deployment ID: `6b239fde-0d0c-47d8-bf7e-64b0254581d5`
+- Latest production deployment URL: `https://6b239fde.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `457fd0f`
-- Main live page bundle after the deploy: `/assets/play-GOnYZnjj.js`
+- Source shown by Cloudflare: `2c94f64`
+- Main live page bundle after the deploy: `/assets/play-Dl4A4inQ.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-B_LCiV29.js`
-- Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-cfqoMh02.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui--3ebzf1Z.js`
+- Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `2c94f64b` (`Improve mobile asset menu access`)
+- Final Cloudflare deployment: `6b239fde-0d0c-47d8-bf7e-64b0254581d5`
+- Final deployment URL: `https://6b239fde.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- A preliminary deployment `01c441f9-ee34-4471-bcc3-c904e4db1476` used source `61644d4`; it was immediately superseded by the final `2c94f64b` deployment after the smoke selector was hardened for the new duplicate Asset Library button.
+- App deploy command:
+
+```powershell
+npm run check
+git diff --check
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=2c94f64bc82c01027c83ca9a722f8a5710fb24c6 --commit-message="Improve mobile asset menu access" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Deploy upload evidence: final deploy uploaded `0` changed files and reused `111` already-uploaded files after the preliminary app deploy uploaded `10` changed files and reused `101` already-uploaded files; both uploaded the Functions bundle, `_headers`, and `_routes.json`.
+- Main app bundle after deploy: `/assets/play-Dl4A4inQ.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui--3ebzf1Z.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=mobile-assets-2c94f64`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-mobile-assets-2c94f64`
+- Targeted mobile asset probe passed: `https://crateshipgames.com/play?verify=targeted-mobile-assets-2c94f64`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-mobile-assets-2c94f64.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-mobile-assets-2c94f64.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\targeted-mobile-assets-2c94f64.png`
+- Production smoke evidence:
+  - Apex smoke loaded `/assets/play-Dl4A4inQ.js`, asset host manifest `6f09cc09da2f`, and the separate asset host returned `200` for checked GLB/BIN/JPG assets and expected `404` for the missing asset check.
+  - Build City created at least `113` objects with `47` components and `4` scripts on apex; `www` created at least `127` objects with `48` components and `4` scripts.
+  - Apex phone and tablet viewport probes both placed `Bathroom Bathtub` from the mobile Quick Tools asset path; gallery search stayed onscreen and the quick Asset Library button top was `268`.
+  - Apex raw Build City frame probe: `59.5 FPS`, `16.8 ms` average frame, `1 ms` update, `15.8 ms` render.
+  - Apex viewport probes passed: phone `208.3 FPS` at renderer DPR `1.25`; tablet `58.1 FPS` at renderer DPR `1`.
+  - WWW smoke passed publish, marketplace, game detail, project save/load, playable export, validation, admin guard, cleanup Worker readiness, asset host, inventory, mission, NPC, merchant, door trigger, enemy wave, and respawn flows.
+  - Targeted phone probe verified Quick Tools display `block`, the Asset Library button visible at `top 268/bottom 304`, Furniture category count `223`, category search within `65..325`, gallery search within `16..236`, `Bathroom Bathtub` placement at `/models/house_interior_pack_bathroom_bathtub.glb`, and `0` bad model/texture responses.
+
+What changed in this deploy:
+
+- `game-builder-ui.mjs`
+  - Added a mobile-only `Quick Tools` section near the top of the Builder panel so Asset Library, Build City, Import, and Play are reachable without scrolling through the full tool stack.
+  - Kept the quick section hidden on desktop and visible only in the `max-width:900px` layout.
+- `asset-browser-ui.mjs`
+  - Reworked the gallery header so the title, model count, search field, and close button wrap cleanly on phone widths.
+  - Constrained the gallery search input and asset grid so the Furniture gallery no longer runs off the right edge on a `390px` viewport.
+- `scripts/smoke-production.mjs`
+  - Added phone/tablet production smoke coverage for opening the mobile Quick Tools Asset Library, opening Furniture, verifying gallery layout, and placing a GLB.
+  - Hardened the existing Builder asset-menu smoke selector so it targets the regular Builder asset button when Quick Tools adds a second Asset Library button.
+
+Previous app-only deploy on 2026-05-23:
 
 - Final commit deployed: `457fd0fa` (`Harden play camera mode guard`)
 - Final Cloudflare deployment: `5da7a94a-2d41-4758-9fcf-6f84c14c1407`
