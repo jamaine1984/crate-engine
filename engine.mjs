@@ -1578,12 +1578,31 @@ function syncPlayCameraFromCurrentView() {
   camera.updateMatrixWorld();
 }
 
-function lockPlayCameraRoll() {
-  if (!playMode || activeVehicle || window._crateAllowCameraRoll === true) return;
+function lockPlayCameraRoll(reason = 'frame') {
+  if (!playMode || !camera) return;
+  try {
+    if (controls) {
+      controls.enabled = false;
+      controls.enableDamping = false;
+    }
+  } catch {}
+  if (activeVehicle || window._crateAllowCameraRoll === true) return;
+  const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+  const yaw = Number.isFinite(euler.y) ? euler.y : playYaw;
+  const pitch = THREE.MathUtils.clamp(Number.isFinite(euler.x) ? euler.x : camera.rotation.x || 0, -1.15, 1.15);
+  playYaw = yaw;
   camera.rotation.order = 'YXZ';
-  camera.rotation.z = 0;
+  camera.rotation.set(pitch, yaw, 0, 'YXZ');
   camera.up.set(0, 1, 0);
   camera.updateMatrixWorld();
+  window._playCameraStability = {
+    reason,
+    controlsEnabled: controls?.enabled === true,
+    x: camera.rotation.x,
+    y: camera.rotation.y,
+    z: camera.rotation.z,
+    updatedAt: Date.now(),
+  };
 }
 
 function resetPlayCameraView() {
@@ -1605,6 +1624,12 @@ function resetPlayCameraView() {
     finishedAt: Date.now(),
   };
   return window._lastPlayCameraReset;
+}
+
+function guardPlayCameraInputEvent(event) {
+  if (!playMode) return;
+  if (event?.type === 'wheel') event.preventDefault();
+  lockPlayCameraRoll('input-' + (event?.type || 'unknown'));
 }
 
 window.addEventListener('keydown', e => { playKeys[e.key.toLowerCase()] = true; });
@@ -1746,8 +1771,7 @@ function _activatePlayMode() {
   // Play mode owns camera input. Keep editor orbit controls off so scroll/drag cannot tilt the world.
   try { 
     syncPlayCameraFromCurrentView();
-    controls.enabled = false;
-    controls.enableDamping = false;
+    lockPlayCameraRoll('enter-play');
   } catch(e) {}
   
   // Camera mode — no character spawn needed
@@ -1911,6 +1935,11 @@ setTimeout(() => {
     canvasEl.addEventListener('contextmenu', (e) => {
       if (playMode) e.preventDefault(); // Prevent right-click menu in play mode
     });
+    canvasEl.addEventListener('wheel', guardPlayCameraInputEvent, { capture: true, passive: false });
+    canvasEl.addEventListener('pointerdown', guardPlayCameraInputEvent, { capture: true });
+    canvasEl.addEventListener('pointermove', guardPlayCameraInputEvent, { capture: true });
+    canvasEl.addEventListener('touchstart', guardPlayCameraInputEvent, { capture: true, passive: false });
+    canvasEl.addEventListener('touchmove', guardPlayCameraInputEvent, { capture: true, passive: false });
         canvasEl.addEventListener('click', () => { if (playMode) canvasEl.requestPointerLock(); });
     document.addEventListener('pointermove', (e) => {
       // Skip only when an active character camera owns view control.
@@ -1923,6 +1952,7 @@ setTimeout(() => {
         camera.rotation.x = pitch;
         camera.rotation.z = 0;
         camera.up.set(0, 1, 0);
+        lockPlayCameraRoll('pointer-lock');
       }
     });
   }
@@ -14016,6 +14046,7 @@ function animate() {
     characterController.isGrounded = true;
   }
 
+  if (crateFrame.play) lockPlayCameraRoll('pre-render');
   const renderStart = performance.now();
   if (ppEnabled && composer && !window._composerDisabled) {
       if (window._colorPass) window._colorPass.uniforms.time.value = performance.now() * 0.001;

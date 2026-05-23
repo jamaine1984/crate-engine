@@ -2918,17 +2918,30 @@ async function runBrowserSmoke() {
       cameraOwned: window._isCharacterCameraOwned?.() === true,
       cameraOnly: window._engine?.character?._cameraOnlyMode === true,
     }));
-    const playCameraGuardState = await page.evaluate(() => {
-      if (window._engine?.camera) window._engine.camera.rotation.z = 0.35;
-      window._lockPlayCameraRoll?.();
+    const playCameraGuardState = await page.evaluate(async () => {
+      if (window._engine?.controls) {
+        window._engine.controls.enabled = true;
+        window._engine.controls.enableDamping = true;
+      }
+      if (window._engine?.camera) {
+        const yaw = window._engine.camera.rotation.y || 0;
+        window._engine.camera.rotation.set(-1.55, yaw, 0.35, 'YXZ');
+      }
+      window._lockPlayCameraRoll?.('smoke-forced-controls');
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       return {
+        x: window._engine?.camera?.rotation.x || 0,
         z: window._engine?.camera?.rotation.z || 0,
+        controlsEnabled: window._engine?.controls?.enabled,
         cameraOwned: window._isCharacterCameraOwned?.() === true,
         cameraOnly: window._engine?.character?._cameraOnlyMode === true,
+        stability: window._playCameraStability || null,
       };
     });
-    if (Math.abs(playCameraGuardState.z) > 0.02) {
-      throw new Error(`Play camera roll guard did not flatten camera roll: ${JSON.stringify(playCameraGuardState)}`);
+    if (Math.abs(playCameraGuardState.z) > 0.02 ||
+        Math.abs(playCameraGuardState.x) > 1.16 ||
+        playCameraGuardState.controlsEnabled !== false) {
+      throw new Error(`Play camera guard did not clamp pitch, flatten roll, and disable editor controls: ${JSON.stringify(playCameraGuardState)}`);
     }
     const playCameraResetState = await page.evaluate(() => {
       if (window._engine?.camera) window._engine.camera.rotation.z = 0.42;
@@ -2957,9 +2970,12 @@ async function runBrowserSmoke() {
       y: window._engine?.camera?.rotation.y || 0,
       z: window._engine?.camera?.rotation.z || 0,
       controlsEnabled: window._engine?.controls?.enabled,
+      stability: window._playCameraStability || null,
     }));
-    if (Math.abs(playCameraAfter.z) > 0.02 || playCameraAfter.controlsEnabled !== false) {
-      throw new Error(`Play camera scroll/drag introduced roll or re-enabled orbit controls: ${JSON.stringify({ before: playCameraBefore, after: playCameraAfter })}`);
+    if (Math.abs(playCameraAfter.z) > 0.02 ||
+        Math.abs(playCameraAfter.x) > 1.16 ||
+        playCameraAfter.controlsEnabled !== false) {
+      throw new Error(`Play camera scroll/drag introduced tilt or re-enabled orbit controls: ${JSON.stringify({ before: playCameraBefore, after: playCameraAfter })}`);
     }
     const bridgePlaySelectState = await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
