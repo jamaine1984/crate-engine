@@ -44,6 +44,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .storage-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .storage-actions button{white-space:nowrap}
 .storage-panel[data-status="verified"]{border-color:#1f6847;background:#08140f}
+.storage-panel[data-status="dry-run"]{border-color:#1f6847;background:#08140f}
+.storage-panel[data-status="completed"]{border-color:#1f6847;background:#08140f}
 .storage-panel[data-status="failed"]{border-color:#713030;background:#160b0b}
 .storage-panel[data-status="checking"]{border-color:#775d18;background:#171307}
 .stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:14px 0}
@@ -148,6 +150,19 @@ td{color:#dce7eb;font-size:.86rem}
     </div>
   </section>
 
+  <section id="asset-cleanup-panel" class="storage-panel" data-status="locked" aria-label="Published asset cleanup">
+    <div>
+      <div class="storage-label">Asset cleanup</div>
+      <strong>Published R2 public assets</strong>
+      <p id="asset-cleanup-summary">Enter the admin token to scan public asset copies.</p>
+      <p id="asset-cleanup-detail">Run a dry scan before deleting orphaned public assets.</p>
+    </div>
+    <div class="storage-actions">
+      <button id="dry-run-asset-cleanup" type="button">Dry Run Assets</button>
+      <button id="run-asset-cleanup" class="danger" type="button">Clean Orphans</button>
+    </div>
+  </section>
+
   <section class="stats" aria-label="Moderation totals">
     <div class="stat"><strong id="stat-total">0</strong><span>Total</span></div>
     <div class="stat"><strong id="stat-listed">0</strong><span>Listed</span></div>
@@ -243,6 +258,11 @@ td{color:#dce7eb;font-size:.86rem}
     storageVerify: document.getElementById('verify-audit-storage'),
     backfillDryRun: document.getElementById('dry-run-audit-backfill'),
     backfillRun: document.getElementById('run-audit-backfill'),
+    assetCleanupPanel: document.getElementById('asset-cleanup-panel'),
+    assetCleanupSummary: document.getElementById('asset-cleanup-summary'),
+    assetCleanupDetail: document.getElementById('asset-cleanup-detail'),
+    assetCleanupDryRun: document.getElementById('dry-run-asset-cleanup'),
+    assetCleanupRun: document.getElementById('run-asset-cleanup'),
     rows: document.getElementById('admin-rows'),
     empty: document.getElementById('empty-state'),
     summary: document.getElementById('table-summary'),
@@ -273,6 +293,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditDetail: { status: 'empty', slug: '', rows: 0, source: '' },
     auditStorage: { status: 'locked', source: '', writeVerified: false },
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
+    assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
     error: '',
   };
 
@@ -333,6 +354,9 @@ td{color:#dce7eb;font-size:.86rem}
       hasAuditStorageVerify: !!els.storageVerify,
       hasAuditBackfillDryRun: !!els.backfillDryRun,
       hasAuditBackfillRun: !!els.backfillRun,
+      hasAssetCleanup: !!els.assetCleanupPanel,
+      hasAssetCleanupDryRun: !!els.assetCleanupDryRun,
+      hasAssetCleanupRun: !!els.assetCleanupRun,
       auditDetailStatus: state.auditDetail?.status || 'empty',
       auditDetailSlug: state.auditDetail?.slug || '',
       auditDetailRows: Number(state.auditDetail?.rows) || 0,
@@ -345,6 +369,12 @@ td{color:#dce7eb;font-size:.86rem}
       auditBackfillScanned: Number(state.auditBackfill?.scanned) || 0,
       auditBackfillEvents: Number(state.auditBackfill?.auditEvents) || 0,
       auditBackfillWritten: Number(state.auditBackfill?.written) || 0,
+      assetCleanupStatus: state.assetCleanup?.status || 'locked',
+      assetCleanupDryRun: state.assetCleanup?.dryRun !== false,
+      assetCleanupScanned: Number(state.assetCleanup?.scanned) || 0,
+      assetCleanupOrphaned: Number(state.assetCleanup?.orphaned) || 0,
+      assetCleanupDeleted: Number(state.assetCleanup?.deleted) || 0,
+      assetCleanupErrors: Number(state.assetCleanup?.errors) || 0,
       hasAdminActor: !!els.actor,
       adminName: state.admin?.name || '',
       adminRole: state.admin?.role || '',
@@ -361,6 +391,7 @@ td{color:#dce7eb;font-size:.86rem}
     renderStatus();
     renderActor();
     renderAuditStorage();
+    renderPublicAssetCleanup();
   }
 
   function renderStatus() {
@@ -451,6 +482,58 @@ td{color:#dce7eb;font-size:.86rem}
       els.backfillSummary.textContent = state.error || 'Audit backfill failed.';
     } else {
       els.backfillSummary.textContent = 'Run a dry backfill first, then backfill D1 when the result looks right.';
+    }
+  }
+
+  function renderPublicAssetCleanup() {
+    if (!els.assetCleanupPanel) return;
+    const cleanup = state.assetCleanup || {};
+    const token = readToken();
+    const status = cleanup.status || (token ? 'ready' : 'locked');
+    const locked = !token || state.status !== 'loaded';
+    const scanReady = !locked && status !== 'checking';
+    const canDelete = scanReady && status === 'dry-run' && (Number(cleanup.orphaned) || 0) > 0;
+    els.assetCleanupPanel.dataset.status = status;
+    if (els.assetCleanupDryRun) {
+      els.assetCleanupDryRun.disabled = !scanReady;
+      els.assetCleanupDryRun.textContent = status === 'checking' && cleanup.dryRun !== false ? 'Scanning...' : 'Dry Run Assets';
+    }
+    if (els.assetCleanupRun) {
+      els.assetCleanupRun.disabled = !canDelete;
+      els.assetCleanupRun.textContent = status === 'checking' && cleanup.dryRun === false ? 'Cleaning...' : 'Clean Orphans';
+    }
+    if (els.assetCleanupSummary) {
+      if (!token) {
+        els.assetCleanupSummary.textContent = 'Enter the admin token to scan public asset copies.';
+      } else if (state.status === 'loading') {
+        els.assetCleanupSummary.textContent = 'Asset cleanup unlocks after admin identity is loaded.';
+      } else if (state.status === 'unauthorized') {
+        els.assetCleanupSummary.textContent = 'Admin token rejected. Public asset cleanup is locked.';
+      } else if (status === 'checking') {
+        els.assetCleanupSummary.textContent = cleanup.dryRun === false ? 'Deleting orphaned public asset copies...' : 'Scanning public asset copies without deleting...';
+      } else if (status === 'dry-run') {
+        els.assetCleanupSummary.textContent = 'Dry run scanned ' + (Number(cleanup.scanned) || 0) + ' public assets and found ' + (Number(cleanup.orphaned) || 0) + ' orphaned.';
+      } else if (status === 'completed') {
+        els.assetCleanupSummary.textContent = 'Cleanup deleted ' + (Number(cleanup.deleted) || 0) + ' orphaned public assets from ' + (Number(cleanup.scanned) || 0) + ' scanned.';
+      } else if (status === 'failed') {
+        els.assetCleanupSummary.textContent = state.error || 'Public asset cleanup failed.';
+      } else {
+        els.assetCleanupSummary.textContent = 'Admin token saved. Run a dry scan before deleting orphaned public assets.';
+      }
+    }
+    if (els.assetCleanupDetail) {
+      const errors = Number(cleanup.errors) || 0;
+      if (status === 'dry-run' && (Number(cleanup.orphaned) || 0) > 0) {
+        els.assetCleanupDetail.textContent = 'Review the count, then use Clean Orphans to delete unreferenced public R2 copies.';
+      } else if (status === 'dry-run') {
+        els.assetCleanupDetail.textContent = 'No orphaned public assets found in this scan.';
+      } else if (status === 'completed' && errors > 0) {
+        els.assetCleanupDetail.textContent = errors + ' cleanup errors were reported. Check Cloudflare logs before running again.';
+      } else if (status === 'completed') {
+        els.assetCleanupDetail.textContent = 'Cleanup completed without reported errors.';
+      } else {
+        els.assetCleanupDetail.textContent = 'Run a dry scan before deleting orphaned public assets.';
+      }
     }
   }
 
@@ -549,6 +632,7 @@ td{color:#dce7eb;font-size:.86rem}
         admin: null,
         auditStorage: { status: 'locked', source: '', writeVerified: false },
         auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
+        assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
         error: '',
       });
       renderRows([]);
@@ -586,6 +670,7 @@ td{color:#dce7eb;font-size:.86rem}
         admin: payload.admin || null,
         auditStorage: { status: 'ready', source: 'd1', writeVerified: false },
         auditBackfill: { status: 'ready', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
+        assetCleanup: { status: 'ready', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
         error: '',
       });
       renderRows(currentRows);
@@ -604,6 +689,7 @@ td{color:#dce7eb;font-size:.86rem}
         admin: null,
         auditStorage: { status: unauthorized ? 'locked' : 'failed', source: '', writeVerified: false },
         auditBackfill: { status: unauthorized ? 'locked' : 'failed', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
+        assetCleanup: { status: unauthorized ? 'locked' : 'failed', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
         error: err?.message || String(err || 'Admin load failed'),
       });
       renderRows([]);
@@ -747,6 +833,56 @@ td{color:#dce7eb;font-size:.86rem}
     }
   }
 
+  async function runPublicAssetCleanup(dryRun, button) {
+    const token = readToken();
+    if (!token) {
+      els.authStatus.textContent = 'Enter the admin token before scanning public assets.';
+      els.token?.focus();
+      setState({ assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true }, error: '' });
+      return;
+    }
+    const nextDryRun = dryRun !== false;
+    setState({ assetCleanup: { status: 'checking', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: nextDryRun }, error: '' });
+    try {
+      const response = await fetch('/api/assets/admin/public-cleanup', {
+        method: 'POST',
+        headers: headers(true),
+        body: JSON.stringify({
+          dryRun: nextDryRun,
+          delete: !nextDryRun,
+          limit: 200,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        const err = new Error(payload?.error || 'Public asset cleanup failed.');
+        err.status = response.status;
+        throw err;
+      }
+      const scanned = Number(payload.scanned) || 0;
+      const orphaned = Number(payload.orphaned) || 0;
+      const deleted = Number(payload.deleted) || 0;
+      const errors = Array.isArray(payload.errors) ? payload.errors.length : 0;
+      els.authStatus.textContent = nextDryRun
+        ? 'Public asset cleanup dry run finished.'
+        : 'Public asset cleanup finished.';
+      setState({
+        assetCleanup: {
+          status: nextDryRun ? 'dry-run' : 'completed',
+          scanned,
+          orphaned,
+          deleted,
+          errors,
+          dryRun: payload.dryRun !== false,
+        },
+        error: '',
+      });
+    } catch (err) {
+      els.authStatus.textContent = err?.message || String(err || 'Public asset cleanup failed.');
+      setState({ assetCleanup: { status: 'failed', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: nextDryRun }, error: err?.message || String(err || 'Public asset cleanup failed') });
+    }
+  }
+
   function rowForSlug(slug) {
     return currentRows.find((game) => game.slug === slug) || null;
   }
@@ -768,6 +904,8 @@ td{color:#dce7eb;font-size:.86rem}
   els.storageVerify?.addEventListener('click', (event) => verifyAuditStorage(event.currentTarget));
   els.backfillDryRun?.addEventListener('click', (event) => backfillAuditStorage(true, event.currentTarget));
   els.backfillRun?.addEventListener('click', (event) => backfillAuditStorage(false, event.currentTarget));
+  els.assetCleanupDryRun?.addEventListener('click', (event) => runPublicAssetCleanup(true, event.currentTarget));
+  els.assetCleanupRun?.addEventListener('click', (event) => runPublicAssetCleanup(false, event.currentTarget));
   els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {
     if (els.noteCount) els.noteCount.textContent = String((els.note?.value || '').trim().length) + ' / 240';
