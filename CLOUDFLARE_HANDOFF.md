@@ -1,6 +1,6 @@
 # CrateShip Games Cloudflare Handoff
 
-Last updated: 2026-05-22
+Last updated: 2026-05-23
 
 This file is the operational handoff for the real CrateShip Games web engine at
 `https://crateshipgames.com/play`. Use it before changing or deploying the web
@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `631e4429`
+- Current deployed source commit for the public engine code: `255995e9`
 - Current deployed source commit for the public asset cleanup Worker: `631e4429`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,10 +36,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `f1cd9b7f-f403-4568-b046-29e715aa119c`
-- Latest production deployment URL: `https://f1cd9b7f.crateship-games.pages.dev`
+- Latest production deployment ID: `62578451-24ed-4f05-bfab-02b4d7ac4185`
+- Latest production deployment URL: `https://62578451.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `631e442`
+- Source shown by Cloudflare: `255995e`
 - Main live page bundle after the deploy: `/assets/play-D201ytkw.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-ZAqK_loq.js`
@@ -48,6 +48,53 @@ on this Windows machine. The real production behavior must be checked on
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
+
+Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `255995e9` (`Add admin cleanup worker dry scan`)
+- Final Cloudflare deployment: `62578451-24ed-4f05-bfab-02b4d7ac4185`
+- Final deployment URL: `https://62578451.crateship-games.pages.dev`
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=255995e9001e9afaf96beb61b8f64e5e06bc7156 --commit-message="Add admin cleanup worker dry scan" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Main app bundle stayed unchanged: `/assets/play-D201ytkw.js`
+- Lazy App Builder chunk stayed unchanged: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk stayed unchanged: `/assets/game-builder-ui-ZAqK_loq.js`
+- Lazy Asset Browser chunk stayed unchanged: `/assets/asset-browser-ui-CAOy79B3.js`
+- Cleanup Worker stayed unchanged at version `56963b53-174d-4b2e-875a-fa8b2f40dc94`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=cleanup-worker-dry-scan-255995e`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-cleanup-worker-dry-scan-255995e`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-cleanup-worker-dry-scan-255995e.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-cleanup-worker-dry-scan-255995e.png`
+- Production smoke evidence:
+  - Build City created `127` objects with `48` components and `4` scripts in Edit mode.
+  - Asset host loaded manifest `6f09cc09da2f`.
+  - Published public asset lifecycle still passes: public GLB download `200`, cleanup removed public copy, post-delete download `404`.
+  - Admin page sees the cleanup Worker as ready, deletion disabled, limit `200`.
+  - Admin page exposes a `Run Dry Scan` cleanup Worker control and keeps it locked without an accepted admin token.
+
+What changed in this deploy:
+
+- `admin.html`
+  - Added `Run Dry Scan` to the Scheduled cleanup Worker panel.
+  - The button stays disabled until the admin token is accepted.
+  - The action calls the deployed cleanup Worker `/cleanup` endpoint with `dryRun=true`, never delete mode.
+  - The panel updates immediately with the returned scan counts and marks whether the Worker persisted the `lastRun` record.
+- `scripts/smoke-production.mjs`
+  - Verifies the Admin dashboard exposes the Worker dry-scan action and keeps it disabled while locked.
+  - If `CRATE_SMOKE_ADMIN_TOKEN` is available, clicks the action and verifies the Worker persisted a manual dry-run last-run record.
+
+Next recommended asset step:
+
+- Use a real admin token in `/admin.html` or set `CRATE_SMOKE_ADMIN_TOKEN`, run the new `Run Dry Scan` action, and confirm the Scheduled cleanup panel changes from `none persisted yet` to the manual dry-run counts. After that, the next useful hardening step is storing a small cleanup history list instead of only the latest run.
 
 Latest Worker + app deploy on 2026-05-22:
 
