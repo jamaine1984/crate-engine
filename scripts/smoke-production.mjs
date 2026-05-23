@@ -1465,16 +1465,21 @@ async function runBrowserSmoke() {
       throw new Error(`Published game library did not create a portable playable link: ${JSON.stringify(publishedState)}`);
     }
     if (userImportState.publishSavedId) {
-      await page.evaluate(({ id, objectId }) => {
-        const deleted = window._deleteUserImportedModel?.(id);
+      await page.evaluate(async ({ id, objectId, cloudId }) => {
+        const deleted = await window._deleteUserImportedModel?.(id);
         const objects = window._engineBridge?.objects || window._sceneObjects || [];
-        const index = objects.findIndex((obj) => obj?.uuid === objectId);
-        if (index >= 0) {
-          const [obj] = objects.splice(index, 1);
-          window._engine?.scene?.remove?.(obj);
+        for (let index = objects.length - 1; index >= 0; index--) {
+          const obj = objects[index];
+          const matches = obj?.uuid === objectId ||
+            obj?.userData?.gbCloudAssetId === cloudId ||
+            obj?.userData?.cloudAssetId === cloudId ||
+            obj?.userData?.gbPlacementSource === 'smoke-publish-cloud-asset';
+          if (!matches) continue;
+          const [removed] = objects.splice(index, 1);
+          window._engine?.scene?.remove?.(removed);
         }
         return deleted;
-      }, { id: userImportState.publishSavedId, objectId: userImportState.publishObjectId });
+      }, { id: userImportState.publishSavedId, objectId: userImportState.publishObjectId, cloudId: userImportState.publishCloudId });
     }
 
     const deleteGuardPublishState = await page.evaluate(async () => {
