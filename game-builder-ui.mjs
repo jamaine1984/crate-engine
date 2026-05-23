@@ -3742,6 +3742,23 @@ function createModeSection() {
   return section;
 }
 
+function createQuickToolsSection() {
+  const section = document.createElement('section');
+  section.className = 'gb-section gb-mobile-quick-tools';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Quick Tools';
+  const grid = document.createElement('div');
+  grid.className = 'gb-grid gb-quick-tools-grid';
+  [
+    { label: 'Asset Library', action: 'assets', title: 'Open the asset library' },
+    { label: 'Build City', command: 'build city', title: 'Create a playable city starter scene' },
+    { label: 'Import', action: 'import', title: 'Import assets or scenes' },
+    { label: 'Play', action: 'play', title: 'Run the game without editor interactions', editOnly: false },
+  ].forEach((preset) => grid.appendChild(createButton(preset)));
+  section.append(heading, grid);
+  return section;
+}
+
 function createModeDock() {
   const dock = document.createElement('div');
   dock.id = 'gb-mode-dock';
@@ -4462,6 +4479,7 @@ function mount() {
     #gb-stats span{font-size:10px;color:#aeb7bd;background:#151819;border:1px solid #272c2f;border-radius:999px;padding:3px 6px;white-space:nowrap}
     .gb-body{display:flex;flex-direction:column;gap:10px;overflow:auto;padding:10px}
     .gb-section{border:1px solid #20262a;border-radius:8px;overflow:hidden;background:#0d0f10;flex-shrink:0}
+    .gb-mobile-quick-tools{display:none}
     .gb-section h3{margin:0;padding:9px 10px;font-size:11px;text-transform:uppercase;letter-spacing:0;color:#98a2a9;border-bottom:1px solid #20262a;background:#121516}
     .gb-mode-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px}
     .gb-mode-btn{min-height:32px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:12px;line-height:14px;cursor:pointer;padding:5px 6px;white-space:normal;overflow-wrap:anywhere}
@@ -4628,7 +4646,7 @@ function mount() {
     .gb-blueprint-info{min-width:0;display:flex;flex-direction:column;gap:2px}
     .gb-blueprint-info strong{font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .gb-blueprint-info span{font-size:10px;line-height:14px;color:#8d979e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    @media (max-width:900px){#game-builder-panel{top:70px;left:8px;right:8px;bottom:auto;width:auto;max-height:58vh}#game-builder-panel[data-open="false"]{width:48px;right:auto}.gb-grid{grid-template-columns:1fr 1fr}.gb-preset,.gb-mode-btn,.gb-small-btn{min-height:36px}#gb-mode-dock{top:auto;bottom:44px;left:50%;max-width:calc(100vw - 16px)}.gb-mode-dock-label{display:none}.gb-mode-dock-btn{min-width:0;flex:1}}
+    @media (max-width:900px){#game-builder-panel{top:70px;left:8px;right:8px;bottom:auto;width:auto;max-height:58vh}#game-builder-panel[data-open="false"]{width:48px;right:auto}.gb-grid{grid-template-columns:1fr 1fr}.gb-mobile-quick-tools{display:block}.gb-quick-tools-grid{grid-template-columns:1fr 1fr}.gb-preset,.gb-mode-btn,.gb-small-btn{min-height:36px}#gb-mode-dock{top:auto;bottom:44px;left:50%;max-width:calc(100vw - 16px)}.gb-mode-dock-label{display:none}.gb-mode-dock-btn{min-width:0;flex:1}}
   `;
   document.head.appendChild(style);
 
@@ -4670,6 +4688,7 @@ function mount() {
   const body = document.createElement('div');
   body.className = 'gb-body';
   body.appendChild(createModeSection());
+  body.appendChild(createQuickToolsSection());
   body.appendChild(createPlacementSection());
   body.appendChild(createProjectSection());
   body.appendChild(createAssetPackSection());

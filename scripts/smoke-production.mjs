@@ -473,7 +473,7 @@ async function runBrowserSmoke() {
         path: '/models/house_interior_pack_chair_1.glb',
       });
     });
-    await page.locator('button[data-gb-action="assets"]').click({ timeout: timeoutMs });
+    await page.locator('#game-builder-panel .gb-section:not(.gb-mobile-quick-tools) button[data-gb-action="assets"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
       (before) => {
         const state = window._lastAssetPlacement || {};
@@ -4278,6 +4278,98 @@ async function runViewportBuildCityProbe(label, options) {
     if (builderMobileLayout.clipped.length) {
       throw new Error(`${label} viewport Builder buttons are clipping text: ${JSON.stringify(builderMobileLayout)}`);
     }
+    let mobileAssetMenu = null;
+    if (options.width <= 900) {
+      await page.locator('.gb-toggle').click({ timeout: timeoutMs });
+      await page.waitForFunction(
+        () => document.querySelector('#game-builder-panel')?.dataset.open === 'true',
+        undefined,
+        { timeout: timeoutMs }
+      );
+      mobileAssetMenu = await page.evaluate(() => {
+        const panel = document.querySelector('#game-builder-panel');
+        const quick = document.querySelector('.gb-mobile-quick-tools');
+        const assetButton = quick?.querySelector('button[data-gb-action="assets"]');
+        const panelRect = panel?.getBoundingClientRect();
+        const buttonRect = assetButton?.getBoundingClientRect();
+        return {
+          panelOpen: panel?.dataset.open || '',
+          quickDisplay: quick ? getComputedStyle(quick).display : '',
+          assetButtonTop: Math.round(buttonRect?.top || 0),
+          assetButtonBottom: Math.round(buttonRect?.bottom || 0),
+          panelTop: Math.round(panelRect?.top || 0),
+          panelBottom: Math.round(panelRect?.bottom || 0),
+          assetButtonVisible: !!(buttonRect && buttonRect.width > 0 && buttonRect.height > 0 && buttonRect.top >= 0 && buttonRect.bottom <= window.innerHeight),
+        };
+      });
+      if (mobileAssetMenu.panelOpen !== 'true' ||
+          mobileAssetMenu.quickDisplay === 'none' ||
+          !mobileAssetMenu.assetButtonVisible ||
+          mobileAssetMenu.assetButtonTop > mobileAssetMenu.panelBottom) {
+        throw new Error(`${label} viewport mobile quick Asset Library is not immediately reachable: ${JSON.stringify(mobileAssetMenu)}`);
+      }
+      await page.locator('.gb-mobile-quick-tools button[data-gb-action="assets"]').click({ timeout: timeoutMs });
+      await page.waitForSelector('[data-asset-category="furniture"]', { timeout: timeoutMs });
+      const mobileCategoryState = await page.evaluate(() => {
+        const furniture = document.querySelector('[data-asset-category="furniture"]');
+        const search = document.querySelector('#_catSearch');
+        const searchRect = search?.getBoundingClientRect();
+        const cardRect = furniture?.getBoundingClientRect();
+        return {
+          furnitureLabel: furniture?.dataset.assetCategoryLabel || '',
+          furnitureCount: Number(furniture?.dataset.assetCategoryCount || 0),
+          searchOffscreen: !!(searchRect && (searchRect.left < 0 || searchRect.right > window.innerWidth)),
+          cardWidth: Math.round(cardRect?.width || 0),
+        };
+      });
+      if (mobileCategoryState.furnitureLabel !== 'Furniture' ||
+          mobileCategoryState.furnitureCount <= 0 ||
+          mobileCategoryState.searchOffscreen ||
+          mobileCategoryState.cardWidth <= 0) {
+        throw new Error(`${label} viewport asset category picker failed: ${JSON.stringify(mobileCategoryState)}`);
+      }
+      await page.locator('[data-asset-category="furniture"]').click({ timeout: timeoutMs });
+      await page.waitForSelector('[data-asset-card="true"]', { timeout: timeoutMs });
+      const mobileGalleryState = await page.evaluate(() => {
+        const search = document.querySelector('#asset-gallery-overlay input');
+        const firstCard = document.querySelector('[data-asset-card="true"]');
+        const searchRect = search?.getBoundingClientRect();
+        const cardRect = firstCard?.getBoundingClientRect();
+        return {
+          searchOffscreen: !!(searchRect && (searchRect.left < 0 || searchRect.right > window.innerWidth)),
+          searchWidth: Math.round(searchRect?.width || 0),
+          firstCardName: firstCard?.dataset.assetName || '',
+          firstCardWidth: Math.round(cardRect?.width || 0),
+        };
+      });
+      if (mobileGalleryState.searchOffscreen ||
+          mobileGalleryState.searchWidth <= 0 ||
+          !mobileGalleryState.firstCardName ||
+          mobileGalleryState.firstCardWidth <= 0) {
+        throw new Error(`${label} viewport asset gallery layout failed: ${JSON.stringify(mobileGalleryState)}`);
+      }
+      const beforeMobileAssetCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
+      await page.locator('[data-asset-card="true"]').first().click({ timeout: timeoutMs });
+      await page.waitForFunction(
+        (before) => (window._engineBridge?.objects?.length || 0) > before && window._lastAssetPlacement?.status === 'placed',
+        beforeMobileAssetCount,
+        { timeout: timeoutMs }
+      );
+      mobileAssetMenu = {
+        ...mobileAssetMenu,
+        category: mobileCategoryState,
+        gallery: mobileGalleryState,
+        placement: await page.evaluate(() => ({
+          status: window._lastAssetPlacement?.status || '',
+          name: window._lastAssetPlacement?.name || '',
+          source: window._lastAssetPlacement?.source || '',
+          text: document.querySelector('#gb-placement-status')?.textContent || '',
+        })),
+      };
+      await page.evaluate((state) => {
+        window.__mobileAssetMenuSmoke = state;
+      }, mobileAssetMenu);
+    }
     await page.locator('#prompt-input').fill('build city', { timeout: timeoutMs });
     await page.locator('#prompt-input').press('Enter', { timeout: timeoutMs });
     await page.waitForFunction(
@@ -4312,6 +4404,7 @@ async function runViewportBuildCityProbe(label, options) {
           performanceBudget: window._cratePerformanceBudget || null,
           cullingStats: window._crateCullingStats || null,
           mobileControls: !!document.querySelector('#mobile-controls'),
+          mobileAssetMenu: window.__mobileAssetMenuSmoke || null,
           canvasWidth: renderer?.domElement?.width || 0,
           canvasHeight: renderer?.domElement?.height || 0,
           canvasClientWidth: renderer?.domElement?.clientWidth || 0,
@@ -4396,6 +4489,9 @@ console.log(`Runtime pools: damage ${browserState.objectPoolStats?.damageNumberP
 console.log(`Raw Build City frame probe: ${browserState.rawBuildCityFps || 0} FPS, ${browserState.rawBuildCityFrameMs || 0} ms avg, ${browserState.rawBuildCityUpdateMs || 0} ms update, ${browserState.rawBuildCityRenderMs || 0} ms render, ${browserState.rawBuildCityCalls || 0} calls, ${browserState.rawBuildCityTriangles || 0} tris, ${browserState.rawBuildCitySamples || 0} samples`);
 for (const probeState of viewportProbeStates) {
   console.log(`Viewport ${probeState.label}: ${probeState.fps || 0} FPS, ${probeState.avgFrameMs || 0} ms avg, ${probeState.calls || 0} calls, ${probeState.triangles || 0} tris, DPR ${probeState.devicePixelRatio || 0}->${probeState.rendererPixelRatio || 0}, cull ${probeState.performanceBudget?.cullDistance || 0}, shadow ${probeState.performanceBudget?.shadowDistance || 0}, canvas ${probeState.canvasWidth || 0}x${probeState.canvasHeight || 0}, mobile controls ${probeState.mobileControls ? 'ready' : 'missing'}`);
+  if (probeState.mobileAssetMenu) {
+    console.log(`Viewport ${probeState.label} asset menu: ${probeState.mobileAssetMenu.placement?.status || 'missing'} ${probeState.mobileAssetMenu.placement?.name || 'missing'}, gallery search ${probeState.mobileAssetMenu.gallery?.searchOffscreen ? 'offscreen' : 'onscreen'}, quick button top ${probeState.mobileAssetMenu.assetButtonTop || 0}`);
+  }
 }
 console.log(`City performance profile: ${browserState.cityPerformanceProfile || 'missing'} (procedural props ${browserState.cityPerformanceProceduralProps ? 'on' : 'off'}, vehicles ${browserState.cityPerformanceProceduralVehicles ? 'on' : 'off'}, nature ${browserState.cityPerformanceProceduralNature ? 'on' : 'off'}, renderer ${browserState.rendererCalls || 0} calls/${browserState.rendererTriangles || 0} tris)`);
 console.log(`Validation: ${browserState.validationStatus || 'missing'} (${browserState.validationErrors || 0} errors, ${browserState.validationWarnings || 0} warnings, ${browserState.validationSuggestions || 0} suggestions)`);

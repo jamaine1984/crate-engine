@@ -140,12 +140,12 @@ export function showGallery(category, options = {}) {
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:2147483647;display:flex;flex-direction:column;font-family:monospace;color:#e0e0e0;';
 
     const header = document.createElement('div');
-    header.style.cssText = 'padding:16px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #222;flex-shrink:0;';
-    header.innerHTML = '<div style="font-size:24px;color:' + meta.color + ';">' + meta.icon + ' ' + meta.label + '</div><div id="gal-count" style="font-size:13px;color:#666;">' + items.length + ' models</div>';
+    header.style.cssText = 'padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #222;flex-shrink:0;flex-wrap:wrap;box-sizing:border-box;';
+    header.innerHTML = '<div style="font-size:22px;line-height:26px;color:' + meta.color + ';min-width:0;flex:1 1 170px;overflow-wrap:anywhere;">' + meta.icon + ' ' + meta.label + '</div><div id="gal-count" style="font-size:13px;line-height:17px;color:#777;white-space:nowrap;">' + items.length + ' models</div>';
 
     const searchInput = document.createElement('input');
     searchInput.placeholder = '🔍 Search...';
-    searchInput.style.cssText = 'margin-left:auto;padding:8px 14px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-family:monospace;font-size:13px;width:220px;outline:none;';
+    searchInput.style.cssText = 'margin-left:0;padding:8px 14px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-family:monospace;font-size:13px;line-height:16px;width:auto;min-width:150px;max-width:220px;flex:1 1 180px;outline:none;box-sizing:border-box;';
     searchInput.oninput = () => {
       searchTerm = searchInput.value.toLowerCase();
       currentPage = 0;
@@ -155,7 +155,7 @@ export function showGallery(category, options = {}) {
 
     const closeBtn = document.createElement('div');
     closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'font-size:24px;color:#666;cursor:pointer;margin-left:16px;';
+    closeBtn.style.cssText = 'font-size:24px;line-height:28px;color:#aaa;cursor:pointer;margin-left:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px;flex:0 0 auto;';
     closeBtn.onclick = () => {
       overlay.remove();
       resolve(null);
@@ -164,10 +164,10 @@ export function showGallery(category, options = {}) {
     overlay.appendChild(header);
 
     const scrollArea = document.createElement('div');
-    scrollArea.style.cssText = 'flex:1;overflow-y:auto;padding:20px;';
+    scrollArea.style.cssText = 'flex:1;overflow-y:auto;padding:16px;box-sizing:border-box;';
 
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,160px);gap:14px;justify-content:center;max-width:1100px;margin:0 auto;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,160px));gap:12px;justify-content:center;max-width:1100px;margin:0 auto;';
     scrollArea.appendChild(grid);
 
     const pager = document.createElement('div');
