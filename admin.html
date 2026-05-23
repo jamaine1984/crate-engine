@@ -42,7 +42,10 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .storage-panel p + p{margin-top:6px}
 .storage-label{color:#7ddf9e;text-transform:uppercase;font-size:.7rem;font-weight:900;letter-spacing:.06em;margin-bottom:4px}
 .storage-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.storage-actions button{white-space:nowrap}
+.storage-actions button,.storage-actions a{white-space:nowrap}
+.storage-actions a{display:inline-flex;align-items:center;justify-content:center;border:1px solid #2d3a42;background:#121a20;color:#e7eef2;border-radius:9px;padding:10px 12px;font-weight:800;font-size:.86rem}
+.storage-actions a:hover{border-color:#7ddf9e;color:#7ddf9e}
+.storage-panel[data-status="ready"]{border-color:#1f6847;background:#08140f}
 .storage-panel[data-status="verified"]{border-color:#1f6847;background:#08140f}
 .storage-panel[data-status="dry-run"]{border-color:#1f6847;background:#08140f}
 .storage-panel[data-status="completed"]{border-color:#1f6847;background:#08140f}
@@ -163,6 +166,19 @@ td{color:#dce7eb;font-size:.86rem}
     </div>
   </section>
 
+  <section id="cleanup-worker-panel" class="storage-panel" data-status="checking" aria-label="Scheduled cleanup worker health">
+    <div>
+      <div class="storage-label">Scheduled cleanup</div>
+      <strong>Public asset cleanup Worker</strong>
+      <p id="cleanup-worker-summary">Checking scheduled cleanup Worker health...</p>
+      <p id="cleanup-worker-detail">The scheduled Worker should stay dry-run until an authenticated orphan scan is reviewed.</p>
+    </div>
+    <div class="storage-actions">
+      <button id="refresh-cleanup-worker" type="button">Refresh Worker</button>
+      <a id="open-cleanup-worker" href="https://crateship-public-asset-cleanup.koikes2021.workers.dev/health" target="_blank" rel="noopener noreferrer">Open Health</a>
+    </div>
+  </section>
+
   <section class="stats" aria-label="Moderation totals">
     <div class="stat"><strong id="stat-total">0</strong><span>Total</span></div>
     <div class="stat"><strong id="stat-listed">0</strong><span>Listed</span></div>
@@ -238,6 +254,7 @@ td{color:#dce7eb;font-size:.86rem}
 <script>
 (function() {
   const TOKEN_KEY = 'crate_publish_admin_token';
+  const CLEANUP_WORKER_URL = 'https://crateship-public-asset-cleanup.koikes2021.workers.dev';
   const els = {
     token: document.getElementById('admin-token'),
     save: document.getElementById('save-token'),
@@ -263,6 +280,11 @@ td{color:#dce7eb;font-size:.86rem}
     assetCleanupDetail: document.getElementById('asset-cleanup-detail'),
     assetCleanupDryRun: document.getElementById('dry-run-asset-cleanup'),
     assetCleanupRun: document.getElementById('run-asset-cleanup'),
+    cleanupWorkerPanel: document.getElementById('cleanup-worker-panel'),
+    cleanupWorkerSummary: document.getElementById('cleanup-worker-summary'),
+    cleanupWorkerDetail: document.getElementById('cleanup-worker-detail'),
+    cleanupWorkerRefresh: document.getElementById('refresh-cleanup-worker'),
+    cleanupWorkerOpen: document.getElementById('open-cleanup-worker'),
     rows: document.getElementById('admin-rows'),
     empty: document.getElementById('empty-state'),
     summary: document.getElementById('table-summary'),
@@ -294,6 +316,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditStorage: { status: 'locked', source: '', writeVerified: false },
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
+    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, error: '' },
     error: '',
   };
 
@@ -357,6 +380,7 @@ td{color:#dce7eb;font-size:.86rem}
       hasAssetCleanup: !!els.assetCleanupPanel,
       hasAssetCleanupDryRun: !!els.assetCleanupDryRun,
       hasAssetCleanupRun: !!els.assetCleanupRun,
+      hasCleanupWorker: !!els.cleanupWorkerPanel,
       auditDetailStatus: state.auditDetail?.status || 'empty',
       auditDetailSlug: state.auditDetail?.slug || '',
       auditDetailRows: Number(state.auditDetail?.rows) || 0,
@@ -375,6 +399,14 @@ td{color:#dce7eb;font-size:.86rem}
       assetCleanupOrphaned: Number(state.assetCleanup?.orphaned) || 0,
       assetCleanupDeleted: Number(state.assetCleanup?.deleted) || 0,
       assetCleanupErrors: Number(state.assetCleanup?.errors) || 0,
+      cleanupWorkerStatus: state.cleanupWorker?.status || 'checking',
+      cleanupWorkerName: state.cleanupWorker?.worker || '',
+      cleanupWorkerUrl: state.cleanupWorker?.url || CLEANUP_WORKER_URL,
+      cleanupWorkerDeleteEnabled: state.cleanupWorker?.deleteEnabled === true,
+      cleanupWorkerLimit: Number(state.cleanupWorker?.limit) || 0,
+      cleanupWorkerHasR2Binding: state.cleanupWorker?.hasR2Binding === true,
+      cleanupWorkerHasGameStore: state.cleanupWorker?.hasGameStore === true,
+      cleanupWorkerError: state.cleanupWorker?.error || '',
       hasAdminActor: !!els.actor,
       adminName: state.admin?.name || '',
       adminRole: state.admin?.role || '',
@@ -392,6 +424,7 @@ td{color:#dce7eb;font-size:.86rem}
     renderActor();
     renderAuditStorage();
     renderPublicAssetCleanup();
+    renderCleanupWorker();
   }
 
   function renderStatus() {
@@ -534,6 +567,86 @@ td{color:#dce7eb;font-size:.86rem}
       } else {
         els.assetCleanupDetail.textContent = 'Run a dry scan before deleting orphaned public assets.';
       }
+    }
+  }
+
+  function renderCleanupWorker() {
+    if (!els.cleanupWorkerPanel) return;
+    const worker = state.cleanupWorker || {};
+    const status = worker.status || 'checking';
+    els.cleanupWorkerPanel.dataset.status = status;
+    if (els.cleanupWorkerRefresh) {
+      els.cleanupWorkerRefresh.disabled = status === 'checking';
+      els.cleanupWorkerRefresh.textContent = status === 'checking' ? 'Checking...' : 'Refresh Worker';
+    }
+    if (els.cleanupWorkerOpen) {
+      els.cleanupWorkerOpen.href = (worker.url || CLEANUP_WORKER_URL) + '/health';
+    }
+    const bindingsReady = worker.hasR2Binding === true && worker.hasGameStore === true;
+    if (els.cleanupWorkerSummary) {
+      if (status === 'checking') {
+        els.cleanupWorkerSummary.textContent = 'Checking scheduled cleanup Worker health...';
+      } else if (status === 'ready') {
+        els.cleanupWorkerSummary.textContent = 'Worker is live with R2/KV bindings ' + (bindingsReady ? 'ready' : 'missing') + ' and scheduled deletion ' + (worker.deleteEnabled ? 'enabled.' : 'disabled.');
+      } else {
+        els.cleanupWorkerSummary.textContent = worker.error || 'Scheduled cleanup Worker health check failed.';
+      }
+    }
+    if (els.cleanupWorkerDetail) {
+      if (status === 'ready') {
+        els.cleanupWorkerDetail.textContent = 'Limit ' + (Number(worker.limit) || 0) + ' public assets per run. Keep deletion disabled until an authenticated dry run is reviewed.';
+      } else if (status === 'failed') {
+        els.cleanupWorkerDetail.textContent = 'Use the Worker health link or Wrangler logs before relying on scheduled cleanup.';
+      } else {
+        els.cleanupWorkerDetail.textContent = 'The scheduled Worker should stay dry-run until an authenticated orphan scan is reviewed.';
+      }
+    }
+  }
+
+  async function loadCleanupWorkerStatus() {
+    setState({
+      cleanupWorker: {
+        status: 'checking',
+        deleteEnabled: false,
+        limit: 0,
+        hasR2Binding: false,
+        hasGameStore: false,
+        worker: '',
+        url: CLEANUP_WORKER_URL,
+        error: '',
+      },
+    });
+    try {
+      const response = await fetch(CLEANUP_WORKER_URL + '/health', { headers: { Accept: 'application/json' } });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true) {
+        throw new Error(payload?.error || 'Cleanup Worker health failed with HTTP ' + response.status);
+      }
+      setState({
+        cleanupWorker: {
+          status: 'ready',
+          deleteEnabled: payload.deleteEnabled === true,
+          limit: Number(payload.limit) || 0,
+          hasR2Binding: payload.hasR2Binding === true,
+          hasGameStore: payload.hasGameStore === true,
+          worker: payload.worker || '',
+          url: CLEANUP_WORKER_URL,
+          error: '',
+        },
+      });
+    } catch (err) {
+      setState({
+        cleanupWorker: {
+          status: 'failed',
+          deleteEnabled: false,
+          limit: 0,
+          hasR2Binding: false,
+          hasGameStore: false,
+          worker: '',
+          url: CLEANUP_WORKER_URL,
+          error: err?.message || String(err || 'Cleanup Worker health failed'),
+        },
+      });
     }
   }
 
@@ -906,6 +1019,7 @@ td{color:#dce7eb;font-size:.86rem}
   els.backfillRun?.addEventListener('click', (event) => backfillAuditStorage(false, event.currentTarget));
   els.assetCleanupDryRun?.addEventListener('click', (event) => runPublicAssetCleanup(true, event.currentTarget));
   els.assetCleanupRun?.addEventListener('click', (event) => runPublicAssetCleanup(false, event.currentTarget));
+  els.cleanupWorkerRefresh?.addEventListener('click', () => loadCleanupWorkerStatus());
   els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {
     if (els.noteCount) els.noteCount.textContent = String((els.note?.value || '').trim().length) + ' / 240';
@@ -927,6 +1041,8 @@ td{color:#dce7eb;font-size:.86rem}
   els.token.value = readToken();
   setState({ status: readToken() ? 'loading' : 'locked' });
   window._loadCrateAdminDashboard = loadAdminGames;
+  window._loadCleanupWorkerStatus = loadCleanupWorkerStatus;
+  loadCleanupWorkerStatus();
   loadAdminGames();
 })();
 </script>
