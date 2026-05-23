@@ -1976,6 +1976,7 @@ async function runBrowserSmoke() {
           hasCleanupWorker: state.hasCleanupWorker === true,
           hasCleanupWorkerDryRun: state.hasCleanupWorkerDryRun === true,
           hasCleanupWorkerExport: state.hasCleanupWorkerExport === true,
+          hasCleanupWorkerCsvExport: state.hasCleanupWorkerCsvExport === true,
           auditStorageStatus: state.auditStorageStatus || '',
           auditStorageWriteVerified: state.auditStorageWriteVerified === true,
           auditBackfillStatus: state.auditBackfillStatus || '',
@@ -1998,6 +1999,7 @@ async function runBrowserSmoke() {
           cleanupWorkerHasGameStore: state.cleanupWorkerHasGameStore === true,
           cleanupWorkerRunning: state.cleanupWorkerRunning === true,
           cleanupWorkerExporting: state.cleanupWorkerExporting === true,
+          cleanupWorkerExportFormat: state.cleanupWorkerExportFormat || '',
           cleanupWorkerLastRunKnown: state.cleanupWorkerLastRunKnown === true,
           cleanupWorkerHasLastRun: state.cleanupWorkerHasLastRun === true,
           cleanupWorkerLastRunPersisted: state.cleanupWorkerLastRunPersisted === true,
@@ -2033,6 +2035,8 @@ async function runBrowserSmoke() {
           cleanupWorkerDryRunDisabled: document.querySelector('#dry-run-cleanup-worker')?.disabled === true,
           hasCleanupWorkerExportAction: !!document.querySelector('#export-cleanup-history'),
           cleanupWorkerExportDisabled: document.querySelector('#export-cleanup-history')?.disabled === true,
+          hasCleanupWorkerCsvExportAction: !!document.querySelector('#export-cleanup-history-csv'),
+          cleanupWorkerCsvExportDisabled: document.querySelector('#export-cleanup-history-csv')?.disabled === true,
           hasReviewNoteInput: !!document.querySelector('#admin-review-note'),
           reviewNoteRequired: state.reviewNoteRequired === true,
           reviewNoteCount: document.querySelector('#review-note-count')?.textContent || '',
@@ -2062,10 +2066,13 @@ async function runBrowserSmoke() {
         !adminDashboardState.hasCleanupWorker ||
         !adminDashboardState.hasCleanupWorkerDryRun ||
         !adminDashboardState.hasCleanupWorkerExport ||
+        !adminDashboardState.hasCleanupWorkerCsvExport ||
         !adminDashboardState.hasCleanupWorkerDryRunAction ||
         !adminDashboardState.cleanupWorkerDryRunDisabled ||
         !adminDashboardState.hasCleanupWorkerExportAction ||
         !adminDashboardState.cleanupWorkerExportDisabled ||
+        !adminDashboardState.hasCleanupWorkerCsvExportAction ||
+        !adminDashboardState.cleanupWorkerCsvExportDisabled ||
         adminDashboardState.auditStorageStatus !== 'locked' ||
         adminDashboardState.auditStorageWriteVerified ||
         adminDashboardState.auditBackfillStatus !== 'locked' ||
@@ -2104,6 +2111,7 @@ async function runBrowserSmoke() {
     let adminDashboardAssetCleanupState = null;
     let adminDashboardCleanupWorkerDryRunState = null;
     let adminDashboardCleanupWorkerExportState = null;
+    let adminDashboardCleanupWorkerCsvExportState = null;
     if (smokeAdminToken) {
       await adminPage.locator('#admin-token').fill(smokeAdminToken);
       await adminPage.locator('#save-token').click({ timeout: timeoutMs });
@@ -2249,6 +2257,35 @@ async function runBrowserSmoke() {
           adminDashboardCleanupWorkerExportState.latestReason !== 'manual-api' ||
           !/cleanup-history/i.test(adminDashboardCleanupWorkerExportState.fileName || '')) {
         throw new Error(`Admin dashboard cleanup history export failed: ${JSON.stringify(adminDashboardCleanupWorkerExportState)}`);
+      }
+      await adminPage.locator('#export-cleanup-history-csv').click({ timeout: timeoutMs });
+      adminDashboardCleanupWorkerCsvExportState = await adminPage.waitForFunction(
+        () => {
+          const state = window._crateAdminDashboard || {};
+          const exported = window._crateCleanupHistoryCsvExport || null;
+          if (state.cleanupWorkerExporting === true || !exported || typeof exported.text !== 'string') return null;
+          return {
+            ok: exported.ok === true,
+            rowCount: Number(exported.rowCount) || 0,
+            stateCount: Number(state.cleanupWorkerExportCount) || 0,
+            fileName: state.cleanupWorkerExportFileName || exported.fileName || '',
+            format: state.cleanupWorkerExportFormat || '',
+            hasHeader: /^exportGeneratedAt,worker,adminName,adminRole,runId,/i.test(exported.text || ''),
+            hasManualRun: /manual-api/i.test(exported.text || ''),
+          };
+        },
+        undefined,
+        { timeout: timeoutMs }
+      ).then((handle) => handle.jsonValue());
+      if (!adminDashboardCleanupWorkerCsvExportState.ok ||
+          adminDashboardCleanupWorkerCsvExportState.rowCount < 1 ||
+          adminDashboardCleanupWorkerCsvExportState.stateCount < 1 ||
+          adminDashboardCleanupWorkerCsvExportState.format !== 'csv' ||
+          !adminDashboardCleanupWorkerCsvExportState.hasHeader ||
+          !adminDashboardCleanupWorkerCsvExportState.hasManualRun ||
+          !/cleanup-history/i.test(adminDashboardCleanupWorkerCsvExportState.fileName || '') ||
+          !/\.csv$/i.test(adminDashboardCleanupWorkerCsvExportState.fileName || '')) {
+        throw new Error(`Admin dashboard cleanup CSV export failed: ${JSON.stringify(adminDashboardCleanupWorkerCsvExportState)}`);
       }
       await adminPage.locator(`button[data-action="audit"][data-slug="${smokePublishedSlug}"]`).click({ timeout: timeoutMs });
       adminDashboardAuditState = await adminPage.waitForFunction(
@@ -3506,8 +3543,10 @@ async function runBrowserSmoke() {
     state.adminDashboardHasCleanupWorker = adminDashboardState.hasCleanupWorker;
     state.adminDashboardHasCleanupWorkerDryRun = adminDashboardState.hasCleanupWorkerDryRun;
     state.adminDashboardHasCleanupWorkerExport = adminDashboardState.hasCleanupWorkerExport;
+    state.adminDashboardHasCleanupWorkerCsvExport = adminDashboardState.hasCleanupWorkerCsvExport;
     state.adminDashboardCleanupWorkerDryRunDisabled = adminDashboardState.cleanupWorkerDryRunDisabled;
     state.adminDashboardCleanupWorkerExportDisabled = adminDashboardState.cleanupWorkerExportDisabled;
+    state.adminDashboardCleanupWorkerCsvExportDisabled = adminDashboardState.cleanupWorkerCsvExportDisabled;
     state.adminDashboardCleanupWorkerStatus = adminDashboardState.cleanupWorkerStatus;
     state.adminDashboardCleanupWorkerName = adminDashboardState.cleanupWorkerName;
     state.adminDashboardCleanupWorkerUrl = adminDashboardState.cleanupWorkerUrl;
@@ -3544,6 +3583,9 @@ async function runBrowserSmoke() {
     state.adminDashboardCleanupWorkerExportStatus = adminDashboardCleanupWorkerExportState?.ok ? 'ready' : '';
     state.adminDashboardCleanupWorkerExportedCount = adminDashboardCleanupWorkerExportState?.exportedCount || 0;
     state.adminDashboardCleanupWorkerExportedFileName = adminDashboardCleanupWorkerExportState?.fileName || '';
+    state.adminDashboardCleanupWorkerCsvExportStatus = adminDashboardCleanupWorkerCsvExportState?.ok ? 'ready' : '';
+    state.adminDashboardCleanupWorkerCsvExportedCount = adminDashboardCleanupWorkerCsvExportState?.rowCount || 0;
+    state.adminDashboardCleanupWorkerCsvExportedFileName = adminDashboardCleanupWorkerCsvExportState?.fileName || '';
     state.adminDashboardHasAdminActor = adminDashboardState.hasAdminActor;
     state.adminDashboardAdminName = adminDashboardState.adminName;
     state.adminDashboardAdminRole = adminDashboardState.adminRole;
@@ -4196,6 +4238,7 @@ console.log(`Cleanup worker history: ${browserState.adminDashboardCleanupWorkerH
 if (browserState.adminSmokeTokenProvided) {
   console.log(`Cleanup worker dry scan: ${browserState.adminDashboardCleanupWorkerDryRunPersisted ? 'persisted' : 'missing'} ${browserState.adminDashboardCleanupWorkerDryRunReason || 'missing'} scanned ${browserState.adminDashboardCleanupWorkerDryRunScanned || 0}, orphaned ${browserState.adminDashboardCleanupWorkerDryRunOrphaned || 0}, deleted ${browserState.adminDashboardCleanupWorkerDryRunDeleted || 0}, errors ${browserState.adminDashboardCleanupWorkerDryRunErrors || 0}, history ${browserState.adminDashboardCleanupWorkerDryRunHistoryPersisted ? 'persisted' : 'missing'} (${browserState.adminDashboardCleanupWorkerDryRunHistoryCount || 0})`);
   console.log(`Cleanup worker export: ${browserState.adminDashboardCleanupWorkerExportStatus || 'missing'} ${browserState.adminDashboardCleanupWorkerExportedCount || 0} runs -> ${browserState.adminDashboardCleanupWorkerExportedFileName || 'missing'}`);
+  console.log(`Cleanup worker CSV export: ${browserState.adminDashboardCleanupWorkerCsvExportStatus || 'missing'} ${browserState.adminDashboardCleanupWorkerCsvExportedCount || 0} rows -> ${browserState.adminDashboardCleanupWorkerCsvExportedFileName || 'missing'}`);
 }
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);

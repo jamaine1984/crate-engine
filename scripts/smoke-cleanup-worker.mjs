@@ -55,6 +55,14 @@ async function main() {
     throw new Error(`Cleanup worker history guard failed: ${blockedHistoryResponse.status} ${JSON.stringify(blockedHistory)}`);
   }
 
+  const blockedCsvResponse = await fetch(`${workerUrl}/history?format=csv`, {
+    headers: { Accept: 'text/csv' },
+  });
+  const blockedCsv = await readJson(blockedCsvResponse);
+  if (blockedCsvResponse.status !== 403 || !/admin authorization/i.test(blockedCsv?.error || '')) {
+    throw new Error(`Cleanup worker CSV history guard failed: ${blockedCsvResponse.status} ${JSON.stringify(blockedCsv)}`);
+  }
+
   let authed = null;
   if (adminToken) {
     const dryRunResponse = await fetch(`${workerUrl}/cleanup`, {
@@ -111,6 +119,20 @@ async function main() {
         !/cleanup-history/i.test(exported.exportFileName || '')) {
       throw new Error(`Cleanup worker authenticated history export failed: ${exportResponse.status} ${JSON.stringify(exported)}`);
     }
+    const csvExportResponse = await fetch(`${workerUrl}/history?format=csv`, {
+      headers: {
+        Accept: 'text/csv',
+        'X-Crate-Admin-Token': adminToken,
+      },
+    });
+    const csvExport = await csvExportResponse.text();
+    if (csvExportResponse.status !== 200 ||
+        !/text\/csv/i.test(csvExportResponse.headers.get('content-type') || '') ||
+        !/^exportGeneratedAt,worker,adminName,adminRole,runId,/i.test(csvExport) ||
+        !/manual-api/i.test(csvExport) ||
+        !/cleanup-history/i.test(csvExportResponse.headers.get('content-disposition') || '')) {
+      throw new Error(`Cleanup worker authenticated CSV history export failed: ${csvExportResponse.status} ${csvExport.slice(0, 300)}`);
+    }
   }
 
   console.log('Cleanup worker smoke passed.');
@@ -120,7 +142,7 @@ async function main() {
     ? `Last run: ${healthLastRun.reason || 'unknown'} scanned ${healthLastRun.scanned || 0}, orphaned ${healthLastRun.orphaned || 0}, deleted ${healthLastRun.deleted || 0}, errors ${healthLastRun.errorCount || 0}`
     : 'Last run: none persisted yet.');
   console.log(`History: ${Array.isArray(health.history) ? health.history.length : 0}/${health.historyLimit || 0} persisted runs`);
-  console.log(`Guard: cleanup ${blockedResponse.status}, history ${blockedHistoryResponse.status}`);
+  console.log(`Guard: cleanup ${blockedResponse.status}, history ${blockedHistoryResponse.status}, csv ${blockedCsvResponse.status}`);
   if (authed) {
     console.log(`Authed dry run: scanned ${authed.scanned}, orphaned ${authed.orphaned}, deleted ${authed.deleted}, errors ${authed.errors}, persisted ${authed.lastRunPersisted ? 'yes' : 'no'}, history ${authed.historyPersisted ? 'yes' : 'no'} (${authed.historyCount})`);
   } else {

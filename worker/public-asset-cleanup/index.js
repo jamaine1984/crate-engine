@@ -5,12 +5,50 @@ const HISTORY_KEY = 'cleanup:history';
 const HISTORY_LIMIT = 12;
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
+const HISTORY_CSV_COLUMNS = [
+  'exportGeneratedAt',
+  'worker',
+  'adminName',
+  'adminRole',
+  'runId',
+  'ok',
+  'reason',
+  'dryRun',
+  'deleteEnabled',
+  'limit',
+  'scanned',
+  'orphaned',
+  'deleted',
+  'errorCount',
+  'startedAt',
+  'finishedAt',
+  'durationMs',
+  'cron',
+  'scheduledTime',
+  'persistedAt',
+  'error',
+];
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
     status: init.status || 200,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Crate-Admin-Token',
+      ...(init.headers || {}),
+    },
+  });
+}
+
+function csv(data, fileName, init = {}) {
+  return new Response(data, {
+    status: init.status || 200,
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${cleanFileName(fileName || 'crateship-cleanup-history.csv')}"`,
       'Cache-Control': 'no-store',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -46,6 +84,42 @@ function cleanFileName(value) {
 
 function publicObjectKey(publicId, fileName) {
   return `${PUBLIC_ASSET_PREFIX}/${cleanId(publicId)}/${cleanFileName(fileName)}`;
+}
+
+function csvCell(value) {
+  const text = String(value == null ? '' : value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function cleanupHistoryCsv(history, meta = {}) {
+  const rows = Array.isArray(history) ? history : [];
+  const normalized = rows.map((run) => ({
+    exportGeneratedAt: meta.generatedAt || '',
+    worker: meta.worker || 'crateship-public-asset-cleanup',
+    adminName: meta.admin?.name || '',
+    adminRole: meta.admin?.role || '',
+    runId: run?.runId || '',
+    ok: run?.ok === true ? 'true' : 'false',
+    reason: run?.reason || '',
+    dryRun: run?.dryRun !== false ? 'true' : 'false',
+    deleteEnabled: run?.deleteEnabled === true ? 'true' : 'false',
+    limit: Number(run?.limit) || 0,
+    scanned: Number(run?.scanned) || 0,
+    orphaned: Number(run?.orphaned) || 0,
+    deleted: Number(run?.deleted) || 0,
+    errorCount: Number(run?.errorCount) || 0,
+    startedAt: run?.startedAt || '',
+    finishedAt: run?.finishedAt || '',
+    durationMs: Number(run?.durationMs) || 0,
+    cron: run?.cron || '',
+    scheduledTime: Number(run?.scheduledTime) || 0,
+    persistedAt: run?.persistedAt || '',
+    error: run?.error || '',
+  }));
+  return [
+    HISTORY_CSV_COLUMNS.join(','),
+    ...normalized.map((row) => HISTORY_CSV_COLUMNS.map((column) => csvCell(row[column])).join(',')),
+  ].join('\r\n') + '\r\n';
 }
 
 function publicIdFromMetadataKey(key) {
@@ -384,21 +458,34 @@ export default {
         historyLimit: HISTORY_LIMIT,
       });
     }
-    if (request.method === 'GET' && url.pathname === '/history') {
+    if (request.method === 'GET' && (url.pathname === '/history' || url.pathname === '/history.csv')) {
       const admin = requireAdmin(request, env, {});
       if (!admin.ok) return admin.response;
       const lastRun = await readLastCleanupRun(env);
       const history = await readCleanupHistory(env);
+      const generatedAt = new Date().toISOString();
+      const baseFileName = `crateship-cleanup-history-${generatedAt.slice(0, 10)}`;
+      const wantsCsv = url.pathname === '/history.csv' ||
+        String(url.searchParams.get('format') || '').toLowerCase() === 'csv' ||
+        /\btext\/csv\b/i.test(request.headers.get('accept') || '');
+      if (wantsCsv) {
+        return csv(cleanupHistoryCsv(history, {
+          generatedAt,
+          worker: 'crateship-public-asset-cleanup',
+          admin: admin.admin,
+        }), `${baseFileName}.csv`);
+      }
       return json({
         ok: true,
         worker: 'crateship-public-asset-cleanup',
-        generatedAt: new Date().toISOString(),
+        generatedAt,
         admin: admin.admin,
         lastRun,
         history,
         total: history.length,
         historyLimit: HISTORY_LIMIT,
-        exportFileName: `crateship-cleanup-history-${new Date().toISOString().slice(0, 10)}.json`,
+        exportFileName: `${baseFileName}.json`,
+        csvExportFileName: `${baseFileName}.csv`,
       });
     }
     if (request.method === 'POST' && url.pathname === '/cleanup') {

@@ -177,6 +177,7 @@ td{color:#dce7eb;font-size:.86rem}
     <div class="storage-actions">
       <button id="dry-run-cleanup-worker" type="button">Run Dry Scan</button>
       <button id="export-cleanup-history" type="button">Export History</button>
+      <button id="export-cleanup-history-csv" type="button">Export CSV</button>
       <button id="refresh-cleanup-worker" type="button">Refresh Worker</button>
       <a id="open-cleanup-worker" href="https://crateship-public-asset-cleanup.koikes2021.workers.dev/health" target="_blank" rel="noopener noreferrer">Open Health</a>
     </div>
@@ -289,6 +290,7 @@ td{color:#dce7eb;font-size:.86rem}
     cleanupWorkerHistory: document.getElementById('cleanup-worker-history'),
     cleanupWorkerDryRun: document.getElementById('dry-run-cleanup-worker'),
     cleanupWorkerExport: document.getElementById('export-cleanup-history'),
+    cleanupWorkerCsvExport: document.getElementById('export-cleanup-history-csv'),
     cleanupWorkerRefresh: document.getElementById('refresh-cleanup-worker'),
     cleanupWorkerOpen: document.getElementById('open-cleanup-worker'),
     rows: document.getElementById('admin-rows'),
@@ -322,7 +324,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditStorage: { status: 'locked', source: '', writeVerified: false },
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
-    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, exporting: false, lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, exportCount: 0, exportFileName: '', error: '' },
+    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, exporting: false, exportFormat: '', lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, exportCount: 0, exportFileName: '', error: '' },
     error: '',
   };
 
@@ -410,6 +412,7 @@ td{color:#dce7eb;font-size:.86rem}
       hasCleanupWorker: !!els.cleanupWorkerPanel,
       hasCleanupWorkerDryRun: !!els.cleanupWorkerDryRun,
       hasCleanupWorkerExport: !!els.cleanupWorkerExport,
+      hasCleanupWorkerCsvExport: !!els.cleanupWorkerCsvExport,
       auditDetailStatus: state.auditDetail?.status || 'empty',
       auditDetailSlug: state.auditDetail?.slug || '',
       auditDetailRows: Number(state.auditDetail?.rows) || 0,
@@ -437,6 +440,7 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerHasGameStore: state.cleanupWorker?.hasGameStore === true,
       cleanupWorkerRunning: state.cleanupWorker?.running === true,
       cleanupWorkerExporting: state.cleanupWorker?.exporting === true,
+      cleanupWorkerExportFormat: state.cleanupWorker?.exportFormat || '',
       cleanupWorkerLastRunKnown: state.cleanupWorker?.lastRunKnown === true,
       cleanupWorkerHasLastRun: !!state.cleanupWorker?.lastRun,
       cleanupWorkerLastRunPersisted: state.cleanupWorker?.lastRunPersisted === true,
@@ -634,6 +638,10 @@ td{color:#dce7eb;font-size:.86rem}
       els.cleanupWorkerExport.disabled = locked || status === 'checking' || running || exporting;
       els.cleanupWorkerExport.textContent = exporting ? 'Exporting...' : 'Export History';
     }
+    if (els.cleanupWorkerCsvExport) {
+      els.cleanupWorkerCsvExport.disabled = locked || status === 'checking' || running || exporting;
+      els.cleanupWorkerCsvExport.textContent = exporting ? 'Exporting...' : 'Export CSV';
+    }
     if (els.cleanupWorkerRefresh) {
       els.cleanupWorkerRefresh.disabled = status === 'checking' || running || exporting;
       els.cleanupWorkerRefresh.textContent = status === 'checking' ? 'Checking...' : 'Refresh Worker';
@@ -657,7 +665,8 @@ td{color:#dce7eb;font-size:.86rem}
     }
     if (els.cleanupWorkerDetail) {
       if (exporting) {
-        els.cleanupWorkerDetail.textContent = 'Preparing the cleanup history JSON export for offline audit records.';
+        const format = worker.exportFormat === 'csv' ? 'CSV' : 'JSON';
+        els.cleanupWorkerDetail.textContent = 'Preparing the cleanup history ' + format + ' export for offline audit records.';
       } else if (running) {
         els.cleanupWorkerDetail.textContent = 'Calling the deployed Worker in dry-run mode. No public assets will be deleted.';
       } else if (status === 'ready') {
@@ -710,6 +719,7 @@ td{color:#dce7eb;font-size:.86rem}
         url: CLEANUP_WORKER_URL,
         running: false,
         exporting: false,
+        exportFormat: '',
         lastRunKnown: false,
         lastRun: null,
         lastRunPersisted: false,
@@ -739,6 +749,7 @@ td{color:#dce7eb;font-size:.86rem}
           url: CLEANUP_WORKER_URL,
           running: false,
           exporting: false,
+          exportFormat: '',
           lastRunKnown: Object.prototype.hasOwnProperty.call(payload, 'lastRun'),
           lastRun: payload.lastRun && typeof payload.lastRun === 'object' ? payload.lastRun : null,
           lastRunPersisted: false,
@@ -763,6 +774,7 @@ td{color:#dce7eb;font-size:.86rem}
           url: CLEANUP_WORKER_URL,
           running: false,
           exporting: false,
+          exportFormat: '',
           lastRunKnown: false,
           lastRun: null,
           lastRunPersisted: false,
@@ -861,6 +873,7 @@ td{color:#dce7eb;font-size:.86rem}
           url: CLEANUP_WORKER_URL,
           running: false,
           exporting: false,
+          exportFormat: previous.exportFormat || '',
           lastRunKnown: true,
           lastRun,
           lastRunPersisted: payload.lastRunPersisted === true,
@@ -902,7 +915,31 @@ td{color:#dce7eb;font-size:.86rem}
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function exportCleanupWorkerHistory(button) {
+  function downloadTextFile(text, fileName, type) {
+    const blob = new Blob([String(text || '')], { type: type || 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName || 'crateship-cleanup-history.txt';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportRowCountFromCsv(text) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return 0;
+    return Math.max(0, trimmed.split(/\r?\n/).length - 1);
+  }
+
+  function fileNameFromDisposition(value, fallback) {
+    const match = String(value || '').match(/filename="?([^";]+)"?/i);
+    return match ? match[1] : fallback;
+  }
+
+  async function exportCleanupWorkerHistory(button, format) {
+    const exportFormat = format === 'csv' ? 'csv' : 'json';
     const token = readToken();
     if (!token) {
       els.authStatus.textContent = 'Enter the admin token before exporting cleanup history.';
@@ -919,11 +956,41 @@ td{color:#dce7eb;font-size:.86rem}
     setState({
       cleanupWorker: Object.assign({}, previous, {
         exporting: true,
+        exportFormat,
         error: '',
       }),
       error: '',
     });
     try {
+      if (exportFormat === 'csv') {
+        const response = await fetch(CLEANUP_WORKER_URL + '/history?format=csv', {
+          headers: Object.assign({}, headers(false), { Accept: 'text/csv' }),
+        });
+        const text = await response.text();
+        if (!response.ok || !/^exportGeneratedAt,worker,adminName,adminRole,runId,/i.test(text)) {
+          const message = /admin authorization/i.test(text) ? 'Admin authorization is required to export cleanup history.' : 'Cleanup history CSV export failed with HTTP ' + response.status;
+          const err = new Error(message);
+          err.status = response.status;
+          throw err;
+        }
+        const fileName = fileNameFromDisposition(response.headers.get('content-disposition'), 'crateship-cleanup-history.csv');
+        const rowCount = exportRowCountFromCsv(text);
+        window._crateCleanupHistoryCsvExport = { ok: true, text, fileName, rowCount };
+        downloadTextFile(text, fileName, 'text/csv');
+        els.authStatus.textContent = 'Cleanup history CSV export prepared.';
+        setState({
+          cleanupWorker: Object.assign({}, previous, {
+            status: 'ready',
+            exporting: false,
+            exportFormat: 'csv',
+            exportCount: rowCount,
+            exportFileName: fileName,
+            error: '',
+          }),
+          error: '',
+        });
+        return;
+      }
       const response = await fetch(CLEANUP_WORKER_URL + '/history', {
         headers: headers(false),
       });
@@ -942,6 +1009,7 @@ td{color:#dce7eb;font-size:.86rem}
         cleanupWorker: Object.assign({}, previous, {
           status: 'ready',
           exporting: false,
+          exportFormat: 'json',
           lastRunKnown: Object.prototype.hasOwnProperty.call(payload, 'lastRun'),
           lastRun: payload.lastRun && typeof payload.lastRun === 'object' ? payload.lastRun : previous.lastRun || null,
           historyKnown: true,
@@ -960,6 +1028,7 @@ td{color:#dce7eb;font-size:.86rem}
       setState({
         cleanupWorker: Object.assign({}, previous, {
           exporting: false,
+          exportFormat,
           error: message,
         }),
         error: message,
@@ -1339,7 +1408,8 @@ td{color:#dce7eb;font-size:.86rem}
   els.assetCleanupDryRun?.addEventListener('click', (event) => runPublicAssetCleanup(true, event.currentTarget));
   els.assetCleanupRun?.addEventListener('click', (event) => runPublicAssetCleanup(false, event.currentTarget));
   els.cleanupWorkerDryRun?.addEventListener('click', (event) => runCleanupWorkerDryRun(event.currentTarget));
-  els.cleanupWorkerExport?.addEventListener('click', (event) => exportCleanupWorkerHistory(event.currentTarget));
+  els.cleanupWorkerExport?.addEventListener('click', (event) => exportCleanupWorkerHistory(event.currentTarget, 'json'));
+  els.cleanupWorkerCsvExport?.addEventListener('click', (event) => exportCleanupWorkerHistory(event.currentTarget, 'csv'));
   els.cleanupWorkerRefresh?.addEventListener('click', () => loadCleanupWorkerStatus());
   els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {
