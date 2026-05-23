@@ -3820,13 +3820,13 @@ function createAssetPackSection() {
 
 function formatPosition(obj) {
   if (!obj?.position) return 'No position';
-  return 'x ' + obj.position.x.toFixed(1) + ' y ' + obj.position.y.toFixed(1) + ' z ' + obj.position.z.toFixed(1);
+  return 'x ' + obj.position.x.toFixed(1) + ', y ' + obj.position.y.toFixed(1) + ', z ' + obj.position.z.toFixed(1);
 }
 
 function formatPlacementPosition(state) {
   if (!Number.isFinite(state?.x) || !Number.isFinite(state?.z)) return '';
-  const y = Number.isFinite(state.y) ? ' y ' + state.y.toFixed(1) : '';
-  return 'x ' + state.x.toFixed(1) + y + ' z ' + state.z.toFixed(1);
+  const y = Number.isFinite(state.y) ? ', y ' + state.y.toFixed(1) : '';
+  return 'x ' + state.x.toFixed(1) + y + ', z ' + state.z.toFixed(1);
 }
 
 function renderPlacementStatus() {
@@ -3842,11 +3842,13 @@ function renderPlacementStatus() {
   if (signature === lastPlacementSignature) return;
   lastPlacementSignature = signature;
   box.dataset.status = status;
+  box.dataset.placementName = name;
+  box.dataset.placementPosition = position || '';
   box.innerHTML = '';
-  const title = createTextElement('strong', '', status === 'loading' ? 'Placing' : status === 'failed' ? 'Placement failed' : status === 'blocked' ? 'Placement blocked' : status === 'placed' ? 'Placed' : 'Ready');
-  const item = createTextElement('span', '', name);
+  const title = createTextElement('strong', 'gb-placement-title', status === 'loading' ? 'Placing' : status === 'failed' ? 'Placement failed' : status === 'blocked' ? 'Placement blocked' : status === 'placed' ? 'Placed' : 'Ready');
+  const item = createTextElement('span', 'gb-placement-item', status === 'ready' ? name : 'Asset: ' + name);
   box.append(title, item);
-  if (position) box.appendChild(createTextElement('span', '', position));
+  if (position) box.appendChild(createTextElement('span', 'gb-placement-position', 'Position: ' + position));
   if (state.error) box.appendChild(createTextElement('span', 'gb-placement-error', state.error));
   if (status === 'failed' && typeof window._retryLastAssetPlacement === 'function') {
     const retry = createSmallButton('Retry', () => window._retryLastAssetPlacement?.(), {
@@ -4477,9 +4479,10 @@ function mount() {
     #game-builder-panel[data-edit-mode="false"] .gb-section:has([data-gb-edit-only="true"]) h3::after{content:"Read only";float:right;text-transform:none;font-weight:600;color:#75808a}
     [data-gb-edit-only="true"]:disabled{opacity:.42!important;cursor:not-allowed!important}
     .gb-readonly-note{margin-bottom:8px;border:1px solid #374151;background:#111827;color:#c7d2fe;border-radius:7px;padding:7px 8px;font-size:11px;line-height:15px}
-    .gb-placement-status{display:flex;flex-direction:column;gap:3px;margin:8px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px;min-height:52px}
+    .gb-placement-status{display:flex;flex-direction:column;gap:5px;margin:8px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:9px 10px;min-height:58px}
     .gb-placement-status strong{font-size:12px;line-height:16px;color:#eef2f3}
-    .gb-placement-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
+    .gb-placement-status span{font-size:10.5px;line-height:15px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
+    .gb-placement-status .gb-placement-item,.gb-placement-status .gb-placement-position{display:block}
     .gb-placement-status[data-status="placed"]{border-color:#2f6f44;background:#101a13}
     .gb-placement-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
     .gb-placement-status[data-status="failed"],.gb-placement-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}

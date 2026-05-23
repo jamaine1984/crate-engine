@@ -316,7 +316,12 @@ export function showCategoryPicker() {
       const card = document.createElement('div');
       card.dataset.cat = (category + ' ' + meta.label).toLowerCase();
       card.dataset.assetCategory = category;
-      card.style.cssText = 'padding:24px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + meta.color + '30;border-radius:8px;cursor:pointer;text-align:center;transition:all 0.2s;';
+      card.dataset.assetCategoryLabel = meta.label;
+      card.dataset.assetCategoryCount = String(count);
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('aria-label', meta.label + ', ' + count.toLocaleString() + ' models');
+      card.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:124px;padding:22px 16px;background:rgba(255,255,255,0.03);border:2px solid ' + meta.color + '30;border-radius:8px;cursor:pointer;text-align:center;transition:all 0.2s;box-sizing:border-box;';
       card.onmouseenter = () => {
         card.style.borderColor = meta.color;
         card.style.transform = 'scale(1.04)';
@@ -325,13 +330,29 @@ export function showCategoryPicker() {
         card.style.borderColor = meta.color + '30';
         card.style.transform = 'scale(1)';
       };
-      card.innerHTML = '<div style="font-size:40px;margin-bottom:8px;">' + meta.icon + '</div><div style="font-size:15px;font-weight:bold;color:' + meta.color + ';margin-bottom:4px;">' + meta.label + '</div><div style="font-size:12px;color:#555;">' + count + ' models</div>';
-      card.onclick = () => {
+      const iconEl = document.createElement('div');
+      iconEl.style.cssText = 'font-size:38px;line-height:42px;';
+      iconEl.textContent = meta.icon;
+      const labelEl = document.createElement('div');
+      labelEl.style.cssText = 'font-size:15px;line-height:18px;font-weight:bold;color:' + meta.color + ';max-width:100%;overflow-wrap:anywhere;';
+      labelEl.textContent = meta.label;
+      const countEl = document.createElement('div');
+      countEl.style.cssText = 'font-size:12px;line-height:15px;color:#8d979e;';
+      countEl.textContent = count.toLocaleString() + ' models';
+      card.append(iconEl, labelEl, countEl);
+      const openCategory = () => {
         overlay.remove();
         if (category === 'characters') {
           context.showCharacterGallery?.().then(resolve);
         } else {
           showGallery(category).then(resolve);
+        }
+      };
+      card.onclick = openCategory;
+      card.onkeydown = (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openCategory();
         }
       };
       grid.appendChild(card);

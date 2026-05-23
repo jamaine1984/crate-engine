@@ -486,6 +486,7 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     );
     const builderMenuPlacementState = await page.evaluate(() => {
+      const placementEl = document.querySelector('#gb-placement-status');
       if (window._smokeOriginalCategoryPicker) {
         window._showCategoryPicker = window._smokeOriginalCategoryPicker;
         delete window._smokeOriginalCategoryPicker;
@@ -493,10 +494,20 @@ async function runBrowserSmoke() {
       return {
         objectCount: window._engineBridge?.objects?.length || 0,
         placement: window._lastAssetPlacement || null,
+        placementText: placementEl?.textContent || '',
+        placementName: placementEl?.dataset?.placementName || '',
+        placementPosition: placementEl?.dataset?.placementPosition || '',
       };
     });
     if (builderMenuPlacementState.placement?.source !== 'game-builder-assets') {
       throw new Error(`Game Builder asset menu did not place the picked asset: ${JSON.stringify(builderMenuPlacementState)}`);
+    }
+    const placementText = builderMenuPlacementState.placementText || '';
+    if (!/Asset:\s*Builder menu chair/i.test(placementText) ||
+        !/Position:\s*x -?\d/i.test(placementText) ||
+        !/,\s*y -?\d/i.test(placementText) ||
+        !/,\s*z -?\d/i.test(placementText)) {
+      throw new Error(`Game Builder placement status is not readable: ${JSON.stringify(builderMenuPlacementState)}`);
     }
 
     const userImportState = await page.evaluate(async () => {
