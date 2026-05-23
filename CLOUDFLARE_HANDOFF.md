@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `e0032ab7`
+- Current deployed source commit for the public engine code: `e5219abf`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,13 +36,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `ec9ce464-6a4e-4926-bb60-94dcdbd52a15`
-- Latest production deployment URL: `https://ec9ce464.crateship-games.pages.dev`
+- Latest production deployment ID: `e40a7783-8415-4f06-99ff-40f2421db013`
+- Latest production deployment URL: `https://e40a7783.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `e0032ab`
-- Main live page bundle after the deploy: `/assets/play-BGui0INi.js`
+- Source shown by Cloudflare: `e5219ab`
+- Main live page bundle after the deploy: `/assets/play-DDsE9dit.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BFE8gyJ-.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BcIi53i4.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -50,6 +50,57 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `e5219abf` (`Add confirmed asset placement preview`)
+- Final Cloudflare deployment: `e40a7783-8415-4f06-99ff-40f2421db013`
+- Final deployment URL: `https://e40a7783.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- App deploy command:
+
+```powershell
+npm run check
+git diff --check
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=e5219abf664cdd3adf5d99b165fa18a43805b27d --commit-message="Add confirmed asset placement preview" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Deploy upload evidence: uploaded `8` changed files, reused `103` already-uploaded files, uploaded the Functions bundle, `_headers`, and `_routes.json`.
+- Main app bundle after deploy: `/assets/play-DDsE9dit.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui-BcIi53i4.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=placement-preview-e5219ab`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-placement-preview-e5219ab`
+- Targeted desktop placement preview probe passed: `https://crateshipgames.com/play?verify=targeted-placement-preview-e5219ab`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-placement-preview-e5219ab.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-placement-preview-e5219ab.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\targeted-placement-preview-e5219ab.png`
+- Production smoke evidence:
+  - Apex smoke loaded `/assets/play-DDsE9dit.js`, asset host manifest `6f09cc09da2f`, and the separate asset host returned `200` for checked GLB/BIN/JPG assets and expected `404` for the missing asset check.
+  - Builder Quick Tools Asset Library now opens a placement preview first; smoke verified object count stays unchanged, `awaitingConfirm=true`, the placement toolbar is visible, and the side-menu status says `Move over the scene, then place or cancel`.
+  - After the Place action, smoke verified object count increased, placement status became `placed`, and `awaitingConfirm` cleared.
+  - Apex phone and tablet viewport probes still open Quick Tools Asset Library and place `Bathroom Bathtub` after confirming the preview.
+  - Targeted desktop probe verified `Targeted confirm chair` preview at object count `0`, canvas-click placement at object count `1`, toolbar removal after placement, cancel leaving object count unchanged, and View mode canvas clicks leaving `selectedAfter=null`.
+  - Apex raw Build City frame probe: `55.6 FPS`, `18 ms` average frame, `0.8 ms` update, `17.2 ms` render.
+  - WWW smoke passed publish, marketplace, game detail, project save/load, playable export, validation, admin guard, cleanup Worker readiness, asset host, inventory, mission, NPC, merchant, door trigger, enemy wave, and respawn flows.
+
+What changed in this deploy:
+
+- `engine.mjs`
+  - Added a real confirmed placement flow for catalog assets: GLBs load as transparent previews, move with the scene pointer, and only become real scene objects after Place or a canvas click.
+  - Added placement toolbar actions for Place, Cancel, Rotate, Scale down, and Scale up, plus Escape-to-cancel and `R`-to-rotate.
+  - Added a placement request token guard so rapid asset choices do not leave stale preview models in the scene.
+- `game-builder-ui.mjs`
+  - Game Builder Asset Library now calls the preview placement flow instead of immediately inserting the object.
+  - Placement status now shows preview-loading/preview/cancelled states with Place and Cancel controls in the side panel.
+- `scripts/smoke-production.mjs`
+  - Production smoke now fails if asset-menu placement skips the preview/confirmation step, adds the object too early, omits the placement toolbar, or fails to clear `awaitingConfirm` after Place.
+
+Previous app-only deploy on 2026-05-23:
 
 - Final commit deployed: `e0032ab7` (`Fix asset placement visibility and view mode`)
 - Final Cloudflare deployment: `ec9ce464-6a4e-4926-bb60-94dcdbd52a15`
