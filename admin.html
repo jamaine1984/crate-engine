@@ -25,8 +25,8 @@ h1{font-size:clamp(1.8rem,3vw,3.1rem);margin:0;color:#fff;line-height:1.05}
 .status-pill.err{border-color:#713030;background:#251010;color:#fca5a5}
 .auth,.storage-panel,.toolbar,.review-note,.table-panel,.audit-detail{border:1px solid #1d2a31;background:#0b1116;border-radius:12px}
 .auth{display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;gap:10px;align-items:center;padding:14px;margin-bottom:14px}
-.auth input,.toolbar input,.toolbar select{width:100%;background:#05080a;border:1px solid #24323b;border-radius:9px;color:#e7eef2;padding:10px 11px;outline:none}
-.auth input:focus,.toolbar input:focus,.toolbar select:focus{border-color:#7ddf9e}
+.auth input,.toolbar input,.toolbar select,.cleanup-audit select{width:100%;background:#05080a;border:1px solid #24323b;border-radius:9px;color:#e7eef2;padding:10px 11px;outline:none}
+.auth input:focus,.toolbar input:focus,.toolbar select:focus,.cleanup-audit select:focus{border-color:#7ddf9e}
 button{border:1px solid #2d3a42;background:#121a20;color:#e7eef2;border-radius:9px;padding:10px 12px;cursor:pointer;font-weight:800}
 button.primary{background:#7ddf9e;color:#061009;border-color:#7ddf9e}
 button.warn{background:#221a08;color:#f7d774;border-color:#6e5317}
@@ -94,6 +94,11 @@ td{color:#dce7eb;font-size:.86rem}
 .audit-changes{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .audit-change{border:1px solid #263943;background:#101820;border-radius:999px;padding:4px 8px;color:#c8d5db;font-size:.72rem}
 .audit-note{color:#dce7eb;font-size:.8rem;line-height:1.4;margin-top:8px}
+.cleanup-audit .storage-actions{justify-content:flex-start}
+.cleanup-audit select{min-width:128px}
+.cleanup-audit[data-status="loaded"]{border-color:#1f6847;background:#08140f}
+.cleanup-audit[data-status="failed"]{border-color:#713030;background:#160b0b}
+.cleanup-audit[data-status="loading"]{border-color:#775d18;background:#171307}
 @media (max-width:980px){
   .hero{align-items:flex-start;flex-direction:column}
   .auth,.storage-panel,.toolbar,.review-note{grid-template-columns:1fr}
@@ -180,6 +185,31 @@ td{color:#dce7eb;font-size:.86rem}
       <button id="export-cleanup-history-csv" type="button">Export CSV</button>
       <button id="refresh-cleanup-worker" type="button">Refresh Worker</button>
       <a id="open-cleanup-worker" href="https://crateship-public-asset-cleanup.koikes2021.workers.dev/health" target="_blank" rel="noopener noreferrer">Open Health</a>
+    </div>
+  </section>
+
+  <section id="cleanup-audit-panel" class="audit-detail cleanup-audit" data-status="locked" aria-label="Cleanup audit history">
+    <div class="audit-detail-head">
+      <div>
+        <h2>Cleanup Audit</h2>
+        <p id="cleanup-audit-summary">Enter the admin token to browse D1 cleanup runs.</p>
+      </div>
+      <div class="storage-actions">
+        <select id="cleanup-audit-reason" aria-label="Cleanup audit reason">
+          <option value="all">All runs</option>
+          <option value="manual-api">Manual</option>
+          <option value="scheduled">Scheduled</option>
+        </select>
+        <select id="cleanup-audit-mode" aria-label="Cleanup audit mode">
+          <option value="all">All modes</option>
+          <option value="dry-run">Dry runs</option>
+          <option value="delete">Delete runs</option>
+        </select>
+        <button id="refresh-cleanup-audit" type="button">Refresh Audit</button>
+      </div>
+    </div>
+    <div id="cleanup-audit-rows" class="audit-list">
+      <div class="empty">Cleanup audit rows are locked.</div>
     </div>
   </section>
 
@@ -293,6 +323,12 @@ td{color:#dce7eb;font-size:.86rem}
     cleanupWorkerCsvExport: document.getElementById('export-cleanup-history-csv'),
     cleanupWorkerRefresh: document.getElementById('refresh-cleanup-worker'),
     cleanupWorkerOpen: document.getElementById('open-cleanup-worker'),
+    cleanupAuditPanel: document.getElementById('cleanup-audit-panel'),
+    cleanupAuditSummary: document.getElementById('cleanup-audit-summary'),
+    cleanupAuditReason: document.getElementById('cleanup-audit-reason'),
+    cleanupAuditMode: document.getElementById('cleanup-audit-mode'),
+    cleanupAuditRefresh: document.getElementById('refresh-cleanup-audit'),
+    cleanupAuditRows: document.getElementById('cleanup-audit-rows'),
     rows: document.getElementById('admin-rows'),
     empty: document.getElementById('empty-state'),
     summary: document.getElementById('table-summary'),
@@ -325,6 +361,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
     cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, hasAuditStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, exporting: false, exportFormat: '', lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, d1HistoryAvailable: false, d1HistoryPersisted: false, historySource: '', kvHistoryCount: 0, exportCount: 0, exportFileName: '', error: '' },
+    cleanupAudit: { status: 'locked', rows: [], total: 0, source: '', reason: 'all', mode: 'all', error: '' },
     error: '',
   };
 
@@ -413,6 +450,8 @@ td{color:#dce7eb;font-size:.86rem}
       hasCleanupWorkerDryRun: !!els.cleanupWorkerDryRun,
       hasCleanupWorkerExport: !!els.cleanupWorkerExport,
       hasCleanupWorkerCsvExport: !!els.cleanupWorkerCsvExport,
+      hasCleanupAudit: !!els.cleanupAuditPanel,
+      hasCleanupAuditRefresh: !!els.cleanupAuditRefresh,
       auditDetailStatus: state.auditDetail?.status || 'empty',
       auditDetailSlug: state.auditDetail?.slug || '',
       auditDetailRows: Number(state.auditDetail?.rows) || 0,
@@ -464,6 +503,18 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerLastRunErrorCount: Number(state.cleanupWorker?.lastRun?.errorCount) || 0,
       cleanupWorkerLastRunDryRun: state.cleanupWorker?.lastRun?.dryRun !== false,
       cleanupWorkerError: state.cleanupWorker?.error || '',
+      cleanupAuditStatus: state.cleanupAudit?.status || 'locked',
+      cleanupAuditRows: Array.isArray(state.cleanupAudit?.rows) ? state.cleanupAudit.rows.length : 0,
+      cleanupAuditTotal: Number(state.cleanupAudit?.total) || 0,
+      cleanupAuditSource: state.cleanupAudit?.source || '',
+      cleanupAuditReason: state.cleanupAudit?.reason || 'all',
+      cleanupAuditMode: state.cleanupAudit?.mode || 'all',
+      cleanupAuditRefreshDisabled: els.cleanupAuditRefresh?.disabled === true,
+      cleanupAuditEmptyVisible: !!els.cleanupAuditRows?.querySelector('.empty'),
+      cleanupAuditLatestReason: Array.isArray(state.cleanupAudit?.rows) && state.cleanupAudit.rows[0] ? state.cleanupAudit.rows[0].reason || '' : '',
+      cleanupAuditLatestDryRun: Array.isArray(state.cleanupAudit?.rows) && state.cleanupAudit.rows[0] ? state.cleanupAudit.rows[0].dryRun !== false : false,
+      cleanupAuditLatestRunId: Array.isArray(state.cleanupAudit?.rows) && state.cleanupAudit.rows[0] ? state.cleanupAudit.rows[0].runId || '' : '',
+      cleanupAuditError: state.cleanupAudit?.error || '',
       hasAdminActor: !!els.actor,
       adminName: state.admin?.name || '',
       adminRole: state.admin?.role || '',
@@ -482,6 +533,7 @@ td{color:#dce7eb;font-size:.86rem}
     renderAuditStorage();
     renderPublicAssetCleanup();
     renderCleanupWorker();
+    renderCleanupAudit();
   }
 
   function renderStatus() {
@@ -713,6 +765,84 @@ td{color:#dce7eb;font-size:.86rem}
     }
   }
 
+  function renderCleanupAudit() {
+    if (!els.cleanupAuditPanel) return;
+    const audit = state.cleanupAudit || {};
+    const rows = Array.isArray(audit.rows) ? audit.rows : [];
+    const token = readToken();
+    const status = audit.status || (token ? 'ready' : 'locked');
+    const locked = !token || state.status !== 'loaded';
+    const loading = status === 'loading';
+    els.cleanupAuditPanel.dataset.status = locked ? 'locked' : status;
+    if (els.cleanupAuditReason) {
+      els.cleanupAuditReason.disabled = locked || loading;
+      els.cleanupAuditReason.value = audit.reason || els.cleanupAuditReason.value || 'all';
+    }
+    if (els.cleanupAuditMode) {
+      els.cleanupAuditMode.disabled = locked || loading;
+      els.cleanupAuditMode.value = audit.mode || els.cleanupAuditMode.value || 'all';
+    }
+    if (els.cleanupAuditRefresh) {
+      els.cleanupAuditRefresh.disabled = locked || loading;
+      els.cleanupAuditRefresh.textContent = loading ? 'Loading...' : 'Refresh Audit';
+    }
+    if (els.cleanupAuditSummary) {
+      if (!token) {
+        els.cleanupAuditSummary.textContent = 'Enter the admin token to browse D1 cleanup runs.';
+      } else if (state.status === 'loading') {
+        els.cleanupAuditSummary.textContent = 'Cleanup audit unlocks after admin identity is loaded.';
+      } else if (state.status === 'unauthorized') {
+        els.cleanupAuditSummary.textContent = 'Admin token rejected. Cleanup audit is locked.';
+      } else if (loading) {
+        els.cleanupAuditSummary.textContent = 'Loading cleanup audit rows from D1...';
+      } else if (status === 'failed') {
+        els.cleanupAuditSummary.textContent = audit.error || 'Cleanup audit failed to load.';
+      } else if (status === 'loaded') {
+        const total = Number(audit.total) || rows.length;
+        els.cleanupAuditSummary.textContent = rows.length
+          ? 'D1 cleanup audit loaded ' + rows.length + ' of ' + total + ' matching rows.'
+          : 'No cleanup audit rows match the selected filters.';
+      } else {
+        els.cleanupAuditSummary.textContent = 'Refresh to browse cleanup Worker D1 audit rows.';
+      }
+    }
+    if (!els.cleanupAuditRows) return;
+    if (locked) {
+      els.cleanupAuditRows.innerHTML = '<div class="empty">Cleanup audit rows are locked.</div>';
+      return;
+    }
+    if (loading) {
+      els.cleanupAuditRows.innerHTML = '<div class="empty">Loading cleanup audit rows...</div>';
+      return;
+    }
+    if (status === 'failed') {
+      els.cleanupAuditRows.innerHTML = '<div class="empty">' + escapeHtml(audit.error || 'Could not load cleanup audit rows.') + '</div>';
+      return;
+    }
+    if (!rows.length) {
+      els.cleanupAuditRows.innerHTML = '<div class="empty">No cleanup audit rows loaded.</div>';
+      return;
+    }
+    els.cleanupAuditRows.innerHTML = rows.map((run) => {
+      const mode = run.dryRun === false ? 'delete' : 'dry run';
+      const outcome = run.ok === true ? 'ok' : 'failed';
+      const admin = run.adminName ? run.adminName + (run.adminRole ? ' (' + run.adminRole + ')' : '') : 'system';
+      const when = run.persistedAt || run.finishedAt || run.startedAt || '';
+      return '<article class="audit-entry">' +
+        '<strong>' + escapeHtml(formatCleanupReason(run.reason)) + ' ' + escapeHtml(mode) + ' - ' + escapeHtml(outcome) + '</strong>' +
+        '<div class="audit-meta">' + escapeHtml(formatDate(when)) + ' | ' + escapeHtml(run.worker || 'cleanup Worker') + ' | ' + escapeHtml(admin) + '</div>' +
+        '<div class="audit-changes">' +
+          '<span class="audit-change">Scanned ' + (Number(run.scanned) || 0) + '</span>' +
+          '<span class="audit-change">Orphaned ' + (Number(run.orphaned) || 0) + '</span>' +
+          '<span class="audit-change">Deleted ' + (Number(run.deleted) || 0) + '</span>' +
+          '<span class="audit-change">Errors ' + (Number(run.errorCount) || 0) + '</span>' +
+          '<span class="audit-change">Run ' + escapeHtml(run.runId || 'missing') + '</span>' +
+        '</div>' +
+        (run.error ? '<div class="audit-note">' + escapeHtml(run.error) + '</div>' : '') +
+      '</article>';
+    }).join('');
+  }
+
   async function loadCleanupWorkerStatus() {
     setState({
       cleanupWorker: {
@@ -913,6 +1043,7 @@ td{color:#dce7eb;font-size:.86rem}
         },
         error: '',
       });
+      loadCleanupAudit();
     } catch (err) {
       const message = err?.message || String(err || 'Cleanup Worker dry scan failed');
       els.authStatus.textContent = message;
@@ -1072,6 +1203,56 @@ td{color:#dce7eb;font-size:.86rem}
     }
   }
 
+  async function loadCleanupAudit() {
+    const token = readToken();
+    const reason = els.cleanupAuditReason?.value || state.cleanupAudit?.reason || 'all';
+    const mode = els.cleanupAuditMode?.value || state.cleanupAudit?.mode || 'all';
+    if (!token || state.status !== 'loaded') {
+      setState({
+        cleanupAudit: { status: 'locked', rows: [], total: 0, source: '', reason, mode, error: '' },
+      });
+      return;
+    }
+    setState({
+      cleanupAudit: { status: 'loading', rows: [], total: 0, source: '', reason, mode, error: '' },
+      error: '',
+    });
+    try {
+      const params = new URLSearchParams({
+        limit: '24',
+        reason,
+        mode,
+      });
+      const response = await fetch(CLEANUP_WORKER_URL + '/audit?' + params.toString(), {
+        headers: headers(false),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true || !Array.isArray(payload.rows)) {
+        const err = new Error(payload?.error || 'Cleanup audit failed with HTTP ' + response.status);
+        err.status = response.status;
+        throw err;
+      }
+      setState({
+        cleanupAudit: {
+          status: 'loaded',
+          rows: payload.rows,
+          total: Number(payload.total) || payload.rows.length,
+          source: payload.source || 'd1',
+          reason: payload.reason || reason,
+          mode: payload.mode || mode,
+          error: '',
+        },
+        error: '',
+      });
+    } catch (err) {
+      const message = err?.message || String(err || 'Cleanup audit failed');
+      setState({
+        cleanupAudit: { status: 'failed', rows: [], total: 0, source: '', reason, mode, error: message },
+        error: message,
+      });
+    }
+  }
+
   function formatChange(change) {
     if (!change || !change.field) return '';
     return escapeHtml(change.field) + ': ' + escapeHtml(change.before || 'empty') + ' -> ' + escapeHtml(change.after || 'empty');
@@ -1168,6 +1349,7 @@ td{color:#dce7eb;font-size:.86rem}
         auditStorage: { status: 'locked', source: '', writeVerified: false },
         auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
         assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
+        cleanupAudit: { status: 'locked', rows: [], total: 0, source: '', reason: els.cleanupAuditReason?.value || 'all', mode: els.cleanupAuditMode?.value || 'all', error: '' },
         error: '',
       });
       renderRows([]);
@@ -1211,6 +1393,7 @@ td{color:#dce7eb;font-size:.86rem}
       renderRows(currentRows);
       els.authStatus.textContent = 'Moderation queue loaded.';
       els.summary.textContent = currentRows.length + ' shown from ' + (Number(payload.total) || currentRows.length) + ' matching games.';
+      loadCleanupAudit();
     } catch (err) {
       currentRows = [];
       renderStats({});
@@ -1225,6 +1408,7 @@ td{color:#dce7eb;font-size:.86rem}
         auditStorage: { status: unauthorized ? 'locked' : 'failed', source: '', writeVerified: false },
         auditBackfill: { status: unauthorized ? 'locked' : 'failed', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
         assetCleanup: { status: unauthorized ? 'locked' : 'failed', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
+        cleanupAudit: { status: unauthorized ? 'locked' : 'failed', rows: [], total: 0, source: '', reason: els.cleanupAuditReason?.value || 'all', mode: els.cleanupAuditMode?.value || 'all', error: err?.message || String(err || 'Admin load failed') },
         error: err?.message || String(err || 'Admin load failed'),
       });
       renderRows([]);
@@ -1445,6 +1629,9 @@ td{color:#dce7eb;font-size:.86rem}
   els.cleanupWorkerExport?.addEventListener('click', (event) => exportCleanupWorkerHistory(event.currentTarget, 'json'));
   els.cleanupWorkerCsvExport?.addEventListener('click', (event) => exportCleanupWorkerHistory(event.currentTarget, 'csv'));
   els.cleanupWorkerRefresh?.addEventListener('click', () => loadCleanupWorkerStatus());
+  els.cleanupAuditRefresh?.addEventListener('click', () => loadCleanupAudit());
+  els.cleanupAuditReason?.addEventListener('change', () => loadCleanupAudit());
+  els.cleanupAuditMode?.addEventListener('change', () => loadCleanupAudit());
   els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {
     if (els.noteCount) els.noteCount.textContent = String((els.note?.value || '').trim().length) + ' / 240';
@@ -1467,6 +1654,7 @@ td{color:#dce7eb;font-size:.86rem}
   setState({ status: readToken() ? 'loading' : 'locked' });
   window._loadCrateAdminDashboard = loadAdminGames;
   window._loadCleanupWorkerStatus = loadCleanupWorkerStatus;
+  window._loadCleanupAudit = loadCleanupAudit;
   loadCleanupWorkerStatus();
   loadAdminGames();
 })();

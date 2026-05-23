@@ -217,6 +217,24 @@ function cleanupLimit(value) {
   return Math.min(Math.max(Math.floor(limit), 1), MAX_LIMIT);
 }
 
+function cleanupAuditLimit(value) {
+  const limit = Number(value) || 24;
+  return Math.min(Math.max(Math.floor(limit), 1), 100);
+}
+
+function cleanupAuditReason(value) {
+  const reason = String(value || 'all').trim().toLowerCase();
+  if (!reason || reason === 'all') return 'all';
+  if (reason === 'manual') return 'manual-api';
+  if (reason === 'cron') return 'scheduled';
+  return cleanId(reason) || 'all';
+}
+
+function cleanupAuditMode(value) {
+  const mode = String(value || 'all').trim().toLowerCase();
+  return ['all', 'dry-run', 'delete'].includes(mode) ? mode : 'all';
+}
+
 function scheduledDeleteEnabled(env = {}) {
   return String(env.CRATE_PUBLIC_ASSET_CLEANUP_DELETE || '').trim().toLowerCase() === 'true';
 }
@@ -275,6 +293,18 @@ function publicLastRunFromD1(row) {
   });
 }
 
+function publicCleanupAuditRow(row) {
+  const run = publicLastRunFromD1(row);
+  if (!run) return null;
+  return {
+    ...run,
+    worker: row.worker || 'crateship-public-asset-cleanup',
+    source: row.source || '',
+    adminName: row.admin_name || row.adminName || '',
+    adminRole: row.admin_role || row.adminRole || '',
+  };
+}
+
 async function ensureCleanupAuditSchema(db) {
   if (!db?.prepare) return false;
   await db.prepare(`CREATE TABLE IF NOT EXISTS cleanup_audit (
@@ -325,6 +355,50 @@ async function readD1CleanupHistory(env = {}, limit = HISTORY_LIMIT) {
     };
   } catch (err) {
     return { available: false, history: [], error: err?.message || String(err || 'cleanup audit D1 read failed') };
+  }
+}
+
+async function readCleanupAuditRows(env = {}, options = {}) {
+  const db = auditStore(env);
+  if (!db?.prepare) return { available: false, rows: [], total: 0, error: 'Cleanup audit D1 binding is not configured.' };
+  const reason = cleanupAuditReason(options.reason);
+  const mode = cleanupAuditMode(options.mode);
+  const limit = cleanupAuditLimit(options.limit);
+  const conditions = [];
+  const binds = [];
+  if (reason !== 'all') {
+    conditions.push('reason = ?');
+    binds.push(reason);
+  }
+  if (mode === 'dry-run') conditions.push('dry_run = 1');
+  if (mode === 'delete') conditions.push('dry_run = 0');
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  try {
+    await ensureCleanupAuditSchema(db);
+    const rowsSql = `SELECT run_id, persisted_at, worker, source, ok, error, reason, dry_run, delete_enabled,
+      limit_count, scanned, orphaned, deleted, error_count, started_at, finished_at, duration_ms, cron,
+      scheduled_time, admin_name, admin_role
+      FROM cleanup_audit
+      ${where}
+      ORDER BY persisted_at DESC
+      LIMIT ?`;
+    const countSql = `SELECT COUNT(*) AS total FROM cleanup_audit ${where}`;
+    const rowStatement = db.prepare(rowsSql);
+    const countStatement = db.prepare(countSql);
+    const result = await rowStatement.bind(...binds, limit).all();
+    const count = binds.length
+      ? await countStatement.bind(...binds).first()
+      : await countStatement.first();
+    return {
+      available: true,
+      rows: (result?.results || []).map(publicCleanupAuditRow).filter(Boolean),
+      total: Number(count?.total) || 0,
+      reason,
+      mode,
+      limit,
+    };
+  } catch (err) {
+    return { available: false, rows: [], total: 0, reason, mode, limit, error: err?.message || String(err || 'cleanup audit D1 read failed') };
   }
 }
 
@@ -661,6 +735,36 @@ export default {
         kvHistoryCount: historyState.kvHistoryCount,
         exportFileName: `${baseFileName}.json`,
         csvExportFileName: `${baseFileName}.csv`,
+      });
+    }
+    if (request.method === 'GET' && url.pathname === '/audit') {
+      const admin = requireAdmin(request, env, {});
+      if (!admin.ok) return admin.response;
+      const reason = cleanupAuditReason(url.searchParams.get('reason'));
+      const mode = cleanupAuditMode(url.searchParams.get('mode'));
+      const limit = cleanupAuditLimit(url.searchParams.get('limit'));
+      const audit = await readCleanupAuditRows(env, { reason, mode, limit });
+      if (!audit.available) {
+        return json({
+          ok: false,
+          worker: 'crateship-public-asset-cleanup',
+          source: 'd1',
+          d1HistoryAvailable: false,
+          error: audit.error || 'Cleanup audit D1 is unavailable.',
+        }, { status: 503 });
+      }
+      return json({
+        ok: true,
+        worker: 'crateship-public-asset-cleanup',
+        generatedAt: new Date().toISOString(),
+        admin: admin.admin,
+        source: 'd1',
+        rows: audit.rows,
+        total: audit.total,
+        limit: audit.limit,
+        reason: audit.reason,
+        mode: audit.mode,
+        d1HistoryAvailable: true,
       });
     }
     if (request.method === 'POST' && url.pathname === '/cleanup') {

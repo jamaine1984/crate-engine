@@ -66,6 +66,14 @@ async function main() {
     throw new Error(`Cleanup worker CSV history guard failed: ${blockedCsvResponse.status} ${JSON.stringify(blockedCsv)}`);
   }
 
+  const blockedAuditResponse = await fetch(`${workerUrl}/audit`, {
+    headers: { Accept: 'application/json' },
+  });
+  const blockedAudit = await readJson(blockedAuditResponse);
+  if (blockedAuditResponse.status !== 403 || !/admin authorization/i.test(blockedAudit?.error || '')) {
+    throw new Error(`Cleanup worker audit guard failed: ${blockedAuditResponse.status} ${JSON.stringify(blockedAudit)}`);
+  }
+
   let authed = null;
   if (adminToken) {
     const dryRunResponse = await fetch(`${workerUrl}/cleanup`, {
@@ -91,6 +99,8 @@ async function main() {
       d1HistoryPersisted: dryRun?.d1HistoryPersisted === true,
       historySource: dryRun?.historySource || '',
       historyCount: Array.isArray(dryRun?.history) ? dryRun.history.length : 0,
+      runId: dryRun?.lastRun?.runId || dryRun?.runId || '',
+      auditRows: 0,
     };
     if (authed.status !== 200 || !authed.ok || !authed.dryRun || authed.deleted !== 0 || authed.errors !== 0 || !authed.lastRunPersisted || !authed.historyPersisted || !authed.d1HistoryPersisted || authed.historyCount < 1 || authed.historySource !== 'd1') {
       throw new Error(`Cleanup worker authenticated dry run failed: ${JSON.stringify(authed)}`);
@@ -138,6 +148,25 @@ async function main() {
         !/cleanup-history/i.test(csvExportResponse.headers.get('content-disposition') || '')) {
       throw new Error(`Cleanup worker authenticated CSV history export failed: ${csvExportResponse.status} ${csvExport.slice(0, 300)}`);
     }
+    const auditResponse = await fetch(`${workerUrl}/audit?limit=10&reason=manual-api&mode=dry-run`, {
+      headers: {
+        Accept: 'application/json',
+        'X-Crate-Admin-Token': adminToken,
+      },
+    });
+    const audit = await readJson(auditResponse);
+    authed.auditRows = Array.isArray(audit?.rows) ? audit.rows.length : 0;
+    const latestAudit = audit?.rows?.[0] || null;
+    if (auditResponse.status !== 200 ||
+        audit?.ok !== true ||
+        audit.source !== 'd1' ||
+        !Array.isArray(audit.rows) ||
+        audit.rows.length < 1 ||
+        latestAudit?.reason !== 'manual-api' ||
+        latestAudit?.dryRun !== true ||
+        (authed.runId && latestAudit?.runId !== authed.runId)) {
+      throw new Error(`Cleanup worker authenticated audit browser failed: ${auditResponse.status} ${JSON.stringify(audit)}`);
+    }
   }
 
   console.log('Cleanup worker smoke passed.');
@@ -147,9 +176,9 @@ async function main() {
     ? `Last run: ${healthLastRun.reason || 'unknown'} scanned ${healthLastRun.scanned || 0}, orphaned ${healthLastRun.orphaned || 0}, deleted ${healthLastRun.deleted || 0}, errors ${healthLastRun.errorCount || 0}`
     : 'Last run: none persisted yet.');
   console.log(`History: ${Array.isArray(health.history) ? health.history.length : 0}/${health.historyLimit || 0} persisted runs`);
-  console.log(`Guard: cleanup ${blockedResponse.status}, history ${blockedHistoryResponse.status}, csv ${blockedCsvResponse.status}`);
+  console.log(`Guard: cleanup ${blockedResponse.status}, history ${blockedHistoryResponse.status}, csv ${blockedCsvResponse.status}, audit ${blockedAuditResponse.status}`);
   if (authed) {
-    console.log(`Authed dry run: scanned ${authed.scanned}, orphaned ${authed.orphaned}, deleted ${authed.deleted}, errors ${authed.errors}, persisted ${authed.lastRunPersisted ? 'yes' : 'no'}, history ${authed.historyPersisted ? 'yes' : 'no'} (${authed.historyCount}), d1 ${authed.d1HistoryPersisted ? 'yes' : 'no'} source ${authed.historySource || 'missing'}`);
+    console.log(`Authed dry run: scanned ${authed.scanned}, orphaned ${authed.orphaned}, deleted ${authed.deleted}, errors ${authed.errors}, persisted ${authed.lastRunPersisted ? 'yes' : 'no'}, history ${authed.historyPersisted ? 'yes' : 'no'} (${authed.historyCount}), d1 ${authed.d1HistoryPersisted ? 'yes' : 'no'} source ${authed.historySource || 'missing'}, audit rows ${authed.auditRows}`);
   } else {
     console.log('Authed dry run: skipped because no admin token env var is present.');
   }
