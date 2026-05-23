@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `34c34767`
+- Current deployed source commit for the public engine code: `f8309b5d`
 - Current deployed source commit for the public asset cleanup Worker: `fd2f43fa`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,10 +36,10 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `789f791b-855e-4454-b6b6-fdd9ce52067b`
-- Latest production deployment URL: `https://789f791b.crateship-games.pages.dev`
+- Latest production deployment ID: `aaf4b65a-28bd-46c2-a0a2-c5ad9a5703ed`
+- Latest production deployment URL: `https://aaf4b65a.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `34c3476`
+- Source shown by Cloudflare: `f8309b5`
 - Main live page bundle after the deploy: `/assets/play-D201ytkw.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-ZAqK_loq.js`
@@ -49,7 +49,44 @@ on this Windows machine. The real production behavior must be checked on
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
 
-Latest Cloudflare deploy on 2026-05-22:
+Latest app-only deploy on 2026-05-22:
+
+- Final commit deployed: `f8309b5d` (`Show cleanup worker health in admin`)
+- Final Cloudflare deployment: `aaf4b65a-28bd-46c2-a0a2-c5ad9a5703ed`
+- Final deployment URL: `https://aaf4b65a.crateship-games.pages.dev`
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=f8309b5deb4c00197913de6db88e1a10406573c6 --commit-message="Show cleanup worker health in admin" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Main app bundle stayed unchanged: `/assets/play-D201ytkw.js`
+- Lazy App Builder chunk stayed unchanged: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk stayed unchanged: `/assets/game-builder-ui-ZAqK_loq.js`
+- Lazy Asset Browser chunk stayed unchanged: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=cleanup-worker-admin-f8309b5`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-cleanup-worker-admin-f8309b5`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-cleanup-worker-admin-f8309b5.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-cleanup-worker-admin-f8309b5.png`
+- Production smoke now proves `/admin.html` can read the scheduled cleanup Worker health endpoint and reports: `cleanup worker ready delete disabled limit 200`.
+
+What changed in this deploy:
+
+- `admin.html`
+  - Added a Scheduled cleanup panel showing `crateship-public-asset-cleanup` Worker health, R2/KV binding readiness, scheduled deletion status, cleanup limit, refresh action, and direct health link.
+- `scripts/smoke-production.mjs`
+  - Added a live Admin-page assertion that the cleanup Worker is reachable, has R2 and KV bindings, reports the expected Worker name, has a positive cleanup limit, and still has deletion disabled.
+
+Next recommended asset step:
+
+- Add a visible last-run/result record for the scheduled cleanup Worker. The Worker currently logs scheduled scans to Cloudflare logs, but it does not persist the last scheduled scan result into KV/D1 for the Admin dashboard to show after the run.
+
+Previous Cloudflare deploy on 2026-05-22:
 
 - Worker commit deployed: `fd2f43fa` (`Add scheduled public asset cleanup worker`)
 - Worker deployed: `crateship-public-asset-cleanup`
