@@ -969,6 +969,7 @@ function syncEditorToolsModule(mod = editorToolsModule) {
     loadGroundTexture: (type) => loadGroundTexture(type),
     loadGLBModel: (...args) => loadGLBModel(...args),
     placeCatalogAsset: (result, source) => placeCatalogAsset(result, source),
+    beginCatalogAssetPlacement: (result, source) => beginCatalogAssetPlacement(result, source),
     runCommand: (cmd) => parseAndExecute(cmd),
     getGLBModels: () => GLB_MODELS,
   });
@@ -2700,6 +2701,9 @@ function normalizeCatalogAssetPath(path) {
   return '/models/' + value.replace(/^models\//i, '');
 }
 
+let activeCatalogPlacement = null;
+let activeCatalogPlacementToken = 0;
+
 function setAssetPlacementState(next) {
   const state = {
     status: 'idle',
@@ -2722,6 +2726,16 @@ function setAssetPlacementState(next) {
     window._refreshGameBuilderPlacement?.();
   } catch {}
   return state;
+}
+
+function getCatalogAssetRequest(result, source = 'asset-library') {
+  if (!result || !result.file) return null;
+  const name = getPlacementName(result);
+  const file = result.file;
+  const customPath = normalizeCatalogAssetPath(result.path);
+  const glb = GLB_MODELS[file] || file;
+  const path = customPath || glb;
+  return { result, source, name, file, customPath, glb, path };
 }
 
 function getEditorPlacementPoint(distance = 8) {
@@ -2801,6 +2815,341 @@ function getAssetViewportState(model) {
   } catch {
     return null;
   }
+}
+
+function applyPlacementPreviewMaterial(model) {
+  const originals = [];
+  model.traverse?.((child) => {
+    if (!child.isMesh || !child.material) return;
+    const original = child.material;
+    originals.push([child, original, child.castShadow, child.receiveShadow]);
+    const materials = Array.isArray(original) ? original : [original];
+    const previewMaterials = materials.map((mat) => {
+      const next = mat.clone ? mat.clone() : mat;
+      next.transparent = true;
+      next.opacity = Math.min(Number(next.opacity) || 1, 0.52);
+      next.depthWrite = false;
+      if (next.emissive && typeof next.emissive.setHex === 'function') next.emissive.setHex(0x1f5eff);
+      next.needsUpdate = true;
+      return next;
+    });
+    child.material = Array.isArray(original) ? previewMaterials : previewMaterials[0];
+    child.castShadow = false;
+    child.receiveShadow = false;
+  });
+  return originals;
+}
+
+function restorePlacementPreviewMaterial(session) {
+  (session?.originalMaterials || []).forEach(([child, material, castShadow, receiveShadow]) => {
+    if (!child) return;
+    child.material = material;
+    child.castShadow = !!castShadow;
+    child.receiveShadow = !!receiveShadow;
+  });
+}
+
+function disposePlacementModel(model) {
+  try {
+    model?.traverse?.((child) => {
+      if (child.geometry) child.geometry.dispose?.();
+      const materials = Array.isArray(child.material) ? child.material : [child.material].filter(Boolean);
+      materials.forEach((mat) => {
+        if (!mat || mat === child.userData?._previewOriginalMaterial) return;
+        mat.map?.dispose?.();
+        mat.dispose?.();
+      });
+    });
+  } catch {}
+}
+
+function positionPlacementPreview(session, screenX = null, screenY = null) {
+  if (!session?.model) return null;
+  const point = getViewportPlacementPoint(screenX, screenY);
+  const y = Number.isFinite(point.y) ? point.y : (window._getTerrainY ? window._getTerrainY(point.x, point.z) : 0);
+  session.model.position.set(point.x, y - (session.bottom || 0), point.z);
+  session.lastPoint = point;
+  session.model.updateMatrixWorld?.();
+  const viewport = getAssetViewportState(session.model);
+  setAssetPlacementState({
+    status: 'preview',
+    name: session.name,
+    file: session.file,
+    path: session.path,
+    source: session.source,
+    x: session.model.position.x,
+    y: session.model.position.y,
+    z: session.model.position.z,
+    objectId: session.model.uuid || '',
+    viewport,
+    awaitingConfirm: true,
+  });
+  return point;
+}
+
+function removePlacementToolbar() {
+  document.getElementById('asset-placement-preview-toolbar')?.remove();
+}
+
+function ensurePlacementToolbar(session) {
+  removePlacementToolbar();
+  const toolbar = document.createElement('div');
+  toolbar.id = 'asset-placement-preview-toolbar';
+  toolbar.style.cssText = 'position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:22000;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 20px);background:rgba(10,11,12,.94);border:1px solid #2f6fed;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:8px 10px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eef2f3;pointer-events:auto';
+  const label = document.createElement('span');
+  label.textContent = 'Place: ' + (session.name || 'asset');
+  label.style.cssText = 'font-size:12px;line-height:16px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis';
+  const makeButton = (text, action, title) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.placementAction = action;
+    button.textContent = text;
+    button.title = title || text;
+    button.style.cssText = 'min-height:30px;border:1px solid #31404a;background:#151a1f;color:#eef2f3;border-radius:6px;padding:5px 8px;font-size:12px;line-height:14px;cursor:pointer';
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (action === 'confirm') confirmCatalogAssetPlacement('toolbar');
+      if (action === 'cancel') cancelCatalogAssetPlacement('toolbar');
+      if (action === 'rotate') rotateCatalogAssetPlacement(Math.PI / 8);
+      if (action === 'scale-down') scaleCatalogAssetPlacement(0.9);
+      if (action === 'scale-up') scaleCatalogAssetPlacement(1.1);
+    });
+    return button;
+  };
+  toolbar.append(
+    label,
+    makeButton('Place', 'confirm', 'Confirm placement'),
+    makeButton('Cancel', 'cancel', 'Cancel placement'),
+    makeButton('Rotate', 'rotate', 'Rotate preview'),
+    makeButton('-', 'scale-down', 'Scale down'),
+    makeButton('+', 'scale-up', 'Scale up')
+  );
+  document.body.appendChild(toolbar);
+  return toolbar;
+}
+
+function cleanupCatalogAssetPlacement(removeModel = false, status = '') {
+  const session = activeCatalogPlacement;
+  if (!session) return null;
+  const canvasEl = renderer?.domElement || document.querySelector('canvas');
+  if (canvasEl) {
+    canvasEl.removeEventListener('pointermove', session.onPointerMove, true);
+    canvasEl.removeEventListener('pointerdown', session.onPointerDown, true);
+  }
+  document.removeEventListener('keydown', session.onKeyDown, true);
+  removePlacementToolbar();
+  activeCatalogPlacement = null;
+  if (removeModel && session.model) {
+    scene.remove(session.model);
+    restorePlacementPreviewMaterial(session);
+    disposePlacementModel(session.model);
+  }
+  if (status) {
+    setAssetPlacementState({
+      status,
+      name: session.name,
+      file: session.file,
+      path: session.path,
+      source: session.source,
+      updatedAt: Date.now(),
+    });
+  }
+  return session;
+}
+
+function rotateCatalogAssetPlacement(amount = Math.PI / 8) {
+  if (!activeCatalogPlacement?.model) return null;
+  activeCatalogPlacement.model.rotation.y += amount;
+  setAssetPlacementState({ ...(window._lastAssetPlacement || {}), rotationY: activeCatalogPlacement.model.rotation.y, updatedAt: Date.now() });
+  return activeCatalogPlacement.model.rotation.y;
+}
+
+function scaleCatalogAssetPlacement(factor = 1) {
+  if (!activeCatalogPlacement?.model || !Number.isFinite(factor) || factor <= 0) return null;
+  const next = THREE.MathUtils.clamp(activeCatalogPlacement.model.scale.x * factor, 0.05, 25);
+  activeCatalogPlacement.model.scale.setScalar(next);
+  const box = new THREE.Box3().setFromObject(activeCatalogPlacement.model);
+  activeCatalogPlacement.bottom = box.min.y - activeCatalogPlacement.model.position.y;
+  positionPlacementPreview(activeCatalogPlacement);
+  return next;
+}
+
+function confirmCatalogAssetPlacement(reason = 'click') {
+  const session = cleanupCatalogAssetPlacement(false);
+  if (!session?.model) return null;
+  restorePlacementPreviewMaterial(session);
+  session.model.userData.isPlacementPreview = false;
+  session.model.userData.name = session.file;
+  session.model.userData.isGLB = true;
+  session.model.userData.gbAssetFile = session.file;
+  session.model.userData.gbAssetPath = session.path;
+  session.model.userData.gbPlacementSource = session.source;
+  session.model.traverse?.((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+  if (!objects.includes(session.model)) objects.push(session.model);
+  handlePlacedAsset(session.model, {
+    trackPlacement: true,
+    selectAfterLoad: true,
+    notify: true,
+    displayName: session.name,
+    name: session.name,
+    source: session.source,
+    file: session.file,
+    path: session.path,
+    focusAfterLoad: false,
+  });
+  recordSceneCommand('add ' + session.file);
+  window._lastAssetPlacement = {
+    ...(window._lastAssetPlacement || {}),
+    confirmReason: reason,
+    awaitingConfirm: false,
+  };
+  window._refreshGameBuilderPlacement?.();
+  return { file: session.file, name: session.name, objectId: session.model.uuid, x: session.model.position.x, z: session.model.position.z };
+}
+
+function cancelCatalogAssetPlacement(reason = 'cancel') {
+  activeCatalogPlacementToken += 1;
+  const session = cleanupCatalogAssetPlacement(true, 'cancelled');
+  if (session) showToast('Asset placement cancelled');
+  window._lastAssetPlacement = {
+    ...(window._lastAssetPlacement || {}),
+    cancelReason: reason,
+    awaitingConfirm: false,
+  };
+  window._refreshGameBuilderPlacement?.();
+  return !!session;
+}
+
+function loadCatalogPlacementModel(request, onDone) {
+  const catalogItem = _assetCatalog && Object.values(_assetCatalog).flat().find((asset) => asset.file === request.glb || asset.file === request.file);
+  if (catalogItem && catalogItem._b64) {
+    try {
+      const blob = _modelDB.blobFromB64(catalogItem._b64);
+      const blobUrl = URL.createObjectURL(blob);
+      gltfLoader.load(blobUrl, (gltf) => {
+        URL.revokeObjectURL(blobUrl);
+        onDone(gltf.scene, null);
+      }, undefined, (error) => {
+        URL.revokeObjectURL(blobUrl);
+        onDone(null, error);
+      });
+      return;
+    } catch (error) {
+      onDone(null, error);
+      return;
+    }
+  }
+  const cleanFile = request.glb.endsWith('.glb') ? request.glb.slice(0, -4) : request.glb;
+  const url = request.customPath || ('/models/' + cleanFile + '.glb');
+  gltfLoader.load(url, (gltf) => onDone(gltf.scene, null, url), undefined, (error) => onDone(null, error, url));
+}
+
+function beginCatalogAssetPlacement(result, source = 'asset-library') {
+  const request = getCatalogAssetRequest(result, source);
+  if (!request) return null;
+  if (!ensureEditModeForAssetPlacement(source)) return null;
+  cancelCatalogAssetPlacement('new-placement');
+  const placementToken = ++activeCatalogPlacementToken;
+  const startPoint = getViewportPlacementPoint(result.screenX, result.screenY);
+  setAssetPlacementState({
+    status: 'preview-loading',
+    name: request.name,
+    file: request.file,
+    path: request.customPath || request.path,
+    source,
+    x: startPoint.x,
+    y: startPoint.y ?? null,
+    z: startPoint.z,
+    awaitingConfirm: true,
+  });
+  showToast('Move the preview, then click Place or click the scene');
+  loadCatalogPlacementModel(request, (model, error, loadedUrl = '') => {
+    if (placementToken !== activeCatalogPlacementToken) {
+      if (model) {
+        scene.remove(model);
+        disposePlacementModel(model);
+      }
+      return;
+    }
+    if (error || !model) {
+      handleAssetPlacementFailure({
+        trackPlacement: true,
+        name: request.name,
+        file: request.file,
+        path: request.customPath || loadedUrl || request.path,
+        source,
+        error: error || 'Preview load failed',
+      });
+      return;
+    }
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = maxDim > 20 ? 3 / maxDim : maxDim < 0.5 ? 2 : 1;
+    model.scale.setScalar(scale);
+    const scaledBox = new THREE.Box3().setFromObject(model);
+    const bottom = scaledBox.min.y - model.position.y;
+    model.userData.name = request.file;
+    model.userData.isGLB = true;
+    model.userData.isPlacementPreview = true;
+    model.userData.gbAssetFile = request.file;
+    model.userData.gbAssetPath = request.customPath || loadedUrl || request.path;
+    model.userData.gbPlacementSource = source;
+    scene.add(model);
+    const canvasEl = renderer?.domElement || document.querySelector('canvas');
+    const session = {
+      token: placementToken,
+      model,
+      originalMaterials: applyPlacementPreviewMaterial(model),
+      name: request.name,
+      file: request.file,
+      path: request.customPath || loadedUrl || request.path,
+      source,
+      bottom,
+      onPointerMove: null,
+      onPointerDown: null,
+      onKeyDown: null,
+    };
+    session.onPointerMove = (event) => {
+      if (!activeCatalogPlacement || activeCatalogPlacement !== session) return;
+      if (event?.target?.closest?.('#asset-placement-preview-toolbar')) return;
+      positionPlacementPreview(session, event.clientX, event.clientY);
+    };
+    session.onPointerDown = (event) => {
+      if (!activeCatalogPlacement || activeCatalogPlacement !== session || event.button !== 0) return;
+      if (event?.target?.closest?.('#asset-placement-preview-toolbar')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      positionPlacementPreview(session, event.clientX, event.clientY);
+      confirmCatalogAssetPlacement('canvas-click');
+    };
+    session.onKeyDown = (event) => {
+      if (!activeCatalogPlacement || activeCatalogPlacement !== session) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelCatalogAssetPlacement('escape');
+      } else if (event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        rotateCatalogAssetPlacement(Math.PI / 8);
+      }
+    };
+    activeCatalogPlacement = session;
+    if (canvasEl) {
+      canvasEl.addEventListener('pointermove', session.onPointerMove, true);
+      canvasEl.addEventListener('pointerdown', session.onPointerDown, true);
+    }
+    document.addEventListener('keydown', session.onKeyDown, true);
+    ensurePlacementToolbar(session);
+    positionPlacementPreview(session, result.screenX, result.screenY);
+  });
+  return { file: request.file, name: request.name, status: 'preview-loading' };
 }
 
 function framePlacedAssetInView(model, options = {}) {
@@ -14174,6 +14523,9 @@ window._engineBridge = {
   loadAssetCatalog: _loadAssetCatalog,
   loadGLBModel: loadGLBModel,
   placeCatalogAsset: placeCatalogAsset,
+  beginCatalogAssetPlacement: beginCatalogAssetPlacement,
+  confirmCatalogAssetPlacement: confirmCatalogAssetPlacement,
+  cancelCatalogAssetPlacement: cancelCatalogAssetPlacement,
   showGallery: showGallery,
   showCategoryPicker: showCategoryPicker,
   searchModels: searchRegistryModels,
@@ -14907,6 +15259,9 @@ window._engineReady = true;
 window.parseAndExecute = parseAndExecute;
 window._showCategoryPicker = showCategoryPicker;
 window._placeCatalogAsset = placeCatalogAsset;
+window._beginCatalogAssetPlacement = beginCatalogAssetPlacement;
+window._confirmCatalogAssetPlacement = confirmCatalogAssetPlacement;
+window._cancelCatalogAssetPlacement = cancelCatalogAssetPlacement;
 window._retryLastAssetPlacement = retryLastAssetPlacement;
 window._execCommand = parseAndExecute;
 // Apply template preset if on a template page

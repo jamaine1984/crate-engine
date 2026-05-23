@@ -2684,6 +2684,9 @@ function runAction(action) {
     if (!requireEditAction('place assets')) return null;
     if (window._showCategoryPicker) {
       return window._showCategoryPicker().then((result) => {
+        if (result && result.file && window._beginCatalogAssetPlacement) {
+          return window._beginCatalogAssetPlacement(result, 'game-builder-assets');
+        }
         if (result && result.file && window._placeCatalogAsset) {
           return window._placeCatalogAsset(result, 'game-builder-assets');
         }
@@ -3862,10 +3865,35 @@ function renderPlacementStatus() {
   box.dataset.placementName = name;
   box.dataset.placementPosition = position || '';
   box.innerHTML = '';
-  const title = createTextElement('strong', 'gb-placement-title', status === 'loading' ? 'Placing' : status === 'failed' ? 'Placement failed' : status === 'blocked' ? 'Placement blocked' : status === 'placed' ? 'Placed' : 'Ready');
+  const titleText = status === 'preview-loading'
+    ? 'Loading preview'
+    : status === 'preview'
+      ? 'Preview ready'
+      : status === 'cancelled'
+        ? 'Placement cancelled'
+        : status === 'loading'
+          ? 'Placing'
+          : status === 'failed'
+            ? 'Placement failed'
+            : status === 'blocked'
+              ? 'Placement blocked'
+              : status === 'placed'
+                ? 'Placed'
+                : 'Ready';
+  const title = createTextElement('strong', 'gb-placement-title', titleText);
   const item = createTextElement('span', 'gb-placement-item', status === 'ready' ? name : 'Asset: ' + name);
   box.append(title, item);
   if (position) box.appendChild(createTextElement('span', 'gb-placement-position', 'Position: ' + position));
+  if (status === 'preview') {
+    box.appendChild(createTextElement('span', 'gb-placement-hint', 'Move over the scene, then place or cancel.'));
+    const actions = document.createElement('div');
+    actions.className = 'gb-placement-actions';
+    actions.append(
+      createSmallButton('Place', () => window._confirmCatalogAssetPlacement?.('status-panel'), { editOnly: true, action: 'confirm asset placement' }),
+      createSmallButton('Cancel', () => window._cancelCatalogAssetPlacement?.('status-panel'), { editOnly: true, action: 'cancel asset placement' })
+    );
+    box.appendChild(actions);
+  }
   if (state.error) box.appendChild(createTextElement('span', 'gb-placement-error', state.error));
   if (status === 'failed' && typeof window._retryLastAssetPlacement === 'function') {
     const retry = createSmallButton('Retry', () => window._retryLastAssetPlacement?.(), {
@@ -4501,9 +4529,11 @@ function mount() {
     .gb-placement-status strong{font-size:12px;line-height:16px;color:#eef2f3}
     .gb-placement-status span{font-size:10.5px;line-height:15px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
     .gb-placement-status .gb-placement-item,.gb-placement-status .gb-placement-position{display:block}
+    .gb-placement-actions{display:flex;gap:6px;flex-wrap:wrap}
+    .gb-placement-actions .gb-small-btn{min-height:28px}
     .gb-placement-status[data-status="placed"]{border-color:#2f6f44;background:#101a13}
-    .gb-placement-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
-    .gb-placement-status[data-status="failed"],.gb-placement-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
+    .gb-placement-status[data-status="loading"],.gb-placement-status[data-status="preview-loading"],.gb-placement-status[data-status="preview"]{border-color:#4a6f9c;background:#101722}
+    .gb-placement-status[data-status="failed"],.gb-placement-status[data-status="blocked"],.gb-placement-status[data-status="cancelled"]{border-color:#7f2d2d;background:#211313}
     .gb-placement-error{color:#ff9b9b!important}
     .gb-asset-pack-status,.gb-user-storage-status{display:flex;flex-direction:column;gap:3px;margin:8px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px;min-height:52px}
     .gb-asset-pack-status strong,.gb-user-storage-status strong{font-size:12px;line-height:16px;color:#eef2f3}

@@ -495,9 +495,37 @@ async function runBrowserSmoke() {
     await page.waitForFunction(
       (before) => {
         const state = window._lastAssetPlacement || {};
+        return (window._engineBridge?.objects?.length || 0) === before &&
+          state.status === 'preview' &&
+          state.source === 'game-builder-assets' &&
+          state.awaitingConfirm === true &&
+          /Builder menu chair/i.test(state.name || '') &&
+          !!document.querySelector('#asset-placement-preview-toolbar');
+      },
+      beforeBuilderMenuPlacementCount,
+      { timeout: timeoutMs }
+    );
+    const previewPlacementState = await page.evaluate(() => ({
+      objectCount: window._engineBridge?.objects?.length || 0,
+      placement: window._lastAssetPlacement || null,
+      toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+      statusText: document.querySelector('#gb-placement-status')?.textContent || '',
+    }));
+    if (previewPlacementState.objectCount !== beforeBuilderMenuPlacementCount ||
+        previewPlacementState.placement?.status !== 'preview' ||
+        !previewPlacementState.placement?.awaitingConfirm ||
+        !previewPlacementState.toolbarVisible ||
+        !/Move over the scene/i.test(previewPlacementState.statusText)) {
+      throw new Error(`Game Builder asset preview did not wait for confirmation: ${JSON.stringify(previewPlacementState)}`);
+    }
+    await page.locator('#asset-placement-preview-toolbar [data-placement-action="confirm"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      (before) => {
+        const state = window._lastAssetPlacement || {};
         return (window._engineBridge?.objects?.length || 0) > before &&
           state.status === 'placed' &&
           state.source === 'game-builder-assets' &&
+          state.awaitingConfirm !== true &&
           /Builder menu chair/i.test(state.name || '');
       },
       beforeBuilderMenuPlacementCount,
@@ -4376,6 +4404,15 @@ async function runViewportBuildCityProbe(label, options) {
       }
       const beforeMobileAssetCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
       await page.locator('[data-asset-card="true"]').first().click({ timeout: timeoutMs });
+      await page.waitForFunction(
+        (before) => (window._engineBridge?.objects?.length || 0) === before &&
+          window._lastAssetPlacement?.status === 'preview' &&
+          window._lastAssetPlacement?.awaitingConfirm === true &&
+          !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+        beforeMobileAssetCount,
+        { timeout: timeoutMs }
+      );
+      await page.locator('#asset-placement-preview-toolbar [data-placement-action="confirm"]').click({ timeout: timeoutMs });
       await page.waitForFunction(
         (before) => (window._engineBridge?.objects?.length || 0) > before && window._lastAssetPlacement?.status === 'placed',
         beforeMobileAssetCount,
