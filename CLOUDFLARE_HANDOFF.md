@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `eb1cd692`
+- Current deployed source commit for the public engine code: `e12363ab`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,20 +36,68 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `012f8871-4103-4e74-8ca8-8f72c671726f`
-- Latest production deployment URL: `https://012f8871.crateship-games.pages.dev`
+- Latest production deployment ID: `068e93b0-1a6a-4c2b-a6e2-b160ea1016a6`
+- Latest production deployment URL: `https://068e93b0.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `eb1cd69`
-- Main live page bundle after the deploy: `/assets/play-D201ytkw.js`
+- Source shown by Cloudflare: `e12363a`
+- Main live page bundle after the deploy: `/assets/play-CdosIsQN.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-ZAqK_loq.js`
-- Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-CAOy79B3.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-B_LCiV29.js`
+- Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-cfqoMh02.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
 
-Latest Worker + app deploy on 2026-05-23:
+Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `e12363ab` (`Improve asset menu readability`)
+- Final Cloudflare deployment: `068e93b0-1a6a-4c2b-a6e2-b160ea1016a6`
+- Final deployment URL: `https://068e93b0.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=e12363ab22b47345911799064cbaccf73458d563 --commit-message="Improve asset menu readability" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Deploy upload evidence: uploaded `10` changed files, reused `101` already-uploaded files, uploaded the Functions bundle, `_headers`, and `_routes.json`.
+- Main app bundle after deploy: `/assets/play-CdosIsQN.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui-B_LCiV29.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-cfqoMh02.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=readability-e12363ab`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-readability-e12363ab`
+- Targeted asset-menu readability probe passed: `https://crateshipgames.com/play?verify=targeted-readability-e12363ab`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-readability-e12363ab.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-readability-e12363ab.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\targeted-readability-targeted-readability-e12363ab.png`
+- Production smoke evidence:
+  - Build City created at least `127` objects with `48` components and `4` scripts on apex and `www`.
+  - Asset host loaded manifest `6f09cc09da2f` and model/texture checks returned expected `200` or missing-asset `404` statuses.
+  - Production publish, marketplace discovery, game detail, user asset publish/delete, inventory, mission, NPC, merchant, door trigger, enemy wave, respawn, project save/load, playable export, validation, and admin guard flows passed on both domains.
+  - Apex raw Build City frame probe: `74.1 FPS`, `13.5 ms` average frame, `0.9 ms` update, `12.7 ms` render.
+  - Apex viewport probes passed: phone `312.5 FPS` at renderer DPR `1.25`; tablet `49.3 FPS` at renderer DPR `1`.
+  - WWW raw Build City frame probe: `76.3 FPS`, `13.1 ms` average frame.
+  - Targeted UI probe verified Furniture category card `aria-label="Furniture, 223 models"`, separate icon/name/count line boxes with no overlap, and a Bathroom Bathtub placement status rendered as separate `Placed`, `Asset: Bathroom Bathtub`, and `Position: x 6.6, y 0.0, z 8.8` lines with no overlap.
+
+What changed in this deploy:
+
+- `asset-browser-ui.mjs`
+  - Replaced category-card HTML string rendering with explicit DOM nodes for icon, label, and count.
+  - Added `role="button"`, keyboard activation, `aria-label`, and data fields for category label/count so the asset menu is easier to read and test.
+- `game-builder-ui.mjs`
+  - Changed placement status from run-together text into labeled lines: title, `Asset: ...`, and `Position: x ..., y ..., z ...`.
+  - Added comma-separated position formatting and status data attributes for smoke verification.
+- `scripts/smoke-production.mjs`
+  - Added a regression assertion that Game Builder asset placement status includes readable `Asset:` and `Position:` labels with separated coordinates.
+
+Previous Worker + app deploy on 2026-05-23:
 
 - Final commit deployed: `eb1cd692` (`Add cleanup audit pagination and export`)
 - Final Cloudflare deployment: `012f8871-4103-4e74-8ca8-8f72c671726f`
