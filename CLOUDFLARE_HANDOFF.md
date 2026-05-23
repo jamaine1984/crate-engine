@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `9b8a22cc`
+- Current deployed source commit for the public engine code: `c74bb62e`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -30,11 +30,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `0133badf-5dc8-420a-9aa3-7f28eafabfae`
-- Latest production deployment URL: `https://0133badf.crateship-games.pages.dev`
+- Latest production deployment ID: `84b7b236-1436-46c5-a8b2-a2edc5284a93`
+- Latest production deployment URL: `https://84b7b236.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `9b8a22c`
-- Main live page bundle after the deploy: `/assets/play-Cwp9yIrc.js`
+- Source shown by Cloudflare: `c74bb62`
+- Main live page bundle after the deploy: `/assets/play-K36VOxZs.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-D-vHjpFi.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-CAOy79B3.js`
@@ -44,6 +44,62 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-22:
+
+- Final commit deployed: `c74bb62e` (`Check private asset rejection outside browser console`)
+- Final Cloudflare deployment: `84b7b236-1436-46c5-a8b2-a2edc5284a93`
+- Final deployment URL: `https://84b7b236.crateship-games.pages.dev`
+- This batch also deployed:
+  - `998c3f6e` (`Publish user cloud assets with games`) as `https://6747ff1b.crateship-games.pages.dev`
+  - `5ad3ffae`, `5ec76eb7`, `75639f88`, and `c74bb62e` as smoke hardening/source-tag deploys.
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=c74bb62e26797987a46160a1bbbfab217e22f2f9 --commit-message="Check private asset rejection outside browser console" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- App deploy uploaded the new bundle in the first deploy and then source-tagged the smoke-only fixes; shipped asset host stayed separate.
+- Main app bundle: `/assets/play-K36VOxZs.js`
+- Project Tools chunk: `/assets/project-tools-Bz2kId07.js`
+- Game Builder UI chunk: `/assets/game-builder-ui-D-vHjpFi.js`
+- Asset Browser chunk: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=public-assets-c74bb62`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-public-assets-c74bb62`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-public-assets-c74bb62.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-public-assets-c74bb62.png`
+- Production smoke now proves a user-uploaded GLB is copied from the private owner-token R2 namespace into a public per-game R2 asset, the published project rewrites to `crate-cloud-public-asset:*`, the public download returns HTTP 200 without an owner token, and the original private asset still returns HTTP 403 without the owner token.
+
+What changed in this deploy:
+
+- `functions/api/assets/[[path]].js`
+  - Added `POST /api/assets/:id/publish` to copy an owner-token private GLB/GLTF into `published-assets/<publicId>/...`.
+  - Added no-token public read routes `GET /api/assets/public/:publicId` and `GET /api/assets/public/:publicId/download`.
+- `engine.mjs`
+  - Publish now scans project objects for private `cloudAssetId` references, publishes each unique asset to a public game-safe R2 object, and rewrites the published project snapshot to `crate-cloud-public-asset:<publicId>`.
+  - Project loading now prefers public cloud asset IDs when present, so other players can load published games without the creator's local owner token.
+- `project-tools.mjs`
+  - Playable export can receive the publish-safe project snapshot, so published package metadata follows the public asset rewrite.
+- `functions/api/games/[[path]].js`
+  - Published-game records now store/report cloud asset counts and detail metadata.
+- `scripts/smoke-production.mjs`
+  - Smoke covers public asset copy/download, private no-token rejection, published-game load, marketplace/detail page checks, and both apex and `www` custom domains.
+
+Failed intermediate deploy notes from this batch:
+
+- `998c3f6e` shipped the public-copy feature but the smoke compared against a pre-cleanup object count.
+- `5ad3ffae` and `5ec76eb7` exposed that deleted private test objects could still be serialized by later guard publishes.
+- `75639f88` proved the feature but the browser console filter treated the intentional private HTTP 403 as a failure.
+- The final `c74bb62e` smoke checks the private 403 outside the browser console and passes on both hostnames.
+
+Next recommended asset step:
+
+- Add a published-asset lifecycle policy: either keep public R2 assets forever with quota reporting, or garbage-collect public assets when a published game is deleted or updated.
+
+Previous app-only deploy on 2026-05-22:
 
 - Final commit deployed: `9b8a22cc` (`Handle exact marketplace smoke consistency`)
 - Final Cloudflare deployment: `0133badf-5dc8-420a-9aa3-7f28eafabfae`
