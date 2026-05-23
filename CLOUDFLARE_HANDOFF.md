@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `353fe3b1`
+- Current deployed source commit for the public engine code: `33bbb92f`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
@@ -30,13 +30,13 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `b1c55738-6279-4419-bf93-d5b453801419`
-- Latest production deployment URL: `https://b1c55738.crateship-games.pages.dev`
+- Latest production deployment ID: `ba863cd9-b0b0-408b-9960-2360867f5ab1`
+- Latest production deployment URL: `https://ba863cd9.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `353fe3b`
-- Main live page bundle after the deploy: `/assets/play-K36VOxZs.js`
+- Source shown by Cloudflare: `33bbb92`
+- Main live page bundle after the deploy: `/assets/play-D201ytkw.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-D-vHjpFi.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-ZAqK_loq.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-CAOy79B3.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
@@ -44,6 +44,53 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-22:
+
+- Final commit deployed: `33bbb92f` (`Refresh storage usage after publish cleanup`)
+- Final Cloudflare deployment: `ba863cd9-b0b0-408b-9960-2360867f5ab1`
+- Final deployment URL: `https://ba863cd9.crateship-games.pages.dev`
+- This batch also deployed:
+  - `0785cab8` (`Add asset storage usage controls`) as `https://f8f007a9.crateship-games.pages.dev`
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=33bbb92ff8f2d46f04e581ed7473d811f312b81e --commit-message="Refresh storage usage after publish cleanup" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Main app bundle: `/assets/play-D201ytkw.js`
+- Lazy App Builder chunk: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk: `/assets/game-builder-ui-ZAqK_loq.js`
+- Lazy Asset Browser chunk: `/assets/asset-browser-ui-CAOy79B3.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=asset-storage-refresh-33bbb92`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-asset-storage-refresh-33bbb92`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-asset-storage-refresh-33bbb92.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-asset-storage-refresh-33bbb92.png`
+- Production smoke now proves creator storage usage loads in the Builder, private upload/delete changes storage counts, publish-safe public asset copies count toward usage, and published-game cleanup refreshes back to `0 private/0 public` for the smoke owner.
+- Admin moderation smoke now proves `/api/assets/admin/public-cleanup` is locked without a Cloudflare admin token.
+
+What changed in this deploy:
+
+- `functions/api/assets/[[path]].js`
+  - Added owner-token `GET /api/assets/usage` for private imports, public published copies, total bytes, quota bytes, quota percent, and upload limit.
+  - Added quota checks for private upload and public publish copies, with a default 500 MB owner quota unless Cloudflare environment configuration overrides it.
+  - Public published asset metadata now stores `ownerHash` so public copies can be attributed back to the creator's storage usage without exposing the owner token.
+  - Added admin-only `POST /api/assets/admin/public-cleanup` for dry-run or delete cleanup of orphaned public R2 assets.
+- `engine.mjs`
+  - Added `window._getUserAssetStorageUsage` and refreshes storage usage after upload, delete, publish, published-game update, and published-game delete paths.
+- `game-builder-ui.mjs`
+  - Added a creator-facing Storage status panel in the Asset Pack area with quota meter, private/public counts, byte totals, and refresh control.
+- `scripts/smoke-production.mjs`
+  - Added production checks for user storage usage, quota presence, UI panel state, admin cleanup guard, and post-cleanup storage refresh.
+
+Next recommended asset step:
+
+- Add an authenticated admin UI action for the public-cleanup route, then run a one-time dry-run/delete cleanup for older public assets created before lifecycle cleanup and usage tracking existed.
+
+Previous app-only deploy on 2026-05-22:
 
 - Final commit deployed: `353fe3b1` (`Clean up published public assets`)
 - Final Cloudflare deployment: `b1c55738-6279-4419-bf93-d5b453801419`
