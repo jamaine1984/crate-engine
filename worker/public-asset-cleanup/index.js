@@ -384,6 +384,23 @@ export default {
         historyLimit: HISTORY_LIMIT,
       });
     }
+    if (request.method === 'GET' && url.pathname === '/history') {
+      const admin = requireAdmin(request, env, {});
+      if (!admin.ok) return admin.response;
+      const lastRun = await readLastCleanupRun(env);
+      const history = await readCleanupHistory(env);
+      return json({
+        ok: true,
+        worker: 'crateship-public-asset-cleanup',
+        generatedAt: new Date().toISOString(),
+        admin: admin.admin,
+        lastRun,
+        history,
+        total: history.length,
+        historyLimit: HISTORY_LIMIT,
+        exportFileName: `crateship-cleanup-history-${new Date().toISOString().slice(0, 10)}.json`,
+      });
+    }
     if (request.method === 'POST' && url.pathname === '/cleanup') {
       const payload = await readJson(request);
       const admin = requireAdmin(request, env, payload);

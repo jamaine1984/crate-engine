@@ -176,6 +176,7 @@ td{color:#dce7eb;font-size:.86rem}
     </div>
     <div class="storage-actions">
       <button id="dry-run-cleanup-worker" type="button">Run Dry Scan</button>
+      <button id="export-cleanup-history" type="button">Export History</button>
       <button id="refresh-cleanup-worker" type="button">Refresh Worker</button>
       <a id="open-cleanup-worker" href="https://crateship-public-asset-cleanup.koikes2021.workers.dev/health" target="_blank" rel="noopener noreferrer">Open Health</a>
     </div>
@@ -287,6 +288,7 @@ td{color:#dce7eb;font-size:.86rem}
     cleanupWorkerDetail: document.getElementById('cleanup-worker-detail'),
     cleanupWorkerHistory: document.getElementById('cleanup-worker-history'),
     cleanupWorkerDryRun: document.getElementById('dry-run-cleanup-worker'),
+    cleanupWorkerExport: document.getElementById('export-cleanup-history'),
     cleanupWorkerRefresh: document.getElementById('refresh-cleanup-worker'),
     cleanupWorkerOpen: document.getElementById('open-cleanup-worker'),
     rows: document.getElementById('admin-rows'),
@@ -320,7 +322,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditStorage: { status: 'locked', source: '', writeVerified: false },
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
-    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, error: '' },
+    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, running: false, exporting: false, lastRunKnown: false, lastRun: null, lastRunPersisted: false, historyKnown: false, history: [], historyLimit: 0, historyPersisted: false, exportCount: 0, exportFileName: '', error: '' },
     error: '',
   };
 
@@ -407,6 +409,7 @@ td{color:#dce7eb;font-size:.86rem}
       hasAssetCleanupRun: !!els.assetCleanupRun,
       hasCleanupWorker: !!els.cleanupWorkerPanel,
       hasCleanupWorkerDryRun: !!els.cleanupWorkerDryRun,
+      hasCleanupWorkerExport: !!els.cleanupWorkerExport,
       auditDetailStatus: state.auditDetail?.status || 'empty',
       auditDetailSlug: state.auditDetail?.slug || '',
       auditDetailRows: Number(state.auditDetail?.rows) || 0,
@@ -433,6 +436,7 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerHasR2Binding: state.cleanupWorker?.hasR2Binding === true,
       cleanupWorkerHasGameStore: state.cleanupWorker?.hasGameStore === true,
       cleanupWorkerRunning: state.cleanupWorker?.running === true,
+      cleanupWorkerExporting: state.cleanupWorker?.exporting === true,
       cleanupWorkerLastRunKnown: state.cleanupWorker?.lastRunKnown === true,
       cleanupWorkerHasLastRun: !!state.cleanupWorker?.lastRun,
       cleanupWorkerLastRunPersisted: state.cleanupWorker?.lastRunPersisted === true,
@@ -440,6 +444,8 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerHistoryCount: Array.isArray(state.cleanupWorker?.history) ? state.cleanupWorker.history.length : 0,
       cleanupWorkerHistoryLimit: Number(state.cleanupWorker?.historyLimit) || 0,
       cleanupWorkerHistoryPersisted: state.cleanupWorker?.historyPersisted === true,
+      cleanupWorkerExportCount: Number(state.cleanupWorker?.exportCount) || 0,
+      cleanupWorkerExportFileName: state.cleanupWorker?.exportFileName || '',
       cleanupWorkerLatestHistoryReason: Array.isArray(state.cleanupWorker?.history) && state.cleanupWorker.history[0] ? state.cleanupWorker.history[0].reason || '' : '',
       cleanupWorkerLastRunReason: state.cleanupWorker?.lastRun?.reason || '',
       cleanupWorkerLastRunFinishedAt: state.cleanupWorker?.lastRun?.finishedAt || '',
@@ -617,14 +623,19 @@ td{color:#dce7eb;font-size:.86rem}
     const worker = state.cleanupWorker || {};
     const status = worker.status || 'checking';
     const running = worker.running === true;
+    const exporting = worker.exporting === true;
     const locked = !readToken() || state.status !== 'loaded';
     els.cleanupWorkerPanel.dataset.status = status;
     if (els.cleanupWorkerDryRun) {
-      els.cleanupWorkerDryRun.disabled = locked || status === 'checking' || running;
+      els.cleanupWorkerDryRun.disabled = locked || status === 'checking' || running || exporting;
       els.cleanupWorkerDryRun.textContent = running ? 'Scanning...' : 'Run Dry Scan';
     }
+    if (els.cleanupWorkerExport) {
+      els.cleanupWorkerExport.disabled = locked || status === 'checking' || running || exporting;
+      els.cleanupWorkerExport.textContent = exporting ? 'Exporting...' : 'Export History';
+    }
     if (els.cleanupWorkerRefresh) {
-      els.cleanupWorkerRefresh.disabled = status === 'checking' || running;
+      els.cleanupWorkerRefresh.disabled = status === 'checking' || running || exporting;
       els.cleanupWorkerRefresh.textContent = status === 'checking' ? 'Checking...' : 'Refresh Worker';
     }
     if (els.cleanupWorkerOpen) {
@@ -632,7 +643,9 @@ td{color:#dce7eb;font-size:.86rem}
     }
     const bindingsReady = worker.hasR2Binding === true && worker.hasGameStore === true;
     if (els.cleanupWorkerSummary) {
-      if (running) {
+      if (exporting) {
+        els.cleanupWorkerSummary.textContent = 'Exporting cleanup history...';
+      } else if (running) {
         els.cleanupWorkerSummary.textContent = 'Running the cleanup Worker dry scan...';
       } else if (status === 'checking') {
         els.cleanupWorkerSummary.textContent = 'Checking scheduled cleanup Worker health...';
@@ -643,7 +656,9 @@ td{color:#dce7eb;font-size:.86rem}
       }
     }
     if (els.cleanupWorkerDetail) {
-      if (running) {
+      if (exporting) {
+        els.cleanupWorkerDetail.textContent = 'Preparing the cleanup history JSON export for offline audit records.';
+      } else if (running) {
         els.cleanupWorkerDetail.textContent = 'Calling the deployed Worker in dry-run mode. No public assets will be deleted.';
       } else if (status === 'ready') {
         const lastRun = worker.lastRun || null;
@@ -662,7 +677,9 @@ td{color:#dce7eb;font-size:.86rem}
       }
     }
     if (els.cleanupWorkerHistory) {
-      if (running) {
+      if (exporting) {
+        els.cleanupWorkerHistory.textContent = 'History export is in progress.';
+      } else if (running) {
         els.cleanupWorkerHistory.textContent = 'History will refresh after this dry scan finishes.';
       } else if (status === 'ready') {
         const historyText = cleanupHistorySummary(worker.history);
@@ -692,6 +709,7 @@ td{color:#dce7eb;font-size:.86rem}
         worker: '',
         url: CLEANUP_WORKER_URL,
         running: false,
+        exporting: false,
         lastRunKnown: false,
         lastRun: null,
         lastRunPersisted: false,
@@ -699,6 +717,8 @@ td{color:#dce7eb;font-size:.86rem}
         history: [],
         historyLimit: 0,
         historyPersisted: false,
+        exportCount: 0,
+        exportFileName: '',
         error: '',
       },
     });
@@ -718,6 +738,7 @@ td{color:#dce7eb;font-size:.86rem}
           worker: payload.worker || '',
           url: CLEANUP_WORKER_URL,
           running: false,
+          exporting: false,
           lastRunKnown: Object.prototype.hasOwnProperty.call(payload, 'lastRun'),
           lastRun: payload.lastRun && typeof payload.lastRun === 'object' ? payload.lastRun : null,
           lastRunPersisted: false,
@@ -725,6 +746,8 @@ td{color:#dce7eb;font-size:.86rem}
           history: Array.isArray(payload.history) ? payload.history : [],
           historyLimit: Number(payload.historyLimit) || 0,
           historyPersisted: false,
+          exportCount: 0,
+          exportFileName: '',
           error: '',
         },
       });
@@ -739,6 +762,7 @@ td{color:#dce7eb;font-size:.86rem}
           worker: '',
           url: CLEANUP_WORKER_URL,
           running: false,
+          exporting: false,
           lastRunKnown: false,
           lastRun: null,
           lastRunPersisted: false,
@@ -746,6 +770,8 @@ td{color:#dce7eb;font-size:.86rem}
           history: [],
           historyLimit: 0,
           historyPersisted: false,
+          exportCount: 0,
+          exportFileName: '',
           error: err?.message || String(err || 'Cleanup Worker health failed'),
         },
       });
@@ -834,6 +860,7 @@ td{color:#dce7eb;font-size:.86rem}
           worker: previous.worker || payload.worker || 'crateship-public-asset-cleanup',
           url: CLEANUP_WORKER_URL,
           running: false,
+          exporting: false,
           lastRunKnown: true,
           lastRun,
           lastRunPersisted: payload.lastRunPersisted === true,
@@ -841,6 +868,8 @@ td{color:#dce7eb;font-size:.86rem}
           history,
           historyLimit: Number(payload.historyLimit) || Number(previous.historyLimit) || 12,
           historyPersisted: payload.historyPersisted === true,
+          exportCount: Number(previous.exportCount) || 0,
+          exportFileName: previous.exportFileName || '',
           error: errorCount ? errorCount + ' cleanup errors were reported. Check Worker logs before deleting.' : '',
         },
         error: '',
@@ -852,6 +881,85 @@ td{color:#dce7eb;font-size:.86rem}
         cleanupWorker: Object.assign({}, previous, {
           status: previous.status || 'failed',
           running: false,
+          error: message,
+        }),
+        error: message,
+      });
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  function downloadJsonFile(payload, fileName) {
+    const blob = new Blob([JSON.stringify(payload || {}, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName || 'crateship-cleanup-history.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function exportCleanupWorkerHistory(button) {
+    const token = readToken();
+    if (!token) {
+      els.authStatus.textContent = 'Enter the admin token before exporting cleanup history.';
+      els.token?.focus();
+      setState({
+        cleanupWorker: Object.assign({}, state.cleanupWorker || {}, {
+          exporting: false,
+          error: '',
+        }),
+      });
+      return;
+    }
+    const previous = state.cleanupWorker || {};
+    setState({
+      cleanupWorker: Object.assign({}, previous, {
+        exporting: true,
+        error: '',
+      }),
+      error: '',
+    });
+    try {
+      const response = await fetch(CLEANUP_WORKER_URL + '/history', {
+        headers: headers(false),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true || !Array.isArray(payload.history)) {
+        const err = new Error(payload?.error || 'Cleanup history export failed with HTTP ' + response.status);
+        err.status = response.status;
+        throw err;
+      }
+      const history = payload.history;
+      const fileName = payload.exportFileName || 'crateship-cleanup-history.json';
+      window._crateCleanupHistoryExport = payload;
+      downloadJsonFile(payload, fileName);
+      els.authStatus.textContent = 'Cleanup history export prepared.';
+      setState({
+        cleanupWorker: Object.assign({}, previous, {
+          status: 'ready',
+          exporting: false,
+          lastRunKnown: Object.prototype.hasOwnProperty.call(payload, 'lastRun'),
+          lastRun: payload.lastRun && typeof payload.lastRun === 'object' ? payload.lastRun : previous.lastRun || null,
+          historyKnown: true,
+          history,
+          historyLimit: Number(payload.historyLimit) || Number(previous.historyLimit) || 0,
+          historyPersisted: false,
+          exportCount: Number(payload.total) || history.length,
+          exportFileName: fileName,
+          error: '',
+        }),
+        error: '',
+      });
+    } catch (err) {
+      const message = err?.message || String(err || 'Cleanup history export failed');
+      els.authStatus.textContent = message;
+      setState({
+        cleanupWorker: Object.assign({}, previous, {
+          exporting: false,
           error: message,
         }),
         error: message,
@@ -1231,6 +1339,7 @@ td{color:#dce7eb;font-size:.86rem}
   els.assetCleanupDryRun?.addEventListener('click', (event) => runPublicAssetCleanup(true, event.currentTarget));
   els.assetCleanupRun?.addEventListener('click', (event) => runPublicAssetCleanup(false, event.currentTarget));
   els.cleanupWorkerDryRun?.addEventListener('click', (event) => runCleanupWorkerDryRun(event.currentTarget));
+  els.cleanupWorkerExport?.addEventListener('click', (event) => exportCleanupWorkerHistory(event.currentTarget));
   els.cleanupWorkerRefresh?.addEventListener('click', () => loadCleanupWorkerStatus());
   els.auditClear?.addEventListener('click', () => renderAuditDetail(null));
   function updateNoteCount() {

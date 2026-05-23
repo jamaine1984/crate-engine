@@ -47,6 +47,14 @@ async function main() {
     throw new Error(`Cleanup worker unauthenticated guard failed: ${blockedResponse.status} ${JSON.stringify(blocked)}`);
   }
 
+  const blockedHistoryResponse = await fetch(`${workerUrl}/history`, {
+    headers: { Accept: 'application/json' },
+  });
+  const blockedHistory = await readJson(blockedHistoryResponse);
+  if (blockedHistoryResponse.status !== 403 || !/admin authorization/i.test(blockedHistory?.error || '')) {
+    throw new Error(`Cleanup worker history guard failed: ${blockedHistoryResponse.status} ${JSON.stringify(blockedHistory)}`);
+  }
+
   let authed = null;
   if (adminToken) {
     const dryRunResponse = await fetch(`${workerUrl}/cleanup`, {
@@ -88,6 +96,21 @@ async function main() {
     if (updatedHealth.history[0]?.reason !== 'manual-api' || updatedHealth.history[0]?.dryRun !== true) {
       throw new Error(`Cleanup worker history has unexpected latest run after authenticated dry run: ${JSON.stringify(updatedHealth.history)}`);
     }
+    const exportResponse = await fetch(`${workerUrl}/history`, {
+      headers: {
+        Accept: 'application/json',
+        'X-Crate-Admin-Token': adminToken,
+      },
+    });
+    const exported = await readJson(exportResponse);
+    if (exportResponse.status !== 200 ||
+        exported?.ok !== true ||
+        !Array.isArray(exported.history) ||
+        exported.history.length < 1 ||
+        exported.history[0]?.reason !== 'manual-api' ||
+        !/cleanup-history/i.test(exported.exportFileName || '')) {
+      throw new Error(`Cleanup worker authenticated history export failed: ${exportResponse.status} ${JSON.stringify(exported)}`);
+    }
   }
 
   console.log('Cleanup worker smoke passed.');
@@ -97,7 +120,7 @@ async function main() {
     ? `Last run: ${healthLastRun.reason || 'unknown'} scanned ${healthLastRun.scanned || 0}, orphaned ${healthLastRun.orphaned || 0}, deleted ${healthLastRun.deleted || 0}, errors ${healthLastRun.errorCount || 0}`
     : 'Last run: none persisted yet.');
   console.log(`History: ${Array.isArray(health.history) ? health.history.length : 0}/${health.historyLimit || 0} persisted runs`);
-  console.log(`Guard: ${blockedResponse.status}`);
+  console.log(`Guard: cleanup ${blockedResponse.status}, history ${blockedHistoryResponse.status}`);
   if (authed) {
     console.log(`Authed dry run: scanned ${authed.scanned}, orphaned ${authed.orphaned}, deleted ${authed.deleted}, errors ${authed.errors}, persisted ${authed.lastRunPersisted ? 'yes' : 'no'}, history ${authed.historyPersisted ? 'yes' : 'no'} (${authed.historyCount})`);
   } else {
