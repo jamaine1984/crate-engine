@@ -1355,11 +1355,6 @@ async function runBrowserSmoke() {
           publicCloudAssetDownloadStatus = (await fetch('/api/assets/public/' + encodeURIComponent(publicCloudAssetId) + '/download', { cache: 'no-store' })).status;
         } catch {}
       }
-      if (privateCloudAssetId) {
-        try {
-          privateCloudAssetNoAuthStatus = (await fetch('/api/assets/' + encodeURIComponent(privateCloudAssetId) + '/download', { cache: 'no-store' })).status;
-        } catch {}
-      }
       let apiGame = null;
       let apiList = null;
       let apiStatus = 0;
@@ -1423,6 +1418,10 @@ async function runBrowserSmoke() {
         lastPublishedSlug: window._lastPublishedGame?.slug || '',
       };
     });
+    if (publishedState.privateCloudAssetId) {
+      const privateNoAuth = await fetch(new URL('/api/assets/' + encodeURIComponent(publishedState.privateCloudAssetId) + '/download', baseUrl).href);
+      publishedState.privateCloudAssetNoAuthStatus = privateNoAuth.status;
+    }
     if (publishedState.format !== 'crate-published-game' ||
         publishedState.version < 2 ||
         publishedState.slug !== smokePublishedSlug ||
