@@ -15839,6 +15839,7 @@ async function deletePublishedGameFromCloudflare(slug, ownerToken) {
   if (!response.ok || !result?.ok) {
     throw new Error(result?.error || ('Delete API failed with HTTP ' + response.status));
   }
+  getUserAssetStorageUsage();
   return result;
 }
 
@@ -15853,6 +15854,7 @@ async function updatePublishedGameInCloudflare(slug, updates, ownerToken) {
   if (!response.ok || !result?.ok) {
     throw new Error(result?.error || ('Update API failed with HTTP ' + response.status));
   }
+  getUserAssetStorageUsage();
   return result;
 }
 

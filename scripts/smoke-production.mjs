@@ -2398,6 +2398,10 @@ async function runBrowserSmoke() {
         publishedCleanupState.gameAfterDeleteStatus !== 404) {
       throw new Error(`Published public asset cleanup failed: ${JSON.stringify(publishedCleanupState)}`);
     }
+    await page.evaluate(async () => {
+      await window._getUserAssetStorageUsage?.();
+      window._refreshGameBuilder?.();
+    });
 
     await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
