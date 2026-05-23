@@ -325,6 +325,11 @@ async function publishAsset(context, id) {
   const object = await found.bucket.get(found.record.key);
   if (!object) return json({ ok: false, error: 'Asset data not found.' }, { status: 404 });
   const now = new Date().toISOString();
+  let existingPublicRecord = null;
+  try {
+    const existingMetadata = await found.bucket.get(publicMetadataKey(publicId));
+    if (existingMetadata) existingPublicRecord = JSON.parse(await existingMetadata.text());
+  } catch {}
   const publicRecord = {
     ...found.record,
     id: publicId,
@@ -350,6 +355,9 @@ async function publishAsset(context, id) {
   await found.bucket.put(publicMetadataKey(publicId), JSON.stringify(publicRecord), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
   });
+  if (existingPublicRecord?.key && existingPublicRecord.key !== publicRecord.key) {
+    await found.bucket.delete(existingPublicRecord.key);
+  }
   return json({ ok: true, asset: publicPublishedAsset(publicRecord, context.request) });
 }
 

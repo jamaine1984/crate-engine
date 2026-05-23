@@ -2294,6 +2294,48 @@ async function runBrowserSmoke() {
       { timeout: timeoutMs }
     ).then((handle) => handle.jsonValue());
 
+    const publishedCleanupState = await (async () => {
+      const publicId = publishedState.publicCloudAssetId || '';
+      const deleteResponse = await fetch(new URL('/api/games/' + encodeURIComponent(smokePublishedSlug), baseUrl).href, {
+        method: 'DELETE',
+        headers: { 'X-Crate-Owner-Token': 'production-smoke-owner-token' },
+      });
+      let deletePayload = {};
+      try {
+        deletePayload = await deleteResponse.json();
+      } catch {}
+      const cacheBust = 'cleanup-' + encodeURIComponent(verify);
+      const publicDetailAfterDelete = publicId
+        ? await fetch(new URL('/api/assets/public/' + encodeURIComponent(publicId) + '?verify=' + cacheBust, baseUrl).href, { cache: 'no-store' })
+        : { status: 0 };
+      const publicDownloadAfterDelete = publicId
+        ? await fetch(new URL('/api/assets/public/' + encodeURIComponent(publicId) + '/download?verify=' + cacheBust, baseUrl).href, { cache: 'no-store' })
+        : { status: 0 };
+      const gameAfterDelete = await fetch(new URL('/api/games/' + encodeURIComponent(smokePublishedSlug) + '?verify=' + cacheBust, baseUrl).href, { cache: 'no-store' });
+      return {
+        deleteStatus: deleteResponse.status,
+        deletedOk: deletePayload?.ok === true && deletePayload?.deleted === true,
+        cleanupDeleted: Number(deletePayload?.publicAssetCleanup?.deleted) || 0,
+        cleanupAttempted: Number(deletePayload?.publicAssetCleanup?.attempted) || 0,
+        cleanupErrors: Array.isArray(deletePayload?.publicAssetCleanup?.errors) ? deletePayload.publicAssetCleanup.errors.length : 0,
+        cleanupBinding: deletePayload?.publicAssetCleanup?.binding === true,
+        publicDetailAfterDeleteStatus: publicDetailAfterDelete.status,
+        publicDownloadAfterDeleteStatus: publicDownloadAfterDelete.status,
+        gameAfterDeleteStatus: gameAfterDelete.status,
+      };
+    })();
+    if (publishedCleanupState.deleteStatus !== 200 ||
+        !publishedCleanupState.deletedOk ||
+        publishedCleanupState.cleanupAttempted < 1 ||
+        publishedCleanupState.cleanupDeleted < 1 ||
+        publishedCleanupState.cleanupErrors !== 0 ||
+        !publishedCleanupState.cleanupBinding ||
+        publishedCleanupState.publicDetailAfterDeleteStatus !== 404 ||
+        publishedCleanupState.publicDownloadAfterDeleteStatus !== 404 ||
+        publishedCleanupState.gameAfterDeleteStatus !== 404) {
+      throw new Error(`Published public asset cleanup failed: ${JSON.stringify(publishedCleanupState)}`);
+    }
+
     await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
       const pickupObj = objects.find((obj) => obj?.userData?.gbComponents?.pickup);
@@ -3253,6 +3295,15 @@ async function runBrowserSmoke() {
     state.publishedEditorLoadScriptCount = publishedEditorLoadState.scriptCount;
     state.publishedEditorLoadProjectStatus = publishedEditorLoadState.projectStatus;
     state.publishedEditorLoadMode = publishedEditorLoadState.mode;
+    state.publishedCleanupDeleteStatus = publishedCleanupState.deleteStatus;
+    state.publishedCleanupDeletedOk = publishedCleanupState.deletedOk;
+    state.publishedCleanupAttempted = publishedCleanupState.cleanupAttempted;
+    state.publishedCleanupDeleted = publishedCleanupState.cleanupDeleted;
+    state.publishedCleanupErrors = publishedCleanupState.cleanupErrors;
+    state.publishedCleanupBinding = publishedCleanupState.cleanupBinding;
+    state.publishedCleanupPublicStatus = publishedCleanupState.publicDetailAfterDeleteStatus;
+    state.publishedCleanupPublicDownloadStatus = publishedCleanupState.publicDownloadAfterDeleteStatus;
+    state.publishedCleanupGameStatus = publishedCleanupState.gameAfterDeleteStatus;
     state.respawnHealth = afterRespawnState.health;
     state.respawnCount = afterRespawnState.respawns;
     state.openedDoor = doorTriggerState.openedDoor;
@@ -3549,7 +3600,16 @@ async function runBrowserSmoke() {
         state.publishedEditorLoadSlug !== smokePublishedSlug ||
         state.publishedEditorLoadObjectCount < 100 ||
         state.publishedEditorLoadProjectStatus !== 'loaded' ||
-        state.publishedEditorLoadMode !== 'edit') {
+        state.publishedEditorLoadMode !== 'edit' ||
+        state.publishedCleanupDeleteStatus !== 200 ||
+        !state.publishedCleanupDeletedOk ||
+        state.publishedCleanupAttempted < 1 ||
+        state.publishedCleanupDeleted < 1 ||
+        state.publishedCleanupErrors !== 0 ||
+        !state.publishedCleanupBinding ||
+        state.publishedCleanupPublicStatus !== 404 ||
+        state.publishedCleanupPublicDownloadStatus !== 404 ||
+        state.publishedCleanupGameStatus !== 404) {
       throw new Error(`Published game library did not finish with a runtime-ready game: ${JSON.stringify(state)}`);
     }
     if (!state.hasModeButtons) throw new Error('Game Builder mode buttons were missing');
@@ -3827,6 +3887,7 @@ console.log(`Playable export: ${browserState.playableExportFilename || 'missing'
 console.log(`Published game: ${browserState.publishedSlug || 'missing'} (${browserState.publishedObjects} objects, ${browserState.publishedComponents} components, package ${browserState.publishedPlayableHtmlBytes} html bytes)`);
 console.log(`Published API: ${browserState.publishedCloudSource || 'missing'} ${browserState.publishedApiStatus} (${browserState.publishedLoadStatus || 'missing'}, ${browserState.publishedLoadObjectCount} objects loaded)`);
 console.log(`Published cloud assets: ${browserState.publishedPublicCloudAssetCount || 0} public, download ${browserState.publishedPublicCloudAssetDownloadStatus || 0}, private no-auth ${browserState.publishedPrivateCloudAssetNoAuthStatus || 0}`);
+console.log(`Published cleanup: game delete ${browserState.publishedCleanupDeleteStatus || 0}, public asset ${browserState.publishedCleanupPublicStatus || 0}/${browserState.publishedCleanupPublicDownloadStatus || 0}, removed ${browserState.publishedCleanupDeleted || 0}/${browserState.publishedCleanupAttempted || 0}`);
 console.log(`Published library UI: ${browserState.publishedLibraryCloudCount} cloud rows, ${browserState.publishedLibraryLocalCount} local rows, ${browserState.publishedLibraryLoadButtons} edit buttons`);
 console.log(`Published editor load: ${browserState.publishedEditorLoadStatus || 'missing'} ${browserState.publishedEditorLoadSlug || 'missing'} (${browserState.publishedEditorLoadObjectCount} objects, filter ${browserState.publishedFilterQuery || 'empty'})`);
 console.log(`Published management: detail ${browserState.publishedDetailPanelStatus || 'missing'}, owner ${browserState.publishedDetailOwnerManaged ? 'managed' : 'missing'}, delete guard ${browserState.publishedDeleteGuardBlockedStatus}/${browserState.publishedDeleteGuardDeletedStatus}/${browserState.publishedDeleteGuardMissingStatus}`);

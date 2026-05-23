@@ -10,6 +10,7 @@ const MAX_TAGS = 12;
 const MAX_LIST_SCAN = 1000;
 const MAX_AUDIT_EVENTS = 100;
 const GAME_PREFIX = 'game:';
+const PUBLIC_ASSET_PREFIX = 'published-assets';
 
 function corsHeaders() {
   return {
@@ -38,6 +39,10 @@ function getStore(env) {
 
 function getAuditStore(env) {
   return env.CRATE_AUDIT || env.CRATEGAMES_AUDIT || env.CRATE_GAMES_AUDIT || null;
+}
+
+function getUserAssetBucket(env) {
+  return env.CRATE_USER_ASSETS || env.CRATE_ASSETS || null;
 }
 
 function slugify(value) {
@@ -109,6 +114,26 @@ function cleanLimit(value, fallback = 24) {
   return Math.min(Math.max(Number.parseInt(value, 10) || fallback, 1), 50);
 }
 
+function cleanAssetId(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+}
+
+function cleanFileName(value) {
+  const fallback = 'model.glb';
+  const cleaned = String(value || fallback)
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 180);
+  return cleaned || fallback;
+}
+
 function cleanAdminFilter(value) {
   const normalized = cleanText(value || 'all', 32).toLowerCase();
   return ['all', 'listed', 'unlisted', 'hidden', 'featured', 'owner-managed'].includes(normalized) ? normalized : 'all';
@@ -169,6 +194,60 @@ function recordMetadata(record) {
 
 function keyForSlug(slug) {
   return GAME_PREFIX + slug;
+}
+
+function publicAssetMetadataKey(publicId) {
+  return `${PUBLIC_ASSET_PREFIX}/${cleanAssetId(publicId)}/asset.json`;
+}
+
+function publicAssetObjectKey(publicId, fileName) {
+  return `${PUBLIC_ASSET_PREFIX}/${cleanAssetId(publicId)}/${cleanFileName(fileName)}`;
+}
+
+function publicAssetIdentity(asset) {
+  const source = asset && typeof asset === 'object' ? asset : {};
+  const publicId = cleanAssetId(source.publicId || source.id);
+  if (!publicId) return null;
+  return {
+    publicId,
+    fileName: cleanFileName(source.fileName || 'model.glb'),
+  };
+}
+
+async function cleanupPublishedAssets(context, previousAssets = [], nextAssets = []) {
+  const bucket = getUserAssetBucket(context.env);
+  const previous = Array.isArray(previousAssets) ? previousAssets.map(publicAssetIdentity).filter(Boolean) : [];
+  const nextIds = new Set((Array.isArray(nextAssets) ? nextAssets : [])
+    .map(publicAssetIdentity)
+    .filter(Boolean)
+    .map((asset) => asset.publicId));
+  const targets = previous.filter((asset) => !nextIds.has(asset.publicId));
+  const result = {
+    attempted: targets.length,
+    deleted: 0,
+    errors: [],
+    binding: !!bucket,
+  };
+  if (!bucket || !targets.length) return result;
+  for (const asset of targets) {
+    const metadataKey = publicAssetMetadataKey(asset.publicId);
+    let objectKey = publicAssetObjectKey(asset.publicId, asset.fileName);
+    try {
+      const metadata = await bucket.get(metadataKey);
+      if (metadata) {
+        const record = JSON.parse(await metadata.text());
+        objectKey = record?.key || objectKey;
+      }
+    } catch {}
+    const keys = [...new Set([objectKey, metadataKey].filter(Boolean))];
+    try {
+      await Promise.all(keys.map((key) => bucket.delete(key)));
+      result.deleted += 1;
+    } catch (err) {
+      result.errors.push({ publicId: asset.publicId, error: err?.message || String(err || 'delete failed') });
+    }
+  }
+  return result;
 }
 
 function pathParts(params) {
@@ -562,7 +641,8 @@ async function publishGame(context) {
     metadata: recordMetadata(record),
   });
 
-  return json({ ok: true, game: publicGameSummary(record), url: record.url });
+  const publicAssetCleanup = await cleanupPublishedAssets(context, existing?.cloudAssets || [], record.cloudAssets);
+  return json({ ok: true, game: publicGameSummary(record), url: record.url, publicAssetCleanup });
 }
 
 async function getGame(context, slug) {
@@ -1117,7 +1197,8 @@ async function deleteGame(context, slug) {
   const auth = await authorizeManagedGame(context, record);
   if (!auth.ok) return json({ ok: false, error: auth.error }, { status: auth.status });
   await store.delete(key);
-  return json({ ok: true, deleted: true, slug: cleanSlug, authorization: auth.mode });
+  const publicAssetCleanup = await cleanupPublishedAssets(context, record.cloudAssets || [], []);
+  return json({ ok: true, deleted: true, slug: cleanSlug, authorization: auth.mode, publicAssetCleanup });
 }
 
 export async function onRequest(context) {
