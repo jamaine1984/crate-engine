@@ -3671,7 +3671,7 @@ function markEditOnly(el, action) {
 
 function formatModeLabel(mode) {
   if (mode === 'play') return 'Play';
-  if (mode === 'explore') return 'Explore';
+  if (mode === 'explore') return 'View';
   return 'Edit';
 }
 
@@ -3726,7 +3726,7 @@ function createModeSection() {
   row.className = 'gb-mode-row';
   [
     { mode: 'edit', label: 'Edit', title: 'Select, move, inspect, and change objects' },
-    { mode: 'explore', label: 'Explore', title: 'Move the camera without selecting objects' },
+    { mode: 'explore', label: 'View', title: 'Move the camera without selecting or editing objects' },
     { mode: 'play', label: 'Play', title: 'Run the game without editor interactions' },
   ].forEach((item) => {
     const button = document.createElement('button');
@@ -3771,7 +3771,7 @@ function createModeDock() {
 
   [
     { mode: 'edit', label: 'Edit', title: 'Select, move, inspect, and change objects' },
-    { mode: 'explore', label: 'Explore', title: 'Move the camera without selecting objects' },
+    { mode: 'explore', label: 'View', title: 'Move the camera without selecting or editing objects' },
     { mode: 'play', label: 'Play', title: 'Run the game without editor interactions' },
   ].forEach((item) => {
     const button = document.createElement('button');
@@ -4479,7 +4479,7 @@ function mount() {
     #gb-stats span{font-size:10px;color:#aeb7bd;background:#151819;border:1px solid #272c2f;border-radius:999px;padding:3px 6px;white-space:nowrap}
     .gb-body{display:flex;flex-direction:column;gap:10px;overflow:auto;padding:10px}
     .gb-section{border:1px solid #20262a;border-radius:8px;overflow:hidden;background:#0d0f10;flex-shrink:0}
-    .gb-mobile-quick-tools{display:none}
+    .gb-mobile-quick-tools{display:block}
     .gb-section h3{margin:0;padding:9px 10px;font-size:11px;text-transform:uppercase;letter-spacing:0;color:#98a2a9;border-bottom:1px solid #20262a;background:#121516}
     .gb-mode-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px}
     .gb-mode-btn{min-height:32px;border:1px solid #2a3237;background:#161a1c;color:#dfe6ea;border-radius:6px;font-size:12px;line-height:14px;cursor:pointer;padding:5px 6px;white-space:normal;overflow-wrap:anywhere}

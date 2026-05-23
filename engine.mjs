@@ -1869,7 +1869,7 @@ function exitPlayMode(nextMode = 'edit') {
   } catch(e) {}
   // Show editor UI
   _showEditorUI();
-  showToast(_currentMode === 'explore' ? 'Explore mode - camera only' : 'Back to editor mode');
+  showToast(_currentMode === 'explore' ? 'View mode - camera only' : 'Back to editor mode');
   _showEditorUI();
   // Hide v215 HUD elements
   ['compass','crosshair','stamina-bar','interact-prompt','damage-vignette','underwater-fx','speed-lines','kill-feed'].forEach(id => {
@@ -1884,7 +1884,7 @@ function exitPlayMode(nextMode = 'edit') {
     try { document.exitPointerLock(); } catch(e) {}
   }
   if (typeof _updateModeButtons === 'function') _updateModeButtons(_currentMode);
-  var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return _currentMode === 'explore' ? 'Explore mode - camera only' : 'Play mode OFF - back to editor';
+  var pi = document.getElementById('prompt-input'); if (pi && pi.parentElement) pi.parentElement.style.display = "flex"; return _currentMode === 'explore' ? 'View mode - camera only' : 'Play mode OFF - back to editor';
 }
 
 window.exitPlayMode = exitPlayMode;
@@ -2745,6 +2745,100 @@ function getEditorPlacementPoint(distance = 8) {
   }
 }
 
+function getViewportPlacementPoint(screenX = null, screenY = null) {
+  try {
+    const canvasEl = renderer?.domElement || document.querySelector('canvas');
+    if (!canvasEl || !camera) return getEditorPlacementPoint();
+    const rect = canvasEl.getBoundingClientRect();
+    const clientX = Number.isFinite(Number(screenX)) ? Number(screenX) : rect.left + rect.width * 0.5;
+    const clientY = Number.isFinite(Number(screenY)) ? Number(screenY) : rect.top + rect.height * 0.5;
+    const mousePoint = new THREE.Vector2(
+      ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(mousePoint, camera);
+    const groundTargets = [terrainMesh, window._terrainMesh].filter(Boolean);
+    for (const target of groundTargets) {
+      try {
+        const hits = ray.intersectObject(target, true);
+        if (hits.length) {
+          const point = hits[0].point;
+          return { x: point.x, y: point.y, z: point.z, source: 'viewport-ground' };
+        }
+      } catch {}
+    }
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const point = new THREE.Vector3();
+    if (ray.ray.intersectPlane(groundPlane, point)) {
+      const y = window._getTerrainY ? window._getTerrainY(point.x, point.z) : 0;
+      return { x: point.x, y, z: point.z, source: 'viewport-plane' };
+    }
+  } catch {}
+  return { ...getEditorPlacementPoint(), source: 'editor-forward' };
+}
+
+function getAssetViewportState(model) {
+  try {
+    const canvasEl = renderer?.domElement || document.querySelector('canvas');
+    if (!model || !camera || !canvasEl) return null;
+    camera.updateMatrixWorld();
+    model.updateMatrixWorld?.();
+    const center = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
+    if (![center.x, center.y, center.z].every(Number.isFinite)) {
+      model.getWorldPosition?.(center);
+    }
+    const ndc = center.clone().project(camera);
+    const rect = canvasEl.getBoundingClientRect();
+    return {
+      screenX: Math.round((ndc.x + 1) * 0.5 * rect.width + rect.left),
+      screenY: Math.round((-ndc.y + 1) * 0.5 * rect.height + rect.top),
+      ndcX: Math.round(ndc.x * 1000) / 1000,
+      ndcY: Math.round(ndc.y * 1000) / 1000,
+      ndcZ: Math.round(ndc.z * 1000) / 1000,
+      onScreen: ndc.x >= -1 && ndc.x <= 1 && ndc.y >= -1 && ndc.y <= 1 && ndc.z >= -1 && ndc.z <= 1,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function framePlacedAssetInView(model, options = {}) {
+  if (!model || !camera || !controls || options.focusAfterLoad === false) return getAssetViewportState(model);
+  try {
+    model.updateMatrixWorld?.();
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 1);
+    if (![center.x, center.y, center.z, maxDim].every(Number.isFinite)) return getAssetViewportState(model);
+    const previousTarget = controls.target?.clone?.() || center.clone();
+    const viewDir = camera.position.clone().sub(previousTarget);
+    if (viewDir.lengthSq() < 0.0001) viewDir.set(1, 0.75, 1);
+    viewDir.normalize();
+    const distance = Math.max(10, Math.min(55, maxDim * 2.25));
+    controls.target.copy(center);
+    camera.position.copy(center).addScaledVector(viewDir, distance);
+    camera.position.y = Math.max(camera.position.y, center.y + Math.max(4, maxDim * 0.45));
+    camera.up.set(0, 1, 0);
+    camera.lookAt(center);
+    camera.updateMatrixWorld();
+    controls.update?.();
+    const viewport = getAssetViewportState(model);
+    window._lastAssetFrame = {
+      name: options.name || options.displayName || model.userData?.name || '',
+      objectId: model.uuid || '',
+      target: center.toArray(),
+      camera: camera.position.toArray(),
+      viewport,
+      updatedAt: Date.now(),
+    };
+    return viewport;
+  } catch {
+    return getAssetViewportState(model);
+  }
+}
+
 function ensureEditModeForAssetPlacement(source = 'asset') {
   if (isEditInteractionMode()) return true;
   if (typeof window._setMode === 'function') {
@@ -2774,6 +2868,7 @@ function handlePlacedAsset(model, options = {}) {
     selectSceneObject(model);
   }
   if (options.trackPlacement) {
+    const viewport = framePlacedAssetInView(model, options);
     setAssetPlacementState({
       status: 'placed',
       name: options.name || options.displayName || model.userData?.name || 'asset',
@@ -2784,6 +2879,7 @@ function handlePlacedAsset(model, options = {}) {
       y: model.position?.y ?? null,
       z: model.position?.z ?? null,
       objectId: model.uuid || '',
+      viewport,
     });
   }
   if (options.notify) showToast('Placed ' + (options.name || options.displayName || model.userData?.name || 'asset'));
@@ -2819,7 +2915,9 @@ function placeCatalogAsset(result, source = 'asset-library') {
   const file = result.file;
   const customPath = normalizeCatalogAssetPath(result.path);
   const glb = GLB_MODELS[file] || file;
-  const point = getEditorPlacementPoint();
+  const point = Number.isFinite(Number(result.x)) && Number.isFinite(Number(result.z))
+    ? { x: Number(result.x), y: Number(result.y) || 0, z: Number(result.z), source: 'explicit' }
+    : getViewportPlacementPoint(result.screenX, result.screenY);
   setAssetPlacementState({
     status: 'loading',
     name,
@@ -2827,6 +2925,7 @@ function placeCatalogAsset(result, source = 'asset-library') {
     path: customPath || glb,
     source,
     x: point.x,
+    y: point.y ?? null,
     z: point.z,
   });
   loadGLBModel(file, glb, point.x, point.z, null, customPath || undefined, {
@@ -17603,7 +17702,7 @@ window._setMode = function(mode) {
     syncModeGlobals('explore');
     clearEditorSelection();
     controls.enabled = true;
-    logOutput('ok', 'Explore Mode - camera only, object clicks disabled');
+    logOutput('ok', 'View Mode - camera only, object clicks disabled');
   }
 
   _updateModeButtons(next);

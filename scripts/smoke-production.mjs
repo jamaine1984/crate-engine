@@ -195,12 +195,30 @@ async function runBrowserSmoke() {
     await page.waitForSelector('#gb-systems', { timeout: timeoutMs });
     await page.waitForSelector('[data-gb-mode="edit"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-mode-dock [data-gb-mode="edit"]', { timeout: timeoutMs });
+    await page.waitForSelector('.gb-mobile-quick-tools button[data-gb-action="assets"]', { timeout: timeoutMs });
     await page.waitForSelector('#gb-project button[data-gb-action="save"]', { timeout: timeoutMs });
     await page.waitForFunction(
       () => window._crateAssetManifest?.version && document.querySelector('#gb-asset-pack-status')?.dataset.status === 'loaded',
       undefined,
       { timeout: timeoutMs }
     );
+
+    const modeChromeState = await page.evaluate(() => {
+      const quick = document.querySelector('.gb-mobile-quick-tools');
+      const quickButton = quick?.querySelector('button[data-gb-action="assets"]');
+      const quickRect = quickButton?.getBoundingClientRect();
+      return {
+        viewButtons: [...document.querySelectorAll('[data-gb-mode="explore"]')].map((button) => button.textContent?.trim() || ''),
+        quickDisplay: quick ? getComputedStyle(quick).display : '',
+        quickButtonVisible: !!(quickRect && quickRect.width > 0 && quickRect.height > 0 && quickRect.top >= 0 && quickRect.bottom <= window.innerHeight),
+      };
+    });
+    if (!modeChromeState.viewButtons.length ||
+        modeChromeState.viewButtons.some((label) => label !== 'View') ||
+        modeChromeState.quickDisplay === 'none' ||
+        !modeChromeState.quickButtonVisible) {
+      throw new Error(`Mode chrome or quick asset controls are not ready: ${JSON.stringify(modeChromeState)}`);
+    }
 
     const clippedBuilderLabels = await page.evaluate(() => {
       const targets = [
@@ -473,7 +491,7 @@ async function runBrowserSmoke() {
         path: '/models/house_interior_pack_chair_1.glb',
       });
     });
-    await page.locator('#game-builder-panel .gb-section:not(.gb-mobile-quick-tools) button[data-gb-action="assets"]').click({ timeout: timeoutMs });
+    await page.locator('.gb-mobile-quick-tools button[data-gb-action="assets"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
       (before) => {
         const state = window._lastAssetPlacement || {};
@@ -494,6 +512,7 @@ async function runBrowserSmoke() {
       return {
         objectCount: window._engineBridge?.objects?.length || 0,
         placement: window._lastAssetPlacement || null,
+        placementViewport: window._lastAssetPlacement?.viewport || null,
         placementText: placementEl?.textContent || '',
         placementName: placementEl?.dataset?.placementName || '',
         placementPosition: placementEl?.dataset?.placementPosition || '',
@@ -501,6 +520,9 @@ async function runBrowserSmoke() {
     });
     if (builderMenuPlacementState.placement?.source !== 'game-builder-assets') {
       throw new Error(`Game Builder asset menu did not place the picked asset: ${JSON.stringify(builderMenuPlacementState)}`);
+    }
+    if (!builderMenuPlacementState.placementViewport?.onScreen) {
+      throw new Error(`Game Builder asset menu placed the asset outside the visible viewport: ${JSON.stringify(builderMenuPlacementState)}`);
     }
     const placementText = builderMenuPlacementState.placementText || '';
     if (!/Asset:\s*Builder menu chair/i.test(placementText) ||
@@ -738,11 +760,15 @@ async function runBrowserSmoke() {
         mode: window._currentMode || '',
         selectedId: selected?.uuid || '',
         retryReady: typeof window._retryLastAssetPlacement === 'function',
+        viewport: state.viewport || null,
         statusText: document.querySelector('#gb-placement-status')?.textContent?.trim() || '',
       };
     });
     if (placementState.mode !== 'edit') {
       throw new Error(`Asset placement did not stay in Edit mode: ${JSON.stringify(placementState)}`);
+    }
+    if (!placementState.viewport?.onScreen) {
+      throw new Error(`Asset placement was not framed onscreen: ${JSON.stringify(placementState)}`);
     }
     if (placementState.selectedId !== placementState.objectId) {
       throw new Error(`Placed asset was not selected: ${JSON.stringify(placementState)}`);
@@ -2778,7 +2804,7 @@ async function runBrowserSmoke() {
         !editLockState.projectImportDisabled ||
         editLockState.projectExportDisabled ||
         !/Read-only/i.test(editLockState.readOnlyNote)) {
-      throw new Error(`Explore mode did not lock editor controls: ${JSON.stringify(editLockState)}`);
+      throw new Error(`View mode did not lock editor controls: ${JSON.stringify(editLockState)}`);
     }
     await page.evaluate(() => {
       document.querySelector('button[data-gb-component="damage"]')?.click();
@@ -2796,7 +2822,7 @@ async function runBrowserSmoke() {
     if (afterReadOnlyClick.objectCount !== beforeReadOnly.objectCount ||
         afterReadOnlyClick.selectedId !== beforeReadOnly.selectedId ||
         afterReadOnlyClick.componentCount !== beforeReadOnly.componentCount) {
-      throw new Error(`Read-only editor controls mutated scene in Explore mode: ${JSON.stringify({ beforeReadOnly, afterReadOnlyClick })}`);
+      throw new Error(`Read-only editor controls mutated scene in View mode: ${JSON.stringify({ beforeReadOnly, afterReadOnlyClick })}`);
     }
     const bridgeExploreSelectState = await page.evaluate(() => {
       const objects = window._engineBridge?.objects || window._sceneObjects || [];
@@ -2817,7 +2843,7 @@ async function runBrowserSmoke() {
           bridgeExploreSelectState.bridgeSelectedId ||
           bridgeExploreSelectState.after !== bridgeExploreSelectState.before ||
           bridgeExploreSelectState.inspectorDisplay === 'flex')) {
-      throw new Error(`Engine bridge selected an object in Explore mode: ${JSON.stringify(bridgeExploreSelectState)}`);
+      throw new Error(`Engine bridge selected an object in View mode: ${JSON.stringify(bridgeExploreSelectState)}`);
     }
     await page.mouse.click(680, 470);
     const exploreState = await page.evaluate(() => ({
@@ -2828,13 +2854,13 @@ async function runBrowserSmoke() {
       selectedModeButton: document.querySelector('[data-gb-mode="explore"]')?.dataset.selected || '',
     }));
     if (exploreState.legacyInspectorDisplay === 'flex') {
-      throw new Error('Explore mode canvas click opened the object inspector');
+      throw new Error('View mode canvas click opened the object inspector');
     }
     if (exploreState.bridgeSelectedId) {
-      throw new Error(`Explore mode canvas click left an editor selection active: ${JSON.stringify(exploreState)}`);
+      throw new Error(`View mode canvas click left an editor selection active: ${JSON.stringify(exploreState)}`);
     }
     if (exploreState.selectedModeButton !== 'true') {
-      throw new Error('Explore mode button did not reflect the active mode');
+      throw new Error('View mode button did not reflect the active mode');
     }
 
     await page.locator('#gb-mode-dock [data-gb-mode="play"]').click({ timeout: timeoutMs });
