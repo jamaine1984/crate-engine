@@ -1465,7 +1465,16 @@ async function runBrowserSmoke() {
       throw new Error(`Published game library did not create a portable playable link: ${JSON.stringify(publishedState)}`);
     }
     if (userImportState.publishSavedId) {
-      await page.evaluate((id) => window._deleteUserImportedModel?.(id), userImportState.publishSavedId);
+      await page.evaluate(({ id, objectId }) => {
+        const deleted = window._deleteUserImportedModel?.(id);
+        const objects = window._engineBridge?.objects || window._sceneObjects || [];
+        const index = objects.findIndex((obj) => obj?.uuid === objectId);
+        if (index >= 0) {
+          const [obj] = objects.splice(index, 1);
+          window._engine?.scene?.remove?.(obj);
+        }
+        return deleted;
+      }, { id: userImportState.publishSavedId, objectId: userImportState.publishObjectId });
     }
 
     const deleteGuardPublishState = await page.evaluate(async () => {
