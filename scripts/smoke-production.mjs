@@ -1994,6 +1994,15 @@ async function runBrowserSmoke() {
           cleanupWorkerLimit: Number(state.cleanupWorkerLimit) || 0,
           cleanupWorkerHasR2Binding: state.cleanupWorkerHasR2Binding === true,
           cleanupWorkerHasGameStore: state.cleanupWorkerHasGameStore === true,
+          cleanupWorkerLastRunKnown: state.cleanupWorkerLastRunKnown === true,
+          cleanupWorkerHasLastRun: state.cleanupWorkerHasLastRun === true,
+          cleanupWorkerLastRunReason: state.cleanupWorkerLastRunReason || '',
+          cleanupWorkerLastRunFinishedAt: state.cleanupWorkerLastRunFinishedAt || '',
+          cleanupWorkerLastRunScanned: Number(state.cleanupWorkerLastRunScanned) || 0,
+          cleanupWorkerLastRunOrphaned: Number(state.cleanupWorkerLastRunOrphaned) || 0,
+          cleanupWorkerLastRunDeleted: Number(state.cleanupWorkerLastRunDeleted) || 0,
+          cleanupWorkerLastRunErrorCount: Number(state.cleanupWorkerLastRunErrorCount) || 0,
+          cleanupWorkerLastRunDryRun: state.cleanupWorkerLastRunDryRun !== false,
           cleanupWorkerError: state.cleanupWorkerError || '',
           auditDetailStatus: state.auditDetailStatus || '',
           auditDetailRows: Number(state.auditDetailRows) || 0,
@@ -2054,6 +2063,7 @@ async function runBrowserSmoke() {
         adminDashboardState.cleanupWorkerLimit <= 0 ||
         !adminDashboardState.cleanupWorkerHasR2Binding ||
         !adminDashboardState.cleanupWorkerHasGameStore ||
+        !adminDashboardState.cleanupWorkerLastRunKnown ||
         adminDashboardState.auditDetailStatus !== 'empty' ||
         adminDashboardState.adminName ||
         adminDashboardState.adminRole ||
@@ -3413,6 +3423,15 @@ async function runBrowserSmoke() {
     state.adminDashboardCleanupWorkerLimit = adminDashboardState.cleanupWorkerLimit;
     state.adminDashboardCleanupWorkerHasR2Binding = adminDashboardState.cleanupWorkerHasR2Binding;
     state.adminDashboardCleanupWorkerHasGameStore = adminDashboardState.cleanupWorkerHasGameStore;
+    state.adminDashboardCleanupWorkerLastRunKnown = adminDashboardState.cleanupWorkerLastRunKnown;
+    state.adminDashboardCleanupWorkerHasLastRun = adminDashboardState.cleanupWorkerHasLastRun;
+    state.adminDashboardCleanupWorkerLastRunReason = adminDashboardState.cleanupWorkerLastRunReason;
+    state.adminDashboardCleanupWorkerLastRunFinishedAt = adminDashboardState.cleanupWorkerLastRunFinishedAt;
+    state.adminDashboardCleanupWorkerLastRunScanned = adminDashboardState.cleanupWorkerLastRunScanned;
+    state.adminDashboardCleanupWorkerLastRunOrphaned = adminDashboardState.cleanupWorkerLastRunOrphaned;
+    state.adminDashboardCleanupWorkerLastRunDeleted = adminDashboardState.cleanupWorkerLastRunDeleted;
+    state.adminDashboardCleanupWorkerLastRunErrorCount = adminDashboardState.cleanupWorkerLastRunErrorCount;
+    state.adminDashboardCleanupWorkerLastRunDryRun = adminDashboardState.cleanupWorkerLastRunDryRun;
     state.adminDashboardHasAdminActor = adminDashboardState.hasAdminActor;
     state.adminDashboardAdminName = adminDashboardState.adminName;
     state.adminDashboardAdminRole = adminDashboardState.adminRole;
@@ -4060,6 +4079,7 @@ console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.
 console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games, admin featured ${(browserState.marketplaceDiscoveryAdminFeaturedSlugs || []).length}`);
 console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components, featured ${browserState.gameDetailFeatured ? 'yes' : 'no'})`);
 console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, verify guard ${browserState.adminAuditVerifyGuardStatus || 'missing'}, backfill guard ${browserState.adminAuditBackfillGuardStatus || 'missing'}, asset cleanup guard ${browserState.adminAssetCleanupGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, storage panel ${browserState.adminDashboardHasAuditStorage && browserState.adminDashboardHasAuditStorageVerify ? browserState.adminDashboardAuditStorageStatus || 'ready' : 'missing'}, backfill controls ${browserState.adminDashboardHasAuditBackfillDryRun && browserState.adminDashboardHasAuditBackfillRun ? browserState.adminDashboardAuditBackfillStatus || 'ready' : 'missing'}, asset cleanup controls ${browserState.adminDashboardHasAssetCleanupDryRun && browserState.adminDashboardHasAssetCleanupRun ? browserState.adminDashboardAssetCleanupStatus || 'ready' : 'missing'}, cleanup worker ${browserState.adminDashboardHasCleanupWorker ? browserState.adminDashboardCleanupWorkerStatus || 'ready' : 'missing'} delete ${browserState.adminDashboardCleanupWorkerDeleteEnabled ? 'enabled' : 'disabled'} limit ${browserState.adminDashboardCleanupWorkerLimit || 0}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, d1 verify ${browserState.adminAuditD1VerifyStatus || 'missing'} ${browserState.adminAuditD1WriteVerified ? 'verified' : 'missing'}, asset dry run ${browserState.adminAssetCleanupDryRunStatus || 'missing'} ${browserState.adminAssetCleanupDryRunOk ? 'ready' : 'missing'}, ui storage ${browserState.adminDashboardStorageProbeStatus || 'missing'} ${browserState.adminDashboardStorageProbeWriteVerified ? 'verified' : 'missing'}, ui backfill ${browserState.adminDashboardBackfillProbeStatus || 'missing'} ${browserState.adminDashboardBackfillProbeDryRun ? 'dry-run' : 'missing'} wrote ${browserState.adminDashboardBackfillProbeWritten || 0}, ui asset cleanup ${browserState.adminDashboardAssetCleanupProbeStatus || 'missing'} ${browserState.adminDashboardAssetCleanupProbeDryRun ? 'dry-run' : 'missing'} deleted ${browserState.adminDashboardAssetCleanupProbeDeleted || 0}, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
+console.log(`Cleanup worker last run: ${browserState.adminDashboardCleanupWorkerLastRunKnown ? (browserState.adminDashboardCleanupWorkerHasLastRun ? `${browserState.adminDashboardCleanupWorkerLastRunReason || 'unknown'} scanned ${browserState.adminDashboardCleanupWorkerLastRunScanned || 0}, orphaned ${browserState.adminDashboardCleanupWorkerLastRunOrphaned || 0}, deleted ${browserState.adminDashboardCleanupWorkerLastRunDeleted || 0}, errors ${browserState.adminDashboardCleanupWorkerLastRunErrorCount || 0}` : 'none persisted yet') : 'missing health field'}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

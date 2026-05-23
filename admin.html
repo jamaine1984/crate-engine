@@ -316,7 +316,7 @@ td{color:#dce7eb;font-size:.86rem}
     auditStorage: { status: 'locked', source: '', writeVerified: false },
     auditBackfill: { status: 'locked', scanned: 0, auditEvents: 0, written: 0, dryRun: true },
     assetCleanup: { status: 'locked', scanned: 0, orphaned: 0, deleted: 0, errors: 0, dryRun: true },
-    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, error: '' },
+    cleanupWorker: { status: 'checking', deleteEnabled: false, limit: 0, hasR2Binding: false, hasGameStore: false, worker: '', url: CLEANUP_WORKER_URL, lastRunKnown: false, lastRun: null, error: '' },
     error: '',
   };
 
@@ -355,6 +355,13 @@ td{color:#dce7eb;font-size:.86rem}
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'None yet';
     return date.toLocaleString();
+  }
+
+  function formatCleanupReason(value) {
+    const reason = String(value || '').toLowerCase();
+    if (reason === 'manual-api') return 'manual';
+    if (reason === 'scheduled') return 'scheduled';
+    return reason || 'cleanup';
   }
 
   function setState(next) {
@@ -406,6 +413,15 @@ td{color:#dce7eb;font-size:.86rem}
       cleanupWorkerLimit: Number(state.cleanupWorker?.limit) || 0,
       cleanupWorkerHasR2Binding: state.cleanupWorker?.hasR2Binding === true,
       cleanupWorkerHasGameStore: state.cleanupWorker?.hasGameStore === true,
+      cleanupWorkerLastRunKnown: state.cleanupWorker?.lastRunKnown === true,
+      cleanupWorkerHasLastRun: !!state.cleanupWorker?.lastRun,
+      cleanupWorkerLastRunReason: state.cleanupWorker?.lastRun?.reason || '',
+      cleanupWorkerLastRunFinishedAt: state.cleanupWorker?.lastRun?.finishedAt || '',
+      cleanupWorkerLastRunScanned: Number(state.cleanupWorker?.lastRun?.scanned) || 0,
+      cleanupWorkerLastRunOrphaned: Number(state.cleanupWorker?.lastRun?.orphaned) || 0,
+      cleanupWorkerLastRunDeleted: Number(state.cleanupWorker?.lastRun?.deleted) || 0,
+      cleanupWorkerLastRunErrorCount: Number(state.cleanupWorker?.lastRun?.errorCount) || 0,
+      cleanupWorkerLastRunDryRun: state.cleanupWorker?.lastRun?.dryRun !== false,
       cleanupWorkerError: state.cleanupWorker?.error || '',
       hasAdminActor: !!els.actor,
       adminName: state.admin?.name || '',
@@ -594,7 +610,15 @@ td{color:#dce7eb;font-size:.86rem}
     }
     if (els.cleanupWorkerDetail) {
       if (status === 'ready') {
-        els.cleanupWorkerDetail.textContent = 'Limit ' + (Number(worker.limit) || 0) + ' public assets per run. Keep deletion disabled until an authenticated dry run is reviewed.';
+        const lastRun = worker.lastRun || null;
+        if (lastRun) {
+          const finishedAt = lastRun.finishedAt || lastRun.persistedAt || '';
+          els.cleanupWorkerDetail.textContent = 'Last ' + formatCleanupReason(lastRun.reason) + ' run finished ' + formatDate(finishedAt) + ': scanned ' + (Number(lastRun.scanned) || 0) + ', orphaned ' + (Number(lastRun.orphaned) || 0) + ', deleted ' + (Number(lastRun.deleted) || 0) + ', errors ' + (Number(lastRun.errorCount) || 0) + '. ' + (lastRun.dryRun === false ? 'Delete mode was active.' : 'Dry-run mode was active.');
+        } else if (worker.lastRunKnown) {
+          els.cleanupWorkerDetail.textContent = 'No persisted cleanup run yet. Scheduled scans will appear here after the next cron or authenticated dry run.';
+        } else {
+          els.cleanupWorkerDetail.textContent = 'Limit ' + (Number(worker.limit) || 0) + ' public assets per run. Keep deletion disabled until an authenticated dry run is reviewed.';
+        }
       } else if (status === 'failed') {
         els.cleanupWorkerDetail.textContent = 'Use the Worker health link or Wrangler logs before relying on scheduled cleanup.';
       } else {
@@ -613,6 +637,8 @@ td{color:#dce7eb;font-size:.86rem}
         hasGameStore: false,
         worker: '',
         url: CLEANUP_WORKER_URL,
+        lastRunKnown: false,
+        lastRun: null,
         error: '',
       },
     });
@@ -631,6 +657,8 @@ td{color:#dce7eb;font-size:.86rem}
           hasGameStore: payload.hasGameStore === true,
           worker: payload.worker || '',
           url: CLEANUP_WORKER_URL,
+          lastRunKnown: Object.prototype.hasOwnProperty.call(payload, 'lastRun'),
+          lastRun: payload.lastRun && typeof payload.lastRun === 'object' ? payload.lastRun : null,
           error: '',
         },
       });
@@ -644,6 +672,8 @@ td{color:#dce7eb;font-size:.86rem}
           hasGameStore: false,
           worker: '',
           url: CLEANUP_WORKER_URL,
+          lastRunKnown: false,
+          lastRun: null,
           error: err?.message || String(err || 'Cleanup Worker health failed'),
         },
       });

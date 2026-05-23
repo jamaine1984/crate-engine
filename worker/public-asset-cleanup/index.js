@@ -1,5 +1,6 @@
 const PUBLIC_ASSET_PREFIX = 'published-assets';
 const GAME_PREFIX = 'game:';
+const LAST_RUN_KEY = 'cleanup:last-run';
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
 
@@ -144,6 +145,76 @@ function scheduledDeleteEnabled(env = {}) {
   return String(env.CRATE_PUBLIC_ASSET_CLEANUP_DELETE || '').trim().toLowerCase() === 'true';
 }
 
+function gameStore(env = {}) {
+  return env.CRATE_GAMES || env.CRATEGAMES || null;
+}
+
+function publicLastRun(record) {
+  if (!record || typeof record !== 'object') return null;
+  return {
+    ok: record.ok === true,
+    error: record.error || '',
+    reason: record.reason || '',
+    dryRun: record.dryRun !== false,
+    deleteEnabled: record.deleteEnabled === true,
+    limit: Number(record.limit) || 0,
+    scanned: Number(record.scanned) || 0,
+    orphaned: Number(record.orphaned) || 0,
+    deleted: Number(record.deleted) || 0,
+    errorCount: Number(record.errorCount) || 0,
+    startedAt: record.startedAt || '',
+    finishedAt: record.finishedAt || '',
+    durationMs: Number(record.durationMs) || 0,
+    cron: record.cron || '',
+    scheduledTime: Number(record.scheduledTime) || 0,
+    persistedAt: record.persistedAt || '',
+  };
+}
+
+async function readLastCleanupRun(env = {}) {
+  const store = gameStore(env);
+  if (!store) return null;
+  const record = await store.get(LAST_RUN_KEY, 'json').catch(() => null);
+  return publicLastRun(record);
+}
+
+async function persistLastCleanupRun(env = {}, result = {}, metadata = {}) {
+  const store = gameStore(env);
+  if (!store || !result || typeof result !== 'object') return false;
+  const errors = Array.isArray(result.errors) ? result.errors : [];
+  const record = {
+    format: 'crate-public-asset-cleanup-last-run',
+    version: 1,
+    worker: 'crateship-public-asset-cleanup',
+    persistedAt: new Date().toISOString(),
+    ok: result.ok === true,
+    error: result.error ? String(result.error).slice(0, 240) : '',
+    reason: result.reason || metadata.reason || '',
+    dryRun: result.dryRun !== false,
+    deleteEnabled: result.deleteEnabled === true,
+    limit: Number(result.limit) || 0,
+    scanned: Number(result.scanned) || 0,
+    orphaned: Number(result.orphaned) || 0,
+    deleted: Number(result.deleted) || 0,
+    errorCount: errors.length,
+    errors: errors.slice(0, 20).map((entry) => ({
+      publicId: cleanId(entry?.publicId || ''),
+      error: String(entry?.error || entry?.message || entry || 'cleanup failed').slice(0, 240),
+    })),
+    startedAt: result.startedAt || '',
+    finishedAt: result.finishedAt || '',
+    durationMs: Number(result.durationMs) || 0,
+    cron: metadata.cron || '',
+    scheduledTime: Number(metadata.scheduledTime) || 0,
+  };
+  try {
+    await store.put(LAST_RUN_KEY, JSON.stringify(record));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function listPublicAssetMetadata(bucket, limit) {
   const rows = [];
   let cursor = undefined;
@@ -191,7 +262,7 @@ async function publicAssetIsReferencedByGame(store, publicId, record = {}) {
 async function cleanupPublicAssets(env, options = {}) {
   const startedAt = new Date();
   const bucket = env.CRATE_USER_ASSETS || env.CRATE_ASSETS || null;
-  const store = env.CRATE_GAMES || env.CRATEGAMES || null;
+  const store = gameStore(env);
   if (!bucket) return { ok: false, error: 'CRATE_USER_ASSETS R2 binding is not configured.' };
   if (!store) return { ok: false, error: 'CRATE_GAMES KV binding is not configured.' };
 
@@ -240,6 +311,7 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: json({}).headers });
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
+      const lastRun = await readLastCleanupRun(env);
       return json({
         ok: true,
         worker: 'crateship-public-asset-cleanup',
@@ -247,7 +319,8 @@ export default {
         deleteEnabled: scheduledDeleteEnabled(env),
         limit: cleanupLimit(env.CRATE_PUBLIC_ASSET_CLEANUP_LIMIT),
         hasR2Binding: !!(env.CRATE_USER_ASSETS || env.CRATE_ASSETS),
-        hasGameStore: !!(env.CRATE_GAMES || env.CRATEGAMES),
+        hasGameStore: !!gameStore(env),
+        lastRun,
       });
     }
     if (request.method === 'POST' && url.pathname === '/cleanup') {
@@ -260,7 +333,11 @@ export default {
         limit: payload.limit,
         reason: 'manual-api',
       });
-      return json({ ...result, admin: admin.admin }, { status: result.ok ? 200 : 503 });
+      const lastRunPersisted = await persistLastCleanupRun(env, result, {
+        reason: 'manual-api',
+        admin: admin.admin,
+      });
+      return json({ ...result, admin: admin.admin, lastRunPersisted }, { status: result.ok ? 200 : 503 });
     }
     return json({ ok: false, error: 'Not found.' }, { status: 404 });
   },
@@ -271,10 +348,15 @@ export default {
         dryRun: !scheduledDeleteEnabled(env),
         reason: 'scheduled',
       });
+      const lastRunPersisted = await persistLastCleanupRun(env, result, {
+        cron: event.cron || '',
+        scheduledTime: event.scheduledTime || 0,
+      });
       console.log(JSON.stringify({
         worker: 'crateship-public-asset-cleanup',
         cron: event.cron || '',
         scheduledTime: event.scheduledTime || 0,
+        lastRunPersisted,
         ...result,
       }));
     })());
