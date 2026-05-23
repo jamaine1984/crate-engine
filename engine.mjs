@@ -18055,6 +18055,48 @@ async function listCloudUserAssets() {
   }
 }
 
+async function getUserAssetStorageUsage() {
+  try {
+    const response = await fetch('/api/assets/usage', {
+      headers: userAssetAuthHeaders(),
+      cache: 'no-store',
+    });
+    const data = await response.json().catch(() => ({}));
+    const usage = response.ok && data?.ok === true ? data.usage : null;
+    window._lastUserAssetStorageUsage = {
+      ok: !!usage,
+      status: response.status,
+      usage,
+      privateAssets: Number(usage?.private?.assets) || 0,
+      privateBytes: Number(usage?.private?.bytes) || 0,
+      publishedAssets: Number(usage?.published?.assets) || 0,
+      publishedBytes: Number(usage?.published?.bytes) || 0,
+      totalBytes: Number(usage?.total?.bytes) || 0,
+      quotaBytes: Number(usage?.quota?.bytes) || 0,
+      quotaPercent: Number(usage?.quota?.percent) || 0,
+      checkedAt: Date.now(),
+      error: data?.error || '',
+    };
+    return usage;
+  } catch (err) {
+    window._lastUserAssetStorageUsage = {
+      ok: false,
+      status: 0,
+      usage: null,
+      privateAssets: 0,
+      privateBytes: 0,
+      publishedAssets: 0,
+      publishedBytes: 0,
+      totalBytes: 0,
+      quotaBytes: 0,
+      quotaPercent: 0,
+      checkedAt: Date.now(),
+      error: err?.message || String(err || 'Storage usage failed'),
+    };
+    return null;
+  }
+}
+
 async function uploadUserImportedModelToCloud(file, localModel, validation) {
   if (!file) return null;
   try {
@@ -18086,6 +18128,7 @@ async function uploadUserImportedModelToCloud(file, localModel, validation) {
         cloudSyncedAt: Date.now(),
       });
       _assetCatalog = null;
+      getUserAssetStorageUsage();
     }
     return asset;
   } catch (err) {
@@ -18111,6 +18154,7 @@ async function deleteCloudUserAsset(id) {
     const data = await response.json().catch(() => ({}));
     const ok = response.ok && data?.ok === true;
     window._lastUserAssetCloudDelete = { ok, id, status: response.status, finishedAt: Date.now(), error: data?.error || '' };
+    if (ok) getUserAssetStorageUsage();
     return ok;
   } catch (err) {
     window._lastUserAssetCloudDelete = { ok: false, id, status: 0, finishedAt: Date.now(), error: err?.message || String(err || 'Cloud delete failed') };
@@ -18164,6 +18208,7 @@ async function publishCloudUserAssetForGame(id, gameSlug) {
     error: data?.error || '',
   };
   if (!asset) throw new Error(data?.error || 'Cloud asset publish failed.');
+  getUserAssetStorageUsage();
   return asset;
 }
 
@@ -18400,6 +18445,7 @@ window._uploadUserImportedModelToCloud = uploadUserImportedModelToCloud;
 window._deleteCloudUserAsset = deleteCloudUserAsset;
 window._placeCloudUserAsset = placeCloudUserAsset;
 window._publishCloudUserAssetForGame = publishCloudUserAssetForGame;
+window._getUserAssetStorageUsage = getUserAssetStorageUsage;
 window._getUserAssetOwnerToken = getUserAssetOwnerToken;
 window._saveUserImportedModel = saveUserImportedModel;
 window._deleteUserImportedModel = deleteUserImportedModel;

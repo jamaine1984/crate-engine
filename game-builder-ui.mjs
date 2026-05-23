@@ -1799,11 +1799,13 @@ let lastInspectorSignature = '';
 let lastBlueprintSignature = '';
 let lastPlacementSignature = '';
 let lastAssetPackSignature = '';
+let lastUserAssetUsageSignature = '';
 let lastReadinessSignature = '';
 let lastValidationSignature = '';
 let lastPerformanceSignature = '';
 let lastGameSystemsSignature = '';
 let assetManifestLoadStarted = false;
+let userAssetUsageLoadStarted = false;
 let pendingValidationFix = null;
 let performanceProbeStarted = false;
 let performanceLastFrame = 0;
@@ -3588,6 +3590,14 @@ function shortAssetValue(value) {
   return text.length > 18 ? text.slice(0, 12) + '...' + text.slice(-4) : text;
 }
 
+function formatStorageBytes(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB';
+  return bytes + ' B';
+}
+
 async function refreshAssetManifest(force = false) {
   if (assetManifestLoadStarted && !force) return;
   assetManifestLoadStarted = true;
@@ -3608,6 +3618,28 @@ async function refreshAssetManifest(force = false) {
   lastAssetPackSignature = '';
   renderAssetPackStatus();
   updateProjectStatus();
+}
+
+async function refreshUserAssetUsage(force = false) {
+  if (userAssetUsageLoadStarted && !force) return;
+  if (typeof window._getUserAssetStorageUsage !== 'function') return;
+  userAssetUsageLoadStarted = true;
+  window._lastUserAssetStorageUsage = {
+    ...(window._lastUserAssetStorageUsage || {}),
+    ok: false,
+    loading: true,
+    checkedAt: Date.now(),
+  };
+  renderUserAssetUsageStatus();
+  await window._getUserAssetStorageUsage();
+  lastUserAssetUsageSignature = '';
+  renderUserAssetUsageStatus();
+}
+
+function maybeRefreshUserAssetUsage() {
+  if (!userAssetUsageLoadStarted && typeof window._getUserAssetStorageUsage === 'function') {
+    refreshUserAssetUsage();
+  }
 }
 
 function getCurrentMode() {
@@ -3775,9 +3807,14 @@ function createAssetPackSection() {
   const status = document.createElement('div');
   status.id = 'gb-asset-pack-status';
   status.className = 'gb-asset-pack-status';
+  const storage = document.createElement('div');
+  storage.id = 'gb-user-storage-status';
+  storage.className = 'gb-user-storage-status';
   const refresh = createSmallButton('Check', () => refreshAssetManifest(true), { action: 'check assets' });
   refresh.dataset.gbAction = 'asset-pack-refresh';
-  section.append(heading, status, refresh);
+  const refreshStorage = createSmallButton('Storage', () => refreshUserAssetUsage(true), { action: 'check storage' });
+  refreshStorage.dataset.gbAction = 'asset-storage-refresh';
+  section.append(heading, status, refresh, storage, refreshStorage);
   return section;
 }
 
@@ -3856,6 +3893,66 @@ function renderAssetPackStatus() {
   if (integrity.checkedModels || integrity.catalogReferences) {
     box.appendChild(createTextElement('span', '', (integrity.checkedModels || 0) + ' models | ' + (integrity.catalogReferences || 0) + ' refs'));
   }
+}
+
+function renderUserAssetUsageStatus() {
+  const box = document.getElementById('gb-user-storage-status');
+  if (!box) return;
+  const state = window._lastUserAssetStorageUsage || {};
+  const usage = state.usage || {};
+  const signature = [
+    state.loading ? 'loading' : state.ok ? 'loaded' : 'idle',
+    state.status || '',
+    state.privateAssets || usage.private?.assets || 0,
+    state.privateBytes || usage.private?.bytes || 0,
+    state.publishedAssets || usage.published?.assets || 0,
+    state.publishedBytes || usage.published?.bytes || 0,
+    state.quotaBytes || usage.quota?.bytes || 0,
+    state.quotaPercent || usage.quota?.percent || 0,
+    state.error || '',
+  ].join('|');
+  if (signature === lastUserAssetUsageSignature) return;
+  lastUserAssetUsageSignature = signature;
+  box.innerHTML = '';
+  const status = state.loading ? 'loading' : state.ok ? 'loaded' : state.error ? 'failed' : 'idle';
+  const privateAssets = Number(state.privateAssets ?? usage.private?.assets) || 0;
+  const privateBytes = Number(state.privateBytes ?? usage.private?.bytes) || 0;
+  const publishedAssets = Number(state.publishedAssets ?? usage.published?.assets) || 0;
+  const publishedBytes = Number(state.publishedBytes ?? usage.published?.bytes) || 0;
+  const totalBytes = Number(state.totalBytes ?? usage.total?.bytes) || 0;
+  const quotaBytes = Number(state.quotaBytes ?? usage.quota?.bytes) || 0;
+  const quotaPercent = Number(state.quotaPercent ?? usage.quota?.percent) || 0;
+  box.dataset.status = status;
+  box.dataset.privateAssets = String(privateAssets);
+  box.dataset.privateBytes = String(privateBytes);
+  box.dataset.publishedAssets = String(publishedAssets);
+  box.dataset.publishedBytes = String(publishedBytes);
+  box.dataset.totalBytes = String(totalBytes);
+  box.dataset.quotaBytes = String(quotaBytes);
+  box.dataset.quotaPercent = String(quotaPercent);
+  if (status === 'loading') {
+    box.append(createTextElement('strong', '', 'Checking storage'), createTextElement('span', '', 'Private imports and published copies'));
+    return;
+  }
+  if (status === 'failed') {
+    box.append(createTextElement('strong', '', 'Storage unavailable'), createTextElement('span', 'gb-placement-error', state.error || 'Cloud storage check failed'));
+    return;
+  }
+  if (status === 'idle') {
+    box.append(createTextElement('strong', '', 'Storage ready'), createTextElement('span', '', 'Check private imports and published copies'));
+    return;
+  }
+  box.append(
+    createTextElement('strong', '', 'Storage ' + quotaPercent + '%'),
+    createTextElement('span', '', formatStorageBytes(totalBytes) + ' of ' + formatStorageBytes(quotaBytes || totalBytes)),
+    createTextElement('span', '', privateAssets + ' private / ' + publishedAssets + ' published copies'),
+  );
+  const meter = document.createElement('div');
+  meter.className = 'gb-user-storage-meter';
+  const fill = document.createElement('div');
+  fill.style.width = Math.min(100, Math.max(0, quotaPercent)) + '%';
+  meter.appendChild(fill);
+  box.appendChild(meter);
 }
 
 function formatComponentList(obj) {
@@ -4316,8 +4413,10 @@ function updateBuilderUi() {
   updateStats();
   updateModeControls();
   updateProjectStatus();
+  maybeRefreshUserAssetUsage();
   renderPlacementStatus();
   renderAssetPackStatus();
+  renderUserAssetUsageStatus();
   renderReadinessStatus();
   renderPerformanceStatus();
   renderValidationStatus();
@@ -4385,12 +4484,17 @@ function mount() {
     .gb-placement-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
     .gb-placement-status[data-status="failed"],.gb-placement-status[data-status="blocked"]{border-color:#7f2d2d;background:#211313}
     .gb-placement-error{color:#ff9b9b!important}
-    .gb-asset-pack-status{display:flex;flex-direction:column;gap:3px;margin:8px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px;min-height:52px}
-    .gb-asset-pack-status strong{font-size:12px;line-height:16px;color:#eef2f3}
-    .gb-asset-pack-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
+    .gb-asset-pack-status,.gb-user-storage-status{display:flex;flex-direction:column;gap:3px;margin:8px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px;min-height:52px}
+    .gb-asset-pack-status strong,.gb-user-storage-status strong{font-size:12px;line-height:16px;color:#eef2f3}
+    .gb-asset-pack-status span,.gb-user-storage-status span{font-size:10px;line-height:14px;color:#8d979e;white-space:normal;overflow-wrap:anywhere}
     .gb-asset-pack-status[data-status="loaded"]{border-color:#2f6f44;background:#101a13}
     .gb-asset-pack-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
     .gb-asset-pack-status[data-status="failed"]{border-color:#7f2d2d;background:#211313}
+    .gb-user-storage-status[data-status="loaded"]{border-color:#2f6f44;background:#101a13}
+    .gb-user-storage-status[data-status="loading"]{border-color:#4a6f9c;background:#101722}
+    .gb-user-storage-status[data-status="failed"]{border-color:#7f2d2d;background:#211313}
+    .gb-user-storage-meter{height:5px;border-radius:999px;background:#1e2528;overflow:hidden;margin-top:3px}
+    .gb-user-storage-meter div{height:100%;background:#59d987;border-radius:999px}
     #gb-asset-pack .gb-small-btn{margin:0 8px 8px;width:calc(100% - 16px)}
     .gb-readiness-status{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:8px 8px 6px;border:1px solid #20262a;background:#121516;border-radius:7px;padding:8px}
     .gb-readiness-status strong{font-size:12px;line-height:16px;color:#eef2f3;white-space:normal;overflow-wrap:anywhere}
@@ -4659,6 +4763,7 @@ function mount() {
     updateStats();
     updateProjectStatus();
     renderAssetPackStatus();
+    renderUserAssetUsageStatus();
     renderReadinessStatus();
     renderPerformanceStatus();
     renderValidationStatus();
@@ -4681,9 +4786,11 @@ function mount() {
     renderInspector({ force: true });
     renderSceneList();
   };
+  window._refreshGameBuilderAssetUsage = () => refreshUserAssetUsage(true);
   window.addEventListener('crate:asset-placement', window._refreshGameBuilderPlacement);
   updateBuilderUi();
   refreshAssetManifest();
+  refreshUserAssetUsage();
   setInterval(updateBuilderUi, 1200);
   window.addEventListener('resize', () => repositionLegacyButtons(panel.dataset.open === 'true'));
 }

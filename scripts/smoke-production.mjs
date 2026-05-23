@@ -508,9 +508,11 @@ async function runBrowserSmoke() {
           typeof window._listCloudUserAssets !== 'function' ||
           typeof window._placeCloudUserAsset !== 'function' ||
           typeof window._deleteCloudUserAsset !== 'function' ||
-          typeof window._publishCloudUserAssetForGame !== 'function') {
+          typeof window._publishCloudUserAssetForGame !== 'function' ||
+          typeof window._getUserAssetStorageUsage !== 'function') {
         return { ready: false, before };
       }
+      const usageBefore = await window._getUserAssetStorageUsage();
       const cloudHealthResponse = await fetch('/api/assets/health', { cache: 'no-store' });
       const cloudHealth = await cloudHealthResponse.json().catch(() => ({}));
       const assetUrl = typeof window._crateAssetUrl === 'function'
@@ -529,6 +531,7 @@ async function runBrowserSmoke() {
       const listed = !!savedId && list.some((item) => item.id === savedId);
       const cloudList = await window._listCloudUserAssets();
       const cloudListed = !!cloudId && cloudList.some((item) => item.cloudAssetId === cloudId || item.id === cloudId);
+      const usageAfterUpload = await window._getUserAssetStorageUsage();
       const placed = savedId ? await window._placeUserImportedModel(savedId) : false;
       const localPlaceState = window._lastUserImportLibraryAction || {};
       const afterPlace = window._engineBridge?.objects?.length || 0;
@@ -552,17 +555,28 @@ async function runBrowserSmoke() {
       const deleted = savedId ? await window._deleteUserImportedModel(savedId) : false;
       const afterDeleteList = await window._listUserImportedModels();
       const cloudAfterDeleteList = await window._listCloudUserAssets();
+      const usageAfterDelete = await window._getUserAssetStorageUsage();
       const publishFile = new File([blob], 'smoke-publish-cloud-chair.glb', { type: 'model/gltf-binary' });
       const publishImported = await window._importGLBFile(publishFile, { source: 'smoke-publish-cloud-asset' });
       const publishStatus = window._lastUserImportStatus || {};
       const publishCloudId = publishStatus.cloudAsset?.id || publishStatus.savedModel?.cloudAssetId || '';
       const publishSavedId = publishStatus.savedModel?.id || '';
       const publishObjectId = publishStatus.objectId || '';
+      const usageAfterPublishImport = await window._getUserAssetStorageUsage();
+      window._refreshGameBuilder?.();
       return {
         ready: true,
         cloudHealthOk: cloudHealthResponse.ok && cloudHealth?.ok === true && cloudHealth?.binding === true,
         cloudHealthStatus: cloudHealthResponse.status,
         cloudHealth,
+        usageBeforePrivateAssets: Number(usageBefore?.private?.assets) || 0,
+        usageAfterUploadPrivateAssets: Number(usageAfterUpload?.private?.assets) || 0,
+        usageAfterUploadPrivateBytes: Number(usageAfterUpload?.private?.bytes) || 0,
+        usageAfterDeletePrivateAssets: Number(usageAfterDelete?.private?.assets) || 0,
+        usageAfterPublishPrivateAssets: Number(usageAfterPublishImport?.private?.assets) || 0,
+        usageAfterPublishPrivateBytes: Number(usageAfterPublishImport?.private?.bytes) || 0,
+        usageQuotaBytes: Number(usageAfterPublishImport?.quota?.bytes) || 0,
+        usageQuotaPercent: Number(usageAfterPublishImport?.quota?.percent) || 0,
         fetchOk: true,
         imported,
         importStatus: status.status || '',
@@ -599,6 +613,12 @@ async function runBrowserSmoke() {
         !userImportState.cloudId ||
         !userImportState.listed ||
         !userImportState.cloudListed ||
+        userImportState.usageAfterUploadPrivateAssets < userImportState.usageBeforePrivateAssets + 1 ||
+        userImportState.usageAfterUploadPrivateBytes <= 0 ||
+        userImportState.usageAfterDeletePrivateAssets > userImportState.usageAfterUploadPrivateAssets - 1 ||
+        userImportState.usageAfterPublishPrivateAssets < userImportState.usageAfterDeletePrivateAssets + 1 ||
+        userImportState.usageAfterPublishPrivateBytes <= 0 ||
+        userImportState.usageQuotaBytes <= 0 ||
         userImportState.placed !== true ||
         userImportState.cloudPlaced !== true ||
         userImportState.deleted !== true ||
@@ -1810,10 +1830,16 @@ async function runBrowserSmoke() {
       method: 'POST',
       headers: { Accept: 'application/json' },
     });
+    const adminAssetCleanupBlockedResponse = await fetch(new URL('/api/assets/admin/public-cleanup', baseUrl).href, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dryRun: true, limit: 1 }),
+    });
     let adminBlockedPayload = {};
     let adminAuditBlockedPayload = {};
     let adminAuditVerifyBlockedPayload = {};
     let adminAuditBackfillBlockedPayload = {};
+    let adminAssetCleanupBlockedPayload = {};
     try {
       adminBlockedPayload = await adminBlockedResponse.json();
     } catch {}
@@ -1826,6 +1852,9 @@ async function runBrowserSmoke() {
     try {
       adminAuditBackfillBlockedPayload = await adminAuditBackfillBlockedResponse.json();
     } catch {}
+    try {
+      adminAssetCleanupBlockedPayload = await adminAssetCleanupBlockedResponse.json();
+    } catch {}
     const adminGuardState = {
       blockedStatus: adminBlockedResponse.status,
       blockedError: adminBlockedPayload?.error || '',
@@ -1835,6 +1864,8 @@ async function runBrowserSmoke() {
       auditVerifyBlockedError: adminAuditVerifyBlockedPayload?.error || '',
       auditBackfillBlockedStatus: adminAuditBackfillBlockedResponse.status,
       auditBackfillBlockedError: adminAuditBackfillBlockedPayload?.error || '',
+      assetCleanupBlockedStatus: adminAssetCleanupBlockedResponse.status,
+      assetCleanupBlockedError: adminAssetCleanupBlockedPayload?.error || '',
     };
     if (adminGuardState.blockedStatus !== 403 ||
         !/admin authorization/i.test(adminGuardState.blockedError) ||
@@ -1843,11 +1874,14 @@ async function runBrowserSmoke() {
         adminGuardState.auditVerifyBlockedStatus !== 403 ||
         !/admin authorization/i.test(adminGuardState.auditVerifyBlockedError) ||
         adminGuardState.auditBackfillBlockedStatus !== 403 ||
-        !/admin authorization/i.test(adminGuardState.auditBackfillBlockedError)) {
+        !/admin authorization/i.test(adminGuardState.auditBackfillBlockedError) ||
+        adminGuardState.assetCleanupBlockedStatus !== 403 ||
+        !/admin authorization/i.test(adminGuardState.assetCleanupBlockedError)) {
       throw new Error(`Admin moderation API guard failed: ${JSON.stringify(adminGuardState)}`);
     }
 
     let adminAuditVerifyState = null;
+    let adminAssetCleanupDryRunState = null;
     if (smokeAdminToken) {
       const adminAuditVerifyResponse = await fetch(new URL('/api/games/admin/audit/verify', baseUrl).href, {
         method: 'POST',
@@ -1879,6 +1913,35 @@ async function runBrowserSmoke() {
           !adminAuditVerifyState.writeVerified ||
           adminAuditVerifyState.adminRole !== 'admin') {
         throw new Error(`Admin audit D1 verification failed: ${JSON.stringify(adminAuditVerifyState)}`);
+      }
+      const adminAssetCleanupResponse = await fetch(new URL('/api/assets/admin/public-cleanup', baseUrl).href, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Crate-Admin-Token': smokeAdminToken,
+        },
+        body: JSON.stringify({ dryRun: true, limit: 10 }),
+      });
+      let adminAssetCleanupPayload = {};
+      try {
+        adminAssetCleanupPayload = await adminAssetCleanupResponse.json();
+      } catch {}
+      adminAssetCleanupDryRunState = {
+        status: adminAssetCleanupResponse.status,
+        ok: adminAssetCleanupPayload?.ok === true,
+        dryRun: adminAssetCleanupPayload?.dryRun === true,
+        scanned: Number(adminAssetCleanupPayload?.scanned) || 0,
+        orphaned: Number(adminAssetCleanupPayload?.orphaned) || 0,
+        deleted: Number(adminAssetCleanupPayload?.deleted) || 0,
+        errors: Array.isArray(adminAssetCleanupPayload?.errors) ? adminAssetCleanupPayload.errors.length : 0,
+      };
+      if (adminAssetCleanupDryRunState.status !== 200 ||
+          !adminAssetCleanupDryRunState.ok ||
+          !adminAssetCleanupDryRunState.dryRun ||
+          adminAssetCleanupDryRunState.deleted !== 0 ||
+          adminAssetCleanupDryRunState.errors !== 0) {
+        throw new Error(`Admin public asset cleanup dry run failed: ${JSON.stringify(adminAssetCleanupDryRunState)}`);
       }
     }
 
@@ -2941,6 +3004,7 @@ async function runBrowserSmoke() {
       const performanceTriangles = Math.max(Number(performancePanel.triangles) || 0, Number(rendererRender.triangles) || 0);
       const performanceTextures = Math.max(Number(performancePanel.textures) || 0, Number(rendererMemory.textures) || 0);
       const gameSystems = window._gameBuilderSystems || [];
+      const storagePanel = document.querySelector('#gb-user-storage-status');
       return {
         engineReady: window._engineReady === true,
         hasAssetResolver: typeof window._crateAssetUrl === 'function',
@@ -2978,6 +3042,14 @@ async function runBrowserSmoke() {
         assetPackStatus: document.querySelector('#gb-asset-pack-status')?.dataset.status || '',
         assetPackText: document.querySelector('#gb-asset-pack-status')?.textContent?.trim() || '',
         assetPackVersion: window._crateAssetManifest?.version || '',
+        userAssetStorageReady: typeof window._getUserAssetStorageUsage === 'function',
+        userAssetStoragePanelStatus: storagePanel?.dataset.status || '',
+        userAssetStoragePrivateAssets: Number(storagePanel?.dataset.privateAssets) || 0,
+        userAssetStoragePrivateBytes: Number(storagePanel?.dataset.privateBytes) || 0,
+        userAssetStoragePublishedAssets: Number(storagePanel?.dataset.publishedAssets) || 0,
+        userAssetStoragePublishedBytes: Number(storagePanel?.dataset.publishedBytes) || 0,
+        userAssetStorageQuotaBytes: Number(storagePanel?.dataset.quotaBytes) || 0,
+        userAssetStorageQuotaPercent: Number(storagePanel?.dataset.quotaPercent) || 0,
         readinessStatus: readiness.status || '',
         readinessTone: readiness.tone || '',
         readinessSummary: document.querySelector('#gb-readiness-status')?.dataset.summary || readiness.summary || '',
@@ -3240,9 +3312,13 @@ async function runBrowserSmoke() {
     state.adminAuditApiGuardStatus = adminGuardState.auditBlockedStatus;
     state.adminAuditVerifyGuardStatus = adminGuardState.auditVerifyBlockedStatus;
     state.adminAuditBackfillGuardStatus = adminGuardState.auditBackfillBlockedStatus;
+    state.adminAssetCleanupGuardStatus = adminGuardState.assetCleanupBlockedStatus;
     state.adminAuditD1VerifyStatus = adminAuditVerifyState?.status || 0;
     state.adminAuditD1VerifySource = adminAuditVerifyState?.source || '';
     state.adminAuditD1WriteVerified = adminAuditVerifyState?.writeVerified === true;
+    state.adminAssetCleanupDryRunStatus = adminAssetCleanupDryRunState?.status || 0;
+    state.adminAssetCleanupDryRunOk = adminAssetCleanupDryRunState?.ok === true;
+    state.adminAssetCleanupDryRunDeleted = adminAssetCleanupDryRunState?.deleted || 0;
     state.adminDashboardStatus = adminDashboardState.status;
     state.adminDashboardHasTokenInput = adminDashboardState.hasTokenInput;
     state.adminDashboardHasControls = adminDashboardState.hasControls;
@@ -3408,6 +3484,9 @@ async function runBrowserSmoke() {
       !state.qualityButtons.includes('ultra') ||
       !state.userImportValidatorReady ||
       !state.userModelInspectorReady ||
+      !state.userAssetStorageReady ||
+      state.userAssetStoragePanelStatus !== 'loaded' ||
+      state.userAssetStorageQuotaBytes <= 0 ||
       !state.projectValidatorReady ||
       state.projectSchemaVersion !== 3 ||
       state.cullingProcessed < 1 ||
@@ -3569,7 +3648,8 @@ async function runBrowserSmoke() {
         state.adminAuditApiGuardStatus !== 403 ||
         state.adminAuditVerifyGuardStatus !== 403 ||
         state.adminAuditBackfillGuardStatus !== 403 ||
-        (state.adminSmokeTokenProvided && (state.adminAuditD1VerifyStatus !== 200 || state.adminAuditD1VerifySource !== 'd1' || !state.adminAuditD1WriteVerified)) ||
+        state.adminAssetCleanupGuardStatus !== 403 ||
+        (state.adminSmokeTokenProvided && (state.adminAuditD1VerifyStatus !== 200 || state.adminAuditD1VerifySource !== 'd1' || !state.adminAuditD1WriteVerified || state.adminAssetCleanupDryRunStatus !== 200 || !state.adminAssetCleanupDryRunOk || state.adminAssetCleanupDryRunDeleted !== 0)) ||
         state.adminDashboardStatus !== 'locked' ||
         !state.adminDashboardHasTokenInput ||
         !state.adminDashboardHasControls ||
@@ -3859,6 +3939,7 @@ console.log(`Bundle: ${play.bundle}`);
 console.log(`Asset base: ${assetBaseUrl}`);
 console.log(`Asset manifest: ${assetManifest.manifest.version}`);
 console.log(`Asset pack UI: ${browserState.assetPackStatus} ${browserState.assetPackVersion}`);
+console.log(`Asset storage: ${browserState.userAssetStoragePanelStatus || 'missing'} ${browserState.userAssetStoragePrivateAssets || 0} private/${browserState.userAssetStoragePublishedAssets || 0} public, ${browserState.userAssetStorageQuotaPercent || 0}% of ${browserState.userAssetStorageQuotaBytes || 0} bytes`);
 console.log(`Readiness: ${browserState.readinessSummary}`);
 console.log(`Performance: ${browserState.performanceStatus || 'missing'} (${browserState.performanceFps || 0} FPS, ${browserState.performanceFrameMs || 0} ms, ${browserState.performanceCalls || 0} calls, ${browserState.performanceTriangles || 0} tris)`);
 console.log(`Runtime budget: ${browserState.performanceBudget?.level || 'missing'} (cull ${browserState.performanceBudget?.cullDistance || 0}, edit cull ${browserState.performanceBudget?.editCullDistance || 0}, shadow ${browserState.performanceBudget?.shadowDistance || 0}, pass ${browserState.performanceBudget?.maxLodObjectsPerPass || 0})`);
@@ -3895,7 +3976,7 @@ console.log(`Published metadata: creator ${browserState.publishedDetailCreatorNa
 console.log(`Marketplace games: ${browserState.marketplaceShown}/${browserState.marketplaceTotal} shown for ${browserState.marketplaceQuery || 'empty'} tag ${browserState.marketplaceTag || 'all'} sort ${browserState.marketplaceSort || 'updated'}, smoke ${browserState.marketplaceHasSmoke ? 'visible' : 'missing'}`);
 console.log(`Marketplace discovery: ${browserState.marketplaceDiscoveryStatus || 'missing'} ${browserState.marketplaceDiscoveryRailCards || 0} cards from ${browserState.marketplaceDiscoveryTotal || 0} games, admin featured ${(browserState.marketplaceDiscoveryAdminFeaturedSlugs || []).length}`);
 console.log(`Game detail: ${browserState.gameDetailSlug || 'missing'} by ${browserState.gameDetailCreatorName || 'missing'} (${browserState.gameDetailObjects} objects, ${browserState.gameDetailComponents} components, featured ${browserState.gameDetailFeatured ? 'yes' : 'no'})`);
-console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, verify guard ${browserState.adminAuditVerifyGuardStatus || 'missing'}, backfill guard ${browserState.adminAuditBackfillGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, storage panel ${browserState.adminDashboardHasAuditStorage && browserState.adminDashboardHasAuditStorageVerify ? browserState.adminDashboardAuditStorageStatus || 'ready' : 'missing'}, backfill controls ${browserState.adminDashboardHasAuditBackfillDryRun && browserState.adminDashboardHasAuditBackfillRun ? browserState.adminDashboardAuditBackfillStatus || 'ready' : 'missing'}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, d1 verify ${browserState.adminAuditD1VerifyStatus || 'missing'} ${browserState.adminAuditD1WriteVerified ? 'verified' : 'missing'}, ui storage ${browserState.adminDashboardStorageProbeStatus || 'missing'} ${browserState.adminDashboardStorageProbeWriteVerified ? 'verified' : 'missing'}, ui backfill ${browserState.adminDashboardBackfillProbeStatus || 'missing'} ${browserState.adminDashboardBackfillProbeDryRun ? 'dry-run' : 'missing'} wrote ${browserState.adminDashboardBackfillProbeWritten || 0}, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
+console.log(`Admin moderation: API guard ${browserState.adminApiGuardStatus || 'missing'}, audit guard ${browserState.adminAuditApiGuardStatus || 'missing'}, verify guard ${browserState.adminAuditVerifyGuardStatus || 'missing'}, backfill guard ${browserState.adminAuditBackfillGuardStatus || 'missing'}, asset cleanup guard ${browserState.adminAssetCleanupGuardStatus || 'missing'}, dashboard ${browserState.adminDashboardStatus || 'missing'}, controls ${browserState.adminDashboardHasControls ? 'ready' : 'missing'}, actor ${browserState.adminDashboardHasAdminActor ? 'ready' : 'missing'}, audit panel ${browserState.adminDashboardHasAuditDetail ? 'ready' : 'missing'}, storage panel ${browserState.adminDashboardHasAuditStorage && browserState.adminDashboardHasAuditStorageVerify ? browserState.adminDashboardAuditStorageStatus || 'ready' : 'missing'}, backfill controls ${browserState.adminDashboardHasAuditBackfillDryRun && browserState.adminDashboardHasAuditBackfillRun ? browserState.adminDashboardAuditBackfillStatus || 'ready' : 'missing'}, review notes ${browserState.adminDashboardHasReviewNoteInput && browserState.adminDashboardReviewNoteRequired ? 'ready' : 'missing'}${browserState.adminSmokeTokenProvided ? `, d1 verify ${browserState.adminAuditD1VerifyStatus || 'missing'} ${browserState.adminAuditD1WriteVerified ? 'verified' : 'missing'}, asset dry run ${browserState.adminAssetCleanupDryRunStatus || 'missing'} ${browserState.adminAssetCleanupDryRunOk ? 'ready' : 'missing'}, ui storage ${browserState.adminDashboardStorageProbeStatus || 'missing'} ${browserState.adminDashboardStorageProbeWriteVerified ? 'verified' : 'missing'}, ui backfill ${browserState.adminDashboardBackfillProbeStatus || 'missing'} ${browserState.adminDashboardBackfillProbeDryRun ? 'dry-run' : 'missing'} wrote ${browserState.adminDashboardBackfillProbeWritten || 0}, authed ${browserState.adminDashboardAuthedStatus || 'missing'} ${browserState.adminDashboardAuthedAdminName || 'missing'} audit ${browserState.adminDashboardLoadedAuditStatus || 'missing'} ${browserState.adminDashboardAuthedSmokeListed ? 'smoke listed' : 'smoke missing'}` : ''}`);
 console.log(`Door trigger runtime: ${browserState.firedTrigger || 'missing'} opened ${browserState.openedDoor || 'missing'} (${browserState.doorProgress})`);
 console.log(`Mission runtime: ${browserState.missionStep || 'missing'} -> ${browserState.missionReward || 'missing'} -> ${browserState.missionGate || 'missing'} (${browserState.missionRewardScore} score)`);
 console.log(`NPC runtime: ${browserState.npcName || 'missing'} said "${browserState.npcDialogue || 'missing'}" and granted ${browserState.npcReward || 'missing'}`);

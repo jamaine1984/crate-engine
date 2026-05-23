@@ -4,14 +4,19 @@ const MAX_FILE_NAME_LENGTH = 180;
 const MAX_SOURCE_LENGTH = 80;
 const MAX_METRICS_LENGTH = 2000;
 const MAX_INDEX_ROWS = 500;
+const MAX_GAME_SCAN = 1000;
+const MAX_PUBLIC_USAGE_SCAN = 500;
+const MAX_PUBLIC_CLEANUP_SCAN = 200;
+const DEFAULT_OWNER_QUOTA_BYTES = 500 * 1024 * 1024;
 const ASSET_PREFIX = 'user-assets';
 const PUBLIC_ASSET_PREFIX = 'published-assets';
+const GAME_PREFIX = 'game:';
 
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Crate-Owner-Token',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Crate-Owner-Token, X-Crate-Admin-Token',
     'Access-Control-Max-Age': '86400',
   };
 }
@@ -32,6 +37,10 @@ function getBucket(env) {
   return env.CRATE_USER_ASSETS || env.CRATE_ASSETS || null;
 }
 
+function getGameStore(env) {
+  return env.CRATE_GAMES || env.CRATEGAMES || null;
+}
+
 function pathParts(params) {
   const value = params?.path;
   if (!value) return [];
@@ -50,6 +59,12 @@ function ownerTokenFromRequest(request) {
   const auth = request.headers.get('authorization') || '';
   const bearer = auth.match(/^Bearer\s+(.+)$/i)?.[1] || '';
   return cleanToken(request.headers.get('x-crate-owner-token') || bearer);
+}
+
+function bearerToken(request) {
+  const header = request.headers.get('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? cleanToken(match[1]) : '';
 }
 
 async function hashToken(token) {
@@ -110,6 +125,79 @@ function publicMetadataKey(publicId) {
 
 function publicObjectKey(publicId, fileName) {
   return `${PUBLIC_ASSET_PREFIX}/${cleanId(publicId)}/${cleanFileName(fileName)}`;
+}
+
+function ownerQuotaBytes(env = {}) {
+  const configured = Number(env.CRATE_USER_ASSET_QUOTA_BYTES || env.CRATE_OWNER_ASSET_QUOTA_BYTES || 0);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_OWNER_QUOTA_BYTES;
+}
+
+function assetBytes(record) {
+  return Math.max(0, Number(record?.sizeBytes) || 0);
+}
+
+function sumAssetBytes(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => sum + assetBytes(row), 0);
+}
+
+function usagePercent(bytes, quotaBytes) {
+  if (!quotaBytes) return 0;
+  return Math.round(Math.min(100, Math.max(0, bytes / quotaBytes * 1000))) / 10;
+}
+
+function publicIdFromMetadataKey(key) {
+  const parts = String(key || '').split('/');
+  return cleanId(parts.length >= 3 && parts[0] === PUBLIC_ASSET_PREFIX ? parts[1] : '');
+}
+
+function publicAssetId(record, fallbackKey = '') {
+  return cleanId(record?.publicId || record?.id || publicIdFromMetadataKey(fallbackKey));
+}
+
+function parseAdminTokenEntries(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed.map((entry, index) => typeof entry === 'string'
+        ? { token: entry, name: `Admin ${index + 1}`, role: 'admin' }
+        : entry);
+    }
+    if (parsed && typeof parsed === 'object') {
+      return Object.entries(parsed).map(([token, value]) => {
+        if (value && typeof value === 'object') return { token, ...value };
+        return { token, name: value };
+      });
+    }
+  } catch {}
+  return text
+    .split(',')
+    .map((token) => cleanToken(token))
+    .filter(Boolean)
+    .map((token, index) => ({ token, name: `Admin ${index + 1}`, role: 'admin' }));
+}
+
+function adminTokenEntries(env = {}) {
+  const entries = [];
+  const legacyToken = cleanToken(env.CRATE_GAMES_ADMIN_TOKEN || env.CRATE_ADMIN_TOKEN || '');
+  if (legacyToken) {
+    entries.push({
+      token: legacyToken,
+      name: env.CRATE_GAMES_ADMIN_NAME || env.CRATE_ADMIN_NAME || 'Primary admin',
+      role: env.CRATE_GAMES_ADMIN_ROLE || env.CRATE_ADMIN_ROLE || 'admin',
+    });
+  }
+  for (const entry of parseAdminTokenEntries(env.CRATE_GAMES_ADMIN_TOKENS || env.CRATE_ADMIN_TOKENS || '')) {
+    const token = cleanToken(entry?.token);
+    if (!token) continue;
+    entries.push({
+      token,
+      name: entry.name || entry.label || entry.email || entry.id || 'Admin',
+      role: entry.role || 'admin',
+    });
+  }
+  return entries;
 }
 
 async function readJson(request) {
@@ -194,16 +282,37 @@ async function requireOwner(context) {
   return { ok: true, ownerHash };
 }
 
+async function requireAdmin(context, payload = {}) {
+  const provided = cleanToken(
+    context.request.headers.get('x-crate-admin-token') ||
+    payload.adminToken ||
+    bearerToken(context.request)
+  );
+  if (!provided) return { ok: false, response: json({ ok: false, error: 'Admin authorization required.' }, { status: 403 }) };
+  const match = adminTokenEntries(context.env).find((entry) => provided === cleanToken(entry.token));
+  if (!match) return { ok: false, response: json({ ok: false, error: 'Admin authorization required.' }, { status: 403 }) };
+  return {
+    ok: true,
+    admin: {
+      name: cleanText(match.name || 'Admin', 80),
+      role: cleanText(match.role || 'admin', 32),
+    },
+  };
+}
+
 function missingBucket() {
   return json({ ok: false, error: 'CRATE_USER_ASSETS R2 binding is not configured.' }, { status: 503 });
 }
 
 async function health(context) {
+  const quotaBytes = ownerQuotaBytes(context.env);
   return json({
     ok: true,
     binding: !!getBucket(context.env),
     maxAssetBytes: MAX_ASSET_BYTES,
     maxAssetMB: Math.round(MAX_ASSET_BYTES / (1024 * 1024)),
+    ownerQuotaBytes: quotaBytes,
+    ownerQuotaMB: Math.round(quotaBytes / (1024 * 1024)),
   });
 }
 
@@ -218,6 +327,79 @@ async function listAssets(context) {
     assets: rows
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
       .map((record) => publicAsset(record, context.request)),
+  });
+}
+
+async function listOwnerPublishedAssets(bucket, ownerHash, limit = MAX_PUBLIC_USAGE_SCAN) {
+  const rows = [];
+  let cursor = undefined;
+  let scanned = 0;
+  do {
+    const remaining = Math.max(1, Math.min(1000, limit - scanned));
+    const listed = await bucket.list({
+      prefix: `${PUBLIC_ASSET_PREFIX}/`,
+      limit: remaining,
+      cursor,
+    });
+    const objects = Array.isArray(listed?.objects) ? listed.objects : [];
+    for (const item of objects) {
+      const key = item.key || item.name || '';
+      if (!key.endsWith('/asset.json')) continue;
+      scanned += 1;
+      try {
+        const metadata = await bucket.get(key);
+        if (!metadata) continue;
+        const record = JSON.parse(await metadata.text());
+        if (record?.ownerHash !== ownerHash) continue;
+        rows.push({
+          ...record,
+          publicId: publicAssetId(record, key),
+          metadataKey: key,
+        });
+      } catch {}
+      if (scanned >= limit) break;
+    }
+    cursor = listed?.cursor;
+    if (!listed?.truncated || !cursor || scanned >= limit) break;
+  } while (true);
+  return { rows, scanned };
+}
+
+async function storageUsage(context) {
+  const bucket = getBucket(context.env);
+  if (!bucket) return missingBucket();
+  const owner = await requireOwner(context);
+  if (!owner.ok) return owner.response;
+
+  const privateRows = await readIndex(bucket, owner.ownerHash);
+  const published = await listOwnerPublishedAssets(bucket, owner.ownerHash);
+  const privateBytes = sumAssetBytes(privateRows);
+  const publishedBytes = sumAssetBytes(published.rows);
+  const totalBytes = privateBytes + publishedBytes;
+  const quotaBytes = ownerQuotaBytes(context.env);
+  return json({
+    ok: true,
+    usage: {
+      private: {
+        assets: privateRows.length,
+        bytes: privateBytes,
+        maxAssets: MAX_INDEX_ROWS,
+      },
+      published: {
+        assets: published.rows.length,
+        bytes: publishedBytes,
+        scanned: published.scanned,
+      },
+      total: {
+        assets: privateRows.length + published.rows.length,
+        bytes: totalBytes,
+      },
+      quota: {
+        bytes: quotaBytes,
+        percent: usagePercent(totalBytes, quotaBytes),
+        maxUploadBytes: MAX_ASSET_BYTES,
+      },
+    },
   });
 }
 
@@ -246,6 +428,16 @@ async function uploadAsset(context) {
   }
 
   const id = cleanId(form.get('id')) || `asset_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
+  const currentRows = await readIndex(bucket, owner.ownerHash);
+  const rowsWithoutCurrent = currentRows.filter((item) => item.id !== id);
+  const quotaBytes = ownerQuotaBytes(context.env);
+  if (sumAssetBytes(rowsWithoutCurrent) + sizeBytes > quotaBytes) {
+    return json({
+      ok: false,
+      error: `Cloud asset storage quota is ${Math.round(quotaBytes / (1024 * 1024))} MB. Delete older imports before uploading this file.`,
+      quotaBytes,
+    }, { status: 413 });
+  }
   const now = new Date().toISOString();
   const key = objectKey(owner.ownerHash, id, fileName);
   const metrics = cleanMetrics(form.get('metrics'));
@@ -274,7 +466,7 @@ async function uploadAsset(context) {
     },
   });
 
-  const rows = (await readIndex(bucket, owner.ownerHash)).filter((item) => item.id !== id);
+  const rows = rowsWithoutCurrent;
   rows.unshift(record);
   await writeIndex(bucket, owner.ownerHash, rows);
   return json({ ok: true, asset: publicAsset(record, context.request) });
@@ -330,11 +522,23 @@ async function publishAsset(context, id) {
     const existingMetadata = await found.bucket.get(publicMetadataKey(publicId));
     if (existingMetadata) existingPublicRecord = JSON.parse(await existingMetadata.text());
   } catch {}
+  const quotaBytes = ownerQuotaBytes(context.env);
+  const publishedUsage = await listOwnerPublishedAssets(found.bucket, found.ownerHash);
+  const replacingBytes = existingPublicRecord?.ownerHash === found.ownerHash ? assetBytes(existingPublicRecord) : 0;
+  const projectedBytes = sumAssetBytes(found.rows) + sumAssetBytes(publishedUsage.rows) - replacingBytes + assetBytes(found.record);
+  if (projectedBytes > quotaBytes) {
+    return json({
+      ok: false,
+      error: `Publishing this game asset would exceed the ${Math.round(quotaBytes / (1024 * 1024))} MB cloud storage quota.`,
+      quotaBytes,
+    }, { status: 413 });
+  }
   const publicRecord = {
     ...found.record,
     id: publicId,
     publicId,
     sourceAssetId: found.record.id,
+    ownerHash: found.ownerHash,
     gameSlug,
     key: publicObjectKey(publicId, found.record.fileName || 'model.glb'),
     source: 'published-user-asset',
@@ -399,6 +603,87 @@ async function downloadPublicAsset(context, publicId) {
   });
 }
 
+async function listPublicAssetMetadata(bucket, limit = MAX_PUBLIC_CLEANUP_SCAN) {
+  const rows = [];
+  let cursor = undefined;
+  let scanned = 0;
+  do {
+    const remaining = Math.max(1, Math.min(1000, limit - scanned));
+    const listed = await bucket.list({
+      prefix: `${PUBLIC_ASSET_PREFIX}/`,
+      limit: remaining,
+      cursor,
+    });
+    const objects = Array.isArray(listed?.objects) ? listed.objects : [];
+    for (const item of objects) {
+      const key = item.key || item.name || '';
+      if (!key.endsWith('/asset.json')) continue;
+      scanned += 1;
+      let record = null;
+      try {
+        const metadata = await bucket.get(key);
+        if (metadata) record = JSON.parse(await metadata.text());
+      } catch {}
+      rows.push({
+        key,
+        publicId: publicAssetId(record, key),
+        record: record || {},
+      });
+      if (scanned >= limit) break;
+    }
+    cursor = listed?.cursor;
+    if (!listed?.truncated || !cursor || scanned >= limit) break;
+  } while (true);
+  return { rows, scanned };
+}
+
+async function publicAssetIsReferencedByGame(store, publicId, record = {}) {
+  const slug = cleanId(record.gameSlug || '');
+  if (!slug) return false;
+  const game = await store.get(GAME_PREFIX + slug, 'json').catch(() => null);
+  if (!game) return false;
+  return (Array.isArray(game.cloudAssets) ? game.cloudAssets : []).some((asset) => {
+    return cleanId(asset?.publicId || asset?.id || '') === publicId;
+  });
+}
+
+async function cleanupPublicAssets(context) {
+  const bucket = getBucket(context.env);
+  if (!bucket) return missingBucket();
+  const store = getGameStore(context.env);
+  if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
+  const payload = await readJson(context.request);
+  const admin = await requireAdmin(context, payload);
+  if (!admin.ok) return admin.response;
+  const limit = Math.min(Math.max(Number(payload.limit) || MAX_PUBLIC_CLEANUP_SCAN, 1), MAX_PUBLIC_CLEANUP_SCAN);
+  const dryRun = payload.dryRun !== false && payload.delete !== true;
+  const listed = await listPublicAssetMetadata(bucket, limit);
+  const result = {
+    ok: true,
+    dryRun,
+    scanned: listed.scanned,
+    orphaned: 0,
+    deleted: 0,
+    errors: [],
+  };
+  for (const item of listed.rows) {
+    const publicId = item.publicId;
+    if (!publicId) continue;
+    const referenced = await publicAssetIsReferencedByGame(store, publicId, item.record);
+    if (referenced) continue;
+    result.orphaned += 1;
+    if (dryRun) continue;
+    const objectKey = item.record?.key || publicObjectKey(publicId, item.record?.fileName || 'model.glb');
+    try {
+      await Promise.all([...new Set([objectKey, item.key].filter(Boolean))].map((key) => bucket.delete(key)));
+      result.deleted += 1;
+    } catch (err) {
+      result.errors.push({ publicId, error: err?.message || String(err || 'cleanup failed') });
+    }
+  }
+  return json(result);
+}
+
 async function deleteAsset(context, id) {
   const found = await findAsset(context, id);
   if (found.response) return found.response;
@@ -416,6 +701,8 @@ export async function onRequest(context) {
   try {
     const parts = pathParts(context.params);
     if (context.request.method === 'GET' && parts.length === 1 && parts[0] === 'health') return health(context);
+    if (context.request.method === 'GET' && parts.length === 1 && parts[0] === 'usage') return storageUsage(context);
+    if (context.request.method === 'POST' && parts.length === 2 && parts[0] === 'admin' && parts[1] === 'public-cleanup') return cleanupPublicAssets(context);
     if (context.request.method === 'GET' && parts.length === 0) return listAssets(context);
     if (context.request.method === 'POST' && parts.length === 0) return uploadAsset(context);
     if (context.request.method === 'GET' && parts.length === 2 && parts[0] === 'public') return publicAssetDetails(context, parts[1]);
