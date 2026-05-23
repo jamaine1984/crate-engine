@@ -613,7 +613,7 @@ async function runBrowserSmoke() {
         !userImportState.publishCloudId ||
         !userImportState.publishSavedId ||
         !userImportState.publishObjectId ||
-        userImportState.afterPublishImport <= userImportState.afterCloudPlace) {
+        userImportState.afterPublishImport <= userImportState.before) {
       throw new Error(`User imported GLB did not persist, cloud sync, place, and delete cleanly: ${JSON.stringify(userImportState)}`);
     }
 
