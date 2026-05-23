@@ -5,6 +5,7 @@ const MAX_SOURCE_LENGTH = 80;
 const MAX_METRICS_LENGTH = 2000;
 const MAX_INDEX_ROWS = 500;
 const ASSET_PREFIX = 'user-assets';
+const PUBLIC_ASSET_PREFIX = 'published-assets';
 
 function corsHeaders() {
   return {
@@ -103,6 +104,24 @@ function objectKey(ownerHash, id, fileName) {
   return `${ASSET_PREFIX}/${ownerHash}/${id}/${cleanFileName(fileName)}`;
 }
 
+function publicMetadataKey(publicId) {
+  return `${PUBLIC_ASSET_PREFIX}/${cleanId(publicId)}/asset.json`;
+}
+
+function publicObjectKey(publicId, fileName) {
+  return `${PUBLIC_ASSET_PREFIX}/${cleanId(publicId)}/${cleanFileName(fileName)}`;
+}
+
+async function readJson(request) {
+  try {
+    const text = await request.text();
+    if (!text) return {};
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
 async function readIndex(bucket, ownerHash) {
   const object = await bucket.get(indexKey(ownerHash));
   if (!object) return [];
@@ -128,8 +147,10 @@ async function writeIndex(bucket, ownerHash, assets) {
 
 function publicAsset(record, request) {
   const origin = new URL(request.url).origin;
+  const publicId = record.publicId || '';
   return {
     id: record.id,
+    publicId,
     name: record.name,
     fileName: record.fileName,
     sizeBytes: record.sizeBytes,
@@ -140,6 +161,29 @@ function publicAsset(record, request) {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     downloadUrl: `${origin}/api/assets/${encodeURIComponent(record.id)}/download`,
+    publicDownloadUrl: publicId ? `${origin}/api/assets/public/${encodeURIComponent(publicId)}/download` : '',
+  };
+}
+
+function publicPublishedAsset(record, request) {
+  const origin = new URL(request.url).origin;
+  const publicId = record.publicId || record.id || '';
+  return {
+    id: publicId,
+    publicId,
+    sourceAssetId: record.sourceAssetId || '',
+    gameSlug: record.gameSlug || '',
+    name: record.name,
+    fileName: record.fileName,
+    sizeBytes: record.sizeBytes,
+    contentType: record.contentType,
+    extension: record.extension,
+    metrics: record.metrics || null,
+    source: record.source || 'published-user-asset',
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    downloadUrl: `${origin}/api/assets/public/${encodeURIComponent(publicId)}/download`,
+    publicDownloadUrl: `${origin}/api/assets/public/${encodeURIComponent(publicId)}/download`,
   };
 }
 
@@ -271,6 +315,82 @@ async function downloadAsset(context, id) {
   });
 }
 
+async function publishAsset(context, id) {
+  const found = await findAsset(context, id);
+  if (found.response) return found.response;
+  const payload = await readJson(context.request);
+  const gameSlug = cleanId(payload.gameSlug || 'game');
+  const publicId = cleanId(payload.publicId || `${gameSlug || 'game'}-${found.record.id}`);
+  if (!publicId) return json({ ok: false, error: 'Public asset id is required.' }, { status: 400 });
+  const object = await found.bucket.get(found.record.key);
+  if (!object) return json({ ok: false, error: 'Asset data not found.' }, { status: 404 });
+  const now = new Date().toISOString();
+  const publicRecord = {
+    ...found.record,
+    id: publicId,
+    publicId,
+    sourceAssetId: found.record.id,
+    gameSlug,
+    key: publicObjectKey(publicId, found.record.fileName || 'model.glb'),
+    source: 'published-user-asset',
+    createdAt: found.record.createdAt || now,
+    updatedAt: now,
+    publishedAt: now,
+  };
+  await found.bucket.put(publicRecord.key, await object.arrayBuffer(), {
+    httpMetadata: { contentType: publicRecord.contentType || object.httpMetadata?.contentType || 'model/gltf-binary' },
+    customMetadata: {
+      publicId,
+      sourceAssetId: found.record.id,
+      gameSlug,
+      fileName: publicRecord.fileName || 'model.glb',
+      publishedAt: now,
+    },
+  });
+  await found.bucket.put(publicMetadataKey(publicId), JSON.stringify(publicRecord), {
+    httpMetadata: { contentType: 'application/json; charset=utf-8' },
+  });
+  return json({ ok: true, asset: publicPublishedAsset(publicRecord, context.request) });
+}
+
+async function findPublicAsset(context, publicId) {
+  const bucket = getBucket(context.env);
+  if (!bucket) return { response: missingBucket() };
+  const cleanPublicId = cleanId(publicId);
+  if (!cleanPublicId) return { response: json({ ok: false, error: 'Asset not found.' }, { status: 404 }) };
+  const metadata = await bucket.get(publicMetadataKey(cleanPublicId));
+  if (!metadata) return { response: json({ ok: false, error: 'Asset not found.' }, { status: 404 }) };
+  let record = null;
+  try {
+    record = JSON.parse(await metadata.text());
+  } catch {}
+  if (!record?.key) return { response: json({ ok: false, error: 'Asset metadata is invalid.' }, { status: 500 }) };
+  return { bucket, record: { ...record, publicId: cleanPublicId } };
+}
+
+async function publicAssetDetails(context, publicId) {
+  const found = await findPublicAsset(context, publicId);
+  if (found.response) return found.response;
+  return json({ ok: true, asset: publicPublishedAsset(found.record, context.request) }, { cacheControl: 'public, max-age=300' });
+}
+
+async function downloadPublicAsset(context, publicId) {
+  const found = await findPublicAsset(context, publicId);
+  if (found.response) return found.response;
+  const object = await found.bucket.get(found.record.key);
+  if (!object) return json({ ok: false, error: 'Asset data not found.' }, { status: 404 });
+  return new Response(object.body, {
+    status: 200,
+    headers: {
+      'Content-Type': found.record.contentType || object.httpMetadata?.contentType || 'model/gltf-binary',
+      'Content-Length': String(found.record.sizeBytes || object.size || ''),
+      'Content-Disposition': `inline; filename="${cleanFileName(found.record.fileName || 'model.glb')}"`,
+      'Cache-Control': 'public, max-age=86400',
+      ...corsHeaders(),
+    },
+  });
+}
+
 async function deleteAsset(context, id) {
   const found = await findAsset(context, id);
   if (found.response) return found.response;
@@ -290,8 +410,11 @@ export async function onRequest(context) {
     if (context.request.method === 'GET' && parts.length === 1 && parts[0] === 'health') return health(context);
     if (context.request.method === 'GET' && parts.length === 0) return listAssets(context);
     if (context.request.method === 'POST' && parts.length === 0) return uploadAsset(context);
+    if (context.request.method === 'GET' && parts.length === 2 && parts[0] === 'public') return publicAssetDetails(context, parts[1]);
+    if (context.request.method === 'GET' && parts.length === 3 && parts[0] === 'public' && parts[2] === 'download') return downloadPublicAsset(context, parts[1]);
     if (context.request.method === 'GET' && parts.length === 1) return assetDetails(context, parts[0]);
     if (context.request.method === 'GET' && parts.length === 2 && parts[1] === 'download') return downloadAsset(context, parts[0]);
+    if (context.request.method === 'POST' && parts.length === 2 && parts[1] === 'publish') return publishAsset(context, parts[0]);
     if (context.request.method === 'DELETE' && parts.length === 1) return deleteAsset(context, parts[0]);
     return json({ ok: false, error: 'Not found.' }, { status: 404 });
   } catch (err) {

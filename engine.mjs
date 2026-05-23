@@ -15001,6 +15001,7 @@ function normalizeProjectObjectSnapshot(snapshot, index, warnings) {
   const assetPath = typeof item.assetPath === 'string' ? item.assetPath.slice(0, 2048) : '';
   const assetFile = typeof item.assetFile === 'string' ? item.assetFile.slice(0, 256) : '';
   const cloudAssetId = typeof item.cloudAssetId === 'string' ? item.cloudAssetId.slice(0, 128) : '';
+  const publicCloudAssetId = typeof item.publicCloudAssetId === 'string' ? item.publicCloudAssetId.slice(0, 128) : '';
   return {
     index: Number.isInteger(item.index) ? item.index : index,
     id: typeof item.id === 'string' ? item.id.slice(0, 128) : '',
@@ -15009,6 +15010,7 @@ function normalizeProjectObjectSnapshot(snapshot, index, warnings) {
     assetFile,
     assetPath,
     cloudAssetId,
+    publicCloudAssetId,
     placementSource: typeof item.placementSource === 'string' ? item.placementSource.slice(0, 80) : '',
     position: normalizeProjectVector(item.position, [0, 0, 0]),
     rotation: normalizeProjectVector(item.rotation, [0, 0, 0]),
@@ -15145,6 +15147,7 @@ function serializeProjectObject(obj, index) {
   const assetPath = obj.userData.gbAssetPath || obj.userData.glbPath || obj.userData.assetPath || '';
   const assetFile = obj.userData.gbAssetFile || obj.userData.glbFile || (assetPath ? assetPath.split('/').pop() : '');
   const cloudAssetId = obj.userData.gbCloudAssetId || obj.userData.cloudAssetId || '';
+  const publicCloudAssetId = obj.userData.gbPublicCloudAssetId || obj.userData.publicCloudAssetId || '';
   const entry = {
     index,
     id: obj.uuid || '',
@@ -15179,6 +15182,7 @@ function serializeProjectObject(obj, index) {
   if (assetFile) entry.assetFile = assetFile;
   if (assetPath) entry.assetPath = assetPath;
   if (cloudAssetId) entry.cloudAssetId = String(cloudAssetId).slice(0, 128);
+  if (publicCloudAssetId) entry.publicCloudAssetId = String(publicCloudAssetId).slice(0, 128);
   return entry;
 }
 
@@ -15210,6 +15214,7 @@ function applyProjectSnapshotToObject(obj, snapshot) {
   if (snapshot.assetFile) obj.userData.gbAssetFile = snapshot.assetFile;
   if (snapshot.assetPath) obj.userData.gbAssetPath = snapshot.assetPath;
   if (snapshot.cloudAssetId) obj.userData.gbCloudAssetId = snapshot.cloudAssetId;
+  if (snapshot.publicCloudAssetId) obj.userData.gbPublicCloudAssetId = snapshot.publicCloudAssetId;
   if (snapshot.placementSource) obj.userData.gbPlacementSource = snapshot.placementSource;
   if (window._addToCollision && obj.userData.isSolid) window._addToCollision(obj);
   return true;
@@ -15387,6 +15392,14 @@ function applyProjectObjectSnapshots(snapshots = []) {
       return;
     }
     const snapshotAssetPath = String(snapshot.assetPath || '');
+    const publicCloudAssetId = snapshot.publicCloudAssetId || (snapshotAssetPath.startsWith('crate-cloud-public-asset:') ? snapshotAssetPath.slice('crate-cloud-public-asset:'.length) : '');
+    if (publicCloudAssetId) {
+      spawned++;
+      pendingLoads.push(loadPublicCloudAssetForProjectSnapshot(snapshot, publicCloudAssetId).then((model) => {
+        if (model && applyProjectSnapshotToObject(model, snapshot)) applied++;
+      }).catch(() => {}));
+      return;
+    }
     const cloudAssetId = snapshot.cloudAssetId || (snapshotAssetPath.startsWith('crate-cloud-asset:') ? snapshotAssetPath.slice('crate-cloud-asset:'.length) : '');
     if (cloudAssetId) {
       spawned++;
@@ -15727,6 +15740,38 @@ function countProjectComponentsForPublish(project) {
   return { total: total, byType: byType };
 }
 
+async function preparePublishedProjectCloudAssets(project, slug) {
+  var nextProject = cloneProjectJson(project, project);
+  var projectObjects = Array.isArray(nextProject?.objects) ? nextProject.objects : [];
+  var publishedAssets = [];
+  var cache = new Map();
+  for (var i = 0; i < projectObjects.length; i++) {
+    var obj = projectObjects[i];
+    if (!obj || typeof obj !== 'object') continue;
+    var assetPath = String(obj.assetPath || '');
+    var privateId = obj.cloudAssetId || (assetPath.startsWith(CLOUD_USER_ASSET_PREFIX) ? assetPath.slice(CLOUD_USER_ASSET_PREFIX.length) : '');
+    var existingPublicId = obj.publicCloudAssetId || (assetPath.startsWith(PUBLIC_CLOUD_USER_ASSET_PREFIX) ? assetPath.slice(PUBLIC_CLOUD_USER_ASSET_PREFIX.length) : '');
+    if (!privateId || existingPublicId) continue;
+    var publicAsset = cache.get(privateId);
+    if (!publicAsset) {
+      publicAsset = await publishCloudUserAssetForGame(privateId, slug);
+      cache.set(privateId, publicAsset);
+      publishedAssets.push(publicAsset);
+    }
+    var publicId = publicAsset.publicId || publicAsset.id || '';
+    if (!publicId) continue;
+    obj.publicCloudAssetId = publicId;
+    obj.publicAssetUrl = publicAsset.publicDownloadUrl || publicAsset.downloadUrl || '';
+    obj.assetPath = PUBLIC_CLOUD_USER_ASSET_PREFIX + publicId;
+    obj.userData = obj.userData && typeof obj.userData === 'object' && !Array.isArray(obj.userData) ? obj.userData : {};
+    obj.userData.publicCloudAssetId = publicId;
+  }
+  return {
+    project: nextProject,
+    assets: publishedAssets,
+  };
+}
+
 function escapeProjectHtml(value) {
   return String(value == null ? '' : value)
     .replace(/&/g, '&amp;')
@@ -15764,6 +15809,7 @@ async function syncPublishedGameToCloudflare(gameData) {
     scripts: gameData.scripts,
     components: gameData.components,
     componentTypes: gameData.componentTypes,
+    cloudAssets: gameData.cloudAssets,
     playable: summarizePlayableForPublish(gameData.playable),
     assetBaseUrl: gameData.playable?.assetBaseUrl || window.CRATESHIP_ASSET_BASE_URL || document.querySelector('meta[name="crate-asset-base"]')?.content || 'https://crateship-games-assets.pages.dev',
     ownerToken: gameData.ownerToken || getPublishOwnerToken(),
@@ -16023,12 +16069,19 @@ async function publishSceneToLocalLibrary(options) {
   var ownerToken = options.ownerToken || getPublishOwnerToken();
   var creator = options.creator || getPublishProfile();
   var visibility = options.visibility === 'unlisted' ? 'unlisted' : 'public';
+  var publishedCloudAssets = [];
+  var publicAssetPrep = await preparePublishedProjectCloudAssets(project, slug);
+  if (publicAssetPrep?.project) {
+    project = publicAssetPrep.project;
+    data = JSON.stringify(project);
+    publishedCloudAssets = Array.isArray(publicAssetPrep.assets) ? publicAssetPrep.assets : [];
+  }
   var encoded = compressScene(data);
   var shareUrl = window.location.origin + '/play?published=' + encodeURIComponent(slug) + '#' + encoded;
   var componentCounts = countProjectComponentsForPublish(project);
   var playable = null;
   try {
-    playable = await window._exportPlayablePackage?.({ download: false, title: title });
+    playable = await window._exportPlayablePackage?.({ download: false, title: title, project: project });
   } catch(e) {
     console.warn('[Publish] Playable package generation failed:', e);
   }
@@ -16048,6 +16101,7 @@ async function publishSceneToLocalLibrary(options) {
     scripts: Array.isArray(project.userScripts) ? project.userScripts.length : 0,
     components: componentCounts.total,
     componentTypes: componentCounts.byType,
+    cloudAssets: publishedCloudAssets,
     ownerToken: ownerToken,
     creator: creator,
     creatorName: creator?.name || '',
@@ -17940,6 +17994,7 @@ function summarizeUserImportRecord(record) {
 
 const USER_ASSET_OWNER_TOKEN_KEY = 'crate_user_asset_owner_token';
 const CLOUD_USER_ASSET_PREFIX = 'crate-cloud-asset:';
+const PUBLIC_CLOUD_USER_ASSET_PREFIX = 'crate-cloud-public-asset:';
 
 function getUserAssetOwnerToken() {
   try {
@@ -18086,6 +18141,49 @@ async function fetchCloudUserAssetBlob(id) {
   };
 }
 
+async function publishCloudUserAssetForGame(id, gameSlug) {
+  if (!id) return null;
+  const publicId = [gameSlug || 'game', id].join('-').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 96);
+  const response = await fetch('/api/assets/' + encodeURIComponent(id) + '/publish', {
+    method: 'POST',
+    headers: {
+      ...userAssetAuthHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ gameSlug, publicId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  const asset = response.ok && data?.ok === true ? data.asset : null;
+  window._lastPublishedCloudAsset = {
+    ok: !!asset,
+    status: response.status,
+    sourceAssetId: id,
+    publicId: asset?.publicId || asset?.id || '',
+    asset,
+    finishedAt: Date.now(),
+    error: data?.error || '',
+  };
+  if (!asset) throw new Error(data?.error || 'Cloud asset publish failed.');
+  return asset;
+}
+
+async function fetchPublicCloudUserAssetBlob(id) {
+  if (!id) return null;
+  const detailResponse = await fetch('/api/assets/public/' + encodeURIComponent(id), { cache: 'no-store' });
+  const detail = await detailResponse.json().catch(() => ({}));
+  if (!detailResponse.ok || detail?.ok !== true) {
+    throw new Error(detail?.error || 'Published cloud asset was not found.');
+  }
+  const downloadResponse = await fetch('/api/assets/public/' + encodeURIComponent(id) + '/download', { cache: 'no-store' });
+  if (!downloadResponse.ok) {
+    throw new Error('Published cloud asset download failed with HTTP ' + downloadResponse.status + '.');
+  }
+  return {
+    asset: detail.asset,
+    blob: await downloadResponse.blob(),
+  };
+}
+
 async function placeCloudUserAsset(id, options = {}) {
   if (!ensureEditModeForAssetPlacement(options.source || 'cloud-user-asset')) return false;
   try {
@@ -18162,6 +18260,35 @@ async function loadCloudAssetForProjectSnapshot(snapshot, id) {
       source: 'project-cloud-asset',
       file: snapshot?.assetFile || asset?.fileName || id,
       path: CLOUD_USER_ASSET_PREFIX + id,
+    });
+  });
+}
+
+async function loadPublicCloudAssetForProjectSnapshot(snapshot, id) {
+  const { asset, blob } = await fetchPublicCloudUserAssetBlob(id);
+  const url = URL.createObjectURL(blob);
+  const pos = Array.isArray(snapshot?.position) ? snapshot.position : [0, 0, 0];
+  const scale = Array.isArray(snapshot?.scale) ? snapshot.scale[0] : null;
+  return new Promise((resolve) => {
+    _loadGLBFromUrl(snapshot?.name || asset?.name || id, url, pos[0] || 0, pos[2] || 0, scale, snapshot?.assetFile || asset?.fileName || id, (model) => {
+      URL.revokeObjectURL(url);
+      if (model) {
+        model.userData.gbPublicCloudAssetId = id;
+        model.userData.publicCloudAssetId = id;
+        if (snapshot?.cloudAssetId) {
+          model.userData.gbCloudAssetId = snapshot.cloudAssetId;
+          model.userData.cloudAssetId = snapshot.cloudAssetId;
+        }
+      }
+      resolve(model || null);
+    }, {
+      trackPlacement: false,
+      selectAfterLoad: false,
+      notify: false,
+      displayName: snapshot?.name || asset?.name || id,
+      source: 'project-public-cloud-asset',
+      file: snapshot?.assetFile || asset?.fileName || id,
+      path: PUBLIC_CLOUD_USER_ASSET_PREFIX + id,
     });
   });
 }
@@ -18272,6 +18399,7 @@ window._listCloudUserAssets = listCloudUserAssets;
 window._uploadUserImportedModelToCloud = uploadUserImportedModelToCloud;
 window._deleteCloudUserAsset = deleteCloudUserAsset;
 window._placeCloudUserAsset = placeCloudUserAsset;
+window._publishCloudUserAssetForGame = publishCloudUserAssetForGame;
 window._getUserAssetOwnerToken = getUserAssetOwnerToken;
 window._saveUserImportedModel = saveUserImportedModel;
 window._deleteUserImportedModel = deleteUserImportedModel;

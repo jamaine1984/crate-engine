@@ -750,7 +750,7 @@ requestAnimationFrame(frame);
 }
 
 export function exportPlayablePackage(options = {}) {
-  const project = getProjectSnapshot();
+  const project = options.project && typeof options.project === 'object' ? options.project : getProjectSnapshot();
   if (!project || (!project.objects.length && !project.commands.length)) {
     context.logOutput('warn', 'Nothing to export - build something first.');
     return null;

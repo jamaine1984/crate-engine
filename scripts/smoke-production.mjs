@@ -507,7 +507,8 @@ async function runBrowserSmoke() {
           typeof window._deleteUserImportedModel !== 'function' ||
           typeof window._listCloudUserAssets !== 'function' ||
           typeof window._placeCloudUserAsset !== 'function' ||
-          typeof window._deleteCloudUserAsset !== 'function') {
+          typeof window._deleteCloudUserAsset !== 'function' ||
+          typeof window._publishCloudUserAssetForGame !== 'function') {
         return { ready: false, before };
       }
       const cloudHealthResponse = await fetch('/api/assets/health', { cache: 'no-store' });
@@ -551,6 +552,12 @@ async function runBrowserSmoke() {
       const deleted = savedId ? await window._deleteUserImportedModel(savedId) : false;
       const afterDeleteList = await window._listUserImportedModels();
       const cloudAfterDeleteList = await window._listCloudUserAssets();
+      const publishFile = new File([blob], 'smoke-publish-cloud-chair.glb', { type: 'model/gltf-binary' });
+      const publishImported = await window._importGLBFile(publishFile, { source: 'smoke-publish-cloud-asset' });
+      const publishStatus = window._lastUserImportStatus || {};
+      const publishCloudId = publishStatus.cloudAsset?.id || publishStatus.savedModel?.cloudAssetId || '';
+      const publishSavedId = publishStatus.savedModel?.id || '';
+      const publishObjectId = publishStatus.objectId || '';
       return {
         ready: true,
         cloudHealthOk: cloudHealthResponse.ok && cloudHealth?.ok === true && cloudHealth?.binding === true,
@@ -568,10 +575,16 @@ async function runBrowserSmoke() {
         deleted,
         stillListed: !!savedId && afterDeleteList.some((item) => item.id === savedId),
         cloudStillListed: !!cloudId && cloudAfterDeleteList.some((item) => item.cloudAssetId === cloudId || item.id === cloudId),
+        publishImported,
+        publishImportStatus: publishStatus.status || '',
+        publishCloudId,
+        publishSavedId,
+        publishObjectId,
         before,
         afterImport,
         afterPlace,
         afterCloudPlace,
+        afterPublishImport: window._engineBridge?.objects?.length || 0,
         removedSmokeObjects,
         libraryCount: list.length,
         cloudLibraryCount: cloudList.length,
@@ -594,7 +607,13 @@ async function runBrowserSmoke() {
         userImportState.afterImport <= userImportState.before ||
         userImportState.afterPlace <= userImportState.afterImport ||
         userImportState.afterCloudPlace <= userImportState.afterPlace ||
-        userImportState.removedSmokeObjects < 3) {
+        userImportState.removedSmokeObjects < 3 ||
+        userImportState.publishImported !== true ||
+        userImportState.publishImportStatus !== 'loaded' ||
+        !userImportState.publishCloudId ||
+        !userImportState.publishSavedId ||
+        !userImportState.publishObjectId ||
+        userImportState.afterPublishImport <= userImportState.afterCloudPlace) {
       throw new Error(`User imported GLB did not persist, cloud sync, place, and delete cleanly: ${JSON.stringify(userImportState)}`);
     }
 
@@ -1318,6 +1337,29 @@ async function runBrowserSmoke() {
       try {
         parsed = JSON.parse(decoded);
       } catch {}
+      const parsedObjects = Array.isArray(parsed?.objects) ? parsed.objects : [];
+      const publicCloudObjects = parsedObjects.filter((obj) =>
+        obj?.publicCloudAssetId || String(obj?.assetPath || '').startsWith('crate-cloud-public-asset:')
+      );
+      const publicCloudAssetId = publicCloudObjects[0]?.publicCloudAssetId ||
+        String(publicCloudObjects[0]?.assetPath || '').replace(/^crate-cloud-public-asset:/, '');
+      const privateCloudAssetId = publicCloudObjects[0]?.cloudAssetId || '';
+      let publicCloudAssetDetailStatus = 0;
+      let publicCloudAssetDownloadStatus = 0;
+      let privateCloudAssetNoAuthStatus = 0;
+      if (publicCloudAssetId) {
+        try {
+          publicCloudAssetDetailStatus = (await fetch('/api/assets/public/' + encodeURIComponent(publicCloudAssetId), { cache: 'no-store' })).status;
+        } catch {}
+        try {
+          publicCloudAssetDownloadStatus = (await fetch('/api/assets/public/' + encodeURIComponent(publicCloudAssetId) + '/download', { cache: 'no-store' })).status;
+        } catch {}
+      }
+      if (privateCloudAssetId) {
+        try {
+          privateCloudAssetNoAuthStatus = (await fetch('/api/assets/' + encodeURIComponent(privateCloudAssetId) + '/download', { cache: 'no-store' })).status;
+        } catch {}
+      }
       let apiGame = null;
       let apiList = null;
       let apiStatus = 0;
@@ -1352,16 +1394,23 @@ async function runBrowserSmoke() {
         storedCount: rows.length,
         storedSlug: rows.find((item) => item?.slug === result?.slug)?.slug || '',
         decodedFormat: parsed?.format || '',
-        decodedObjects: Array.isArray(parsed?.objects) ? parsed.objects.length : 0,
-        decodedComponents: Array.isArray(parsed?.objects)
-          ? parsed.objects.reduce((sum, obj) => sum + Object.keys(obj?.components || {}).length, 0)
+        decodedObjects: parsedObjects.length,
+        decodedComponents: parsedObjects.length
+          ? parsedObjects.reduce((sum, obj) => sum + Object.keys(obj?.components || {}).length, 0)
           : 0,
+        publicCloudAssetCount: publicCloudObjects.length,
+        publicCloudAssetId,
+        publicCloudAssetDetailStatus,
+        publicCloudAssetDownloadStatus,
+        privateCloudAssetId,
+        privateCloudAssetNoAuthStatus,
         apiStatus,
         apiFormat: apiGame?.format || '',
         apiSlug: apiGame?.slug || '',
         apiObjects: Number(apiGame?.objects) || 0,
         apiComponents: Number(apiGame?.components) || 0,
         apiHasProjectData: typeof apiGame?.projectData === 'string' && apiGame.projectData.includes('"crate-engine-project"'),
+        apiCloudAssetCount: Number(apiGame?.cloudAssetCount) || (Array.isArray(apiGame?.cloudAssets) ? apiGame.cloudAssets.length : 0),
         apiOwnerManaged: apiGame?.ownerManaged === true,
         apiCreatorName: apiGame?.creatorName || '',
         apiCreatorUrl: apiGame?.creatorUrl || '',
@@ -1392,12 +1441,18 @@ async function runBrowserSmoke() {
         publishedState.decodedFormat !== 'crate-engine-project' ||
         publishedState.decodedObjects < 100 ||
         publishedState.decodedComponents < 14 ||
+        publishedState.publicCloudAssetCount < 1 ||
+        !publishedState.publicCloudAssetId ||
+        publishedState.publicCloudAssetDetailStatus !== 200 ||
+        publishedState.publicCloudAssetDownloadStatus !== 200 ||
+        publishedState.privateCloudAssetNoAuthStatus !== 403 ||
         publishedState.apiStatus !== 200 ||
         publishedState.apiFormat !== 'crate-cloud-published-game' ||
         publishedState.apiSlug !== smokePublishedSlug ||
         publishedState.apiObjects < 100 ||
         publishedState.apiComponents < 14 ||
         !publishedState.apiHasProjectData ||
+        publishedState.apiCloudAssetCount < 1 ||
         !publishedState.apiOwnerManaged ||
         publishedState.apiCreatorName !== 'Production Smoke Creator' ||
         publishedState.apiCreatorUrl !== 'https://crateshipgames.com/' ||
@@ -1408,6 +1463,9 @@ async function runBrowserSmoke() {
         publishedState.listCreatorName !== 'Production Smoke Creator' ||
         publishedState.listVisibility !== 'public') {
       throw new Error(`Published game library did not create a portable playable link: ${JSON.stringify(publishedState)}`);
+    }
+    if (userImportState.publishSavedId) {
+      await page.evaluate((id) => window._deleteUserImportedModel?.(id), userImportState.publishSavedId);
     }
 
     const deleteGuardPublishState = await page.evaluate(async () => {
@@ -3014,6 +3072,12 @@ async function runBrowserSmoke() {
     state.publishedDecodedFormat = publishedState.decodedFormat;
     state.publishedDecodedObjects = publishedState.decodedObjects;
     state.publishedDecodedComponents = publishedState.decodedComponents;
+    state.publishedPublicCloudAssetCount = publishedState.publicCloudAssetCount;
+    state.publishedPublicCloudAssetId = publishedState.publicCloudAssetId;
+    state.publishedPublicCloudAssetDetailStatus = publishedState.publicCloudAssetDetailStatus;
+    state.publishedPublicCloudAssetDownloadStatus = publishedState.publicCloudAssetDownloadStatus;
+    state.publishedPrivateCloudAssetNoAuthStatus = publishedState.privateCloudAssetNoAuthStatus;
+    state.publishedApiCloudAssetCount = publishedState.apiCloudAssetCount;
     state.publishedCloudStatus = publishedState.cloudStatus;
     state.publishedCloudSource = publishedState.cloudSource;
     state.publishedApiStatus = publishedState.apiStatus;
@@ -3342,6 +3406,12 @@ async function runBrowserSmoke() {
         state.publishedDecodedFormat !== 'crate-engine-project' ||
         state.publishedDecodedObjects < 100 ||
         state.publishedDecodedComponents < 14 ||
+        state.publishedPublicCloudAssetCount < 1 ||
+        !state.publishedPublicCloudAssetId ||
+        state.publishedPublicCloudAssetDetailStatus !== 200 ||
+        state.publishedPublicCloudAssetDownloadStatus !== 200 ||
+        state.publishedPrivateCloudAssetNoAuthStatus !== 403 ||
+        state.publishedApiCloudAssetCount < 1 ||
         state.publishedCloudStatus !== 'synced' ||
         state.publishedCloudSource !== 'cloudflare-pages-kv' ||
         state.publishedApiStatus !== 200 ||
@@ -3743,6 +3813,7 @@ console.log(`Project load: ${browserState.loadedProjectObjectCount} objects ${br
 console.log(`Playable export: ${browserState.playableExportFilename || 'missing'} (${browserState.playableExportObjectCount} objects, ${browserState.playableExportComponentCount} components, ${browserState.playableExportHtmlBytes} html bytes)`);
 console.log(`Published game: ${browserState.publishedSlug || 'missing'} (${browserState.publishedObjects} objects, ${browserState.publishedComponents} components, package ${browserState.publishedPlayableHtmlBytes} html bytes)`);
 console.log(`Published API: ${browserState.publishedCloudSource || 'missing'} ${browserState.publishedApiStatus} (${browserState.publishedLoadStatus || 'missing'}, ${browserState.publishedLoadObjectCount} objects loaded)`);
+console.log(`Published cloud assets: ${browserState.publishedPublicCloudAssetCount || 0} public, download ${browserState.publishedPublicCloudAssetDownloadStatus || 0}, private no-auth ${browserState.publishedPrivateCloudAssetNoAuthStatus || 0}`);
 console.log(`Published library UI: ${browserState.publishedLibraryCloudCount} cloud rows, ${browserState.publishedLibraryLocalCount} local rows, ${browserState.publishedLibraryLoadButtons} edit buttons`);
 console.log(`Published editor load: ${browserState.publishedEditorLoadStatus || 'missing'} ${browserState.publishedEditorLoadSlug || 'missing'} (${browserState.publishedEditorLoadObjectCount} objects, filter ${browserState.publishedFilterQuery || 'empty'})`);
 console.log(`Published management: detail ${browserState.publishedDetailPanelStatus || 'missing'}, owner ${browserState.publishedDetailOwnerManaged ? 'managed' : 'missing'}, delete guard ${browserState.publishedDeleteGuardBlockedStatus}/${browserState.publishedDeleteGuardDeletedStatus}/${browserState.publishedDeleteGuardMissingStatus}`);

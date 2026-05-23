@@ -464,6 +464,7 @@ function publicGameSummary(record) {
     scripts: record.scripts,
     components: record.components,
     componentTypes: record.componentTypes,
+    cloudAssetCount: Array.isArray(record.cloudAssets) ? record.cloudAssets.length : 0,
     assetBaseUrl: record.assetBaseUrl,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -484,6 +485,7 @@ function publicGameDetails(record) {
     sceneData: record.sceneData,
     projectData: record.projectData,
     playable: record.playable,
+    cloudAssets: Array.isArray(record.cloudAssets) ? record.cloudAssets : [],
   };
 }
 
@@ -536,6 +538,7 @@ async function publishGame(context) {
     scripts: Number(projectSummary.scripts || payload.scripts) || 0,
     components: Number(projectSummary.components || payload.components) || 0,
     componentTypes: payload.componentTypes && typeof payload.componentTypes === 'object' ? payload.componentTypes : {},
+    cloudAssets: Array.isArray(payload.cloudAssets) ? payload.cloudAssets.slice(0, 100) : [],
     playable: payload.playable && typeof payload.playable === 'object' ? {
       format: payload.playable.format || '',
       filename: payload.playable.filename || '',
