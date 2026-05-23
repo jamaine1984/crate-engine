@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `e12363ab`
+- Current deployed source commit for the public engine code: `457fd0fa`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,11 +36,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `068e93b0-1a6a-4c2b-a6e2-b160ea1016a6`
-- Latest production deployment URL: `https://068e93b0.crateship-games.pages.dev`
+- Latest production deployment ID: `5da7a94a-2d41-4758-9fcf-6f84c14c1407`
+- Latest production deployment URL: `https://5da7a94a.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `e12363a`
-- Main live page bundle after the deploy: `/assets/play-CdosIsQN.js`
+- Source shown by Cloudflare: `457fd0f`
+- Main live page bundle after the deploy: `/assets/play-GOnYZnjj.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-B_LCiV29.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-cfqoMh02.js`
@@ -50,6 +50,54 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `457fd0fa` (`Harden play camera mode guard`)
+- Final Cloudflare deployment: `5da7a94a-2d41-4758-9fcf-6f84c14c1407`
+- Final deployment URL: `https://5da7a94a.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- App deploy command:
+
+```powershell
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=457fd0fa65ea7360d680228ad1bd0b34fc0bc18d --commit-message="Harden play camera mode guard" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`
+- Deploy upload evidence: uploaded `6` changed files, reused `105` already-uploaded files, uploaded the Functions bundle, `_headers`, and `_routes.json`.
+- Main app bundle after deploy: `/assets/play-GOnYZnjj.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-gPCLCTUn.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui-B_LCiV29.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-cfqoMh02.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=camera-guard-457fd0f`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-camera-guard-457fd0f`
+- Targeted camera guard probe passed: `https://crateshipgames.com/play?verify=targeted-camera-guard-457fd0f`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-camera-guard-457fd0f.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-camera-guard-457fd0f.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\targeted-camera-guard-457fd0f.png`
+- Production smoke evidence:
+  - Build City created at least `127` objects with `48` components and `4` scripts on apex and `www`.
+  - Asset host loaded manifest `6f09cc09da2f`; model/texture checks returned expected `200` or missing-asset `404` statuses.
+  - Production publish, marketplace discovery, game detail, user asset publish/delete, inventory, mission, NPC, merchant, door trigger, enemy wave, respawn, project save/load, playable export, validation, and admin guard flows passed on both domains.
+  - Apex raw Build City frame probe: `99 FPS`, `10.1 ms` average frame, `0.8 ms` update, `9.3 ms` render.
+  - Apex viewport probes passed: phone `227.3 FPS` at renderer DPR `1.25`; tablet `54.9 FPS` at renderer DPR `1`.
+  - WWW raw Build City frame probe: `69.9 FPS`, `14.3 ms` average frame.
+  - Targeted camera guard probe forced Play-mode OrbitControls back on and forced camera pitch/roll to `x=-1.55`, `z=0.31`; the deployed guard corrected controls to `false`, clamped pitch to `-1.15`, and flattened roll to `0` before and after scroll/drag.
+
+What changed in this deploy:
+
+- `engine.mjs`
+  - Play mode now continuously disables editor OrbitControls instead of only disabling them once on entry.
+  - Camera stabilization now clamps extreme Play-mode pitch, flattens roll, keeps `camera.up` level, and records `window._playCameraStability` for diagnostics.
+  - Canvas wheel, pointer, and touch events in Play mode pass through a guard so scroll/drag cannot re-enable editor camera behavior.
+  - The render loop applies the Play camera guard immediately before rendering.
+- `scripts/smoke-production.mjs`
+  - Production smoke now forces a bad Play camera state and fails if the guard does not clamp pitch, flatten roll, and disable OrbitControls.
+  - The scroll/drag test now checks pitch as well as roll and control state.
+
+Previous app-only deploy on 2026-05-23:
 
 - Final commit deployed: `e12363ab` (`Improve asset menu readability`)
 - Final Cloudflare deployment: `068e93b0-1a6a-4c2b-a6e2-b160ea1016a6`
