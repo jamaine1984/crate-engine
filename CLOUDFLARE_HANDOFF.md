@@ -17,8 +17,14 @@ engine so future sessions do not get pointed at the wrong local preview.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
 - Current deployed source commit for the public engine code: `34c34767`
+- Current deployed source commit for the public asset cleanup Worker: `fd2f43fa`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
+- Cloudflare scheduled cleanup Worker: `crateship-public-asset-cleanup`
+- Cleanup Worker URL: `https://crateship-public-asset-cleanup.koikes2021.workers.dev`
+- Cleanup Worker cron: `17 9 * * *` (UTC daily)
+- Cleanup Worker version ID: `36e2f0fb-4c49-4e78-9952-330d26208d9a`
+- Cleanup Worker safe default: `CRATE_PUBLIC_ASSET_CLEANUP_DELETE=false`, so the scheduled run scans but does not delete until the Cloudflare variable is changed to `true`.
 - Cloudflare KV namespace for published games: `CRATE_GAMES` (`cfd1bca8ac84439cadc2bb146a034d41`)
 - Cloudflare D1 database for moderation audit history: `CRATE_AUDIT` / `crateship-games-audit` (`9cbee4e4-caa7-43fb-bbb7-9f0f7d7e2b9a`)
 - Cloudflare R2 bucket for user-imported GLB/GLTF assets: `crateship-games-user-assets` through binding `CRATE_USER_ASSETS`
@@ -43,7 +49,60 @@ on this Windows machine. The real production behavior must be checked on
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
 
-Latest app-only deploy on 2026-05-22:
+Latest Cloudflare deploy on 2026-05-22:
+
+- Worker commit deployed: `fd2f43fa` (`Add scheduled public asset cleanup worker`)
+- Worker deployed: `crateship-public-asset-cleanup`
+- Worker URL: `https://crateship-public-asset-cleanup.koikes2021.workers.dev`
+- Worker version ID: `36e2f0fb-4c49-4e78-9952-330d26208d9a`
+- Worker schedule: `17 9 * * *` UTC daily
+- Worker deploy command:
+
+```powershell
+npm run deploy:cleanup-worker
+```
+
+- Worker bindings verified by Wrangler deploy:
+  - `CRATE_GAMES` KV namespace `cfd1bca8ac84439cadc2bb146a034d41`
+  - `CRATE_USER_ASSETS` R2 bucket `crateship-games-user-assets`
+  - `CRATE_PUBLIC_ASSET_CLEANUP_DELETE="false"`
+  - `CRATE_PUBLIC_ASSET_CLEANUP_LIMIT="200"`
+- Worker smoke passed:
+
+```powershell
+npm run smoke:cleanup-worker
+```
+
+- Smoke evidence:
+  - Health: `deleteEnabled=false`, `limit=200`, bindings ready.
+  - Guard: unauthenticated `POST /cleanup` returns `403`.
+  - Authenticated dry run skipped because no admin token env var was present in this shell.
+- Cloudflare docs checked for this design: Cron Triggers map a cron expression to a Worker `scheduled()` handler, are configured with `[triggers] crons = [...]` in `wrangler.toml`, and execute on UTC time.
+- The Pages app bundle did not change in this Worker deploy, but the live app was smoke-tested again:
+  - Apex smoke passed: `https://crateshipgames.com/play?verify=cleanup-worker-36e2f0f`
+  - WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-cleanup-worker-36e2f0f`
+  - Screenshots:
+    - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-cleanup-worker-36e2f0f.png`
+    - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-cleanup-worker-36e2f0f.png`
+
+What changed in this deploy:
+
+- `worker/public-asset-cleanup/index.js`
+  - Added a scheduled Worker that scans published public R2 asset metadata, checks each asset against the live `CRATE_GAMES` KV game record, and reports orphan counts.
+  - Scheduled runs are dry-run by default. They delete only if `CRATE_PUBLIC_ASSET_CLEANUP_DELETE` is set to `true`.
+  - Manual `POST /cleanup` is admin-token protected and supports dry-run or delete mode.
+- `worker/public-asset-cleanup/wrangler.toml`
+  - Added R2/KV bindings and the daily UTC cron trigger.
+- `scripts/smoke-cleanup-worker.mjs`
+  - Verifies live Worker health, binding readiness, safe delete default, unauthenticated guard, and optional authenticated dry run.
+- `package.json`
+  - Added `deploy:cleanup-worker` and `smoke:cleanup-worker`.
+
+Next recommended asset step:
+
+- Run `npm run smoke:cleanup-worker` with `CRATE_SMOKE_ADMIN_TOKEN` available to verify the authenticated dry run. If the orphan count is correct, set `CRATE_PUBLIC_ASSET_CLEANUP_DELETE=true` in the cleanup Worker and redeploy when ready for scheduled deletion.
+
+Previous app-only deploy on 2026-05-22:
 
 - Final commit deployed: `34c34767` (`Add admin public asset cleanup controls`)
 - Final Cloudflare deployment: `789f791b-855e-4454-b6b6-fdd9ce52067b`
