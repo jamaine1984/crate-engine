@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `977d7d21`
+- Current deployed source commit for the public engine code: `5dcfca4f`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,12 +36,12 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `f6a652ef-8edc-49f0-aa37-34c259465509`
-- Latest production deployment URL: `https://f6a652ef.crateship-games.pages.dev`
+- Latest production deployment ID: `6d642715-4382-4376-bbdd-afb64a53712c`
+- Latest production deployment URL: `https://6d642715.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `977d7d2`
-- Main live page bundle after the deploy: `/assets/play-eZuQBFy_.js`
-- Lazy App Builder chunk after the deploy: `/assets/app-builder-CPcH0bra.js`
+- Source shown by Cloudflare: `5dcfca4`
+- Main live page bundle after the deploy: `/assets/play-C1yIcOfW.js`
+- Lazy App Builder chunk after the deploy: `/assets/app-builder-DUO4EInw.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BcIi53i4.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
@@ -50,6 +50,55 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `5dcfca4f` (`Harden gallery asset availability`)
+- Final Cloudflare deployment: `6d642715-4382-4376-bbdd-afb64a53712c`
+- Final deployment URL: `https://6d642715.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- App deploy command:
+
+```powershell
+npm run check
+git diff --check
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=5dcfca4f198a20540448716d0165a59e12ad90b6 --commit-message="Harden gallery asset availability" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`, `.deploy\assets\play-C1yIcOfW.js=True`
+- Deploy upload evidence: uploaded `12` changed files, reused `99` already-uploaded files, uploaded the Functions bundle, `_headers`, and `_routes.json`.
+- Main app bundle after deploy: `/assets/play-C1yIcOfW.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-DUO4EInw.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui-BcIi53i4.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=gallery-availability-5dcfca4`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-gallery-availability-5dcfca4`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-gallery-availability-5dcfca4.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-gallery-availability-5dcfca4.png`
+- Production smoke evidence:
+  - Apex and `www` smoke loaded `/assets/play-C1yIcOfW.js`, asset host manifest `6f09cc09da2f`, and the separate asset host returned `200` for checked GLB/BIN/JPG assets and expected `404` for the deliberate missing-asset check.
+  - Real desktop Asset Library still opens Furniture, searches `chair`, selects `Chair 1`, verifies preview state first, then confirms final placement.
+  - Category sweep now opens Vehicles, Rocks, and Food galleries from the live site and verifies `30` visible cards in each with `0` bad model/texture responses.
+  - Hidden unavailable assets now reports `100`; this includes the broken outdoor table/chair asset, Namaqualand rocks/stones, Moon Rock 01, Food Pears Asian 01, and `50` deduped duplicate Kenney car entries.
+  - Apex raw Build City frame probe: `55.9 FPS`, `17.9 ms` average frame, `0.8 ms` update, `17.1 ms` render.
+  - Apex phone and tablet viewport probes still open Quick Tools Asset Library and place `Bathroom Bathtub` after confirming preview.
+  - WWW smoke passed publish, marketplace, game detail, project save/load, playable export, validation, admin guard, cleanup Worker readiness, asset host, inventory, mission, NPC, merchant, door trigger, enemy wave, and respawn flows.
+
+What changed in this deploy:
+
+- `asset-availability.mjs`
+  - Added unavailable entries for Namaqualand rocks/stones, Moon Rock 01, and Food Pears Asian 01 because their GLTF buffers/textures are missing on the production asset host.
+- `engine.mjs`
+  - Normalizes duplicate-leading-folder catalog paths before placement and gallery rendering.
+  - Dedupes resolved catalog rows so `kenney_cars/kenney_cars/...` cards do not show beside the working `kenney_cars/...` entries.
+  - Exposes normalized/deduped catalog counts for production diagnostics.
+- `scripts/smoke-production.mjs`
+  - Fails if duplicated Kenney paths or known broken sweep assets appear in the live catalog.
+  - Adds real gallery sweep coverage for Vehicles, Rocks, and Food and fails on any bad model/texture response.
+
+Previous app-only deploy on 2026-05-23:
 
 - Final commit deployed: `977d7d21` (`Hide broken catalog assets from gallery`)
 - Final Cloudflare deployment: `f6a652ef-8edc-49f0-aa37-34c259465509`
