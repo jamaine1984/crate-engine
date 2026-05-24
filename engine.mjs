@@ -1550,6 +1550,58 @@ function clearEditorSelection() {
   } catch {}
 }
 
+function editorCameraControlsAllowedForMode(mode = getEngineMode()) {
+  return normalizeEngineMode(mode) !== 'play';
+}
+
+function setEditorCameraControlsEnabled(enabled, reason = 'mode') {
+  const next = !!enabled;
+  try {
+    if (controls) {
+      controls.enabled = next;
+      controls.enableDamping = next;
+      if (next) {
+        controls.dampingFactor = 0.08;
+        controls.update?.();
+      }
+    }
+  } catch {}
+  window._editorCameraControlsState = {
+    mode: getEngineMode(),
+    enabled: controls?.enabled === true,
+    reason,
+    updatedAt: Date.now(),
+  };
+  return window._editorCameraControlsState;
+}
+
+function applyModeInteractionState(mode = getEngineMode(), reason = 'mode') {
+  const activeMode = normalizeEngineMode(mode);
+  if (activeMode !== 'edit') {
+    try { isDragging = false; } catch {}
+    clearEditorSelection();
+    try {
+      if (activeCatalogPlacement) cancelCatalogAssetPlacement('mode-' + activeMode);
+    } catch {}
+    try {
+      if (window._terrainPaint?.isActive?.()) window._terrainPaint.toggle();
+      window._terrainPaintMode = false;
+    } catch {}
+  }
+  const controlsState = setEditorCameraControlsEnabled(editorCameraControlsAllowedForMode(activeMode), reason);
+  window._modeInteractionState = {
+    mode: activeMode,
+    editInteractions: activeMode === 'edit',
+    viewOnly: activeMode === 'explore',
+    playOnly: activeMode === 'play',
+    controlsEnabled: controlsState?.enabled === true,
+    selectedId: selectedObj?.uuid || '',
+    placementActive: !!activeCatalogPlacement,
+    updatedAt: Date.now(),
+  };
+  return window._modeInteractionState;
+}
+
 syncModeGlobals('edit');
     if (window._mobileControls) window._mobileControls.hide();
 
@@ -1630,7 +1682,16 @@ function resetPlayCameraView() {
 
 function guardPlayCameraInputEvent(event) {
   if (!playMode) return;
-  if (event?.type === 'wheel') event.preventDefault();
+  if (event?.type === 'wheel') {
+    event.preventDefault();
+    event.stopPropagation?.();
+    event.stopImmediatePropagation?.();
+  } else if (event?.type === 'pointerdown') {
+    event.stopPropagation?.();
+    event.stopImmediatePropagation?.();
+  } else if (event?.type === 'touchstart' || event?.type === 'touchmove') {
+    event.preventDefault();
+  }
   lockPlayCameraRoll('input-' + (event?.type || 'unknown'));
 }
 
@@ -1735,6 +1796,7 @@ function _showEditorUI() {
 function enterPlayMode() {
   syncModeGlobals('play');
   clearEditorSelection();
+  applyModeInteractionState('play', 'enter-play-request');
   if (typeof _updateModeButtons === 'function') _updateModeButtons('play');
   // Play = camera mode. User spawns NPC separately if they want one.
   if (!characterController) {
@@ -1747,6 +1809,7 @@ function enterPlayMode() {
         playModeBootPending = false;
         if (!playMode) {
           syncModeGlobals('edit');
+          applyModeInteractionState('edit', 'play-load-failed');
           if (typeof _updateModeButtons === 'function') _updateModeButtons('edit');
         }
         console.warn('[Gameplay] Failed to load play systems:', err);
@@ -1764,6 +1827,7 @@ function _activatePlayMode() {
   playMode = true; window._playMode = true;
   syncModeGlobals('play');
   clearEditorSelection();
+  applyModeInteractionState('play', 'enter-play');
   if (typeof _updateModeButtons === 'function') _updateModeButtons('play');
   _hideEditorUI();
   
@@ -1863,12 +1927,7 @@ function exitPlayMode(nextMode = 'edit') {
     const el = document.getElementById(id); if (el) el.remove();
   });
   // Re-enable editor orbit controls
-  try {
-    controls.enabled = true;
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.update();
-  } catch(e) {}
+  applyModeInteractionState(getEngineMode(), 'exit-play');
   // Show editor UI
   _showEditorUI();
   showToast(_currentMode === 'explore' ? 'View mode - camera only' : 'Back to editor mode');
@@ -1880,7 +1939,6 @@ function exitPlayMode(nextMode = 'edit') {
   });
   cancelGrapple();
   if (_photoMode) window._togglePhotoMode();
-  try { controls.enabled = true; } catch(e) {}
   // Release pointer lock so editor selection works
   if (document.pointerLockElement) {
     try { document.exitPointerLock(); } catch(e) {}
@@ -10838,7 +10896,11 @@ function highlightSelected(obj) {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
-  if (!isEditInteractionMode()) return; // Selection and drag only run in Edit mode.
+  if (!isEditInteractionMode()) {
+    isDragging = false;
+    setEditorCameraControlsEnabled(editorCameraControlsAllowedForMode(), 'canvas-pointerdown-non-edit');
+    return;
+  }
   if (e.button !== 0) return;
   const rect = canvas.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -10852,7 +10914,7 @@ canvas.addEventListener('pointerdown', (e) => {
       selectedObj = hit;
       highlightSelected(selectedObj);
       isDragging = true;
-      controls.enabled = false;
+      setEditorCameraControlsEnabled(false, 'edit-object-drag');
       dragPlane.constant = -hit.position.y;
       const inter = new THREE.Vector3();
       raycaster.ray.intersectPlane(dragPlane, inter);
@@ -10865,7 +10927,11 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (!isEditInteractionMode()) { isDragging = false; return; }
+  if (!isEditInteractionMode()) {
+    isDragging = false;
+    setEditorCameraControlsEnabled(editorCameraControlsAllowedForMode(), 'canvas-pointermove-non-edit');
+    return;
+  }
   if (!isDragging || !selectedObj) return;
   const rect = canvas.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -10880,7 +10946,7 @@ canvas.addEventListener('pointermove', (e) => {
 
 canvas.addEventListener('pointerup', () => {
   isDragging = false;
-  controls.enabled = isEditInteractionMode();
+  setEditorCameraControlsEnabled(editorCameraControlsAllowedForMode(), 'canvas-pointerup');
 });
 
 
@@ -18111,14 +18177,13 @@ window._setMode = function(mode) {
   // Enter new mode
   if (next === 'edit') {
     syncModeGlobals('edit');
-    controls.enabled = true;
+    applyModeInteractionState('edit', 'set-mode-edit');
     logOutput('ok', 'Edit Mode - click objects to inspect, type commands below');
   } else if (next === 'play') {
     enterPlayMode();
   } else if (next === 'explore') {
     syncModeGlobals('explore');
-    clearEditorSelection();
-    controls.enabled = true;
+    applyModeInteractionState('explore', 'set-mode-view');
     logOutput('ok', 'View Mode - camera only, object clicks disabled');
   }
 

@@ -926,6 +926,103 @@ async function runBrowserSmoke() {
       throw new Error(`Placement status did not name the placed asset: ${JSON.stringify(placementState)}`);
     }
 
+    const modeIsolationState = await page.evaluate(async () => {
+      const canvas = document.querySelector('canvas');
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const waitFor = async (predicate, timeout = 3500) => {
+        const started = performance.now();
+        while (performance.now() - started < timeout) {
+          if (predicate()) return true;
+          await sleep(50);
+        }
+        return false;
+      };
+      const snapshot = (label) => ({
+        label,
+        mode: window._currentMode || '',
+        playMode: window._playMode === true,
+        controlsEnabled: window._ctrl?.enabled === true,
+        selectedId: window._engineBridge?.getSelected?.()?.uuid || '',
+        interaction: window._modeInteractionState || null,
+      });
+      if (!canvas) return { missingCanvas: true };
+      const rect = canvas.getBoundingClientRect();
+      const center = {
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      };
+
+      window._setMode?.('explore');
+      await waitFor(() => window._currentMode === 'explore' && window._ctrl?.enabled === true);
+      const viewBefore = snapshot('view-before-click');
+      const pointerOptions = {
+        bubbles: true,
+        cancelable: true,
+        pointerType: 'mouse',
+        pointerId: 91,
+        button: 0,
+        buttons: 1,
+        ...center,
+      };
+      canvas.dispatchEvent(new PointerEvent('pointerdown', pointerOptions));
+      canvas.dispatchEvent(new PointerEvent('pointerup', { ...pointerOptions, buttons: 0 }));
+      await sleep(80);
+      const viewAfterClick = snapshot('view-after-click');
+
+      window._setMode?.('play');
+      await waitFor(() => window._currentMode === 'play' && window._playMode === true && window._ctrl?.enabled === false);
+      const playBeforeWheel = snapshot('play-before-wheel');
+      if (window._cam) window._cam.rotation.z = 0.45;
+      const wheelEvent = new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 360,
+        ...center,
+      });
+      const wheelDispatchReturned = canvas.dispatchEvent(wheelEvent);
+      await sleep(80);
+      const playAfterWheel = {
+        ...snapshot('play-after-wheel'),
+        cameraRoll: window._cam?.rotation?.z ?? null,
+        wheelDefaultPrevented: wheelEvent.defaultPrevented === true,
+        wheelDispatchReturned,
+        stability: window._playCameraStability || null,
+      };
+
+      window._setMode?.('edit');
+      await waitFor(() => window._currentMode === 'edit' && window._playMode !== true && window._ctrl?.enabled === true);
+      const editAfter = snapshot('edit-after-mode-return');
+      return { viewBefore, viewAfterClick, playBeforeWheel, playAfterWheel, editAfter };
+    });
+    if (modeIsolationState.missingCanvas) {
+      throw new Error('Mode isolation smoke could not find the WebGL canvas');
+    }
+    if (modeIsolationState.viewBefore.mode !== 'explore' ||
+        modeIsolationState.viewBefore.controlsEnabled !== true ||
+        modeIsolationState.viewBefore.selectedId) {
+      throw new Error(`View mode did not start as camera-only: ${JSON.stringify(modeIsolationState)}`);
+    }
+    if (modeIsolationState.viewAfterClick.mode !== 'explore' ||
+        modeIsolationState.viewAfterClick.controlsEnabled !== true ||
+        modeIsolationState.viewAfterClick.selectedId) {
+      throw new Error(`View mode click selected or disabled camera controls: ${JSON.stringify(modeIsolationState)}`);
+    }
+    if (modeIsolationState.playBeforeWheel.mode !== 'play' ||
+        modeIsolationState.playBeforeWheel.playMode !== true ||
+        modeIsolationState.playBeforeWheel.controlsEnabled !== false) {
+      throw new Error(`Play mode did not isolate editor controls: ${JSON.stringify(modeIsolationState)}`);
+    }
+    if (Math.abs(Number(modeIsolationState.playAfterWheel.cameraRoll) || 0) > 0.001 ||
+        modeIsolationState.playAfterWheel.controlsEnabled !== false ||
+        modeIsolationState.playAfterWheel.wheelDefaultPrevented !== true) {
+      throw new Error(`Play mode wheel input did not keep the world level: ${JSON.stringify(modeIsolationState)}`);
+    }
+    if (modeIsolationState.editAfter.mode !== 'edit' ||
+        modeIsolationState.editAfter.playMode === true ||
+        modeIsolationState.editAfter.controlsEnabled !== true) {
+      throw new Error(`Edit mode did not restore editor controls: ${JSON.stringify(modeIsolationState)}`);
+    }
+
     const builderTextFitState = await page.evaluate(() => {
       const buttons = [...document.querySelectorAll('#game-builder-panel button')].filter((button) => button.offsetParent !== null);
       const clipped = buttons.filter((button) => button.scrollWidth > button.clientWidth + 2 || button.scrollHeight > button.clientHeight + 2)
