@@ -269,6 +269,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { installAssetFetchPipeline, installAssetPipeline, resolveAssetUrl } from './asset-url.mjs';
+import { getKnownUnavailableModelReason, isKnownUnavailableModelRef } from './asset-availability.mjs';
 
 // ═══ POST-PROCESSING — Lazy loaded to prevent boot crashes ═══
 let EffectComposer, RenderPass, UnrealBloomPass, SMAAPass, ShaderPass, OutputPass, SSAOPass, HDRLoader, BokehPass;
@@ -2730,12 +2731,41 @@ function setAssetPlacementState(next) {
 
 function getCatalogAssetRequest(result, source = 'asset-library') {
   if (!result || !result.file) return null;
+  if (isKnownUnavailableCatalogItem(result)) return null;
   const name = getPlacementName(result);
   const file = result.file;
   const customPath = normalizeCatalogAssetPath(result.path);
   const glb = GLB_MODELS[file] || file;
   const path = customPath || glb;
   return { result, source, name, file, customPath, glb, path };
+}
+
+function isKnownUnavailableCatalogItem(item) {
+  if (!item || typeof item !== 'object') return false;
+  return [
+    item.path,
+    item.file,
+    item.name,
+    item.path ? String(item.path).replace(/^\/?models\//i, '') : '',
+    item.file ? GLB_MODELS[item.file] : '',
+  ].some(isKnownUnavailableModelRef);
+}
+
+function blockUnavailableCatalogAsset(result, source = 'asset-library') {
+  const name = getPlacementName(result || {});
+  const file = result?.file || result?.path || '';
+  const reason = [result?.path, result?.file, result?.name].map(getKnownUnavailableModelReason).find(Boolean);
+  setAssetPlacementState({
+    status: 'blocked',
+    name,
+    file,
+    path: normalizeCatalogAssetPath(result?.path) || file,
+    source,
+    error: reason || 'This asset is unavailable because required production files are missing.',
+    awaitingConfirm: false,
+  });
+  showToast('Asset unavailable: missing production files');
+  return null;
 }
 
 function getEditorPlacementPoint(distance = 8) {
@@ -3051,6 +3081,7 @@ function loadCatalogPlacementModel(request, onDone) {
 }
 
 function beginCatalogAssetPlacement(result, source = 'asset-library') {
+  if (isKnownUnavailableCatalogItem(result)) return blockUnavailableCatalogAsset(result, source);
   const request = getCatalogAssetRequest(result, source);
   if (!request) return null;
   if (!ensureEditModeForAssetPlacement(source)) return null;
@@ -3259,6 +3290,7 @@ function retryLastAssetPlacement() {
 
 function placeCatalogAsset(result, source = 'asset-library') {
   if (!result || !result.file) return null;
+  if (isKnownUnavailableCatalogItem(result)) return blockUnavailableCatalogAsset(result, source);
   if (!ensureEditModeForAssetPlacement(source)) return null;
   const name = getPlacementName(result);
   const file = result.file;
@@ -3291,6 +3323,17 @@ function placeCatalogAsset(result, source = 'asset-library') {
 
 function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath, options = {}) {
   const placementOptions = options && typeof options === 'object' ? options : {};
+  if (isKnownUnavailableModelRef(customPath) || isKnownUnavailableModelRef(glbFile) || isKnownUnavailableModelRef(name)) {
+    handleAssetPlacementFailure({
+      ...placementOptions,
+      trackPlacement: placementOptions.trackPlacement !== false,
+      name: placementOptions.displayName || name || glbFile,
+      file: placementOptions.file || glbFile || name,
+      path: customPath || glbFile || name,
+      error: getKnownUnavailableModelReason(customPath || glbFile || name),
+    });
+    return;
+  }
   // Check if this is a user-saved model (from IndexedDB or catalog _b64)
   const catalogItem = _assetCatalog && Object.values(_assetCatalog).flat().find(a => a.file === glbFile || a.file === name);
   if (catalogItem && catalogItem._b64) {
@@ -7563,6 +7606,7 @@ function _filterAssetCatalogForAvailableModels(catalog, modelCatalog) {
     filtered[category] = items.map((item) => {
       if (!item || typeof item !== 'object') return null;
       if (item._b64 || item.source === 'user-saved' || item.source === 'user-generated' || item.source === 'marketplace') return item;
+      if (isKnownUnavailableCatalogItem(item)) return null;
       const rawRef = String(item.path || item.file || '').trim();
       if (!rawRef) return null;
       if (/^(?:https?:|blob:|data:)/i.test(rawRef)) return item;

@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { resolveAssetFetchUrl } from './asset-url.mjs';
+import { isKnownUnavailableModelEntry } from './asset-availability.mjs';
 
 const MODEL_ALIAS_URL = '/model-aliases.json';
 const MODEL_CATALOG_URLS = [
@@ -68,6 +69,12 @@ function normalizeModelCatalog(data) {
   return {};
 }
 
+function filterKnownUnavailableModels(catalog) {
+  return Object.fromEntries(
+    Object.entries(catalog || {}).filter(([key, info]) => !isKnownUnavailableModelEntry(key, info))
+  );
+}
+
 export async function loadModelAliases() {
   if (Object.keys(GLB_MODELS).length) return GLB_MODELS;
   if (!modelAliasesPromise) {
@@ -89,7 +96,7 @@ export async function loadModelCatalog() {
     modelCatalogPromise = (async () => {
       for (const url of MODEL_CATALOG_URLS) {
         try {
-          const data = normalizeModelCatalog(await fetchJson(url));
+          const data = filterKnownUnavailableModels(normalizeModelCatalog(await fetchJson(url)));
           if (Object.keys(data).length) {
             modelCatalog = data;
             console.log('[Catalog] Loaded', Object.keys(modelCatalog).length, 'models from', url);

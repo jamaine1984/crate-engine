@@ -466,9 +466,11 @@ async function runBrowserSmoke() {
         furnitureCount: catalog?.furniture?.length || 0,
         hasTmpReference: refs.some((ref) => /\.tmp$/i.test(ref) || /\.glb\.tmp$/i.test(ref)),
         unresolvedDuplicatedKenneyPath: refs.some((ref) => /kenney_cars\/kenney_cars\//i.test(ref) && !/models\/catalog\.json/i.test(ref)),
+        hasBrokenOutdoorChair: refs.some((ref) => /ph_outdoor_table_chair_set_01|outdoor_table_chair_set_01/i.test(ref)),
       };
     });
     if (catalogState.hasTmpReference) throw new Error('Asset catalog still exposes .tmp references');
+    if (catalogState.hasBrokenOutdoorChair) throw new Error(`Asset catalog still exposes a broken outdoor table chair set: ${JSON.stringify(catalogState)}`);
 
     await page.locator('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
     await page.waitForFunction(() => Array.isArray(window._userScripts) && window._userScripts.length >= 1, undefined, { timeout: timeoutMs });
@@ -558,6 +560,81 @@ async function runBrowserSmoke() {
         !/,\s*y -?\d/i.test(placementText) ||
         !/,\s*z -?\d/i.test(placementText)) {
       throw new Error(`Game Builder placement status is not readable: ${JSON.stringify(builderMenuPlacementState)}`);
+    }
+
+    const beforeRealGalleryPlacementCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
+    await page.locator('.gb-mobile-quick-tools button[data-gb-action="assets"]').click({ timeout: timeoutMs });
+    await page.waitForSelector('#_catPicker [data-asset-category="furniture"]', { timeout: timeoutMs });
+    const realGalleryCategoryState = await page.evaluate(() => ({
+      categoryCount: document.querySelectorAll('#_catPicker [data-asset-category]').length,
+      furnitureLabel: document.querySelector('#_catPicker [data-asset-category="furniture"]')?.getAttribute('aria-label') || '',
+      searchVisible: !!document.querySelector('#_catSearch'),
+    }));
+    await page.locator('#_catPicker [data-asset-category="furniture"]').click({ timeout: timeoutMs });
+    await page.waitForSelector('#asset-gallery-overlay [data-asset-card="true"]', { timeout: timeoutMs });
+    await page.locator('#asset-gallery-overlay input').fill('chair');
+    await page.waitForFunction(
+      () => [...document.querySelectorAll('#asset-gallery-overlay [data-asset-card="true"]')]
+        .some((card) => /chair/i.test(card.dataset.assetName || card.textContent || '')),
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const realGallerySelected = await page.evaluate(() => {
+      const card = [...document.querySelectorAll('#asset-gallery-overlay [data-asset-card="true"]')]
+        .find((node) => /chair/i.test(node.dataset.assetName || node.textContent || '')) ||
+        document.querySelector('#asset-gallery-overlay [data-asset-card="true"]');
+      return {
+        name: card?.dataset.assetName || '',
+        file: card?.dataset.assetFile || '',
+        path: card?.dataset.assetPath || '',
+      };
+    });
+    await page.locator('#asset-gallery-overlay [data-asset-card="true"]').filter({ hasText: /chair/i }).first().click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      (before) => {
+        const state = window._lastAssetPlacement || {};
+        return (window._engineBridge?.objects?.length || 0) === before &&
+          state.status === 'preview' &&
+          state.source === 'game-builder-assets' &&
+          state.awaitingConfirm === true &&
+          !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]');
+      },
+      beforeRealGalleryPlacementCount,
+      { timeout: timeoutMs }
+    );
+    const realGalleryPreviewState = await page.evaluate(() => ({
+      objectCount: window._engineBridge?.objects?.length || 0,
+      placement: window._lastAssetPlacement || null,
+      toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+      statusText: document.querySelector('#gb-placement-status')?.textContent || '',
+    }));
+    await page.locator('#asset-placement-preview-toolbar [data-placement-action="confirm"]').click({ timeout: timeoutMs });
+    await page.waitForFunction(
+      (before) => {
+        const state = window._lastAssetPlacement || {};
+        return (window._engineBridge?.objects?.length || 0) > before &&
+          state.status === 'placed' &&
+          state.source === 'game-builder-assets' &&
+          state.awaitingConfirm !== true;
+      },
+      beforeRealGalleryPlacementCount,
+      { timeout: timeoutMs }
+    );
+    const realGalleryPlacementState = await page.evaluate(() => ({
+      objectCount: window._engineBridge?.objects?.length || 0,
+      placement: window._lastAssetPlacement || null,
+      toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar'),
+    }));
+    if (realGalleryCategoryState.categoryCount < 10 ||
+        !/Furniture/i.test(realGalleryCategoryState.furnitureLabel) ||
+        !realGalleryCategoryState.searchVisible ||
+        !/chair/i.test(realGallerySelected.name || '') ||
+        realGalleryPreviewState.objectCount !== beforeRealGalleryPlacementCount ||
+        realGalleryPreviewState.placement?.status !== 'preview' ||
+        !realGalleryPreviewState.placement?.awaitingConfirm ||
+        realGalleryPlacementState.objectCount <= beforeRealGalleryPlacementCount ||
+        realGalleryPlacementState.toolbarVisible) {
+      throw new Error(`Real Asset Library gallery placement failed: ${JSON.stringify({ realGalleryCategoryState, realGallerySelected, realGalleryPreviewState, realGalleryPlacementState })}`);
     }
 
     const userImportState = await page.evaluate(async () => {
@@ -3532,6 +3609,12 @@ async function runBrowserSmoke() {
       };
     });
     state.savedProjectVersion = savedProjectState.version;
+    state.realGalleryCategoryCount = realGalleryCategoryState.categoryCount;
+    state.realGallerySelectedName = realGallerySelected.name;
+    state.realGallerySelectedFile = realGallerySelected.file;
+    state.realGalleryPreviewStatus = realGalleryPreviewState.placement?.status || '';
+    state.realGalleryPlacementStatus = realGalleryPlacementState.placement?.status || '';
+    state.realGalleryPlacementObjectCount = realGalleryPlacementState.objectCount;
     state.rawBuildCitySamples = rawBuildCityPerformanceState.samples;
     state.rawBuildCityFps = rawBuildCityPerformanceState.fps;
     state.rawBuildCityFrameMs = rawBuildCityPerformanceState.avgFrameMs;
@@ -4567,6 +4650,7 @@ console.log(`Mode: ${browserState.mode}`);
 console.log(`Inspector health: ${browserState.inspectorHealthStatus || 'missing'} (${browserState.inspectorHealthComponents || 0} components, ${browserState.inspectorMetricCount || 0} metrics)`);
 console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`);
 console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
+console.log(`Real gallery placement: ${browserState.realGallerySelectedName || 'missing'} (${browserState.realGallerySelectedFile || 'missing'}), preview ${browserState.realGalleryPreviewStatus || 'missing'}, final ${browserState.realGalleryPlacementStatus || 'missing'}, categories ${browserState.realGalleryCategoryCount || 0}`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands, ${browserState.savedProjectValidationFixHistoryCount || 0} validation fixes`);
