@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `5dcfca4f`
+- Current deployed source commit for the public engine code: `7ea18c67`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,11 +36,11 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `6d642715-4382-4376-bbdd-afb64a53712c`
-- Latest production deployment URL: `https://6d642715.crateship-games.pages.dev`
+- Latest production deployment ID: `dbe5055a-8ba7-419b-8357-3425c0911c38`
+- Latest production deployment URL: `https://dbe5055a.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `5dcfca4`
-- Main live page bundle after the deploy: `/assets/play-C1yIcOfW.js`
+- Source shown by Cloudflare: `7ea18c6`
+- Main live page bundle after the deploy: `/assets/play-csoJR0wx.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-DUO4EInw.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BcIi53i4.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
@@ -50,6 +50,57 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `7ea18c67` (`Use real mouse events in mode smoke`)
+- Engine code commit in this deploy: `c305cac6` (`Isolate editor view and play modes`)
+- Final Cloudflare deployment: `dbe5055a-8ba7-419b-8357-3425c0911c38`
+- Final deployment URL: `https://dbe5055a.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- App deploy command:
+
+```powershell
+npm run check
+git diff --check
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=7ea18c674daf6870cd1538d4fd094a2dd032e488 --commit-message="Use real mouse events in mode smoke" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`, `.deploy\assets\play-csoJR0wx.js=True`
+- Deploy upload evidence: final aligned deploy uploaded `0` changed files, reused `111` already-uploaded files, uploaded the Functions bundle, `_headers`, and `_routes.json`. The preceding code deploy for `c305cac6` uploaded `6` changed files and reused `105`.
+- Main app bundle after deploy: `/assets/play-csoJR0wx.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-DUO4EInw.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui-BcIi53i4.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=mode-isolation-7ea18c6`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-mode-isolation-7ea18c6`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-mode-isolation-7ea18c6.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-mode-isolation-7ea18c6.png`
+- Production smoke evidence:
+  - Apex and `www` smoke loaded `/assets/play-csoJR0wx.js`, asset host manifest `6f09cc09da2f`, and the separate asset host returned `200` for checked GLB/BIN/JPG assets and expected `404` for the deliberate missing-asset check.
+  - New mode isolation smoke verified View mode keeps camera controls enabled while scene clicks do not select objects, Play mode disables editor orbit controls and prevents wheel-driven camera roll, and returning to Edit restores editor controls.
+  - Real desktop Asset Library still opens Furniture, searches `chair`, selects `Chair 1`, verifies preview state first, then confirms final placement.
+  - Category sweep still verifies Vehicles, Rocks, and Food with `30` visible cards each and `0` bad model/texture responses.
+  - Hidden unavailable assets still reports `100`; this includes the broken table/chair, Namaqualand rocks/stones, Moon Rock 01, Food Pears Asian 01, and `50` deduped duplicate Kenney car entries.
+  - Apex raw Build City frame probe: `64.5 FPS`, `15.5 ms` average frame, `0.9 ms` update, `14.6 ms` render.
+  - WWW raw Build City frame probe: `64.1 FPS`, `15.6 ms` average frame, `0.9 ms` update, `14.6 ms` render.
+  - Apex and `www` phone/tablet viewport probes still open Quick Tools Asset Library and place `Bathroom Bathtub` after confirming preview.
+  - Apex and `www` smoke passed publish, marketplace, game detail, project save/load, playable export, validation, admin guard, cleanup Worker readiness, asset host, inventory, mission, NPC, merchant, door trigger, enemy wave, and respawn flows.
+
+What changed in this deploy:
+
+- `engine.mjs`
+  - Added a mode interaction state layer for Edit, View, and Play.
+  - View mode now clears selection, cancels edit-only previews/tools, and keeps OrbitControls enabled for camera-only navigation.
+  - Play mode now keeps editor orbit controls disabled and blocks wheel/pointer input from reaching OrbitControls, preventing scroll/drag camera roll.
+  - Pointer up/move handling now restores camera controls according to the current mode instead of assuming only Edit can use camera controls.
+- `scripts/smoke-production.mjs`
+  - Added production mode-isolation smoke coverage for View click behavior, Play wheel camera stability, and Edit restoration.
+  - Uses real Playwright mouse events for the View-mode click check so OrbitControls receives a browser-valid pointer sequence.
+
+Previous app-only deploy on 2026-05-23:
 
 - Final commit deployed: `5dcfca4f` (`Harden gallery asset availability`)
 - Final Cloudflare deployment: `6d642715-4382-4376-bbdd-afb64a53712c`
