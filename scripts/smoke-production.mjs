@@ -678,6 +678,77 @@ async function runBrowserSmoke() {
       throw new Error(`Real gallery category sweep failed: ${JSON.stringify({ gallerySweepState, gallerySweepBadResponses })}`);
     }
 
+    const categoryPlacementBadStart = badAssetResponses.length;
+    const categoryPlacementState = [];
+    for (const category of ['vehicles', 'weapons', 'buildings', 'nature']) {
+      const beforeCategoryPlacementCount = await page.evaluate(() => window._engineBridge?.objects?.length || 0);
+      await page.locator('.gb-mobile-quick-tools button[data-gb-action="assets"]').click({ timeout: timeoutMs });
+      await page.waitForSelector('#_catPicker', { timeout: timeoutMs });
+      await page.locator(`#_catPicker [data-asset-category="${category}"]`).click({ timeout: timeoutMs });
+      await page.waitForSelector('#asset-gallery-overlay [data-asset-card="true"]', { timeout: timeoutMs });
+      const selectedCategoryAsset = await page.evaluate((categoryName) => {
+        const first = document.querySelector('#asset-gallery-overlay [data-asset-card="true"]');
+        return {
+          category: categoryName,
+          name: first?.dataset.assetName || '',
+          file: first?.dataset.assetFile || '',
+          path: first?.dataset.assetPath || '',
+        };
+      }, category);
+      await page.locator('#asset-gallery-overlay [data-asset-card="true"]').first().click({ timeout: timeoutMs });
+      await page.waitForFunction(
+        (before) => (window._engineBridge?.objects?.length || 0) === before &&
+          window._lastAssetPlacement?.status === 'preview' &&
+          window._lastAssetPlacement?.awaitingConfirm === true &&
+          !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+        beforeCategoryPlacementCount,
+        { timeout: timeoutMs }
+      );
+      const previewState = await page.evaluate(() => ({
+        placement: window._lastAssetPlacement || null,
+        toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+      }));
+      await page.locator('#asset-placement-preview-toolbar [data-placement-action="confirm"]').click({ timeout: timeoutMs });
+      await page.waitForFunction(
+        (before) => (window._engineBridge?.objects?.length || 0) > before &&
+          window._lastAssetPlacement?.status === 'placed' &&
+          !!window._lastAssetPlacement?.objectId,
+        beforeCategoryPlacementCount,
+        { timeout: timeoutMs }
+      );
+      const placedState = await page.evaluate((before) => ({
+        placement: window._lastAssetPlacement || null,
+        objectCount: window._engineBridge?.objects?.length || 0,
+        added: (window._engineBridge?.objects?.length || 0) - before,
+        toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar'),
+      }), beforeCategoryPlacementCount);
+      categoryPlacementState.push({
+        ...selectedCategoryAsset,
+        previewStatus: previewState.placement?.status || '',
+        previewAwaitingConfirm: previewState.placement?.awaitingConfirm === true,
+        previewToolbarVisible: previewState.toolbarVisible,
+        placedStatus: placedState.placement?.status || '',
+        placedName: placedState.placement?.name || '',
+        placedSource: placedState.placement?.source || '',
+        placedObjectId: placedState.placement?.objectId || '',
+        added: placedState.added,
+        toolbarVisibleAfterPlace: placedState.toolbarVisible,
+      });
+    }
+    const categoryPlacementBadResponses = badAssetResponses.slice(categoryPlacementBadStart);
+    if (categoryPlacementBadResponses.length ||
+        categoryPlacementState.some((entry) => !entry.name ||
+          entry.previewStatus !== 'preview' ||
+          !entry.previewAwaitingConfirm ||
+          !entry.previewToolbarVisible ||
+          entry.placedStatus !== 'placed' ||
+          entry.placedSource !== 'game-builder-assets' ||
+          !entry.placedObjectId ||
+          entry.added <= 0 ||
+          entry.toolbarVisibleAfterPlace)) {
+      throw new Error(`Real category asset placement failed: ${JSON.stringify({ categoryPlacementState, categoryPlacementBadResponses })}`);
+    }
+
     const userImportState = await page.evaluate(async () => {
       const before = window._engineBridge?.objects?.length || 0;
       if (typeof window._importGLBFile !== 'function' ||
@@ -3758,6 +3829,8 @@ async function runBrowserSmoke() {
     state.realGalleryPlacementObjectCount = realGalleryPlacementState.objectCount;
     state.gallerySweepCategories = gallerySweepState.map((entry) => `${entry.category}:${entry.visibleCards || 0}`);
     state.gallerySweepBadResponses = gallerySweepBadResponses.length;
+    state.categoryPlacements = categoryPlacementState.map((entry) => `${entry.category}:${entry.placedName || entry.name || 'missing'}`);
+    state.categoryPlacementBadResponses = categoryPlacementBadResponses.length;
     state.rawBuildCitySamples = rawBuildCityPerformanceState.samples;
     state.rawBuildCityFps = rawBuildCityPerformanceState.fps;
     state.rawBuildCityFrameMs = rawBuildCityPerformanceState.avgFrameMs;
@@ -4539,6 +4612,19 @@ async function runViewportBuildCityProbe(label, options) {
     const builderMobileLayout = await page.evaluate(() => {
       const grid = document.querySelector('#gb-project .gb-grid') || document.querySelector('.gb-grid');
       const columns = grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length : 0;
+      const modeDock = document.querySelector('#gb-mode-dock');
+      const modeDockRect = modeDock?.getBoundingClientRect();
+      const modeButtons = [...document.querySelectorAll('#gb-mode-dock .gb-mode-dock-btn')].map((button) => {
+        const rect = button.getBoundingClientRect();
+        return {
+          text: button.textContent.trim(),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          top: Math.round(rect.top),
+          bottom: Math.round(rect.bottom),
+          nowrap: getComputedStyle(button).whiteSpace,
+        };
+      });
       const clipped = [...document.querySelectorAll('#game-builder-panel button')]
         .filter((button) => button.offsetParent !== null)
         .filter((button) => button.scrollWidth > button.clientWidth + 2 || button.scrollHeight > button.clientHeight + 2)
@@ -4550,13 +4636,29 @@ async function runViewportBuildCityProbe(label, options) {
           scrollHeight: button.scrollHeight,
         }))
         .slice(0, 8);
-      return { columns, clipped };
+      return {
+        columns,
+        clipped,
+        modeDock: {
+          top: Math.round(modeDockRect?.top || 0),
+          bottom: Math.round(modeDockRect?.bottom || 0),
+          height: Math.round(modeDockRect?.height || 0),
+          width: Math.round(modeDockRect?.width || 0),
+        },
+        modeButtons,
+      };
     });
     if (options.width <= 900 && builderMobileLayout.columns > 2) {
       throw new Error(`${label} viewport Builder grid did not collapse to two columns: ${JSON.stringify(builderMobileLayout)}`);
     }
     if (builderMobileLayout.clipped.length) {
       throw new Error(`${label} viewport Builder buttons are clipping text: ${JSON.stringify(builderMobileLayout)}`);
+    }
+    if (options.width <= 900 &&
+        (builderMobileLayout.modeDock.height > 50 ||
+          builderMobileLayout.modeDock.bottom > options.height - 78 ||
+          builderMobileLayout.modeButtons.some((button) => button.height > 38 || button.nowrap !== 'nowrap'))) {
+      throw new Error(`${label} viewport mode dock is crowding or wrapping text: ${JSON.stringify(builderMobileLayout)}`);
     }
     let mobileAssetMenu = null;
     if (options.width <= 900) {
@@ -4795,6 +4897,7 @@ console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets} 
 console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
 console.log(`Real gallery placement: ${browserState.realGallerySelectedName || 'missing'} (${browserState.realGallerySelectedFile || 'missing'}), preview ${browserState.realGalleryPreviewStatus || 'missing'}, final ${browserState.realGalleryPlacementStatus || 'missing'}, categories ${browserState.realGalleryCategoryCount || 0}`);
 console.log(`Gallery sweep: ${(browserState.gallerySweepCategories || []).join(', ') || 'missing'}, bad responses ${browserState.gallerySweepBadResponses || 0}`);
+console.log(`Category placements: ${(browserState.categoryPlacements || []).join(', ') || 'missing'}, bad responses ${browserState.categoryPlacementBadResponses || 0}`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands, ${browserState.savedProjectValidationFixHistoryCount || 0} validation fixes`);
