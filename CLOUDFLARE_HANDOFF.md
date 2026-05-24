@@ -1,6 +1,6 @@
 # CrateShip Games Cloudflare Handoff
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 This file is the operational handoff for the real CrateShip Games web engine at
 `https://crateshipgames.com/play`. Use it before changing or deploying the web
@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `7ea18c67`
+- Current deployed source commit for the public engine code: `e43ab879`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,20 +36,71 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `dbe5055a-8ba7-419b-8357-3425c0911c38`
-- Latest production deployment URL: `https://dbe5055a.crateship-games.pages.dev`
+- Latest production deployment ID: `2557db3a-5d51-4e9a-81fd-2379c4613710`
+- Latest production deployment URL: `https://2557db3a.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `7ea18c6`
-- Main live page bundle after the deploy: `/assets/play-csoJR0wx.js`
+- Source shown by Cloudflare: `e43ab87`
+- Main live page bundle after the deploy: `/assets/play-B6RthAUu.js`
 - Lazy App Builder chunk after the deploy: `/assets/app-builder-DUO4EInw.js`
-- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BcIi53i4.js`
+- Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-B0tVIhst.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
 - Latest asset-host deployment URL: `https://4ab7dcd8.crateship-games-assets.pages.dev`
 - Asset-host source shown by Cloudflare: `6f09cc0`
 - Current asset manifest version: `6f09cc09da2f`
 
-Latest app-only deploy on 2026-05-23:
+Latest app-only deploy on 2026-05-24:
+
+- Final commit deployed: `e43ab879` (`Polish mobile builder dock and asset smoke`)
+- Final Cloudflare deployment: `2557db3a-5d51-4e9a-81fd-2379c4613710`
+- Final deployment URL: `https://2557db3a.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- App deploy command:
+
+```powershell
+npm run check
+git diff --check
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=e43ab87922bc1fb9b22b2cc0e2845a892f3ed57e --commit-message="Polish mobile builder dock and asset smoke" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`, `.deploy\assets\play-B6RthAUu.js=True`, `.deploy\assets\game-builder-ui-B0tVIhst.js=True`
+- Deploy upload evidence: uploaded `5` changed files, reused `106` already-uploaded files, uploaded the Functions bundle, `_headers`, and `_routes.json`.
+- Main app bundle after deploy: `/assets/play-B6RthAUu.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-DUO4EInw.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui-B0tVIhst.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=builder-assets-e43ab87`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-builder-assets-e43ab87`
+- Focused live phone dock check passed: `https://crateshipgames.com/play?verify=phone-dock-e43ab87`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-builder-assets-e43ab87.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-builder-assets-e43ab87.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\live-phone-dock-e43ab87.png`
+- Production smoke evidence:
+  - Apex and `www` smoke loaded `/assets/play-B6RthAUu.js`, asset host manifest `6f09cc09da2f`, and the separate asset host stayed in use.
+  - Real desktop Asset Library still opens Furniture, searches `chair`, selects `Chair 1`, verifies preview state first, then confirms final placement.
+  - Category placement smoke now places real assets from multiple sections: Vehicles `Tank`, Weapons `Axe Small`, Buildings `1Story Gableroof Mat`, and Nature `Birchtree 1`; bad model/texture responses were `0`.
+  - Category sweep still verifies Vehicles, Rocks, and Food with `30` visible cards each and `0` bad model/texture responses.
+  - Apex raw Build City frame probe: `50 FPS`, `20 ms` average frame, `0.9 ms` update, `19.1 ms` render.
+  - WWW raw Build City frame probe: `34.4 FPS`, `29.1 ms` average frame, `1.4 ms` update, `27.7 ms` render.
+  - Apex phone viewport probe: `232.6 FPS`, `4.3 ms` average frame, mobile controls ready, Asset Library placed `Bathroom Bathtub`.
+  - Apex tablet viewport probe: `51.8 FPS`, `19.3 ms` average frame, mobile controls ready, Asset Library placed `Bathroom Bathtub`.
+  - Phone dock visual check measured the Edit/View/Play dock at `46px` high, `300px` wide, above the bottom controls, with all mode labels on one line.
+  - Apex and `www` smoke passed publish, marketplace, game detail, project save/load, playable export, validation, admin guard, cleanup Worker readiness, asset host, inventory, mission, NPC, merchant, door trigger, enemy wave, and respawn flows.
+
+What changed in this deploy:
+
+- `game-builder-ui.mjs`
+  - Tightened the mobile Edit/View/Play dock so labels stay on one line and the dock sits above bottom controls instead of covering them.
+  - Added fixed mobile button sizing and text overflow behavior so `View` no longer wraps on phone screens.
+- `scripts/smoke-production.mjs`
+  - Added real category asset placement coverage for Vehicles, Weapons, Buildings, and Nature.
+  - Added a mobile dock viewport guard that fails if the mode dock wraps, grows too tall, or crowds bottom controls.
+
+Previous app-only deploy on 2026-05-23:
 
 - Final commit deployed: `7ea18c67` (`Use real mouse events in mode smoke`)
 - Engine code commit in this deploy: `c305cac6` (`Isolate editor view and play modes`)
