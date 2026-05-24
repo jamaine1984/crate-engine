@@ -7596,6 +7596,8 @@ function _filterAssetCatalogForAvailableModels(catalog, modelCatalog) {
   const pathMap = _buildAvailableModelPathMap(modelCatalog);
   if (!pathMap.size) return catalog;
   let hidden = 0;
+  let normalized = 0;
+  let deduped = 0;
   const filtered = {};
 
   Object.entries(catalog || {}).forEach(([category, items]) => {
@@ -7603,6 +7605,7 @@ function _filterAssetCatalogForAvailableModels(catalog, modelCatalog) {
       filtered[category] = items;
       return;
     }
+    const seenResolvedPaths = new Set();
     filtered[category] = items.map((item) => {
       if (!item || typeof item !== 'object') return null;
       if (item._b64 || item.source === 'user-saved' || item.source === 'user-generated' || item.source === 'marketplace') return item;
@@ -7611,15 +7614,30 @@ function _filterAssetCatalogForAvailableModels(catalog, modelCatalog) {
       if (!rawRef) return null;
       if (/^(?:https?:|blob:|data:)/i.test(rawRef)) return item;
       if (/\.tmp$/i.test(rawRef) || /\.glb\.tmp$/i.test(rawRef)) return null;
-      const resolved = _catalogCandidatesForItem(item).map((candidate) => pathMap.get(candidate)).find(Boolean);
+      const normalizedRef = _normalizeCatalogModelRef(rawRef);
+      const duplicateFolderFix = _withoutDuplicateLeadingFolder(normalizedRef);
+      const resolved = duplicateFolderFix !== normalizedRef && pathMap.has(duplicateFolderFix)
+        ? pathMap.get(duplicateFolderFix)
+        : _catalogCandidatesForItem(item).map((candidate) => pathMap.get(candidate)).find(Boolean);
       if (!resolved) return null;
-      return resolved === rawRef || resolved === item.path ? item : { ...item, path: resolved };
+      const dedupeKey = _normalizeCatalogModelRef(resolved);
+      if (dedupeKey && seenResolvedPaths.has(dedupeKey)) {
+        deduped += 1;
+        return null;
+      }
+      if (dedupeKey) seenResolvedPaths.add(dedupeKey);
+      if (resolved === rawRef || resolved === item.path) return item;
+      normalized += 1;
+      return { ...item, path: resolved };
     }).filter(Boolean);
     hidden += items.length - filtered[category].length;
   });
 
   if (hidden > 0) console.log('[Catalog] Hidden unavailable asset entries:', hidden);
+  if (normalized > 0 || deduped > 0) console.log('[Catalog] Normalized asset entries:', normalized, 'deduped:', deduped);
   window._assetCatalogHiddenUnavailable = hidden;
+  window._assetCatalogNormalized = normalized;
+  window._assetCatalogDeduped = deduped;
   return filtered;
 }
 

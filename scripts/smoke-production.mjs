@@ -462,15 +462,20 @@ async function runBrowserSmoke() {
       const refs = items.map((item) => String(item.path || item.file || ''));
       return {
         hiddenUnavailable: window._assetCatalogHiddenUnavailable || 0,
+        normalized: window._assetCatalogNormalized || 0,
+        deduped: window._assetCatalogDeduped || 0,
         itemCount: items.length,
         furnitureCount: catalog?.furniture?.length || 0,
         hasTmpReference: refs.some((ref) => /\.tmp$/i.test(ref) || /\.glb\.tmp$/i.test(ref)),
         unresolvedDuplicatedKenneyPath: refs.some((ref) => /kenney_cars\/kenney_cars\//i.test(ref) && !/models\/catalog\.json/i.test(ref)),
         hasBrokenOutdoorChair: refs.some((ref) => /ph_outdoor_table_chair_set_01|outdoor_table_chair_set_01/i.test(ref)),
+        hasBrokenSweepAsset: refs.some((ref) => /ph_namaqualand_(?:rocks|stones)_01|namaqualand_(?:rocks|stones)_01|ph_moon_rock_01|moon_rock_01|ph_food_pears_asian_01|food_pears_asian_01/i.test(ref)),
       };
     });
     if (catalogState.hasTmpReference) throw new Error('Asset catalog still exposes .tmp references');
+    if (catalogState.unresolvedDuplicatedKenneyPath) throw new Error(`Asset catalog still exposes duplicated Kenney car paths: ${JSON.stringify(catalogState)}`);
     if (catalogState.hasBrokenOutdoorChair) throw new Error(`Asset catalog still exposes a broken outdoor table chair set: ${JSON.stringify(catalogState)}`);
+    if (catalogState.hasBrokenSweepAsset) throw new Error(`Asset catalog still exposes known broken sweep assets: ${JSON.stringify(catalogState)}`);
 
     await page.locator('#gb-systems [data-gb-system="inventory"] button[data-gb-action="install-system"]').click({ timeout: timeoutMs });
     await page.waitForFunction(() => Array.isArray(window._userScripts) && window._userScripts.length >= 1, undefined, { timeout: timeoutMs });
@@ -635,6 +640,42 @@ async function runBrowserSmoke() {
         realGalleryPlacementState.objectCount <= beforeRealGalleryPlacementCount ||
         realGalleryPlacementState.toolbarVisible) {
       throw new Error(`Real Asset Library gallery placement failed: ${JSON.stringify({ realGalleryCategoryState, realGallerySelected, realGalleryPreviewState, realGalleryPlacementState })}`);
+    }
+
+    const gallerySweepBadStart = badAssetResponses.length;
+    const gallerySweepState = [];
+    for (const category of ['vehicles', 'rocks', 'food']) {
+      await page.locator('.gb-mobile-quick-tools button[data-gb-action="assets"]').click({ timeout: timeoutMs });
+      await page.waitForSelector('#_catPicker', { timeout: timeoutMs });
+      const categoryButton = page.locator(`#_catPicker [data-asset-category="${category}"]`);
+      if (await categoryButton.count() === 0) {
+        await page.keyboard.press('Escape');
+        gallerySweepState.push({ category, missing: true });
+        continue;
+      }
+      await categoryButton.click({ timeout: timeoutMs });
+      await page.waitForSelector('#asset-gallery-overlay [data-asset-card="true"]', { timeout: timeoutMs });
+      await page.waitForTimeout(1400);
+      await page.evaluate(() => {
+        const scrollArea = document.querySelector('#asset-gallery-overlay div[style*="overflow-y"]');
+        if (scrollArea) scrollArea.scrollTop = scrollArea.scrollHeight * 0.5;
+      });
+      await page.waitForTimeout(1200);
+      gallerySweepState.push(await page.evaluate((categoryName) => {
+        const cards = [...document.querySelectorAll('#asset-gallery-overlay [data-asset-card="true"]')];
+        return {
+          category: categoryName,
+          visibleCards: cards.length,
+          firstNames: cards.slice(0, 6).map((card) => card.dataset.assetName || card.textContent?.trim() || ''),
+          duplicatedKenneyCards: cards.filter((card) => /kenney_cars\/kenney_cars\//i.test(card.dataset.assetFile || card.dataset.assetPath || '')).length,
+        };
+      }, category));
+      await page.keyboard.press('Escape');
+    }
+    const gallerySweepBadResponses = badAssetResponses.slice(gallerySweepBadStart);
+    if (gallerySweepBadResponses.length ||
+        gallerySweepState.some((entry) => entry.visibleCards === 0 || entry.duplicatedKenneyCards > 0)) {
+      throw new Error(`Real gallery category sweep failed: ${JSON.stringify({ gallerySweepState, gallerySweepBadResponses })}`);
     }
 
     const userImportState = await page.evaluate(async () => {
@@ -3601,6 +3642,8 @@ async function runBrowserSmoke() {
         mode: window._currentMode || '',
         hasModeButtons: document.querySelectorAll('[data-gb-mode]').length >= 3,
         hiddenUnavailableAssets: window._assetCatalogHiddenUnavailable || 0,
+        assetCatalogNormalized: window._assetCatalogNormalized || 0,
+        assetCatalogDeduped: window._assetCatalogDeduped || 0,
         placementStatus: window._lastAssetPlacement?.status || '',
         placementSource: window._lastAssetPlacement?.source || '',
         scriptCount: Array.isArray(window._userScripts) ? window._userScripts.length : 0,
@@ -3615,6 +3658,8 @@ async function runBrowserSmoke() {
     state.realGalleryPreviewStatus = realGalleryPreviewState.placement?.status || '';
     state.realGalleryPlacementStatus = realGalleryPlacementState.placement?.status || '';
     state.realGalleryPlacementObjectCount = realGalleryPlacementState.objectCount;
+    state.gallerySweepCategories = gallerySweepState.map((entry) => `${entry.category}:${entry.visibleCards || 0}`);
+    state.gallerySweepBadResponses = gallerySweepBadResponses.length;
     state.rawBuildCitySamples = rawBuildCityPerformanceState.samples;
     state.rawBuildCityFps = rawBuildCityPerformanceState.fps;
     state.rawBuildCityFrameMs = rawBuildCityPerformanceState.avgFrameMs;
@@ -4648,9 +4693,10 @@ console.log(`Scene rows: ${browserState.sceneRows}`);
 console.log(`Stats: ${browserState.stats}`);
 console.log(`Mode: ${browserState.mode}`);
 console.log(`Inspector health: ${browserState.inspectorHealthStatus || 'missing'} (${browserState.inspectorHealthComponents || 0} components, ${browserState.inspectorMetricCount || 0} metrics)`);
-console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets}`);
+console.log(`Hidden unavailable assets: ${browserState.hiddenUnavailableAssets} (normalized ${browserState.assetCatalogNormalized || 0}, deduped ${browserState.assetCatalogDeduped || 0})`);
 console.log(`Placement: ${browserState.placementStatus} (${browserState.placementSource})`);
 console.log(`Real gallery placement: ${browserState.realGallerySelectedName || 'missing'} (${browserState.realGallerySelectedFile || 'missing'}), preview ${browserState.realGalleryPreviewStatus || 'missing'}, final ${browserState.realGalleryPlacementStatus || 'missing'}, categories ${browserState.realGalleryCategoryCount || 0}`);
+console.log(`Gallery sweep: ${(browserState.gallerySweepCategories || []).join(', ') || 'missing'}, bad responses ${browserState.gallerySweepBadResponses || 0}`);
 console.log(`Scripts: ${browserState.scriptCount}`);
 console.log(`Project saves: ${browserState.projectSaveCount}`);
 console.log(`Project snapshot: v${browserState.savedProjectVersion} ${browserState.savedProjectObjectCount} objects ${browserState.savedProjectScriptCount} scripts ${browserState.savedProjectCommandCount} commands, ${browserState.savedProjectValidationFixHistoryCount || 0} validation fixes`);

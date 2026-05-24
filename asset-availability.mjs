@@ -9,6 +9,46 @@ const KNOWN_UNAVAILABLE_MODELS = [
     ],
     reason: 'This glTF references outdoor_table_chair_set_01.bin and textures that are not present on the production asset host.',
   },
+  {
+    id: 'ph_namaqualand_rocks_01',
+    refs: [
+      'ph_namaqualand_rocks_01',
+      'namaqualand_rocks_01',
+      'namaqualand rocks 01',
+      'Namaqualand Rocks 01',
+    ],
+    reason: 'This glTF references namaqualand_rocks_01.bin and textures that are not present on the production asset host.',
+  },
+  {
+    id: 'ph_namaqualand_stones_01',
+    refs: [
+      'ph_namaqualand_stones_01',
+      'namaqualand_stones_01',
+      'namaqualand stones 01',
+      'Namaqualand Stones 01',
+    ],
+    reason: 'This glTF references namaqualand_stones_01.bin and textures that are not present on the production asset host.',
+  },
+  {
+    id: 'ph_moon_rock_01',
+    refs: [
+      'ph_moon_rock_01',
+      'moon_rock_01',
+      'moon rock 01',
+      'Moon Rock 01',
+    ],
+    reason: 'This glTF references moon_rock_01.bin and textures that are not present on the production asset host.',
+  },
+  {
+    id: 'ph_food_pears_asian_01',
+    refs: [
+      'ph_food_pears_asian_01',
+      'food_pears_asian_01',
+      'food pears asian 01',
+      'Food Pears Asian 01',
+    ],
+    reason: 'This glTF references food_pears_asian_01.bin and textures that are not present on the production asset host.',
+  },
 ];
 
 function normalizeModelRef(value) {
