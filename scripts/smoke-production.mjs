@@ -926,17 +926,41 @@ async function runBrowserSmoke() {
       throw new Error(`Placement status did not name the placed asset: ${JSON.stringify(placementState)}`);
     }
 
-    const modeIsolationState = await page.evaluate(async () => {
+    const readModeIsolationSnapshot = (label) => page.evaluate((snapshotLabel) => ({
+      label: snapshotLabel,
+      mode: window._currentMode || '',
+      playMode: window._playMode === true,
+      controlsEnabled: window._ctrl?.enabled === true,
+      selectedId: window._engineBridge?.getSelected?.()?.uuid || '',
+      interaction: window._modeInteractionState || null,
+    }), label);
+    const canvasBox = await page.locator('canvas').boundingBox({ timeout: timeoutMs });
+    if (!canvasBox) throw new Error('Mode isolation smoke could not find the WebGL canvas');
+    const canvasCenter = {
+      x: canvasBox.x + canvasBox.width / 2,
+      y: canvasBox.y + canvasBox.height / 2,
+    };
+
+    await page.evaluate(() => window._setMode?.('explore'));
+    await page.waitForFunction(
+      () => window._currentMode === 'explore' && window._ctrl?.enabled === true,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const viewBefore = await readModeIsolationSnapshot('view-before-click');
+    await page.mouse.click(canvasCenter.x, canvasCenter.y);
+    await page.waitForTimeout(80);
+    const viewAfterClick = await readModeIsolationSnapshot('view-after-click');
+
+    await page.evaluate(() => window._setMode?.('play'));
+    await page.waitForFunction(
+      () => window._currentMode === 'play' && window._playMode === true && window._ctrl?.enabled === false,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const playBeforeWheel = await readModeIsolationSnapshot('play-before-wheel');
+    const playAfterWheel = await page.evaluate((center) => {
       const canvas = document.querySelector('canvas');
-      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-      const waitFor = async (predicate, timeout = 3500) => {
-        const started = performance.now();
-        while (performance.now() - started < timeout) {
-          if (predicate()) return true;
-          await sleep(50);
-        }
-        return false;
-      };
       const snapshot = (label) => ({
         label,
         mode: window._currentMode || '',
@@ -946,57 +970,34 @@ async function runBrowserSmoke() {
         interaction: window._modeInteractionState || null,
       });
       if (!canvas) return { missingCanvas: true };
-      const rect = canvas.getBoundingClientRect();
-      const center = {
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
-      };
-
-      window._setMode?.('explore');
-      await waitFor(() => window._currentMode === 'explore' && window._ctrl?.enabled === true);
-      const viewBefore = snapshot('view-before-click');
-      const pointerOptions = {
-        bubbles: true,
-        cancelable: true,
-        pointerType: 'mouse',
-        pointerId: 91,
-        button: 0,
-        buttons: 1,
-        ...center,
-      };
-      canvas.dispatchEvent(new PointerEvent('pointerdown', pointerOptions));
-      canvas.dispatchEvent(new PointerEvent('pointerup', { ...pointerOptions, buttons: 0 }));
-      await sleep(80);
-      const viewAfterClick = snapshot('view-after-click');
-
-      window._setMode?.('play');
-      await waitFor(() => window._currentMode === 'play' && window._playMode === true && window._ctrl?.enabled === false);
-      const playBeforeWheel = snapshot('play-before-wheel');
       if (window._cam) window._cam.rotation.z = 0.45;
       const wheelEvent = new WheelEvent('wheel', {
         bubbles: true,
         cancelable: true,
         deltaY: 360,
-        ...center,
+        clientX: center.x,
+        clientY: center.y,
       });
       const wheelDispatchReturned = canvas.dispatchEvent(wheelEvent);
-      await sleep(80);
-      const playAfterWheel = {
+      return {
         ...snapshot('play-after-wheel'),
         cameraRoll: window._cam?.rotation?.z ?? null,
         wheelDefaultPrevented: wheelEvent.defaultPrevented === true,
         wheelDispatchReturned,
         stability: window._playCameraStability || null,
       };
+    }, canvasCenter);
+    await page.waitForTimeout(80);
+    if (playAfterWheel.missingCanvas) throw new Error('Mode isolation smoke could not find the WebGL canvas');
 
-      window._setMode?.('edit');
-      await waitFor(() => window._currentMode === 'edit' && window._playMode !== true && window._ctrl?.enabled === true);
-      const editAfter = snapshot('edit-after-mode-return');
-      return { viewBefore, viewAfterClick, playBeforeWheel, playAfterWheel, editAfter };
-    });
-    if (modeIsolationState.missingCanvas) {
-      throw new Error('Mode isolation smoke could not find the WebGL canvas');
-    }
+    await page.evaluate(() => window._setMode?.('edit'));
+    await page.waitForFunction(
+      () => window._currentMode === 'edit' && window._playMode !== true && window._ctrl?.enabled === true,
+      undefined,
+      { timeout: timeoutMs }
+    );
+    const editAfter = await readModeIsolationSnapshot('edit-after-mode-return');
+    const modeIsolationState = { viewBefore, viewAfterClick, playBeforeWheel, playAfterWheel, editAfter };
     if (modeIsolationState.viewBefore.mode !== 'explore' ||
         modeIsolationState.viewBefore.controlsEnabled !== true ||
         modeIsolationState.viewBefore.selectedId) {
