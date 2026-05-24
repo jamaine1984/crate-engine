@@ -16,7 +16,7 @@ engine so future sessions do not get pointed at the wrong local preview.
 - `www` hostname: `www.crateshipgames.com` is active on the same `crateship-games` Pages project.
 - GitHub repo: `https://github.com/jamaine1984/crate-engine.git`
 - Current local checkout used by Codex: `C:\Users\koike\Downloads\crate-engine-web-latest`
-- Current deployed source commit for the public engine code: `e5219abf`
+- Current deployed source commit for the public engine code: `977d7d21`
 - Current deployed source commit for the public asset cleanup Worker: `eb1cd692`
 - Cloudflare Pages asset project: `crateship-games-assets`
 - Current asset host: `https://crateship-games-assets.pages.dev`
@@ -36,12 +36,12 @@ on this Windows machine. The real production behavior must be checked on
 
 ## Current Production Deployment
 
-- Latest production deployment ID: `e40a7783-8415-4f06-99ff-40f2421db013`
-- Latest production deployment URL: `https://e40a7783.crateship-games.pages.dev`
+- Latest production deployment ID: `f6a652ef-8edc-49f0-aa37-34c259465509`
+- Latest production deployment URL: `https://f6a652ef.crateship-games.pages.dev`
 - Production branch: `main`
-- Source shown by Cloudflare: `e5219ab`
-- Main live page bundle after the deploy: `/assets/play-DDsE9dit.js`
-- Lazy App Builder chunk after the deploy: `/assets/app-builder-gPCLCTUn.js`
+- Source shown by Cloudflare: `977d7d2`
+- Main live page bundle after the deploy: `/assets/play-eZuQBFy_.js`
+- Lazy App Builder chunk after the deploy: `/assets/app-builder-CPcH0bra.js`
 - Lazy Game Builder UI chunk after the deploy: `/assets/game-builder-ui-BcIi53i4.js`
 - Lazy Asset Browser chunk after the deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
 - Latest asset-host deployment ID: `4ab7dcd8-6d39-4472-89f3-3077c2bd904d`
@@ -50,6 +50,57 @@ on this Windows machine. The real production behavior must be checked on
 - Current asset manifest version: `6f09cc09da2f`
 
 Latest app-only deploy on 2026-05-23:
+
+- Final commit deployed: `977d7d21` (`Hide broken catalog assets from gallery`)
+- Final Cloudflare deployment: `f6a652ef-8edc-49f0-aa37-34c259465509`
+- Final deployment URL: `https://f6a652ef.crateship-games.pages.dev`
+- Cleanup Worker unchanged at version ID `9c4ebc8c-db1c-4d59-be90-72cc7a2a8c96` from source `eb1cd692`.
+- App deploy command:
+
+```powershell
+npm run check
+git diff --check
+npm run build
+$env:CRATE_DEPLOY_INCLUDE_ASSETS='false'; npm run prepare:deploy
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=977d7d210beb7646c2d26c256f2c83a938e0a6fa --commit-message="Hide broken catalog assets from gallery" --commit-dirty=false
+```
+
+- Deploy package check: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`, `.deploy\assets\play-eZuQBFy_.js=True`
+- Deploy upload evidence: uploaded `12` changed files, reused `99` already-uploaded files, uploaded the Functions bundle, `_headers`, and `_routes.json`.
+- Main app bundle after deploy: `/assets/play-eZuQBFy_.js`
+- Lazy App Builder chunk after deploy: `/assets/app-builder-CPcH0bra.js`
+- Lazy Game Builder UI chunk after deploy: `/assets/game-builder-ui-BcIi53i4.js`
+- Lazy Asset Browser chunk after deploy: `/assets/asset-browser-ui-C_FMYnlT.js`
+- Asset host stayed unchanged: `https://crateship-games-assets.pages.dev`, manifest `6f09cc09da2f`
+- Primary smoke passed: `https://crateshipgames.com/play?verify=real-gallery-977d7d2`
+- WWW smoke passed: `https://www.crateshipgames.com/play?verify=www-real-gallery-977d7d2`
+- Targeted broken-asset filter probe passed: `https://crateshipgames.com/play?verify=targeted-broken-asset-filter-977d7d2`
+- Screenshots:
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-real-gallery-977d7d2.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\production-smoke-www-real-gallery-977d7d2.png`
+  - `C:\Users\koike\Downloads\crate-engine-web-latest\output\playwright\targeted-broken-asset-filter-977d7d2.png`
+- Production smoke evidence:
+  - Apex and `www` smoke loaded `/assets/play-eZuQBFy_.js`, asset host manifest `6f09cc09da2f`, and the separate asset host returned `200` for checked GLB/BIN/JPG assets and expected `404` for the deliberate missing-asset check.
+  - Real desktop Asset Library path now opens the actual Furniture category, searches `chair`, selects `Chair 1`, verifies preview state first, then confirms final placement.
+  - Hidden unavailable assets now reports `46`; the extra hidden entry is `Outdoor Table Chair Set 01`, which references missing `outdoor_table_chair_set_01.bin` and texture files on the production asset host.
+  - Targeted probe verified `Outdoor Table Chair Set 01` is absent from the loaded catalog, absent from model search, direct placement returns `blocked`, object count stays `0`, and no `outdoor_table_chair_set_01` asset requests fire.
+  - Apex raw Build City frame probe: `52.9 FPS`, `18.9 ms` average frame, `0.9 ms` update, `18 ms` render.
+  - Apex phone and tablet viewport probes still open Quick Tools Asset Library and place `Bathroom Bathtub` after confirming preview.
+  - WWW smoke passed publish, marketplace, game detail, project save/load, playable export, validation, admin guard, cleanup Worker readiness, asset host, inventory, mission, NPC, merchant, door trigger, enemy wave, and respawn flows.
+
+What changed in this deploy:
+
+- `asset-availability.mjs`
+  - Added a shared unavailable-asset registry for production catalog entries whose transitive GLTF dependencies are missing from the asset host.
+- `model-registry.mjs`
+  - Filters known unavailable model entries out of model search and catalog-path resolution.
+- `engine.mjs`
+  - Filters the broken outdoor table/chair asset out of the Game Builder Asset Library.
+  - Blocks stale/direct attempts to place that asset and records a clear `blocked` placement state instead of firing missing-file requests.
+- `scripts/smoke-production.mjs`
+  - Adds real desktop gallery coverage without a picker override: category picker, Furniture search, asset card click, preview confirmation, and no broken catalog references.
+
+Previous app-only deploy on 2026-05-23:
 
 - Final commit deployed: `e5219abf` (`Add confirmed asset placement preview`)
 - Final Cloudflare deployment: `e40a7783-8415-4f06-99ff-40f2421db013`
