@@ -528,6 +528,34 @@ async function runBrowserSmoke() {
         !/Move over the scene/i.test(previewPlacementState.statusText)) {
       throw new Error(`Game Builder asset preview did not wait for confirmation: ${JSON.stringify(previewPlacementState)}`);
     }
+    const previewCanvasBox = await page.locator('canvas').first().boundingBox({ timeout: timeoutMs });
+    if (!previewCanvasBox) throw new Error('Main engine canvas was not measurable during asset preview');
+    await page.mouse.click(previewCanvasBox.x + previewCanvasBox.width * 0.55, previewCanvasBox.y + previewCanvasBox.height * 0.55);
+    await page.waitForFunction(
+      (before) => {
+        const state = window._lastAssetPlacement || {};
+        return (window._engineBridge?.objects?.length || 0) === before &&
+          state.status === 'preview' &&
+          state.awaitingConfirm === true &&
+          !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]') &&
+          !!window._scene?.getObjectByName?.('asset-placement-preview-outline');
+      },
+      beforeBuilderMenuPlacementCount,
+      { timeout: timeoutMs }
+    );
+    const canvasClickPreviewState = await page.evaluate(() => ({
+      objectCount: window._engineBridge?.objects?.length || 0,
+      placement: window._lastAssetPlacement || null,
+      toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+      previewOutlineVisible: !!window._scene?.getObjectByName?.('asset-placement-preview-outline'),
+    }));
+    if (canvasClickPreviewState.objectCount !== beforeBuilderMenuPlacementCount ||
+        canvasClickPreviewState.placement?.status !== 'preview' ||
+        !canvasClickPreviewState.placement?.awaitingConfirm ||
+        !canvasClickPreviewState.toolbarVisible ||
+        !canvasClickPreviewState.previewOutlineVisible) {
+      throw new Error(`Canvas click finalized asset preview instead of only moving it: ${JSON.stringify(canvasClickPreviewState)}`);
+    }
     await page.locator('#asset-placement-preview-toolbar [data-placement-action="confirm"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
       (before) => {

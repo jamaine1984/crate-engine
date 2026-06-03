@@ -3372,7 +3372,7 @@ function beginCatalogAssetPlacement(result, source = 'asset-library') {
     z: startPoint.z,
     awaitingConfirm: true,
   });
-  showToast('Move the preview, then click Place or click the scene');
+  showToast('Move the preview, then click Place.');
   loadCatalogPlacementModel(request, (model, error, loadedUrl = '') => {
     if (placementToken !== activeCatalogPlacementToken) {
       if (model) {
@@ -3434,13 +3434,15 @@ function beginCatalogAssetPlacement(result, source = 'asset-library') {
       event.stopPropagation();
       event.stopImmediatePropagation?.();
       positionPlacementPreview(session, event.clientX, event.clientY);
-      confirmCatalogAssetPlacement('canvas-click');
     };
     session.onKeyDown = (event) => {
       if (!activeCatalogPlacement || activeCatalogPlacement !== session) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         cancelCatalogAssetPlacement('escape');
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        confirmCatalogAssetPlacement('keyboard');
       } else if (event.key.toLowerCase() === 'r') {
         event.preventDefault();
         rotateCatalogAssetPlacement(Math.PI / 8);
@@ -3480,7 +3482,7 @@ function beginUrlAssetPlacement(config = {}) {
     z: startPoint.z,
     awaitingConfirm: true,
   });
-  showToast('Move the preview, then click Place or click the scene');
+  showToast('Move the preview, then click Place.');
   return new Promise((resolve) => {
     gltfLoader.load(url, (gltf) => {
       if (placementToken !== activeCatalogPlacementToken) {
@@ -3559,13 +3561,15 @@ function beginUrlAssetPlacement(config = {}) {
         event.stopPropagation();
         event.stopImmediatePropagation?.();
         positionPlacementPreview(session, event.clientX, event.clientY);
-        confirmCatalogAssetPlacement('canvas-click');
       };
       session.onKeyDown = (event) => {
         if (!activeCatalogPlacement || activeCatalogPlacement !== session) return;
         if (event.key === 'Escape') {
           event.preventDefault();
           cancelCatalogAssetPlacement('escape');
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          confirmCatalogAssetPlacement('keyboard');
         } else if (event.key.toLowerCase() === 'r') {
           event.preventDefault();
           rotateCatalogAssetPlacement(Math.PI / 8);

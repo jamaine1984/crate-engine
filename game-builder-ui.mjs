@@ -3885,7 +3885,7 @@ function renderPlacementStatus() {
   box.append(title, item);
   if (position) box.appendChild(createTextElement('span', 'gb-placement-position', 'Position: ' + position));
   if (status === 'preview') {
-    box.appendChild(createTextElement('span', 'gb-placement-hint', 'Move over the scene, then place or cancel.'));
+    box.appendChild(createTextElement('span', 'gb-placement-hint', 'Move over the scene to set position, then Place or Cancel.'));
     const actions = document.createElement('div');
     actions.className = 'gb-placement-actions';
     actions.append(
