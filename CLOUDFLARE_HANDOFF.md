@@ -51,11 +51,11 @@ on this Windows machine. The real production behavior must be checked on
 
 Pending app-only deploy on 2026-06-03:
 
-- Source commit prepared but not deployed: `e1df6823` (`Polish mobile asset placement UI`)
-- Full source SHA: `e1df6823f99ae4b37246eb66378246b89f4c8528`
-- Pending source commits included: `781dc637` (`Preview imported asset placement`), `9a3a2a1b` (`Separate mobile placement toolbar from mode dock`), `b8afdf74` (`Gate touch camera controls by mode`), `bcbed9d7` (`Fail invalid asset placement visibly`), `e1df6823` (`Polish mobile asset placement UI`)
-- Built main app bundle: `/assets/play-Bi03ZkJU.js`
-- Lazy Game Builder UI chunk: `/assets/game-builder-ui-CD3_5KIg.js`
+- Source commit prepared but not deployed: `b9fbd6f3` (`Require explicit asset placement confirmation`)
+- Full source SHA: `b9fbd6f349c0b7c8569ccc0aebc8629b733a73e4`
+- Pending source commits included: `781dc637` (`Preview imported asset placement`), `9a3a2a1b` (`Separate mobile placement toolbar from mode dock`), `b8afdf74` (`Gate touch camera controls by mode`), `bcbed9d7` (`Fail invalid asset placement visibly`), `e1df6823` (`Polish mobile asset placement UI`), `b9fbd6f3` (`Require explicit asset placement confirmation`)
+- Built main app bundle: `/assets/play-Bg-TnCjT.js`
+- Lazy Game Builder UI chunk: `/assets/game-builder-ui-EmssN5AF.js`
 - Lazy Asset Browser chunk: `/assets/asset-browser-ui-BFAKpzia.js`
 - Checks passed before deploy attempt:
   - `node --check game-builder-ui.mjs`
@@ -65,20 +65,20 @@ Pending app-only deploy on 2026-06-03:
   - `npm run check`
   - `git diff --check` (only Windows LF-to-CRLF warnings)
   - `npm run build`
-  - Focused built-package Playwright QA against local `dist`: mobile Builder menu had no clipped buttons or mode-dock overlap, Furniture category/gallery opened, a chair entered preview with `asset-placement-preview-outline`, and confirming placement added the object and removed the outline. This was source QA only, not proof of a live production deploy.
-- App-only deploy package check before deploy attempt: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`, `.deploy\assets\play-Bi03ZkJU.js=True`, `.deploy\assets\game-builder-ui-CD3_5KIg.js=True`, `.deploy\assets\asset-browser-ui-BFAKpzia.js=True`
+  - Focused built-package Playwright QA against local `dist`: mobile Builder menu had no clipped buttons or mode-dock overlap, Furniture category/gallery opened, a chair entered preview with `asset-placement-preview-outline`, confirming placement added the object and removed the outline, and a separate explicit-placement QA verified canvas clicks only move the preview while the Place button does the add. This was source QA only, not proof of a live production deploy.
+- App-only deploy package check before deploy attempt: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`, `.deploy\assets\play-Bg-TnCjT.js=True`, `.deploy\assets\game-builder-ui-EmssN5AF.js=True`, `.deploy\assets\asset-browser-ui-BFAKpzia.js=True`
 - Deploy command to run after Cloudflare auth is refreshed:
 
 ```powershell
-npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=e1df6823f99ae4b37246eb66378246b89f4c8528 --commit-message="Polish mobile asset placement UI" --commit-dirty=false
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=b9fbd6f349c0b7c8569ccc0aebc8629b733a73e4 --commit-message="Require explicit asset placement confirmation" --commit-dirty=false
 ```
 
 - Cloudflare blocked the previous deploy attempt before upload with `Authentication error [code: 10000]` on `GET /accounts/6573d98c25150fd7b4602e56a0926767/pages/projects/crateship-games`.
 - Retried the previous deploy with `npx wrangler@latest` (`4.97.0`) and with `CLOUDFLARE_ACCOUNT_ID=6573d98c25150fd7b4602e56a0926767`; both attempts failed with the same authentication error.
 - `npx wrangler@latest login` opened the Cloudflare OAuth URL but timed out waiting for the authorization callback. Cloudflare must be re-authenticated in an interactive browser/terminal session before this source commit can be deployed and smoke-verified on the real site.
-- Latest auth check on 2026-06-03: `npx wrangler@latest whoami` still failed with account lookup/authentication errors, so no live deploy was attempted for `e1df6823`.
-- Latest deploy attempt on 2026-06-03: the exact app-only command for `b8afdf74` was retried with `CLOUDFLARE_ACCOUNT_ID=6573d98c25150fd7b4602e56a0926767` using both bundled Wrangler `4.20.0` and `npx wrangler@latest` (`4.97.0`); both failed before upload with `Authentication error [code: 10000]`. A newer package for `e1df6823` is ready but still requires Cloudflare re-authentication before upload.
-- Do not mark `e1df6823` as live until a new Cloudflare deployment ID is created and `https://crateshipgames.com/play` plus `https://www.crateshipgames.com/play` pass production smoke.
+- Latest auth check on 2026-06-03: `npx wrangler@latest whoami` still failed with account lookup/authentication errors, so no live deploy was attempted for `b9fbd6f3`.
+- Latest deploy attempt on 2026-06-03: the exact app-only command for `b8afdf74` was retried with `CLOUDFLARE_ACCOUNT_ID=6573d98c25150fd7b4602e56a0926767` using both bundled Wrangler `4.20.0` and `npx wrangler@latest` (`4.97.0`); both failed before upload with `Authentication error [code: 10000]`. A newer package for `b9fbd6f3` is ready but still requires Cloudflare re-authentication before upload.
+- Do not mark `b9fbd6f3` as live until a new Cloudflare deployment ID is created and `https://crateshipgames.com/play` plus `https://www.crateshipgames.com/play` pass production smoke.
 
 What changed in the pending source commit:
 
@@ -92,8 +92,10 @@ What changed in the pending source commit:
   - Added renderable GLB validation so empty or invalid model scenes fail visibly instead of creating invisible previews/objects.
   - Failed asset placements now record retry mode, show a placement error, keep object counts unchanged, and route Retry back through the correct preview/direct placement path.
   - Added a blue `BoxHelper` outline named `asset-placement-preview-outline` around active placement previews so selected assets are visibly marked before confirmation; the outline is disposed on Place or Cancel.
+  - Changed preview canvas clicks/taps to reposition only; Place or Enter now explicitly confirms the asset, preventing accidental object creation while trying to move around or inspect the scene.
 - `game-builder-ui.mjs`
   - Reworked the mobile Builder panel layout to reserve space above the mode dock/placement toolbar, hide crowded header stats on small screens, keep Quick Tools buttons readable, and collapse dense validation/template rows instead of clipping text.
+  - Updated placement status copy to say canvas movement sets position and Place/Cancel controls finalize or abort.
 - `asset-browser-ui.mjs`
   - Made category and gallery overlays use responsive headers, search sizing, scroll areas, and grids so labels such as Furniture and card names remain visible on phone-sized viewports.
 - `scripts/smoke-production.mjs`
@@ -103,6 +105,7 @@ What changed in the pending source commit:
   - Added View-mode no-op and Play-mode touch camera stability checks so touch input cannot re-enable OrbitControls or leave the world tilted.
   - Added invalid-GLB placement smoke coverage that verifies failed previews show the Retry UI and do not add invisible scene objects.
   - Added preview-outline assertions so smoke fails if an asset preview is loaded without a visible outline, or if that outline remains after confirmation.
+  - Added a canvas-click guard so smoke fails if clicking the scene finalizes a preview before the user presses Place.
 
 Latest app-only deploy on 2026-05-24:
 
