@@ -3284,6 +3284,37 @@ async function runBrowserSmoke() {
     if (exploreState.selectedModeButton !== 'true') {
       throw new Error('View mode button did not reflect the active mode');
     }
+    const viewTouchHelperState = await page.evaluate(() => {
+      const camera = window._engine?.camera;
+      const before = {
+        x: camera?.rotation?.x || 0,
+        y: camera?.rotation?.y || 0,
+        z: camera?.rotation?.z || 0,
+      };
+      const result = window._applyPlayCameraTouchLook?.(160, 90, 'smoke-view-noop') || null;
+      const after = {
+        x: camera?.rotation?.x || 0,
+        y: camera?.rotation?.y || 0,
+        z: camera?.rotation?.z || 0,
+      };
+      return {
+        ready: typeof window._applyPlayCameraTouchLook === 'function',
+        result,
+        before,
+        after,
+        lastTouchLook: window._lastGameplayTouchLook || null,
+        controlsEnabled: window._engine?.controls?.enabled,
+      };
+    });
+    if (!viewTouchHelperState.ready ||
+        viewTouchHelperState.result !== null ||
+        viewTouchHelperState.lastTouchLook?.active === true ||
+        Math.abs(viewTouchHelperState.after.x - viewTouchHelperState.before.x) > 0.001 ||
+        Math.abs(viewTouchHelperState.after.y - viewTouchHelperState.before.y) > 0.001 ||
+        Math.abs(viewTouchHelperState.after.z - viewTouchHelperState.before.z) > 0.001 ||
+        viewTouchHelperState.controlsEnabled !== true) {
+      throw new Error(`View mode accepted gameplay touch-look input: ${JSON.stringify(viewTouchHelperState)}`);
+    }
 
     await page.locator('#gb-mode-dock [data-gb-mode="play"]').click({ timeout: timeoutMs });
     await page.waitForFunction(
@@ -3406,6 +3437,63 @@ async function runBrowserSmoke() {
         Math.abs(playCameraResetState.z) > 0.02 ||
         Math.abs(playCameraResetState.result?.z || 0) > 0.02) {
       throw new Error(`Play camera reset did not flatten camera roll: ${JSON.stringify(playCameraResetState)}`);
+    }
+    const playTouchCameraState = await page.evaluate(async () => {
+      const canvas = document.querySelector('canvas');
+      const makeTouchEvent = (type, touches) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'touches', { value: touches });
+        Object.defineProperty(event, 'changedTouches', { value: touches });
+        return event;
+      };
+      if (window._engine?.controls) {
+        window._engine.controls.enabled = true;
+        window._engine.controls.enableDamping = true;
+      }
+      if (window._engine?.camera) {
+        const yaw = window._engine.camera.rotation.y || 0;
+        window._engine.camera.rotation.set(-0.9, yaw, 0.42, 'YXZ');
+      }
+      let startPrevented = false;
+      let movePrevented = false;
+      if (canvas) {
+        const startTouch = { identifier: 91, target: canvas, clientX: window.innerWidth * 0.75, clientY: 420 };
+        const moveTouch = { identifier: 91, target: canvas, clientX: window.innerWidth * 0.75 + 140, clientY: 510 };
+        const startEvent = makeTouchEvent('touchstart', [startTouch]);
+        const moveEvent = makeTouchEvent('touchmove', [moveTouch]);
+        canvas.dispatchEvent(startEvent);
+        canvas.dispatchEvent(moveEvent);
+        startPrevented = startEvent.defaultPrevented === true;
+        movePrevented = moveEvent.defaultPrevented === true;
+      }
+      const helper = window._applyPlayCameraTouchLook?.(140, 90, 'smoke-play-touch-helper') || null;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return {
+        ready: typeof window._applyPlayCameraTouchLook === 'function',
+        canvasReady: !!canvas,
+        startPrevented,
+        movePrevented,
+        helper,
+        x: window._engine?.camera?.rotation.x || 0,
+        y: window._engine?.camera?.rotation.y || 0,
+        z: window._engine?.camera?.rotation.z || 0,
+        controlsEnabled: window._engine?.controls?.enabled,
+        touchGuard: window._lastPlayTouchGuard || null,
+        touchLook: window._lastGameplayTouchLook || null,
+        touchUi: window._gameplayTouchUiState || null,
+      };
+    });
+    if (!playTouchCameraState.ready ||
+        !playTouchCameraState.canvasReady ||
+        !playTouchCameraState.startPrevented ||
+        !playTouchCameraState.movePrevented ||
+        playTouchCameraState.helper?.active !== true ||
+        Math.abs(playTouchCameraState.z) > 0.02 ||
+        Math.abs(playTouchCameraState.x) > 1.16 ||
+        playTouchCameraState.controlsEnabled !== false ||
+        playTouchCameraState.touchGuard?.type !== 'touchmove' ||
+        playTouchCameraState.touchLook?.active !== true) {
+      throw new Error(`Play touch camera input introduced tilt or leaked editor controls: ${JSON.stringify(playTouchCameraState)}`);
     }
     await page.mouse.move(700, 470);
     await page.mouse.wheel(0, 700);

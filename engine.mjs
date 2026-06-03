@@ -1537,6 +1537,10 @@ function isEditInteractionMode() {
   return getEngineMode() === 'edit';
 }
 
+function isGameplayTouchMode(mode = getEngineMode()) {
+  return normalizeEngineMode(mode) === 'play';
+}
+
 function isCharacterCameraOwned() {
   return !!(playMode && characterController && characterController.model && !characterController._cameraOnlyMode);
 }
@@ -1599,6 +1603,7 @@ function applyModeInteractionState(mode = getEngineMode(), reason = 'mode') {
     placementActive: !!activeCatalogPlacement,
     updatedAt: Date.now(),
   };
+  try { window._syncGameplayTouchUi?.(activeMode); } catch {}
   return window._modeInteractionState;
 }
 
@@ -1680,6 +1685,83 @@ function resetPlayCameraView() {
   return window._lastPlayCameraReset;
 }
 
+function applyPlayCameraTouchLook(deltaX = 0, deltaY = 0, reason = 'touch-look') {
+  if (!isGameplayTouchMode() || !camera) {
+    window._lastGameplayTouchLook = {
+      active: false,
+      mode: getEngineMode(),
+      reason,
+      updatedAt: Date.now(),
+    };
+    return null;
+  }
+
+  const dx = Number.isFinite(deltaX) ? deltaX : 0;
+  const dy = Number.isFinite(deltaY) ? deltaY : 0;
+
+  if (isCharacterCameraOwned() && characterController) {
+    if (typeof characterController.cameraYaw === 'number') {
+      characterController.cameraYaw -= dx * 0.004;
+    }
+    if (typeof characterController.cameraPitch === 'number') {
+      characterController.cameraPitch = THREE.MathUtils.clamp(characterController.cameraPitch + dy * 0.003, -1.05, 1.05);
+    }
+    lockPlayCameraRoll(reason);
+    window._lastGameplayTouchLook = {
+      active: true,
+      mode: getEngineMode(),
+      cameraOwned: true,
+      reason,
+      cameraYaw: characterController.cameraYaw,
+      cameraPitch: characterController.cameraPitch,
+      roll: camera.rotation.z || 0,
+      updatedAt: Date.now(),
+    };
+    return window._lastGameplayTouchLook;
+  }
+
+  const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+  const currentYaw = Number.isFinite(playYaw) ? playYaw : (Number.isFinite(euler.y) ? euler.y : 0);
+  const currentPitch = Number.isFinite(euler.x) ? euler.x : (Number(camera.rotation.x) || 0);
+  playYaw = currentYaw - dx * 0.003;
+  const pitch = THREE.MathUtils.clamp(currentPitch - dy * 0.003, -1.15, 1.15);
+  camera.rotation.order = 'YXZ';
+  camera.rotation.set(pitch, playYaw, 0, 'YXZ');
+  camera.up.set(0, 1, 0);
+  camera.updateMatrixWorld();
+  lockPlayCameraRoll(reason);
+  window._lastGameplayTouchLook = {
+    active: true,
+    mode: getEngineMode(),
+    cameraOwned: false,
+    reason,
+    pitch: camera.rotation.x || 0,
+    yaw: camera.rotation.y || 0,
+    roll: camera.rotation.z || 0,
+    controlsEnabled: controls?.enabled === true,
+    updatedAt: Date.now(),
+  };
+  return window._lastGameplayTouchLook;
+}
+
+function syncGameplayTouchUi(mode = getEngineMode()) {
+  const normalized = normalizeEngineMode(mode);
+  const active = isGameplayTouchMode(normalized);
+  const elements = document.querySelectorAll?.('[data-gameplay-touch-ui="true"]') || [];
+  elements.forEach((el) => {
+    if (!el?.style) return;
+    const display = el.dataset.gameplayTouchDisplay || 'block';
+    el.style.display = active ? display : 'none';
+  });
+  window._gameplayTouchUiState = {
+    mode: normalized,
+    active,
+    count: elements.length,
+    updatedAt: Date.now(),
+  };
+  return window._gameplayTouchUiState;
+}
+
 function guardPlayCameraInputEvent(event) {
   if (!playMode) return;
   if (event?.type === 'wheel') {
@@ -1692,6 +1774,12 @@ function guardPlayCameraInputEvent(event) {
   } else if (event?.type === 'touchstart' || event?.type === 'touchmove') {
     event.preventDefault();
   }
+  window._lastPlayTouchGuard = {
+    type: event?.type || 'unknown',
+    mode: getEngineMode(),
+    defaultPrevented: event?.defaultPrevented === true,
+    updatedAt: Date.now(),
+  };
   lockPlayCameraRoll('input-' + (event?.type || 'unknown'));
 }
 
@@ -1951,6 +2039,9 @@ window.exitPlayMode = exitPlayMode;
 window._lockPlayCameraRoll = lockPlayCameraRoll;
 window._resetPlayCameraView = resetPlayCameraView;
 window._isCharacterCameraOwned = isCharacterCameraOwned;
+window._isGameplayTouchMode = isGameplayTouchMode;
+window._applyPlayCameraTouchLook = applyPlayCameraTouchLook;
+window._syncGameplayTouchUi = syncGameplayTouchUi;
 
 function updatePlayMode(dt) {
   if (!playMode) return;
@@ -6482,6 +6573,7 @@ window.setNPCMode = setNPCMode;
     // Pinch-to-zoom (adjust camera FOV)
     let lastPinchDist = null;
     document.addEventListener('touchmove', (e) => {
+      if (getEngineMode() !== 'play' && getEngineMode() !== 'explore') { lastPinchDist = null; return; }
       if (e.touches.length !== 2) { lastPinchDist = null; return; }
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -6491,6 +6583,7 @@ window.setNPCMode = setNPCMode;
         if (camera) {
           camera.fov = Math.min(100, Math.max(30, camera.fov + delta * 0.08));
           camera.updateProjectionMatrix();
+          if (isGameplayTouchMode()) lockPlayCameraRoll('touch-pinch');
         }
       }
       lastPinchDist = dist;
@@ -6499,6 +6592,7 @@ window.setNPCMode = setNPCMode;
     // Double-tap to interact / select object
     let lastTap = 0;
     document.addEventListener('touchend', (e) => {
+      if (!isEditInteractionMode()) { lastTap = Date.now(); return; }
       const now = Date.now();
       if (now - lastTap < 300 && e.touches.length === 0) {
         // Double tap — raycast to select nearest object
@@ -6524,6 +6618,7 @@ window.setNPCMode = setNPCMode;
     // Swipe-to-look (right side of screen)
     let lookTouch = null, lastLookX = 0, lastLookY = 0;
     renderer.domElement.addEventListener('touchstart', (e) => {
+      if (!isGameplayTouchMode()) return;
       for (const t of e.changedTouches) {
         if (t.clientX > window.innerWidth * 0.5) {
           lookTouch = t.identifier; lastLookX = t.clientX; lastLookY = t.clientY;
@@ -6531,20 +6626,16 @@ window.setNPCMode = setNPCMode;
       }
     }, { passive: true });
     renderer.domElement.addEventListener('touchmove', (e) => {
+      if (!isGameplayTouchMode()) { lookTouch = null; return; }
       for (const t of e.changedTouches) {
         if (t.identifier !== lookTouch) continue;
+        e.preventDefault();
         const dx = t.clientX - lastLookX;
         const dy = t.clientY - lastLookY;
         lastLookX = t.clientX; lastLookY = t.clientY;
-        if (window._camYaw !== undefined) {
-          window._camYaw -= dx * 0.003;
-          window._camPitch = Math.max(-1.2, Math.min(0.5, (window._camPitch||0) - dy * 0.003));
-        } else if (camera) {
-          camera.rotation.y -= dx * 0.003;
-          camera.rotation.x = Math.max(-0.8, Math.min(0.4, camera.rotation.x - dy * 0.003));
-        }
+        applyPlayCameraTouchLook(dx, dy, 'mobile-polish-look');
       }
-    }, { passive: true });
+    }, { passive: false });
     renderer.domElement.addEventListener('touchend', (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier === lookTouch) lookTouch = null;
@@ -6553,18 +6644,22 @@ window.setNPCMode = setNPCMode;
 
     // Overlay action buttons for mobile
     const bar = document.createElement('div');
-    bar.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:500;display:flex;flex-direction:column;gap:8px';
+    bar.id = 'mobile-action-bar';
+    bar.dataset.gameplayTouchUi = 'true';
+    bar.dataset.gameplayTouchDisplay = 'flex';
+    bar.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:500;display:none;flex-direction:column;gap:8px';
     const mkBtn = (label, cmd, color='#ff6b35') => {
       const b = document.createElement('button');
       b.textContent = label;
       b.style.cssText = `width:52px;height:52px;border-radius:50%;background:rgba(10,10,10,0.9);border:2px solid ${color};color:${color};font-size:1.2rem;cursor:pointer;backdrop-filter:blur(8px)`;
-      b.addEventListener('touchend', (e) => { e.preventDefault(); if(window.parseAndExecute)parseAndExecute(cmd); });
+      b.addEventListener('touchend', (e) => { e.preventDefault(); if(!isGameplayTouchMode()) return; if(window.parseAndExecute)parseAndExecute(cmd); });
       return b;
     };
     bar.appendChild(mkBtn('⚔️', 'attack'));
     bar.appendChild(mkBtn('💊', 'add medkit', '#4ade80'));
     bar.appendChild(mkBtn('🔦', 'play flashlight_on', '#f7c948'));
     document.body.appendChild(bar);
+    syncGameplayTouchUi();
   });
 })();
 // ══════════════════════════════════════════════════════
@@ -19828,6 +19923,8 @@ document.addEventListener('keydown', function(e) {
   
   const container = document.createElement('div');
   container.id = 'mobile-controls';
+  container.dataset.gameplayTouchUi = 'true';
+  container.dataset.gameplayTouchDisplay = 'block';
   container.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;pointer-events:none;display:none;';
   
   // Virtual joystick (left side)
@@ -19891,6 +19988,7 @@ document.addEventListener('keydown', function(e) {
   
   // Wire joystick
   joystickArea.addEventListener('touchstart', (e) => {
+    if (!isGameplayTouchMode()) return;
     e.preventDefault();
     const t = e.changedTouches[0];
     _joyTouchId = t.identifier;
@@ -19899,8 +19997,21 @@ document.addEventListener('keydown', function(e) {
   }, { passive: false });
   
   document.addEventListener('touchmove', (e) => {
+    if (!isGameplayTouchMode()) {
+      if (_joyTouchId !== null || _lookTouchId !== null) {
+        const cc = window.characterController;
+        if (cc) { cc.keys['w'] = false; cc.keys['s'] = false; cc.keys['a'] = false; cc.keys['d'] = false; }
+        joystickKnob.style.left = '45px';
+        joystickKnob.style.top = '45px';
+      }
+      _joyTouchId = null;
+      _lookTouchId = null;
+      return;
+    }
+    let handledTouch = false;
     for (const t of e.changedTouches) {
       if (t.identifier === _joyTouchId) {
+        handledTouch = true;
         const dx = t.clientX - _joyCenter.x;
         const dy = t.clientY - _joyCenter.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -19924,15 +20035,13 @@ document.addEventListener('keydown', function(e) {
       
       // Camera look
       if (t.identifier === _lookTouchId) {
-        const cc = window.characterController;
-        if (cc && typeof cc.cameraYaw !== 'undefined') {
-          cc.cameraYaw -= (t.clientX - _lookStartX) * 0.004;
-          cc.cameraPitch = Math.max(-1.2, Math.min(1.2, cc.cameraPitch + (t.clientY - _lookStartY) * 0.003));
-          _lookStartX = t.clientX;
-          _lookStartY = t.clientY;
-        }
+        handledTouch = true;
+        applyPlayCameraTouchLook(t.clientX - _lookStartX, t.clientY - _lookStartY, 'mobile-controls-look');
+        _lookStartX = t.clientX;
+        _lookStartY = t.clientY;
       }
     }
+    if (handledTouch) e.preventDefault();
   }, { passive: false });
   
   document.addEventListener('touchend', (e) => {
@@ -19952,6 +20061,7 @@ document.addEventListener('keydown', function(e) {
   
   // Camera look touch (right half of screen)
   document.addEventListener('touchstart', (e) => {
+    if (!isGameplayTouchMode()) return;
     for (const t of e.changedTouches) {
       if (t.clientX > window.innerWidth * 0.4 && !e.target.closest('button') && !e.target.closest('#mobile-controls button')) {
         if (_lookTouchId === null) {
@@ -19967,6 +20077,7 @@ document.addEventListener('keydown', function(e) {
   btnArea.addEventListener('touchstart', (e) => {
     const action = e.target.getAttribute('data-action');
     const cc = window.characterController;
+    if (!isGameplayTouchMode()) return;
     if (!cc) return;
     e.preventDefault();
     if (action === 'jump') cc.keys[' '] = true;
@@ -19978,6 +20089,7 @@ document.addEventListener('keydown', function(e) {
   btnArea.addEventListener('touchend', (e) => {
     const action = e.target.getAttribute('data-action');
     const cc = window.characterController;
+    if (!isGameplayTouchMode()) return;
     if (!cc) return;
     if (action === 'jump') cc.keys[' '] = false;
     if (action === 'attack') cc.keys['e'] = false;
@@ -19986,10 +20098,11 @@ document.addEventListener('keydown', function(e) {
   });
   
   document.body.appendChild(container);
+  syncGameplayTouchUi();
   
   // Show/hide with play mode
   window._mobileControls = {
-    show() { container.style.display = 'block'; },
+    show() { container.style.display = isGameplayTouchMode() ? 'block' : 'none'; },
     hide() { container.style.display = 'none'; },
   };
 })();
