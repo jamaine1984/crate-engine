@@ -2792,6 +2792,21 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone, option
     const modelPath = url;
     const modelFile = url.split('/').pop();
     const model = gltf.scene;
+    const validation = validateRenderableGLBScene(model, glbFile || name);
+    if (!validation.ok) {
+      disposePlacementModel(model);
+      if (statusEl) statusEl.textContent = '3D Ready';
+      handleAssetPlacementFailure({
+        ...placementOptions,
+        name: placementOptions.displayName || name || glbFile,
+        file: glbFile,
+        path: url,
+        error: validation.error,
+        retryMode: 'direct',
+      });
+      if (typeof onDone === 'function') onDone(null, new Error(validation.error));
+      return;
+    }
     if (gltf.animations && gltf.animations.length > 0) {
       const mixer = new THREE.AnimationMixer(model);
       gltf.animations.forEach(clip => { mixer.clipAction(clip).play(); });
@@ -2831,6 +2846,7 @@ function _loadGLBFromUrl(name, url, x, z, scaleOverride, glbFile, onDone, option
       file: glbFile,
       path: url,
       error,
+      retryMode: 'direct',
     });
     if (typeof onDone === 'function') onDone(null, error);
   });
@@ -3042,6 +3058,34 @@ function disposePlacementModel(model) {
   } catch {}
 }
 
+function validateRenderableGLBScene(model, label = 'asset') {
+  if (!model || typeof model.traverse !== 'function') {
+    return { ok: false, error: 'Model did not contain a scene.' };
+  }
+  let meshCount = 0;
+  let vertexCount = 0;
+  model.updateMatrixWorld?.(true);
+  model.traverse((child) => {
+    if (!child?.isMesh) return;
+    const positionCount = Number(child.geometry?.attributes?.position?.count) || 0;
+    const indexCount = Number(child.geometry?.index?.count) || 0;
+    if (positionCount > 0 || indexCount > 0) {
+      meshCount += 1;
+      vertexCount += Math.max(positionCount, indexCount);
+    }
+  });
+  if (meshCount <= 0 || vertexCount <= 0) {
+    return { ok: false, error: 'Model has no visible mesh data.' };
+  }
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if (![box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z, maxDim].every(Number.isFinite) || maxDim <= 0.0001) {
+    return { ok: false, error: 'Model bounds are empty or invalid.' };
+  }
+  return { ok: true, meshCount, vertexCount, maxDim, label };
+}
+
 function positionPlacementPreview(session, screenX = null, screenY = null) {
   if (!session?.model) return null;
   const point = getViewportPlacementPoint(screenX, screenY);
@@ -3241,6 +3285,12 @@ function loadCatalogPlacementModel(request, onDone) {
       const blobUrl = URL.createObjectURL(blob);
       gltfLoader.load(blobUrl, (gltf) => {
         URL.revokeObjectURL(blobUrl);
+        const validation = validateRenderableGLBScene(gltf.scene, request.name || request.file);
+        if (!validation.ok) {
+          disposePlacementModel(gltf.scene);
+          onDone(null, new Error(validation.error), request.customPath || request.path || request.file);
+          return;
+        }
         onDone(gltf.scene, null);
       }, undefined, (error) => {
         URL.revokeObjectURL(blobUrl);
@@ -3254,7 +3304,15 @@ function loadCatalogPlacementModel(request, onDone) {
   }
   const cleanFile = request.glb.endsWith('.glb') ? request.glb.slice(0, -4) : request.glb;
   const url = request.customPath || ('/models/' + cleanFile + '.glb');
-  gltfLoader.load(url, (gltf) => onDone(gltf.scene, null, url), undefined, (error) => onDone(null, error, url));
+  gltfLoader.load(url, (gltf) => {
+    const validation = validateRenderableGLBScene(gltf.scene, request.name || request.file);
+    if (!validation.ok) {
+      disposePlacementModel(gltf.scene);
+      onDone(null, new Error(validation.error), url);
+      return;
+    }
+    onDone(gltf.scene, null, url);
+  }, undefined, (error) => onDone(null, error, url));
 }
 
 function beginCatalogAssetPlacement(result, source = 'asset-library') {
@@ -3293,6 +3351,7 @@ function beginCatalogAssetPlacement(result, source = 'asset-library') {
         path: request.customPath || loadedUrl || request.path,
         source,
         error: error || 'Preview load failed',
+        retryMode: 'preview',
       });
       return;
     }
@@ -3392,6 +3451,25 @@ function beginUrlAssetPlacement(config = {}) {
         return;
       }
       const model = gltf.scene;
+      const validation = validateRenderableGLBScene(model, name || file);
+      if (!validation.ok) {
+        try { if (config.revokeUrl !== false) URL.revokeObjectURL(url); } catch {}
+        disposePlacementModel(model);
+        handleAssetPlacementFailure({
+          trackPlacement: true,
+          name,
+          file,
+          path,
+          source,
+          error: validation.error,
+          retryMode: 'preview',
+        });
+        if (typeof config.onError === 'function') {
+          try { config.onError(new Error(validation.error)); } catch {}
+        }
+        resolve(false);
+        return;
+      }
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
@@ -3473,6 +3551,7 @@ function beginUrlAssetPlacement(config = {}) {
           path,
           source,
           error,
+          retryMode: 'preview',
         });
       }
       if (typeof config.onError === 'function') {
@@ -3568,24 +3647,37 @@ function handlePlacedAsset(model, options = {}) {
 function handleAssetPlacementFailure(options = {}) {
   if (!options.trackPlacement) return;
   const err = options.error;
-  setAssetPlacementState({
+  const message = err?.message || String(err || 'Load failed');
+  const state = setAssetPlacementState({
     status: 'failed',
     name: options.name || options.displayName || options.file || 'asset',
     file: options.file || '',
     path: options.path || '',
     source: options.source || '',
-    error: err?.message || String(err || 'Load failed'),
+    error: message,
+    retryMode: options.retryMode || options.placementMode || 'direct',
+    awaitingConfirm: false,
   });
+  window._lastAssetPlacementFailure = {
+    ...state,
+    error: message,
+    failedAt: Date.now(),
+  };
+  showToast('Asset failed: ' + message);
 }
 
 function retryLastAssetPlacement() {
   const state = window._lastAssetPlacement || {};
   if (!state.file && !state.path) return null;
-  return placeCatalogAsset({
+  const request = {
     file: state.file || state.path,
     name: state.name || state.file || 'asset',
     path: state.path || '',
-  }, state.source || 'asset-retry');
+  };
+  if (state.retryMode === 'preview') {
+    return beginCatalogAssetPlacement(request, state.source || 'asset-retry');
+  }
+  return placeCatalogAsset(request, state.source || 'asset-retry');
 }
 
 function placeCatalogAsset(result, source = 'asset-library') {
@@ -3670,6 +3762,21 @@ function loadGLBModel(name, glbFile, x, z, scaleOverride, customPath, options = 
   console.log('[loadGLBModel] Loading:', url, '(name:', name, 'glbFile:', glbFile, ')');
   gltfLoader.load(url, (gltf) => {
     const model = gltf.scene;
+    const validation = validateRenderableGLBScene(model, glbFile || name);
+    if (!validation.ok) {
+      disposePlacementModel(model);
+      if (statusEl) statusEl.textContent = '3D Ready';
+      handleAssetPlacementFailure({
+        ...placementOptions,
+        name: placementOptions.displayName || name || glbFile,
+        file: glbFile,
+        path: customPath || url,
+        error: validation.error,
+        retryMode: 'direct',
+      });
+      if (typeof showToast === 'function') showToast('Model unavailable: ' + (placementOptions.displayName || name || glbFile));
+      return;
+    }
     // Play animations if present
     if (gltf.animations && gltf.animations.length > 0) {
       const mixer = new THREE.AnimationMixer(model);
@@ -3886,6 +3993,7 @@ scene.add(model);
       file: glbFile,
       path: customPath || url,
       error,
+      retryMode: 'direct',
     });
     if (typeof showToast === 'function') showToast('Model not found: ' + cleanName);
   });

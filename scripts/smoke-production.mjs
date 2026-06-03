@@ -1103,6 +1103,59 @@ async function runBrowserSmoke() {
     if (!/Smoke placement chair/i.test(placementState.statusText)) {
       throw new Error(`Placement status did not name the placed asset: ${JSON.stringify(placementState)}`);
     }
+    const invalidPreviewState = await page.evaluate(async () => {
+      const makeEmptyGlbBlob = () => {
+        const json = JSON.stringify({ asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [] }], nodes: [] });
+        const encoder = new TextEncoder();
+        const jsonBytes = encoder.encode(json);
+        const jsonLength = Math.ceil(jsonBytes.length / 4) * 4;
+        const totalLength = 12 + 8 + jsonLength;
+        const buffer = new ArrayBuffer(totalLength);
+        const view = new DataView(buffer);
+        const bytes = new Uint8Array(buffer);
+        view.setUint32(0, 0x46546c67, true);
+        view.setUint32(4, 2, true);
+        view.setUint32(8, totalLength, true);
+        view.setUint32(12, jsonLength, true);
+        view.setUint32(16, 0x4e4f534a, true);
+        bytes.set(jsonBytes, 20);
+        for (let index = 20 + jsonBytes.length; index < 20 + jsonLength; index++) bytes[index] = 0x20;
+        return new Blob([buffer], { type: 'model/gltf-binary' });
+      };
+      const before = window._engineBridge?.objects?.length || 0;
+      const blobUrl = URL.createObjectURL(makeEmptyGlbBlob());
+      const started = window._beginCatalogAssetPlacement?.({
+        file: 'smoke-empty-visible-check.glb',
+        name: 'Smoke empty asset',
+        path: blobUrl,
+      }, 'production-smoke-invalid-preview');
+      const start = performance.now();
+      while (performance.now() - start < 8000) {
+        if (window._lastAssetPlacement?.status === 'failed') break;
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+      URL.revokeObjectURL(blobUrl);
+      const state = window._lastAssetPlacement || {};
+      return {
+        before,
+        after: window._engineBridge?.objects?.length || 0,
+        started,
+        state,
+        failure: window._lastAssetPlacementFailure || null,
+        retryButtonVisible: !!document.querySelector('#gb-placement-status [data-gb-placement-retry="true"]'),
+        statusText: document.querySelector('#gb-placement-status')?.textContent?.trim() || '',
+      };
+    });
+    if (invalidPreviewState.after !== invalidPreviewState.before ||
+        invalidPreviewState.started?.status !== 'preview-loading' ||
+        invalidPreviewState.state?.status !== 'failed' ||
+        invalidPreviewState.state?.source !== 'production-smoke-invalid-preview' ||
+        invalidPreviewState.state?.retryMode !== 'preview' ||
+        !/no visible mesh|bounds are empty|visible mesh data/i.test(invalidPreviewState.state?.error || '') ||
+        !invalidPreviewState.retryButtonVisible ||
+        !/Placement failed/i.test(invalidPreviewState.statusText)) {
+      throw new Error(`Invalid asset preview did not fail visibly without adding an object: ${JSON.stringify(invalidPreviewState)}`);
+    }
 
     const readModeIsolationSnapshot = (label) => page.evaluate((snapshotLabel) => ({
       label: snapshotLabel,
