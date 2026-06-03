@@ -51,9 +51,10 @@ on this Windows machine. The real production behavior must be checked on
 
 Pending app-only deploy on 2026-06-02:
 
-- Source commit prepared but not deployed: `781dc637` (`Preview imported asset placement`)
-- Full source SHA: `781dc6375eae13eedc90003337265ddccb7f016d`
-- Built main app bundle: `/assets/play-ILStzKWd.js`
+- Source commit prepared but not deployed: `9a3a2a1b` (`Separate mobile placement toolbar from mode dock`)
+- Full source SHA: `9a3a2a1bed3a906118e6f92e878846182abc74cc`
+- Pending source commits included: `781dc637` (`Preview imported asset placement`), `9a3a2a1b` (`Separate mobile placement toolbar from mode dock`)
+- Built main app bundle: `/assets/play-u91PCBMQ.js`
 - Lazy Game Builder UI chunk stayed unchanged: `/assets/game-builder-ui-B0tVIhst.js`
 - Lazy Asset Browser chunk stayed unchanged: `/assets/asset-browser-ui-C_FMYnlT.js`
 - Checks passed before deploy attempt:
@@ -62,17 +63,18 @@ Pending app-only deploy on 2026-06-02:
   - `npm run check`
   - `git diff --check` (only Windows LF-to-CRLF warnings)
   - `npm run build`
-- App-only deploy package check before deploy attempt: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`, `.deploy\assets\play-ILStzKWd.js=True`, `.deploy\assets\game-builder-ui-B0tVIhst.js=True`, `.deploy\assets\asset-browser-ui-C_FMYnlT.js=True`
-- Deploy command attempted:
+- App-only deploy package check before deploy attempt: `.deploy\models=False`, `.deploy\textures=False`, `.deploy\play.html=True`, `.deploy\admin.html=True`, `.deploy\marketplace.html=True`, `.deploy\assets\play-u91PCBMQ.js=True`, `.deploy\assets\game-builder-ui-B0tVIhst.js=True`, `.deploy\assets\asset-browser-ui-C_FMYnlT.js=True`
+- Deploy command to run after Cloudflare auth is refreshed:
 
 ```powershell
-npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=781dc6375eae13eedc90003337265ddccb7f016d --commit-message="Preview imported asset placement" --commit-dirty=false
+npx wrangler pages deploy .deploy --project-name crateship-games --branch=main --commit-hash=9a3a2a1bed3a906118e6f92e878846182abc74cc --commit-message="Separate mobile placement toolbar from mode dock" --commit-dirty=false
 ```
 
-- Cloudflare blocked the deploy before upload with `Authentication error [code: 10000]` on `GET /accounts/6573d98c25150fd7b4602e56a0926767/pages/projects/crateship-games`.
-- Retried with `npx wrangler@latest` (`4.97.0`) and with `CLOUDFLARE_ACCOUNT_ID=6573d98c25150fd7b4602e56a0926767`; both attempts failed with the same authentication error.
+- Cloudflare blocked the previous deploy attempt before upload with `Authentication error [code: 10000]` on `GET /accounts/6573d98c25150fd7b4602e56a0926767/pages/projects/crateship-games`.
+- Retried the previous deploy with `npx wrangler@latest` (`4.97.0`) and with `CLOUDFLARE_ACCOUNT_ID=6573d98c25150fd7b4602e56a0926767`; both attempts failed with the same authentication error.
 - `npx wrangler@latest login` opened the Cloudflare OAuth URL but timed out waiting for the authorization callback. Cloudflare must be re-authenticated in an interactive browser/terminal session before this source commit can be deployed and smoke-verified on the real site.
-- Do not mark `781dc637` as live until a new Cloudflare deployment ID is created and `https://crateshipgames.com/play` plus `https://www.crateshipgames.com/play` pass production smoke.
+- Latest auth check on 2026-06-02: `npx wrangler@latest whoami` still failed with account lookup/authentication errors, so no live deploy was attempted for `9a3a2a1b`.
+- Do not mark `9a3a2a1b` as live until a new Cloudflare deployment ID is created and `https://crateshipgames.com/play` plus `https://www.crateshipgames.com/play` pass production smoke.
 
 What changed in the pending source commit:
 
@@ -80,9 +82,11 @@ What changed in the pending source commit:
   - Added a shared preview-first URL/blob asset placement path for imported assets.
   - Fresh GLB/GLTF imports, local imported-model library placements, and cloud user-asset placements now load as a movable preview before they become real scene objects.
   - Confirming placement preserves imported/cloud metadata for save/export; cancelling avoids adding the model to the object list.
+  - The mobile asset preview toolbar now sits above the mode dock, uses compact controls, and keeps its labels single-line while placing assets.
 - `scripts/smoke-production.mjs`
   - Strengthened user-import smoke coverage so imported, local-library, cloud-library, and publish-import flows must show preview, require confirm, then add a real object.
   - The smoke now fails if imported assets skip preview or if preview never becomes a placed object.
+  - Added phone/tablet viewport coverage that fails if the asset preview toolbar overlaps the Edit/View/Play mode dock or clips any placement controls.
 
 Latest app-only deploy on 2026-05-24:
 
