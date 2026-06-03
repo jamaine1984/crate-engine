@@ -4847,6 +4847,54 @@ async function runViewportBuildCityProbe(label, options) {
         beforeMobileAssetCount,
         { timeout: timeoutMs }
       );
+      const mobilePreviewToolbarState = await page.evaluate(() => {
+        const toolbar = document.querySelector('#asset-placement-preview-toolbar');
+        const dock = document.querySelector('#gb-mode-dock');
+        const toolbarRect = toolbar?.getBoundingClientRect();
+        const dockRect = dock?.getBoundingClientRect();
+        const overlap = !!(toolbarRect && dockRect &&
+          toolbarRect.left < dockRect.right &&
+          toolbarRect.right > dockRect.left &&
+          toolbarRect.top < dockRect.bottom &&
+          toolbarRect.bottom > dockRect.top);
+        const controls = [...document.querySelectorAll('#asset-placement-preview-toolbar [data-placement-action]')].map((button) => {
+          const rect = button.getBoundingClientRect();
+          return {
+            action: button.dataset.placementAction || '',
+            text: button.textContent?.trim() || '',
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            clipped: button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1,
+            whiteSpace: getComputedStyle(button).whiteSpace,
+          };
+        });
+        return {
+          mobile: toolbar?.dataset.mobile || '',
+          toolbar: {
+            top: Math.round(toolbarRect?.top || 0),
+            bottom: Math.round(toolbarRect?.bottom || 0),
+            height: Math.round(toolbarRect?.height || 0),
+            width: Math.round(toolbarRect?.width || 0),
+            left: Math.round(toolbarRect?.left || 0),
+            right: Math.round(toolbarRect?.right || 0),
+          },
+          dock: {
+            top: Math.round(dockRect?.top || 0),
+            bottom: Math.round(dockRect?.bottom || 0),
+            height: Math.round(dockRect?.height || 0),
+          },
+          overlap,
+          offscreen: !!(toolbarRect && (toolbarRect.left < 0 || toolbarRect.right > window.innerWidth || toolbarRect.top < 0 || toolbarRect.bottom > window.innerHeight)),
+          controls,
+        };
+      });
+      if (mobilePreviewToolbarState.mobile !== 'true' ||
+          mobilePreviewToolbarState.overlap ||
+          mobilePreviewToolbarState.offscreen ||
+          mobilePreviewToolbarState.toolbar.height > 58 ||
+          mobilePreviewToolbarState.controls.some((control) => control.clipped || control.whiteSpace !== 'nowrap' || control.height > 38)) {
+        throw new Error(`${label} viewport asset preview toolbar overlaps or clips controls: ${JSON.stringify(mobilePreviewToolbarState)}`);
+      }
       await page.locator('#asset-placement-preview-toolbar [data-placement-action="confirm"]').click({ timeout: timeoutMs });
       await page.waitForFunction(
         (before) => (window._engineBridge?.objects?.length || 0) > before && window._lastAssetPlacement?.status === 'placed',
@@ -4857,6 +4905,7 @@ async function runViewportBuildCityProbe(label, options) {
         ...mobileAssetMenu,
         category: mobileCategoryState,
         gallery: mobileGalleryState,
+        previewToolbar: mobilePreviewToolbarState,
         placement: await page.evaluate(() => ({
           status: window._lastAssetPlacement?.status || '',
           name: window._lastAssetPlacement?.name || '',

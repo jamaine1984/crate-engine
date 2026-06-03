@@ -2981,19 +2981,21 @@ function removePlacementToolbar() {
 
 function ensurePlacementToolbar(session) {
   removePlacementToolbar();
+  const isMobileToolbar = !!window.matchMedia?.('(max-width: 900px)')?.matches;
   const toolbar = document.createElement('div');
   toolbar.id = 'asset-placement-preview-toolbar';
-  toolbar.style.cssText = 'position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:22000;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 20px);background:rgba(10,11,12,.94);border:1px solid #2f6fed;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:8px 10px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eef2f3;pointer-events:auto';
+  toolbar.dataset.mobile = isMobileToolbar ? 'true' : 'false';
+  toolbar.style.cssText = 'position:fixed;left:50%;bottom:' + (isMobileToolbar ? '150px' : '96px') + ';transform:translateX(-50%);z-index:22000;display:flex;align-items:center;gap:' + (isMobileToolbar ? '6px' : '8px') + ';max-width:calc(100vw - 20px);background:rgba(10,11,12,.94);border:1px solid #2f6fed;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:' + (isMobileToolbar ? '7px 8px' : '8px 10px') + ';font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eef2f3;pointer-events:auto';
   const label = document.createElement('span');
-  label.textContent = 'Place: ' + (session.name || 'asset');
-  label.style.cssText = 'font-size:12px;line-height:16px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis';
+  label.textContent = isMobileToolbar ? (session.name || 'asset') : 'Place: ' + (session.name || 'asset');
+  label.style.cssText = 'font-size:12px;line-height:16px;white-space:nowrap;max-width:' + (isMobileToolbar ? '104px' : '220px') + ';overflow:hidden;text-overflow:ellipsis';
   const makeButton = (text, action, title) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.placementAction = action;
-    button.textContent = text;
+    button.textContent = isMobileToolbar && action === 'rotate' ? 'R' : text;
     button.title = title || text;
-    button.style.cssText = 'min-height:30px;border:1px solid #31404a;background:#151a1f;color:#eef2f3;border-radius:6px;padding:5px 8px;font-size:12px;line-height:14px;cursor:pointer';
+    button.style.cssText = 'min-height:30px;border:1px solid #31404a;background:#151a1f;color:#eef2f3;border-radius:6px;padding:' + (isMobileToolbar ? '5px 7px' : '5px 8px') + ';font-size:12px;line-height:14px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
