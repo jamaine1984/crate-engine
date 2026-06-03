@@ -137,15 +137,15 @@ export function showGallery(category, options = {}) {
 
     const overlay = document.createElement('div');
     overlay.id = 'asset-gallery-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:2147483647;display:flex;flex-direction:column;font-family:monospace;color:#e0e0e0;';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);z-index:2147483647;display:flex;flex-direction:column;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",monospace;color:#e0e0e0;box-sizing:border-box;';
 
     const header = document.createElement('div');
-    header.style.cssText = 'padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #222;flex-shrink:0;flex-wrap:wrap;box-sizing:border-box;';
-    header.innerHTML = '<div style="font-size:22px;line-height:26px;color:' + meta.color + ';min-width:0;flex:1 1 170px;overflow-wrap:anywhere;">' + meta.icon + ' ' + meta.label + '</div><div id="gal-count" style="font-size:13px;line-height:17px;color:#777;white-space:nowrap;">' + items.length + ' models</div>';
+    header.style.cssText = 'padding:12px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #222;flex-shrink:0;flex-wrap:wrap;box-sizing:border-box;max-width:100vw;';
+    header.innerHTML = '<div style="font-size:clamp(18px,5vw,22px);line-height:1.2;color:' + meta.color + ';min-width:0;flex:1 1 160px;overflow-wrap:anywhere;">' + meta.icon + ' ' + meta.label + '</div><div id="gal-count" style="font-size:13px;line-height:17px;color:#777;white-space:nowrap;">' + items.length + ' models</div>';
 
     const searchInput = document.createElement('input');
     searchInput.placeholder = '🔍 Search...';
-    searchInput.style.cssText = 'margin-left:0;padding:8px 14px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-family:monospace;font-size:13px;line-height:16px;width:auto;min-width:150px;max-width:220px;flex:1 1 180px;outline:none;box-sizing:border-box;';
+    searchInput.style.cssText = 'margin-left:0;padding:8px 14px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font:inherit;font-size:13px;line-height:16px;width:auto;min-width:min(150px,100%);max-width:min(240px,100%);flex:1 1 180px;outline:none;box-sizing:border-box;';
     searchInput.oninput = () => {
       searchTerm = searchInput.value.toLowerCase();
       currentPage = 0;
@@ -164,10 +164,10 @@ export function showGallery(category, options = {}) {
     overlay.appendChild(header);
 
     const scrollArea = document.createElement('div');
-    scrollArea.style.cssText = 'flex:1;overflow-y:auto;padding:16px;box-sizing:border-box;';
+    scrollArea.style.cssText = 'flex:1;overflow-y:auto;padding:14px;box-sizing:border-box;min-height:0;';
 
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,160px));gap:12px;justify-content:center;max-width:1100px;margin:0 auto;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(min(136px,100%),160px));gap:12px;justify-content:center;max-width:1100px;width:100%;margin:0 auto;';
     scrollArea.appendChild(grid);
 
     const pager = document.createElement('div');
@@ -240,7 +240,7 @@ export function showGallery(category, options = {}) {
         const makeButton = (text, enabled, onClick) => {
           const button = document.createElement('button');
           button.textContent = text;
-          button.style.cssText = 'padding:6px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#aaa;cursor:pointer;font-family:monospace;' + (!enabled ? 'opacity:0.3;' : '');
+          button.style.cssText = 'min-height:32px;padding:6px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#aaa;cursor:pointer;font:inherit;white-space:nowrap;' + (!enabled ? 'opacity:0.3;' : '');
           if (enabled) button.onclick = onClick;
           return button;
         };
@@ -294,19 +294,38 @@ export function showCategoryPicker() {
     }, 0);
     const overlay = document.createElement('div');
     overlay.id = '_catPicker';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.96);z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.96);z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",monospace;box-sizing:border-box;';
 
     const header = document.createElement('div');
-    header.style.cssText = 'text-align:center;padding:24px 24px 16px;flex-shrink:0;width:100%;';
+    header.style.cssText = 'text-align:center;padding:22px 24px 14px;flex-shrink:0;width:100%;box-sizing:border-box;max-width:100vw;';
     header.innerHTML = '<div style="font-size:28px;color:#ffd700;margin-bottom:6px;">📦 ASSET LIBRARY</div><div style="font-size:13px;color:#555;margin-bottom:16px;">4,122 models across 26 categories</div><input id="_catSearch" placeholder="🔍  Search categories..." style="background:#111;border:1px solid #333;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;width:260px;outline:none;" />';
+    const pickerTitle = header.querySelector('div:first-child');
+    if (pickerTitle) {
+      pickerTitle.style.fontSize = 'clamp(20px,7vw,28px)';
+      pickerTitle.style.lineHeight = '1.15';
+      pickerTitle.style.overflowWrap = 'anywhere';
+    }
+    const pickerSummary = header.querySelector('div:nth-child(2)');
+    if (pickerSummary) {
+      pickerSummary.style.lineHeight = '17px';
+      pickerSummary.style.color = '#777';
+      pickerSummary.style.marginBottom = '14px';
+    }
+    const pickerSearch = header.querySelector('#_catSearch');
+    if (pickerSearch) {
+      pickerSearch.style.width = 'min(260px,calc(100vw - 48px))';
+      pickerSearch.style.boxSizing = 'border-box';
+      pickerSearch.style.lineHeight = '16px';
+      pickerSearch.style.font = 'inherit';
+    }
     overlay.appendChild(header);
     const summaryEl = header.querySelector('div:nth-child(2)');
     if (summaryEl) summaryEl.textContent = totalModels.toLocaleString() + ' models across ' + categories.length + ' categories';
 
     const scrollWrap = document.createElement('div');
-    scrollWrap.style.cssText = 'flex:1;overflow-y:auto;width:100%;padding:0 24px 24px;box-sizing:border-box;';
+    scrollWrap.style.cssText = 'flex:1;overflow-y:auto;width:100%;padding:0 16px 24px;box-sizing:border-box;min-height:0;';
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,180px);gap:16px;justify-content:center;max-width:960px;margin:0 auto;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),180px));gap:14px;justify-content:center;max-width:960px;width:100%;margin:0 auto;';
 
     categories.forEach((category) => {
       const meta = CAT_META[category] || { icon: '📦', color: '#888', label: category };

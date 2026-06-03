@@ -507,7 +507,8 @@ async function runBrowserSmoke() {
           state.source === 'game-builder-assets' &&
           state.awaitingConfirm === true &&
           /Builder menu chair/i.test(state.name || '') &&
-          !!document.querySelector('#asset-placement-preview-toolbar');
+          !!document.querySelector('#asset-placement-preview-toolbar') &&
+          !!window._scene?.getObjectByName?.('asset-placement-preview-outline');
       },
       beforeBuilderMenuPlacementCount,
       { timeout: timeoutMs }
@@ -516,12 +517,14 @@ async function runBrowserSmoke() {
       objectCount: window._engineBridge?.objects?.length || 0,
       placement: window._lastAssetPlacement || null,
       toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+      previewOutlineVisible: !!window._scene?.getObjectByName?.('asset-placement-preview-outline'),
       statusText: document.querySelector('#gb-placement-status')?.textContent || '',
     }));
     if (previewPlacementState.objectCount !== beforeBuilderMenuPlacementCount ||
         previewPlacementState.placement?.status !== 'preview' ||
         !previewPlacementState.placement?.awaitingConfirm ||
         !previewPlacementState.toolbarVisible ||
+        !previewPlacementState.previewOutlineVisible ||
         !/Move over the scene/i.test(previewPlacementState.statusText)) {
       throw new Error(`Game Builder asset preview did not wait for confirmation: ${JSON.stringify(previewPlacementState)}`);
     }
@@ -551,6 +554,7 @@ async function runBrowserSmoke() {
         placementText: placementEl?.textContent || '',
         placementName: placementEl?.dataset?.placementName || '',
         placementPosition: placementEl?.dataset?.placementPosition || '',
+        previewOutlineVisible: !!window._scene?.getObjectByName?.('asset-placement-preview-outline'),
       };
     });
     if (builderMenuPlacementState.placement?.source !== 'game-builder-assets') {
@@ -558,6 +562,9 @@ async function runBrowserSmoke() {
     }
     if (!builderMenuPlacementState.placementViewport?.onScreen) {
       throw new Error(`Game Builder asset menu placed the asset outside the visible viewport: ${JSON.stringify(builderMenuPlacementState)}`);
+    }
+    if (builderMenuPlacementState.previewOutlineVisible) {
+      throw new Error(`Game Builder asset preview outline stayed visible after confirm: ${JSON.stringify(builderMenuPlacementState)}`);
     }
     const placementText = builderMenuPlacementState.placementText || '';
     if (!/Asset:\s*Builder menu chair/i.test(placementText) ||
@@ -602,7 +609,8 @@ async function runBrowserSmoke() {
           state.status === 'preview' &&
           state.source === 'game-builder-assets' &&
           state.awaitingConfirm === true &&
-          !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]');
+          !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]') &&
+          !!window._scene?.getObjectByName?.('asset-placement-preview-outline');
       },
       beforeRealGalleryPlacementCount,
       { timeout: timeoutMs }
@@ -611,6 +619,7 @@ async function runBrowserSmoke() {
       objectCount: window._engineBridge?.objects?.length || 0,
       placement: window._lastAssetPlacement || null,
       toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+      previewOutlineVisible: !!window._scene?.getObjectByName?.('asset-placement-preview-outline'),
       statusText: document.querySelector('#gb-placement-status')?.textContent || '',
     }));
     await page.locator('#asset-placement-preview-toolbar [data-placement-action="confirm"]').click({ timeout: timeoutMs });
@@ -629,6 +638,7 @@ async function runBrowserSmoke() {
       objectCount: window._engineBridge?.objects?.length || 0,
       placement: window._lastAssetPlacement || null,
       toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar'),
+      previewOutlineVisible: !!window._scene?.getObjectByName?.('asset-placement-preview-outline'),
     }));
     if (realGalleryCategoryState.categoryCount < 10 ||
         !/Furniture/i.test(realGalleryCategoryState.furnitureLabel) ||
@@ -637,8 +647,10 @@ async function runBrowserSmoke() {
         realGalleryPreviewState.objectCount !== beforeRealGalleryPlacementCount ||
         realGalleryPreviewState.placement?.status !== 'preview' ||
         !realGalleryPreviewState.placement?.awaitingConfirm ||
+        !realGalleryPreviewState.previewOutlineVisible ||
         realGalleryPlacementState.objectCount <= beforeRealGalleryPlacementCount ||
-        realGalleryPlacementState.toolbarVisible) {
+        realGalleryPlacementState.toolbarVisible ||
+        realGalleryPlacementState.previewOutlineVisible) {
       throw new Error(`Real Asset Library gallery placement failed: ${JSON.stringify({ realGalleryCategoryState, realGallerySelected, realGalleryPreviewState, realGalleryPlacementState })}`);
     }
 
@@ -700,7 +712,8 @@ async function runBrowserSmoke() {
         (before) => (window._engineBridge?.objects?.length || 0) === before &&
           window._lastAssetPlacement?.status === 'preview' &&
           window._lastAssetPlacement?.awaitingConfirm === true &&
-          !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+          !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]') &&
+          !!window._scene?.getObjectByName?.('asset-placement-preview-outline'),
         beforeCategoryPlacementCount,
         { timeout: timeoutMs }
       );
@@ -5026,10 +5039,12 @@ async function runViewportBuildCityProbe(label, options) {
           },
           overlap,
           offscreen: !!(toolbarRect && (toolbarRect.left < 0 || toolbarRect.right > window.innerWidth || toolbarRect.top < 0 || toolbarRect.bottom > window.innerHeight)),
+          previewOutlineVisible: !!window._scene?.getObjectByName?.('asset-placement-preview-outline'),
           controls,
         };
       });
       if (mobilePreviewToolbarState.mobile !== 'true' ||
+          !mobilePreviewToolbarState.previewOutlineVisible ||
           mobilePreviewToolbarState.overlap ||
           mobilePreviewToolbarState.offscreen ||
           mobilePreviewToolbarState.toolbar.height > 58 ||

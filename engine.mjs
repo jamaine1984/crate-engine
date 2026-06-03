@@ -3058,6 +3058,42 @@ function disposePlacementModel(model) {
   } catch {}
 }
 
+function createPlacementPreviewOutline(model) {
+  try {
+    if (!model || !scene) return null;
+    const outline = new THREE.BoxHelper(model, 0x4a9eff);
+    outline.name = 'asset-placement-preview-outline';
+    outline.userData.isPlacementHelper = true;
+    outline.renderOrder = 999;
+    if (outline.material) {
+      outline.material.depthTest = false;
+      outline.material.transparent = true;
+      outline.material.opacity = 0.95;
+    }
+    scene.add(outline);
+    return outline;
+  } catch {
+    return null;
+  }
+}
+
+function updatePlacementPreviewOutline(session) {
+  try {
+    session?.outline?.update?.();
+  } catch {}
+}
+
+function removePlacementPreviewOutline(session) {
+  try {
+    const outline = session?.outline;
+    if (!outline) return;
+    scene?.remove?.(outline);
+    outline.geometry?.dispose?.();
+    outline.material?.dispose?.();
+    session.outline = null;
+  } catch {}
+}
+
 function validateRenderableGLBScene(model, label = 'asset') {
   if (!model || typeof model.traverse !== 'function') {
     return { ok: false, error: 'Model did not contain a scene.' };
@@ -3093,6 +3129,7 @@ function positionPlacementPreview(session, screenX = null, screenY = null) {
   session.model.position.set(point.x, y - (session.bottom || 0), point.z);
   session.lastPoint = point;
   session.model.updateMatrixWorld?.();
+  updatePlacementPreviewOutline(session);
   const viewport = getAssetViewportState(session.model);
   setAssetPlacementState({
     status: 'preview',
@@ -3164,6 +3201,7 @@ function cleanupCatalogAssetPlacement(removeModel = false, status = '') {
   }
   document.removeEventListener('keydown', session.onKeyDown, true);
   removePlacementToolbar();
+  removePlacementPreviewOutline(session);
   activeCatalogPlacement = null;
   if (removeModel && session.model) {
     scene.remove(session.model);
@@ -3373,6 +3411,7 @@ function beginCatalogAssetPlacement(result, source = 'asset-library') {
     const session = {
       token: placementToken,
       model,
+      outline: createPlacementPreviewOutline(model),
       originalMaterials: applyPlacementPreviewMaterial(model),
       name: request.name,
       file: request.file,
@@ -3493,6 +3532,7 @@ function beginUrlAssetPlacement(config = {}) {
       const session = {
         token: placementToken,
         model,
+        outline: createPlacementPreviewOutline(model),
         originalMaterials: applyPlacementPreviewMaterial(model),
         name,
         file,
