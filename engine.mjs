@@ -1646,6 +1646,7 @@ function lockPlayCameraRoll(reason = 'frame') {
     }
   } catch {}
   if (activeVehicle || window._crateAllowCameraRoll === true) return;
+  const rollBefore = Number(camera.rotation?.z) || 0;
   const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
   const yaw = Number.isFinite(euler.y) ? euler.y : playYaw;
   const pitch = THREE.MathUtils.clamp(Number.isFinite(euler.x) ? euler.x : camera.rotation.x || 0, -1.15, 1.15);
@@ -1660,6 +1661,18 @@ function lockPlayCameraRoll(reason = 'frame') {
     x: camera.rotation.x,
     y: camera.rotation.y,
     z: camera.rotation.z,
+    updatedAt: Date.now(),
+  };
+  const flattened = Math.abs(rollBefore) > 0.001;
+  const previousGuard = window._playCameraRollGuard || {};
+  window._playCameraRollGuard = {
+    reason,
+    flattened,
+    rollBefore,
+    rollAfter: camera.rotation.z,
+    flattenedCount: (Number(previousGuard.flattenedCount) || 0) + (flattened ? 1 : 0),
+    activeVehicle: !!activeVehicle,
+    allowRoll: window._crateAllowCameraRoll === true,
     updatedAt: Date.now(),
   };
 }
@@ -13093,8 +13106,12 @@ function checkWallRun(playerPos, moveDir, dt) {
       // Slow fall + move forward along wall
       characterController.velocity.y = 1; // Slight upward
       // Tilt camera
-      const tilt = side === 'right' ? -0.15 : 0.15;
-      camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, tilt, 0.1);
+      if (window._crateAllowCameraRoll === true) {
+        const tilt = side === 'right' ? -0.15 : 0.15;
+        camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, tilt, 0.1);
+      } else {
+        lockPlayCameraRoll('wall-run-no-bank');
+      }
       return;
     }
   }
@@ -13102,7 +13119,11 @@ function checkWallRun(playerPos, moveDir, dt) {
   // No wall nearby, reset
   if (_wallRunState) {
     _wallRunState = null;
-    camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, 0, 0.1);
+    if (window._crateAllowCameraRoll === true) {
+      camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, 0, 0.1);
+    } else {
+      lockPlayCameraRoll('wall-run-end');
+    }
   }
 }
 

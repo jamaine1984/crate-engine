@@ -3509,11 +3509,15 @@ async function runBrowserSmoke() {
         cameraOwned: window._isCharacterCameraOwned?.() === true,
         cameraOnly: window._engine?.character?._cameraOnlyMode === true,
         stability: window._playCameraStability || null,
+        rollGuard: window._playCameraRollGuard || null,
       };
     });
     if (Math.abs(playCameraGuardState.z) > 0.02 ||
         Math.abs(playCameraGuardState.x) > 1.16 ||
-        playCameraGuardState.controlsEnabled !== false) {
+        playCameraGuardState.controlsEnabled !== false ||
+        playCameraGuardState.rollGuard?.flattened !== true ||
+        Math.abs(Number(playCameraGuardState.rollGuard?.rollBefore) || 0) < 0.3 ||
+        Math.abs(Number(playCameraGuardState.rollGuard?.rollAfter) || 0) > 0.02) {
       throw new Error(`Play camera guard did not clamp pitch, flatten roll, and disable editor controls: ${JSON.stringify(playCameraGuardState)}`);
     }
     const playCameraResetState = await page.evaluate(() => {
