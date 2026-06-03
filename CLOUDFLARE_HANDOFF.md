@@ -74,6 +74,7 @@ npx wrangler pages deploy .deploy --project-name crateship-games --branch=main -
 - Retried the previous deploy with `npx wrangler@latest` (`4.97.0`) and with `CLOUDFLARE_ACCOUNT_ID=6573d98c25150fd7b4602e56a0926767`; both attempts failed with the same authentication error.
 - `npx wrangler@latest login` opened the Cloudflare OAuth URL but timed out waiting for the authorization callback. Cloudflare must be re-authenticated in an interactive browser/terminal session before this source commit can be deployed and smoke-verified on the real site.
 - Latest auth check on 2026-06-03: `npx wrangler@latest whoami` still failed with account lookup/authentication errors, so no live deploy was attempted for `b8afdf74`.
+- Latest deploy attempt on 2026-06-03: the exact app-only command for `b8afdf74` was retried with `CLOUDFLARE_ACCOUNT_ID=6573d98c25150fd7b4602e56a0926767` using both bundled Wrangler `4.20.0` and `npx wrangler@latest` (`4.97.0`); both failed before upload with `Authentication error [code: 10000]`.
 - Do not mark `b8afdf74` as live until a new Cloudflare deployment ID is created and `https://crateshipgames.com/play` plus `https://www.crateshipgames.com/play` pass production smoke.
 
 What changed in the pending source commit:
