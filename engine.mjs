@@ -3068,18 +3068,41 @@ function confirmCatalogAssetPlacement(reason = 'click') {
   if (!session?.model) return null;
   restorePlacementPreviewMaterial(session);
   session.model.userData.isPlacementPreview = false;
-  session.model.userData.name = session.file;
+  session.model.userData.name = session.name || session.file;
   session.model.userData.isGLB = true;
   session.model.userData.gbAssetFile = session.file;
   session.model.userData.gbAssetPath = session.path;
   session.model.userData.gbPlacementSource = session.source;
+  if (session.userData && typeof session.userData === 'object') {
+    Object.assign(session.model.userData, session.userData);
+  }
   session.model.traverse?.((child) => {
     if (child.isMesh) {
       child.castShadow = true;
       child.receiveShadow = true;
     }
   });
+  if (Array.isArray(session.animations) && session.animations.length) {
+    const mixer = new THREE.AnimationMixer(session.model);
+    session.animations.forEach((clip) => mixer.clipAction(clip).play());
+    if (!window._mixers) window._mixers = [];
+    window._mixers.push(mixer);
+    animationMixers.push(mixer);
+    session.model.userData.mixer = mixer;
+    session.model.userData.animations = session.animations.map((clip) => clip.name);
+    session.model.userData.clips = session.animations;
+  }
   if (!objects.includes(session.model)) objects.push(session.model);
+  if (typeof session.onConfirm === 'function') {
+    try {
+      const result = session.onConfirm(session.model, session);
+      if (result && typeof result.catch === 'function') {
+        result.catch((err) => console.warn('[AssetPlacement] Confirm hook failed:', err));
+      }
+    } catch (err) {
+      console.warn('[AssetPlacement] Confirm hook failed:', err);
+    }
+  }
   handlePlacedAsset(session.model, {
     trackPlacement: true,
     selectAfterLoad: true,
@@ -3104,6 +3127,9 @@ function confirmCatalogAssetPlacement(reason = 'click') {
 function cancelCatalogAssetPlacement(reason = 'cancel') {
   activeCatalogPlacementToken += 1;
   const session = cleanupCatalogAssetPlacement(true, 'cancelled');
+  if (typeof session?.onCancel === 'function') {
+    try { session.onCancel(session); } catch (err) { console.warn('[AssetPlacement] Cancel hook failed:', err); }
+  }
   if (session) showToast('Asset placement cancelled');
   window._lastAssetPlacement = {
     ...(window._lastAssetPlacement || {}),
@@ -3239,6 +3265,129 @@ function beginCatalogAssetPlacement(result, source = 'asset-library') {
     positionPlacementPreview(session, result.screenX, result.screenY);
   });
   return { file: request.file, name: request.name, status: 'preview-loading' };
+}
+
+function beginUrlAssetPlacement(config = {}) {
+  const url = config.url || '';
+  const name = String(config.name || config.file || 'Imported model');
+  const file = String(config.file || name);
+  const path = String(config.path || url || file);
+  const source = config.source || 'user-import';
+  if (!url) return Promise.resolve(false);
+  if (!ensureEditModeForAssetPlacement(source)) return Promise.resolve(false);
+  cancelCatalogAssetPlacement('new-url-placement');
+  const placementToken = ++activeCatalogPlacementToken;
+  const startPoint = getViewportPlacementPoint(config.screenX, config.screenY);
+  setAssetPlacementState({
+    status: 'preview-loading',
+    name,
+    file,
+    path,
+    source,
+    x: startPoint.x,
+    y: startPoint.y ?? null,
+    z: startPoint.z,
+    awaitingConfirm: true,
+  });
+  showToast('Move the preview, then click Place or click the scene');
+  return new Promise((resolve) => {
+    gltfLoader.load(url, (gltf) => {
+      if (placementToken !== activeCatalogPlacementToken) {
+        try { if (config.revokeUrl !== false) URL.revokeObjectURL(url); } catch {}
+        disposePlacementModel(gltf.scene);
+        resolve(false);
+        return;
+      }
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = Number.isFinite(Number(config.scaleOverride)) && Number(config.scaleOverride) > 0
+        ? Number(config.scaleOverride)
+        : maxDim > 20 ? 3 / maxDim : maxDim < 0.5 ? 2 : 1;
+      model.scale.setScalar(scale);
+      const scaledBox = new THREE.Box3().setFromObject(model);
+      const bottom = scaledBox.min.y - model.position.y;
+      model.userData.name = name;
+      model.userData.isGLB = true;
+      model.userData.isPlacementPreview = true;
+      model.userData.gbAssetFile = file;
+      model.userData.gbAssetPath = path;
+      model.userData.gbPlacementSource = source;
+      if (config.userData && typeof config.userData === 'object') {
+        Object.assign(model.userData, config.userData);
+      }
+      scene.add(model);
+      const canvasEl = renderer?.domElement || document.querySelector('canvas');
+      const session = {
+        token: placementToken,
+        model,
+        originalMaterials: applyPlacementPreviewMaterial(model),
+        name,
+        file,
+        path,
+        source,
+        bottom,
+        animations: Array.isArray(gltf.animations) ? gltf.animations : [],
+        userData: config.userData && typeof config.userData === 'object' ? config.userData : null,
+        onConfirm: config.onConfirm,
+        onCancel: config.onCancel,
+        onPointerMove: null,
+        onPointerDown: null,
+        onKeyDown: null,
+      };
+      session.onPointerMove = (event) => {
+        if (!activeCatalogPlacement || activeCatalogPlacement !== session) return;
+        if (event?.target?.closest?.('#asset-placement-preview-toolbar')) return;
+        positionPlacementPreview(session, event.clientX, event.clientY);
+      };
+      session.onPointerDown = (event) => {
+        if (!activeCatalogPlacement || activeCatalogPlacement !== session || event.button !== 0) return;
+        if (event?.target?.closest?.('#asset-placement-preview-toolbar')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        positionPlacementPreview(session, event.clientX, event.clientY);
+        confirmCatalogAssetPlacement('canvas-click');
+      };
+      session.onKeyDown = (event) => {
+        if (!activeCatalogPlacement || activeCatalogPlacement !== session) return;
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelCatalogAssetPlacement('escape');
+        } else if (event.key.toLowerCase() === 'r') {
+          event.preventDefault();
+          rotateCatalogAssetPlacement(Math.PI / 8);
+        }
+      };
+      activeCatalogPlacement = session;
+      if (canvasEl) {
+        canvasEl.addEventListener('pointermove', session.onPointerMove, true);
+        canvasEl.addEventListener('pointerdown', session.onPointerDown, true);
+      }
+      document.addEventListener('keydown', session.onKeyDown, true);
+      ensurePlacementToolbar(session);
+      positionPlacementPreview(session, config.screenX, config.screenY);
+      try { if (config.revokeUrl !== false) URL.revokeObjectURL(url); } catch {}
+      resolve(true);
+    }, undefined, (error) => {
+      try { if (config.revokeUrl !== false) URL.revokeObjectURL(url); } catch {}
+      if (placementToken === activeCatalogPlacementToken) {
+        handleAssetPlacementFailure({
+          trackPlacement: true,
+          name,
+          file,
+          path,
+          source,
+          error,
+        });
+      }
+      if (typeof config.onError === 'function') {
+        try { config.onError(error); } catch {}
+      }
+      resolve(false);
+    });
+  });
 }
 
 function framePlacedAssetInView(model, options = {}) {
@@ -18848,43 +18997,67 @@ async function placeCloudUserAsset(id, options = {}) {
   try {
     const { asset, blob } = await fetchCloudUserAssetBlob(id);
     const url = URL.createObjectURL(blob);
-    const point = getEditorPlacementPoint();
-    setAssetPlacementState({
-      status: 'loading',
+    window._lastUserAssetCloudPlace = {
+      ok: false,
+      id,
+      objectId: '',
+      status: 'preview-loading',
+      error: '',
+      finishedAt: Date.now(),
+    };
+    const previewReady = await beginUrlAssetPlacement({
+      url,
       name: asset?.name || id,
       file: asset?.fileName || id,
       path: CLOUD_USER_ASSET_PREFIX + id,
       source: options.source || 'cloud-user-asset',
-      x: point.x,
-      z: point.z,
-    });
-    return await new Promise((resolve) => {
-      _loadGLBFromUrl(asset?.name || id, url, point.x, point.z, null, asset?.fileName || id, (model, error) => {
-        URL.revokeObjectURL(url);
-        if (model) {
-          model.userData.isImported = true;
-          model.userData.gbCloudAssetId = id;
-          model.userData.cloudAssetId = id;
-        }
+      userData: {
+        isImported: true,
+        gbCloudAssetId: id,
+        cloudAssetId: id,
+      },
+      onConfirm: (model) => {
         window._lastUserAssetCloudPlace = {
-          ok: !error && !!model,
+          ok: !!model,
           id,
           objectId: model?.uuid || '',
-          status: error ? 'failed' : 'placed',
-          error: error?.message || '',
+          status: model ? 'placed' : 'failed',
+          error: '',
           finishedAt: Date.now(),
         };
-        resolve(!error && !!model);
-      }, {
-        trackPlacement: true,
-        selectAfterLoad: true,
-        notify: true,
-        displayName: asset?.name || id,
-        source: options.source || 'cloud-user-asset',
-        file: asset?.fileName || id,
-        path: CLOUD_USER_ASSET_PREFIX + id,
-      });
+      },
+      onCancel: () => {
+        window._lastUserAssetCloudPlace = {
+          ok: false,
+          id,
+          objectId: '',
+          status: 'cancelled',
+          error: '',
+          finishedAt: Date.now(),
+        };
+      },
+      onError: (error) => {
+        window._lastUserAssetCloudPlace = {
+          ok: false,
+          id,
+          objectId: '',
+          status: 'failed',
+          error: error?.message || String(error || 'Cloud place failed'),
+          finishedAt: Date.now(),
+        };
+      },
     });
+    if (previewReady) {
+      window._lastUserAssetCloudPlace = {
+        ok: false,
+        id,
+        objectId: window._lastAssetPlacement?.objectId || '',
+        status: 'preview',
+        error: '',
+        finishedAt: Date.now(),
+      };
+    }
+    return previewReady;
   } catch (err) {
     window._lastUserAssetCloudPlace = {
       ok: false,
@@ -19010,47 +19183,72 @@ async function placeUserImportedModel(id) {
   }
   const blob = _modelDB.blobFromB64(entry.data_b64);
   const url = URL.createObjectURL(blob);
-  const point = getEditorPlacementPoint();
-  setAssetPlacementState({
-    status: 'loading',
+  const userData = {
+    isImported: true,
+    userImportId: id,
+  };
+  if (entry.cloudAssetId) {
+    userData.gbCloudAssetId = entry.cloudAssetId;
+    userData.cloudAssetId = entry.cloudAssetId;
+    userData.gbAssetPath = CLOUD_USER_ASSET_PREFIX + entry.cloudAssetId;
+  }
+  window._lastUserImportLibraryAction = {
+    action: 'place',
+    id,
+    status: 'preview-loading',
+    objectId: '',
+    error: '',
+    finishedAt: Date.now(),
+  };
+  const previewReady = await beginUrlAssetPlacement({
+    url,
     name: entry.name || id,
     file: id,
-    path: 'indexeddb:' + id,
+    path: entry.cloudAssetId ? CLOUD_USER_ASSET_PREFIX + entry.cloudAssetId : 'indexeddb:' + id,
     source: 'user-import-library',
-    x: point.x,
-    z: point.z,
-  });
-  return new Promise((resolve) => {
-    _loadGLBFromUrl(entry.name || id, url, point.x, point.z, null, id, (model, error) => {
-      URL.revokeObjectURL(url);
-      if (model) {
-        model.userData.isImported = true;
-        model.userData.userImportId = id;
-        if (entry.cloudAssetId) {
-          model.userData.gbCloudAssetId = entry.cloudAssetId;
-          model.userData.cloudAssetId = entry.cloudAssetId;
-          model.userData.gbAssetPath = CLOUD_USER_ASSET_PREFIX + entry.cloudAssetId;
-        }
-      }
+    userData,
+    onConfirm: (model) => {
       window._lastUserImportLibraryAction = {
         action: 'place',
         id,
-        status: error ? 'failed' : 'placed',
+        status: model ? 'placed' : 'failed',
         objectId: model?.uuid || '',
-        error: error?.message || '',
+        error: '',
         finishedAt: Date.now(),
       };
-      resolve(!error && !!model);
-    }, {
-      trackPlacement: true,
-      selectAfterLoad: true,
-      notify: true,
-      displayName: entry.name || id,
-      source: 'user-import-library',
-      file: id,
-      path: 'indexeddb:' + id,
-    });
+    },
+    onCancel: () => {
+      window._lastUserImportLibraryAction = {
+        action: 'place',
+        id,
+        status: 'cancelled',
+        objectId: '',
+        error: '',
+        finishedAt: Date.now(),
+      };
+    },
+    onError: (error) => {
+      window._lastUserImportLibraryAction = {
+        action: 'place',
+        id,
+        status: 'failed',
+        objectId: '',
+        error: error?.message || String(error || 'Model load failed'),
+        finishedAt: Date.now(),
+      };
+    },
   });
+  if (previewReady) {
+    window._lastUserImportLibraryAction = {
+      action: 'place',
+      id,
+      status: 'preview',
+      objectId: window._lastAssetPlacement?.objectId || '',
+      error: '',
+      finishedAt: Date.now(),
+    };
+  }
+  return previewReady;
 }
 
 window._listUserImportedModels = listUserImportedModels;
@@ -19077,74 +19275,91 @@ async function _importGLBFile(file, options = {}) {
   }
   const url = URL.createObjectURL(file);
   const name = cleanUserImportName(file);
-  if (typeof _loadGLBFromUrl === 'function') {
-    const point = getEditorPlacementPoint();
-    window._lastUserImportStatus = { status: 'loading', ...validation, checkedAt: Date.now() };
-    setAssetPlacementState({
-      status: 'loading',
-      name,
-      file: file.name || name,
-      path: 'local-file:' + (file.name || name),
-      source: options.source || 'user-import',
-      x: point.x,
-      z: point.z,
-    });
-    return new Promise((resolve) => {
-      _loadGLBFromUrl(name, url, point.x, point.z, null, file.name, async (model, error) => {
-        URL.revokeObjectURL(url);
-        let savedModel = null;
-        let cloudAsset = null;
-        if (model && !error) {
-          model.userData.isImported = true;
-          savedModel = await saveUserImportedModel(file, validation);
-          if (savedModel?.id) {
-            model.userData.userImportId = savedModel.id;
-            if (options.syncCloud !== false) {
-              cloudAsset = await uploadUserImportedModelToCloud(file, savedModel, validation);
-              if (cloudAsset?.id) {
-                savedModel.cloudAssetId = cloudAsset.id;
-                savedModel.cloudAsset = cloudAsset;
-                savedModel.cloudSyncedAt = Date.now();
-                model.userData.gbCloudAssetId = cloudAsset.id;
-                model.userData.cloudAssetId = cloudAsset.id;
-                model.userData.gbAssetPath = CLOUD_USER_ASSET_PREFIX + cloudAsset.id;
-              }
+  window._lastUserImportStatus = { status: 'preview-loading', ...validation, checkedAt: Date.now() };
+  const previewReady = await beginUrlAssetPlacement({
+    url,
+    name,
+    file: file.name || name,
+    path: 'local-file:' + (file.name || name),
+    source: options.source || 'user-import',
+    userData: { isImported: true },
+    onConfirm: async (model) => {
+      let savedModel = null;
+      let cloudAsset = null;
+      if (model) {
+        savedModel = await saveUserImportedModel(file, validation);
+        if (savedModel?.id) {
+          model.userData.userImportId = savedModel.id;
+          if (options.syncCloud !== false) {
+            cloudAsset = await uploadUserImportedModelToCloud(file, savedModel, validation);
+            if (cloudAsset?.id) {
+              savedModel.cloudAssetId = cloudAsset.id;
+              savedModel.cloudAsset = cloudAsset;
+              savedModel.cloudSyncedAt = Date.now();
+              model.userData.gbCloudAssetId = cloudAsset.id;
+              model.userData.cloudAssetId = cloudAsset.id;
+              model.userData.gbAssetPath = CLOUD_USER_ASSET_PREFIX + cloudAsset.id;
             }
           }
-          if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
         }
-        window._lastUserImportStatus = {
-          status: error ? 'failed' : 'loaded',
-          ...validation,
-          objectName: model?.userData?.name || name,
-          objectId: model?.uuid || '',
-          savedModel,
-          cloudAsset,
-          libraryCount: (await listUserImportedModels()).length,
-          error: error?.message || '',
-          finishedAt: Date.now(),
-        };
-        if (error) {
-          logOutput('err', 'Import failed: ' + (error?.message || 'Model load failed'));
-        } else {
-          logOutput('ok', 'Imported model: ' + file.name);
-        }
-        resolve(!error && !!model);
-      }, {
-        trackPlacement: true,
-        selectAfterLoad: true,
-        notify: true,
-        displayName: name,
-        source: options.source || 'user-import',
-        file: file.name || name,
-        path: 'local-file:' + (file.name || name),
-      });
-    });
+        if (typeof window._refreshGameBuilderPlacement === 'function') window._refreshGameBuilderPlacement();
+      }
+      window._lastUserImportStatus = {
+        status: model ? 'loaded' : 'failed',
+        ...validation,
+        objectName: model?.userData?.name || name,
+        objectId: model?.uuid || '',
+        savedModel,
+        cloudAsset,
+        libraryCount: (await listUserImportedModels()).length,
+        error: model ? '' : 'Model load failed',
+        finishedAt: Date.now(),
+      };
+      if (model) logOutput('ok', 'Imported model: ' + file.name);
+      else logOutput('err', 'Import failed: Model load failed');
+    },
+    onCancel: () => {
+      window._lastUserImportStatus = {
+        status: 'cancelled',
+        ...validation,
+        objectName: name,
+        objectId: '',
+        savedModel: null,
+        cloudAsset: null,
+        libraryCount: 0,
+        error: '',
+        finishedAt: Date.now(),
+      };
+    },
+    onError: (error) => {
+      window._lastUserImportStatus = {
+        status: 'failed',
+        ...validation,
+        objectName: name,
+        objectId: '',
+        savedModel: null,
+        cloudAsset: null,
+        libraryCount: 0,
+        error: error?.message || String(error || 'Model load failed'),
+        finishedAt: Date.now(),
+      };
+      logOutput('err', 'Import failed: ' + (error?.message || 'Model load failed'));
+    },
+  });
+  if (previewReady) {
+    window._lastUserImportStatus = {
+      status: 'preview',
+      ...validation,
+      objectName: name,
+      objectId: window._lastAssetPlacement?.objectId || '',
+      savedModel: null,
+      cloudAsset: null,
+      libraryCount: (await listUserImportedModels()).length,
+      error: '',
+      finishedAt: Date.now(),
+    };
   }
-  URL.revokeObjectURL(url);
-  window._lastUserImportStatus = { status: 'failed', ...validation, error: 'Model loader unavailable', finishedAt: Date.now() };
-  logOutput('err', 'Import failed: model loader unavailable');
-  return false;
+  return previewReady;
 }
 window._importGLBFile = _importGLBFile;
 

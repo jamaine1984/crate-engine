@@ -750,6 +750,25 @@ async function runBrowserSmoke() {
     }
 
     const userImportState = await page.evaluate(async () => {
+      const waitForState = async (predicate, timeout = 30000) => {
+        const start = performance.now();
+        while (performance.now() - start < timeout) {
+          if (predicate()) return true;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return false;
+      };
+      const objectCount = () => window._engineBridge?.objects?.length || 0;
+      const placementSnapshot = () => {
+        const state = window._lastAssetPlacement || {};
+        return {
+          status: state.status || '',
+          source: state.source || '',
+          objectId: state.objectId || '',
+          awaitingConfirm: state.awaitingConfirm === true,
+          toolbarVisible: !!document.querySelector('#asset-placement-preview-toolbar [data-placement-action="confirm"]'),
+        };
+      };
       const before = window._engineBridge?.objects?.length || 0;
       if (typeof window._importGLBFile !== 'function' ||
           typeof window._listUserImportedModels !== 'function' ||
@@ -773,8 +792,15 @@ async function runBrowserSmoke() {
       const blob = await response.blob();
       const file = new File([blob], 'smoke-user-import-chair.glb', { type: 'model/gltf-binary' });
       const imported = await window._importGLBFile(file, { source: 'smoke-user-import' });
+      const importPreviewState = placementSnapshot();
+      const afterImportPreview = objectCount();
+      const importConfirmed = !!window._confirmCatalogAssetPlacement?.('smoke-user-import');
+      const importLoaded = await waitForState(() => {
+        const current = window._lastUserImportStatus || {};
+        return current.status === 'loaded' && !!current.savedModel?.id;
+      });
       const status = window._lastUserImportStatus || {};
-      const afterImport = window._engineBridge?.objects?.length || 0;
+      const afterImport = objectCount();
       const savedId = status.savedModel?.id || '';
       const cloudId = status.cloudAsset?.id || status.savedModel?.cloudAssetId || '';
       const list = await window._listUserImportedModels();
@@ -783,11 +809,25 @@ async function runBrowserSmoke() {
       const cloudListed = !!cloudId && cloudList.some((item) => item.cloudAssetId === cloudId || item.id === cloudId);
       const usageAfterUpload = await window._getUserAssetStorageUsage();
       const placed = savedId ? await window._placeUserImportedModel(savedId) : false;
+      const localPreviewState = placementSnapshot();
+      const afterLocalPreview = objectCount();
+      const localConfirmed = !!window._confirmCatalogAssetPlacement?.('smoke-local-user-import');
+      const localPlaced = await waitForState(() => {
+        const current = window._lastUserImportLibraryAction || {};
+        return current.status === 'placed' && objectCount() > afterImport;
+      });
       const localPlaceState = window._lastUserImportLibraryAction || {};
-      const afterPlace = window._engineBridge?.objects?.length || 0;
+      const afterPlace = objectCount();
       const cloudPlaced = cloudId ? await window._placeCloudUserAsset(cloudId, { source: 'smoke-cloud-user-asset' }) : false;
+      const cloudPreviewState = placementSnapshot();
+      const afterCloudPreview = objectCount();
+      const cloudConfirmed = !!window._confirmCatalogAssetPlacement?.('smoke-cloud-user-asset');
+      const cloudPlacedDone = await waitForState(() => {
+        const current = window._lastUserAssetCloudPlace || {};
+        return current.status === 'placed' && objectCount() > afterPlace;
+      });
       const cloudPlaceState = window._lastUserAssetCloudPlace || {};
-      const afterCloudPlace = window._engineBridge?.objects?.length || 0;
+      const afterCloudPlace = objectCount();
       const removeObjectById = (id) => {
         if (!id) return false;
         const objects = window._engineBridge?.objects || window._sceneObjects || [];
@@ -802,12 +842,21 @@ async function runBrowserSmoke() {
         removeObjectById(localPlaceState.objectId || ''),
         removeObjectById(cloudPlaceState.objectId || ''),
       ].filter(Boolean).length;
+      const afterRemovedSmokeObjects = objectCount();
       const deleted = savedId ? await window._deleteUserImportedModel(savedId) : false;
       const afterDeleteList = await window._listUserImportedModels();
       const cloudAfterDeleteList = await window._listCloudUserAssets();
       const usageAfterDelete = await window._getUserAssetStorageUsage();
+      const afterDeleteCount = objectCount();
       const publishFile = new File([blob], 'smoke-publish-cloud-chair.glb', { type: 'model/gltf-binary' });
       const publishImported = await window._importGLBFile(publishFile, { source: 'smoke-publish-cloud-asset' });
+      const publishPreviewState = placementSnapshot();
+      const afterPublishPreview = objectCount();
+      const publishConfirmed = !!window._confirmCatalogAssetPlacement?.('smoke-publish-cloud-asset');
+      const publishLoaded = await waitForState(() => {
+        const current = window._lastUserImportStatus || {};
+        return current.status === 'loaded' && !!current.savedModel?.id && !!(current.cloudAsset?.id || current.savedModel?.cloudAssetId);
+      });
       const publishStatus = window._lastUserImportStatus || {};
       const publishCloudId = publishStatus.cloudAsset?.id || publishStatus.savedModel?.cloudAssetId || '';
       const publishSavedId = publishStatus.savedModel?.id || '';
@@ -829,26 +878,56 @@ async function runBrowserSmoke() {
         usageQuotaPercent: Number(usageAfterPublishImport?.quota?.percent) || 0,
         fetchOk: true,
         imported,
+        importLoaded,
+        importPreviewStatus: importPreviewState.status,
+        importPreviewSource: importPreviewState.source,
+        importPreviewAwaitingConfirm: importPreviewState.awaitingConfirm,
+        importPreviewToolbarVisible: importPreviewState.toolbarVisible,
+        importConfirmed,
         importStatus: status.status || '',
         savedId,
         cloudId,
         listed,
         cloudListed,
         placed,
+        localPlaced,
+        localPreviewStatus: localPreviewState.status,
+        localPreviewSource: localPreviewState.source,
+        localPreviewAwaitingConfirm: localPreviewState.awaitingConfirm,
+        localPreviewToolbarVisible: localPreviewState.toolbarVisible,
+        localConfirmed,
         cloudPlaced,
+        cloudPlacedDone,
+        cloudPreviewStatus: cloudPreviewState.status,
+        cloudPreviewSource: cloudPreviewState.source,
+        cloudPreviewAwaitingConfirm: cloudPreviewState.awaitingConfirm,
+        cloudPreviewToolbarVisible: cloudPreviewState.toolbarVisible,
+        cloudConfirmed,
         deleted,
         stillListed: !!savedId && afterDeleteList.some((item) => item.id === savedId),
         cloudStillListed: !!cloudId && cloudAfterDeleteList.some((item) => item.cloudAssetId === cloudId || item.id === cloudId),
         publishImported,
+        publishLoaded,
+        publishPreviewStatus: publishPreviewState.status,
+        publishPreviewSource: publishPreviewState.source,
+        publishPreviewAwaitingConfirm: publishPreviewState.awaitingConfirm,
+        publishPreviewToolbarVisible: publishPreviewState.toolbarVisible,
+        publishConfirmed,
         publishImportStatus: publishStatus.status || '',
         publishCloudId,
         publishSavedId,
         publishObjectId,
         before,
+        afterImportPreview,
         afterImport,
+        afterLocalPreview,
         afterPlace,
+        afterCloudPreview,
         afterCloudPlace,
-        afterPublishImport: window._engineBridge?.objects?.length || 0,
+        afterRemovedSmokeObjects,
+        afterDeleteCount,
+        afterPublishPreview,
+        afterPublishImport: objectCount(),
         removedSmokeObjects,
         libraryCount: list.length,
         cloudLibraryCount: cloudList.length,
@@ -858,6 +937,12 @@ async function runBrowserSmoke() {
         !userImportState.cloudHealthOk ||
         !userImportState.fetchOk ||
         userImportState.imported !== true ||
+        userImportState.importLoaded !== true ||
+        userImportState.importPreviewStatus !== 'preview' ||
+        userImportState.importPreviewSource !== 'smoke-user-import' ||
+        !userImportState.importPreviewAwaitingConfirm ||
+        !userImportState.importPreviewToolbarVisible ||
+        !userImportState.importConfirmed ||
         userImportState.importStatus !== 'loaded' ||
         !userImportState.savedId ||
         !userImportState.cloudId ||
@@ -870,20 +955,42 @@ async function runBrowserSmoke() {
         userImportState.usageAfterPublishPrivateBytes <= 0 ||
         userImportState.usageQuotaBytes <= 0 ||
         userImportState.placed !== true ||
+        userImportState.localPlaced !== true ||
+        userImportState.localPreviewStatus !== 'preview' ||
+        userImportState.localPreviewSource !== 'user-import-library' ||
+        !userImportState.localPreviewAwaitingConfirm ||
+        !userImportState.localPreviewToolbarVisible ||
+        !userImportState.localConfirmed ||
         userImportState.cloudPlaced !== true ||
+        userImportState.cloudPlacedDone !== true ||
+        userImportState.cloudPreviewStatus !== 'preview' ||
+        userImportState.cloudPreviewSource !== 'smoke-cloud-user-asset' ||
+        !userImportState.cloudPreviewAwaitingConfirm ||
+        !userImportState.cloudPreviewToolbarVisible ||
+        !userImportState.cloudConfirmed ||
         userImportState.deleted !== true ||
         userImportState.stillListed ||
         userImportState.cloudStillListed ||
+        userImportState.afterImportPreview !== userImportState.before ||
         userImportState.afterImport <= userImportState.before ||
+        userImportState.afterLocalPreview !== userImportState.afterImport ||
         userImportState.afterPlace <= userImportState.afterImport ||
+        userImportState.afterCloudPreview !== userImportState.afterPlace ||
         userImportState.afterCloudPlace <= userImportState.afterPlace ||
         userImportState.removedSmokeObjects < 3 ||
         userImportState.publishImported !== true ||
+        userImportState.publishLoaded !== true ||
+        userImportState.publishPreviewStatus !== 'preview' ||
+        userImportState.publishPreviewSource !== 'smoke-publish-cloud-asset' ||
+        !userImportState.publishPreviewAwaitingConfirm ||
+        !userImportState.publishPreviewToolbarVisible ||
+        !userImportState.publishConfirmed ||
         userImportState.publishImportStatus !== 'loaded' ||
         !userImportState.publishCloudId ||
         !userImportState.publishSavedId ||
         !userImportState.publishObjectId ||
-        userImportState.afterPublishImport <= userImportState.before) {
+        userImportState.afterPublishPreview !== userImportState.afterDeleteCount ||
+        userImportState.afterPublishImport <= userImportState.afterDeleteCount) {
       throw new Error(`User imported GLB did not persist, cloud sync, place, and delete cleanly: ${JSON.stringify(userImportState)}`);
     }
 
