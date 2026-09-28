@@ -46,7 +46,7 @@ async function render(){
   if(generation!==routeGeneration)return;
   main.innerHTML=result.html+(path.startsWith('/owners-portal')&&state.user?.roles?.includes('OWNER')?administrationPanels(path):'');document.getElementById('full-width-content').innerHTML=result.full||'';
   main.querySelectorAll('[data-action=favorite]').forEach(el=>el.setAttribute('aria-pressed',String(state.favoriteIds.has(el.dataset.id))));
-  const submitGame=main.querySelector('form[data-form=submit-game]');if(submitGame&&!submitGame.elements.versionId.options.length){submitGame.querySelector('button[type=submit]').disabled=true;submitGame.insertAdjacentHTML('afterbegin',notice('No validated builds are available yet. Complete upload and scanning first.'));}
+  const submitGame=main.querySelector('form[data-form=submit-game]');if(submitGame&&!submitGame.elements.versionId.options.length){submitGame.querySelector('button[type=submit]').disabled=true;submitGame.insertAdjacentHTML('afterbegin',notice('No build has passed the security check yet. Upload your ZIP in Step 3 first.'));}else if(submitGame&&!state.media?.length){submitGame.querySelector('button[type=submit]').disabled=true;submitGame.insertAdjacentHTML('afterbegin',notice('Add at least one screenshot in Step 2 first.'));}
   if(state.serviceError&&path!=='/'&&!path.startsWith('/owners-portal'))main.insertAdjacentHTML('afterbegin',notice('Account services are currently unavailable. '+esc(messageFor(state.serviceError)),true));
   if(location.hash==='#join'||location.hash==='#waitlist')document.getElementById('join')?.scrollIntoView({block:'start'});
  }catch(error){if(generation!==routeGeneration)return;main.innerHTML=`<div class="page-error">${icon(error.status===403?'shield-check':'warning-circle')}<h2>${error.status===403?'Additional verification required':'This page could not load.'}</h2><p>${esc(messageFor(error))}</p><div class="inline-actions">${btn('retry','Try Again','btn primary')}${error.status===403?link('/settings','Security Settings','btn'):link('/','Back to Home','btn')}</div></div>`;}
@@ -59,6 +59,7 @@ const gamePayload=b=>({...b,genres:String(b.genres||'').split(',').map(s=>s.trim
 document.addEventListener('click',async event=>{
  const a=event.target.closest('a[href]');if(a&&!event.defaultPrevented&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey&&event.button===0&&!a.target&&!a.hasAttribute('download')){const url=new URL(a.href,location.href);if(url.origin===location.origin&&(url.pathname==='/'||clientRoots.includes(url.pathname.split('/')[1]))&&!url.pathname.endsWith('.html')){event.preventDefault();navigate(url.pathname+url.search+url.hash);return;}}
  const el=event.target.closest('[data-action]');if(!el)return;const action=el.dataset.action;
+ if(action==='remove-screenshot'){el.disabled=true;try{await api('/developer/games/'+encodeURIComponent(el.dataset.game)+'/media/'+el.dataset.position,{method:'DELETE'});notify('Screenshot removed.');await render();}catch(error){notify(messageFor(error),true);el.disabled=false;}return;}
  if(action==='owner-account-status'){const box=document.querySelector('form[data-form=owner-status]');if(!box)return;box.closest('details').open=true;box.elements.userId.value=el.dataset.id;box.elements.status.value=el.dataset.status;box.elements.reason.value='';box.elements.reason.placeholder=(el.dataset.status==='suspended'?'Why are you suspending ':'Why are you reactivating ')+el.dataset.name+'?';box.scrollIntoView({block:'center'});box.elements.reason.focus();return;}
  if(action==='menu'){const open=!document.getElementById('sidebar').classList.contains('open');document.getElementById('sidebar').classList.toggle('open',open);document.querySelector('.drawer-overlay').classList.toggle('open',open);el.setAttribute('aria-expanded',String(open));return;}
  if(action==='close-menu'){closeMenu();return;}
@@ -111,7 +112,7 @@ document.addEventListener('submit',async event=>{
   else if(name==='create-game'){const data=await api('/developer/games',{method:'POST',body:gamePayload(b)});notify('Draft created.');await navigate('/developer/games/'+encodeURIComponent(data.game.id));}
   else if(name==='edit-game'){await api('/developer/games/'+encodeURIComponent(form.dataset.id),{method:'PUT',body:gamePayload(b)});formResult(form,'Game listing saved.');}
   else if(name==='upload-game'){await uploadBuild(form,b);}
-  else if(name==='submit-game'){if(!b.versionId)throw new Error('Upload a build and wait for clean validation before submitting.');await api('/developer/games/'+encodeURIComponent(form.dataset.id)+'/submit',{method:'POST',body:{versionId:b.versionId,rightsConfirmed:form.elements.rightsConfirmed.checked}});notify('Game submitted for review.');await render();}
+  else if(name==='submit-game'){if(!b.versionId)throw new Error('Upload a build and wait for clean validation before submitting.');const result=await api('/developer/games/'+encodeURIComponent(form.dataset.id)+'/submit',{method:'POST',body:{versionId:b.versionId,rightsConfirmed:form.elements.rightsConfirmed.checked}});notify(result.status==='approved'?'Approved automatically. Publish it from Owner Portal → Review Games.':'Game submitted for review.');await render();}
   else if(name==='owner-flag'){await api('/owner/flags',{method:'PUT',body:{key:b.key,enabled:b.enabled==='true',reason:b.reason}});notify('Feature state updated and recorded.');await render();}
   else if(name==='owner-review'){await api('/owner/games/'+encodeURIComponent(b.gameId)+'/review',{method:'POST',body:{decision:b.decision,reason:b.reason}});notify('Review decision recorded.');await render();}
   else if(name==='owner-publish'){if(!form.elements.confirmPublish.checked)throw new Error('Confirm public publication of this approved game.');await api('/owner/games/'+encodeURIComponent(b.gameId)+'/publish',{method:'POST',body:{reason:b.reason}});notify('The approved game has been published.');await render();}
@@ -129,9 +130,26 @@ async function uploadBuild(form,b){
  uploadRunning=true;let upload;let completed=false;
  try{const started=await api('/developer/uploads',{method:'POST',body:{gameId:form.dataset.id,platform:b.platform,version:b.version,sizeBytes:file.size,fileName:file.name,releaseNotes:b.releaseNotes}});upload=started.upload;const progress=form.querySelector('progress');progress.hidden=false;
   for(let n=1;n<=upload.parts;n++){formResult(form,`Uploading part ${n} of ${upload.parts}…`);const part=file.slice((n-1)*upload.partBytes,Math.min(file.size,n*upload.partBytes));await api('/developer/uploads/'+encodeURIComponent(upload.id)+'/parts/'+n,{method:'PUT',body:part,headers:{'Content-Type':'application/octet-stream'},timeout:120000});progress.value=Math.round(n/upload.parts*100);}
-  await api('/developer/uploads/'+encodeURIComponent(upload.id)+'/complete',{method:'POST',body:{}});completed=true;formResult(form,'Upload received and held in quarantine. Validation and scanning must finish before review.');notify('Build uploaded to quarantine.');
+  await api('/developer/uploads/'+encodeURIComponent(upload.id)+'/complete',{method:'POST',body:{}});completed=true;formResult(form,'Upload finished. Running the security check…');
+  try{await api('/developer/uploads/'+encodeURIComponent(upload.id)+'/process',{method:'POST',body:{},timeout:120000});notify('Your build passed the security check.');}catch(error){notify(messageFor(error),true);}
+  await render();
  }catch(error){if(upload&&!completed){await api('/developer/uploads/'+encodeURIComponent(upload.id)+'/abort',{method:'POST',body:{}}).catch(()=>{});}throw error;}finally{uploadRunning=false;}
 }
+async function screenshotBlob(file){
+ if(!/^image\/(png|jpeg|webp)$/.test(file.type))throw new Error('Choose a PNG, JPEG or WebP image.');
+ const bitmap=await createImageBitmap(file);if(bitmap.width<320||bitmap.height<180)throw new Error('Screenshots must be at least 320 × 180 pixels.');
+ const scale=Math.min(1,1920/bitmap.width,1080/bitmap.height),canvas=document.createElement('canvas');canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);
+ canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();
+ const encode=(type,quality)=>new Promise(resolve=>canvas.toBlob(resolve,type,quality));
+ for(const [type,quality] of [['image/webp',0.85],['image/jpeg',0.85],['image/jpeg',0.7],['image/jpeg',0.55]]){const blob=await encode(type,quality);if(blob&&blob.type===type&&blob.size<=1048576)return blob;}
+ throw new Error('This image is too detailed to fit in 1 MB. Try a smaller screenshot.');
+}
+document.addEventListener('change',async event=>{
+ const input=event.target.closest?.('input[data-screenshot]');if(!input||!input.files[0])return;
+ const box=document.querySelector('[data-screenshot-feedback]'),say=(text,error=false)=>{if(box){box.className='form-feedback'+(error?' error':'');box.textContent=text;}};
+ try{say('Preparing screenshot…');const blob=await screenshotBlob(input.files[0]);say('Uploading screenshot…');await api('/developer/games/'+encodeURIComponent(input.dataset.game)+'/media/'+input.dataset.screenshot,{method:'PUT',body:blob,headers:{'Content-Type':blob.type}});notify('Screenshot saved.');await render();}
+ catch(error){say(messageFor(error),true);}finally{input.value='';}
+});
 window.addEventListener('popstate',()=>render());
 window.addEventListener('beforeunload',event=>{if(uploadRunning){event.preventDefault();event.returnValue='';}});
 async function boot(){const results=await Promise.allSettled([api('/config'),refreshSession()]);if(results[0].status==='fulfilled')state.config=results[0].value;state.serviceError=results[1].status==='rejected'?results[1].reason:null;await render();}

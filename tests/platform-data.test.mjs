@@ -7,6 +7,7 @@ import { handleData, flags, DISABLED_PROVIDER_FLAGS } from '../platform/server/d
 import { handlePlayer } from '../platform/server/player.mjs';
 import { handleUploads } from '../platform/server/uploads.mjs';
 import { handleAdministration } from '../platform/server/administration.mjs';
+import { handleMedia, imageInfo } from '../platform/server/media.mjs';
 import { accountErasureStatements } from '../platform/server/erasure.mjs';
 import { base64url, tokenHash, handleAuth, requireUser } from '../platform/server/identity.mjs';
 import { HttpError } from '../platform/server/common.mjs';
@@ -51,6 +52,19 @@ function game(f, developer, options = {}) {
     VALUES(?,?,?,? ,?,?,?,?)`).run(versionId, id, '1.0.0', options.platform || 'web', options.versionStatus || 'published',
     options.scanStatus || 'clean', developer.id, stamp);
   return { id, versionId };
+}
+function screenshot(f, gameId, user) {
+  f.sql.prepare('INSERT INTO platform_game_media(id,game_id,position,object_key,content_type,size_bytes,width,height,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
+    .run(crypto.randomUUID(), gameId, 1, `media/${gameId}/${crypto.randomUUID()}.png`, 'image/png', 100, 640, 360, user.id, now());
+}
+function png(width, height, extra = 64) {
+  const bytes = new Uint8Array(33 + extra); bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  new DataView(bytes.buffer).setUint32(16, width); new DataView(bytes.buffer).setUint32(20, height); return bytes;
+}
+function mediaRequest(f, path, user, method, bytes) {
+  const headers = { origin: f.env.APP_ORIGIN, cookie: user.cookie, 'cf-connecting-ip': '192.0.2.20' };
+  if (bytes) { headers['content-type'] = 'image/png'; headers['content-length'] = String(bytes.length); }
+  return handleMedia(new Request(`${f.env.APP_ORIGIN}/api/platform${path}`, { method, headers, ...(bytes ? { body: bytes } : {}) }), f.env, path);
 }
 function storage() {
   const transfers = new Map(); const events = [];
@@ -193,6 +207,8 @@ test('submission requires rights and clean reviewed build; creators cannot appro
   const f = fixture(); const dev = await actor(f, ['DEVELOPER']); const owner = await actor(f, ['OWNER'], { mfa: true });
   const draft = game(f, dev, { status: 'draft', versionStatus: 'ready' });
   await assert.rejects(data(f, `/developer/games/${draft.id}/submit`, dev, 'POST', { versionId: draft.versionId }), reject(400));
+  await assert.rejects(data(f, `/developer/games/${draft.id}/submit`, dev, 'POST', { versionId: draft.versionId, rightsConfirmed: true }), reject(409, 'SCREENSHOT_REQUIRED'));
+  screenshot(f, draft.id, dev);
   await data(f, `/developer/games/${draft.id}/submit`, dev, 'POST', { versionId: draft.versionId, rightsConfirmed: true });
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM platform_rights_declarations').get().n, 1);
   await assert.rejects(data(f, `/owner/games/${draft.id}/review`, dev, 'POST', { decision: 'approve', reason: 'test' }), reject(403));
@@ -364,5 +380,47 @@ test('actual account erasure builder removes private product data atomically and
   assert.equal(f.sql.prepare('SELECT user_id FROM platform_game_sessions WHERE id=?').get(session.id).user_id, null);
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM platform_wallet_transactions WHERE user_id=?').get(user.id).n, 1);
   assert.equal(f.sql.prepare('SELECT status FROM platform_users WHERE id=?').get(user.id).status, 'deleted');
+  f.sql.close();
+});
+
+test('owner-made games are approved automatically on submit; creator games still wait for review', async () => {
+  const f = fixture(); const owner = await actor(f, ['OWNER'], { mfa: true }); const dev = await actor(f, ['DEVELOPER']);
+  const mine = game(f, owner, { status: 'draft', versionStatus: 'ready' }); screenshot(f, mine.id, owner);
+  const result = await (await data(f, `/developer/games/${mine.id}/submit`, owner, 'POST', { versionId: mine.versionId, rightsConfirmed: true })).json();
+  assert.equal(result.status, 'approved');
+  assert.equal(f.sql.prepare('SELECT decision FROM platform_reviews WHERE game_id=?').get(mine.id).decision, 'approve');
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_audit WHERE action='game.owner_auto_approve'").get().n, 1);
+  const theirs = game(f, dev, { status: 'draft', versionStatus: 'ready' }); screenshot(f, theirs.id, dev);
+  assert.equal((await (await data(f, `/developer/games/${theirs.id}/submit`, dev, 'POST', { versionId: theirs.versionId, rightsConfirmed: true })).json()).status, 'submitted');
+  f.sql.close();
+});
+
+test('screenshots: three checked image slots, private until published, locked during review', async () => {
+  const f = fixture(); const objects = new Map();
+  f.env.PLATFORM_UPLOADS = { async put(k, v) { objects.set(k, v); }, async get(k) { return objects.has(k) ? { body: objects.get(k) } : null; }, async delete(k) { objects.delete(k); } };
+  const dev = await actor(f, ['DEVELOPER']); const stranger = await actor(f); const owner = await actor(f, ['OWNER'], { mfa: true });
+  const g = game(f, dev, { status: 'draft' });
+  assert.deepEqual(imageInfo(png(1280, 720)), { type: 'image/png', width: 1280, height: 720 });
+  await assert.rejects(mediaRequest(f, `/developer/games/${g.id}/media/1`, dev, 'PUT', new TextEncoder().encode('<svg onload=alert(1)>')), reject(415));
+  await assert.rejects(mediaRequest(f, `/developer/games/${g.id}/media/1`, dev, 'PUT', png(100, 100)), reject(400));
+  await assert.rejects(mediaRequest(f, `/developer/games/${g.id}/media/1`, dev, 'PUT', png(1280, 720, 1024 * 1024)), reject(413));
+  await assert.rejects(mediaRequest(f, `/developer/games/${g.id}/media/1`, stranger, 'PUT', png(1280, 720)), reject(403));
+  const first = await (await mediaRequest(f, `/developer/games/${g.id}/media/1`, dev, 'PUT', png(1280, 720))).json();
+  assert.equal(first.media.length, 1); assert.equal(objects.size, 1);
+  assert.equal(f.sql.prepare('SELECT cover_url FROM platform_games WHERE id=?').get(g.id).cover_url, first.media[0].url);
+  const replaced = await (await mediaRequest(f, `/developer/games/${g.id}/media/1`, dev, 'PUT', png(1920, 1080))).json();
+  assert.notEqual(replaced.media[0].id, first.media[0].id); assert.equal(objects.size, 1);
+  const path = `/media/${replaced.media[0].id}`;
+  assert.equal((await mediaRequest(f, path, dev, 'GET')).status, 200);
+  assert.equal((await mediaRequest(f, path, owner, 'GET')).status, 200);
+  await assert.rejects(mediaRequest(f, path, stranger, 'GET'), reject(404));
+  f.sql.prepare("UPDATE platform_games SET status='published' WHERE id=?").run(g.id);
+  const open = await mediaRequest(f, path, stranger, 'GET'); assert.equal(open.status, 200); assert.match(open.headers.get('cache-control'), /public/);
+  assert.equal(open.headers.get('content-type'), 'image/png');
+  await assert.rejects(mediaRequest(f, `/developer/games/${g.id}/media/2`, dev, 'PUT', png(1280, 720)), reject(409, 'LISTING_LOCKED'));
+  f.sql.prepare("UPDATE platform_games SET status='draft' WHERE id=?").run(g.id);
+  const removed = await (await mediaRequest(f, `/developer/games/${g.id}/media/1`, dev, 'DELETE')).json();
+  assert.equal(removed.media.length, 0); assert.equal(objects.size, 0);
+  assert.equal(f.sql.prepare('SELECT cover_url FROM platform_games WHERE id=?').get(g.id).cover_url, null);
   f.sql.close();
 });

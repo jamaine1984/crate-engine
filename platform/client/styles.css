@@ -29,3 +29,12 @@ h1,h2,h3{font-family:Barlow,Arial,sans-serif;font-weight:800}.brand-mark{width:6
 .checkbox-row input[type=radio]{width:18px;height:18px;min-height:0;margin-top:2px;accent-color:var(--orange)}
 .owner-later{margin:-4px 0 18px;font-size:13px}
 .owner-later a.active{color:var(--orange)}
+.screenshot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.screenshot-slot{display:grid;gap:10px;align-content:start}
+.screenshot-slot img,.screenshot-empty{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#0f2018}
+.screenshot-empty{display:grid;place-content:center;justify-items:center;gap:6px;color:var(--muted);font-size:13px;border-style:dashed}
+.screenshot-empty .ph{font-size:28px}
+.screenshot-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:12px 0}
+.screenshot-strip img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;border:1px solid var(--border);display:block}
+.check-problems{margin:6px 0 0;padding-left:18px;font-size:12px;color:#ff9a8a}
+.check-problems.warn{color:var(--tan)}

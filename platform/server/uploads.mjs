@@ -1,6 +1,7 @@
 import {HttpError,json,readJson,id,now,database,requireMutationOrigin,audit} from './common.mjs';
 import {requireRole} from './identity.mjs';
 import {LIMITS,ownGame,rate,demandFlag} from './data.mjs';
+import {WEB_BUILD_LIMITS} from './game-scan.mjs';
 const deny=(status,message,code='UPLOAD_INVALID')=>{throw new HttpError(status,message,code);};
 const roles=['OWNER','DEVELOPER','PARTNER_DEVELOPER'];
 const all=async q=>(await q.all()).results||[];
@@ -15,7 +16,9 @@ export async function handleUploads(request,env,path){
   await rate(env,u.id,'upload-start',10,3600);
   const b=await readJson(request,6000),g=await ownGame(env,u,b.gameId);
   if(!['web','windows','macos','linux'].includes(b.platform)||!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(b.version))deny(400,'Choose a platform and semantic version such as 1.0.0.');
+  if(b.platform!=='web')deny(400,'Only browser games can be uploaded right now. Downloadable games are not open yet.');
   if(!Number.isSafeInteger(b.sizeBytes)||b.sizeBytes<22||b.sizeBytes>LIMITS.uploadBytes)deny(413,'The archive must fit the configured upload limit.');
+  if(b.sizeBytes>WEB_BUILD_LIMITS.maxArchiveBytes)deny(413,'Browser game ZIPs must be 16 MB or smaller.');
   if(typeof b.fileName!=='string'||!b.fileName.toLowerCase().endsWith('.zip')||/[\/\\\x00-\x1f]/.test(b.fileName))deny(400,'Upload one ZIP package.');
   const uploadId=id(),versionId=id(),key=`quarantine/${u.id}/${g.id}/${uploadId}.zip`;
   const multipart=await env.PLATFORM_UPLOADS.createMultipartUpload(key,{httpMetadata:{contentType:'application/zip'},customMetadata:{owner:u.id,game:g.id,version:versionId}});
@@ -55,9 +58,9 @@ export async function handleUploads(request,env,path){
   if(!response.ok)deny(503,'Security processing is unavailable. Your build remains private.','SCAN_FAILED');
   const scan=await response.json();
   // A trusted service binding is the ONLY authority for scan results. No public callback accepts client claims.
-  if(scan.status!=='clean'||!/^[a-f0-9]{64}$/.test(scan.sha256||'')||scan.sizeBytes!==upload.size_bytes||!scan.reference||!Array.isArray(scan.manifest)||!scan.manifest.length){await db.batch([db.prepare("UPDATE platform_uploads SET status='validation_failed',validation_json=? WHERE id=?").bind(JSON.stringify({status:scan.status||'failed',errors:(scan.errors||[]).slice(0,20)}),upload.id),db.prepare("UPDATE platform_game_versions SET status='validation_failed',scan_status=? WHERE id=?").bind(scan.status==='infected'?'infected':'failed',upload.version_id)]);deny(422,'The build did not pass security processing.','VALIDATION_FAILED');}
+  if(scan.status!=='clean'||!/^[a-f0-9]{64}$/.test(scan.sha256||'')||scan.sizeBytes!==upload.size_bytes||!scan.reference||!Array.isArray(scan.manifest)||!scan.manifest.length){await db.batch([db.prepare("UPDATE platform_uploads SET status='validation_failed',validation_json=? WHERE id=?").bind(JSON.stringify({status:scan.status||'failed',errors:(scan.errors||[]).slice(0,20)}),upload.id),db.prepare("UPDATE platform_game_versions SET status='validation_failed',scan_status=? WHERE id=?").bind(scan.status==='infected'?'infected':'failed',upload.version_id)]);deny(422,'The build did not pass the security check: '+String((scan.errors||[])[0]||'unknown problem').slice(0,300),'VALIDATION_FAILED');}
   if(scan.manifest.some(f=>typeof f.path!=='string'||f.path.includes('..')||f.path.startsWith('/')||!Number.isSafeInteger(f.size)||f.size<0))deny(502,'Scanner returned an invalid manifest.');
-  await db.batch([db.prepare("UPDATE platform_uploads SET status='ready',checksum=?,validation_json=? WHERE id=?").bind(scan.sha256,JSON.stringify({status:'clean',reference:scan.reference}),upload.id),db.prepare("UPDATE platform_game_versions SET status='ready',scan_status='clean',checksum=?,manifest_json=?,scan_reference=? WHERE id=?").bind(scan.sha256,JSON.stringify(scan.manifest),scan.reference,upload.version_id)]);await audit(env,{actor:u.id,action:'upload.scan.complete',target:upload.id,detail:{reference:scan.reference,sha256:scan.sha256}});return json({upload:{id:upload.id,status:'ready',versionId:upload.version_id}});
+  await db.batch([db.prepare("UPDATE platform_uploads SET status='ready',checksum=?,validation_json=? WHERE id=?").bind(scan.sha256,JSON.stringify({status:'clean',reference:scan.reference,warnings:Array.isArray(scan.warnings)?scan.warnings.slice(0,20).map(w=>String(w).slice(0,300)):[]}),upload.id),db.prepare("UPDATE platform_game_versions SET status='ready',scan_status='clean',checksum=?,manifest_json=?,scan_reference=? WHERE id=?").bind(scan.sha256,JSON.stringify(scan.manifest),scan.reference,upload.version_id)]);await audit(env,{actor:u.id,action:'upload.scan.complete',target:upload.id,detail:{reference:scan.reference,sha256:scan.sha256}});return json({upload:{id:upload.id,status:'ready',versionId:upload.version_id}});
  }
  return null;
 }

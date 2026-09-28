@@ -203,3 +203,17 @@ test('upload attachment to a different version is rejected before promotion', as
   f.sql.prepare('UPDATE platform_uploads SET version_id=?').run(otherVersion);
   await assert.rejects(publish(f), reject(409, 'RELEASE_BLOCKED')); assert.equal(f.calls.length, 0); noPublication(f);
 });
+
+test("the owner's own game gets an automatic platform-owned agreement; creator games still need one", async t => {
+  const f = await fixture(t);
+  f.sql.prepare('DELETE FROM platform_game_agreements').run();
+  await assert.rejects(publish(f), reject(409, 'RELEASE_BLOCKED'));
+  noPublication(f);
+  f.sql.prepare('UPDATE platform_games SET developer_id=? WHERE id=?').run(f.owner.id, f.gameId);
+  f.sql.prepare('UPDATE platform_uploads SET user_id=?').run(f.owner.id);
+  assert.equal((await (await publish(f)).json()).published, true);
+  const agreement = f.sql.prepare("SELECT a.type,v.terms_json FROM platform_game_agreements g JOIN platform_agreement_versions v ON v.id=g.version_id JOIN platform_agreements a ON a.id=v.agreement_id WHERE g.game_id=?").get(f.gameId);
+  assert.equal(agreement.type, 'platform_owned');
+  assert.ok(Object.values(JSON.parse(agreement.terms_json)).every(term => term.creatorBps === 0));
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_audit WHERE action='agreement.owner_auto'").get().n, 1);
+});

@@ -1,0 +1,27 @@
+# Copies an approved, checked build into the published-games bucket. Reachable
+# only through the Pages service binding GAME_PUBLISHER; it has no public URL.
+# Needs the Workers Paid plan: unzipping a build takes far more than the free
+# plan's 10 ms of CPU per request.
+# Secret: npx wrangler secret put PUBLISHER_INTERNAL_SECRET --config worker/game-publisher/wrangler.toml
+# Deploy: npx wrangler deploy --config worker/game-publisher/wrangler.toml
+name = "crateship-game-publisher"
+main = "index.mjs"
+compatibility_date = "2026-05-19"
+workers_dev = false
+preview_urls = false
+
+[limits]
+cpu_ms = 30000
+
+[[d1_databases]]
+binding = "PLATFORM_DB"
+database_name = "crateship-platform-v1"
+database_id = "be31584e-bd51-46b6-b935-a794097d2e12"
+
+[[r2_buckets]]
+binding = "PLATFORM_UPLOADS"
+bucket_name = "crateship-games-user-assets"
+
+[[r2_buckets]]
+binding = "PUBLISHED_GAMES"
+bucket_name = "crateship-published-games"

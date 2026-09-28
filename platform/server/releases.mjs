@@ -1,6 +1,7 @@
 import { HttpError, json, readJson, id, now, database, requireMutationOrigin } from './common.mjs';
 import { requireRole } from './identity.mjs';
 import { demandFlag } from './data.mjs';
+import { REVENUE_TYPES } from './commerce.mjs';
 const fail = (status, message) => { throw new HttpError(status, message, 'RELEASE_BLOCKED'); };
 
 export async function handleReleases(request, env, path) {
@@ -27,6 +28,7 @@ export async function handleReleases(request, env, path) {
     AND u.status='ready' AND v.checksum=u.checksum`).bind(game.active_version_id, game.id).first();
   if (!version?.scan_reference || !version.checksum || !version.manifest_json) fail(409, 'The exact build must have a clean scan attestation and manifest.');
   const at = now();
+  if (game.developer_id === user.id) await ensureOwnerAgreement(db, game, user, at);
   const assignment = await db.prepare(`SELECT a.id,a.version_id FROM platform_game_agreements a
     JOIN platform_agreement_versions v ON v.id=a.version_id WHERE a.game_id=?
     AND a.effective_at<=? AND (a.end_at IS NULL OR a.end_at>?) AND v.effective_at<=? AND (v.end_at IS NULL OR v.end_at>?)`)
@@ -84,4 +86,21 @@ export async function handleReleases(request, env, path) {
   ]);
   if (!result[0]?.meta?.changes) fail(409, 'Publication conditions changed while preparing the build. Review the current game and try again.');
   return json({ published: true, gameId: game.id, versionId: version.id });
+}
+
+// The owner's own games are platform-owned. Rather than making the owner draft
+// paperwork with themself, the first publish records a zero-creator-share
+// platform_owned agreement and assigns it, with a normal audit trail.
+async function ensureOwnerAgreement(db, game, user, at) {
+  const existing = await db.prepare('SELECT 1 FROM platform_game_agreements WHERE game_id=? AND (end_at IS NULL OR end_at>?)').bind(game.id, at).first();
+  if (existing) return;
+  const terms = Object.fromEntries(REVENUE_TYPES.map(type => [type, { creatorBps: 0, platformBps: 10000 }]));
+  const agreementId = id(), versionId = id();
+  await db.batch([
+    db.prepare('INSERT INTO platform_agreements VALUES(?,?,?,?,?,?)').bind(agreementId, 'Platform-owned: ' + String(game.title).slice(0, 100), 'platform_owned', null, user.id, at),
+    db.prepare(`INSERT INTO platform_agreement_versions(id,agreement_id,version,terms_json,minimum_payout_minor,currency,payment_schedule,public_notes,internal_notes,effective_at,end_at,created_by,created_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(versionId, agreementId, 1, JSON.stringify(terms), 0, 'USD', 'not_active', '', 'Created automatically when the owner published their own game.', at, null, user.id, at),
+    db.prepare('INSERT INTO platform_game_agreements VALUES(?,?,?,?,?,?,?)').bind(id(), game.id, versionId, at, null, user.id, at),
+    db.prepare('INSERT INTO platform_audit(id,actor_id,action,target_id,detail_json,result,created_at) VALUES(?,?,?,?,?,?,?)').bind(id(), user.id, 'agreement.owner_auto', game.id, JSON.stringify({ agreementId, versionId }), 'success', at),
+  ]);
 }

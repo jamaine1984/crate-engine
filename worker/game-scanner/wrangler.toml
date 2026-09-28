@@ -1,0 +1,16 @@
+# Build checker for creator uploads. Needs the Workers Paid plan (checking a
+# game takes 0.4-3.3 s of CPU; the free plan allows 10 ms). Reachable only through the Pages service
+# binding GAME_SCANNER; it has no public URL.
+# Deploy: npx wrangler deploy --config worker/game-scanner/wrangler.toml
+name = "crateship-game-scanner"
+main = "index.mjs"
+compatibility_date = "2026-05-19"
+workers_dev = false
+preview_urls = false
+
+[limits]
+cpu_ms = 30000
+
+[[r2_buckets]]
+binding = "PLATFORM_UPLOADS"
+bucket_name = "crateship-games-user-assets"

@@ -1,0 +1,21 @@
+# Serves published browser games from a separate origin (workers.dev), so game
+# code can never read crateshipgames.com cookies, sessions or owner tools.
+# Deploy: npx wrangler deploy --config worker/game-content/wrangler.toml
+name = "crateship-game-content"
+main = "index.mjs"
+compatibility_date = "2026-05-19"
+workers_dev = true
+preview_urls = false
+
+[vars]
+APP_ORIGIN = "https://crateshipgames.com"
+GAME_CONTENT_ORIGIN = "https://crateship-game-content.koikes2021.workers.dev"
+
+[[d1_databases]]
+binding = "PLATFORM_DB"
+database_name = "crateship-platform-v1"
+database_id = "be31584e-bd51-46b6-b935-a794097d2e12"
+
+[[r2_buckets]]
+binding = "PUBLISHED_GAMES"
+bucket_name = "crateship-published-games"

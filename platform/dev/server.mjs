@@ -19,7 +19,7 @@ for(const name of (await readdir(resolve(root,'platform/migrations'))).filter(n=
 const secretFile=resolve(dir,'secrets.json');let secrets;
 try{secrets=JSON.parse(await readFile(secretFile,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;secrets={AUTH_SECRET:Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'),ENCRYPTION_KEY:Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')};await writeFile(secretFile,JSON.stringify(secrets),{mode:0o600});}
 const port=Number(process.env.PLATFORM_PORT||4173),origin=`http://127.0.0.1:${port}`;
-const env={...secrets,APP_ORIGIN:origin,AUTH_LOCAL_DEV:'true',PLATFORM_DB:sqliteD1(sqlite),ENGINE_ASSETS:await localR2(resolve(dir,'engine-assets'))};
+const env={...secrets,APP_ORIGIN:origin,AUTH_LOCAL_DEV:'true',PLATFORM_DB:sqliteD1(sqlite),ENGINE_ASSETS:await localR2(resolve(dir,'engine-assets')),PLATFORM_UPLOADS:await localR2(resolve(dir,'platform-uploads'))};
 // Only explicit local mail/OAuth configuration is read; absent providers stay disabled.
 for(const key of ['MAIL_PROVIDER','MAIL_FROM','MAIL_API_KEY','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'])if(process.env[key])env[key]=process.env[key];
 const built=process.argv.includes('--built');
