@@ -442,3 +442,42 @@ test('owner handles player reports: dismiss, or take the game off the site and n
   assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_audit WHERE action LIKE 'report.%'").get().n, 2);
   f.sql.close();
 });
+
+test('a new build for a live game waits as an update; the live version keeps serving until release', async () => {
+  const f = fixture();
+  try {
+    const dev = await actor(f, ['DEVELOPER']), owner = await actor(f, ['OWNER'], { mfa: true }), live = game(f, dev), stamp = now();
+    screenshot(f, live.id, dev);
+    const next = crypto.randomUUID();
+    f.sql.prepare(`INSERT INTO platform_game_versions(id,game_id,version,platform,status,scan_status,uploaded_by,created_at) VALUES(?,?,'1.1.0','web','ready','clean',?,?)`).run(next, live.id, dev.id, stamp);
+    await assert.rejects(data(f, `/developer/games/${live.id}/submit`, dev, 'POST', { versionId: live.versionId, rightsConfirmed: true }), reject(409));
+    const submitted = await (await data(f, `/developer/games/${live.id}/submit`, dev, 'POST', { versionId: next, rightsConfirmed: true })).json();
+    assert.deepEqual(submitted, { submitted: true, status: 'published', updateStatus: 'submitted' });
+    let g = f.sql.prepare('SELECT * FROM platform_games WHERE id=?').get(live.id);
+    assert.equal(g.status, 'published'); assert.equal(g.active_version_id, live.versionId); assert.equal(g.pending_version_id, next);
+    assert.equal((await (await data(f, '/catalog', null)).json()).games.length, 1, 'the game stays in the catalog during review');
+    const queue = (await (await data(f, '/owner/games', owner)).json()).games;
+    assert.equal(queue[0].id, live.id); assert.equal(queue[0].updateStatus, 'submitted'); assert.equal(queue[0].buildVersion, '1.1.0');
+    assert.equal((await (await data(f, '/owner/overview', owner)).json()).awaitingReview, 1);
+    const rejected = await (await data(f, `/owner/games/${live.id}/review`, owner, 'POST', { decision: 'reject', reason: 'Crashes on start' })).json();
+    assert.deepEqual(rejected, { status: 'published', updateStatus: 'rejected' });
+    g = f.sql.prepare('SELECT * FROM platform_games WHERE id=?').get(live.id);
+    assert.equal(g.status, 'published'); assert.equal(g.active_version_id, live.versionId);
+    assert.match(f.sql.prepare("SELECT body FROM platform_notifications WHERE user_id=? ORDER BY created_at DESC").get(dev.id).body, /current version stays live/);
+    await data(f, `/developer/games/${live.id}/submit`, dev, 'POST', { versionId: next, rightsConfirmed: true });
+    assert.deepEqual(await (await data(f, `/owner/games/${live.id}/review`, owner, 'POST', { decision: 'approve', reason: 'Fixed' })).json(), { status: 'published', updateStatus: 'approved' });
+    assert.equal(f.sql.prepare('SELECT active_version_id a FROM platform_games WHERE id=?').get(live.id).a, live.versionId, 'approval alone does not swap the live build');
+  } finally { f.sql.close(); }
+});
+
+test("the owner's own game updates are approved automatically and still wait for release", async () => {
+  const f = fixture();
+  try {
+    const owner = await actor(f, ['OWNER', 'DEVELOPER'], { mfa: true }), live = game(f, owner), next = crypto.randomUUID();
+    screenshot(f, live.id, owner);
+    f.sql.prepare(`INSERT INTO platform_game_versions(id,game_id,version,platform,status,scan_status,uploaded_by,created_at) VALUES(?,?,'2.0.0','web','ready','clean',?,?)`).run(next, live.id, owner.id, now());
+    assert.equal((await (await data(f, `/developer/games/${live.id}/submit`, owner, 'POST', { versionId: next, rightsConfirmed: true })).json()).updateStatus, 'approved');
+    const g = f.sql.prepare('SELECT * FROM platform_games WHERE id=?').get(live.id);
+    assert.equal(g.status, 'published'); assert.equal(g.active_version_id, live.versionId); assert.equal(g.update_status, 'approved');
+  } finally { f.sql.close(); }
+});

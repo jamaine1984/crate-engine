@@ -8,12 +8,12 @@ import publisher from '../worker/game-publisher/index.mjs';
 
 async function fixture(t) {
   const db = new DatabaseSync(':memory:'); t.after(() => db.close());
-  db.exec(`CREATE TABLE platform_games(id TEXT PRIMARY KEY,status TEXT,active_version_id TEXT,price_minor INTEGER);
+  db.exec(`CREATE TABLE platform_games(id TEXT PRIMARY KEY,status TEXT,active_version_id TEXT,price_minor INTEGER,pending_version_id TEXT,update_status TEXT);
     CREATE TABLE platform_uploads(id TEXT PRIMARY KEY,object_key TEXT,status TEXT,checksum TEXT);
     CREATE TABLE platform_game_versions(id TEXT PRIMARY KEY,game_id TEXT,upload_id TEXT,status TEXT,platform TEXT,scan_status TEXT,scan_reference TEXT,checksum TEXT,file_size INTEGER,manifest_json TEXT);`);
   const bytes = zipSync({ 'index.html': strToU8('<!doctype html><script src="game.js"></script>'), 'game.js': strToU8('window.start = () => 1;'), 'media/pixel.bin': new Uint8Array([0, 255, 12, 0]) });
   const checked = await validateGameArchive(bytes);
-  db.prepare('INSERT INTO platform_games VALUES(?,?,?,?)').run('game-1', 'approved', 'version-1', 0);
+  db.prepare('INSERT INTO platform_games VALUES(?,?,?,?,?,?)').run('game-1', 'approved', 'version-1', 0, null, null);
   db.prepare('INSERT INTO platform_uploads VALUES(?,?,?,?)').run('upload-1', 'quarantine/safe.zip', 'ready', checked.sha256);
   db.prepare('INSERT INTO platform_game_versions VALUES(?,?,?,?,?,?,?,?,?,?)').run('version-1', 'game-1', 'upload-1', 'ready', 'web', 'clean', 'scanner-attestation-test-only', checked.sha256, bytes.length, JSON.stringify(checked.manifest));
   const reads = [], writes = [];
@@ -68,3 +68,11 @@ test('publisher rejects valid replacement archive with different checksum', asyn
   assert.equal((await f.fetch()).status, 409); assert.equal(f.writes.length, 0);
 });
 test('publisher rejects altered stored scan manifest', async t => { const f = await fixture(t); f.db.exec("UPDATE platform_game_versions SET manifest_json='[]'"); assert.equal((await f.fetch()).status, 409); assert.equal(f.writes.length, 0); });
+test('publisher promotes an approved update to a live game, and nothing unapproved', async t => {
+  const f = await fixture(t);
+  f.db.exec("UPDATE platform_games SET status='published',active_version_id='version-0',pending_version_id='version-1',update_status='submitted'");
+  assert.equal((await f.fetch()).status, 409); assert.equal(f.writes.length, 0);
+  f.db.exec("UPDATE platform_games SET update_status='approved'");
+  const response = await f.fetch(); assert.equal(response.status, 200);
+  assert.equal((await response.json()).versionId, 'version-1'); assert.ok(f.writes.length > 0);
+});

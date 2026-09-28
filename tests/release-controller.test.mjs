@@ -217,3 +217,18 @@ test("the owner's own game gets an automatic platform-owned agreement; creator g
   assert.ok(Object.values(JSON.parse(agreement.terms_json)).every(term => term.creatorBps === 0));
   assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_audit WHERE action='agreement.owner_auto'").get().n, 1);
 });
+
+test('an approved update to a live game swaps in at release; the old build serves until then', async t => {
+  const f = await fixture(t), liveId = crypto.randomUUID(), at = stamp();
+  f.sql.prepare(`INSERT INTO platform_game_versions(id,game_id,version,platform,status,checksum,scan_status,uploaded_by,created_at)
+    VALUES(?,?,'0.9.0','web','published',?,'clean',?,?)`).run(liveId, f.gameId, 'c'.repeat(64), f.developer.id, at - 50);
+  f.sql.prepare("UPDATE platform_games SET status='published',active_version_id=?,pending_version_id=?,update_status='submitted',published_at=? WHERE id=?").run(liveId, f.versionId, at - 1000, f.gameId);
+  await assert.rejects(publish(f), error => error.status === 409); assert.equal(f.calls.length, 0);
+  assert.equal(f.sql.prepare('SELECT active_version_id a FROM platform_games').get().a, liveId);
+  f.sql.prepare("UPDATE platform_games SET update_status='approved'").run();
+  assert.deepEqual(await (await publish(f)).json(), { published: true, gameId: f.gameId, versionId: f.versionId });
+  const g = f.sql.prepare('SELECT * FROM platform_games').get();
+  assert.equal(g.status, 'published'); assert.equal(g.active_version_id, f.versionId); assert.equal(g.pending_version_id, null); assert.equal(g.update_status, null);
+  assert.equal(g.published_at, at - 1000, 'the original publish date is kept');
+  assert.equal(f.sql.prepare('SELECT status FROM platform_game_versions WHERE id=?').get(f.versionId).status, 'published');
+});
