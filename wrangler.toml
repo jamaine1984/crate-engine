@@ -4,7 +4,11 @@ compatibility_date = "2026-05-19"
 
 [vars]
 APP_ORIGIN = "https://crateshipgames.com"
-AUTH_PASSWORD_POLICY_APPROVED = "false"
+# Approved by the owner 2026-09-27: PBKDF2-SHA256 100k (Workers cap) + server pepper, 12-128 chars, rate limits.
+AUTH_PASSWORD_POLICY_APPROVED = "true"
+# MAIL_API_KEY is a Pages secret. Mail stays unavailable until that secret exists.
+MAIL_PROVIDER = "resend"
+MAIL_FROM = "Crate Ship Games <no-reply@mail.crateshipgames.com>"
 
 [[d1_databases]]
 binding = "PLATFORM_DB"

@@ -1,0 +1,19 @@
+# Scheduled cleanup for private engine model storage. No public HTTP surface.
+# Deploy: npx wrangler deploy --config worker/engine-maintenance/wrangler.toml
+name = "crateship-engine-maintenance"
+main = "index.mjs"
+compatibility_date = "2026-05-19"
+workers_dev = false
+preview_urls = false
+
+[triggers]
+crons = ["23 * * * *"]
+
+[[d1_databases]]
+binding = "PLATFORM_DB"
+database_name = "crateship-platform-v1"
+database_id = "be31584e-bd51-46b6-b935-a794097d2e12"
+
+[[r2_buckets]]
+binding = "ENGINE_ASSETS"
+bucket_name = "crateship-games-user-assets"

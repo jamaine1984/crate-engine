@@ -161,6 +161,10 @@ test('owner feature mutations create audit history and cannot prematurely open u
   assert.equal((await flags(f.env)).CREATOR_WAITLIST_ENABLED, false);
   assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_audit WHERE action='flag.change'").get().n, 1);
   await assert.rejects(data(f, '/owner/flags', owner, 'PUT', { key: 'PUBLIC_CREATOR_UPLOADS_ENABLED', enabled: true, reason: 'test' }), reject(409));
+  for (const key of ['ENGINE_PUBLISHING_ENABLED', 'PREMIUM_DOWNLOADS_ENABLED']) {
+    await assert.rejects(data(f, '/owner/flags', owner, 'PUT', { key, enabled: true, reason: 'test' }), reject(409, 'NOT_IMPLEMENTED'));
+    assert.equal((await flags(f.env))[key], false);
+  }
   f.sql.close();
 });
 
