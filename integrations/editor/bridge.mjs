@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { LIMITS, keys, identifier, uuid, validArguments, validResult } from './contracts.mjs';
+import { LIMITS, keys, identifier, uuid, validArguments, validResult, MUTATING_COMMANDS } from './contracts.mjs';
 
 const same=(a,b)=>typeof a==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const failure=(status,code)=>Object.assign(new Error(code),{status,code});
@@ -86,7 +86,7 @@ export function createEditorBridge({origin='http://127.0.0.1:4173',port=9879,com
    if(commands.has(body.requestId))throw failure(409,'DUPLICATE_COMMAND');
    if(commands.size>=LIMITS.maxHistory)throw failure(429,'RESTART_BRIDGE_REQUIRED');
    if([...commands.values()].filter(r=>!terminal.has(r.status)).length>=LIMITS.maxPending)throw failure(429,'COMMAND_QUEUE_FULL');
-   const mutating=['apply_world','undo'].includes(body.command);if(mutating&&!session.allowWrites)throw failure(403,'WRITES_NOT_ENABLED');
+   const mutating=MUTATING_COMMANDS.includes(body.command);if(mutating&&!session.allowWrites)throw failure(403,'WRITES_NOT_ENABLED');
    if(body.command==='apply_world'){const preview=previews.get(body.arguments.previewId);if(!preview||preview.sessionId!==session.id||preview.projectId!==session.projectId)throw failure(409,'PREVIEW_UNAVAILABLE');previews.delete(body.arguments.previewId);}
    const record={id:body.requestId,sessionId:session.id,projectId:session.projectId,command:body.command,arguments:body.arguments,validationArguments:body.command==='get_scene'?body.arguments:{},mutating,status:'queued',expiresAt:Date.now()+commandTimeoutMs};commands.set(record.id,record);
    return send(202,{id:record.id,status:record.status,expiresAt:record.expiresAt});

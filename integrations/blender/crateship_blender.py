@@ -185,7 +185,21 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
 
+    def _discard_body(self):
+        # Closing with unread request bytes makes Windows reset the socket, which can
+        # destroy the reply before the client reads it. Drain a bounded body first.
+        if getattr(self, '_body_consumed', False):
+            return
+        self._body_consumed = True
+        length = self.headers.get('Content-Length', '')
+        if length.isdigit() and int(length) <= 65_536:
+            try:
+                self.rfile.read(int(length))
+            except OSError:
+                pass
+
     def _reply(self, status, value):
+        self._discard_body()
         body = json.dumps(value, separators=(',', ':'), allow_nan=False).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
@@ -209,6 +223,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not length.isdigit() or not 1 <= int(length) <= 65_536:
             return self._reply(413, {"error": "Invalid request size."})
         try:
+            self._body_consumed = True
             body = json.loads(self.rfile.read(int(length)))
             _plain(body, ('command', 'arguments'))
             if body.get('command') not in ('get_scene_info', 'list_assets', 'export_selected', 'apply_object_operations') or not isinstance(body.get('arguments'), dict):

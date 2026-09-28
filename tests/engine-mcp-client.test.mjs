@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createEditorMcpClient} from '../engine/editor/mcp-client.mjs';
+import {createEditorMcpClient,editObjectOperations} from '../engine/editor/mcp-client.mjs';
 function fixture(){
  let project={id:'project',name:'World',settings:{},entities:[],assets:[]},state={mode:'edit',busy:false},batch=[],applies=0,undos=0;const sent=[],logs=[];
  const editor={getProject:()=>structuredClone(project),previewWorld:async()=>({previewId:'preview-1',summary:{entityCount:1},entities:[]}),applyWorld:async()=>{applies++;},undo:async()=>{undos++;}};
@@ -15,3 +15,11 @@ test('Play and busy editor reject MCP commands',async()=>{const f=fixture();awai
 test('changing project disconnects before processing a queued write',async()=>{const f=fixture();await f.connect(true);f.queue('undo');f.setProject('other');await f.client.pollOnce();assert.equal(f.client.state.connected,false);assert.equal(f.counts().undos,0);});
 test('disconnect clears local permissions and previews',async()=>{const f=fixture();await f.connect(true);await f.client.disconnect();assert.deepEqual(f.client.state,{connected:false,allowWrites:false});assert.match(f.sent.at(-1).url,/disconnect$/);});
 test('unknown commands are rejected and raw errors never leave browser',async()=>{const f=fixture();await f.connect(true);f.queue('execute_python',{code:'bad'});await f.client.pollOnce();assert.deepEqual(f.sent.at(-1).body.error,{code:'EDITOR_REJECTED'});assert.deepEqual(f.counts(),{applies:0,undos:0});});
+test('edit and settings commands require the write grant',async()=>{const f=fixture();await f.connect(false);f.queue('edit_objects',{operations:[{op:'remove',id:'a'}]});await f.client.pollOnce();assert.equal(f.sent.at(-1).body.error.code,'EDITOR_REJECTED');f.queue('set_level_settings',{settings:{lives:3}});await f.client.pollOnce();assert.equal(f.sent.at(-1).body.error.code,'EDITOR_REJECTED');});
+test('object edits merge material and light and remove null components',()=>{
+ const project={entities:[{id:'lift',material:{color:'#111111',roughness:.4,metalness:0},light:{color:'#ffffff',intensity:3,distance:30},components:{rigidbody:{type:'static'},mover:{offset:[1,0,0],period:2},hazard:{}}}]};
+ const [update,remove]=editObjectOperations(project,[{op:'update',id:'lift',patch:{material:{color:'#ff0000'},light:{intensity:9},components:{mover:{offset:[0,3,0],period:5},hazard:null}}},{op:'remove',id:'lift'}]);
+ assert.deepEqual(update.patch.material,{color:'#ff0000',roughness:.4,metalness:0});assert.equal(update.patch.light.intensity,9);assert.equal(update.patch.light.distance,30);
+ assert.deepEqual(update.patch.components,{rigidbody:{type:'static'},mover:{offset:[0,3,0],period:5}});assert.deepEqual(remove,{op:'remove',id:'lift'});
+ assert.throws(()=>editObjectOperations(project,[{op:'remove',id:'missing'}]),/not in this project/);
+});

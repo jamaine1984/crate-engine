@@ -1,6 +1,19 @@
 import {sceneContext} from './scene-context.mjs';
 import {readLimitedResponse} from '../player/export.mjs';
 const BASE='http://127.0.0.1:9879';
+/** Turns MCP partial patches into full-field proposal updates: material and light merge, a null component removes it. */
+export function editObjectOperations(project,operations){
+ const byId=new Map(project.entities.map(entity=>[entity.id,entity]));
+ return operations.map(operation=>{
+  const entity=byId.get(operation.id);if(!entity)throw new Error('Object '+operation.id+' is not in this project. Read the scene again.');
+  if(operation.op==='remove')return {op:'remove',id:operation.id};
+  const patch={...operation.patch};
+  if(patch.material)patch.material={...entity.material,...patch.material};
+  if(patch.light)patch.light={...entity.light,...patch.light};
+  if(patch.components){const components={...entity.components};for(const [name,value]of Object.entries(patch.components)){if(value===null)delete components[name];else components[name]=value;}patch.components=components;}
+  return {op:'update',id:operation.id,patch};
+ });
+}
 /** This connector exposes one explicitly connected project, never browser storage or provider keys. */
 export function createEditorMcpClient({getEditor,getState,onStatus=()=>{},onLog=()=>{},fetchFn=fetch,now=Date.now,setTimer=setTimeout,clearTimer=clearTimeout,autoPoll=true}){
  let session=null,token='',timer=null,generation=0,polling=false;
@@ -32,6 +45,16 @@ export function createEditorMcpClient({getEditor,getState,onStatus=()=>{},onLog=
    if(!previews.has(args.previewId))throw new Error('Preview this world in the connected session first.');
    previews.delete(args.previewId);validateActive(current,epoch);await editor.applyWorld({previewId:args.previewId});
   }else if(command.command==='undo'){validateActive(current,epoch);await editor.undo();previews.clear();}
+  else if(command.command==='edit_objects'){
+   validateActive(current,epoch);const summary=args.summary||'MCP object edits';
+   editor.applyProposal({summary,operations:editObjectOperations(editor.getProject(),args.operations)});previews.clear();
+   const project=editor.getProject();onLog({level:'info',message:'MCP edited '+args.operations.length+' object(s). Use Undo to reverse it.'});
+   return {ok:true,projectId:project.id,entityCount:project.entities.length,summary};
+  }else if(command.command==='set_level_settings'){
+   validateActive(current,epoch);editor.updateSettings(structuredClone(args.settings));previews.clear();
+   const project=editor.getProject();onLog({level:'info',message:'MCP changed level settings. Use Undo to reverse it.'});
+   return {ok:true,projectId:project.id,entityCount:project.entities.length,summary:'Level settings: '+Object.keys(args.settings).join(', ')};
+  }
   else throw new Error('Unsupported editor command.');
   const project=editor.getProject();onLog({level:'info',message:command.command==='undo'?'MCP undid the last scene change.':'MCP applied a procedural world. Use Undo to reverse it.'});
   return {ok:true,projectId:project.id,entityCount:project.entities.length};

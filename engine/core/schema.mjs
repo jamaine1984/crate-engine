@@ -80,7 +80,7 @@ export function validateProposal(proposal){
   if(op.op==='add'){if(op.entity?.type==='model')throw new Error('Model proposals cannot import remote assets.');return {op:'add',entity:cleanEntity(op.entity)};}
   if(['update','remove'].includes(op.op)&&typeof op.id==='string'){
    if(op.op==='remove')return {op:'remove',id:op.id};
-   const allowed=['name','position','rotation','scale','visible','material','components'];if(!op.patch||Object.keys(op.patch).some(k=>!allowed.includes(k)))throw new Error('The proposed change contains unsupported fields.');
+   const allowed=['name','position','rotation','scale','visible','material','light','components'];if(!op.patch||Object.keys(op.patch).some(k=>!allowed.includes(k)))throw new Error('The proposed change contains unsupported fields.');
    return {op:'update',id:op.id,patch:clone(op.patch)};
   }
   throw new Error('Unsupported model operation.');

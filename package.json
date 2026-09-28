@@ -23,7 +23,7 @@
     "optimize:gltf": "node ./scripts/optimize-gltf.mjs",
     "dev:platform": "node platform/dev/server.mjs",
     "preview:platform": "node platform/dev/server.mjs --built",
-    "test:platform": "node --test tests/*.test.mjs"
+    "test:platform": "node --test tests/*.test.mjs integrations/editor/*.test.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",

@@ -39,9 +39,23 @@ Pair the editor to the running helper, then explicitly enable writes only when y
 | `get_scene` | Optional `offset`, `limit` (maximum 250) | Read a bounded page of scene metadata and available asset IDs. Check total counts/truncation before reasoning about the full scene. |
 | `preview_world` | `{recipe}` | Validate and expand a deterministic world recipe against the paired project. Returns a preview ID and proposed entity metadata; does not commit edits. |
 | `apply_world` | `{previewId}` | Apply an exact prior preview only while editor writes are enabled. Consumed, expired, wrong-project, or stale previews fail. One transaction supports Undo. |
+| `edit_objects` | `{summary?, operations}` | Update (`{op:'update', id, patch}`) or remove (`{op:'remove', id}`) up to 50 existing objects by the IDs from `get_scene`, as one Undo step, while writes are enabled. `material` and `light` patches merge; each listed component replaces that component and `null` removes it. The whole edit fails if any operation is invalid. |
+| `set_level_settings` | `{settings}` | Change level settings such as `lives` (0 = unlimited), `killY` (fall-out height), gravity, background, lighting and quality, as one Undo step, while writes are enabled. |
 | `undo` | `{}` | Undo the latest editor change while writes are enabled. This can undo a manual edit too; use it deliberately. |
 
-Turning on writes authorizes the connected client to call `apply_world` and `undo` within that paired session. Preview is still required before applying a world; a preview result alone does not mean the world was applied or saved. Saving and exporting remain explicit editor operations.
+Turning on writes authorizes the connected client to call `apply_world`, `edit_objects`, `set_level_settings` and `undo` within that paired session.
+
+### Building a playable level
+
+Recipes and edits use the same gameplay components as the editor Inspector, so an AI client can build a complete game:
+
+- `player` with a dynamic `rigidbody` is the controllable character; `sideView: true` makes a side-scroller, and a `camera` object makes the view follow the player.
+- `goal {message?}` wins the level, `hazard {}` costs a life, `checkpoint {}` moves the respawn point, `collectible {value}` adds score.
+- `mover {offset:[x,y,z], period}` is a moving platform that carries a standing player.
+- `rigidbody.collider: 'shape'` makes collision follow an object's real outline instead of its bounding box.
+- Lives and fall-out height are level settings, changed with `set_level_settings`.
+
+`get_scene` omits `customMesh` vector paths to keep pages small; those objects still report their transforms and components. Preview is still required before applying a world; a preview result alone does not mean the world was applied or saved. Saving and exporting remain explicit editor operations.
 
 The authoritative recipe contract is `engine/core/procedural.mjs`, exposed through the tool's schema. A version-1 recipe supplies an integer or string seed and `add`, `grid`, or `scatter` operations. Supported objects use the editor's allowlisted types/components. Model entities must reference existing project asset IDs. Limits include 64 recipe operations, 500 new entities, 5,000 total project entities, and 32 total lights. No code, arbitrary URLs, filesystem commands, API keys, or paid provider invocation is available through these tools.
 

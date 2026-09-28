@@ -9,12 +9,16 @@ const object=(properties,required=[])=>({type:'object',additionalProperties:fals
 const vector=tuple(3,number(-1e6,1e6)),key=text(64,{pattern:'^[A-Za-z][A-Za-z0-9_-]*$'}),color={type:'string',pattern:'^#[a-fA-F0-9]{6}$'};
 const vectorPath=object({points:{type:'array',minItems:3,maxItems:256,items:tuple(2,number(-100,100))},color,depth:number(-100,100)},['points','color']);
 const customShape=object({paths:{type:'array',minItems:1,maxItems:64,items:vectorPath}},['paths']);
-const components=object({
- rigidbody:object({type:{enum:['static','dynamic']},mass:number(.001,10000),friction:number(0,10),restitution:number(0,1)}),
+// Shared with the MCP contracts so recipes, edits and scene reads accept the same gameplay components.
+export const COMPONENT_SCHEMAS=freeze({
+ rigidbody:object({type:{enum:['static','dynamic']},mass:number(.001,10000),friction:number(0,10),restitution:number(0,1),collider:{enum:['box','shape']}}),
  player:object({speed:number(.1,50),jump:number(0,30),sideView:{type:'boolean'}}),
  collectible:object({value:integer(0,1e6)}),spin:object({speed:number(-720,720)}),
- animation:object({clip:{type:'string',maxLength:120},autoplay:{type:'boolean'},speed:number(.01,5)})
+ animation:object({clip:{type:'string',maxLength:120},autoplay:{type:'boolean'},speed:number(.01,5)}),
+ goal:object({message:{type:'string',maxLength:120}}),hazard:object({}),checkpoint:object({}),
+ mover:object({offset:tuple(3,number(-1000,1000)),period:number(.2,120)})
 });
+const components=object(COMPONENT_SCHEMAS);
 const entity=object({
  type:{enum:[...ENTITY_TYPES]},name:text(100),position:vector,rotation:tuple(3,number(-36000,36000)),scale:tuple(3,number(.001,10000)),visible:{type:'boolean'},
  material:object({color,metalness:number(0,1),roughness:number(0,1)}),
@@ -58,7 +62,9 @@ function modelRules(template){
  if(template.components?.animation&&template.type!=='model')throw new Error('Animation components require a model with an embedded animation clip.');
  if(template.type==='customMesh'&&!template.shape)throw new Error('A custom mesh requires its own vector paths.');
  if(template.type!=='customMesh'&&template.shape)throw new Error('Custom vector paths are supported only on customMesh objects.');
- if(template.components?.rigidbody&&!['box','sphere','cylinder','capsule','plane','model','customMesh'].includes(template.type))throw new Error('Procedural rigid bodies require a renderable object with collision geometry.');
+ const renderable=['box','sphere','cylinder','capsule','plane','model','customMesh'].includes(template.type);
+ if(template.components?.rigidbody&&!renderable)throw new Error('Procedural rigid bodies require a renderable object with collision geometry.');
+ for(const name of ['goal','hazard','checkpoint','mover','collectible'])if(template.components?.[name]&&!renderable)throw new Error('The '+name+' component requires a renderable object that has a visible size.');
 }
 export function validateWorldRecipeShape(input){
  let encoded;try{encoded=JSON.stringify(input);}catch{throw new Error('The world recipe must be finite JSON data.');}
@@ -128,7 +134,7 @@ export function createWorldPreviewSession({getProject,getRevision,apply}){
   invalidate(){pending=null;}
  };
 }
-export function getWorldRecipeHelp(){return 'Create declarative JSON {version:1,seed,operations}. Seed is text (1–128 chars) or an integer 0–4294967295. Operations: add {entity,key?,parentKey?}; grid {entity,counts:[x,z],spacing:[x,z],origin:[x,y,z],parentKey?}; scatter {entity,count,bounds:{min:[x,z],max:[x,z]},y?,scaleRange:[min,max]?,rotationY?,parentKey?}. Each operation has op:"add", "grid", or "scatter". parentKey references an earlier add.key, using local transforms. Grid/scatter template position is an offset (default zero); add position defaults [0,.5,0]. Entity fields are type,name,position,rotation in degrees,positive scale,visible,material,light,components,assetId,shape. Use type customMesh for original model-authored vector geometry: shape.paths is 1–64 closed polygons, each path has 3–256 points [x,y] (range ±100), a hex color and optional depth. These paths become triangulated scene meshes; they are scene objects with editable transforms and bounding-box colliders. This is structured geometry, not executable code. No IDs,parentId,URLs,code or network access are accepted. Model assetId must already exist in the project; imported GLB materials remain intact. Player requires a renderable object and dynamic rigidbody; player.sideView locks depth and moves along X/jumps along Y. Spin cannot combine with rigidbody; animation requires model. Maximum64 operations,500 generated objects,5000 project objects,32 project lights. Output is previewed against the current project; only an explicit apply of a valid preview changes the scene, as one Undo. Seeded scatter is deterministic; IDs are fresh per preview.';}
+export function getWorldRecipeHelp(){return 'Create declarative JSON {version:1,seed,operations}. Seed is text (1–128 chars) or an integer 0–4294967295. Operations: add {entity,key?,parentKey?}; grid {entity,counts:[x,z],spacing:[x,z],origin:[x,y,z],parentKey?}; scatter {entity,count,bounds:{min:[x,z],max:[x,z]},y?,scaleRange:[min,max]?,rotationY?,parentKey?}. Each operation has op:"add", "grid", or "scatter". parentKey references an earlier add.key, using local transforms. Grid/scatter template position is an offset (default zero); add position defaults [0,.5,0]. Entity fields are type,name,position,rotation in degrees,positive scale,visible,material,light,components,assetId,shape. Use type customMesh for original model-authored vector geometry: shape.paths is 1–64 closed polygons, each path has 3–256 points [x,y] (range ±100), a hex color and optional depth. These paths become triangulated scene meshes; they are scene objects with editable transforms and bounding-box colliders unless rigidbody.collider is "shape". This is structured geometry, not executable code. No IDs,parentId,URLs,code or network access are accepted. Model assetId must already exist in the project; imported GLB materials remain intact. Player requires a renderable object and dynamic rigidbody; player.sideView locks depth and moves along X/jumps along Y, and a camera object makes the view follow the player sideways. rigidbody.collider:"shape" makes collision follow the real outline instead of the bounding box. Gameplay rules: goal {message?} wins the level on touch; hazard {} costs a life and respawns the player; checkpoint {} moves the respawn point; collectible {value} adds score; mover {offset:[x,y,z],period} travels back and forth by offset over period seconds and carries a standing player (no spin, player or dynamic rigidbody on a mover). Goal, hazard and checkpoint cannot be on the player. Lives and fall-out height are level settings, changed with set_level_settings, not recipe entities. Spin cannot combine with rigidbody; animation requires model. Maximum64 operations,500 generated objects,5000 project objects,32 project lights. Output is previewed against the current project; only an explicit apply of a valid preview changes the scene, as one Undo. Seeded scatter is deterministic; IDs are fresh per preview.';}
 
 export function createWorldRecipe(kind,{seed='Crate world',assetId,includePlayer=true,includeSun=true}={}){
  if(!['village','forest'].includes(kind))throw new Error('Choose village or forest.');
