@@ -127,11 +127,21 @@ test('preferences and notifications cannot mutate another account or elevate rol
   f.sql.close();
 });
 
-test('waitlist persists one entry and requires email verification', async () => {
+test('any verified player becomes a creator instantly; unverified accounts and paused sign-up are refused', async () => {
   const f = fixture(); const verified = await actor(f); const unverified = await actor(f, ['PLAYER'], { verified: false });
-  await data(f, '/waitlist', verified, 'POST', {}); await data(f, '/waitlist', verified, 'POST', {});
-  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM platform_waitlist').get().n, 1);
-  await assert.rejects(data(f, '/waitlist', unverified, 'POST', {}), reject(403, 'EMAIL_VERIFICATION_REQUIRED'));
+  const roles = user => f.sql.prepare('SELECT role FROM platform_user_roles WHERE user_id=? ORDER BY role').all(user.id).map(r => r.role);
+  await assert.rejects(data(f, '/creator/join', verified, 'POST', {}), reject(400));
+  await assert.rejects(data(f, '/developer/games', verified, 'POST', { title: 'Too early', slug: 'too-early', kind: 'web' }), reject(403, 'ROLE_DENIED'));
+  assert.equal((await data(f, '/creator/join', verified, 'POST', { guidelinesAccepted: true })).status, 201);
+  assert.equal((await data(f, '/creator/join', verified, 'POST', { guidelinesAccepted: true })).status, 200);
+  assert.deepEqual(roles(verified), ['DEVELOPER', 'PLAYER']);
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_audit WHERE action='creator.join' AND target_id=?").get(verified.id).n, 1);
+  assert.equal((await data(f, '/developer/games', verified, 'POST', { title: 'First game', slug: 'first-game', kind: 'web' })).status, 201);
+  await assert.rejects(data(f, '/creator/join', unverified, 'POST', { guidelinesAccepted: true }), reject(403, 'EMAIL_VERIFICATION_REQUIRED'));
+  assert.deepEqual(roles(unverified), ['PLAYER']);
+  f.sql.prepare("UPDATE platform_feature_flags SET enabled=0 WHERE key='CREATOR_SIGNUP_ENABLED'").run(); const later = await actor(f);
+  await assert.rejects(data(f, '/creator/join', later, 'POST', { guidelinesAccepted: true }), reject(503, 'FEATURE_DISABLED'));
+  assert.equal((await flags(f.env)).CREATOR_WAITLIST_ENABLED, undefined);
   f.sql.close();
 });
 
@@ -151,14 +161,14 @@ test('owner portal denies partner/player, requires MFA and recent reauthenticati
   const overview = await (await data(f, '/owner/overview', owner)).json(); assert.deepEqual(overview.revenue, []); assert.equal(overview.providerReporting.available, false);
   await assert.rejects(data(f, '/owner/flags', owner, 'PUT', { key: 'PAYMENTS_ENABLED', enabled: true, reason: 'test only' }), reject(409, 'RELEASE_GATE'));
   f.sql.prepare('UPDATE platform_sessions SET auth_time=? WHERE id=?').run(now() - 600, owner.sessionId);
-  await assert.rejects(data(f, '/owner/flags', owner, 'PUT', { key: 'CREATOR_WAITLIST_ENABLED', enabled: false, reason: 'test' }), reject(403, 'REAUTH_REQUIRED'));
+  await assert.rejects(data(f, '/owner/flags', owner, 'PUT', { key: 'CREATOR_SIGNUP_ENABLED', enabled: false, reason: 'test' }), reject(403, 'REAUTH_REQUIRED'));
   f.sql.close();
 });
 
 test('owner feature mutations create audit history and cannot prematurely open uploads', async () => {
   const f = fixture(); const owner = await actor(f, ['OWNER'], { mfa: true });
-  await data(f, '/owner/flags', owner, 'PUT', { key: 'CREATOR_WAITLIST_ENABLED', enabled: false, reason: 'Internal test transition' });
-  assert.equal((await flags(f.env)).CREATOR_WAITLIST_ENABLED, false);
+  await data(f, '/owner/flags', owner, 'PUT', { key: 'CREATOR_SIGNUP_ENABLED', enabled: false, reason: 'Internal test transition' });
+  assert.equal((await flags(f.env)).CREATOR_SIGNUP_ENABLED, false);
   assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_audit WHERE action='flag.change'").get().n, 1);
   await assert.rejects(data(f, '/owner/flags', owner, 'PUT', { key: 'PUBLIC_CREATOR_UPLOADS_ENABLED', enabled: true, reason: 'test' }), reject(409));
   for (const key of ['ENGINE_PUBLISHING_ENABLED', 'PREMIUM_DOWNLOADS_ENABLED']) {
@@ -188,6 +198,9 @@ test('submission requires rights and clean reviewed build; creators cannot appro
   await assert.rejects(data(f, `/owner/games/${draft.id}/review`, dev, 'POST', { decision: 'approve', reason: 'test' }), reject(403));
   const review = await (await data(f, `/owner/games/${draft.id}/review`, owner, 'POST', { decision: 'approve', reason: 'Internal test review' })).json();
   assert.equal(review.status, 'approved');
+  const note = f.sql.prepare('SELECT user_id,title,body,href FROM platform_notifications WHERE user_id=?').get(dev.id);
+  assert.match(note.title, /approved/); assert.equal(note.body, 'Internal test review'); assert.equal(note.href, `/developer/games/${draft.id}`);
+  const queue = await (await data(f, '/owner/games', owner)).json(); assert.equal(queue.games.find(g => g.id === draft.id).developerName, 'Test user');
   const ownerGame = game(f, owner, { status: 'submitted', versionStatus: 'ready' });
   await assert.rejects(data(f, `/owner/games/${ownerGame.id}/review`, owner, 'POST', { decision: 'approve', reason: 'test' }), reject(403, 'SELF_APPROVAL_DENIED'));
   f.sql.close();
@@ -336,7 +349,7 @@ test('actual account erasure builder removes private product data atomically and
   await data(f, '/projects', user, 'POST', { name: 'Private project', project: { private: true } });
   await data(f, '/preferences', user, 'PUT', { language: 'es' });
   await data(f, '/favorites', user, 'POST', { gameId: g.id }); await data(f, '/library', user, 'POST', { gameId: g.id });
-  await data(f, '/waitlist', user, 'POST', {});
+  await data(f, '/creator/join', user, 'POST', { guidelinesAccepted: true });
   const { session } = await (await player(f, '/player/sessions', user, 'POST', { gameId: g.id })).json();
   await player(f, `/player/sessions/${session.id}/progress`, user, 'PUT', { revision: 0, progress: { level: 3 } });
   f.sql.prepare('INSERT INTO platform_wallet_transactions VALUES(?,?,?,?,?,?,?,?,?,?)')

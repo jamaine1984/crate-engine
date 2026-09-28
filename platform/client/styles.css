@@ -16,3 +16,14 @@ h1,h2,h3{font-family:Barlow,Arial,sans-serif;font-weight:800}.brand-mark{width:6
 .creator-upload-banner{display:flex;align-items:center;gap:22px;padding:26px 30px;border:1px solid var(--border);border-radius:9px;background:linear-gradient(90deg,#07170eef,#0a1b12bf),url(/platform/media/world-hero.png) center 67%/cover}.creator-upload-banner>.ph{font-size:54px;color:var(--tan)}.creator-upload-banner h2{font-size:34px;color:var(--tan)}.creator-upload-banner p:not(.eyebrow){font-size:14px;color:#c0cfbf;margin-top:8px}.creator-upload-banner>.btn{margin-left:auto}@media(max-width:760px){.creator-upload-banner{flex-wrap:wrap;padding:24px;gap:16px}.creator-upload-banner>div{flex:1;min-width:200px}.creator-upload-banner>.btn{margin-left:0}}
 @media(max-width:760px){.sidebar:not(.open){visibility:hidden;pointer-events:none}.sidebar.open{visibility:visible}}
 .mfa-qr{display:flex;flex-direction:column;align-items:flex-start;gap:12px}.qr-code{display:block;width:220px;height:220px;max-width:100%;border-radius:6px}
+.check-list li{display:flex;align-items:flex-start;line-height:1.5}
+.check-list li .ph{flex-shrink:0;margin-top:1px}
+.steps-list{margin:14px 0;padding-left:22px;display:grid;gap:10px;font-size:14px;line-height:1.55;color:#c3d1bb}
+.steps-list strong{color:#f5f1e8}
+.steps-list a,.check-list a{color:var(--tan);text-decoration:underline}
+.doc-content code,.check-list code{background:#13261c;border:1px solid var(--border);border-radius:5px;padding:1px 5px;font-size:.92em}
+.review-card{border:1px solid var(--border);border-radius:12px;padding:16px 18px;background:#0f2018}
+.review-card h3{margin:0}
+.decision-options{border:0;margin:0 0 12px;padding:0;display:grid;gap:8px}
+.decision-options legend{font-weight:600;margin-bottom:8px}
+.checkbox-row input[type=radio]{width:18px;height:18px;min-height:0;margin-top:2px;accent-color:var(--orange)}
