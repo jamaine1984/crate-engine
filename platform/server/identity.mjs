@@ -463,8 +463,9 @@ async function confirmMfa(request, env, body) {
   const db = database(env); const stamp = now();
   const row = await db.prepare(`SELECT * FROM platform_mfa WHERE user_id = ? AND enabled = 0
     AND pending_session_id = ? AND pending_expires_at > ?`).bind(user.id, user.sessionId, stamp).first();
-  const counter = row ? await matchingCounter(env, row, body.code) : null;
-  if (counter === null) throw new HttpError(400, 'The authenticator code is invalid or expired.', 'INVALID_MFA');
+  if (!row) throw new HttpError(400, 'This authenticator setup expired. Click Set Up Authenticator again and scan the new QR code.', 'INVALID_MFA');
+  const counter = await matchingCounter(env, row, body.code);
+  if (counter === null) throw new HttpError(400, "That code doesn't match. Delete any old Crate Ship Games entry in your app, scan the newest QR code, and enter the code it shows now.", 'INVALID_MFA');
   const result = await db.batch([
     db.prepare(`UPDATE platform_mfa SET enabled = 1, last_counter = ?, pending_session_id = NULL,
       pending_expires_at = NULL, updated_at = ? WHERE user_id = ? AND enabled = 0
