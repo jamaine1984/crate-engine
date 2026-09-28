@@ -21,7 +21,7 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
    object.updateWorldMatrix(true,true);const position=object.getWorldPosition(new Vector3()),rotation=object.getWorldQuaternion(new Quaternion()),scale=object.getWorldScale(new Vector3()),box=new Box3(),inverse=object.matrixWorld.clone().invert();
    object.traverse(mesh=>{if(!mesh.geometry||mesh.userData.entityId&&mesh.userData.entityId!==entity.id)return;mesh.geometry.computeBoundingBox();box.union(mesh.geometry.boundingBox.clone().applyMatrix4(new Matrix4().multiplyMatrices(inverse,mesh.matrixWorld)));});
    if(box.isEmpty()){onLog({level:'warn',message:entity.name+' has no collision geometry; its rigid body is inactive.'});continue;}const size=box.getSize(new Vector3()).multiply(scale),center=box.getCenter(new Vector3()).multiply(scale);heights.set(entity.id,Math.max(.05,size.y/2-center.y));
-   const desc=entity.components.rigidbody.type==='dynamic'?R.RigidBodyDesc.dynamic():R.RigidBodyDesc.fixed();desc.setTranslation(position.x,position.y,position.z).setRotation(rotation);if(entity.components.player)desc.lockRotations();
+   const desc=entity.components.rigidbody.type==='dynamic'?R.RigidBodyDesc.dynamic():R.RigidBodyDesc.fixed();desc.setTranslation(position.x,position.y,position.z).setRotation(rotation);if(entity.components.player){desc.lockRotations();if(entity.components.player.sideView)desc.enabledTranslations(true,true,false);}
    const body=world.createRigidBody(desc),collider=R.ColliderDesc.cuboid(Math.max(.01,size.x/2),Math.max(.01,size.y/2),Math.max(.01,size.z/2)).setTranslation(center.x,center.y,center.z).setFriction(entity.components.rigidbody.friction).setRestitution(entity.components.rigidbody.restitution).setMass(entity.components.rigidbody.mass);
    world.createCollider(collider,body);bodies.set(entity.id,body);
   }
@@ -40,9 +40,9 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
   while(accumulator>=1/60){
    for(const entity of project.entities){
     const body=bodies.get(entity.id);if(!body||!entity.components.player)continue;
-    const player=entity.components.player,x=axis(input.x+(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)),z=axis(input.z+(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)),length=Math.max(1,Math.hypot(x,z)),velocity=body.linvel();let y=velocity.y;
+    const player=entity.components.player,x=axis(input.x+(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)),z=player.sideView?0:axis(input.z+(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)),length=Math.max(1,Math.hypot(x,z)),velocity=body.linvel();let y=velocity.y;
     if(jumpPressed){const position=body.translation(),hit=world.castRay(new R.Ray({x:position.x,y:position.y,z:position.z},{x:0,y:-1,z:0}),(heights.get(entity.id)||.5)+.12,true,undefined,undefined,undefined,body);if(hit)y=player.jump;}
-    body.setLinvel({x:x/length*player.speed,y,z:z/length*player.speed},true);
+    body.setLinvel({x:x/length*player.speed,y,z:player.sideView?0:z/length*player.speed},true);
    }
    jumpPressed=false;world.timestep=1/60;world.step();accumulator-=1/60;
   }

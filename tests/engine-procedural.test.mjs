@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {newProject,cleanEntity,validateProject} from '../engine/core/schema.mjs';
 import {ProjectStore} from '../engine/core/project-store.mjs';
 import {WORLD_RECIPE_SCHEMA,WORLD_LIMITS,validateWorldRecipeShape,validateWorldRecipe,compileWorldRecipe,createWorldPreviewSession,createWorldRecipe,getWorldRecipeHelp} from '../engine/core/procedural.mjs';
+import {createVectorGeometry,createVectorObject} from '../engine/runtime/vector-shape.mjs';
 
 const recipe=operations=>({version:1,seed:'repeatable-world',operations});
 const add=(entity={type:'box'},extra={})=>({op:'add',entity,...extra});
@@ -67,6 +68,19 @@ test('existing assets can be instantiated without adding assets or trusting remo
 test('physics/component requirements hold for procedural templates',()=>{
  for(const entity of [{type:'box',components:{player:{}}},{type:'box',components:{rigidbody:{type:'static'},player:{}}},{type:'box',components:{rigidbody:{type:'dynamic'},spin:{}}},{type:'camera',components:{rigidbody:{type:'static'}}},{type:'sphere',components:{animation:{}}}])assert.throws(()=>validateWorldRecipeShape(recipe([add(entity)])));
  assert.doesNotThrow(()=>compileWorldRecipe(recipe([add({type:'box',components:{player:{},rigidbody:{type:'dynamic'}}})])));
+});
+
+test('models can author bounded colored polygons and the engine triangulates real meshes',()=>{
+ const shape={paths:[{points:[[-2,-1],[2,-1],[2,1],[0,0],[-2,1]],color:'#4b9874',depth:.1},{points:[[-.4,.2],[.4,.2],[0,.8]],color:'#f8d28a',depth:.2}]};
+ const compiled=compileWorldRecipe(recipe([add({type:'customMesh',name:'Hand-drawn scout',shape,components:{rigidbody:{type:'dynamic'},player:{sideView:true}}})]));
+ const entity=compiled.entities[0],geometries=createVectorGeometry(entity.shape);
+ assert.equal(entity.type,'customMesh');assert.equal(entity.components.player.sideView,true);assert.equal(entity.shape.paths.length,2);
+ assert.ok(geometries.every(({geometry})=>geometry.index.count>=3&&Array.from(geometry.index.array).every(index=>index<geometry.getAttribute('position').count)));
+ assert.deepEqual(geometries[0].geometry.boundingBox.min.toArray().slice(0,2),[-2,-1]);assert.deepEqual(geometries[0].geometry.boundingBox.max.toArray().slice(0,2),[2,1]);
+ const object=createVectorObject({DoubleSide:2},entity.shape);assert.deepEqual(object.children.map(layer=>layer.position.z),[.1,.2]);assert.deepEqual(object.children.map(layer=>layer.material.color.getHexString()),['4b9874','f8d28a']);
+ assert.doesNotThrow(()=>validateProject({...newProject(),entities:compiled.entities}));object.traverse(node=>{node.geometry?.dispose();node.material?.dispose();});
+ for(const shape of [{paths:[]},{paths:[{points:[[0,0],[1,1]],color:'#ffffff'}]},{paths:[{points:[[101,0],[0,1],[0,0]],color:'#ffffff'}]},{paths:[{points:[[0,0],[1,0],[0,1]],color:'bad'}]}])assert.throws(()=>compileWorldRecipe(recipe([add({type:'customMesh',shape})])));
+ assert.throws(()=>compileWorldRecipe(recipe([add({type:'customMesh',components:{rigidbody:{type:'static'}}})])),/requires its own/);
 });
 
 test('total object and light caps respect full and reduced scene contexts',()=>{

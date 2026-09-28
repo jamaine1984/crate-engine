@@ -7,6 +7,7 @@ export function createTouchState(onChange=()=>{}){
 }
 const styles=`
 .crate-touch-controls{position:absolute;inset:0;pointer-events:none;z-index:20;display:none;font:12px system-ui,sans-serif;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.crate-touch-controls[data-side-view=true] .crate-touch-pad{grid-template-rows:48px}.crate-touch-controls[data-side-view=true] .crate-touch-button[data-direction=left],.crate-touch-controls[data-side-view=true] .crate-touch-button[data-direction=right]{grid-row:1}
 .crate-touch-pad{position:absolute;bottom:max(18px,env(safe-area-inset-bottom));left:max(16px,env(safe-area-inset-left));display:grid;grid-template-columns:48px 48px 48px;grid-template-rows:48px 48px 48px;gap:4px;pointer-events:none}
 .crate-touch-button{display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;overscroll-behavior:contain;border:1px solid #86a68b;border-radius:12px;background:#14251dea;color:#eff5e9;font:700 24px system-ui,sans-serif;box-shadow:0 3px 12px #0004;padding:0;margin:0;min-width:48px;min-height:48px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .crate-touch-button[data-direction=forward]{grid-column:2;grid-row:1}.crate-touch-button[data-direction=left]{grid-column:1;grid-row:2}.crate-touch-button[data-direction=right]{grid-column:3;grid-row:2}.crate-touch-button[data-direction=backward]{grid-column:2;grid-row:3}
@@ -14,16 +15,17 @@ const styles=`
 .crate-touch-jump{position:absolute;bottom:max(35px,env(safe-area-inset-bottom));right:max(22px,env(safe-area-inset-right));width:72px;height:72px;border-radius:50%;font-size:15px;background:#8d542ce8;border-color:#ecac7f}
 .crate-touch-caption{position:absolute;bottom:calc(max(18px,env(safe-area-inset-bottom)) + 160px);left:max(16px,env(safe-area-inset-left));padding:5px 8px;border-radius:5px;background:#102017dc;color:#d0dfd1;font-size:10px;max-width:calc(100% - 30px);line-height:1.4}
 @media(any-pointer:coarse),(max-width:900px){.crate-touch-controls{display:block}.canvas-wrap:has(.crate-touch-controls) .runtime-hud{top:47px;bottom:auto;max-width:calc(100% - 24px);width:auto;white-space:normal;z-index:10}.canvas-wrap:has(.crate-touch-controls) .runtime-hud small{display:none}}
-@media(max-height:420px){.crate-touch-pad{grid-template-columns:42px 42px 42px;grid-template-rows:42px 42px 42px;gap:3px;bottom:10px;left:12px}.crate-touch-button{min-height:42px;min-width:42px}.crate-touch-caption{bottom:148px}.crate-touch-jump{width:62px;height:62px;bottom:22px}}
+@media(max-height:420px){.crate-touch-pad{grid-template-columns:42px 42px 42px;grid-template-rows:42px 42px 42px;gap:3px;bottom:10px;left:12px}.crate-touch-controls[data-side-view=true] .crate-touch-pad{grid-template-rows:42px}.crate-touch-button{min-height:42px;min-width:42px}.crate-touch-caption{bottom:148px}.crate-touch-jump{width:62px;height:62px;bottom:22px}}
 @media(prefers-reduced-motion:reduce){.crate-touch-button{transform:none!important}}
 `;
 
-export function mountTouchControls(container,{onInput=()=>{},enabled=true}={}){
+export function mountTouchControls(container,{onInput=()=>{},enabled=true,sideView=false}={}){
  const doc=container.ownerDocument||document,win=doc.defaultView||window;
  if(!doc.getElementById('crate-touch-control-styles')){const style=doc.createElement('style');style.id='crate-touch-control-styles';style.textContent=styles;doc.head.append(style);}
  const root=doc.createElement('div');root.className='crate-touch-controls';root.setAttribute('role','group');root.setAttribute('aria-label','Touch game controls');
+ root.dataset.sideView=String(sideView);
  const pad=doc.createElement('div');pad.className='crate-touch-pad';pad.setAttribute('role','group');pad.setAttribute('aria-label','Movement');
- const caption=doc.createElement('span');caption.className='crate-touch-caption';caption.textContent=enabled?'Move with the pad · Tap Jump':'This scene has no active player controller';
+ const caption=doc.createElement('span');caption.className='crate-touch-caption';caption.textContent=enabled?(sideView?'Move left/right · Tap Jump':'Move with the pad · Tap Jump'):'This scene has no active player controller';
  const buttons=new Map(),held=new Map(),keyboardPointers=new Set();let disposed=false;
  const state=createTouchState(value=>{onInput(value);for(const [action,button]of buttons)button.setAttribute('aria-pressed',String([...held.values()].includes(action)||keyboardPointers.has(action)));});
  const clear=()=>{const captured=[...held.entries()];held.clear();keyboardPointers.clear();state.clear();for(const button of buttons.values())button.setAttribute('aria-pressed','false');for(const [pointerId,action]of captured){const button=buttons.get(action);try{if(button.hasPointerCapture(pointerId))button.releasePointerCapture(pointerId);}catch{}}};
@@ -39,7 +41,7 @@ export function mountTouchControls(container,{onInput=()=>{},enabled=true}={}){
   button.addEventListener('blur',()=>{keyboardPointers.delete(action);state.release('keyboard-'+action);button.setAttribute('aria-pressed',String([...held.values()].includes(action)));});
   button.addEventListener('contextmenu',event=>event.preventDefault());button.addEventListener('click',event=>event.preventDefault());
  }
- for(const action of ['forward','left','right','backward']){const button=doc.createElement('button');bind(button,action);pad.append(button);}
+ for(const action of (sideView?['left','right']:['forward','left','right','backward'])){const button=doc.createElement('button');bind(button,action);pad.append(button);}
  const jump=doc.createElement('button');bind(jump,'jump');root.append(pad,jump,caption);container.append(root);
  const visibility=()=>{if(doc.hidden)clear();};win.addEventListener('blur',clear);win.addEventListener('pagehide',clear);doc.addEventListener('visibilitychange',visibility);
  return {element:root,clear,dispose(){if(disposed)return;disposed=true;clear();state.dispose();win.removeEventListener('blur',clear);win.removeEventListener('pagehide',clear);doc.removeEventListener('visibilitychange',visibility);root.remove();}};

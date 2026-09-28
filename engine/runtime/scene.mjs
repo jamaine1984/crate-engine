@@ -9,6 +9,7 @@ import {GTAOPass} from 'three/addons/postprocessing/GTAOPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {computeBoundsTree,disposeBoundsTree,acceleratedRaycast} from 'three-mesh-bvh';
 import {inspectGLB} from '../core/gltf.mjs';
+import {createVectorObject} from './vector-shape.mjs';
 THREE.BufferGeometry.prototype.computeBoundsTree=computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree=disposeBoundsTree;
 THREE.Mesh.prototype.raycast=acceleratedRaycast;
@@ -80,7 +81,8 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
    if(!asset)throw new Error('Model asset is missing.');
    const gltf=await sourceFor(asset);if(!gate.current(token))return null;
    ({object,mixer}=createModelInstance(gltf,entity,{onLog}));assetKey=assetCacheKey(asset);
-  }else if(entity.type==='directionalLight'){
+  }else if(entity.type==='customMesh')object=createVectorObject(THREE,entity.shape);
+  else if(entity.type==='directionalLight'){
    object=new THREE.DirectionalLight(entity.light.color,entity.light.intensity);object.shadow.mapSize.set(2048,2048);Object.assign(object.shadow.camera,{left:-20,right:20,top:20,bottom:-20,near:.1,far:150});object.shadow.bias=-.0004;object.shadow.normalBias=.03;object.target.position.set(0,0,0);
   }else if(entity.type==='pointLight'){
    object=new THREE.PointLight(entity.light.color,entity.light.intensity,entity.light.distance,2);object.shadow.mapSize.set(512,512);object.shadow.bias=-.001;
@@ -105,7 +107,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   try{
    for(const entity of snapshot.entities){
     if(!gate.current(token))return {superseded:true};
-    const asset=assets.get(entity.assetId),signature=JSON.stringify([entity.type,entity.assetId?assetCacheKey(asset):null,entity.components.animation,entity.type==='model'?null:entity.material,entity.light]);
+    const asset=assets.get(entity.assetId),signature=JSON.stringify([entity.type,entity.assetId?assetCacheKey(asset):null,entity.components.animation,entity.type==='model'?null:entity.material,entity.type==='customMesh'?entity.shape:null,entity.light]);
     let entry=entries.get(entity.id);
     if(!entry||entry.signature!==signature||entry.error){
      try{entry=await createEntry(entity,asset,token,signature);}

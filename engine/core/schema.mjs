@@ -1,6 +1,6 @@
 export const FORMAT='crateship-project';
 export const VERSION=4;
-export const ENTITY_TYPES=Object.freeze(['box','sphere','cylinder','capsule','plane','directionalLight','pointLight','camera','model','empty']);
+export const ENTITY_TYPES=Object.freeze(['box','sphere','cylinder','capsule','plane','customMesh','directionalLight','pointLight','camera','model','empty']);
 const clone=x=>structuredClone(x);
 const text=(value,max,fallback='')=>typeof value==='string'?value.slice(0,max):fallback;
 const finite=(value,fallback,min=-1e6,max=1e6)=>Number.isFinite(value)?Math.max(min,Math.min(max,value)):fallback;
@@ -11,20 +11,34 @@ export function cleanComponents(value={}){
  if(value.rigidbody)result.rigidbody={type:value.rigidbody.type==='dynamic'?'dynamic':'static',mass:finite(value.rigidbody.mass,1,.001,10000),restitution:finite(value.rigidbody.restitution,.2,0,1),friction:finite(value.rigidbody.friction,.7,0,10)};
  if(value.spin)result.spin={speed:finite(value.spin.speed,30,-720,720)};
  if(value.collectible)result.collectible={value:Math.round(finite(value.collectible.value,1,0,1e6))};
- if(value.player)result.player={speed:finite(value.player.speed,5,.1,50),jump:finite(value.player.jump,6,0,30)};
+ if(value.player)result.player={speed:finite(value.player.speed,5,.1,50),jump:finite(value.player.jump,6,0,30),...(value.player.sideView===true?{sideView:true}:{})};
  if(value.animation)result.animation={clip:text(value.animation.clip,120),autoplay:value.animation.autoplay!==false,speed:finite(value.animation.speed,1,.01,5)};
  return result;
+}
+function cleanShape(value){
+ if(value===undefined)return undefined;
+ if(!value||typeof value!=='object'||Array.isArray(value)||!Array.isArray(value.paths)||value.paths.length<1||value.paths.length>64)throw new Error('A custom mesh needs 1 to 64 vector paths.');
+ let total=0;
+ const paths=value.paths.map(path=>{
+  if(!path||typeof path!=='object'||Array.isArray(path)||!Array.isArray(path.points)||path.points.length<3||path.points.length>256)throw new Error('A custom mesh path needs 3 to 256 points.');
+  total+=path.points.length;if(total>8000)throw new Error('A custom mesh exceeds 8000 vertices.');
+  const points=path.points.map(point=>{if(!Array.isArray(point)||point.length!==2||point.some(n=>!Number.isFinite(n)||Math.abs(n)>100))throw new Error('Custom mesh points must be finite 2D coordinates within 100 units.');return [point[0],point[1]];});
+  const color=typeof path.color==='string'&&/^#[a-fA-F0-9]{6}$/.test(path.color)?path.color:'#8ebfa6';
+  const depth=Number.isFinite(path.depth)?Math.max(-100,Math.min(100,path.depth)):0;
+  return {points,color,depth};
+ });
+ return {paths};
 }
 export function cleanEntity(value={}){
  if(!ENTITY_TYPES.includes(value.type))throw new Error('Unsupported scene object type.');
  const components=cleanComponents(value.components);
- if(components.player&&(!['box','sphere','cylinder','capsule','plane','model'].includes(value.type)||components.rigidbody?.type!=='dynamic'))throw new Error('A player controller requires a renderable object with a dynamic rigid body.');
+ if(components.player&&(!['box','sphere','cylinder','capsule','plane','model','customMesh'].includes(value.type)||components.rigidbody?.type!=='dynamic'))throw new Error('A player controller requires a renderable object with a dynamic rigid body.');
  if(components.spin&&components.rigidbody)throw new Error('Spin and rigid body components cannot be combined.');
  return {id:safeId(value.id),name:text(value.name,100,value.type),type:value.type,parentId:value.parentId?safeId(value.parentId):null,
   position:vec(value.position,[0,.5,0]),rotation:vec(value.rotation,[0,0,0],-36000,36000),scale:vec(value.scale,[1,1,1],.001,10000),visible:value.visible!==false,
   material:{color:/^#[a-fA-F0-9]{6}$/.test(value.material?.color)?value.material.color:'#8ebfa6',metalness:finite(value.material?.metalness,.05,0,1),roughness:finite(value.material?.roughness,.65,0,1)},
   light:{color:/^#[a-fA-F0-9]{6}$/.test(value.light?.color)?value.light.color:'#fff1dd',intensity:finite(value.light?.intensity,3,0,1000),distance:finite(value.light?.distance,30,0,10000)},
-  components,...(value.assetId?{assetId:safeId(value.assetId)}:{})};
+  components,...(value.type==='customMesh'?{shape:cleanShape(value.shape)}:{}),...(value.assetId?{assetId:safeId(value.assetId)}:{})};
 }
 export function newProject(name='Untitled World'){
  return {format:FORMAT,version:VERSION,id:crypto.randomUUID(),name:text(name,120,'Untitled World'),settings:cleanSettings(),entities:[],assets:[],createdAt:Date.now(),updatedAt:Date.now()};

@@ -84,19 +84,19 @@ function exportDownload(result, fallback) {
  const observer=new MutationObserver(()=>{if(!a.isConnected){URL.revokeObjectURL(url);observer.disconnect();}});observer.observe(document.body,{childList:true,subtree:true});
 }
 async function saveLocal(){commitActiveField();if(mode==='play')await editor.stop();await editor.saveLocal();saveStatus('Saved locally',true);toast('Project saved on this device.');}
-function demoDialog(){openDialog('Build a side-view game',`<p class="dialog-lead">Create an editable platformer scene with a player, jump platforms, collectible stars, and a side-view camera. The engine builds it from a world recipe, saves it on this device, and opens Play mode.</p><p class="field-help">Your current unsaved scene is saved as a recovery copy before switching projects.</p><div class="dialog-actions"><button class="text-button" data-action="close-dialog">Cancel</button><button class="primary-button" data-action="create-demo">Build and play demo</button></div>`);}
+function demoDialog(){openDialog('Build a 2D adventure',`<p class="dialog-lead">Build an original side-scrolling forest game with a hand-designed human character, layered trees, carved platforms, collectible fireflies, and solid collisions. The scene uses model-authored vector paths instead of primitive shapes.</p><p class="field-help">The editable project is saved on this device before Play starts. Stop to edit the character and world objects.</p><div class="dialog-actions"><button class="text-button" data-action="close-dialog">Cancel</button><button class="primary-button" data-action="create-demo">Build and play game</button></div>`);}
 async function buildDemo(){
  const response=await fetch('/platform/media/skybound-sprint-recipe.json',{credentials:'same-origin',redirect:'error',signal:AbortSignal.timeout(10000)});
  if(!response.ok)throw new Error('The platformer recipe is unavailable.');
  const recipe=JSON.parse(new TextDecoder().decode(await readLimitedResponse(response,128*1024,'Platformer recipe')));
  await worldPanel.disconnect();
- await editor.loadProject(newProject('Skybound Sprint — side-view game'));
+ await editor.loadProject(newProject('Mira and the Dawnwood'));
  await editor.updateSettings({background:'#25466d',ambientIntensity:1.2,fogDensity:0});
  const preview=await editor.previewWorld(recipe);
  await editor.applyWorld({previewId:preview.previewId});
  await editor.saveLocal();
  closeDialog();changePane('viewport');
- toast('Built '+preview.summary.entityCount+' editable game objects. Press Stop to edit.');
+ toast('Built '+preview.summary.entityCount+' editable custom-shape game objects. Press Stop to edit.');
  await editor.play();setMode('play');$('#editor-canvas').focus();
 }
 async function importFiles(files){if(!files?.length)return;await editor.importFiles(Array.from(files));toast(`${files.length===1?files[0].name:files.length+' files'} imported.`);changePane('viewport');}

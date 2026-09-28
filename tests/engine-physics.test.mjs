@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Scene, Mesh, Group, BoxGeometry, MeshBasicMaterial, MathUtils, Vector3 } from 'three';
 import { newProject, cleanEntity } from '../engine/core/schema.mjs';
 import { createPhysics } from '../engine/runtime/physics.mjs';
+import { createVectorObject } from '../engine/runtime/vector-shape.mjs';
 
 function keyboard(t) {
   const previous = globalThis.window, listeners = new Map();
@@ -16,7 +17,7 @@ async function fixture(t, extra = [], configure = () => {}) {
   project.entities = [cleanEntity({ type: 'box', id: 'ground', position: [0, -.125, 0], scale: [20, .25, 20], components: { rigidbody: { type: 'static', restitution: 0 } } }), cleanEntity({ type: 'box', id: 'falling', position: [0, 3, 0], components: { rigidbody: { type: 'dynamic', restitution: 0 } } }), ...extra.map(cleanEntity)];
   const scene = new Scene(), objects = new Map();
   for (const e of project.entities) {
-    const object = e.type === 'empty' ? new Group() : new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial()); object.position.fromArray(e.position); object.rotation.set(...e.rotation.map(MathUtils.degToRad)); object.scale.fromArray(e.scale); object.visible = e.visible; object.userData.entityId = e.id; objects.set(e.id, object);
+    const object = e.type === 'empty' ? new Group() : e.type==='customMesh'?createVectorObject({DoubleSide:2},e.shape):new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial()); object.position.fromArray(e.position); object.rotation.set(...e.rotation.map(MathUtils.degToRad)); object.scale.fromArray(e.scale); object.visible = e.visible; object.userData.entityId = e.id; objects.set(e.id, object);
   }
   for (const e of project.entities) (objects.get(e.parentId) || scene).add(objects.get(e.id)); configure(objects, project); scene.updateMatrixWorld(true);
   const scores = [], physics = await createPhysics(project, objects, { onScore: score => scores.push(score) }); let disposed = false;
@@ -43,6 +44,21 @@ test('player movement normalizes diagonal velocity and clears on blur', async t 
   const f = await fixture(t, [{ type: 'box', id: 'player', position: [4, 2, 0], components: { player: { speed: 5 }, rigidbody: { type: 'dynamic' } } }]);
   f.input.send('keydown', 'KeyW'); f.input.send('keydown', 'KeyD'); f.physics.step(1 / 60); const velocity = f.physics.bodies.get('player').linvel(); assert.ok(Math.abs(Math.hypot(velocity.x, velocity.z) - 5) < .05);
   f.input.send('blur'); f.physics.step(1 / 60); const stopped = f.physics.bodies.get('player').linvel(); assert.equal(stopped.x, 0); assert.equal(stopped.z, 0);
+});
+test('side-view player moves in X, jumps on Y and stays on its depth plane',async t=>{
+ const f=await fixture(t,[{type:'box',id:'side-player',position:[0,3,2],components:{player:{speed:6,jump:8,sideView:true},rigidbody:{type:'dynamic'}}}],(_objects,project)=>{project.settings.gravity=0;});
+ f.input.send('keydown','ArrowRight');f.input.send('keydown','KeyW');f.physics.step(1/60);const velocity=f.physics.bodies.get('side-player').linvel();
+ assert.ok(velocity.x>5.9,`side-view horizontal velocity: ${JSON.stringify(velocity)}; player=${JSON.stringify(f.project.entities.find(e=>e.id==='side-player').components.player)}`);assert.equal(velocity.z,0);assert.ok(Math.abs(f.objects.get('side-player').position.z-2)<1e-6);
+});
+test('custom vector ground creates a Rapier collider and supports a falling body',async t=>{
+ const ground={type:'customMesh',id:'vector-floor',position:[0,-.2,0],shape:{paths:[{points:[[-8,-.2],[8,-.2],[8,.2],[-8,.2]],color:'#52764f'}]},components:{rigidbody:{type:'static'}}};
+ const f=await fixture(t,[ground]);f.frames(240);const body=f.objects.get('falling').position.y;assert.ok(body>.45&&body<.6,`Expected body to land on vector floor, got ${body}`);assert.ok(f.physics.bodies.has('vector-floor'));
+});
+test('front-view player meshes collide on the same thin depth plane as vector platforms',async t=>{
+ const floor={type:'customMesh',id:'art-floor',position:[0,-.2,0],shape:{paths:[{points:[[-8,-.2],[8,-.2],[8,.2],[-8,.2]],color:'#52764f',depth:.03}]},components:{rigidbody:{type:'static'}}};
+ const hero={type:'customMesh',id:'art-player',position:[0,1.7,-.06],scale:[1.15,1.15,1],shape:{paths:[{points:[[-.4,-1.25],[.3,-1.25],[.4,.2],[.2,1.43],[-.2,1.3],[-.4,.1]],color:'#4c8e78',depth:.14},{points:[[-.2,-.9],[.2,-.9],[.2,.9],[-.2,.9]],color:'#e9c39a',depth:.01}]},components:{player:{sideView:true},rigidbody:{type:'dynamic'}}};
+ const f=await fixture(t,[floor,hero]);f.frames(300);const body=f.physics.bodies.get('art-player').translation();
+ assert.ok(body.y>1.2,`The hand-shaped player should land on the floor; Y=${body.y}`);assert.ok(Math.abs(body.z+.06)<.002,`Player depth should stay fixed; Z=${body.z}`);
 });
 test('blur also cancels an unconsumed jump press', async t => {
   const f = await fixture(t, [{ type: 'box', id: 'player', position: [4, .5, 0], components: { player: { jump: 6 }, rigidbody: { type: 'dynamic', restitution: 0 } } }]);
