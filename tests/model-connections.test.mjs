@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { sqliteD1 } from '../platform/dev/sqlite-d1.mjs';
 import { base64url, tokenHash } from '../platform/server/identity.mjs';
 import { HttpError } from '../platform/server/common.mjs';
-import { handleModelConnections, modelConnectionErasureStatements, parseProposal, projectSceneSummary, MODEL_BILLING_POLICY } from '../platform/server/model-connections.mjs';
+import { handleModelConnections, modelConnectionErasureStatements, parseProposal, projectSceneSummary, repairOperationBraces, MODEL_BILLING_POLICY } from '../platform/server/model-connections.mjs';
 import retiredAI from '../worker/index.js';
 import { modelSceneContext } from '../engine/editor/scene-context.mjs';
 
@@ -220,7 +220,7 @@ test('generation requires explicit usage consent and bounded input', async t => 
   const f = fixture(t), user = await actor(f), row = await connection(f, user); enable(f);
   const calls = fetchMock(t, () => { throw new Error('No network expected'); });
   await assert.rejects(generate(f, user, row, input({ confirmProviderUsage: false })), reject(400, 'MODEL_USAGE_CONFIRMATION_REQUIRED'));
-  for (const extra of [{ prompt: '' }, { prompt: 'x'.repeat(8001) }, { maxOutputTokens: 4097 }, { maxOutputTokens: 127 }, { requestId: 'short' }]) {
+  for (const extra of [{ prompt: '' }, { prompt: 'x'.repeat(8001) }, { maxOutputTokens: 32769 }, { maxOutputTokens: 127 }, { requestId: 'short' }]) {
     await assert.rejects(generate(f, user, row, input(extra)), reject(400));
   }
   assert.equal(calls.length, 0);
@@ -310,6 +310,33 @@ test('daily reserved token cap and rolling minute cap apply across connections',
   await generate(f, user, a, input()); await assert.rejects(generate(f, user, b, input({ maxOutputTokens: 128 })), reject(429, 'MODEL_USAGE_LIMIT'));
   f.env.ENGINE_AI_OUTPUT_TOKENS_PER_DAY = '32768'; f.env.ENGINE_AI_REQUESTS_PER_MINUTE = '1';
   await assert.rejects(generate(f, user, a, input()), reject(429, 'MODEL_USAGE_LIMIT')); assert.equal(calls.length, 1);
+});
+
+test('game-sized requests reserve up to 32768 output tokens (migration 0011)', async t => {
+  const f = fixture(t), user = await actor(f), row = await connection(f, user); enable(f);
+  const calls = fetchMock(t, () => upstream(openaiOutput()));
+  await generate(f, user, row, input({ maxOutputTokens: 32768 }));
+  assert.equal(calls.length, 1);
+  await assert.rejects(generate(f, user, row, input({ maxOutputTokens: 32769 })), reject(400));
+});
+
+test('replies missing operation closers are repaired, then fully validated', () => {
+  const ctx = { entities: [], assets: [], entityCount: 0, lightCount: 0 };
+  const art = '{"type":"customMesh","name":"Rock","shape":{"paths":[{"points":[[0,0],[1,0],[0,1]],"color":"#777777"}]}';
+  // Real Space Bunny reply shape: the closing brace of each operation is dropped before the next {"op":.
+  const dropped = '{"summary":"s","worldRecipe":{"version":1,"seed":"a","operations":[{"op":"add","entity":' + art + '},{"op":"add","entity":' + art + '}]}}';
+  const report = {}; const parsed = parseProposal(dropped, new Set(), ctx, report);
+  assert.ok(parsed?.worldRecipe, report.error); assert.equal(parsed.worldRecipe.operations.length, 2);
+  // "}" written where "]}" belongs is supplied too.
+  const skipped = '{"summary":"s","worldRecipe":{"version":1,"seed":"a","operations":[{"op":"add","entity":{"type":"customMesh","name":"Rock","shape":{"paths":[{"points":[[0,0],[1,0],[0,1]],"color":"#777777"}}}}]}}';
+  assert.ok(parseProposal(skipped, new Set(), ctx)?.worldRecipe);
+  // Well-formed text is never rewritten; unrepairable text still fails with a reason.
+  assert.equal(repairOperationBraces('{"summary":"s","operations":[]}'), null);
+  const bad = {}; assert.equal(parseProposal('{"summary":"s","worldRecipe":{"paths":[[0,0],"color":"#fff"]}}', new Set(), ctx, bad), null);
+  assert.equal(bad.error, 'The reply is not a single JSON object.');
+  // Repair never loosens validation: a repaired reply with a forbidden field is still rejected with the reason.
+  const forbidden = {}; assert.equal(parseProposal(dropped.replace('"name":"Rock"', '"name":"Rock","script":"x"'), new Set(), ctx, forbidden), null);
+  assert.match(forbidden.error, /script is unsupported/);
 });
 
 test('network failures remain reserved and are never automatically retried', async t => {

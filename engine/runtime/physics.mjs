@@ -19,6 +19,8 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
  rapierPromise??=import('@dimforge/rapier3d-compat').then(async module=>{await module.default.init();return module.default;});
  const R=await rapierPromise,world=new R.World({x:0,y:project.settings.gravity,z:0}),bodies=new Map(),keys=new Set(),collected=new Set(),heights=new Map();
  let accumulator=0,score=0,jumpPressed=false,disposed=false,input={x:0,z:0,jump:false},elapsed=0,status='playing';
+ // Side-view players face the way they last moved (art is authored facing right).
+ const facing=new Map();
  const killY=Number.isFinite(project.settings.killY)?project.settings.killY:-30,maxLives=project.settings.lives||0;let lives=maxLives;
  const axis=value=>Number.isFinite(value)?Math.max(-1,Math.min(1,value)):0;
  function setInput(next={}){if(disposed)return;const jump=next.jump===true;if(jump&&!input.jump&&!keys.has('Space'))jumpPressed=true;input={x:axis(next.x),z:axis(next.z),jump};}
@@ -125,6 +127,7 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
     // Standing on a moving platform carries the player with it.
     const carrier=hit?movers.get(hit.collider.parent()?.handle):null,carryX=carrier?carrier.velocity.x:0,carryZ=carrier&&!player.sideView?carrier.velocity.z:0;
     if(active&&jumpPressed&&hit)y=player.jump;
+    if(player.sideView&&x)facing.set(entity.id,x<0?-1:1);
     body.setLinvel({x:x/length*player.speed+carryX,y,z:player.sideView?0:z/length*player.speed+carryZ},true);
    }
    jumpPressed=false;world.timestep=STEP;world.step();accumulator-=STEP;
@@ -132,7 +135,7 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
   }
   for(const entity of ordered){
    const object=objects.get(entity.id);if(!object||!visible(entity))continue;const body=bodies.get(entity.id);
-   if(body){const position=body.translation(),rotation=body.rotation();object.position.set(position.x,position.y,position.z);if(object.parent)object.parent.worldToLocal(object.position);object.quaternion.set(rotation.x,rotation.y,rotation.z,rotation.w);if(object.parent)object.quaternion.premultiply(object.parent.getWorldQuaternion(new Quaternion()).invert());}
+   if(body){const position=body.translation(),rotation=body.rotation();object.position.set(position.x,position.y,position.z);if(object.parent)object.parent.worldToLocal(object.position);object.quaternion.set(rotation.x,rotation.y,rotation.z,rotation.w);if(object.parent)object.quaternion.premultiply(object.parent.getWorldQuaternion(new Quaternion()).invert());if(facing.has(entity.id))object.scale.x=Math.abs(object.scale.x)*facing.get(entity.id);}
    else if(entity.components.spin)object.rotation.y+=MathUtils.degToRad(entity.components.spin.speed)*dt;
   }
   const players=controllers.filter(entity=>visible(entity)&&bodies.has(entity.id)).map(entity=>objects.get(entity.id)).filter(Boolean);

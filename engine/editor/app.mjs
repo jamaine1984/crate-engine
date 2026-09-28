@@ -147,6 +147,22 @@ async function blenderFetch(path, binary=false){const response=await fetch('http
 async function refreshBlender(){await blenderFetch('/status');const result=await blenderFetch('/assets');blenderAssets=Array.isArray(result)?result:result.assets||result.items||[];blenderConnected=true;renderBlender();if(!blenderAssets.length)$('#blender-status').textContent='Bridge connected. Export a GLB from Blender to make it available here.';}
 
 
+let replaceRequested=false,builtFingerprint=null;
+/** Build a completed model result straight into the scene: optional clear, level settings, then objects. */
+async function autoBuild(result){
+ if(await sceneFingerprint(editor.getProject())!==builtFingerprint)throw new Error('The scene changed while your AI was working. Nothing was built; ask again.');
+ const worldRecipe=result.worldRecipe,operations=Array.isArray(result.operations)?result.operations:[];
+ if(replaceRequested&&editor.getProject().entities.length){
+  const byId=new Map(editor.getProject().entities.map(e=>[e.id,e])),depth=e=>{let n=0;while(e?.parentId&&n<64){n++;e=byId.get(e.parentId);}return n;};
+  editor.applyProposal({summary:'Clear scene for AI build',operations:[...byId.values()].sort((a,b)=>depth(b)-depth(a)).map(e=>({op:'remove',id:e.id}))});
+ }
+ if(result.settings)editor.updateSettings(structuredClone(result.settings));
+ if(worldRecipe){const preview=await editor.previewWorld(worldRecipe);await editor.applyWorld({previewId:preview.previewId});}
+ else if(operations.length)await editor.applyProposal({summary:result.summary||'AI build',operations});
+ proposalRequests.markApplied();proposal=null;
+ const count=editor.getProject().entities.length;log({level:'info',message:'AI build finished: '+count+' objects in the scene. Use Undo to step back.'});toast('Built! Press Play to try it. Undo reverses it.');
+}
+let autoBuilding=false;
 function renderProposalAttempt(){
  const form=$('#model-proposal-form'),output=$('#proposal-result');if(!form||!output)return;
  const attempt=proposalRequests.state;
@@ -160,7 +176,8 @@ function renderProposalAttempt(){
  if(attempt.status==='complete'){
   const result=attempt.result;proposal=attempt.applied?null:{...(result.proposal||{summary:result.summary,operations:result.operations,worldRecipe:result.worldRecipe}),baseFingerprint:result.baseFingerprint||attempt.body.sceneSummary.baseFingerprint};
   const returned={...(result.proposal||{summary:result.summary,operations:result.operations,worldRecipe:result.worldRecipe}),baseFingerprint:result.baseFingerprint||attempt.body.sceneSummary.baseFingerprint},valid=Boolean(returned?.worldRecipe)||(Array.isArray(returned?.operations)&&returned.operations.length>0);
-  output.innerHTML=`<div class="proposal-preview"><h3>${attempt.applied?'Changes already applied':valid?'Review the proposed changes':'Provider response'}</h3><p>${esc(returned?.summary||'The provider did not return a valid scene operation list.')}</p><pre>${esc(valid?JSON.stringify(returned.worldRecipe||returned.operations,null,2):result.text||'No scene changes returned.')}</pre>${valid&&!attempt.applied?'<button class="primary-button" type="button" data-action="apply-proposal">'+(returned.worldRecipe?'Review world layout':'Apply these changes')+'</button>':'<p class="field-help">'+(attempt.applied?'Use Undo in the editor to reverse the applied changes.':'No changes were made to your scene.')+'</p>'}${newButton}</div>`;
+  if(valid&&!attempt.applied&&!autoBuilding){autoBuilding=true;output.innerHTML='<p class="loading-copy" role="status">Building it into your scene…</p>';void autoBuild({...result,...returned}).catch(error=>{log({level:'error',message:error.message});output.insertAdjacentHTML('afterbegin','<p class="dialog-error" role="alert">'+esc(error.message)+'</p>');}).finally(()=>{autoBuilding=false;renderProposalAttempt();});return;}
+  output.innerHTML=`<div class="proposal-preview"><h3>${attempt.applied?'Built into your scene':valid?'Ready to build':'Your AI could not build this'}</h3><p>${esc(returned?.summary||'The provider did not return a valid scene operation list.')}</p>${!valid&&result.proposalError?'<p class="dialog-error" role="alert">Not usable: '+esc(result.proposalError)+' Try again, or ask for a smaller change.</p>':''}<details><summary>Show what the AI sent</summary><pre>${esc(valid?JSON.stringify({settings:result.settings||undefined,build:returned.worldRecipe||returned.operations},null,2):result.text||'No scene changes returned.')}</pre></details>${attempt.applied?'<div class="dialog-actions"><button class="primary-button" type="button" data-action="play-after-build">Play it</button></div>':''}${valid&&!attempt.applied?'<button class="primary-button" type="button" data-action="apply-proposal">'+(returned.worldRecipe?'Review world layout':'Apply these changes')+'</button>':'<p class="field-help">'+(attempt.applied?'Use Undo in the editor to reverse the build. Ask for more below to keep building.':'No changes were made to your scene.')+'</p>'}${newButton.replace('Start a new request',attempt.applied?'Keep building':'Try again')}</div>`;
  }else{
   proposal=null;
   output.innerHTML=`<p class="dialog-error" role="alert">${esc(attempt.error?.message||'The request is unresolved.')}</p><p class="field-help">${attempt.status==='uncertain'?'Your provider may have processed this request and charged your account. Checking the same request will not send a second completion for an existing reservation. Starting a new request may add another charge.':'Check this same request, or start a new request after correcting the issue. A new request requires fresh confirmation.'}</p><div class="dialog-actions"><button class="primary-button" type="button" data-action="retry-proposal-request">Check the same request</button>${newButton}</div>`;
@@ -171,7 +188,8 @@ async function sendProposalAttempt(form,retry=false){
  try{
   proposal=null;
   if(retry)pending=proposalRequests.retry();
-  else{const data=Object.fromEntries(new FormData(form));pending=proposalRequests.start({connectionId:data.connectionId,prompt:data.prompt,sceneSummary:await modelSceneContext(editor.getProject()),maxOutputTokens:Number(data.maxOutputTokens),confirmProviderUsage:form.elements.confirmProviderUsage.checked});}
+  else{const data=Object.fromEntries(new FormData(form));const current=editor.getProject();replaceRequested=form.elements.replaceScene?.checked===true;builtFingerprint=await sceneFingerprint(current);
+  pending=proposalRequests.start({connectionId:data.connectionId,prompt:data.prompt,sceneSummary:await modelSceneContext(replaceRequested?{...current,entities:[]}:current),maxOutputTokens:Number(data.maxOutputTokens),confirmProviderUsage:form.elements.confirmProviderUsage.checked});}
   renderProposalAttempt();await pending;
  }catch(error){log({level:'error',message:error.message});}
  finally{renderProposalAttempt();}
@@ -204,9 +222,11 @@ root.addEventListener('click',event=>{
  if(action==='more-assets'){assetLimit+=80;renderAssets();return;}
  if(action==='help'){helpDialog();return;}
  if(action==='connections'){run(connections,el);return;}
+ if(action==='build-with-ai'){run(async()=>{await connections();const form=$('#model-proposal-form');(form?.elements.prompt||$('#model-connection-form [name=provider]'))?.focus();form?.scrollIntoView({block:'start'});},el);return;}
  if(action==='refresh-connections'){loadConnections();return;}
  if(action==='refresh-blender'){run(refreshBlender,el);return;}
  if(action==='retry-proposal-request'){void sendProposalAttempt(null,true);return;}
+ if(action==='play-after-build'){run(async()=>{closeDialog();root.querySelector('[data-action="play"]')?.click();},el);return;}
  if(action==='new-proposal-request'){run(()=>{proposalRequests.newRequest();proposal=null;renderProposalAttempt();const form=$('#model-proposal-form');if(form){form.elements.confirmProviderUsage.checked=false;form.elements.prompt.focus();}},el);return;}
  if(action==='import'){$('#import-files').click();return;}
  if(action==='clear-log'){logs.length=0;$('#console-list').replaceChildren();$('#log-count').textContent='0';return;}

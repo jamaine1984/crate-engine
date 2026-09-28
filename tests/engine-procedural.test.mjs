@@ -46,9 +46,11 @@ test('unknown instructions, code, URLs and object IDs reject at every supported 
 
 test('finite strict numbers, booleans, ranges and unknown versions are enforced',()=>{
  for(const input of [
-  {...recipe([add()]),version:2},{...recipe([add()]),seed:-1},{...recipe([add()]),seed:''},recipe([add({type:'box',position:[NaN,0,0]})]),recipe([add({type:'box',scale:[-1,1,1]})]),recipe([grid({counts:[1.5,2]})]),recipe([grid({spacing:[0,2]})]),recipe([scatter({rotationY:'true'})]),recipe([scatter({scaleRange:[2,1]})]),recipe([scatter({bounds:{min:[2,0],max:[1,1]}})])
+  {...recipe([add()]),version:2},{...recipe([add()]),seed:-1},{...recipe([add()]),seed:''},recipe([add({type:'box',position:[NaN,0,0]})]),recipe([add({type:'box',scale:[-1,1,1]})]),recipe([grid({counts:[1.5,2]})]),recipe([grid({spacing:[-1,2]})]),recipe([scatter({rotationY:'true'})]),recipe([scatter({scaleRange:[2,1]})]),recipe([scatter({bounds:{min:[2,0],max:[1,1]}})])
  ])assert.throws(()=>validateWorldRecipeShape(input));
  assert.doesNotThrow(()=>validateWorldRecipeShape({...recipe([add()]),seed:0}));
+ // A single row in a side-view level has no depth spacing; zero is accepted.
+ assert.doesNotThrow(()=>validateWorldRecipeShape(recipe([grid({counts:[5,1],spacing:[6,0]})])));
 });
 
 test('recipe operation, generated count, encoded size and cyclic data caps reject early',()=>{
