@@ -13,7 +13,9 @@ const color = x => typeof x === 'string' && /^#[a-f0-9]{6}$/i.test(x);
 const maybe = (v, k, check) => v[k] === undefined || check(v[k]);
 const TYPES = [...ENTITY_TYPES];
 // Commands that change the paired project. The bridge refuses them unless the editor enabled writes.
-export const MUTATING_COMMANDS = Object.freeze(['apply_world','undo','edit_objects','set_level_settings']);
+export const MUTATING_COMMANDS = Object.freeze(['apply_world','undo','edit_objects','set_level_settings','add_library_model']);
+// Starter Library paths as the catalog lists them, e.g. "kenney_dungeon/wall" or "hd_char_xbot".
+export const LIBRARY_PATH = /^[A-Za-z0-9_-]{1,80}(?:\/[A-Za-z0-9_-]{1,80}){0,2}$/;
 const COMPONENT_NAMES = Object.keys(COMPONENT_SCHEMAS);
 const EDIT_FIELDS = ['name','position','rotation','scale','visible','material','light','components','shape'];
 function validShape(x){
@@ -61,6 +63,7 @@ export function validArguments(command,args){
  if(command==='apply_world')return keys(args,['previewId'])&&uuid(args.previewId);
  if(command==='undo')return keys(args,[]);
  if(command==='edit_objects')return validEdits(args);
+ if(command==='add_library_model')return keys(args,['path','name','position','rotation','scale'])&&typeof args.path==='string'&&LIBRARY_PATH.test(args.path)&&maybe(args,'name',n=>text(n,100)&&n.length>0)&&maybe(args,'position',n=>vector(n,3,-1e6,1e6))&&maybe(args,'rotation',n=>vector(n,3,-36000,36000))&&maybe(args,'scale',n=>vector(n,3,.001,10000));
  if(command==='set_level_settings')return keys(args,['settings'])&&plain(args.settings)&&Object.keys(args.settings).length>0&&validSettings(args.settings);
  return false;
 }
@@ -95,6 +98,7 @@ export async function toolDefinitions(){
   {name:'apply_world',description:'Apply an exact prior preview to the same project as one Undo step, only while the user has explicitly enabled MCP writes. Stale or consumed previews fail.',inputSchema:{...objectSchema({previewId:{type:'string',format:'uuid'}}),required:['previewId']},annotations:{readOnlyHint:false,destructiveHint:false}},
   {name:'edit_objects',description:'Update or remove existing objects by the IDs returned by get_scene, as one Undo step, only while the user has explicitly enabled MCP writes. material and light patches merge with current values; each listed component replaces that component and null removes it. Removing a parent requires removing its children first. The whole edit fails if any operation is invalid.',inputSchema:EDIT_SCHEMA,annotations:{readOnlyHint:false,destructiveHint:true}},
   {name:'set_level_settings',description:'Change level settings (lives, fall-out height killY, gravity, background, lighting, quality) as one Undo step, only while the user has explicitly enabled MCP writes. Unlisted settings are kept.',inputSchema:{...objectSchema({settings:SETTINGS_SCHEMA}),required:['settings']},annotations:{readOnlyHint:false,destructiveHint:false}},
+  {name:'add_library_model',description:'Add one Starter Library 3D model (characters, enemies, animals, platformer pieces, nature, buildings, props, dungeon and pirate kits, weapons, vehicles, furniture) to the scene as one object, only while the user has explicitly enabled MCP writes. Use a path from list_library_models. Returns the new object ID in the summary; set gameplay components on it afterwards with edit_objects.',inputSchema:{...objectSchema({path:{type:'string',pattern:'^[A-Za-z0-9_-]{1,80}(/[A-Za-z0-9_-]{1,80}){0,2}$',description:'Library path, for example "kenney_dungeon/wall".'},name:{type:'string',minLength:1,maxLength:100},position:vectorSchema(-1e6,1e6),rotation:{...vectorSchema(-36000,36000),description:'Degrees.'},scale:vectorSchema(.001,10000)}),required:['path']},annotations:{readOnlyHint:false,destructiveHint:false}},
   {name:'undo',description:'Undo the latest project edit only while the user has explicitly enabled MCP writes in this paired editor session.',inputSchema:objectSchema({}),annotations:{readOnlyHint:false,destructiveHint:true}},
  ];
 }

@@ -6,6 +6,7 @@ import { createProposalRequests } from './proposal-request.mjs';
 import { createEditorNavigation } from './navigation.mjs';
 import { normalizeCatalog, catalogCategories, assetPage } from './catalog.mjs';
 import { createWorldPanel } from './world-panel.mjs';
+import { createAiAppsLink, aiAppsPanel } from './ai-apps.mjs';
 import { modelSceneContext, sceneFingerprint, authoredSceneJSON } from './scene-context.mjs';
 import { esc, icon, tool, layout, hierarchy, inspector, assetCards, dialog, connectionsShell, modelConnections, primitiveTypes, typeIcons, bytes } from './panels.mjs';
 
@@ -22,6 +23,12 @@ const proposalRequests = createProposalRequests(({connectionId,body})=>api('/mod
 const logs = [];
 const urlProjectId = new URL(location.href).searchParams.get('project');
 const worldPanel=createWorldPanel({root,getEditor:()=>editor,getState:()=>({mode,busy:runtimeBusy}),openDialog,closeDialog,toast,changePane,log});
+const aiLink=createAiAppsLink({getEditor:()=>editor,getState:()=>({mode,busy:runtimeBusy}),onLog:log,onChange:()=>renderAiApps()});
+let aiInfo=null;
+function renderAiApps(){const target=$('#ai-apps-content');if(target)target.innerHTML=aiAppsPanel(aiInfo&&{...aiInfo,projectName:project?.name},aiLink.state);root.querySelector('[data-action="ai-apps"]')?.classList.toggle('live',aiLink.state.active);}
+async function loadAiInfo(){try{const response=await fetch('/api/platform/ai/connections',{credentials:'same-origin',cache:'no-store'});if(response.status===401)aiInfo={signedOut:true};else{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data?.error?.message||'AI app connections are unavailable right now.');aiInfo=data;}}catch(error){aiInfo={error:error.message};}renderAiApps();}
+function openAiApps(){openDialog('Build with your own AI','<div id="ai-apps-content"></div>','large');renderAiApps();void loadAiInfo();}
+async function aiToggle(input){input.disabled=true;try{if(input.dataset.aiToggle==='active'){if(input.checked){if(mode==='play')throw new Error('Press Stop first, then turn on AI apps.');await aiLink.start({allowWrites:false});toast('AI apps can now read this project.');}else{await aiLink.stop();toast('AI apps disconnected from this tab.');}}else{await aiLink.setAllowWrites(input.checked);toast(input.checked?'AI apps can now change this project. Use Undo to reverse any change.':'AI apps are read-only again.');}}catch(error){toast(error.message,true);}finally{renderAiApps();}}
 let connectionView=0;
 let navigationApproved=false;
 function commitActiveField(){const field=document.activeElement;if(field?.closest('#entity-form'))field.blur();}
@@ -171,6 +178,7 @@ async function sendProposalAttempt(form,retry=false){
 }
 
 root.addEventListener('click',event=>{
+ const aiButton=event.target.closest?.('[data-ai-action]');if(aiButton){event.preventDefault();if(aiButton.dataset.aiAction==='copy'){void navigator.clipboard?.writeText(aiInfo?.mcpUrl||'').then(()=>toast('Connector address copied.'),()=>toast('Select the address and copy it.',true));}else void loadAiInfo();return;}
  const el=event.target.closest('button,a');if(!el||el.disabled)return;
  if(el.tagName==='A'&&el.hasAttribute('href')&&!el.hasAttribute('download')&&!el.target&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey){const href=new URL(el.href,location.href);if(href.origin===location.origin&&href.pathname!==location.pathname){event.preventDefault();run(()=>requestNavigation(href.pathname+href.search+href.hash));return;}}
  if(el.dataset.pane){changePane(el.dataset.pane);return;}
@@ -204,7 +212,7 @@ root.addEventListener('click',event=>{
  if(action==='clear-log'){logs.length=0;$('#console-list').replaceChildren();$('#log-count').textContent='0';return;}
  if(!editor){toast('The renderer is still starting.');return;}
  if(action.startsWith('tool:')){activeTool=action.split(':')[1];editor.setTool(activeTool);root.querySelectorAll('[data-action^="tool:"]').forEach(b=>{const active=b.dataset.action==='tool:'+activeTool;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});return;}
- const actions={new:newProjectDialog,demo:demoDialog,'create-demo':buildDemo,rename:renameDialog,add:addDialog,component:componentDialog,open:openProjects,save:saveLocal,export:exportDialog,undo:()=>editor.undo(),redo:()=>editor.redo(),duplicate:()=>selected?editor.duplicate(selected.id):toast('Select an object first.'),remove:()=>selected?editor.remove(selected.id):toast('Select an object first.'),frame:()=>editor.frameSelection(),space:()=>{const nextSpace=space==='world'?'local':'world';editor.setSpace(nextSpace);space=nextSpace;$('#space-label').textContent=space==='world'?'World':'Local';},fullscreen:()=>document.fullscreenElement?document.exitFullscreen():$('#canvas-wrap').requestFullscreen(),'scene-settings':()=>{editor.select(null);changePane('inspector');},play:async()=>{changePane('viewport');await editor.play();setMode('play');$('#editor-canvas').focus();},stop:async()=>{await editor.stop();setMode('edit');},'save-cloud':async()=>{commitActiveField();if(mode==='play')await editor.stop();await editor.saveCloud();saveStatus('Saved to account',true);toast('Project saved to your account.');},'apply-proposal':async()=>{if(!proposal?.worldRecipe&&!proposal?.operations?.length)throw new Error('There is no valid proposal to apply.');const before=editor.getProject(),fingerprint=await sceneFingerprint(before);if((proposal.baseFingerprint&&fingerprint!==proposal.baseFingerprint)||authoredSceneJSON(before)!==authoredSceneJSON(editor.getProject()))throw new Error('The scene changed since this model request. Start a new request using the current scene.');if(proposal.worldRecipe){const recipe=proposal.worldRecipe;worldPanel.open(recipe,{onApplied:()=>proposalRequests.markApplied()});await worldPanel.review(recipe);return;}await editor.applyProposal(proposal);proposalRequests.markApplied();proposal=null;toast('Proposal applied. Use Undo to reverse it.');closeDialog();}};
+ const actions={'ai-apps':openAiApps,new:newProjectDialog,demo:demoDialog,'create-demo':buildDemo,rename:renameDialog,add:addDialog,component:componentDialog,open:openProjects,save:saveLocal,export:exportDialog,undo:()=>editor.undo(),redo:()=>editor.redo(),duplicate:()=>selected?editor.duplicate(selected.id):toast('Select an object first.'),remove:()=>selected?editor.remove(selected.id):toast('Select an object first.'),frame:()=>editor.frameSelection(),space:()=>{const nextSpace=space==='world'?'local':'world';editor.setSpace(nextSpace);space=nextSpace;$('#space-label').textContent=space==='world'?'World':'Local';},fullscreen:()=>document.fullscreenElement?document.exitFullscreen():$('#canvas-wrap').requestFullscreen(),'scene-settings':()=>{editor.select(null);changePane('inspector');},play:async()=>{changePane('viewport');await editor.play();setMode('play');$('#editor-canvas').focus();},stop:async()=>{await editor.stop();setMode('edit');},'save-cloud':async()=>{commitActiveField();if(mode==='play')await editor.stop();await editor.saveCloud();saveStatus('Saved to account',true);toast('Project saved to your account.');},'apply-proposal':async()=>{if(!proposal?.worldRecipe&&!proposal?.operations?.length)throw new Error('There is no valid proposal to apply.');const before=editor.getProject(),fingerprint=await sceneFingerprint(before);if((proposal.baseFingerprint&&fingerprint!==proposal.baseFingerprint)||authoredSceneJSON(before)!==authoredSceneJSON(editor.getProject()))throw new Error('The scene changed since this model request. Start a new request using the current scene.');if(proposal.worldRecipe){const recipe=proposal.worldRecipe;worldPanel.open(recipe,{onApplied:()=>proposalRequests.markApplied()});await worldPanel.review(recipe);return;}await editor.applyProposal(proposal);proposalRequests.markApplied();proposal=null;toast('Proposal applied. Use Undo to reverse it.');closeDialog();}};
  if(actions[action])run(actions[action],el);
 });
 
@@ -221,6 +229,7 @@ root.addEventListener('submit',event=>{
  },button);
 });
 root.addEventListener('change',event=>{
+ if(event.target.dataset?.aiToggle){void aiToggle(event.target);return;}
  const input=event.target;
  if(input.id==='import-files'){const files=[...input.files];input.value='';run(()=>importFiles(files));return;}
  if(!input.closest('#entity-form')||!selected||!input.name)return;
@@ -259,7 +268,7 @@ canvasWrap.addEventListener('dragover',event=>{if(event.dataTransfer?.types.incl
 canvasWrap.addEventListener('dragleave',()=>{dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)$('#drop-target').hidden=true;});
 canvasWrap.addEventListener('drop',event=>{event.preventDefault();dragDepth=0;$('#drop-target').hidden=true;if(editor)run(()=>importFiles([...event.dataTransfer.files]));});
 window.addEventListener('beforeunload',event=>{if(dirty&&!navigationApproved){event.preventDefault();event.returnValue='';}});
-window.addEventListener('pagehide',event=>{blenderToken='';worldPanel.dispose();if(!event.persisted)editor?.dispose?.();});
+window.addEventListener('pagehide',event=>{blenderToken='';worldPanel.dispose();aiLink.dispose();if(!event.persisted)editor?.dispose?.();});
 
 try{
  editor=await createEditor({canvas:$('#editor-canvas'),onChange,onSelection,onStats,onLog:log,onState});

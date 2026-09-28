@@ -15,10 +15,49 @@ export function editObjectOperations(project,operations){
   return {op:'update',id:operation.id,patch};
  });
 }
+/**
+ * Runs one AI tool command against the open editor. Shared by the local desktop bridge and
+ * the hosted AI app connection, so both behave identically. Previews are remembered per runner.
+ */
+export function createCommandRunner({getEditor,getState,onLog=()=>{},resolveLibraryModel=async()=>null}){
+ const previews=new Set();
+ async function run(command,args,{allowWrites}){
+  const editor=getEditor(),state=getState();
+  if(state.busy||state.mode!=='edit')throw new Error('Stop Play and finish the current operation first.');
+  if(command==='get_scene')return sceneContext(editor.getProject(),args);
+  if(command==='get_object')return objectContext(editor.getProject(),args.id);
+  if(command==='preview_world'){const result=await editor.previewWorld(args.recipe);previews.add(result.previewId);return result;}
+  if(!allowWrites)throw new Error('Scene changes are disabled for this connection.');
+  let summary;
+  if(command==='apply_world'){
+   if(!previews.has(args.previewId))throw new Error('Preview this world in the connected session first.');
+   previews.delete(args.previewId);await editor.applyWorld({previewId:args.previewId});onLog({level:'info',message:'AI applied a procedural world. Use Undo to reverse it.'});
+  }else if(command==='undo'){await editor.undo();previews.clear();onLog({level:'info',message:'AI undid the last scene change.'});}
+  else if(command==='edit_objects'){
+   summary=args.summary||'AI object edits';
+   editor.applyProposal({summary,operations:editObjectOperations(editor.getProject(),args.operations)});previews.clear();
+   onLog({level:'info',message:'AI edited '+args.operations.length+' object(s). Use Undo to reverse it.'});
+  }else if(command==='set_level_settings'){
+   editor.updateSettings(structuredClone(args.settings));previews.clear();
+   summary='Level settings: '+Object.keys(args.settings).join(', ');onLog({level:'info',message:'AI changed level settings. Use Undo to reverse it.'});
+  }else if(command==='add_library_model'){
+   const record=await resolveLibraryModel(args.path);if(!record)throw new Error('That model is not in the Starter Library.');
+   const before=new Set(editor.getProject().entities.map(entity=>entity.id));
+   await editor.addCatalogAsset(record);
+   const added=editor.getProject().entities.find(entity=>!before.has(entity.id));if(!added)throw new Error('The model could not be added.');
+   const patch={...(args.name?{name:args.name}:{}),...(args.position?{position:args.position}:{}),...(args.rotation?{rotation:args.rotation}:{}),...(args.scale?{scale:args.scale}:{})};
+   if(Object.keys(patch).length)editor.applyProposal({summary:'Place '+(args.name||record.name),operations:[{op:'update',id:added.id,patch}]});
+   previews.clear();summary=`Added ${args.name||record.name} as object ${added.id}`;onLog({level:'info',message:'AI added '+(args.name||record.name)+'. Use Undo to reverse it.'});
+  }else throw new Error('Unsupported editor command.');
+  const project=editor.getProject();
+  return {ok:true,projectId:project.id,entityCount:project.entities.length,...(summary?{summary}:{})};
+ }
+ return {run,reset:()=>previews.clear()};
+}
 /** This connector exposes one explicitly connected project, never browser storage or provider keys. */
-export function createEditorMcpClient({getEditor,getState,onStatus=()=>{},onLog=()=>{},fetchFn=fetch,now=Date.now,setTimer=setTimeout,clearTimer=clearTimeout,autoPoll=true}){
+export function createEditorMcpClient({getEditor,getState,onStatus=()=>{},onLog=()=>{},fetchFn=fetch,now=Date.now,setTimer=setTimeout,clearTimer=clearTimeout,autoPoll=true,resolveLibraryModel}){
  let session=null,token='',timer=null,generation=0,polling=false;
- const seen=new Set(),previews=new Set();
+ const seen=new Set(),runner=createCommandRunner({getEditor,getState,onLog,resolveLibraryModel});
  const status=()=>onStatus(session?{connected:true,projectId:session.projectId,allowWrites:session.allowWrites}:{connected:false,allowWrites:false});
  async function request(path,body,credential=token){
   let response;
@@ -30,36 +69,15 @@ export function createEditorMcpClient({getEditor,getState,onStatus=()=>{},onLog=
   if(!response.ok)throw new Error('The local editor bridge rejected the request. Check its token, origin, and session.');
   return JSON.parse(new TextDecoder().decode(await readLimitedResponse(response,512*1024,'Editor bridge response')));
  }
- function forget(){generation++;if(timer)clearTimer(timer);timer=null;session=null;token='';seen.clear();previews.clear();status();}
+ function forget(){generation++;if(timer)clearTimer(timer);timer=null;session=null;token='';seen.clear();runner.reset();status();}
  async function disconnect(){const previous=session,key=token;forget();if(previous)try{await request(`/editor/sessions/${encodeURIComponent(previous.sessionId)}/disconnect`,{projectId:previous.projectId},key);}catch{} }
  function validateActive(current,epoch){if(!session||session!==current||generation!==epoch||getEditor().getProject().id!==current.projectId)throw new Error('The connected project changed. Reconnect MCP for this project.');}
  async function execute(command,current,epoch){
   validateActive(current,epoch);
   if(typeof command.id!=='string'||seen.has(command.id)||command.projectId!==current.projectId||!Number.isFinite(command.expiresAt)||command.expiresAt<=now())throw new Error('Expired or duplicate editor command.');
   seen.add(command.id);if(seen.size>1000)throw new Error('Reconnect the bridge to start a new command session.');
-  const editor=getEditor(),args=command.arguments||{},state=getState();
-  if(state.busy||state.mode!=='edit')throw new Error('Stop Play and finish the current operation first.');
-  if(command.command==='get_scene')return sceneContext(editor.getProject(),args);
-  if(command.command==='get_object')return objectContext(editor.getProject(),args.id);
-  if(command.command==='preview_world'){const result=await editor.previewWorld(args.recipe);validateActive(current,epoch);previews.add(result.previewId);return result;}
-  if(!current.allowWrites)throw new Error('Scene changes are disabled for this connection.');
-  if(command.command==='apply_world'){
-   if(!previews.has(args.previewId))throw new Error('Preview this world in the connected session first.');
-   previews.delete(args.previewId);validateActive(current,epoch);await editor.applyWorld({previewId:args.previewId});
-  }else if(command.command==='undo'){validateActive(current,epoch);await editor.undo();previews.clear();}
-  else if(command.command==='edit_objects'){
-   validateActive(current,epoch);const summary=args.summary||'MCP object edits';
-   editor.applyProposal({summary,operations:editObjectOperations(editor.getProject(),args.operations)});previews.clear();
-   const project=editor.getProject();onLog({level:'info',message:'MCP edited '+args.operations.length+' object(s). Use Undo to reverse it.'});
-   return {ok:true,projectId:project.id,entityCount:project.entities.length,summary};
-  }else if(command.command==='set_level_settings'){
-   validateActive(current,epoch);editor.updateSettings(structuredClone(args.settings));previews.clear();
-   const project=editor.getProject();onLog({level:'info',message:'MCP changed level settings. Use Undo to reverse it.'});
-   return {ok:true,projectId:project.id,entityCount:project.entities.length,summary:'Level settings: '+Object.keys(args.settings).join(', ')};
-  }
-  else throw new Error('Unsupported editor command.');
-  const project=editor.getProject();onLog({level:'info',message:command.command==='undo'?'MCP undid the last scene change.':'MCP applied a procedural world. Use Undo to reverse it.'});
-  return {ok:true,projectId:project.id,entityCount:project.entities.length};
+  const result=await runner.run(command.command,command.arguments||{},{allowWrites:current.allowWrites});
+  validateActive(current,epoch);return result;
  }
  function schedule(){if(autoPoll&&session)timer=setTimer(()=>{timer=null;void pollOnce();},750);}
  async function pollOnce(){

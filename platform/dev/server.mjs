@@ -7,6 +7,7 @@ import {createServer as createVite} from 'vite';
 import {sqliteD1} from './sqlite-d1.mjs';
 import {localR2} from './local-r2.mjs';
 import {onRequest} from '../../functions/api/platform/[[path]].js';
+import {handleAiConnect} from '../server/ai-connect.mjs';
 
 const root=resolve(import.meta.dirname,'../..'),dir=resolve(root,'.platform-local');
 await mkdir(dir,{recursive:true});
@@ -29,6 +30,11 @@ const paths=/^\/(games|game|history|marketplace|coming-soon|library|favorites|re
 const server=createServer(async(req,res)=>{
  try{
   const url=new URL(req.url,origin);
+  if(url.pathname==='/mcp'||url.pathname.startsWith('/oauth/')||url.pathname.startsWith('/.well-known/oauth-')){
+   const headers=new Headers();for(const [k,v]of Object.entries(req.headers))if(v)headers.set(k,Array.isArray(v)?v.join(','):v);headers.set('cf-connecting-ip','127.0.0.1');
+   const response=await handleAiConnect(new Request(url,{method:req.method,headers,...(!['GET','HEAD'].includes(req.method)?{body:Readable.toWeb(req),duplex:'half'}:{})}),env)||new Response('Not found',{status:404});
+   res.statusCode=response.status;for(const [k,v]of response.headers)res.setHeader(k,v);res.end(Buffer.from(await response.arrayBuffer()));return;
+  }
   if(url.pathname.startsWith('/api/')){
    if(!url.pathname.startsWith('/api/platform/')){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:'Legacy cloud services are unavailable in the isolated local preview.'}));return;}
    const headers=new Headers();for(const [k,v]of Object.entries(req.headers))if(v)headers.set(k,Array.isArray(v)?v.join(','):v);

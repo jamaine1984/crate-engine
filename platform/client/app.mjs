@@ -2,7 +2,7 @@ import './styles.css';
 import {api,listOf,messageFor} from './api.mjs';
 import {esc,icon,link,btn,notice,loading,feedback,input,downloadJson} from './ui.mjs';
 import {renderShell} from './shell.mjs';
-import {needsUser,homePage,catalogPage,gamePage,authPage,loginGate,collectionPage,walletPage,profilePage,settingsPage,projectsPage,creatorsPage} from './pages.mjs';
+import {needsUser,homePage,catalogPage,gamePage,authPage,loginGate,collectionPage,walletPage,profilePage,settingsPage,projectsPage,creatorsPage,aiAppsPage} from './pages.mjs';
 import {developerPage,ownerPage} from './creator-pages.mjs';
 import {docsPage,staticPage} from './content.mjs';
 import {mountIsolatedPlayer} from './player-bridge.mjs';
@@ -21,7 +21,7 @@ async function completeFirebaseSignIn(token){const data=await api('/auth/firebas
 async function freshFirebaseToken(password){if(state.user?.signInProvider==='google.com')return firebaseGoogleToken(firebaseConfig());if(!password)throw new Error('Enter your password to confirm it is you.');return firebasePasswordToken(firebaseConfig(),state.user.email,password);}
 async function refreshSession(){const data=await api('/me');state.user=data.user||null;if(state.user){const results=await Promise.allSettled([api('/library'),api('/history'),api('/preferences'),api('/favorites')]);state.library=results[0].status==='fulfilled'?listOf(results[0].value):[];state.history=results[1].status==='fulfilled'?listOf(results[1].value):[];state.preferences=results[2].status==='fulfilled'?results[2].value.preferences||{}:{};state.favoriteIds=new Set(results[3].status==='fulfilled'?listOf(results[3].value).map(g=>g.id||g.gameId):[]);state.user.preferences=state.preferences;}else{state.library=[];state.history=[];state.favoriteIds=new Set();state.preferences={};}document.documentElement.dataset.reducedMotion=state.preferences.reducedMotion?'true':'false';}
 function closeMenu(){document.getElementById('sidebar')?.classList.remove('open');document.querySelector('.drawer-overlay')?.classList.remove('open');document.querySelector('[data-action=menu]')?.setAttribute('aria-expanded','false');}
-async function navigate(path,replace=false){if(uploadRunning&&!confirm('An upload is in progress. Leaving this page will interrupt it. Continue?'))return;if(replace)history.replaceState({},'',path);else history.pushState({},'',path);closeMenu();await render();window.scrollTo({top:0,behavior:'instant'});document.getElementById('main-content')?.focus({preventScroll:true});}
+async function navigate(path,replace=false){if(/^\/oauth\//.test(path)){location.assign(path);return;}if(uploadRunning&&!confirm('An upload is in progress. Leaving this page will interrupt it. Continue?'))return;if(replace)history.replaceState({},'',path);else history.pushState({},'',path);closeMenu();await render();window.scrollTo({top:0,behavior:'instant'});document.getElementById('main-content')?.focus({preventScroll:true});}
 async function render(){
  const generation=++routeGeneration;activePlayer?.destroy();activePlayer=null;if(activeSession&&state.user){api('/player/sessions/'+encodeURIComponent(activeSession.id)+'/end',{method:'POST',body:{}}).catch(()=>{});}activeSession=null;
  app.innerHTML=renderShell(state);const main=document.getElementById('main-content');main.innerHTML=loading();let path=location.pathname.replace(/\/$/,'')||'/';
@@ -37,6 +37,7 @@ async function render(){
   else if(path==='/rewards')result=await walletPage(state);
   else if(path==='/profile')result=profilePage(state);
   else if(path==='/settings')result=await settingsPage(state);
+  else if(path==='/settings/ai')result=await aiAppsPage(state);
   else if(path==='/engine/projects')result=await projectsPage(state);
   else if(path==='/creators')result=creatorsPage(state);
   else if(path==='/developer'||path.startsWith('/developer/'))result=await developerPage(state,path);
@@ -69,6 +70,7 @@ document.addEventListener('click',async event=>{
   if(action==='logout'||action==='logout-all'){await api('/auth/'+(action==='logout-all'?'logout-all':'logout'),{method:'POST',body:{}});await refreshSession();notify('You are logged out.');await navigate('/');}
   if(action==='favorite'){if(!state.user){navigate('/login?next='+encodeURIComponent(location.pathname));return;}const remove=el.getAttribute('aria-pressed')==='true'||location.pathname==='/favorites';await api(remove?'/favorites/'+encodeURIComponent(el.dataset.id):'/favorites',{method:remove?'DELETE':'POST',body:remove?undefined:{gameId:el.dataset.id}});if(remove)state.favoriteIds.delete(el.dataset.id);else state.favoriteIds.add(el.dataset.id);el.setAttribute('aria-pressed',String(!remove));notify(remove?'Removed from favorites.':'Saved to favorites.');if(location.pathname==='/favorites')await render();}
   if(action==='read-notification'){await api('/notifications/'+encodeURIComponent(el.dataset.id),{method:'PATCH',body:{}});await render();}
+  if(action==='revoke-ai-app'){if(!confirm('Disconnect '+(el.dataset.name||'this app')+'? It will need to sign in again to use Crate Ship.'))return;await api('/ai/connections/'+encodeURIComponent(el.dataset.id),{method:'DELETE'});notify('App disconnected.');await render();return;}
   if(action==='revoke-session'){await api('/auth/sessions/'+encodeURIComponent(el.dataset.id),{method:'DELETE'});notify('Session revoked.');await render();}
   if(action==='mfa-enroll'){const data=await api('/auth/mfa/enroll',{method:'POST',body:{}});const container=document.getElementById('mfa-enrollment');const uri=typeof data.otpauthUri==='string'&&data.otpauthUri.startsWith('otpauth://totp/')?data.otpauthUri:'';container.innerHTML=notice('1. In Google Authenticator or Microsoft Authenticator, delete any old Crate Ship Games entry. 2. Tap + and scan this QR code. 3. Type the six-digit code the app shows now. Keep this code private; it is only shown once.')+(uri?`<div class="mfa-qr section">${qrSvg(uri,{label:'Authenticator setup QR code'})}${link(uri,'Open in authenticator app','btn small')}</div>`:'')+`<details class="section"><summary>Can't scan? Type this setup key instead</summary><p class="code-block section">${esc(groupKey(data.secret))}</p><p class="form-hint">Choose "Enter a setup key", type the key exactly (spaces are optional), and pick "Time based".</p></details><form class="form section" data-form="mfa-confirm">${input('code','Authenticator code','text','','required inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code"')}<button class="btn primary" type="submit">Confirm Authenticator</button>${feedback()}</form>`;}
   if(['export-project','duplicate-project','rename-project','delete-project'].includes(action)){const id=el.dataset.id;const data=await api('/projects/'+encodeURIComponent(id));const p=data.project;
