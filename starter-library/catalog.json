@@ -1,0 +1,618 @@
+{
+ "name": "Crate Ship Starter Library",
+ "version": "2026-09-28T09:52:13.283Z",
+ "models": [
+  {
+   "path": "npcs/animated_human",
+   "name": "animated human",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/npcs_animated_human.webp"
+  },
+  {
+   "path": "hd_char_xbot",
+   "name": "hd char xbot",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/hd_char_xbot.webp"
+  },
+  {
+   "path": "hd_char_soldier",
+   "name": "hd char soldier",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/hd_char_soldier.webp"
+  },
+  {
+   "path": "platformer_game_pack_character",
+   "name": "platformer game pack character",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_character.webp"
+  },
+  {
+   "path": "platformer_game_pack_character_humanoidrig",
+   "name": "platformer game pack character humanoidrig",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_character_humanoidrig.webp"
+  },
+  {
+   "path": "single_knight_pack_knightcharacter",
+   "name": "single knight pack knightcharacter",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/single_knight_pack_knightcharacter.webp"
+  },
+  {
+   "path": "char_knight_silver",
+   "name": "char knight silver",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/char_knight_silver.webp"
+  },
+  {
+   "path": "char_mage_purple",
+   "name": "char mage purple",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/char_mage_purple.webp"
+  },
+  {
+   "path": "char_ranger_green",
+   "name": "char ranger green",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/char_ranger_green.webp"
+  },
+  {
+   "path": "modular_men_adventurer",
+   "name": "modular men adventurer",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/modular_men_adventurer.webp"
+  },
+  {
+   "path": "modular_women_adventurer",
+   "name": "modular women adventurer",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/modular_women_adventurer.webp"
+  },
+  {
+   "path": "modular_men_king",
+   "name": "modular men king",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/modular_men_king.webp"
+  },
+  {
+   "path": "modular_women_witch",
+   "name": "modular women witch",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/modular_women_witch.webp"
+  },
+  {
+   "path": "modular_men_spacesuit",
+   "name": "modular men spacesuit",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/modular_men_spacesuit.webp"
+  },
+  {
+   "path": "modular_women_scifi",
+   "name": "modular women scifi",
+   "cat": "Heroes & people",
+   "thumb": "/starter-library/thumbs/modular_women_scifi.webp"
+  },
+  {
+   "path": "npcs/quat_zombie",
+   "name": "quat zombie",
+   "cat": "Monsters & enemies",
+   "thumb": "/starter-library/thumbs/npcs_quat_zombie.webp"
+  },
+  {
+   "path": "npcs/quat_dragon",
+   "name": "quat dragon",
+   "cat": "Monsters & enemies",
+   "thumb": "/starter-library/thumbs/npcs_quat_dragon.webp"
+  },
+  {
+   "path": "monster_00",
+   "name": "monster 00",
+   "cat": "Monsters & enemies",
+   "thumb": "/starter-library/thumbs/monster_00.webp"
+  },
+  {
+   "path": "spider_00",
+   "name": "spider 00",
+   "cat": "Monsters & enemies",
+   "thumb": "/starter-library/thumbs/spider_00.webp"
+  },
+  {
+   "path": "platformer_game_pack_enemy",
+   "name": "platformer game pack enemy",
+   "cat": "Monsters & enemies",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_enemy.webp"
+  },
+  {
+   "path": "easy_enemies_pack_spider",
+   "name": "easy enemies pack spider",
+   "cat": "Monsters & enemies",
+   "thumb": "/starter-library/thumbs/easy_enemies_pack_spider.webp"
+  },
+  {
+   "path": "animals_pack_fox",
+   "name": "animals pack fox",
+   "cat": "Animals",
+   "thumb": "/starter-library/thumbs/animals_pack_fox.webp"
+  },
+  {
+   "path": "animals_pack_wolf",
+   "name": "animals pack wolf",
+   "cat": "Animals",
+   "thumb": "/starter-library/thumbs/animals_pack_wolf.webp"
+  },
+  {
+   "path": "animals_pack_horse",
+   "name": "animals pack horse",
+   "cat": "Animals",
+   "thumb": "/starter-library/thumbs/animals_pack_horse.webp"
+  },
+  {
+   "path": "animals_pack_cow",
+   "name": "animals pack cow",
+   "cat": "Animals",
+   "thumb": "/starter-library/thumbs/animals_pack_cow.webp"
+  },
+  {
+   "path": "animals_pack_deer",
+   "name": "animals pack deer",
+   "cat": "Animals",
+   "thumb": "/starter-library/thumbs/animals_pack_deer.webp"
+  },
+  {
+   "path": "animals_pack_shibainu",
+   "name": "animals pack shibainu",
+   "cat": "Animals",
+   "thumb": "/starter-library/thumbs/animals_pack_shibainu.webp"
+  },
+  {
+   "path": "dinosaurs_pack_trex",
+   "name": "dinosaurs pack trex",
+   "cat": "Animals",
+   "thumb": "/starter-library/thumbs/dinosaurs_pack_trex.webp"
+  },
+  {
+   "path": "hd_parrot_anim",
+   "name": "hd parrot anim",
+   "cat": "Animals",
+   "thumb": "/starter-library/thumbs/hd_parrot_anim.webp"
+  },
+  {
+   "path": "platformer_game_pack_coin",
+   "name": "platformer game pack coin",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_coin.webp"
+  },
+  {
+   "path": "platformer_game_pack_star",
+   "name": "platformer game pack star",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_star.webp"
+  },
+  {
+   "path": "platformer_game_pack_heart",
+   "name": "platformer game pack heart",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_heart.webp"
+  },
+  {
+   "path": "platformer_game_pack_key",
+   "name": "platformer game pack key",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_key.webp"
+  },
+  {
+   "path": "platformer_game_pack_gem_blue",
+   "name": "platformer game pack gem blue",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_gem_blue.webp"
+  },
+  {
+   "path": "platformer_game_pack_goal_flag",
+   "name": "platformer game pack goal flag",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_goal_flag.webp"
+  },
+  {
+   "path": "platformer_game_pack_door",
+   "name": "platformer game pack door",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_door.webp"
+  },
+  {
+   "path": "platformer_game_pack_lever",
+   "name": "platformer game pack lever",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_lever.webp"
+  },
+  {
+   "path": "platformer_game_pack_cube_default",
+   "name": "platformer game pack cube default",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_cube_default.webp"
+  },
+  {
+   "path": "platformer_game_pack_cube_bricks",
+   "name": "platformer game pack cube bricks",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_cube_bricks.webp"
+  },
+  {
+   "path": "platformer_game_pack_cube_crate",
+   "name": "platformer game pack cube crate",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_cube_crate.webp"
+  },
+  {
+   "path": "platformer_game_pack_cube_question",
+   "name": "platformer game pack cube question",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_cube_question.webp"
+  },
+  {
+   "path": "platformer_game_pack_rockplatforms_medium",
+   "name": "platformer game pack rockplatforms medium",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_rockplatforms_medium.webp"
+  },
+  {
+   "path": "platformer_game_pack_rockplatform_tall",
+   "name": "platformer game pack rockplatform tall",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_rockplatform_tall.webp"
+  },
+  {
+   "path": "platformer_game_pack_stairs",
+   "name": "platformer game pack stairs",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_stairs.webp"
+  },
+  {
+   "path": "platformer_game_pack_bouncer",
+   "name": "platformer game pack bouncer",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_bouncer.webp"
+  },
+  {
+   "path": "platformer_game_pack_hazard_spiketrap",
+   "name": "platformer game pack hazard spiketrap",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_hazard_spiketrap.webp"
+  },
+  {
+   "path": "platformer_game_pack_hazard_saw",
+   "name": "platformer game pack hazard saw",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_hazard_saw.webp"
+  },
+  {
+   "path": "platformer_game_pack_spikyball",
+   "name": "platformer game pack spikyball",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_spikyball.webp"
+  },
+  {
+   "path": "platformer_game_pack_bomb",
+   "name": "platformer game pack bomb",
+   "cat": "Platformer pieces",
+   "thumb": "/starter-library/thumbs/platformer_game_pack_bomb.webp"
+  },
+  {
+   "path": "tree_round_00",
+   "name": "tree round 00",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/tree_round_00.webp"
+  },
+  {
+   "path": "tree_cone_00",
+   "name": "tree cone 00",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/tree_cone_00.webp"
+  },
+  {
+   "path": "pine_09",
+   "name": "pine 09",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/pine_09.webp"
+  },
+  {
+   "path": "nature_pack_birchtree_1",
+   "name": "nature pack birchtree 1",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/nature_pack_birchtree_1.webp"
+  },
+  {
+   "path": "nature_pack_willow_1",
+   "name": "nature pack willow 1",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/nature_pack_willow_1.webp"
+  },
+  {
+   "path": "nature_pack_bush_1",
+   "name": "nature pack bush 1",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/nature_pack_bush_1.webp"
+  },
+  {
+   "path": "nature_pack_grass",
+   "name": "nature pack grass",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/nature_pack_grass.webp"
+  },
+  {
+   "path": "rock_09",
+   "name": "rock 09",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/rock_09.webp"
+  },
+  {
+   "path": "nature_pack_woodlog",
+   "name": "nature pack woodlog",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/nature_pack_woodlog.webp"
+  },
+  {
+   "path": "nature_pack_cactusflowers_3",
+   "name": "nature pack cactusflowers 3",
+   "cat": "Nature",
+   "thumb": "/starter-library/thumbs/nature_pack_cactusflowers_3.webp"
+  },
+  {
+   "path": "house_red",
+   "name": "house red",
+   "cat": "Buildings",
+   "thumb": "/starter-library/thumbs/house_red.webp"
+  },
+  {
+   "path": "house_blue",
+   "name": "house blue",
+   "cat": "Buildings",
+   "thumb": "/starter-library/thumbs/house_blue.webp"
+  },
+  {
+   "path": "buildings_pack_3_2story_mat",
+   "name": "buildings pack 3 2story mat",
+   "cat": "Buildings",
+   "thumb": "/starter-library/thumbs/buildings_pack_3_2story_mat.webp"
+  },
+  {
+   "path": "buildings_pack_3_1story_sign_mat",
+   "name": "buildings pack 3 1story sign mat",
+   "cat": "Buildings",
+   "thumb": "/starter-library/thumbs/buildings_pack_3_1story_sign_mat.webp"
+  },
+  {
+   "path": "modular_medieval_buildings_pack_tower",
+   "name": "modular medieval buildings pack tower",
+   "cat": "Buildings",
+   "thumb": "/starter-library/thumbs/modular_medieval_buildings_pack_tower.webp"
+  },
+  {
+   "path": "modular_medieval_buildings_pack_watchtower",
+   "name": "modular medieval buildings pack watchtower",
+   "cat": "Buildings",
+   "thumb": "/starter-library/thumbs/modular_medieval_buildings_pack_watchtower.webp"
+  },
+  {
+   "path": "modular_medieval_buildings_pack_bridge",
+   "name": "modular medieval buildings pack bridge",
+   "cat": "Buildings",
+   "thumb": "/starter-library/thumbs/modular_medieval_buildings_pack_bridge.webp"
+  },
+  {
+   "path": "modular_medieval_buildings_pack_door",
+   "name": "modular medieval buildings pack door",
+   "cat": "Buildings",
+   "thumb": "/starter-library/thumbs/modular_medieval_buildings_pack_door.webp"
+  },
+  {
+   "path": "ph_wooden_crate_01",
+   "name": "ph wooden crate 01",
+   "cat": "Props & treasure",
+   "thumb": "/starter-library/thumbs/ph_wooden_crate_01.webp"
+  },
+  {
+   "path": "ph_street_lamp_01",
+   "name": "ph street lamp 01",
+   "cat": "Props & treasure",
+   "thumb": "/starter-library/thumbs/ph_street_lamp_01.webp"
+  },
+  {
+   "path": "barrel_05",
+   "name": "barrel 05",
+   "cat": "Props & treasure",
+   "thumb": "/starter-library/thumbs/barrel_05.webp"
+  },
+  {
+   "path": "well",
+   "name": "well",
+   "cat": "Props & treasure",
+   "thumb": "/starter-library/thumbs/well.webp"
+  },
+  {
+   "path": "rpg_items_pack_coin",
+   "name": "rpg items pack coin",
+   "cat": "Props & treasure",
+   "thumb": "/starter-library/thumbs/rpg_items_pack_coin.webp"
+  },
+  {
+   "path": "kenney_dungeon/wall",
+   "name": "wall",
+   "cat": "Dungeon",
+   "url": "/starter-library/models/kenney_dungeon/wall.glb",
+   "thumb": "/starter-library/thumbs/kenney_dungeon_wall.webp"
+  },
+  {
+   "path": "kenney_dungeon/floor",
+   "name": "floor",
+   "cat": "Dungeon",
+   "url": "/starter-library/models/kenney_dungeon/floor.glb",
+   "thumb": "/starter-library/thumbs/kenney_dungeon_floor.webp"
+  },
+  {
+   "path": "kenney_dungeon/gate-door",
+   "name": "gate door",
+   "cat": "Dungeon",
+   "url": "/starter-library/models/kenney_dungeon/gate-door.glb",
+   "thumb": "/starter-library/thumbs/kenney_dungeon_gate_door.webp"
+  },
+  {
+   "path": "kenney_dungeon/stairs",
+   "name": "stairs",
+   "cat": "Dungeon",
+   "url": "/starter-library/models/kenney_dungeon/stairs.glb",
+   "thumb": "/starter-library/thumbs/kenney_dungeon_stairs.webp"
+  },
+  {
+   "path": "kenney_dungeon/column",
+   "name": "column",
+   "cat": "Dungeon",
+   "url": "/starter-library/models/kenney_dungeon/column.glb",
+   "thumb": "/starter-library/thumbs/kenney_dungeon_column.webp"
+  },
+  {
+   "path": "kenney_dungeon/chest",
+   "name": "chest",
+   "cat": "Dungeon",
+   "url": "/starter-library/models/kenney_dungeon/chest.glb",
+   "thumb": "/starter-library/thumbs/kenney_dungeon_chest.webp"
+  },
+  {
+   "path": "kenney_dungeon/trap",
+   "name": "trap",
+   "cat": "Dungeon",
+   "url": "/starter-library/models/kenney_dungeon/trap.glb",
+   "thumb": "/starter-library/thumbs/kenney_dungeon_trap.webp"
+  },
+  {
+   "path": "kenney_pirate/ship-pirate-large",
+   "name": "ship pirate large",
+   "cat": "Pirate",
+   "url": "/starter-library/models/kenney_pirate/ship-pirate-large.glb",
+   "thumb": "/starter-library/thumbs/kenney_pirate_ship_pirate_large.webp"
+  },
+  {
+   "path": "kenney_pirate/cannon",
+   "name": "cannon",
+   "cat": "Pirate",
+   "url": "/starter-library/models/kenney_pirate/cannon.glb",
+   "thumb": "/starter-library/thumbs/kenney_pirate_cannon.webp"
+  },
+  {
+   "path": "kenney_pirate/chest",
+   "name": "chest",
+   "cat": "Pirate",
+   "url": "/starter-library/models/kenney_pirate/chest.glb",
+   "thumb": "/starter-library/thumbs/kenney_pirate_chest.webp"
+  },
+  {
+   "path": "kenney_pirate/palm-straight",
+   "name": "palm straight",
+   "cat": "Pirate",
+   "url": "/starter-library/models/kenney_pirate/palm-straight.glb",
+   "thumb": "/starter-library/thumbs/kenney_pirate_palm_straight.webp"
+  },
+  {
+   "path": "kenney_pirate/flag-pirate",
+   "name": "flag pirate",
+   "cat": "Pirate",
+   "url": "/starter-library/models/kenney_pirate/flag-pirate.glb",
+   "thumb": "/starter-library/thumbs/kenney_pirate_flag_pirate.webp"
+  },
+  {
+   "path": "sword_fire",
+   "name": "sword fire",
+   "cat": "Weapons & gear",
+   "thumb": "/starter-library/thumbs/sword_fire.webp"
+  },
+  {
+   "path": "shield_blue",
+   "name": "shield blue",
+   "cat": "Weapons & gear",
+   "thumb": "/starter-library/thumbs/shield_blue.webp"
+  },
+  {
+   "path": "bow_wood",
+   "name": "bow wood",
+   "cat": "Weapons & gear",
+   "thumb": "/starter-library/thumbs/bow_wood.webp"
+  },
+  {
+   "path": "staff_magic",
+   "name": "staff magic",
+   "cat": "Weapons & gear",
+   "thumb": "/starter-library/thumbs/staff_magic.webp"
+  },
+  {
+   "path": "hammer_00",
+   "name": "hammer 00",
+   "cat": "Weapons & gear",
+   "thumb": "/starter-library/thumbs/hammer_00.webp"
+  },
+  {
+   "path": "survival_pack_pistol_1",
+   "name": "survival pack pistol 1",
+   "cat": "Weapons & gear",
+   "thumb": "/starter-library/thumbs/survival_pack_pistol_1.webp"
+  },
+  {
+   "path": "kenney_cars/sedan",
+   "name": "sedan",
+   "cat": "Vehicles",
+   "thumb": "/starter-library/thumbs/kenney_cars_sedan.webp"
+  },
+  {
+   "path": "kenney_cars/police",
+   "name": "police",
+   "cat": "Vehicles",
+   "thumb": "/starter-library/thumbs/kenney_cars_police.webp"
+  },
+  {
+   "path": "kenney_cars/race",
+   "name": "race",
+   "cat": "Vehicles",
+   "thumb": "/starter-library/thumbs/kenney_cars_race.webp"
+  },
+  {
+   "path": "ships_pack_sail_ship",
+   "name": "ships pack sail ship",
+   "cat": "Vehicles",
+   "thumb": "/starter-library/thumbs/ships_pack_sail_ship.webp"
+  },
+  {
+   "path": "helicopter",
+   "name": "helicopter",
+   "cat": "Vehicles",
+   "thumb": "/starter-library/thumbs/helicopter.webp"
+  },
+  {
+   "path": "spaceship_00",
+   "name": "spaceship 00",
+   "cat": "Sci-fi",
+   "thumb": "/starter-library/thumbs/spaceship_00.webp"
+  },
+  {
+   "path": "house_interior_pack_bed_single",
+   "name": "house interior pack bed single",
+   "cat": "Furniture",
+   "thumb": "/starter-library/thumbs/house_interior_pack_bed_single.webp"
+  },
+  {
+   "path": "house_interior_pack_couch_small1",
+   "name": "house interior pack couch small1",
+   "cat": "Furniture",
+   "thumb": "/starter-library/thumbs/house_interior_pack_couch_small1.webp"
+  },
+  {
+   "path": "chair_00",
+   "name": "chair 00",
+   "cat": "Furniture",
+   "thumb": "/starter-library/thumbs/chair_00.webp"
+  },
+  {
+   "path": "ph_small_wooden_table_01",
+   "name": "ph small wooden table 01",
+   "cat": "Furniture",
+   "thumb": "/starter-library/thumbs/ph_small_wooden_table_01.webp"
+  }
+ ]
+}

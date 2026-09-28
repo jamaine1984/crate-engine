@@ -13,7 +13,9 @@ const root = document.querySelector('#editor-root');
 root.innerHTML = layout();
 const $ = selector => root.querySelector(selector);
 let editor, project = null, selected = null, activeTool = 'translate', space = 'world', mode = 'edit', ready = false, dirty = false, runtimeBusy = false;
-let assetSource = 'project', catalog = [], catalogLoaded = false, connectionData = null, proposal = null, dialogFocus = null;
+const CATALOG_SOURCES={starter:{urls:['/starter-library/catalog.json'],note:'Hand-picked models, tested to load in the engine'},catalog:{urls:['https://crateship-games-assets.pages.dev/models/catalog.json','/asset-catalog.json'],note:'Legacy catalog · some files need conversion before import'}};
+const catalogs={starter:{items:[],loaded:false},catalog:{items:[],loaded:false}};
+let assetSource = 'project', connectionData = null, proposal = null, dialogFocus = null;
 let assetLimit=80, assetCategory='';
 let blenderToken = '', blenderAssets = [], blenderConnected = false;
 const proposalRequests = createProposalRequests(({connectionId,body})=>api('/model-connections/'+encodeURIComponent(connectionId)+'/propose',{method:'POST',body}));
@@ -57,12 +59,12 @@ let hierarchySignature='',assetsSignature='';
 function renderHierarchy(){const filter=$('#hierarchy-search').value;const signature=JSON.stringify([selected?.id,filter,(project?.entities||[]).map(({id,name,type,parentId,visible})=>[id,name,type,parentId,visible])]);if(signature===hierarchySignature)return;hierarchySignature=signature;$('#hierarchy').innerHTML=hierarchy(project,selected?.id,filter);for(const button of $('#hierarchy').querySelectorAll('[data-visible]'))button.disabled=mode==='play'||runtimeBusy;}
 function renderInspector(force=false){if(!force&&$('#inspector').contains(document.activeElement))return;$('#inspector').innerHTML=inspector(selected,project);$('#inspector-type').textContent=selected?.type?.toUpperCase()||'SCENE';for(const field of $('#inspector').querySelectorAll('input,select,button'))field.disabled=runtimeBusy||mode==='play';}
 function renderAssets(){
- const items=assetSource==='catalog'?catalog:project?.assets||[],query=$('#asset-search').value,page=assetPage(items,{query,category:assetSource==='catalog'?assetCategory:'',limit:assetLimit});
+ const library=catalogs[assetSource],items=library?library.items:project?.assets||[],query=$('#asset-search').value,page=assetPage(items,{query,category:library?assetCategory:'',limit:assetLimit});
  const signature=JSON.stringify([assetSource,query,assetCategory,assetLimit,page.items]);
  if(signature!==assetsSignature){assetsSignature=signature;$('#asset-grid').innerHTML=assetCards(page.items,assetSource);}
  $('#asset-count').textContent=project?.assets?.length||0;
- $('#asset-library-count').textContent=`Showing ${page.items.length.toLocaleString()} of ${page.matches.toLocaleString()}${query||assetCategory?' matches':''} · ${page.total.toLocaleString()} ${assetSource==='catalog'?'catalog entries':'project assets'}`;
- $('#asset-more').hidden=!page.hasMore;$('#asset-category').hidden=assetSource!=='catalog';
+ $('#asset-library-count').textContent=`Showing ${page.items.length.toLocaleString()} of ${page.matches.toLocaleString()}${query||assetCategory?' matches':''} · ${page.total.toLocaleString()} ${assetSource==='starter'?'starter models':library?'catalog entries':'project assets'}`;
+ $('#asset-more').hidden=!page.hasMore;$('#asset-category').hidden=!library;
 }
 
 function onChange(next){project=next;selected=next?.entities?.find(e=>e.id===selected?.id)||null;$('#project-name').textContent=next?.name||'Untitled project';$('#scene-root-name').textContent=next?.name||'Scene';$('#entity-count').textContent=next?.entities?.length||0;renderHierarchy();renderInspector();renderAssets();}
@@ -100,17 +102,19 @@ async function buildDemo(){
  await editor.play();setMode('play');$('#editor-canvas').focus();
 }
 async function importFiles(files){if(!files?.length)return;await editor.importFiles(Array.from(files));toast(`${files.length===1?files[0].name:files.length+' files'} imported.`);changePane('viewport');}
-async function loadCatalog(){
- for(const url of ['https://crateship-games-assets.pages.dev/models/catalog.json','/asset-catalog.json']){
+async function loadCatalog(source){
+ const library=catalogs[source];let items=[];
+ for(const url of CATALOG_SOURCES[source].urls){
   try{const response=await fetch(url,{credentials:'omit',redirect:'error',signal:AbortSignal.timeout(20000)});if(!response.ok)continue;
-   const data=JSON.parse(new TextDecoder().decode(await readLimitedResponse(response,8*1024*1024,'Asset catalog')));catalog=normalizeCatalog(data);if(catalog.length)break;
+   const data=JSON.parse(new TextDecoder().decode(await readLimitedResponse(response,8*1024*1024,'Asset catalog')));items=normalizeCatalog(data);if(items.length)break;
   }catch{}
  }
- if(!catalog.length){catalogLoaded=false;renderAssets();throw new Error('The optional catalog is unavailable. Select Existing catalog again to retry, or import your own GLB files.');}
- catalogLoaded=true;
- $('#asset-category').innerHTML='<option value="">All categories</option>'+catalogCategories(catalog).map(([cat,count])=>`<option value="${esc(cat)}">${esc(cat)} (${count.toLocaleString()})</option>`).join('');
+ library.items=items;library.loaded=items.length>0;
+ if(!library.loaded){renderAssets();throw new Error('This model library is unavailable. Select it again to retry, or import your own GLB files.');}
+ if(assetSource===source)renderCategories();
  renderAssets();
 }
+function renderCategories(){const library=catalogs[assetSource];if(!library)return;$('#asset-category').innerHTML='<option value="">All categories</option>'+catalogCategories(library.items).map(([cat,count])=>`<option value="${esc(cat)}">${esc(cat)} (${count.toLocaleString()})</option>`).join('');$('#asset-category').value=assetCategory;}
 
 async function openProjects(){openDialog('Open a project','<p class="loading-copy">Loading saved projects…</p>');const result=await editor.listLocal();const list=Array.isArray(result)?result:result?.projects||[];openDialog('Open a project',`<p class="dialog-lead">Continue a project from this device, open a project file, or visit your account library.</p><div class="dialog-list">${list.length?list.map(p=>`<button data-load-project="${esc(p.id)}">${icon('cube')}<span>${esc(p.name||'Untitled project')}</span><small>${p.updatedAt?new Date(typeof p.updatedAt==='number'&&p.updatedAt<1e12?p.updatedAt*1000:p.updatedAt).toLocaleDateString():''}</small></button>`).join(''):'<p class="inline-note">No projects saved on this device yet.</p>'}</div><div class="dialog-actions"><a class="text-button" href="/engine/projects">Account projects ${icon('arrow-up-right')}</a><button class="primary-button" data-action="import">Open project file</button></div>`);}
 function newProjectDialog(){openDialog('Start something new',`<p class="dialog-lead">Begin with a floor, a dynamic cube, and a sun light. Your current scene will be saved locally before switching.</p><form id="new-project-form" class="dialog-form"><label class="field"><span>Project name</span><input name="name" value="My new world" required maxlength="120"></label><div class="dialog-actions"><button class="text-button" type="button" data-action="close-dialog">Cancel</button><button class="primary-button" type="submit">Create project</button></div></form>`);}
@@ -176,8 +180,8 @@ root.addEventListener('click',event=>{
  if(el.dataset.addComponent){const defaults={rigidbody:{type:'dynamic',mass:1},player:{speed:5,jump:6},collectible:{value:1},spin:{speed:30},animation:{clip:'',autoplay:true,speed:1},goal:{message:'Level complete!'},hazard:{},checkpoint:{},mover:{offset:[4,0,0],period:4}};run(async()=>{const key=el.dataset.addComponent,components={...selected.components,[key]:defaults[key]};if(key==='mover'&&!components.rigidbody)components.rigidbody={type:'static'};if(key==='player'){if(!['box','sphere','cylinder','capsule','plane','model'].includes(selected.type))throw new Error('A player needs a renderable object with collision geometry.');components.rigidbody={...defaults.rigidbody,...components.rigidbody,type:'dynamic'};}if(key==='spin'&&components.rigidbody)throw new Error('Remove the rigid body before adding a spin component.');if(key==='rigidbody'&&components.spin)throw new Error('Remove the spin component before adding a rigid body.');await editor.updateEntity(selected.id,{components});closeDialog();renderInspector(true);},el);return;}
  if(el.dataset.removeComponent){const components={...selected.components};run(async()=>{if(el.dataset.removeComponent==='rigidbody'&&components.player)throw new Error('Remove the player controller before removing its rigid body.');delete components[el.dataset.removeComponent];await editor.updateEntity(selected.id,{components});renderInspector(true);},el);return;}
  if(el.dataset.bottomTab){const assets=el.dataset.bottomTab==='assets';$('#assets-view').hidden=!assets;$('#console-view').hidden=assets;root.querySelectorAll('[data-bottom-tab]').forEach(b=>{b.classList.toggle('active',b===el);b.setAttribute('aria-selected',String(b===el));});return;}
- if(el.dataset.assetSource){assetSource=el.dataset.assetSource;assetLimit=80;assetCategory='';$('#asset-category').value='';root.querySelectorAll('[data-asset-source]').forEach(b=>b.classList.toggle('active',b===el));$('#asset-source-note').textContent=assetSource==='catalog'?'Legacy catalog · some files need conversion before import':'Your imports stay with your project';if(assetSource==='catalog'&&!catalogLoaded){$('#asset-grid').innerHTML='<p class="loading-copy">Loading the optional model catalog…</p>';run(loadCatalog,el);}else renderAssets();return;}
- if(el.dataset.asset){run(async()=>{if(el.dataset.source==='catalog'){const record=catalog.find(a=>a.file===el.dataset.asset);if(record)await editor.addCatalogAsset(record);}else if(typeof editor.instantiateAsset==='function')await editor.instantiateAsset(el.dataset.asset);else{const entity=project.entities.find(e=>e.assetId===el.dataset.asset);if(entity)editor.select(entity.id);else throw new Error('This asset does not have a scene object yet.');}changePane('viewport');},el);return;}
+ if(el.dataset.assetSource){assetSource=el.dataset.assetSource;assetLimit=80;assetCategory='';$('#asset-category').value='';root.querySelectorAll('[data-asset-source]').forEach(b=>b.classList.toggle('active',b===el));const library=catalogs[assetSource];$('#asset-source-note').textContent=library?CATALOG_SOURCES[assetSource].note:'Your imports stay with your project';if(library&&!library.loaded){assetsSignature='';$('#asset-grid').innerHTML='<p class="loading-copy">Loading models…</p>';const source=assetSource;run(()=>loadCatalog(source),el);}else{renderCategories();renderAssets();}return;}
+ if(el.dataset.asset){run(async()=>{if(catalogs[el.dataset.source]){const record=catalogs[el.dataset.source].items.find(a=>a.file===el.dataset.asset);if(record)await editor.addCatalogAsset(record);}else if(typeof editor.instantiateAsset==='function')await editor.instantiateAsset(el.dataset.asset);else{const entity=project.entities.find(e=>e.assetId===el.dataset.asset);if(entity)editor.select(entity.id);else throw new Error('This asset does not have a scene object yet.');}changePane('viewport');},el);return;}
  if(el.dataset.exportAsset){run(async()=>{exportDownload(await editor.exportAsset(el.dataset.exportAsset),'model.glb');toast('Original model export is ready.');},el);return;}
  if(el.dataset.export){run(async()=>{const result=await(el.dataset.export==='project'?editor.exportProject():editor.exportGame());exportDownload(result,el.dataset.export==='project'?'project.crate':'game.zip');toast('Your export download is ready.');},el);return;}
  if(el.dataset.loadProject){run(async()=>{await editor.loadLocal(el.dataset.loadProject);saveStatus('Loaded from device');closeDialog();},el);return;}

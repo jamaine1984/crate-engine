@@ -24,7 +24,7 @@ const env={...secrets,APP_ORIGIN:origin,AUTH_LOCAL_DEV:'true',PLATFORM_DB:sqlite
 for(const key of ['MAIL_PROVIDER','MAIL_FROM','MAIL_API_KEY','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'])if(process.env[key])env[key]=process.env[key];
 const built=process.argv.includes('--built');
 const vite=built?null:await createVite({root,server:{middlewareMode:true},appType:'mpa'});
-const staticTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.map':'application/json','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.woff':'font/woff','.ttf':'font/ttf','.txt':'text/plain; charset=utf-8','.wasm':'application/wasm','.glb':'model/gltf-binary'};
+const staticTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.map':'application/json','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.woff':'font/woff','.ttf':'font/ttf','.txt':'text/plain; charset=utf-8','.wasm':'application/wasm','.glb':'model/gltf-binary','.webp':'image/webp'};
 const paths=/^\/(games|game|history|marketplace|coming-soon|library|favorites|rewards|profile|settings|login|signup|forgot-password|reset-password|verify-email|auth|notifications|developer|developers|owners-portal|creators|community|support|privacy|terms)(\/|$)|^\/engine\/projects/;
 const server=createServer(async(req,res)=>{
  try{

@@ -1,5 +1,7 @@
 export const FORMAT='crateship-project';
 export const VERSION=4;
+// Starter Library models repaired for the engine are served from the site itself.
+export const STARTER_MODEL_URL=/^\/starter-library\/models\/[a-z0-9_-]+(?:\/[a-z0-9_-]+)*\.glb$/i;
 export const ENTITY_TYPES=Object.freeze(['box','sphere','cylinder','capsule','plane','customMesh','directionalLight','pointLight','camera','model','empty']);
 const clone=x=>structuredClone(x);
 const text=(value,max,fallback='')=>typeof value==='string'?value.slice(0,max):fallback;
@@ -69,7 +71,7 @@ export function validateProject(input){
  p.settings=cleanSettings(input.settings);
  p.entities=input.entities.map(cleanEntity);if(p.entities.filter(e=>e.type==='pointLight'||e.type==='directionalLight').length>32)throw new Error('Scenes support at most 32 real-time lights. Use baked lighting for larger environments.');const ids=new Set(p.entities.map(e=>e.id));if(ids.size!==p.entities.length)throw new Error('Duplicate object identifiers.');
  const byId=new Map(p.entities.map(e=>[e.id,e]));for(const e of p.entities){if(e.parentId&&!ids.has(e.parentId))throw new Error('An object parent is missing.');let cursor=e;const ancestors=new Set([e.id]);while(cursor.parentId){if(ancestors.has(cursor.parentId))throw new Error('Scene hierarchy contains a cycle.');if(ancestors.size>=64)throw new Error('Scene hierarchy exceeds 64 levels.');ancestors.add(cursor.parentId);cursor=byId.get(cursor.parentId);}}
- p.assets=input.assets.map(a=>({id:safeId(a.id),name:text(a.name,180,'Imported model'),mime:'model/gltf-binary',size:finite(a.size,0,0,32*1024*1024),sha256:/^[a-f0-9]{64}$/.test(a.sha256||'')?a.sha256:null,source:['local','catalog','blender'].includes(a.source)?a.source:'local',...(typeof a.cloudId==='string'?{cloudId:safeId(a.cloudId)}:{}),...(typeof a.legacyPath==='string'?{legacyPath:text(a.legacyPath,500)}:{}),...(typeof a.url==='string'&&/^https:\/\/crateship-games-assets\.pages\.dev\//.test(a.url)?{url:a.url}:{}),...(typeof a.embedded==='string'&&a.embedded.length<=44*1024*1024?{embedded:a.embedded}:{})}));
+ p.assets=input.assets.map(a=>({id:safeId(a.id),name:text(a.name,180,'Imported model'),mime:'model/gltf-binary',size:finite(a.size,0,0,32*1024*1024),sha256:/^[a-f0-9]{64}$/.test(a.sha256||'')?a.sha256:null,source:['local','catalog','blender'].includes(a.source)?a.source:'local',...(typeof a.cloudId==='string'?{cloudId:safeId(a.cloudId)}:{}),...(typeof a.legacyPath==='string'?{legacyPath:text(a.legacyPath,500)}:{}),...(typeof a.url==='string'&&(/^https:\/\/crateship-games-assets\.pages\.dev\//.test(a.url)||STARTER_MODEL_URL.test(a.url))?{url:a.url}:{}),...(typeof a.embedded==='string'&&a.embedded.length<=44*1024*1024?{embedded:a.embedded}:{})}));
  const assets=new Set(p.assets.map(a=>a.id));if(assets.size!==p.assets.length)throw new Error('Duplicate asset identifiers.');for(const e of p.entities)if(e.type==='model'&&!assets.has(e.assetId))throw new Error('A model asset reference is missing.');
  if(input.legacySource)p.legacySource=clone(input.legacySource);if(Array.isArray(input.migrationWarnings))p.migrationWarnings=input.migrationWarnings.map(s=>text(s,300)).slice(0,20);
  return p;

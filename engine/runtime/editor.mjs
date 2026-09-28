@@ -2,7 +2,7 @@ import {sideViewFollower} from './side-follow.mjs';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
 import {ProjectStore} from '../core/project-store.mjs';
-import {newProject,validateProject,cleanEntity} from '../core/schema.mjs';
+import {newProject,validateProject,cleanEntity,STARTER_MODEL_URL} from '../core/schema.mjs';
 import {createWorldPreviewSession} from '../core/procedural.mjs';
 import {inspectGLB,hashBytes,MAX_MODEL_BYTES} from '../core/gltf.mjs';
 import * as local from '../storage/local.mjs';
@@ -61,9 +61,10 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
    if(!bytes&&asset.cloudId)bytes=await remoteBytes('/api/platform/engine/assets/'+encodeURIComponent(asset.cloudId),{credentials:'same-origin'});
    if(!bytes&&(asset.url||asset.legacyPath)){
     let path=asset.legacyPath;
-    if(asset.url){const parsed=new URL(asset.url);if(parsed.origin!=='https://crateship-games-assets.pages.dev'||parsed.username||parsed.password)throw new Error('Unsupported asset host.');path=parsed.pathname;}
-    path=String(path).replace(/^\/+/, '');if(path.includes('..')||path.includes('\\')||/^[a-z]+:/i.test(path)||/[?#]/.test(path))throw new Error('Unsafe model path.');
-    bytes=await remoteBytes('https://crateship-games-assets.pages.dev/'+path,{credentials:'omit'});
+    if(asset.url&&STARTER_MODEL_URL.test(asset.url))bytes=await remoteBytes(asset.url,{credentials:'omit'});
+    else if(asset.url){const parsed=new URL(asset.url);if(parsed.origin!=='https://crateship-games-assets.pages.dev'||parsed.username||parsed.password)throw new Error('Unsupported asset host.');path=parsed.pathname;}
+    if(!bytes){path=String(path).replace(/^\/+/, '');if(path.includes('..')||path.includes('\\')||/^[a-z]+:/i.test(path)||/[?#]/.test(path))throw new Error('Unsafe model path.');
+    bytes=await remoteBytes('https://crateship-games-assets.pages.dev/'+path,{credentials:'omit'});}
    }
    if(!bytes)throw new Error('The original GLB is not stored here. Import it or open a portable project backup.');
    bytes=inspectGLB(bytes).bytes;
@@ -234,7 +235,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   remove(id=selected){editable();store.remove(id);},undo(){editable();return store.undo();},redo(){editable();return store.redo();},
   setTool(tool){editable();transform.setMode(tool);dirty=true;},setSpace(space){editable();transform.setSpace(space);dirty=true;},frameSelection,
   importFiles:files=>exclusive('Asset import',()=>importBatch(files)),importGLB:(bytes,name,source)=>exclusive('Model import',()=>importModel(bytes,name,source)),
-  addCatalogAsset:record=>exclusive('Catalog import',async()=>{const path=record.path||record.file;if(typeof path!=='string'||path.includes('..')||path.includes('\\')||/^[a-z]+:/i.test(path)||/[?#]/.test(path))throw new Error('The catalog asset path is invalid.');const asset={id:crypto.randomUUID(),name:record.name||path.split('/').pop(),source:'catalog',mime:'model/gltf-binary',size:0,url:'https://crateship-games-assets.pages.dev/'+path.replace(/^\//,'')};return importModel(await resolveAsset(asset),asset.name,'catalog');}),
+  addCatalogAsset:record=>exclusive('Catalog import',async()=>{const path=record.path||record.file;if(typeof path!=='string'||path.includes('..')||path.includes('\\')||/^[a-z]+:/i.test(path)||/[?#]/.test(path))throw new Error('The catalog asset path is invalid.');const asset={id:crypto.randomUUID(),name:record.name||path.split('/').pop(),source:'catalog',mime:'model/gltf-binary',size:0,url:typeof record.url==='string'&&STARTER_MODEL_URL.test(record.url)?record.url:'https://crateship-games-assets.pages.dev/'+path.replace(/^\//,'')};return importModel(await resolveAsset(asset),asset.name,'catalog');}),
   instantiateAsset:id=>exclusive('Asset instantiation',()=>instantiate(id)),play,stop,
   exportProject:()=>exclusive('Project export',exportProject),exportGame:()=>exclusive('Game export',async()=>{await settled();view.assertComplete();return exportGameZip(store.snapshot(),resolveAsset);}),
   exportAsset:id=>exclusive('Model export',async()=>{const asset=store.project.assets.find(item=>item.id===id);if(!asset)throw new Error('Choose a model from this project.');return exportOriginalModel(asset,resolveAsset);}),

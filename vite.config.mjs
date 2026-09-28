@@ -19,7 +19,7 @@ const staticFiles = [
   'service-worker.js'
 ];
 const staticDirs = [
-  'docs', 'platform/media', 'platform/sdk', 'engine/distribution'
+  'docs', 'platform/media', 'platform/sdk', 'engine/distribution', 'starter-library'
 ];
 
 function isThreeImport(id) {
