@@ -7,6 +7,7 @@ import { handleAuth, requireUser, requireRole, hashPassword, verifyPassword, tok
 import { HttpError, readJson, requireMutationOrigin, database, audit } from '../platform/server/common.mjs';
 
 const migration = await readFile(new URL('../platform/migrations/0001_identity.sql', import.meta.url), 'utf8');
+const firebaseMigration = await readFile(new URL('../platform/migrations/0006_firebase_identity.sql', import.meta.url), 'utf8');
 const stamp = () => Math.floor(Date.now() / 1000);
 const secret = () => base64url(crypto.getRandomValues(new Uint8Array(32)));
 const password = 'correct horse battery stapler';
@@ -30,7 +31,7 @@ function sqliteD1(sqlite) {
   } };
 }
 function fixture(extra = {}) {
-  const sqlite = new DatabaseSync(':memory:'); sqlite.exec(migration);
+  const sqlite = new DatabaseSync(':memory:'); sqlite.exec(migration); sqlite.exec(firebaseMigration);
   const env = { PLATFORM_DB: sqliteD1(sqlite), APP_ORIGIN: 'https://example.test', AUTH_SECRET: secret(),
     ENCRYPTION_KEY: secret(), AUTH_PASSWORD_POLICY_APPROVED: 'true', ...extra };
   return { sqlite, env };

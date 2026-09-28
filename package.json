@@ -36,6 +36,7 @@
     "@recast-navigation/three": "0.42.0",
     "colyseus.js": "0.16.19",
     "fflate": "0.8.3",
+    "firebase": "12.19.0",
     "meshoptimizer": "1.0.1",
     "recast-navigation": "0.42.0",
     "spectorjs": "0.9.30",

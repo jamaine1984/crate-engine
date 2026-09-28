@@ -4,11 +4,14 @@ compatibility_date = "2026-05-19"
 
 [vars]
 APP_ORIGIN = "https://crateshipgames.com"
-# Approved by the owner 2026-09-27: PBKDF2-SHA256 100k (Workers cap) + server pepper, 12-128 chars, rate limits.
-AUTH_PASSWORD_POLICY_APPROVED = "true"
-# MAIL_API_KEY is a Pages secret. Mail stays unavailable until that secret exists.
-MAIL_PROVIDER = "resend"
-MAIL_FROM = "Crate Ship Games <no-reply@mail.crateshipgames.com>"
+# Local password signup (Resend mail) is unused: Firebase Authentication handles passwords and email.
+AUTH_PASSWORD_POLICY_APPROVED = "false"
+# Firebase project koko-engine-ai, web app "crateshipgames". Public web settings, not secrets.
+# Firebase enforces a 12-128 character password policy; the server verifies ID tokens.
+FIREBASE_PROJECT_ID = "koko-engine-ai"
+FIREBASE_API_KEY = "AIzaSyD0qcMhW-S4QmL5jEEhUhnXG33ninxSdRo"
+FIREBASE_AUTH_DOMAIN = "koko-engine-ai.firebaseapp.com"
+FIREBASE_APP_ID = "1:868877477370:web:9eb29032ffac3105db7043"
 
 [[d1_databases]]
 binding = "PLATFORM_DB"

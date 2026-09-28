@@ -235,7 +235,9 @@ async function canRegister(env) {
   return flag?.enabled === 1;
 }
 async function capabilities(env) {
-  return { registration: await canRegister(env), password: true, email: mailConfigured(env), google: googleConfigured(env) };
+  const firebase = firebaseClientConfig(env);
+  return { registration: await canRegister(env) || await canRegisterFirebase(env), password: true,
+    email: mailConfigured(env) || Boolean(firebase), google: googleConfigured(env) || Boolean(firebase), firebase };
 }
 async function sendMail(env, user, purpose, token) {
   requireMail(env);
@@ -516,6 +518,16 @@ async function reauthenticate(request, env, body) {
   await rateLimit(request, env, 'reauth-user', user.id, 5, 900);
   const db = database(env);
   const account = await db.prepare('SELECT password_hash FROM platform_users WHERE id = ?').bind(user.id).first();
+  if (body.idToken !== undefined) {
+    await firebaseReauthenticate(request, env, user, body);
+    const mfa = await db.prepare('SELECT enabled FROM platform_mfa WHERE user_id = ?').bind(user.id).first();
+    if (user.roles.includes('OWNER') && mfa?.enabled !== 1) throw new HttpError(403, 'Set up multi-factor authentication first.', 'MFA_REQUIRED');
+    let mfaTime = null;
+    if (mfa?.enabled === 1) { await consumeMfaCode(request, env, user, body.code); mfaTime = now(); }
+    await db.prepare('UPDATE platform_sessions SET revoked_at = ? WHERE id = ?').bind(now(), user.sessionId).run();
+    await audit(env, { actor: user.id, action: 'auth.reauthenticate', target: user.sessionId, method: 'firebase' });
+    return createSession(request, env, user.id, mfaTime);
+  }
   if (!account?.password_hash) {
     throw new HttpError(503, 'Sensitive changes for Google-only accounts require a configured provider reauthentication flow.', 'REAUTH_UNAVAILABLE');
   }
@@ -562,6 +574,13 @@ async function deleteAccount(request, env, body, accountErasureStatements) {
     throw new HttpError(409, 'Transfer privileged responsibilities before deleting this account.', 'PRIVILEGED_ACCOUNT');
   }
   const db = database(env); const stamp = now();
+  const firebase = await db.prepare('SELECT uid FROM platform_firebase_accounts WHERE user_id = ?').bind(user.id).first();
+  if (firebase) {
+    // Remove the Firebase sign-in first so a deleted account cannot sign back in to an empty shell.
+    const claims = await firebaseReauthenticate(request, env, user, body);
+    if (claims.sub !== firebase.uid) throw invalidFirebase();
+    await deleteFirebaseUser(env, body.idToken);
+  }
   // Only the trusted application router supplies this function. Nothing from request/config JSON is executed.
   const privateDataErasure = typeof accountErasureStatements === 'function' ? await accountErasureStatements(user.id, db) : [];
   if (!Array.isArray(privateDataErasure)) throw new HttpError(503, 'Account erasure is not configured correctly.', 'ERASURE_UNAVAILABLE');
@@ -575,6 +594,7 @@ async function deleteAccount(request, env, body, accountErasureStatements) {
     db.prepare('DELETE FROM platform_auth_tokens WHERE user_id = ?').bind(user.id),
     db.prepare('DELETE FROM platform_mfa WHERE user_id = ?').bind(user.id),
     db.prepare('DELETE FROM platform_oauth_accounts WHERE user_id = ?').bind(user.id),
+    db.prepare('DELETE FROM platform_firebase_accounts WHERE user_id = ?').bind(user.id),
   ]);
   await audit(env, { actor: user.id, action: 'auth.account.deleted', target: user.id });
   // Downstream business records retain a pseudonymous immutable ID for ownership/accounting.
@@ -636,6 +656,142 @@ export async function verifyGoogleIdToken(jwt, env, nonce) {
   }
   claims.email = normalizeEmail(claims.email); return claims;
 }
+// Firebase Authentication: the browser signs in with Firebase, then exchanges a fresh ID token for a platform session.
+// https://firebase.google.com/docs/auth/admin/verify-id-tokens#verify_id_tokens_using_a_third-party_jwt_library
+const FIREBASE_KEYS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
+function firebaseConfigured(env) {
+  return typeof env.FIREBASE_PROJECT_ID === 'string' && /^[a-z0-9-]{4,40}$/.test(env.FIREBASE_PROJECT_ID) &&
+    typeof env.FIREBASE_API_KEY === 'string' && /^[A-Za-z0-9_-]{20,64}$/.test(env.FIREBASE_API_KEY) &&
+    typeof env.FIREBASE_AUTH_DOMAIN === 'string' && /^[a-z0-9.-]{4,253}$/.test(env.FIREBASE_AUTH_DOMAIN);
+}
+export function firebaseClientConfig(env) {
+  if (!firebaseConfigured(env)) return null;
+  return { apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID,
+    ...(typeof env.FIREBASE_APP_ID === 'string' && env.FIREBASE_APP_ID ? { appId: env.FIREBASE_APP_ID } : {}) };
+}
+function requireFirebase(env) {
+  if (!firebaseConfigured(env)) throw new HttpError(503, 'Firebase sign-in is not configured.', 'FIREBASE_UNAVAILABLE');
+}
+const invalidFirebase = () => new HttpError(401, 'Your sign-in could not be verified. Sign in again.', 'INVALID_FIREBASE_IDENTITY');
+export async function verifyFirebaseIdToken(jwt, env, { maxAuthAge = null } = {}) {
+  requireFirebase(env);
+  if (typeof jwt !== 'string' || jwt.length > 16384) throw invalidFirebase();
+  const pieces = jwt.split('.'); let header, claims;
+  try {
+    if (pieces.length !== 3) throw new Error();
+    header = JSON.parse(new TextDecoder().decode(decode64(pieces[0])));
+    claims = JSON.parse(new TextDecoder().decode(decode64(pieces[1])));
+    if (header.alg !== 'RS256' || typeof header.kid !== 'string' || header.kid.length > 200 || header.crit) throw new Error();
+  } catch { throw invalidFirebase(); }
+  let keys;
+  try {
+    const response = await fetch(FIREBASE_KEYS_URL, { signal: AbortSignal.timeout(10000), redirect: 'error' });
+    if (!response.ok) throw new Error();
+    keys = (await response.json()).keys;
+  } catch { throw new HttpError(503, 'Sign-in verification is temporarily unavailable.', 'FIREBASE_UNAVAILABLE'); }
+  const jwk = Array.isArray(keys) ? keys.slice(0, 20).find(key => key.kid === header.kid && key.kty === 'RSA') : null;
+  let signatureValid = false;
+  if (jwk) {
+    try {
+      const key = await crypto.subtle.importKey('jwk', { kty: 'RSA', n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
+        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+      signatureValid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, decode64(pieces[2]), encoder.encode(`${pieces[0]}.${pieces[1]}`));
+    } catch { signatureValid = false; }
+  }
+  const stamp = now(); const project = env.FIREBASE_PROJECT_ID;
+  if (!signatureValid || claims.aud !== project || claims.iss !== `https://securetoken.google.com/${project}` ||
+      !Number.isInteger(claims.exp) || claims.exp <= stamp || !Number.isInteger(claims.iat) || claims.iat > stamp + 60 ||
+      !Number.isInteger(claims.auth_time) || claims.auth_time > stamp + 60 ||
+      typeof claims.sub !== 'string' || claims.sub.length < 1 || claims.sub.length > 128 || claims.sub !== claims.user_id) {
+    throw invalidFirebase();
+  }
+  if (maxAuthAge !== null && stamp - claims.auth_time > maxAuthAge) {
+    throw new HttpError(403, 'Sign in again to confirm it is you.', 'REAUTH_REQUIRED');
+  }
+  if (claims.email_verified !== true) {
+    throw new HttpError(403, 'Verify your email address, then sign in again.', 'EMAIL_VERIFICATION_REQUIRED');
+  }
+  claims.email = normalizeEmail(claims.email);
+  claims.provider = typeof claims.firebase?.sign_in_provider === 'string' ? claims.firebase.sign_in_provider.slice(0, 40) : 'unknown';
+  return claims;
+}
+async function firebaseAccount(db, uid) {
+  return db.prepare(`SELECT u.* FROM platform_firebase_accounts f JOIN platform_users u ON u.id = f.user_id
+    WHERE f.uid = ?`).bind(uid).first();
+}
+async function canRegisterFirebase(env) {
+  if (!firebaseConfigured(env)) return false;
+  const flag = await database(env).prepare('SELECT enabled FROM platform_feature_flags WHERE key = ?')
+    .bind('PUBLIC_REGISTRATION_ENABLED').first();
+  return flag?.enabled === 1;
+}
+async function firebaseSignIn(request, env, body) {
+  requireFirebase(env);
+  await rateLimit(request, env, 'firebase-ip', '', 30);
+  const claims = await verifyFirebaseIdToken(body.idToken, env);
+  await rateLimit(request, env, 'firebase-account', claims.sub, 10);
+  const db = database(env);
+  let account = await firebaseAccount(db, claims.sub);
+  if (!account) {
+    if (!await canRegisterFirebase(env)) throw new HttpError(503, 'New account registration is not yet enabled.', 'REGISTRATION_DISABLED');
+    if ('role' in body || 'roles' in body || 'status' in body) {
+      throw new HttpError(400, 'Account privileges cannot be supplied during registration.', 'INVALID_REGISTRATION');
+    }
+    const existing = await db.prepare('SELECT id FROM platform_users WHERE email = ?').bind(claims.email).first();
+    if (existing) throw new HttpError(409, 'An account already uses this email. Sign in with its existing method; accounts are not linked automatically.', 'ACCOUNT_LINK_REQUIRED');
+    const userId = id(); const stamp = now(); const fallback = `player_${userId.replaceAll('-', '').slice(0, 16)}`;
+    let username = fallback;
+    if (body.username !== undefined) {
+      username = normalizeUsername(body.username);
+      if (await db.prepare('SELECT 1 FROM platform_users WHERE username = ?').bind(username).first()) username = fallback;
+    }
+    const tokenName = typeof claims.name === 'string' ? claims.name.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 80).trim() : '';
+    const name = body.displayName !== undefined ? displayName(body.displayName, username) : tokenName || username;
+    try {
+      await db.batch([
+        db.prepare(`INSERT INTO platform_users (id, email, username, display_name, email_verified, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 1, ?, ?)`).bind(userId, claims.email, username, name, stamp, stamp),
+        db.prepare('INSERT INTO platform_user_roles (user_id, role, created_at) VALUES (?, ?, ?)').bind(userId, 'PLAYER', stamp),
+        db.prepare('INSERT INTO platform_firebase_accounts (uid, user_id, sign_in_provider, created_at) VALUES (?, ?, ?, ?)')
+          .bind(claims.sub, userId, claims.provider, stamp),
+      ]);
+    } catch (error) {
+      if (/constraint/i.test(String(error.message))) throw new HttpError(409, 'This email or username is unavailable. Try signing in again.', 'ACCOUNT_UNAVAILABLE');
+      throw error;
+    }
+    account = await db.prepare('SELECT * FROM platform_users WHERE id = ?').bind(userId).first();
+    await audit(env, { actor: userId, action: 'auth.firebase.register', target: userId, provider: claims.provider });
+  }
+  if (account.status !== 'active') throw new HttpError(403, 'This account is unavailable.', 'ACCOUNT_UNAVAILABLE');
+  await db.prepare('UPDATE platform_firebase_accounts SET sign_in_provider = ? WHERE uid = ?').bind(claims.provider, claims.sub).run();
+  if (account.email !== claims.email) {
+    // The email changed in Firebase and Firebase has verified the new address.
+    await db.prepare('UPDATE platform_users SET email = ?, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM platform_users WHERE email = ?)')
+      .bind(claims.email, now(), account.id, claims.email).run();
+  }
+  const mfa = await db.prepare('SELECT enabled FROM platform_mfa WHERE user_id = ?').bind(account.id).first();
+  if (mfa?.enabled === 1) {
+    const challengeId = await createToken(env, account.id, 'mfa_login', 300);
+    return json({ mfaRequired: true, challengeId }, 202);
+  }
+  return createSession(request, env, account.id);
+}
+async function firebaseReauthenticate(request, env, user, body) {
+  const claims = await verifyFirebaseIdToken(body.idToken, env, { maxAuthAge: RECENT_SECONDS });
+  const linked = await database(env).prepare('SELECT user_id FROM platform_firebase_accounts WHERE uid = ?').bind(claims.sub).first();
+  if (linked?.user_id !== user.id) throw invalidFirebase();
+  return claims;
+}
+async function deleteFirebaseUser(env, idToken) {
+  let response;
+  try {
+    response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken }),
+      signal: AbortSignal.timeout(10000), redirect: 'error' });
+  } catch { response = null; }
+  if (!response?.ok) throw new HttpError(503, 'Your sign-in account could not be removed. Try again.', 'FIREBASE_DELETE_FAILED');
+}
+
 async function googleCallback(request, env) {
   if (!googleConfigured(env)) throw new HttpError(503, 'Google sign-in is not configured.', 'GOOGLE_UNAVAILABLE');
   await rateLimit(request, env, 'oauth-callback', '', 20, 900);
@@ -709,6 +865,10 @@ export async function handleAuth(request, env, path, { accountErasureStatements 
     let user = null;
     try { user = await requireUser(request, env); }
     catch (error) { if (!(error instanceof HttpError) || error.status !== 401) throw error; }
+    if (user) {
+      const link = await database(env).prepare('SELECT sign_in_provider FROM platform_firebase_accounts WHERE user_id = ?').bind(user.id).first();
+      user.signInProvider = link ? link.sign_in_provider : 'local';
+    }
     return json({ user, capabilities: await capabilities(env) });
   }
   if (method === 'GET' && path === '/auth/sessions') return sessions(request, env);
@@ -723,6 +883,7 @@ export async function handleAuth(request, env, path, { accountErasureStatements 
   switch (path) {
     case '/auth/register': return register(request, env, body);
     case '/auth/login': return login(request, env, body);
+    case '/auth/firebase': return firebaseSignIn(request, env, body);
     case '/auth/logout': return logout(request, env);
     case '/auth/logout-all': return logout(request, env, true);
     case '/auth/verification/request': return requestEmail(request, env, body, 'verify_email');

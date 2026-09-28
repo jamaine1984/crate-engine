@@ -1,5 +1,5 @@
 import {HttpError,json,readJson,id,now,database,audit,requireMutationOrigin} from './common.mjs';
-import {requireUser,requireRole} from './identity.mjs';
+import {requireUser,requireRole,firebaseClientConfig} from './identity.mjs';
 import {validateTerms} from './commerce.mjs';
 
 export const DISABLED_PROVIDER_FLAGS = new Set(['PAYMENTS_ENABLED','STRIPE_ENABLED','GOOGLE_ADS_ENABLED','H5_GAME_ADS_ENABLED','REWARDED_ADS_ENABLED','INTERSTITIAL_ADS_ENABLED','CREATOR_PAYOUTS_ENABLED','PREMIUM_SALES_ENABLED']);
@@ -24,8 +24,8 @@ async function published(db,gameId){const game=await db.prepare("SELECT * FROM p
 export async function handleData(request,env,path){
  const method=request.method,url=new URL(request.url),db=database(env);
  if(!['GET','HEAD','OPTIONS'].includes(method))requireMutationOrigin(request,env);
- if(path==='/config'&&method==='GET'){const f=await flags(env);return json({flags:f,auth:{email:Boolean(env.AUTH_SECRET&&env.MAIL_FROM&&env.MAIL_API_KEY&&env.MAIL_PROVIDER==='resend'),google:Boolean(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET)},limits:LIMITS,gameOrigin:env.GAME_CONTENT_ORIGIN||null});}
- if(path==='/me'&&method==='GET'){try{return json({user:await requireUser(request,env)});}catch(error){if(error.status===401)return json({user:null});throw error;}}
+ if(path==='/config'&&method==='GET'){const f=await flags(env);return json({flags:f,auth:(()=>{const firebase=firebaseClientConfig(env);return {email:Boolean(firebase)||Boolean(env.AUTH_SECRET&&env.MAIL_FROM&&env.MAIL_API_KEY&&env.MAIL_PROVIDER==='resend'),google:Boolean(firebase)||Boolean(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET),firebase};})(),limits:LIMITS,gameOrigin:env.GAME_CONTENT_ORIGIN||null});}
+ if(path==='/me'&&method==='GET'){try{const user=await requireUser(request,env);const link=await db.prepare('SELECT sign_in_provider FROM platform_firebase_accounts WHERE user_id=?').bind(user.id).first();user.signInProvider=link?link.sign_in_provider:'local';return json({user});}catch(error){if(error.status===401)return json({user:null});throw error;}}
  if(path==='/catalog'&&method==='GET'){
   const q=text(url.searchParams.get('q'),100),kind=url.searchParams.get('kind'),page=Math.max(1,Math.min(1000,Number(url.searchParams.get('page'))||1));
   const clauses=["status='published'"],params=[];
