@@ -106,11 +106,12 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  function select(id){alive();if(isDragging)cancelActiveTransform();selected=id;updateSelection();return selected;}
  function frameSelection(){if(mode!=='edit')return;const object=view.objects.get(selected)||view.root,box=new THREE.Box3().setFromObject(object);if(box.isEmpty())return;const center=box.getCenter(new THREE.Vector3()),size=Math.max(box.getSize(new THREE.Vector3()).length(),2);controls.target.copy(center);view.camera.position.copy(center).add(new THREE.Vector3(1,.65,1).normalize().multiplyScalar(size*1.3));view.camera.near=.05;view.camera.far=Math.max(3000,size*10);view.camera.updateProjectionMatrix();controls.update();dirty=true;}
  const cameraPosition=new THREE.Vector3(),cameraRotation=new THREE.Quaternion();
- function followPreviewCamera(){if(!previewCamera)return;previewCamera.updateWorldMatrix(true,false);view.camera.position.copy(previewCamera.getWorldPosition(cameraPosition));view.camera.quaternion.copy(previewCamera.getWorldQuaternion(cameraRotation));}
+ let sideViewFollow=null,sideViewFollowOffset=0,sideViewCameraX=0;
+ function followPreviewCamera(dt=0){if(!previewCamera)return;previewCamera.updateWorldMatrix(true,false);view.camera.position.copy(previewCamera.getWorldPosition(cameraPosition));view.camera.quaternion.copy(previewCamera.getWorldQuaternion(cameraRotation));if(sideViewFollow){const player=view.objects.get(sideViewFollow.id);if(player){player.updateWorldMatrix(true,false);const desired=player.getWorldPosition(cameraPosition).x+sideViewFollowOffset,blend=1-Math.exp(-7*Math.max(0,dt));sideViewCameraX+=(desired-sideViewCameraX)*blend;view.camera.position.x=sideViewCameraX;}}}
  function beginPreviewCamera(){
   editorCameraState={position:view.camera.position.clone(),quaternion:view.camera.quaternion.clone(),target:controls.target.clone(),fov:view.camera.fov,near:view.camera.near,far:view.camera.far};
   previewCamera=view.gameCamera();controls.enabled=!previewCamera;
-  if(previewCamera){view.camera.fov=previewCamera.fov;view.camera.near=previewCamera.near;view.camera.far=previewCamera.far;view.camera.updateProjectionMatrix();followPreviewCamera();}
+  if(previewCamera){view.camera.fov=previewCamera.fov;view.camera.near=previewCamera.near;view.camera.far=previewCamera.far;view.camera.updateProjectionMatrix();sideViewFollow=store.project.entities.find(entity=>entity.components.player?.sideView&&physics?.bodies.has(entity.id))||null;sideViewCameraX=view.camera.position.x;if(sideViewFollow){const player=view.objects.get(sideViewFollow.id);player.updateWorldMatrix(true,false);sideViewFollowOffset=sideViewCameraX-player.getWorldPosition(cameraPosition).x;}followPreviewCamera();}
  }
  function restoreEditorCamera(){
   previewCamera=null;controls.enabled=true;if(!editorCameraState)return;const saved=editorCameraState;editorCameraState=null;
@@ -120,7 +121,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  }
  function loop(time){
   if(disposed)return;raf=requestAnimationFrame(loop);const dt=Math.min((time-last)/1000,.05);last=time;if(document.hidden)return;if(controls.enabled)controls.update();
-  if(mode==='play'){physics?.step(dt);view.tick(dt);followPreviewCamera();dirty=true;}
+  if(mode==='play'){physics?.step(dt);view.tick(dt);followPreviewCamera(dt);dirty=true;}
   if(dirty||isDragging){view.render();frames++;dirty=false;}
   if(time-statsAt>1000){onStats({fps:Math.round(frames*1000/(time-statsAt)),drawCalls:view.renderer.info.render.calls,triangles:view.renderer.info.render.triangles,entities:store.project.entities.length,mode});statsAt=time;frames=0;}
  }

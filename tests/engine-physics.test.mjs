@@ -60,6 +60,14 @@ test('front-view player meshes collide on the same thin depth plane as vector pl
  const f=await fixture(t,[floor,hero]);f.frames(300);const body=f.physics.bodies.get('art-player').translation();
  assert.ok(body.y>1.2,`The hand-shaped player should land on the floor; Y=${body.y}`);assert.ok(Math.abs(body.z+.06)<.002,`Player depth should stay fixed; Z=${body.z}`);
 });
+test('side-view custom-mesh player jumps from and lands on the custom platform',async t=>{
+ const floor={type:'customMesh',id:'jump-floor',position:[0,-.2,0],shape:{paths:[{points:[[-8,-.2],[8,-.2],[8,.2],[-8,.2]],color:'#52764f',depth:.03}]},components:{rigidbody:{type:'static'}}};
+ const hero={type:'customMesh',id:'jump-player',position:[0,1.7,-.06],scale:[1.15,1.15,1],shape:{paths:[{points:[[-.4,-1.25],[.3,-1.25],[.4,.2],[.2,1.43],[-.2,1.3],[-.4,.1]],color:'#4c8e78',depth:.14}]},components:{player:{speed:7,jump:10,sideView:true},rigidbody:{type:'dynamic'}}};
+ const f=await fixture(t,[floor,hero]);f.frames(180);const before=f.physics.bodies.get('jump-player').translation();f.input.send('keydown','Space');f.physics.step(1/60);f.input.send('keyup','Space');
+ assert.ok(f.physics.bodies.get('jump-player').linvel().y>9,`Grounded player should jump, Y velocity=${f.physics.bodies.get('jump-player').linvel().y}`);
+ f.frames(30);const airborne=f.physics.bodies.get('jump-player').translation();assert.ok(airborne.y>before.y+2,`Player should rise from the mesh platform; before=${before.y}, after=${airborne.y}`);assert.ok(Math.abs(airborne.z+.06)<.002);
+ f.frames(180);const landed=f.physics.bodies.get('jump-player').translation();assert.ok(landed.y>before.y-.12&&landed.y<before.y+.12,`Player should return to its platform; before=${before.y}, landed=${landed.y}`);assert.ok(Math.abs(landed.z+.06)<.002);
+});
 test('blur also cancels an unconsumed jump press', async t => {
   const f = await fixture(t, [{ type: 'box', id: 'player', position: [4, .5, 0], components: { player: { jump: 6 }, rigidbody: { type: 'dynamic', restitution: 0 } } }]);
   f.frames(30); f.input.send('keydown', 'Space'); f.input.send('blur'); f.physics.step(1 / 60); assert.ok(f.physics.bodies.get('player').linvel().y < 1, 'Blurred window should not trigger a queued jump');
