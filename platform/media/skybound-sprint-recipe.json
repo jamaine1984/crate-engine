@@ -1,0 +1,1011 @@
+{
+  "version": 1,
+  "seed": "skybound-sprint-v1",
+  "operations": [
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Runway · left and right",
+        "position": [
+          0,
+          -0.35,
+          0
+        ],
+        "scale": [
+          24,
+          0.7,
+          3
+        ],
+        "material": {
+          "color": "#273f55",
+          "roughness": 0.7
+        },
+        "components": {
+          "rigidbody": {
+            "type": "static",
+            "friction": 0.9,
+            "restitution": 0
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Runway bright trim",
+        "position": [
+          0,
+          0.025,
+          1.45
+        ],
+        "scale": [
+          24,
+          0.05,
+          0.16
+        ],
+        "material": {
+          "color": "#43e1e8",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Runway back trim",
+        "position": [
+          0,
+          0.025,
+          -1.45
+        ],
+        "scale": [
+          24,
+          0.05,
+          0.16
+        ],
+        "material": {
+          "color": "#43e1e8",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Jump platform 1",
+        "position": [
+          -5,
+          1.2,
+          0
+        ],
+        "scale": [
+          3.2,
+          0.4,
+          2.3
+        ],
+        "material": {
+          "color": "#eb8b62",
+          "roughness": 0.7
+        },
+        "components": {
+          "rigidbody": {
+            "type": "static",
+            "friction": 0.9,
+            "restitution": 0
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Platform glow 1",
+        "position": [
+          -5,
+          1.43,
+          0
+        ],
+        "scale": [
+          3.2,
+          0.06,
+          2.35
+        ],
+        "material": {
+          "color": "#f7e9a3",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Sky star 1",
+        "position": [
+          -5,
+          2.3200000000000003,
+          0
+        ],
+        "scale": [
+          0.42,
+          0.42,
+          0.42
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 10
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Jump platform 2",
+        "position": [
+          -1.2,
+          2.25,
+          0
+        ],
+        "scale": [
+          2.8,
+          0.4,
+          2.3
+        ],
+        "material": {
+          "color": "#edb35f",
+          "roughness": 0.7
+        },
+        "components": {
+          "rigidbody": {
+            "type": "static",
+            "friction": 0.9,
+            "restitution": 0
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Platform glow 2",
+        "position": [
+          -1.2,
+          2.48,
+          0
+        ],
+        "scale": [
+          2.8,
+          0.06,
+          2.35
+        ],
+        "material": {
+          "color": "#f7e9a3",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Sky star 2",
+        "position": [
+          -1.2,
+          3.37,
+          0
+        ],
+        "scale": [
+          0.42,
+          0.42,
+          0.42
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 10
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Jump platform 3",
+        "position": [
+          2.8,
+          1.25,
+          0
+        ],
+        "scale": [
+          3,
+          0.4,
+          2.3
+        ],
+        "material": {
+          "color": "#6ed5c3",
+          "roughness": 0.7
+        },
+        "components": {
+          "rigidbody": {
+            "type": "static",
+            "friction": 0.9,
+            "restitution": 0
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Platform glow 3",
+        "position": [
+          2.8,
+          1.48,
+          0
+        ],
+        "scale": [
+          3,
+          0.06,
+          2.35
+        ],
+        "material": {
+          "color": "#f7e9a3",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Sky star 3",
+        "position": [
+          2.8,
+          2.37,
+          0
+        ],
+        "scale": [
+          0.42,
+          0.42,
+          0.42
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 10
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Jump platform 4",
+        "position": [
+          6.8,
+          2.3,
+          0
+        ],
+        "scale": [
+          3,
+          0.4,
+          2.3
+        ],
+        "material": {
+          "color": "#d789df",
+          "roughness": 0.7
+        },
+        "components": {
+          "rigidbody": {
+            "type": "static",
+            "friction": 0.9,
+            "restitution": 0
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Platform glow 4",
+        "position": [
+          6.8,
+          2.53,
+          0
+        ],
+        "scale": [
+          3,
+          0.06,
+          2.35
+        ],
+        "material": {
+          "color": "#f7e9a3",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Sky star 4",
+        "position": [
+          6.8,
+          3.42,
+          0
+        ],
+        "scale": [
+          0.42,
+          0.42,
+          0.42
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 10
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "capsule",
+        "name": "Runner · arrows/WASD + Space",
+        "position": [
+          -9,
+          1.1,
+          0
+        ],
+        "scale": [
+          0.7,
+          0.9,
+          0.7
+        ],
+        "material": {
+          "color": "#ff9758",
+          "roughness": 0.7
+        },
+        "components": {
+          "rigidbody": {
+            "type": "dynamic",
+            "mass": 1,
+            "friction": 0.8,
+            "restitution": 0
+          },
+          "player": {
+            "speed": 6,
+            "jump": 6.5
+          }
+        }
+      },
+      "key": "runner"
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Runner visor",
+        "position": [
+          0,
+          0.47,
+          0.53
+        ],
+        "scale": [
+          0.37,
+          0.18,
+          0.12
+        ],
+        "material": {
+          "color": "#2fd7df",
+          "roughness": 0.7
+        }
+      },
+      "parentKey": "runner"
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Runway star 1",
+        "position": [
+          -7,
+          0.82,
+          0
+        ],
+        "scale": [
+          0.35,
+          0.35,
+          0.35
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 5
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Runway star 2",
+        "position": [
+          -3,
+          0.82,
+          0
+        ],
+        "scale": [
+          0.35,
+          0.35,
+          0.35
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 5
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Runway star 3",
+        "position": [
+          1,
+          0.82,
+          0
+        ],
+        "scale": [
+          0.35,
+          0.35,
+          0.35
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 5
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Runway star 4",
+        "position": [
+          5,
+          0.82,
+          0
+        ],
+        "scale": [
+          0.35,
+          0.35,
+          0.35
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 5
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Hop obstacle",
+        "position": [
+          0.8,
+          0.43,
+          0
+        ],
+        "scale": [
+          0.8,
+          0.86,
+          2.1
+        ],
+        "material": {
+          "color": "#b45673",
+          "roughness": 0.7
+        },
+        "components": {
+          "rigidbody": {
+            "type": "static",
+            "friction": 0.9,
+            "restitution": 0
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Goal left post",
+        "position": [
+          9.5,
+          1.15,
+          0
+        ],
+        "scale": [
+          0.35,
+          2.3,
+          2.2
+        ],
+        "material": {
+          "color": "#57e5ca",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Goal right post",
+        "position": [
+          10.8,
+          1.15,
+          0
+        ],
+        "scale": [
+          0.35,
+          2.3,
+          2.2
+        ],
+        "material": {
+          "color": "#57e5ca",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Goal lintel",
+        "position": [
+          10.15,
+          2.35,
+          0
+        ],
+        "scale": [
+          1.65,
+          0.34,
+          2.2
+        ],
+        "material": {
+          "color": "#57e5ca",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Finish star · 100 points",
+        "position": [
+          10.15,
+          1.15,
+          0
+        ],
+        "scale": [
+          0.7,
+          0.7,
+          0.7
+        ],
+        "material": {
+          "color": "#ffe26b",
+          "roughness": 0.7
+        },
+        "components": {
+          "collectible": {
+            "value": 100
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "box",
+        "name": "Sky backdrop",
+        "position": [
+          0,
+          4,
+          -7.5
+        ],
+        "scale": [
+          30,
+          12,
+          0.12
+        ],
+        "material": {
+          "color": "#25466d",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Cloud 1",
+        "position": [
+          -10,
+          4.8,
+          -6.8
+        ],
+        "scale": [
+          2.7,
+          0.55,
+          0.45
+        ],
+        "material": {
+          "color": "#daedf0",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Cloud 2",
+        "position": [
+          -3,
+          5.5,
+          -6.8
+        ],
+        "scale": [
+          3.4,
+          0.55,
+          0.45
+        ],
+        "material": {
+          "color": "#daedf0",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Cloud 3",
+        "position": [
+          5,
+          4.8,
+          -6.8
+        ],
+        "scale": [
+          2.8,
+          0.55,
+          0.45
+        ],
+        "material": {
+          "color": "#daedf0",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Cloud 4",
+        "position": [
+          10,
+          6,
+          -6.8
+        ],
+        "scale": [
+          2.9,
+          0.55,
+          0.45
+        ],
+        "material": {
+          "color": "#daedf0",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "cylinder",
+        "name": "Distant peak 1",
+        "position": [
+          -9,
+          1.05,
+          -6.4
+        ],
+        "scale": [
+          2.3,
+          2.5,
+          0.7
+        ],
+        "material": {
+          "color": "#3b6380",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "cylinder",
+        "name": "Distant peak 2",
+        "position": [
+          -4,
+          1.4000000000000001,
+          -6.4
+        ],
+        "scale": [
+          2.3,
+          3.2,
+          0.7
+        ],
+        "material": {
+          "color": "#3b6380",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "cylinder",
+        "name": "Distant peak 3",
+        "position": [
+          2,
+          1.1500000000000001,
+          -6.4
+        ],
+        "scale": [
+          2.3,
+          2.7,
+          0.7
+        ],
+        "material": {
+          "color": "#3b6380",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "cylinder",
+        "name": "Distant peak 4",
+        "position": [
+          7,
+          1.55,
+          -6.4
+        ],
+        "scale": [
+          2.3,
+          3.5,
+          0.7
+        ],
+        "material": {
+          "color": "#3b6380",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "cylinder",
+        "name": "Tree trunk 1",
+        "position": [
+          -10.5,
+          0.6,
+          -2.8
+        ],
+        "scale": [
+          0.24,
+          1.2,
+          0.24
+        ],
+        "material": {
+          "color": "#654e55",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Tree canopy 1",
+        "position": [
+          -10.5,
+          1.65,
+          -2.8
+        ],
+        "scale": [
+          1.15,
+          1.4,
+          0.7
+        ],
+        "material": {
+          "color": "#367c83",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "cylinder",
+        "name": "Tree trunk 2",
+        "position": [
+          -7.5,
+          0.6,
+          -2.8
+        ],
+        "scale": [
+          0.24,
+          1.2,
+          0.24
+        ],
+        "material": {
+          "color": "#654e55",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Tree canopy 2",
+        "position": [
+          -7.5,
+          1.65,
+          -2.8
+        ],
+        "scale": [
+          1.15,
+          1.4,
+          0.7
+        ],
+        "material": {
+          "color": "#367c83",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "cylinder",
+        "name": "Tree trunk 3",
+        "position": [
+          8.2,
+          0.6,
+          -2.8
+        ],
+        "scale": [
+          0.24,
+          1.2,
+          0.24
+        ],
+        "material": {
+          "color": "#654e55",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "sphere",
+        "name": "Tree canopy 3",
+        "position": [
+          8.2,
+          1.65,
+          -2.8
+        ],
+        "scale": [
+          1.15,
+          1.4,
+          0.7
+        ],
+        "material": {
+          "color": "#367c83",
+          "roughness": 0.7
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "directionalLight",
+        "name": "Sunset key light",
+        "position": [
+          6,
+          12,
+          9
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "light": {
+          "color": "#fff0d1",
+          "intensity": 3
+        }
+      }
+    },
+    {
+      "op": "add",
+      "entity": {
+        "type": "camera",
+        "name": "Side-view game camera",
+        "position": [
+          0,
+          3.7,
+          16
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "rotation": [
+          -4,
+          0,
+          0
+        ]
+      }
+    }
+  ]
+}

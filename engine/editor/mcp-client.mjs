@@ -7,7 +7,12 @@ export function createEditorMcpClient({getEditor,getState,onStatus=()=>{},onLog=
  const seen=new Set(),previews=new Set();
  const status=()=>onStatus(session?{connected:true,projectId:session.projectId,allowWrites:session.allowWrites}:{connected:false,allowWrites:false});
  async function request(path,body,credential=token){
-  const response=await fetchFn(BASE+path,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+credential,...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body),credentials:'omit',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(10000)});
+  let response;
+  try{response=await fetchFn(BASE+path,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+credential,...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body),credentials:'omit',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(10000)});}
+  catch(error){
+   if(['AbortError','TimeoutError','TypeError'].includes(error?.name))throw new Error('This browser could not reach the local editor bridge at 127.0.0.1:9879. Check that the bridge is running and that this browser allows local network connections.');
+   throw error;
+  }
   if(!response.ok)throw new Error('The local editor bridge rejected the request. Check its token, origin, and session.');
   return JSON.parse(new TextDecoder().decode(await readLimitedResponse(response,512*1024,'Editor bridge response')));
  }
