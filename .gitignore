@@ -20,3 +20,4 @@ npm-debug.log*
 .platform-local/
 .dev.vars*
 engine/distribution/game-runtime.js
+!starter-library/models/
