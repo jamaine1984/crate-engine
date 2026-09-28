@@ -111,7 +111,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  function beginPreviewCamera(){
   editorCameraState={position:view.camera.position.clone(),quaternion:view.camera.quaternion.clone(),target:controls.target.clone(),fov:view.camera.fov,near:view.camera.near,far:view.camera.far};
   previewCamera=view.gameCamera();controls.enabled=!previewCamera;
-  if(previewCamera){view.camera.fov=previewCamera.fov;view.camera.near=previewCamera.near;view.camera.far=previewCamera.far;view.camera.updateProjectionMatrix();sideViewFollow=store.project.entities.find(entity=>entity.components.player?.sideView&&physics?.bodies.has(entity.id))||null;sideViewCameraX=view.camera.position.x;if(sideViewFollow){const player=view.objects.get(sideViewFollow.id);player.updateWorldMatrix(true,false);sideViewFollowOffset=sideViewCameraX-player.getWorldPosition(cameraPosition).x;}followPreviewCamera();}
+  if(previewCamera){view.camera.fov=previewCamera.fov;view.camera.near=previewCamera.near;view.camera.far=previewCamera.far;view.camera.updateProjectionMatrix();sideViewFollow=null;followPreviewCamera();sideViewFollow=store.project.entities.find(entity=>entity.components.player?.sideView&&physics?.bodies.has(entity.id))||null;sideViewCameraX=view.camera.position.x;if(sideViewFollow){const player=view.objects.get(sideViewFollow.id);player.updateWorldMatrix(true,false);sideViewFollowOffset=sideViewCameraX-player.getWorldPosition(cameraPosition).x;}}
  }
  function restoreEditorCamera(){
   previewCamera=null;controls.enabled=true;if(!editorCameraState)return;const saved=editorCameraState;editorCameraState=null;
