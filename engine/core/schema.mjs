@@ -8,10 +8,15 @@ function vec(value,fallback,min=-1e6,max=1e6){return [0,1,2].map(i=>finite(value
 function safeId(value){return typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value)?value:crypto.randomUUID();}
 export function cleanComponents(value={}){
  const result={};
- if(value.rigidbody)result.rigidbody={type:value.rigidbody.type==='dynamic'?'dynamic':'static',mass:finite(value.rigidbody.mass,1,.001,10000),restitution:finite(value.rigidbody.restitution,.2,0,1),friction:finite(value.rigidbody.friction,.7,0,10)};
+ if(value.rigidbody)result.rigidbody={type:value.rigidbody.type==='dynamic'?'dynamic':'static',mass:finite(value.rigidbody.mass,1,.001,10000),restitution:finite(value.rigidbody.restitution,.2,0,1),friction:finite(value.rigidbody.friction,.7,0,10),...(value.rigidbody.collider==='shape'?{collider:'shape'}:{})};
  if(value.spin)result.spin={speed:finite(value.spin.speed,30,-720,720)};
  if(value.collectible)result.collectible={value:Math.round(finite(value.collectible.value,1,0,1e6))};
  if(value.player)result.player={speed:finite(value.player.speed,5,.1,50),jump:finite(value.player.jump,6,0,30),...(value.player.sideView===true?{sideView:true}:{})};
+ // Gameplay rules are declarative data so editors, exports and AI models share one safe contract.
+ if(value.goal)result.goal={message:text(value.goal.message,120,'Level complete!')||'Level complete!'};
+ if(value.hazard)result.hazard={};
+ if(value.checkpoint)result.checkpoint={};
+ if(value.mover)result.mover={offset:vec(value.mover.offset,[0,2,0],-1000,1000),period:finite(value.mover.period,4,.2,120)};
  if(value.animation)result.animation={clip:text(value.animation.clip,120),autoplay:value.animation.autoplay!==false,speed:finite(value.animation.speed,1,.01,5)};
  return result;
 }
@@ -34,6 +39,8 @@ export function cleanEntity(value={}){
  const components=cleanComponents(value.components);
  if(components.player&&(!['box','sphere','cylinder','capsule','plane','model','customMesh'].includes(value.type)||components.rigidbody?.type!=='dynamic'))throw new Error('A player controller requires a renderable object with a dynamic rigid body.');
  if(components.spin&&components.rigidbody)throw new Error('Spin and rigid body components cannot be combined.');
+ if(components.mover&&(components.spin||components.player||components.rigidbody?.type==='dynamic'))throw new Error('A moving platform cannot also spin, be a player, or use a dynamic rigid body.');
+ if(components.player&&(components.goal||components.hazard||components.checkpoint))throw new Error('The player cannot also be a goal, hazard, or checkpoint.');
  return {id:safeId(value.id),name:text(value.name,100,value.type),type:value.type,parentId:value.parentId?safeId(value.parentId):null,
   position:vec(value.position,[0,.5,0]),rotation:vec(value.rotation,[0,0,0],-36000,36000),scale:vec(value.scale,[1,1,1],.001,10000),visible:value.visible!==false,
   material:{color:/^#[a-fA-F0-9]{6}$/.test(value.material?.color)?value.material.color:'#8ebfa6',metalness:finite(value.material?.metalness,.05,0,1),roughness:finite(value.material?.roughness,.65,0,1)},
@@ -43,7 +50,7 @@ export function cleanEntity(value={}){
 export function newProject(name='Untitled World'){
  return {format:FORMAT,version:VERSION,id:crypto.randomUUID(),name:text(name,120,'Untitled World'),settings:cleanSettings(),entities:[],assets:[],createdAt:Date.now(),updatedAt:Date.now()};
 }
-export function cleanSettings(value={}){return {background:/^#[a-fA-F0-9]{6}$/.test(value.background)?value.background:'#15251e',gravity:finite(value.gravity,-9.81,-100,100),ambientIntensity:finite(value.ambientIntensity,.8,0,10),exposure:finite(value.exposure,1.15,.1,5),shadows:value.shadows!==false,quality:['low','balanced','high'].includes(value.quality)?value.quality:'balanced',fogDensity:finite(value.fogDensity,0,0,.2)};}
+export function cleanSettings(value={}){return {background:/^#[a-fA-F0-9]{6}$/.test(value.background)?value.background:'#15251e',gravity:finite(value.gravity,-9.81,-100,100),ambientIntensity:finite(value.ambientIntensity,.8,0,10),exposure:finite(value.exposure,1.15,.1,5),shadows:value.shadows!==false,quality:['low','balanced','high'].includes(value.quality)?value.quality:'balanced',fogDensity:finite(value.fogDensity,0,0,.2),killY:finite(value.killY,-30,-10000,10000),lives:Math.round(finite(value.lives,0,0,99))};}
 function migrateLegacy(input){
  const project=newProject(input.name||'Imported legacy world');project.legacySource=clone(input);project.migrationWarnings=['Legacy scripts and command history are retained as source data and are never executed. Rebuild gameplay with the new components.'];
  for(const snapshot of (input.objects||[]).slice(0,5000)){

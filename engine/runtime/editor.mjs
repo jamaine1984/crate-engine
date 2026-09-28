@@ -8,6 +8,7 @@ import * as local from '../storage/local.mjs';
 import {createSceneRuntime,THREE,assetCacheKey} from './scene.mjs';
 import {createPhysics} from './physics.mjs';
 import {mountTouchControls} from './touch-controls.mjs';
+import {mountGameHud} from './game-hud.mjs';
 import {createSelectionGesture,cancelTransformGesture,preserveWorldTransform} from './editor-interactions.mjs';
 import {exportGameZip,createPortableProject,readLimitedResponse,exportOriginalModel} from '../player/export.mjs';
 
@@ -40,7 +41,7 @@ export function createOperationLock(){
 
 export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},onStats=()=>{},onLog=()=>{},onState=()=>{}}){
  let selected=null,mode='edit',physics=null,disposed=false,dirty=true,navigationApproved=false,authoringRevision=0,raf=0,last=performance.now(),frames=0,statsAt=last;
- let cloud=null,syncPromise=Promise.resolve(),syncVersion=0,syncPending=false,isDragging=false,hasChanges=false,playSnapshot=null,playPending=false,sceneError=null,touchControls=null,editorCameraState=null,previewCamera=null;
+ let cloud=null,syncPromise=Promise.resolve(),syncVersion=0,syncPending=false,isDragging=false,hasChanges=false,playSnapshot=null,playPending=false,sceneError=null,touchControls=null,hud=null,editorCameraState=null,previewCamera=null;
  const lifetime=new AbortController(),lock=createOperationLock(),assetBytes=new Map(),assetRequests=new Map();let cacheBytes=0;
  const alive=()=>{if(disposed)throw new Error('The editor has been closed.');};
  const state=()=>onState({mode,dirty:hasChanges,busy:lock.current||(playPending?'Starting preview':null),cloudId:cloud?.id||null});
@@ -79,7 +80,12 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   sceneError=null;syncPending=true;const version=++syncVersion;transform.detach();selectionBox.visible=false;
   const pending=view.sync(project);syncPromise=pending.then(result=>{if(disposed||version!==syncVersion||result?.superseded)return result;syncPending=false;updateSelection();dirty=true;return result;},error=>{if(!disposed&&version===syncVersion){syncPending=false;sceneError=error;onLog({level:'error',message:error.message});}return {error};});
  }
- const store=new ProjectStore(newProject(),project=>{hasChanges=true;navigationApproved=false;authoringRevision++;scheduleScene(project);onChange(project);state();});
+ // Crash recovery: unsaved edits are mirrored to a single browser slot shortly after each change.
+ let recoveryTimer=0,recoveryWrite=Promise.resolve();
+ function writeRecovery(){clearTimeout(recoveryTimer);recoveryTimer=0;if(disposed||!hasChanges)return recoveryWrite;const record={version:1,savedAt:Date.now(),project:store.snapshot(),cloud:cloud?{id:cloud.id,revision:cloud.revision}:null};recoveryWrite=recoveryWrite.then(()=>local.saveRecovery(record)).catch(error=>onLog({level:'warn',message:'Autosave failed: '+error.message}));return recoveryWrite;}
+ function scheduleRecovery(){if(disposed)return;clearTimeout(recoveryTimer);recoveryTimer=setTimeout(writeRecovery,1500);}
+ function discardRecovery(){clearTimeout(recoveryTimer);recoveryTimer=0;recoveryWrite=recoveryWrite.then(()=>local.clearRecovery()).catch(()=>{});return recoveryWrite;}
+ const store=new ProjectStore(newProject(),project=>{hasChanges=true;navigationApproved=false;authoringRevision++;scheduleScene(project);onChange(project);state();scheduleRecovery();});
  const worldPreviews=createWorldPreviewSession({getProject:()=>store.snapshot(),getRevision:()=>authoringRevision,apply:entities=>store.commit('Generate world',project=>project.entities.push(...entities))});
  function editable(){alive();lock.assert();if(mode!=='edit'||playPending)throw new Error('Stop the preview before changing the scene.');if(isDragging)throw new Error('Finish the current transform before continuing.');}
  async function settled(){await syncPromise;alive();if(sceneError)throw sceneError;}
@@ -100,7 +106,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  const pointerUp=event=>{if(!selectionGesture.end(event)||mode!=='edit'||lock.current||syncPending||isDragging||transform.axis)return;const rect=canvas.getBoundingClientRect();if(rect.width<=0||rect.height<=0)return;const ray=new THREE.Raycaster();ray.firstHitOnly=true;ray.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1),view.camera);const hit=ray.intersectObjects(view.root.children,true).find(item=>effectivelyVisible(item.object)&&item.object.userData.entityId);select(hit?.object.userData.entityId||null);};
  function cancelActiveTransform(){selectionGesture.cancel();if(disposed)return;if(cancelTransformGesture(transform)){isDragging=false;controls.enabled=!previewCamera;updateSelection();dirty=true;}}
  const lostPointer=()=>queueMicrotask(()=>{selectionGesture.cancel();if(isDragging)cancelActiveTransform();});
- const visibility=()=>{if(document.hidden)cancelActiveTransform();};
+ const visibility=()=>{if(document.hidden){cancelActiveTransform();if(recoveryTimer)writeRecovery();}};
  canvas.addEventListener('pointerdown',pointerDown);canvas.addEventListener('pointermove',pointerMove);canvas.addEventListener('pointerup',pointerUp);
  canvas.addEventListener('pointercancel',cancelActiveTransform);canvas.addEventListener('lostpointercapture',lostPointer);window.addEventListener('blur',cancelActiveTransform);document.addEventListener('visibilitychange',visibility);
  function select(id){alive();if(isDragging)cancelActiveTransform();selected=id;updateSelection();return selected;}
@@ -134,8 +140,9 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   for(const [id,bytes]of prepared.embedded){await local.saveAsset(id,bytes);alive();}
   const next=prepared.project;selected=null;cloud=cloudRecord;
   store.load(next);await settled();
-  hasChanges=source==='import';if(cloud)setCloudUrl();else clearCloudUrl();
+  hasChanges=source==='import'||source==='recovery';if(cloud)setCloudUrl();else clearCloudUrl();
   const keys=new Set(next.assets.map(assetCacheKey));for(const [key,bytes]of assetBytes)if(!keys.has(key)){assetBytes.delete(key);cacheBytes-=bytes.length;}
+  if(hasChanges)scheduleRecovery();else await discardRecovery();
   for(const message of next.migrationWarnings||[])onLog({level:'warn',message});state();return store.snapshot();
  }
  async function makeNew(name,{preserve=true,initial=false}={}){
@@ -163,7 +170,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  }
  async function persistLocal(){
   const snapshot=store.snapshot();for(const asset of snapshot.assets){const bytes=await resolveAsset(asset);await local.saveAsset(asset.id,bytes);alive();}
-  await local.saveProject(snapshot);alive();hasChanges=false;state();return {id:snapshot.id,name:snapshot.name};
+  await local.saveProject(snapshot);alive();hasChanges=false;await discardRecovery();state();return {id:snapshot.id,name:snapshot.name};
  }
  async function cloudLoad(id,{preserve=true}={}){
   const result=await platformApi('/projects/'+encodeURIComponent(id),{signal:lifetime.signal});alive();if(!result.project?.data)throw new Error('The cloud project is unavailable.');
@@ -191,18 +198,19 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   if(!result.project?.id||!Number.isSafeInteger(result.project.revision))throw new Error('The cloud service did not confirm the saved project revision.');
   // Scene mutations are locked for this operation; only persistence metadata
   // changes here, without adding a misleading user-edit undo step.
-  store.project.assets=structuredClone(snapshot.assets);authoringRevision++;worldPreviews.invalidate();cloud={id:result.project.id,revision:result.project.revision};setCloudUrl();hasChanges=false;
+  store.project.assets=structuredClone(snapshot.assets);authoringRevision++;worldPreviews.invalidate();cloud={id:result.project.id,revision:result.project.revision};setCloudUrl();hasChanges=false;await discardRecovery();
   onChange(store.snapshot());state();return result.project;
  }
  async function play(){
   if(mode==='play')return;if(playPending)throw new Error('Physics is still loading.');editable();playPending=true;transform.enabled=false;state();
-  try{await settled();view.assertComplete();playSnapshot=store.snapshot();view.resetAnimations();const next=await createPhysics(playSnapshot,view.objects,{onScore:score=>onLog({level:'info',message:'Score: '+score}),onLog});if(disposed){next.dispose();return;}physics=next;beginPreviewCamera();mode='play';transform.detach();grid.visible=false;selectionBox.visible=false;const player=playSnapshot.entities.find(entity=>entity.components.player&&physics.bodies.has(entity.id));touchControls=mountTouchControls(canvas.parentElement,{onInput:value=>physics?.setInput(value),enabled:!!player,sideView:player?.components.player.sideView===true});onLog({level:'info',message:'Preview running. Player components use touch / WASD / arrows and Jump / Space. Stop to select and move scene objects.'});dirty=true;state();}
-  catch(error){touchControls?.dispose();touchControls=null;physics?.dispose();physics=null;mode='edit';restoreEditorCamera();playSnapshot=null;grid.visible=true;transform.enabled=!disposed;throw error;}finally{playPending=false;if(!disposed)state();}
+  try{await settled();view.assertComplete();playSnapshot=store.snapshot();view.resetAnimations();hud?.dispose();hud=mountGameHud(canvas.parentElement,{maxLives:playSnapshot.settings.lives||0,onRestart:()=>{void stop().then(()=>play()).catch(error=>onLog({level:'error',message:error.message}));},onExit:()=>{void stop().catch(error=>onLog({level:'error',message:error.message}));}});
+ const next=await createPhysics(playSnapshot,view.objects,{onScore:score=>onLog({level:'info',message:'Score: '+score}),onLog,onEvent:event=>{hud?.handle(event);if(event.type==='win')onLog({level:'info',message:'Level complete! Score: '+event.score});else if(event.type==='lose')onLog({level:'info',message:'Game over. Score: '+event.score});}});if(disposed){next.dispose();return;}physics=next;beginPreviewCamera();mode='play';transform.detach();grid.visible=false;selectionBox.visible=false;const player=playSnapshot.entities.find(entity=>entity.components.player&&physics.bodies.has(entity.id));touchControls=mountTouchControls(canvas.parentElement,{onInput:value=>physics?.setInput(value),enabled:!!player,sideView:player?.components.player.sideView===true});onLog({level:'info',message:'Preview running. Player components use touch / WASD / arrows and Jump / Space. Stop to select and move scene objects.'});dirty=true;state();}
+  catch(error){hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();physics=null;mode='edit';restoreEditorCamera();playSnapshot=null;grid.visible=true;transform.enabled=!disposed;throw error;}finally{playPending=false;if(!disposed)state();}
  }
  async function stop(){
   alive();if(playPending)throw new Error('Physics is still loading.');if(mode!=='play')return;
   try{await lock.run('Stopping preview',async()=>{
-   touchControls?.dispose();touchControls=null;physics?.dispose();physics=null;mode='edit';restoreEditorCamera();grid.visible=true;transform.enabled=false;view.resetAnimations();state();
+   hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();physics=null;mode='edit';restoreEditorCamera();grid.visible=true;transform.enabled=false;view.resetAnimations();state();
    // The authoring store never receives simulation transforms, scores, or hidden
    // collectibles. Restore precisely the snapshot used to enter preview.
    scheduleScene(playSnapshot||store.snapshot());await settled();playSnapshot=null;updateSelection();dirty=true;
@@ -232,8 +240,20 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   saveLocal:()=>exclusive('Local save',persistLocal),listLocal:local.listProjects,
   loadLocal:id=>exclusive('Local project load',async()=>{const data=await local.getProject(id);alive();if(!data)throw new Error('Local project was not found.');return loadPrepared(await prepareProjectLoad(data),{source:'local'});}),
   saveCloud:()=>exclusive('Cloud save',cloudSave),applyProposal(proposal){editable();return store.apply(proposal);},
-  async dispose(){if(disposed)return;disposed=true;lock.close();lifetime.abort();cancelAnimationFrame(raf);observer.disconnect();touchControls?.dispose();touchControls=null;physics?.dispose();controls.dispose();transform.removeEventListener('dragging-changed',dragging);transform.removeEventListener('objectChange',objectChange);transform.removeEventListener('mouseUp',transformEnd);transform.dispose();selectionBox.geometry.dispose();selectionBox.material.dispose();grid.geometry.dispose();grid.material.dispose();canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',cancelActiveTransform);canvas.removeEventListener('lostpointercapture',lostPointer);window.removeEventListener('blur',cancelActiveTransform);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('beforeunload',beforeUnload);assetBytes.clear();cacheBytes=0;await view.dispose();}
+  async dispose(){if(disposed)return;if(recoveryTimer)await writeRecovery();disposed=true;clearTimeout(recoveryTimer);lock.close();lifetime.abort();cancelAnimationFrame(raf);observer.disconnect();hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();controls.dispose();transform.removeEventListener('dragging-changed',dragging);transform.removeEventListener('objectChange',objectChange);transform.removeEventListener('mouseUp',transformEnd);transform.dispose();selectionBox.geometry.dispose();selectionBox.material.dispose();grid.geometry.dispose();grid.material.dispose();canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',cancelActiveTransform);canvas.removeEventListener('lostpointercapture',lostPointer);window.removeEventListener('blur',cancelActiveTransform);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('beforeunload',beforeUnload);assetBytes.clear();cacheBytes=0;await view.dispose();}
  };
- try{const projectId=new URL(location.href).searchParams.get('project');if(projectId)await cloudLoad(projectId,{preserve:false});else await makeNew('Untitled World',{preserve:false,initial:true});await settled();hasChanges=false;state();return api;}
+ async function restoreRecovery(projectId){
+  let record;try{record=await local.getRecovery();}catch{return false;}alive();
+  if(!record?.project)return false;
+  const recordCloud=record.cloud&&typeof record.cloud.id==='string'&&Number.isSafeInteger(record.cloud.revision)?{id:record.cloud.id,revision:record.cloud.revision}:null;
+  if(projectId&&recordCloud?.id!==projectId){
+   // Opening a different project: keep the unsaved work as a separate local project instead of dropping it.
+   try{const copy=validateProject(record.project);copy.id=crypto.randomUUID();copy.name=(copy.name+' (recovered)').slice(0,120);await local.saveProject(copy);await local.clearRecovery();onLog({level:'info',message:'Unsaved work from another project was kept as "'+copy.name+'" in Open.'});}catch{}
+   return false;
+  }
+  try{await loadPrepared(await prepareProjectLoad(record.project),{source:'recovery',cloudRecord:recordCloud,preserve:false});hasChanges=true;scheduleRecovery();state();onLog({level:'info',message:'Restored unsaved work from '+new Date(record.savedAt).toLocaleString()+'. Save to keep it, or start a new project.'});return true;}
+  catch(error){onLog({level:'warn',message:'Unsaved work could not be restored: '+error.message});return false;}
+ }
+ try{const projectId=new URL(location.href).searchParams.get('project');const restored=await restoreRecovery(projectId);if(!restored){if(projectId)await cloudLoad(projectId,{preserve:false});else await makeNew('Untitled World',{preserve:false,initial:true});}await settled();if(!restored)hasChanges=false;state();return api;}
  catch(error){await api.dispose();throw error;}
 }
