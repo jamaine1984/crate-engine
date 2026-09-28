@@ -215,7 +215,7 @@ async function providerJson(url, init, env, cap = 1_048_576) {
   const timeout = limit(env, 'ENGINE_AI_TIMEOUT_MS', 25000, 30000);
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(url, { ...init, redirect: 'error', signal: controller.signal });
+    const response = await fetch(url, { ...init, redirect: 'manual', signal: controller.signal });
     if (!response.ok) {
       await response.body?.cancel();
       fail(502, response.status === 401 || response.status === 403 ? 'The provider rejected this credential or model permission.' :

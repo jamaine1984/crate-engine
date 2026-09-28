@@ -249,7 +249,7 @@ async function sendMail(env, user, purpose, token) {
       'idempotency-key': `auth/${await tokenHash(token)}` },
     body: JSON.stringify({ from: env.MAIL_FROM, to: [user.email], subject,
       text: `${subject}\n\n${link}\n\nThis link expires in ${verifying ? '24 hours' : '30 minutes'}. If you did not request this, ignore this message.` }),
-    signal: AbortSignal.timeout(10000), redirect: 'error' });
+    signal: AbortSignal.timeout(10000), redirect: 'manual' });
   if (!response.ok) throw new HttpError(503, 'Email could not be delivered. Try again later.', 'EMAIL_DELIVERY_FAILED');
   const receipt = await response.json().catch(() => null);
   if (!receipt?.id) throw new HttpError(503, 'Email delivery was not confirmed.', 'EMAIL_DELIVERY_FAILED');
@@ -632,7 +632,7 @@ export async function verifyGoogleIdToken(jwt, env, nonce) {
   let keys;
   try {
     const response = await fetch('https://www.googleapis.com/oauth2/v3/certs', {
-      signal: AbortSignal.timeout(10000), redirect: 'error' });
+      signal: AbortSignal.timeout(10000), redirect: 'manual' });
     if (!response.ok) throw new Error();
     keys = (await response.json()).keys;
   } catch { throw new HttpError(503, 'Google identity verification is temporarily unavailable.', 'GOOGLE_UNAVAILABLE'); }
@@ -685,7 +685,7 @@ export async function verifyFirebaseIdToken(jwt, env, { maxAuthAge = null } = {}
   } catch { throw invalidFirebase(); }
   let keys;
   try {
-    const response = await fetch(FIREBASE_KEYS_URL, { signal: AbortSignal.timeout(10000), redirect: 'error' });
+    const response = await fetch(FIREBASE_KEYS_URL, { signal: AbortSignal.timeout(10000), redirect: 'manual' });
     if (!response.ok) throw new Error();
     keys = (await response.json()).keys;
   } catch { throw new HttpError(503, 'Sign-in verification is temporarily unavailable.', 'FIREBASE_UNAVAILABLE'); }
@@ -787,7 +787,7 @@ async function deleteFirebaseUser(env, idToken) {
   try {
     response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken }),
-      signal: AbortSignal.timeout(10000), redirect: 'error' });
+      signal: AbortSignal.timeout(10000), redirect: 'manual' });
   } catch { response = null; }
   if (!response?.ok) throw new HttpError(503, 'Your sign-in account could not be removed. Try again.', 'FIREBASE_DELETE_FAILED');
 }
@@ -815,7 +815,7 @@ async function googleCallback(request, env) {
       body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET,
         code, code_verifier: verifier, grant_type: 'authorization_code',
         redirect_uri: `${appOrigin(env).origin}/api/platform/auth/google/callback` }),
-      signal: AbortSignal.timeout(10000), redirect: 'error' });
+      signal: AbortSignal.timeout(10000), redirect: 'manual' });
     if (!response.ok) throw new Error();
     tokens = await response.json();
   } catch { throw new HttpError(401, 'Google authorization could not be completed. Start again.', 'GOOGLE_EXCHANGE_FAILED'); }

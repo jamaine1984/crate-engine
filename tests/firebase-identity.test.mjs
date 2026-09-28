@@ -161,3 +161,20 @@ test('config exposes only the public Firebase web settings', async () => {
   assert.equal(capabilities.registration, true);
   assert.equal(JSON.stringify(capabilities).includes(f.env.AUTH_SECRET), false);
 });
+
+// Cloudflare Workers throws on redirect:'error', which broke every live sign-in; key fetches must use 'manual' and still refuse redirects.
+test('Firebase key download works under Workers fetch rules and refuses redirects', async () => {
+  const original = globalThis.fetch; let redirecting = false;
+  globalThis.fetch = async (url, init = {}) => {
+    if (init.redirect === 'error') throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
+    if (redirecting) return new Response(null, { status: 302, headers: { location: 'https://attacker.example/keys' } });
+    return original(url, init);
+  };
+  try {
+    const f = fixture();
+    const claims = await verifyFirebaseIdToken(await token(), f.env);
+    assert.equal(claims.sub, 'firebase-uid-1');
+    redirecting = true;
+    await assert.rejects(verifyFirebaseIdToken(await token(), f.env), reject(503, 'FIREBASE_UNAVAILABLE'));
+  } finally { globalThis.fetch = original; }
+});

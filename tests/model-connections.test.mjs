@@ -176,7 +176,7 @@ test('OpenAI explicit test only retrieves model metadata', async t => {
   const f = fixture(t), user = await actor(f), row = await connection(f, user, 'openai', 'exact-model'); enable(f);
   const calls = fetchMock(t, (url, init) => {
     assert.equal(url, 'https://api.openai.com/v1/models/exact-model'); assert.equal(init.method, 'GET');
-    assert.equal(init.headers.authorization, `Bearer ${API_KEY}`); assert.equal(init.redirect, 'error'); assert.equal(init.body, undefined);
+    assert.equal(init.headers.authorization, `Bearer ${API_KEY}`); assert.equal(init.redirect, 'manual'); assert.equal(init.body, undefined);
     return upstream({ id: 'exact-model' });
   });
   const result = await (await call(f, user, `/model-connections/${row.id}/test`, 'POST', {})).json();
@@ -245,7 +245,7 @@ test('scene summary projects asset metadata without raw bytes, URLs or arbitrary
 test('OpenAI makes one Responses request with store:false and no tools or agent loop', async t => {
   const f = fixture(t), user = await actor(f), row = await connection(f, user); enable(f);
   const calls = fetchMock(t, (url, init) => {
-    assert.equal(url, 'https://api.openai.com/v1/responses'); assert.equal(init.method, 'POST'); assert.equal(init.redirect, 'error');
+    assert.equal(url, 'https://api.openai.com/v1/responses'); assert.equal(init.method, 'POST'); assert.equal(init.redirect, 'manual');
     const sent = JSON.parse(init.body); assert.equal(sent.model, 'user-supplied-model'); assert.equal(sent.store, false);
     assert.equal(sent.max_output_tokens, 512); assert.equal(sent.tools, undefined); assert.equal(sent.background, undefined);
     assert.equal(sent.input.includes(API_KEY), false); assert.equal(sent.input.includes('existing-model'), true); assert.equal(sent.input.includes('private-model-url'), false);
