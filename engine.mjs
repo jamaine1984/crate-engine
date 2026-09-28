@@ -2628,7 +2628,7 @@ function undo() {
   _redoStack.push(action);
   if (action.type === 'add' && action.object) {
     scene.remove(action.object);
-    objects = objects.filter(function(o) { return o !== action.object; });
+    objects.splice(0, objects.length, ...objects.filter(function(o) { return o !== action.object; }));
     showNotification('↩ Undo: removed ' + (action.name || 'object'));
   } else if (action.type === 'remove' && action.object) {
     scene.add(action.object);
@@ -2647,7 +2647,7 @@ function redo() {
     showNotification('↪ Redo: added ' + (action.name || 'object'));
   } else if (action.type === 'remove' && action.object) {
     scene.remove(action.object);
-    objects = objects.filter(function(o) { return o !== action.object; });
+    objects.splice(0, objects.length, ...objects.filter(function(o) { return o !== action.object; }));
     showNotification('↪ Redo: removed ' + (action.name || 'object'));
   }
 }
@@ -16479,7 +16479,7 @@ function restoreProjectScripts(scripts = []) {
   if (!Array.isArray(scripts) || !scripts.length) return;
   scripts.forEach((script, index) => {
     setTimeout(() => {
-      window._installUserScriptPreset?.(script)?.catch?.((err) => console.warn('[Project] Script restore failed:', err));
+      window._installUserScriptPreset?.({...script, enabled:false})?.catch?.((err) => console.warn('[Project] Script restore failed:', err));
     }, index * 30);
   });
 }
@@ -16606,6 +16606,7 @@ function serializeScene() {
 
 window._serializeCrateProject = serializeScene;
 window._deserializeCrateProject = deserializeScene;
+import('./platform/engine/cloud-projects.mjs').then(m => m.attachCloudProjects()).catch(e => console.warn('[Cloud projects]', e.message));
 
 // Compress scene data for shorter URLs
 function compressScene(str) {
@@ -16829,36 +16830,7 @@ function summarizePlayableForPublish(playable) {
 }
 
 async function syncPublishedGameToCloudflare(gameData) {
-  var payload = {
-    title: gameData.title,
-    description: gameData.description,
-    slug: gameData.slug,
-    tags: gameData.tags,
-    sceneData: gameData.sceneData,
-    projectData: gameData.projectData,
-    objects: gameData.objects,
-    commands: gameData.commands,
-    scripts: gameData.scripts,
-    components: gameData.components,
-    componentTypes: gameData.componentTypes,
-    cloudAssets: gameData.cloudAssets,
-    playable: summarizePlayableForPublish(gameData.playable),
-    assetBaseUrl: gameData.playable?.assetBaseUrl || window.CRATESHIP_ASSET_BASE_URL || document.querySelector('meta[name="crate-asset-base"]')?.content || 'https://crateship-games-assets.pages.dev',
-    ownerToken: gameData.ownerToken || getPublishOwnerToken(),
-    creator: gameData.creator || getPublishProfile(),
-    visibility: gameData.visibility || 'public',
-  };
-  var response = await fetch('/api/games/publish', {
-    method: 'POST',
-    headers: getPublishedAuthHeaders(payload.ownerToken, true),
-    body: JSON.stringify(payload),
-  });
-  var result = null;
-  try { result = await response.json(); } catch(e) { result = null; }
-  if (!response.ok || !result?.ok) {
-    throw new Error(result?.error || ('Publish API failed with HTTP ' + response.status));
-  }
-  return result.game || { url: result.url, slug: gameData.slug };
+  throw new Error('Direct publishing is unavailable. Save your .crate project, then use the developer dashboard to submit a scanned build for review.');
 }
 
 async function deletePublishedGameFromCloudflare(slug, ownerToken) {
@@ -17092,85 +17064,31 @@ async function loadPublishedSceneFromCloudflare(slug) {
 async function publishSceneToLocalLibrary(options) {
   options = options || {};
   var data = serializeScene();
-  if (!data) {
-    logOutput('warn', 'Nothing to publish - build something first.');
-    return null;
+  if (!data) throw new Error('The scene is not ready to save.');
+  var project = JSON.parse(data);
+  if (project.format !== CRATE_PROJECT_FORMAT || project.version !== CRATE_PROJECT_VERSION) {
+    throw new Error('The project format could not be confirmed. Export a .crate backup before continuing.');
   }
-  var project = null;
-  try { project = JSON.parse(data); } catch(e) { project = { commands: sceneHistory.slice(), objects: [] }; }
   var title = String(options.title || project.name || 'Untitled Game').trim() || 'Untitled Game';
-  var slug = slugifyPublishedGame(options.slug || title);
-  var ownerToken = options.ownerToken || getPublishOwnerToken();
-  var creator = options.creator || getPublishProfile();
-  var visibility = options.visibility === 'unlisted' ? 'unlisted' : 'public';
-  var publishedCloudAssets = [];
-  var publicAssetPrep = await preparePublishedProjectCloudAssets(project, slug);
-  if (publicAssetPrep?.project) {
-    project = publicAssetPrep.project;
-    data = JSON.stringify(project);
-    publishedCloudAssets = Array.isArray(publicAssetPrep.assets) ? publicAssetPrep.assets : [];
+  var savedAt = new Date().toISOString();
+  var saves = JSON.parse(localStorage.getItem('crate-saves') || '[]');
+  if (!Array.isArray(saves)) throw new Error('Existing local saves could not be read. Download a .crate backup before continuing.');
+  // Preserve the exact v3 project in the existing local Save / Load library.
+  // The generated display name is safe for the legacy save-list renderer.
+  saves.push({ name: 'Review draft ' + savedAt, date: savedAt,
+    objectCount: Array.isArray(project.objects) ? project.objects.length : 0,
+    data: data, commands: Array.isArray(project.commands) ? project.commands.slice() : [] });
+  localStorage.setItem('crate-saves', JSON.stringify(saves));
+  var draft = { status: 'draft', title: title, projectData: data, localSaved: true,
+    savedAt: savedAt, cloudStatus: 'not-attempted', reviewUrl: '/developer/games/new' };
+  window._lastReviewDraft = draft;
+  // This compatibility hook does not confirm its outcome; never claim a cloud save.
+  if (options.sync !== false && typeof window._saveCloudCrateProject === 'function') {
+    try { await window._saveCloudCrateProject(); draft.cloudStatus = 'attempted'; }
+    catch (error) { draft.cloudStatus = 'failed'; draft.cloudError = error?.message || 'Cloud save unavailable'; }
   }
-  var encoded = compressScene(data);
-  var shareUrl = window.location.origin + '/play?published=' + encodeURIComponent(slug) + '#' + encoded;
-  var componentCounts = countProjectComponentsForPublish(project);
-  var playable = null;
-  try {
-    playable = await window._exportPlayablePackage?.({ download: false, title: title, project: project });
-  } catch(e) {
-    console.warn('[Publish] Playable package generation failed:', e);
-  }
-  var gameData = {
-    format: 'crate-published-game',
-    version: 2,
-    title: title,
-    description: String(options.description || '').trim(),
-    slug: slug,
-    tags: Array.isArray(options.tags) ? options.tags : String(options.tags || '').split(',').map(function(tag) { return tag.trim(); }).filter(Boolean),
-    sceneData: encoded,
-    projectData: data,
-    shareUrl: shareUrl,
-    playable: playable || null,
-    objects: Array.isArray(project.objects) ? project.objects.length : objects.length,
-    commands: Array.isArray(project.commands) ? project.commands.length : sceneHistory.length,
-    scripts: Array.isArray(project.userScripts) ? project.userScripts.length : 0,
-    components: componentCounts.total,
-    componentTypes: componentCounts.byType,
-    cloudAssets: publishedCloudAssets,
-    ownerToken: ownerToken,
-    creator: creator,
-    creatorName: creator?.name || '',
-    creatorUrl: creator?.website || '',
-    visibility: visibility,
-    publishedAt: Date.now(),
-  };
-  var library = getPublishedGamesLibrary().filter(function(item) { return item && item.slug !== slug; });
-  library.push(gameData);
-  savePublishedGamesLibrary(library);
-  window._lastPublishedGame = gameData;
-  if (options.sync !== false) {
-    try {
-      var cloudGame = await syncPublishedGameToCloudflare(gameData);
-      gameData.cloudStatus = 'synced';
-      gameData.cloud = cloudGame;
-      gameData.shareUrl = cloudGame.url || gameData.shareUrl;
-      library = getPublishedGamesLibrary().filter(function(item) { return item && item.slug !== slug; });
-      library.push(gameData);
-      savePublishedGamesLibrary(library);
-      window._lastPublishedGame = gameData;
-      logOutput('ok', 'Published "' + title + '" to Cloudflare library.');
-    } catch(e) {
-      gameData.cloudStatus = 'local-only';
-      gameData.cloudError = e?.message || String(e || 'Cloud publish failed');
-      library = getPublishedGamesLibrary().filter(function(item) { return item && item.slug !== slug; });
-      library.push(gameData);
-      savePublishedGamesLibrary(library);
-      window._lastPublishedGame = gameData;
-      logOutput('warn', 'Saved local publish link. Cloud sync failed: ' + gameData.cloudError);
-    }
-  } else {
-    logOutput('ok', 'Published "' + title + '" to your game library.');
-  }
-  return gameData;
+  logOutput('ok', 'Local .crate draft saved. Open the developer dashboard to prepare a build for review. Nothing has been published.');
+  return draft;
 }
 
 function showPublishedGamesLibrary() {
@@ -17537,167 +17455,54 @@ window._savePublishProfile = savePublishProfile;
 
 // === PUBLISH TO .COM ===
 function publishScene() {
-  var data = serializeScene();
-  if (!data) {
-    logOutput('warn', '⚠ Nothing to publish — build something first!');
-    return;
-  }
-
   var old = document.getElementById('publish-modal');
   if (old) old.remove();
-  
   var modal = document.createElement('div');
   modal.id = 'publish-modal';
-  Object.assign(modal.style, {
-    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.85)', zIndex: '10006', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace"
-  });
-  
-  // Generate a unique slug
-  var slug = 'game-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-  var existing = JSON.parse(localStorage.getItem('crate_published_games') || '[]');
-  var profile = getPublishProfile();
-  
-  modal.innerHTML = 
-    '<div style="background:#111;border:1px solid #252525;border-radius:16px;padding:32px;max-width:520px;width:90%;text-align:center">' +
-    '<div style="font-size:1.5rem;margin-bottom:8px">🚀 Publish to .com</div>' +
-    '<p style="color:#888;font-size:0.8rem;margin-bottom:20px">Your game goes live at crateshipgames.com — playable by anyone, anywhere.</p>' +
-    
-    '<div style="text-align:left;margin-bottom:16px">' +
-    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Game Title</label>' +
-    '<input id="pub-title" placeholder="My Awesome Game" value="" style="width:100%;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none">' +
-    '</div>' +
-    
-    '<div style="text-align:left;margin-bottom:16px">' +
-    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Description</label>' +
-    '<textarea id="pub-desc" placeholder="A short description of your game..." style="width:100%;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none;resize:vertical;min-height:60px"></textarea>' +
-    '</div>' +
-    
-    '<div style="text-align:left;margin-bottom:16px">' +
-    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Your URL</label>' +
-    '<div style="display:flex;align-items:center;gap:0;margin-top:4px">' +
-    '<span style="padding:10px;background:#0a0a0f;border:1px solid #333;border-right:none;border-radius:8px 0 0 8px;color:#555;font-size:0.8rem;white-space:nowrap">crateshipgames.com/play/</span>' +
-    '<input id="pub-slug" value="' + slug + '" style="flex:1;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:0 8px 8px 0;color:#4ade80;font-family:inherit;font-size:0.8rem;outline:none">' +
-    '</div></div>' +
-    
-    '<div style="text-align:left;margin-bottom:20px">' +
-    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Tags</label>' +
-    '<input id="pub-tags" placeholder="rpg, fantasy, multiplayer" style="width:100%;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none">' +
-    '</div>' +
-
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;margin-bottom:16px">' +
-    '<div><label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Creator</label><input id="pub-creator" placeholder="Studio or creator name" value="' + escapeProjectHtml(profile.name) + '" style="width:100%;box-sizing:border-box;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none"></div>' +
-    '<div><label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Website</label><input id="pub-creator-url" placeholder="https://example.com" value="' + escapeProjectHtml(profile.website) + '" style="width:100%;box-sizing:border-box;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none"></div>' +
-    '</div>' +
-
-    '<div style="text-align:left;margin-bottom:20px">' +
-    '<label style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px">Visibility</label>' +
-    '<select id="pub-visibility" style="width:100%;padding:10px;background:#0a0a0f;border:1px solid #333;border-radius:8px;color:#fff;font-family:inherit;font-size:0.85rem;margin-top:4px;outline:none"><option value="public">Public library</option><option value="unlisted">Unlisted link</option></select>' +
-    '</div>' +
-    
-    '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
-    '<button id="pub-go" style="padding:12px 28px;background:linear-gradient(135deg,#4ade80,#22c55e);color:#000;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:0.9rem;font-family:inherit">🚀 Publish Live</button>' +
-    '<button id="pub-close" style="padding:12px 28px;background:#222;color:#888;border:1px solid #333;border-radius:10px;cursor:pointer;font-family:inherit">Cancel</button>' +
-    '</div>' +
-    
-    (existing.length > 0 ? '<div style="margin-top:20px;border-top:1px solid #222;padding-top:16px"><div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Your Published Games (' + existing.length + ')</div>' + 
-    existing.slice(-5).map(function(g) { return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1a1a24"><a href="/play/' + g.slug + '" style="color:#4ade80;font-size:0.8rem;text-decoration:none">' + g.title + '</a><span style="color:#555;font-size:0.7rem">' + new Date(g.publishedAt).toLocaleDateString() + '</span></div>'; }).join('') + '</div>' : '') +
-    
-    '</div>';
-    
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100006;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;color:#eee';
+  modal.innerHTML = '<section role="dialog" aria-modal="true" aria-labelledby="pub-heading" style="background:#101913;border:1px solid #315448;border-radius:14px;padding:28px;max-width:540px;width:90%;max-height:90vh;overflow:auto;box-sizing:border-box">' +
+    '<h2 id="pub-heading" style="margin:0 0 12px">Prepare a game submission</h2>' +
+    '<p style="color:#b4c6bb;line-height:1.6">Save your current project as a local .crate draft, then create a listing in the developer dashboard. Public release requires an uploaded build, security checks, and approval.</p>' +
+    '<label for="pub-title">Project title</label><input id="pub-title" maxlength="120" placeholder="Untitled Game" style="display:block;box-sizing:border-box;width:100%;margin:8px 0 16px;padding:11px;background:#08110c;border:1px solid #315448;border-radius:7px;color:#fff">' +
+    '<p style="color:#b4c6bb;font-size:13px;line-height:1.5">Script source stays in the project. JavaScript execution in this editor is unavailable pending an isolated preview. A project backup is not a reviewed playable build.</p>' +
+    '<div id="pub-status" role="status" aria-live="polite" style="margin:16px 0;line-height:1.5"></div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap"><button id="pub-go" style="padding:11px 16px;border:0;border-radius:7px;background:#ff812c;color:#141b16;font-weight:700;cursor:pointer">Save review draft</button>' +
+    '<button id="pub-download" style="padding:11px 16px;border:1px solid #315448;border-radius:7px;background:#16291e;color:#eee;cursor:pointer">Download .crate backup</button>' +
+    '<button id="pub-close" style="padding:11px 16px;border:1px solid #315448;border-radius:7px;background:#16291e;color:#eee;cursor:pointer">Close</button></div>' +
+    '<a id="pub-review" href="/developer/games/new" target="_blank" rel="noopener" hidden style="display:none;margin-top:20px;color:#ffb77b">Continue in developer dashboard</a></section>';
   document.body.appendChild(modal);
-  
-  document.getElementById('pub-close').onclick = function() { modal.remove(); };
-  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
-  
-  document.getElementById('pub-go').onclick = async function() {
-    let auth = window._crateAuth || null;
-    if (!auth) {
-      try {
-        auth = await loadAuthModule();
-      } catch (err) {
-        logOutput('err', '⚠ Auth tools failed to load');
-        console.error('[Auth] Deferred auth load failed:', err);
-        return;
-      }
-    }
-
-    // Check auth & plan
-    if (auth.isLoggedIn && auth.isPremium) {
-      // Use server-side publish
-      var btn = document.getElementById('pub-go');
-      btn.textContent = '⏳ Publishing...'; btn.style.opacity = '0.6';
-      var title = document.getElementById('pub-title').value.trim() || 'Untitled Game';
-      var desc = document.getElementById('pub-desc').value.trim();
-      var finalSlug = document.getElementById('pub-slug').value.trim().replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-      var tags = document.getElementById('pub-tags').value.trim().split(',').map(function(t){return t.trim()}).filter(Boolean);
-      var creator = savePublishProfile({
-        name: document.getElementById('pub-creator')?.value || '',
-        website: document.getElementById('pub-creator-url')?.value || '',
-      });
-      var visibility = document.getElementById('pub-visibility')?.value === 'unlisted' ? 'unlisted' : 'public';
-      var result = null;
-      try {
-        result = await auth.publishGame({ title: title, description: desc, slug: finalSlug, tags: tags, creator: creator, visibility: visibility, sceneData: compressScene(data), objects: objects.length, commands: sceneHistory.length });
-      } catch(e) {
-        result = { error: e?.message || String(e || 'Account publish failed') };
-      }
-      if (result?.error || !result?.url) { logOutput('warn', 'Account publish unavailable. Publishing to the Cloudflare game library instead.'); }
-      if (!result?.error && result?.url) {
-      logOutput('ok', '🚀 Published at ' + result.url);
-      modal.innerHTML = '<div style="background:#111;border:1px solid #4ade80;border-radius:16px;padding:32px;max-width:480px;width:90%;text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">🎉</div><div style="font-size:1.3rem;font-weight:700;color:#4ade80;margin-bottom:8px">Published!</div><p style="color:#888;font-size:0.8rem">' + result.url + '</p><button onclick="navigator.clipboard.writeText(\'' + result.url + '\');this.textContent=\'Copied!\'" style="margin-top:12px;padding:10px 24px;background:#4ade80;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700">📋 Copy Link</button><button onclick="this.closest(\'[id=publish-modal]\').remove()" style="margin:8px;padding:10px 24px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer">Close</button></div>';
-        return;
-      }
-    } else if (auth.isLoggedIn && !auth.isPremium) {
-      // Use Cloudflare library publish during beta.
-      logOutput('info', 'Publishing to the Cloudflare game library. Premium account sync can be added later.');
-    } else if (!auth.isLoggedIn) {
-      logOutput('info', 'Publishing portable game link locally. Sign in later to sync it online.');
-    }
-  
-    var title = document.getElementById('pub-title').value.trim() || 'Untitled Game';
-    var desc = document.getElementById('pub-desc').value.trim();
-    var finalSlug = document.getElementById('pub-slug').value.trim().replace(/[^a-z0-9-]/gi, '-').toLowerCase() || slug;
-    var tags = document.getElementById('pub-tags').value.trim();
-    var creator = savePublishProfile({
-      name: document.getElementById('pub-creator')?.value || '',
-      website: document.getElementById('pub-creator-url')?.value || '',
-    });
-    var visibility = document.getElementById('pub-visibility')?.value === 'unlisted' ? 'unlisted' : 'public';
-    
-    var btn = document.getElementById('pub-go');
-    btn.textContent = '⏳ Publishing...';
-    btn.style.opacity = '0.6';
-    
-    var gameData = await publishSceneToLocalLibrary({ title: title, description: desc, slug: finalSlug, tags: tags, creator: creator, visibility: visibility });
-    if (!gameData) {
-      btn.textContent = 'Publish Live';
-      btn.style.opacity = '1';
-      return;
-    }
-    var shareUrl = gameData.shareUrl;
-    
-    setTimeout(function() {
-      modal.innerHTML = 
-        '<div style="background:#111;border:1px solid #4ade80;border-radius:16px;padding:32px;max-width:480px;width:90%;text-align:center">' +
-        '<div style="font-size:2.5rem;margin-bottom:12px">🎉</div>' +
-        '<div style="font-size:1.3rem;font-weight:700;color:#4ade80;margin-bottom:8px">Published!</div>' +
-        '<p style="color:#888;font-size:0.8rem;margin-bottom:16px">"' + title + '" is now live</p>' +
-        '<div style="background:#0a0a0f;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:16px">' +
-        '<div style="color:#555;font-size:0.7rem;margin-bottom:4px">Share this link</div>' +
-        '<input id="pub-final-url" readonly value="' + shareUrl + '" style="width:100%;padding:8px;background:transparent;border:none;color:#4ade80;font-family:inherit;font-size:0.75rem;text-align:center;outline:none" onclick="this.select()">' +
-        '</div>' +
-        '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
-        '<button onclick="navigator.clipboard.writeText(\'' + shareUrl + '\');this.textContent=\'✓ Copied!\';setTimeout(()=>this.textContent=\'📋 Copy Link\',2000)" style="padding:10px 20px;background:#4ade80;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit">📋 Copy Link</button>' +
-        '<button onclick="window.open(\'https://twitter.com/intent/tweet?text=I just published a game on Crate Engine! Play it here: ' + encodeURIComponent(shareUrl) + '\')" style="padding:10px 20px;background:#1da1f2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit">𝕏 Share</button>' +
-        '<button onclick="this.closest(\'[id=publish-modal]\').remove()" style="padding:10px 20px;background:#222;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer;font-family:inherit">Close</button>' +
-        '</div></div>';
-      
-      logOutput('ok', '🚀 Published "' + title + '" — link copied! Share it with anyone.');
-    }, 1200);
+  var status = modal.querySelector('#pub-status');
+  var button = modal.querySelector('#pub-go');
+  modal.querySelector('#pub-close').onclick = function() { modal.remove(); };
+  modal.onclick = function(event) { if (event.target === modal) modal.remove(); };
+  modal.querySelector('#pub-download').onclick = function() {
+    try {
+      var data = serializeScene();
+      if (!data) throw new Error('The scene is not ready to export.');
+      var url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+      var link = document.createElement('a');
+      link.href = url; link.download = 'crate-review-draft.crate';
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+      status.textContent = 'The .crate backup download was requested. Keep this file before leaving the editor.';
+    } catch (error) { status.textContent = 'Backup unavailable: ' + error.message; }
   };
+  button.onclick = async function() {
+    button.disabled = true; status.textContent = 'Saving a local project backup…';
+    try {
+      await publishSceneToLocalLibrary({ title: modal.querySelector('#pub-title').value });
+      status.textContent = 'Local .crate draft saved in Save / Load. Check the account save indicator for cloud status. Your game has not been submitted or published.';
+      var reviewLink = modal.querySelector('#pub-review');
+      reviewLink.hidden = false; reviewLink.style.display = 'inline-block';
+      button.textContent = 'Save another snapshot';
+    } catch (error) {
+      status.textContent = 'Local backup failed: ' + error.message + '. Download a .crate backup before continuing.';
+    } finally { button.disabled = false; }
+  };
+  modal.querySelector('#pub-title').focus();
+  return modal;
 }
+
 window._publishScene = publishScene;
 
 function showShareModal(url, cmdCount) {
@@ -18639,8 +18444,8 @@ window._showImportExport = function(tab) {
           <button id="ie-export-playable" onclick="if(window._exportPlayablePackage)window._exportPlayablePackage();this.closest('#ie-modal').remove()" style="padding:12px;background:#10251a;border:1px solid #2f7d4b;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>Playable Web Package</strong><br><span style="color:#8ecfa4;font-size:0.75rem">Single HTML with embedded project data, runtime controls, and asset-host links</span>
           </button>
-          <button id="ie-export-publish" onclick="if(window._publishLocalGame)window._publishLocalGame({title:'Untitled Game'}).then(function(){if(window._showPublishedGames)window._showPublishedGames();});this.closest('#ie-modal').remove()" style="padding:12px;background:#13233a;border:1px solid #3b82f6;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
-            <strong>Publish to Game Library</strong><br><span style="color:#93c5fd;font-size:0.75rem">Create a playable public link and save it in your published games list</span>
+          <button id="ie-export-publish" onclick="this.closest('#ie-modal').remove();if(window._publishScene)window._publishScene()" style="padding:12px;background:#13233a;border:1px solid #3b82f6;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
+            <strong>Prepare a Game Submission</strong><br><span style="color:#93c5fd;font-size:0.75rem">Save a .crate draft, then submit a build through developer review</span>
           </button>
           <button id="ie-export-library" onclick="if(window._showPublishedGames)window._showPublishedGames();this.closest('#ie-modal').remove()" style="padding:12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;cursor:pointer;text-align:left;font-size:0.85rem">
             <strong>Published Games</strong><br><span style="color:#666;font-size:0.75rem">Manage copied links, slugs, and local published builds</span>

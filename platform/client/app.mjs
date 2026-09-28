@@ -1,0 +1,130 @@
+import './styles.css';
+import {api,listOf,messageFor} from './api.mjs';
+import {esc,icon,link,btn,notice,loading,feedback,input,downloadJson} from './ui.mjs';
+import {renderShell} from './shell.mjs';
+import {needsUser,homePage,catalogPage,gamePage,authPage,loginGate,collectionPage,walletPage,profilePage,settingsPage,projectsPage,creatorsPage} from './pages.mjs';
+import {developerPage,ownerPage} from './creator-pages.mjs';
+import {docsPage,staticPage} from './content.mjs';
+import {mountIsolatedPlayer} from './player-bridge.mjs';
+import {administrationPanels} from './administration-ui.mjs';
+
+const state={user:null,config:{flags:{},auth:{},limits:{}},library:[],history:[],favoriteIds:new Set(),preferences:{},serviceError:null};
+let routeGeneration=0;let activePlayer=null;let activeSession=null;let uploadRunning=false;
+const app=document.getElementById('app');
+const clientRoots=['games','game','creators','community','support','marketplace','coming-soon','favorites','library','history','rewards','profile','settings','notifications','login','signup','forgot-password','reset-password','verify-email','engine','developer','developers','owners-portal','privacy','terms'];
+function notify(text,error=false){const el=document.createElement('div');el.className='toast'+(error?' error':'');el.textContent=text;document.getElementById('toasts').append(el);setTimeout(()=>el.remove(),6500);}
+function safeNext(){const next=new URLSearchParams(location.search).get('next')||'/profile';return next.startsWith('/')&&!next.startsWith('//')&&!next.startsWith('/api/')?next:'/profile';}
+async function refreshSession(){const data=await api('/me');state.user=data.user||null;if(state.user){const results=await Promise.allSettled([api('/library'),api('/history'),api('/preferences'),api('/favorites')]);state.library=results[0].status==='fulfilled'?listOf(results[0].value):[];state.history=results[1].status==='fulfilled'?listOf(results[1].value):[];state.preferences=results[2].status==='fulfilled'?results[2].value.preferences||{}:{};state.favoriteIds=new Set(results[3].status==='fulfilled'?listOf(results[3].value).map(g=>g.id||g.gameId):[]);state.user.preferences=state.preferences;}else{state.library=[];state.history=[];state.favoriteIds=new Set();state.preferences={};}document.documentElement.dataset.reducedMotion=state.preferences.reducedMotion?'true':'false';}
+function closeMenu(){document.getElementById('sidebar')?.classList.remove('open');document.querySelector('.drawer-overlay')?.classList.remove('open');document.querySelector('[data-action=menu]')?.setAttribute('aria-expanded','false');}
+async function navigate(path,replace=false){if(uploadRunning&&!confirm('An upload is in progress. Leaving this page will interrupt it. Continue?'))return;if(replace)history.replaceState({},'',path);else history.pushState({},'',path);closeMenu();await render();window.scrollTo({top:0,behavior:'instant'});document.getElementById('main-content')?.focus({preventScroll:true});}
+async function render(){
+ const generation=++routeGeneration;activePlayer?.destroy();activePlayer=null;if(activeSession&&state.user){api('/player/sessions/'+encodeURIComponent(activeSession.id)+'/end',{method:'POST',body:{}}).catch(()=>{});}activeSession=null;
+ app.innerHTML=renderShell(state);const main=document.getElementById('main-content');main.innerHTML=loading();let path=location.pathname.replace(/\/$/,'')||'/';
+ document.title=(path==='/'?'Crate Ship Games — Play. Create. Belong.':path.split('/').filter(Boolean).map(s=>s.replaceAll('-',' ')).join(' · ')+' — Crate Ship Games');
+ try{
+  let result;
+  if(!state.user&&needsUser.some(p=>path===p||path.startsWith(p+'/'))){if(state.serviceError)throw state.serviceError;result=loginGate(path);}
+  else if(path==='/')result=await homePage(state);
+  else if(path==='/games'||path.startsWith('/games/'))result=await catalogPage(state,path);
+  else if(path.startsWith('/game/'))result=await gamePage(state,decodeURIComponent(path.slice(6)));
+  else if(['/login','/signup','/forgot-password','/reset-password','/verify-email'].includes(path))result=authPage(state,path);
+  else if(['/favorites','/library','/history','/notifications'].includes(path))result=await collectionPage(state,path.slice(1));
+  else if(path==='/rewards')result=await walletPage(state);
+  else if(path==='/profile')result=profilePage(state);
+  else if(path==='/settings')result=await settingsPage(state);
+  else if(path==='/engine/projects')result=await projectsPage(state);
+  else if(path==='/creators')result=creatorsPage(state);
+  else if(path==='/developer'||path.startsWith('/developer/'))result=await developerPage(state,path);
+  else if(path.startsWith('/owners-portal'))result=await ownerPage(state,path);
+  else if(path.startsWith('/developers/docs'))result=docsPage(path);
+  else result=staticPage(path);
+  if(generation!==routeGeneration)return;
+  main.innerHTML=result.html+(path.startsWith('/owners-portal')&&state.user?.roles?.includes('OWNER')?administrationPanels(path):'');document.getElementById('full-width-content').innerHTML=result.full||'';
+  main.querySelectorAll('[data-action=favorite]').forEach(el=>el.setAttribute('aria-pressed',String(state.favoriteIds.has(el.dataset.id))));
+  const waitlist=main.querySelector('form[data-form=waitlist]');
+  if(waitlist&&!state.user)waitlist.innerHTML=notice('Join with a verified account so we can keep your creator access and updates together.')+link('/login?next=%2Fcreators%23waitlist','Log In to Join','btn primary')+link('/signup','Create an Account','btn');
+  else if(waitlist&&!state.user.emailVerified)waitlist.innerHTML=notice('Verify your account email before joining the creator waitlist.')+link('/verify-email','Verify Email','btn primary');
+  else if(waitlist){waitlist.elements.email.value=state.user.email;waitlist.elements.email.readOnly=true;}
+  const submitGame=main.querySelector('form[data-form=submit-game]');if(submitGame&&!submitGame.elements.versionId.options.length){submitGame.querySelector('button[type=submit]').disabled=true;submitGame.insertAdjacentHTML('afterbegin',notice('No validated builds are available yet. Complete upload and scanning first.'));}
+  if(state.serviceError&&path!=='/'&&!path.startsWith('/owners-portal'))main.insertAdjacentHTML('afterbegin',notice('Account services are currently unavailable. '+esc(messageFor(state.serviceError)),true));
+  if(location.hash&&location.hash==='#waitlist')document.getElementById('waitlist')?.scrollIntoView({block:'start'});
+ }catch(error){if(generation!==routeGeneration)return;main.innerHTML=`<div class="page-error">${icon(error.status===403?'shield-check':'warning-circle')}<h2>${error.status===403?'Additional verification required':'This page could not load.'}</h2><p>${esc(messageFor(error))}</p><div class="inline-actions">${btn('retry','Try Again','btn primary')}${error.status===403?link('/settings','Security Settings','btn'):link('/','Back to Home','btn')}</div></div>`;}
+}
+function formResult(form,text,isError=false){const box=form.querySelector('.form-feedback');if(box){box.className='form-feedback'+(isError?' error':'');box.textContent=text;box.scrollIntoView({block:'nearest'});}}
+const blankProject=()=>({format:'crate-engine-project',version:3,commands:[],objects:[],userScripts:[],validationFixHistory:[],weather:null,time:null});
+const values=form=>Object.fromEntries(new FormData(form).entries());
+const gamePayload=b=>({...b,genres:String(b.genres||'').split(',').map(s=>s.trim()).filter(Boolean),tags:String(b.tags||'').split(',').map(s=>s.trim()).filter(Boolean)});
+
+document.addEventListener('click',async event=>{
+ const a=event.target.closest('a[href]');if(a&&!event.defaultPrevented&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey&&event.button===0&&!a.target&&!a.hasAttribute('download')){const url=new URL(a.href,location.href);if(url.origin===location.origin&&(url.pathname==='/'||clientRoots.includes(url.pathname.split('/')[1]))&&!url.pathname.endsWith('.html')){event.preventDefault();navigate(url.pathname+url.search+url.hash);return;}}
+ const el=event.target.closest('[data-action]');if(!el)return;const action=el.dataset.action;
+ if(action==='menu'){const open=!document.getElementById('sidebar').classList.contains('open');document.getElementById('sidebar').classList.toggle('open',open);document.querySelector('.drawer-overlay').classList.toggle('open',open);el.setAttribute('aria-expanded',String(open));return;}
+ if(action==='close-menu'){closeMenu();return;}if(action==='retry'){await boot();return;}
+ const oldDisabled=el.disabled;el.disabled=true;
+ try{
+  if(action==='logout'||action==='logout-all'){await api('/auth/'+(action==='logout-all'?'logout-all':'logout'),{method:'POST',body:{}});await refreshSession();notify('You are logged out.');await navigate('/');}
+  if(action==='favorite'){if(!state.user){navigate('/login?next='+encodeURIComponent(location.pathname));return;}const remove=el.getAttribute('aria-pressed')==='true'||location.pathname==='/favorites';await api(remove?'/favorites/'+encodeURIComponent(el.dataset.id):'/favorites',{method:remove?'DELETE':'POST',body:remove?undefined:{gameId:el.dataset.id}});if(remove)state.favoriteIds.delete(el.dataset.id);else state.favoriteIds.add(el.dataset.id);el.setAttribute('aria-pressed',String(!remove));notify(remove?'Removed from favorites.':'Saved to favorites.');if(location.pathname==='/favorites')await render();}
+  if(action==='read-notification'){await api('/notifications/'+encodeURIComponent(el.dataset.id),{method:'PATCH',body:{}});await render();}
+  if(action==='revoke-session'){await api('/auth/sessions/'+encodeURIComponent(el.dataset.id),{method:'DELETE'});notify('Session revoked.');await render();}
+  if(action==='mfa-enroll'){const data=await api('/auth/mfa/enroll',{method:'POST',body:{}});const container=document.getElementById('mfa-enrollment');container.innerHTML=notice('Add this setup key to your authenticator app. Keep the key private. Confirm with the current six-digit code.')+`<p class="code-block section">${esc(data.secret)}</p><form class="form section" data-form="mfa-confirm">${input('code','Authenticator code','text','','required inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code"')}<button class="btn primary" type="submit">Confirm Authenticator</button>${feedback()}</form>`;}
+  if(['export-project','duplicate-project','rename-project','delete-project'].includes(action)){const id=el.dataset.id;const data=await api('/projects/'+encodeURIComponent(id));const p=data.project;
+   if(action==='export-project'){downloadJson({...p.data,name:p.name},(p.name||'project').replace(/[^\w-]/g,'-')+'.crate');notify('Project backup downloaded.');}
+   if(action==='duplicate-project'){await api('/projects',{method:'POST',body:{name:p.name+' copy',project:p.data}});notify('Project duplicated.');await render();}
+   if(action==='rename-project'){const name=prompt('New project name',p.name);if(name?.trim()){await api('/projects/'+encodeURIComponent(id),{method:'PUT',body:{name:name.trim(),revision:p.revision,project:p.data}});notify('Project renamed.');await render();}}
+   if(action==='delete-project'&&confirm('Delete “'+p.name+'” from your cloud projects? Export a backup first if you need one.')){await api('/projects/'+encodeURIComponent(id),{method:'DELETE'});notify('Project deleted.');await render();}
+  }
+  if(action==='play-game'){const area=document.getElementById('player-area');area.innerHTML=loading();const data=await api('/player/sessions',{method:'POST',body:{gameId:state.currentGame.id}});activeSession=data.session;activePlayer=mountIsolatedPlayer(area,data.session,{api,onStatus:status=>{if(status==='ready')notify('Game ready.');}});activePlayer.frame.classList.add('player-frame');area.scrollIntoView({block:'center'});}
+  if(action==='claim-game'){if(!state.user){navigate('/login?next='+encodeURIComponent(location.pathname));return;}await api('/library',{method:'POST',body:{gameId:state.currentGame.id}});notify('Added to your library.');await refreshSession();el.textContent='In Your Library';el.disabled=true;}
+ }catch(error){notify(messageFor(error),true);if(action==='play-game'){const area=document.getElementById('player-area');if(area)area.innerHTML=notice(esc(messageFor(error)),true);}}
+ finally{if(el.isConnected)el.disabled=oldDisabled;}
+});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMenu();});
+
+document.addEventListener('submit',async event=>{
+ const form=event.target.closest('form[data-form]');if(!form)return;event.preventDefault();if(!form.reportValidity())return;const name=form.dataset.form;const b=values(form);
+ if(name==='search'){navigate('/games?'+new URLSearchParams({q:b.q||''}));return;}
+ const buttons=[...form.querySelectorAll('button[type=submit]')];buttons.forEach(button=>button.disabled=true);formResult(form,'Working…');
+ try{
+  if(name==='register'){await api('/auth/register',{method:'POST',body:{email:b.email,password:b.password,username:b.username,displayName:b.displayName}});formResult(form,'Check your email for a verification link. You can log in after your email is verified.');form.reset();}
+  else if(name==='login'){const data=await api('/auth/login',{method:'POST',body:{email:b.email,password:b.password}});if(data.mfaRequired){state.mfaChallenge=data.challengeId;await render();}else{await refreshSession();state.serviceError=null;notify('Welcome back.');await navigate(safeNext());}}
+  else if(name==='mfa-login'){await api('/auth/mfa/verify',{method:'POST',body:{challengeId:state.mfaChallenge,code:b.code}});state.mfaChallenge='';await refreshSession();state.serviceError=null;notify('You are logged in.');await navigate(safeNext());}
+  else if(name==='reset-request'||name==='verification-request'){await api(name==='reset-request'?'/auth/reset/request':'/auth/verification/request',{method:'POST',body:{email:b.email}});formResult(form,'If this account is eligible, an email with your next step will arrive shortly.');}
+  else if(name==='reset-confirm'){if(!state.authToken)throw new Error('The reset token is missing. Request a new password reset email.');await api('/auth/reset/confirm',{method:'POST',body:{token:state.authToken,password:b.password}});state.authToken='';history.replaceState({},'',location.pathname);notify('Password updated. Log in with your new password.');await navigate('/login');}
+  else if(name==='verify-email'){await api('/auth/verification/confirm',{method:'POST',body:{token:state.authToken}});state.authToken='';history.replaceState({},'',location.pathname);notify('Email verified. You can now log in.');await navigate('/login');}
+  else if(name==='mfa-confirm'){await api('/auth/mfa/confirm',{method:'POST',body:{code:b.code}});notify('Authenticator enabled. Log in again to verify the new setup.');await refreshSession();await navigate('/login');}
+  else if(name==='reauth'){await api('/auth/reauth',{method:'POST',body:{password:b.password,code:b.code||undefined}});form.reset();formResult(form,'Identity verified. You can continue with sensitive actions for a limited time.');}
+  else if(name==='profile'){await api('/profile',{method:'PUT',body:{displayName:b.displayName,username:b.username}});await refreshSession();formResult(form,'Profile saved.');}
+  else if(name==='preferences'){await api('/preferences',{method:'PUT',body:{reducedMotion:form.elements.reducedMotion.checked,analyticsConsent:form.elements.analyticsConsent.checked,advertisingConsent:form.elements.advertisingConsent.checked,language:'en'}});await refreshSession();formResult(form,'Preferences saved.');}
+  else if(name==='delete-account'){await api('/auth/account',{method:'DELETE',body:{confirmation:b.confirmation}});await refreshSession();notify('Your account has been deleted.');await navigate('/');}
+  else if(name==='waitlist'){if(!state.user){formResult(form,'Log in and verify your email to join the creator waitlist.');form.querySelector('.form-feedback').insertAdjacentHTML('beforeend',' '+link('/login?next=%2Fcreators%23waitlist','Log In','text-link'));}else{await api('/waitlist',{method:'POST',body:{interest:b.interest,consent:true}});formResult(form,'You are on the creator waitlist. We will share access updates with your verified account email.');}}
+  else if(name==='create-project'){const result=await api('/projects',{method:'POST',body:{name:b.name,project:blankProject()}});notify('Project created.');await render();}
+  else if(name==='import-project'){const file=form.elements.projectFile.files[0];if(!file||file.size>(state.config.limits.projectBytes||2097152))throw new Error('Choose a project file within the configured size limit.');const data=JSON.parse(await file.text());if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Choose a valid Crate project JSON file.');await api('/projects',{method:'POST',body:{name:b.name,project:data}});notify('Project backup imported.');await render();}
+  else if(name==='report'){await api('/reports',{method:'POST',body:{gameId:form.dataset.id,category:b.reason==='security'?'malware':b.reason,detail:b.description}});form.reset();formResult(form,'Your report has been submitted for review.');}
+  else if(name==='create-game'){const data=await api('/developer/games',{method:'POST',body:gamePayload(b)});notify('Draft created.');await navigate('/developer/games/'+encodeURIComponent(data.game.id));}
+  else if(name==='edit-game'){await api('/developer/games/'+encodeURIComponent(form.dataset.id),{method:'PUT',body:gamePayload(b)});formResult(form,'Game listing saved.');}
+  else if(name==='upload-game'){await uploadBuild(form,b);}
+  else if(name==='submit-game'){if(!b.versionId)throw new Error('Upload a build and wait for clean validation before submitting.');await api('/developer/games/'+encodeURIComponent(form.dataset.id)+'/submit',{method:'POST',body:{versionId:b.versionId,rightsConfirmed:form.elements.rightsConfirmed.checked}});notify('Game submitted for review.');await render();}
+  else if(name==='owner-flag'){await api('/owner/flags',{method:'PUT',body:{key:b.key,enabled:b.enabled==='true',reason:b.reason}});notify('Feature state updated and recorded.');await render();}
+  else if(name==='owner-review'){await api('/owner/games/'+encodeURIComponent(b.gameId)+'/review',{method:'POST',body:{decision:b.decision,reason:b.reason}});notify('Review decision recorded.');await render();}
+  else if(name==='owner-publish'){if(!form.elements.confirmPublish.checked)throw new Error('Confirm public publication of this approved game.');await api('/owner/games/'+encodeURIComponent(b.gameId)+'/publish',{method:'POST',body:{reason:b.reason}});notify('The approved game has been published.');await render();}
+  else if(name==='owner-agreement'){const terms={};for(const k of ['rewarded_ads','interstitial_ads','premium_sales','dlc','iap','subscriptions','sponsorships','promotions','other']){const creatorBps=Math.round(Number(b[k])*100);terms[k]={creatorBps,platformBps:10000-creatorBps};}await api('/owner/agreements',{method:'POST',body:{...b,effectiveAt:Math.floor(new Date(b.effectiveAt).valueOf()/1000),minimumPayoutMinor:Number(b.minimumPayoutMinor),terms}});notify('Agreement version created.');await render();}
+  else if(name==='owner-assignment'){await api('/owner/agreements/assign',{method:'POST',body:{gameId:b.gameId,versionId:b.versionId,effectiveAt:Math.floor(new Date(b.effectiveAt).valueOf()/1000)}});formResult(form,'Agreement assigned. Historical revenue remains under its original agreement.');}
+  else if(name==='owner-roles'){const roles=['PLAYER',...new FormData(form).getAll('roles')];await api('/owner/players/'+encodeURIComponent(b.userId)+'/roles',{method:'PUT',body:{roles,reason:b.reason}});formResult(form,'Roles updated. The account’s active sessions have been revoked.');}
+  else if(name==='owner-status'){await api('/owner/players/'+encodeURIComponent(b.userId)+'/status',{method:'PUT',body:{status:b.status,reason:b.reason}});formResult(form,'Account status updated and active sessions revoked.');}
+  else if(name==='owner-members'){await api('/owner/games/'+encodeURIComponent(b.gameId)+'/members',{method:'PUT',body:{userId:b.userId,permission:b.permission,reason:b.reason}});formResult(form,'Game assignment updated and recorded.');}
+  else if(name==='owner-threshold'){await api('/owner/thresholds',{method:'PUT',body:{key:b.key,limitValue:Number(b.limitValue),reason:b.reason}});formResult(form,'Usage threshold saved and recorded.');}
+ }catch(error){formResult(form,messageFor(error),true);if(error.code==='MFA_REQUIRED'||error.code==='REAUTH_REQUIRED')form.querySelector('.form-feedback')?.insertAdjacentHTML('beforeend',' '+link('/settings','Verify your identity in Security Settings','text-link'));}
+ finally{buttons.forEach(button=>{if(button.isConnected)button.disabled=false;});}
+});
+async function uploadBuild(form,b){
+ const file=form.elements.build.files[0];if(!file||!/\.zip$/i.test(file.name))throw new Error('Choose one complete ZIP archive.');if(file.size>(state.config.limits.uploadBytes||524288000))throw new Error('The archive exceeds the configured upload limit.');
+ uploadRunning=true;let upload;let completed=false;
+ try{const started=await api('/developer/uploads',{method:'POST',body:{gameId:form.dataset.id,platform:b.platform,version:b.version,sizeBytes:file.size,fileName:file.name,releaseNotes:b.releaseNotes}});upload=started.upload;const progress=form.querySelector('progress');progress.hidden=false;
+  for(let n=1;n<=upload.parts;n++){formResult(form,`Uploading part ${n} of ${upload.parts}…`);const part=file.slice((n-1)*upload.partBytes,Math.min(file.size,n*upload.partBytes));await api('/developer/uploads/'+encodeURIComponent(upload.id)+'/parts/'+n,{method:'PUT',body:part,headers:{'Content-Type':'application/octet-stream'},timeout:120000});progress.value=Math.round(n/upload.parts*100);}
+  await api('/developer/uploads/'+encodeURIComponent(upload.id)+'/complete',{method:'POST',body:{}});completed=true;formResult(form,'Upload received and held in quarantine. Validation and scanning must finish before review.');notify('Build uploaded to quarantine.');
+ }catch(error){if(upload&&!completed){await api('/developer/uploads/'+encodeURIComponent(upload.id)+'/abort',{method:'POST',body:{}}).catch(()=>{});}throw error;}finally{uploadRunning=false;}
+}
+window.addEventListener('popstate',()=>render());
+window.addEventListener('beforeunload',event=>{if(uploadRunning){event.preventDefault();event.returnValue='';}});
+async function boot(){const results=await Promise.allSettled([api('/config'),refreshSession()]);if(results[0].status==='fulfilled')state.config=results[0].value;state.serviceError=results[1].status==='rejected'?results[1].reason:null;await render();}
+boot();

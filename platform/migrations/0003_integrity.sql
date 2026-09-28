@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS platform_operation_limits (user_id TEXT NOT NULL,action TEXT NOT NULL,bucket INTEGER NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(user_id,action,bucket));
+CREATE TRIGGER IF NOT EXISTS adjustment_immutable_update BEFORE UPDATE ON platform_revenue_adjustments BEGIN SELECT RAISE(ABORT,'adjustment history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS adjustment_immutable_delete BEFORE DELETE ON platform_revenue_adjustments BEGIN SELECT RAISE(ABORT,'adjustment history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS game_agreement_no_overlap_update BEFORE UPDATE ON platform_game_agreements WHEN EXISTS(SELECT 1 FROM platform_game_agreements a WHERE a.game_id=NEW.game_id AND a.id!=NEW.id AND a.effective_at<COALESCE(NEW.end_at,9223372036854775807) AND NEW.effective_at<COALESCE(a.end_at,9223372036854775807)) BEGIN SELECT RAISE(ABORT,'agreement effective periods overlap'); END;
+CREATE TABLE IF NOT EXISTS platform_release_manifests (version_id TEXT PRIMARY KEY REFERENCES platform_game_versions(id),game_id TEXT NOT NULL REFERENCES platform_games(id),checksum TEXT NOT NULL,manifest_json TEXT NOT NULL,created_at INTEGER NOT NULL);

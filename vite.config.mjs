@@ -7,6 +7,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const staticFiles = [
   '_headers',
   '_routes.json',
+  '_redirects',
   '404.html',
   'asset-catalog.json',
   'city_assets.json',
@@ -18,7 +19,7 @@ const staticFiles = [
   'service-worker.js'
 ];
 const staticDirs = [
-  'docs'
+  'docs', 'platform/media', 'platform/sdk', 'engine/distribution'
 ];
 
 function isThreeImport(id) {
@@ -61,9 +62,6 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
     rollupOptions: {
-      external(id) {
-        return isThreeImport(id);
-      },
       output: {
         manualChunks(id) {
           const normalized = id.split(path.sep).join('/');
@@ -80,18 +78,8 @@ export default defineConfig({
         }
       },
       input: {
-        admin: path.join(rootDir, 'admin.html'),
         index: path.join(rootDir, 'index.html'),
         play: path.join(rootDir, 'play.html'),
-        compare: path.join(rootDir, 'compare.html'),
-        creators: path.join(rootDir, 'creators.html'),
-        demo: path.join(rootDir, 'demo.html'),
-        features: path.join(rootDir, 'features.html'),
-        game: path.join(rootDir, 'game.html'),
-        marketplace: path.join(rootDir, 'marketplace.html'),
-        pricing: path.join(rootDir, 'pricing.html'),
-        generate_favicon: path.join(rootDir, 'generate_favicon.html'),
-        generate_npcs: path.join(rootDir, 'generate_npcs.html'),
         docs: path.join(rootDir, 'docs/index.html')
       }
     }

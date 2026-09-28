@@ -2,6 +2,24 @@ name = "crateship-games"
 pages_build_output_dir = "dist"
 compatibility_date = "2026-05-19"
 
+[vars]
+APP_ORIGIN = "https://crateshipgames.com"
+AUTH_PASSWORD_POLICY_APPROVED = "false"
+
+[[d1_databases]]
+binding = "PLATFORM_DB"
+database_name = "crateship-platform-v1"
+database_id = "be31584e-bd51-46b6-b935-a794097d2e12"
+migrations_dir = "platform/migrations"
+
+[[r2_buckets]]
+binding = "ENGINE_ASSETS"
+bucket_name = "crateship-games-user-assets"
+
+[[r2_buckets]]
+binding = "PLATFORM_UPLOADS"
+bucket_name = "crateship-games-user-assets"
+
 [[kv_namespaces]]
 binding = "CRATE_GAMES"
 id = "cfd1bca8ac84439cadc2bb146a034d41"

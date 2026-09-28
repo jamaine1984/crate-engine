@@ -1,3 +1,5 @@
+import { requireLegacyWriteUser, requireLegacyAdminWrite, legacyRoleForUser, readVerifiedUser } from '../../_security/legacy-write.mjs';
+
 const MAX_BODY_BYTES = 900000;
 const MAX_TITLE_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 1200;
@@ -98,7 +100,7 @@ function cleanAdminName(value) {
 
 function cleanAdminRole(value) {
   const normalized = cleanText(value || 'admin', MAX_ADMIN_ROLE_LENGTH).toLowerCase();
-  return ['admin', 'moderator', 'curator', 'viewer'].includes(normalized) ? normalized : 'admin';
+  return ['admin', 'moderator', 'curator', 'viewer'].includes(normalized) ? normalized : 'viewer';
 }
 
 function cleanSort(value) {
@@ -215,39 +217,28 @@ function publicAssetIdentity(asset) {
 }
 
 async function cleanupPublishedAssets(context, previousAssets = [], nextAssets = []) {
-  const bucket = getUserAssetBucket(context.env);
-  const previous = Array.isArray(previousAssets) ? previousAssets.map(publicAssetIdentity).filter(Boolean) : [];
-  const nextIds = new Set((Array.isArray(nextAssets) ? nextAssets : [])
-    .map(publicAssetIdentity)
-    .filter(Boolean)
-    .map((asset) => asset.publicId));
-  const targets = previous.filter((asset) => !nextIds.has(asset.publicId));
-  const result = {
-    attempted: targets.length,
-    deleted: 0,
-    errors: [],
-    binding: !!bucket,
-  };
-  if (!bucket || !targets.length) return result;
-  for (const asset of targets) {
-    const metadataKey = publicAssetMetadataKey(asset.publicId);
-    let objectKey = publicAssetObjectKey(asset.publicId, asset.fileName);
-    try {
-      const metadata = await bucket.get(metadataKey);
-      if (metadata) {
-        const record = JSON.parse(await metadata.text());
-        objectKey = record?.key || objectKey;
-      }
-    } catch {}
-    const keys = [...new Set([objectKey, metadataKey].filter(Boolean))];
-    try {
-      await Promise.all(keys.map((key) => bucket.delete(key)));
-      result.deleted += 1;
-    } catch (err) {
-      result.errors.push({ publicId: asset.publicId, error: err?.message || String(err || 'delete failed') });
-    }
+  // Legacy client-provided references cannot establish exclusive ownership.
+  // Retain the objects until a transactional reference index authorizes deletion.
+  return { attempted: 0, deleted: 0, errors: [], binding: !!getUserAssetBucket(context.env), deferred: true };
+}
+
+async function validatePublishedAssetReferences(context, assets, ownerUserId, slug) {
+  if (!Array.isArray(assets) || assets.length > 100) {
+    const error = new Error('Invalid published asset references.'); error.status = 400; throw error;
   }
-  return result;
+  const bucket = getUserAssetBucket(context.env);
+  const validated = [];
+  for (const item of assets) {
+    const identity = publicAssetIdentity(item);
+    const object = identity && bucket && await bucket.get(publicAssetMetadataKey(identity.publicId));
+    let record = null;
+    try { record = object && JSON.parse(await object.text()); } catch {}
+    if (!record || record.ownerUserId !== ownerUserId || record.gameSlug !== slug) {
+      const error = new Error('Published assets must belong to this account and game.'); error.status = 403; throw error;
+    }
+    validated.push({ publicId: identity.publicId, id: identity.publicId, fileName: cleanFileName(record.fileName), sourceAssetId: cleanAssetId(record.sourceAssetId) });
+  }
+  return validated;
 }
 
 function pathParts(params) {
@@ -340,6 +331,13 @@ function adminTokenEntries(env = {}) {
 }
 
 async function adminAuthorization(context, payload = {}) {
+  const verifiedUser = await readVerifiedUser(context);
+  if (verifiedUser) {
+    const user = verifiedUser;
+    const role = legacyRoleForUser(user);
+    if (!role) return null;
+    return { mode: 'admin', admin: publicAdminIdentity({ id: user.id, name: user.displayName || user.email || 'Administrator', role }) };
+  }
   const provided = cleanToken(
     context.request.headers.get('x-crate-admin-token') ||
     payload.adminToken ||
@@ -480,8 +478,19 @@ async function auditEventsFromD1(context, slug, limit) {
 }
 
 async function authorizeManagedGame(context, record, payload = {}) {
+  if (context.legacyWriteUser && !record?.ownerUserId) {
+    return { ok: false, status: 403, error: 'Legacy ownership must be migrated before this game can be changed.' };
+  }
+  const user = await readVerifiedUser(context);
+  if (record?.ownerUserId && user?.id === record.ownerUserId) return { ok: true, mode: 'owner' };
   const adminAuth = await adminAuthorization(context, payload);
   if (adminAuth) return { ok: true, mode: 'admin', admin: adminAuth.admin };
+  if (context.legacyWriteUser) {
+    if (record?.ownerUserId !== context.legacyWriteUser.id) {
+      return { ok: false, status: 403, error: 'This legacy game requires a verified account ownership migration before it can be changed.' };
+    }
+    return { ok: true, mode: 'owner' };
+  }
   if (!record?.ownerHash) {
     return { ok: false, status: 403, error: 'This published game has no owner token. Admin authorization is required.' };
   }
@@ -548,7 +557,7 @@ function publicGameSummary(record) {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     source: record.source,
-    ownerManaged: !!record.ownerHash,
+    ownerManaged: !!(record.ownerUserId || record.ownerHash),
     creatorName: creator.name,
     creatorUrl: creator.website,
     visibility: cleanVisibility(record.visibility),
@@ -588,13 +597,16 @@ async function publishGame(context) {
     return json({ ok: false, error: 'Published game project data is too large.' }, { status: 413 });
   }
 
-  const existing = await store.get(keyForSlug(slug), 'json').catch(() => null);
-  if (existing?.ownerHash) {
+  const existing = await store.get(keyForSlug(slug), 'json');
+  if (existing) {
     const auth = await authorizeManagedGame(context, existing, payload);
     if (!auth.ok) return json({ ok: false, error: auth.error }, { status: auth.status });
+    if (auth.mode === 'admin') await requireLegacyAdminWrite(context, 'publish');
+    if (!existing.ownerUserId) return json({ ok: false, error: 'Legacy game ownership must be migrated before republishing.' }, { status: 403 });
   }
-  const ownerToken = cleanToken(payload.ownerToken || '');
-  const ownerHash = ownerToken ? await hashToken(ownerToken) : (existing?.ownerHash || '');
+  const ownerUserId = existing?.ownerUserId || context.legacyWriteUser.id;
+  const ownerHash = existing?.ownerHash || '';
+  const cloudAssets = await validatePublishedAssetReferences(context, payload.cloudAssets || [], ownerUserId, slug);
   const creator = cleanCreator(payload.creator || {
     name: payload.creatorName,
     website: payload.creatorUrl || payload.creatorWebsite,
@@ -617,7 +629,7 @@ async function publishGame(context) {
     scripts: Number(projectSummary.scripts || payload.scripts) || 0,
     components: Number(projectSummary.components || payload.components) || 0,
     componentTypes: payload.componentTypes && typeof payload.componentTypes === 'object' ? payload.componentTypes : {},
-    cloudAssets: Array.isArray(payload.cloudAssets) ? payload.cloudAssets.slice(0, 100) : [],
+    cloudAssets,
     playable: payload.playable && typeof payload.playable === 'object' ? {
       format: payload.playable.format || '',
       filename: payload.playable.filename || '',
@@ -627,6 +639,7 @@ async function publishGame(context) {
     assetBaseUrl: payload.assetBaseUrl || 'https://crateship-games-assets.pages.dev',
     source: 'cloudflare-pages-kv',
     ownerHash,
+    ownerUserId,
     creator: creator.name || creator.website ? creator : (existing?.creator || { name: '', website: '' }),
     visibility: cleanVisibility(payload.visibility || existing?.visibility || 'public'),
     moderationStatus: cleanModerationStatus(existing?.moderationStatus || 'active'),
@@ -656,7 +669,7 @@ async function getGame(context, slug) {
     const auth = await authorizeManagedGame(context, record);
     if (!auth.ok) return json({ ok: false, error: 'Game not found.' }, { status: 404 });
   }
-  return json({ ok: true, game: publicGameDetails(record) }, { cacheControl: 'public, max-age=30' });
+  return json({ ok: true, game: publicGameDetails(record) }, { cacheControl: cleanModerationStatus(record.moderationStatus) === 'hidden' ? 'private, no-store' : 'public, max-age=30' });
 }
 
 async function listGames(context) {
@@ -782,6 +795,7 @@ async function listGames(context) {
 }
 
 async function backfillAdminAudit(context) {
+  await requireLegacyAdminWrite(context, 'audit');
   const store = getStore(context.env);
   if (!store) return json({ ok: false, error: 'CRATE_GAMES KV binding is not configured.' }, { status: 503 });
   const adminAuth = await adminAuthorization(context);
@@ -838,6 +852,7 @@ async function backfillAdminAudit(context) {
 }
 
 async function verifyAdminAuditStore(context) {
+  await requireLegacyAdminWrite(context, 'audit');
   const adminAuth = await adminAuthorization(context);
   if (!adminAuth) {
     return json({ ok: false, error: 'Admin authorization is required to verify moderation audit storage.' }, { status: 403 });
@@ -1100,6 +1115,12 @@ async function updateGame(context, slug) {
   const auth = await authorizeManagedGame(context, record, payload);
   if (!auth.ok) return json({ ok: false, error: auth.error }, { status: auth.status });
 
+  if (auth.mode === 'admin') {
+    const fields = Object.keys(payload).filter((field) => !['adminToken', 'ownerToken', 'reviewNote', 'reason', 'note'].includes(field));
+    if (!fields.length) await requireLegacyAdminWrite(context, 'metadata');
+    for (const field of fields) await requireLegacyAdminWrite(context, field === 'featuredAt' ? 'featured' : field);
+  }
+
   const beforeAdminFields = {
     visibility: cleanVisibility(record.visibility),
     moderationStatus: cleanModerationStatus(record.moderationStatus),
@@ -1196,6 +1217,7 @@ async function deleteGame(context, slug) {
   if (!record) return json({ ok: false, error: 'Game not found.' }, { status: 404 });
   const auth = await authorizeManagedGame(context, record);
   if (!auth.ok) return json({ ok: false, error: auth.error }, { status: auth.status });
+  if (auth.mode === 'admin') await requireLegacyAdminWrite(context, 'delete');
   await store.delete(key);
   const publicAssetCleanup = await cleanupPublishedAssets(context, record.cloudAssets || [], []);
   return json({ ok: true, deleted: true, slug: cleanSlug, authorization: auth.mode, publicAssetCleanup });
@@ -1207,33 +1229,34 @@ export async function onRequest(context) {
   }
 
   try {
+    if (['POST', 'PATCH', 'DELETE'].includes(context.request.method)) await requireLegacyWriteUser(context);
     const parts = pathParts(context.params);
     if (context.request.method === 'POST' && parts.length === 1 && parts[0] === 'publish') {
-      return publishGame(context);
+      return json({ok:false,error:'Direct publishing has been retired. Submit a web build through the developer review workflow.'},{status:410});
     }
     if (context.request.method === 'GET' && parts.length === 2 && parts[0] === 'admin' && parts[1] === 'list') {
-      return listAdminGames(context);
+      return await listAdminGames(context);
     }
     if (context.request.method === 'GET' && parts.length === 3 && parts[0] === 'admin' && parts[1] === 'audit') {
-      return getAdminAudit(context, parts[2]);
+      return await getAdminAudit(context, parts[2]);
     }
     if (context.request.method === 'POST' && parts.length === 3 && parts[0] === 'admin' && parts[1] === 'audit' && parts[2] === 'verify') {
-      return verifyAdminAuditStore(context);
+      return await verifyAdminAuditStore(context);
     }
     if (context.request.method === 'POST' && parts.length === 3 && parts[0] === 'admin' && parts[1] === 'audit' && parts[2] === 'backfill') {
-      return backfillAdminAudit(context);
+      return await backfillAdminAudit(context);
     }
     if (context.request.method === 'GET' && parts.length === 0) {
-      return listGames(context);
+      return await listGames(context);
     }
     if (context.request.method === 'GET' && parts.length === 1) {
-      return getGame(context, parts[0]);
+      return await getGame(context, parts[0]);
     }
     if (context.request.method === 'PATCH' && parts.length === 1) {
-      return updateGame(context, parts[0]);
+      return await updateGame(context, parts[0]);
     }
     if (context.request.method === 'DELETE' && parts.length === 1) {
-      return deleteGame(context, parts[0]);
+      return await deleteGame(context, parts[0]);
     }
     return json({ ok: false, error: 'Not found.' }, { status: 404 });
   } catch (err) {

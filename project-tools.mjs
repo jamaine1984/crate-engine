@@ -1,7 +1,5 @@
-const STRIPE_LINKS = {
-  pro: 'https://buy.stripe.com/3cI9AV4Sv6TY15Q1aMffy00',
-  premium: 'https://buy.stripe.com/6oUfZjfx96TY29U4mYffy01',
-};
+// Billing stays disabled until a separately approved provider release.
+const STRIPE_LINKS = Object.freeze({});
 
 let context = {
   parseAndExecute: () => {},
@@ -873,41 +871,10 @@ export function showUpgradeModal(tier = 'pro') {
     boxShadow: '0 0 40px rgba(255,107,53,0.2)',
   });
 
-  card.innerHTML =
-    '<div style="font-size:2.5rem;margin-bottom:8px">⚡</div>' +
-    '<h2 style="color:' + (tier === 'premium' ? '#f7c948' : '#ff6b35') + ';margin:0 0 8px;font-size:1.3rem">' + (tier === 'premium' ? 'Go Premium' : 'Go Pro') + '</h2>' +
-    '<p style="color:#888;font-size:0.85rem;margin-bottom:20px">Unlock the full power of Crate Engine</p>' +
-    '<div style="background:#111;border-radius:12px;padding:16px;margin-bottom:20px;text-align:left;font-size:0.8rem;color:#ccc;line-height:2">' +
-    '✅ Export games (no watermark)<br>' +
-    '✅ 500+ premium 3D models<br>' +
-    '✅ Unlimited AI prompts<br>' +
-    '✅ Publish to crateshipgames.com<br>' +
-    '✅ Priority support<br>' +
-    '✅ Early access to new features' +
-    '</div>' +
-    '<div style="font-size:2rem;font-weight:900;color:#fff;margin-bottom:4px">' + (tier === 'premium' ? '$14.99' : '$4.99') + '<span style="font-size:0.9rem;color:#888">/month</span></div>' +
-    '<p style="color:#555;font-size:0.7rem;margin-bottom:16px">Cancel anytime · No contracts</p>' +
-    '<div style="display:flex;gap:8px;flex-direction:column">' +
-    '<button id="upgrade-stripe-btn" style="padding:14px;background:linear-gradient(135deg,#ff6b35,#f7c948);color:#000;border:none;border-radius:10px;font-weight:700;font-size:1rem;cursor:pointer;font-family:JetBrains Mono,monospace;transition:transform 0.2s">' + (tier === 'premium' ? '💎 Subscribe Premium' : '⚡ Subscribe Pro') + '</button>' +
-    '<button id="upgrade-close-btn" style="padding:10px;background:transparent;color:#555;border:1px solid #252525;border-radius:10px;cursor:pointer;font-family:JetBrains Mono,monospace;font-size:0.8rem">Maybe Later</button>' +
-    '</div>';
+  card.innerHTML = '<h2>Creator services are coming soon</h2><p>Payments and subscriptions are not enabled. You can save and export your own projects without a subscription.</p><button id="upgrade-close-btn">Back to building</button>';
 
   modal.appendChild(card);
   document.body.appendChild(modal);
-
-  document.getElementById('upgrade-stripe-btn').addEventListener('click', function() {
-    const link = STRIPE_LINKS[tier] || STRIPE_LINKS.pro;
-    if (link) {
-      window.open(link, '_blank');
-      return;
-    }
-    this.textContent = '🚀 Coming Soon!';
-    this.style.background = '#333';
-    this.style.color = '#888';
-    setTimeout(() => {
-      modal.remove();
-    }, 2000);
-  });
 
   document.getElementById('upgrade-close-btn').addEventListener('click', () => {
     modal.remove();

@@ -2,5 +2,6 @@ name = "crate-engine-ai"
 main = "index.js"
 compatibility_date = "2026-03-11"
 
-[vars]
-# OPENROUTER_API_KEY set via wrangler secret
+# Retired endpoint: index.js returns 410 and never calls a paid provider.
+# No platform provider key is accepted. Existing deployments must be separately
+# updated or disabled by an authorized operator; editing source does not revoke them.

@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import {MeshoptEncoder,MeshoptDecoder} from 'meshoptimizer';
 import {
   dedup,
   flatten,
@@ -21,9 +22,12 @@ if (!inputArg || !outputArg) {
 
 const inputPath = path.resolve(inputArg);
 const outputPath = path.resolve(outputArg);
+if(inputPath===outputPath)throw new Error('Choose a different output path to preserve the original model.');
 await access(inputPath);
+try{await access(outputPath);throw new Error('Output already exists. Choose a new output filename.');}catch(error){if(error.code!=='ENOENT')throw error;}
 
-const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+await Promise.all([MeshoptEncoder.ready,MeshoptDecoder.ready]);
+const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({'meshopt.decoder':MeshoptDecoder});
 const doc = await io.read(inputPath);
 
 await doc.transform(
@@ -31,7 +35,7 @@ await doc.transform(
   instance(),
   prune(),
   weld(),
-  reorder(),
+  reorder({encoder:MeshoptEncoder}),
   flatten(),
   join(),
   resample()

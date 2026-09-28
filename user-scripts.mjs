@@ -135,23 +135,15 @@ function attachListeners() {
 }
 
 export function runUserScript(scriptObj) {
-  try {
-    const sandbox = createUserScriptSandbox();
-    const wrappedCode = '"use strict";\n' + (scriptObj.code || '') + '\n;return { onUpdate, onKeyPress, onCollision };';
-    const fn = new Function(...Object.keys(sandbox), wrappedCode);
-    const hooks = fn(...Object.values(sandbox)) || {};
-    scriptObj._onUpdate = typeof hooks.onUpdate === 'function' ? hooks.onUpdate : sandbox.onUpdate;
-    scriptObj._onKeyPress = typeof hooks.onKeyPress === 'function' ? hooks.onKeyPress : sandbox.onKeyPress;
-    scriptObj._onCollision = typeof hooks.onCollision === 'function' ? hooks.onCollision : sandbox.onCollision;
-    scriptObj._running = true;
-    console.log('[AI Sandbox] Script "' + (scriptObj.name || 'Untitled Script') + '" running');
-    return true;
-  } catch (err) {
-    console.error('[AI Sandbox] Script error:', err.message);
-    getShowToast()('❌ Script error: ' + err.message);
-    scriptObj._running = false;
-    return false;
-  }
+  // User JavaScript cannot execute in the authenticated application origin.
+  // Keep sources editable/exportable while isolated editor preview is completed.
+  scriptObj._running = false;
+  scriptObj.enabled = false;
+  scriptObj._onUpdate = null;
+  scriptObj._onKeyPress = null;
+  scriptObj._onCollision = null;
+  getShowToast()('Script source is saved. Execution requires an isolated game preview.');
+  return false;
 }
 
 export function updateUserScripts(dt) {
@@ -175,7 +167,7 @@ export function initializeUserScripts() {
     const savedScripts = JSON.parse(localStorage.getItem(USER_SCRIPTS_STORAGE_KEY) || '[]');
     if (!Array.isArray(savedScripts)) return getUserScripts();
     for (const savedScript of savedScripts) {
-      const script = upsertUserScript(savedScript);
+      const script = upsertUserScript({...savedScript, enabled:false});
       if (script.enabled) runUserScript(script);
     }
     if (savedScripts.length) {
@@ -360,7 +352,7 @@ export function showScriptEditor(existingScript) {
       </div>
       <div style="margin-bottom:12px;">
         <label style="color:#888;font-size:0.8rem;">Script Name</label>
-        <input id="script-name" value="${existing.name || ''}" placeholder="e.g. Coin Collector" style="width:100%;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.9rem;margin-top:4px;">
+        <input id="script-name" placeholder="e.g. Coin Collector" style="width:100%;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:0.9rem;margin-top:4px;">
       </div>
       <div style="margin-bottom:12px;">
         <label style="color:#888;font-size:0.8rem;">Describe what you want (AI will generate code)</label>
@@ -369,10 +361,10 @@ export function showScriptEditor(existingScript) {
       </div>
       <div style="margin-bottom:12px;">
         <label style="color:#888;font-size:0.8rem;">Code (JavaScript)</label>
-        <textarea id="script-code" style="width:100%;height:200px;background:#0a0a1a;border:1px solid #333;border-radius:8px;padding:12px;color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:0.8rem;margin-top:4px;resize:vertical;tab-size:2;">${existing.code || '// Your custom game logic here\n// Available: getPlayer(), getNPCs(), getObjects(), showToast()\n// Set onUpdate = function(dt) {} for per-frame logic\n// Set onKeyPress = function(key) {} for input\n'}</textarea>
+        <textarea id="script-code" style="width:100%;height:200px;background:#0a0a1a;border:1px solid #333;border-radius:8px;padding:12px;color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:0.8rem;margin-top:4px;resize:vertical;tab-size:2;"></textarea>
       </div>
+      <p style="color:#c8c2dc;font-size:0.8rem;line-height:1.5;">Script sources can be edited, saved and exported. JavaScript execution is unavailable in this editor until an isolated preview is ready.</p>
       <div style="display:flex;gap:8px;">
-        <button id="script-run" style="flex:1;padding:10px;background:#16a34a;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">▶ Run Script</button>
         <button id="script-save" style="flex:1;padding:10px;background:#7c5cff;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">💾 Save Script</button>
         ${existing.id ? '<button id="script-delete" style="padding:10px 16px;background:#ef4444;border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">🗑</button>' : ''}
       </div>
@@ -381,6 +373,9 @@ export function showScriptEditor(existingScript) {
 
   document.body.appendChild(overlay);
 
+  // Imported project data is text, never markup (including closing textarea tags).
+  overlay.querySelector('#script-name').value = String(existing.name || '');
+  overlay.querySelector('#script-code').value = String(existing.code || '// Your custom game logic here\n// Source is saved with the project; execution requires an isolated preview.\n');
   const scriptPrompt = overlay.querySelector('#script-prompt');
   if (scriptPrompt && existing.description) scriptPrompt.value = existing.description;
 
@@ -396,25 +391,13 @@ export function showScriptEditor(existingScript) {
     if (generated) overlay.querySelector('#script-code').value = generated;
   };
 
-  overlay.querySelector('#script-run').onclick = () => {
-    const script = upsertUserScript({
-      id: existing.id || 'script_' + Date.now(),
-      name: overlay.querySelector('#script-name').value || 'Untitled Script',
-      description: scriptPrompt.value,
-      code: overlay.querySelector('#script-code').value,
-      enabled: true,
-    });
-    runUserScript(script);
-    getShowToast()('▶ Script "' + script.name + '" running!');
-  };
-
   overlay.querySelector('#script-save').onclick = () => {
     const script = upsertUserScript({
       id: existing.id || 'script_' + Date.now(),
       name: overlay.querySelector('#script-name').value || 'Untitled Script',
       description: scriptPrompt.value,
       code: overlay.querySelector('#script-code').value,
-      enabled: true,
+      enabled: false,
     });
     persistUserScripts();
     getShowToast()('💾 Script "' + script.name + '" saved!');
@@ -438,29 +421,44 @@ export function showScriptManager() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100000;display:flex;align-items:center;justify-content:center;';
 
   const scripts = getUserScripts();
-  const listHTML = scripts.length
-    ? scripts.map((script) => (
-      '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:#1a1a2e;border-radius:8px;margin-bottom:6px;cursor:pointer;" data-id="' + script.id + '">' +
-      '<span style="color:' + (script.enabled && script._running ? '#4ade80' : '#666') + ';font-size:12px;">●</span>' +
-      '<span style="color:#fff;flex:1;font-size:0.85rem;">' + script.name + '</span>' +
-      '<button class="script-toggle" data-id="' + script.id + '" style="background:none;border:1px solid #333;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;">' + (script.enabled ? 'ON' : 'OFF') + '</button>' +
-      '<button class="script-edit" data-id="' + script.id + '" style="background:none;border:1px solid #7c5cff;color:#7c5cff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;">Edit</button>' +
-      '</div>'
-    )).join('')
-    : '<p style="color:#666;text-align:center;">No custom scripts yet</p>';
-
   overlay.innerHTML = `
     <div style="background:#111;border:2px solid #7c5cff;border-radius:16px;width:500px;max-width:95vw;max-height:80vh;overflow-y:auto;padding:24px;font-family:-apple-system,sans-serif;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <h2 style="color:#7c5cff;margin:0;font-size:1.1rem;">🧠 Custom Game Scripts</h2>
         <button id="scripts-close" style="background:none;border:none;color:#666;font-size:24px;cursor:pointer;">✕</button>
       </div>
-      <div id="scripts-list">${listHTML}</div>
+      <p style="color:#aaa;font-size:0.8rem;line-height:1.5;">Saved source only. Script execution requires an isolated game preview.</p>
+      <div id="scripts-list"></div>
       <button id="scripts-new" style="width:100%;margin-top:12px;padding:10px;background:linear-gradient(135deg,#7c5cff,#4a9eff);border:none;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">+ New Script</button>
     </div>
   `;
 
   document.body.appendChild(overlay);
+  const list = overlay.querySelector('#scripts-list');
+  if (!scripts.length) {
+    const empty = document.createElement('p');
+    empty.style.cssText = 'color:#888;text-align:center;';
+    empty.textContent = 'No custom scripts yet';
+    list.appendChild(empty);
+  }
+  for (const script of scripts) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px;background:#1a1a2e;border-radius:8px;margin-bottom:6px;';
+    const name = document.createElement('span');
+    name.style.cssText = 'color:#fff;flex:1;font-size:0.85rem;overflow-wrap:anywhere;';
+    name.textContent = String(script.name || 'Untitled Script');
+    const state = document.createElement('span');
+    state.style.cssText = 'color:#aaa;font-size:0.7rem;';
+    state.textContent = 'Source saved';
+    const edit = document.createElement('button');
+    edit.className = 'script-edit';
+    edit.style.cssText = 'background:none;border:1px solid #7c5cff;color:#7c5cff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.7rem;';
+    edit.textContent = 'Edit';
+    // Keep imported IDs in data, rather than interpolating them into HTML attributes.
+    edit.onclick = () => { overlay.remove(); showScriptEditor(script); };
+    row.append(name, state, edit);
+    list.appendChild(row);
+  }
   overlay.querySelector('#scripts-close').onclick = () => overlay.remove();
   overlay.onclick = (event) => {
     if (event.target === overlay) overlay.remove();
@@ -470,27 +468,4 @@ export function showScriptManager() {
     showScriptEditor();
   };
 
-  overlay.querySelectorAll('.script-edit').forEach((button) => {
-    button.onclick = (event) => {
-      event.stopPropagation();
-      const script = getUserScripts().find((item) => item.id === button.dataset.id);
-      if (!script) return;
-      overlay.remove();
-      showScriptEditor(script);
-    };
-  });
-
-  overlay.querySelectorAll('.script-toggle').forEach((button) => {
-    button.onclick = (event) => {
-      event.stopPropagation();
-      const script = getUserScripts().find((item) => item.id === button.dataset.id);
-      if (!script) return;
-      script.enabled = !script.enabled;
-      if (script.enabled) runUserScript(script);
-      else script._running = false;
-      persistUserScripts();
-      overlay.remove();
-      showScriptManager();
-    };
-  });
 }

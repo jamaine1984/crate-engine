@@ -67,10 +67,10 @@ export function showAISettingsModal() {
     </select>
 
     <label id="ai-apikey-label" style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">API Key</label>
-    <input id="ai-apikey" type="password" value="${config.apiKey || ''}" placeholder="sk-..." style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:14px;font-size:0.85rem;box-sizing:border-box">
+    <input id="ai-apikey" type="password" value="" placeholder="sk-..." style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:14px;font-size:0.85rem;box-sizing:border-box">
 
     <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Model (optional)</label>
-    <input id="ai-model" value="${config.model || ''}" placeholder="e.g. gpt-4o, claude-3-sonnet, gemini-pro" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:20px;font-size:0.85rem;box-sizing:border-box">
+    <input id="ai-model" placeholder="e.g. gpt-4o, claude-3-sonnet, gemini-pro" style="width:100%;padding:10px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;margin-bottom:20px;font-size:0.85rem;box-sizing:border-box">
     <div id="ai-security-note" style="margin:-8px 0 16px;font-size:0.75rem;color:#666"></div>
 
     <div style="display:flex;gap:10px">
@@ -84,7 +84,9 @@ export function showAISettingsModal() {
   const providerEl = document.getElementById('ai-provider');
   const apiKeyLabelEl = document.getElementById('ai-apikey-label');
   const apiKeyInputEl = document.getElementById('ai-apikey');
+  apiKeyInputEl.value = config.apiKey || '';
   const modelInputEl = document.getElementById('ai-model');
+  modelInputEl.value = String(config.model || '');
   const securityNoteEl = document.getElementById('ai-security-note');
 
   function syncProviderUI() {
@@ -138,9 +140,11 @@ export function showAISettingsModal() {
         const names = (data.models || []).map((entry) => entry.name);
         if (!response.ok) throw new Error('Local Ollama is not responding');
         if (model && !names.includes(model)) {
-          statusEl.innerHTML = '<span style="color:#f59e0b">⚠️ Ollama reached, but model not found locally: ' + model + '</span>';
+          statusEl.style.color = '#f59e0b';
+          statusEl.textContent = 'Ollama reached, but model not found locally: ' + model;
         } else {
-          statusEl.innerHTML = '<span style="color:#4ade80">✓ Local Ollama ready' + (model ? ' (' + model + ')' : '') + '</span>';
+          statusEl.style.color = '#4ade80';
+          statusEl.textContent = 'Local Ollama ready' + (model ? ' (' + model + ')' : '');
         }
         return;
       }
@@ -155,7 +159,8 @@ export function showAISettingsModal() {
         statusEl.innerHTML = '<span style="color:#f87171">⚠️ Could not reach API</span>';
       }
     } catch (err) {
-      statusEl.innerHTML = '<span style="color:#f87171">⚠️ Error: ' + err.message + '</span>';
+      statusEl.style.color = '#f87171';
+      statusEl.textContent = 'Error: ' + err.message;
     }
   };
 }
@@ -181,7 +186,7 @@ export function showMeshyKeyModal() {
         <p style="color:#666;font-size:0.78rem;margin-bottom:12px">Free tier: 200 credits/month. Pro ($16/mo): 1000 credits. Your key stays only for this browser session.</p>
 
         <label style="font-size:0.75rem;color:#aaa;display:block;margin-bottom:4px">Meshy API Key</label>
-        <input id="meshy-key-input" type="password" value="${existingKey}" placeholder="msy-..." style="width:100%;padding:12px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.9rem;box-sizing:border-box;margin-bottom:16px">
+        <input id="meshy-key-input" type="password" placeholder="msy-..." style="width:100%;padding:12px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#fff;font-size:0.9rem;box-sizing:border-box;margin-bottom:16px">
 
         <div style="display:flex;gap:10px">
           <button id="meshy-save-btn" style="flex:1;padding:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:0.95rem">Save Key</button>
@@ -193,6 +198,7 @@ export function showMeshyKeyModal() {
   `;
   document.body.appendChild(modal);
 
+  document.getElementById('meshy-key-input').value = String(existingKey);
   document.getElementById('meshy-save-btn').onclick = () => {
     const key = document.getElementById('meshy-key-input').value.trim();
     context.setMeshyApiKey?.(key);
@@ -216,7 +222,8 @@ export function showMeshyKeyModal() {
         statusEl.innerHTML = '<span style="color:#4ade80">✓ Connected to Meshy AI!</span>';
       } else {
         const error = await response.json().catch(() => ({}));
-        statusEl.innerHTML = '<span style="color:#f87171">❌ ' + (error.message || 'Auth failed — check your key') + '</span>';
+        statusEl.style.color = '#f87171';
+        statusEl.textContent = error.message || 'Auth failed — check your key';
       }
     } catch {
       statusEl.innerHTML = '<span style="color:#f87171">❌ Connection error</span>';

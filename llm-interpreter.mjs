@@ -20,7 +20,7 @@ export async function interpretWithLLM(userInput, options = {}) {
 
     const payload = {
       input: userInput,
-      apiKey: localStorage.getItem('crate_openrouter_key') || undefined,
+      apiKey: sessionStorage.getItem('crate_openrouter_key') || undefined,
       agent: options.agent === true,  // AI Agent button uses smarter model + more tokens
     };
 

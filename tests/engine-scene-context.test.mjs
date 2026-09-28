@@ -1,0 +1,6 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {sceneContext,sceneFingerprint} from '../engine/editor/scene-context.mjs';
+const project=()=>({id:'p',name:'World',settings:{gravity:-9.8},entities:Array.from({length:300},(_,i)=>({id:'e'+i,name:'Box',type:'box',position:[i,0,0],secret:'omit'})),assets:[{id:'a',name:'Tree',mime:'model/gltf-binary',bytes:'private',cloudId:'private',url:'private',sha256:'abc'}],legacySource:{private:true}});
+test('scene context pages entities and strips storage metadata',()=>{const result=sceneContext(project());assert.equal(result.entities.length,250);assert.equal(result.entityCount,300);assert.equal(result.truncated,true);assert.equal(JSON.stringify(result).includes('private'),false);assert.equal(JSON.stringify(result).includes('secret'),false);assert.deepEqual(sceneContext(project(),{offset:250,limit:250}).entities.map(e=>e.id),Array.from({length:50},(_,i)=>'e'+(250+i)));});
+test('fingerprint tracks authored changes but not save timestamp',async()=>{const p=project(),before=await sceneFingerprint(p);p.updatedAt=Date.now();assert.equal(await sceneFingerprint(p),before);p.entities[0].position[0]=1;assert.notEqual(await sceneFingerprint(p),before);});

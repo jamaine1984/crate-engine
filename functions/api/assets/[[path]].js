@@ -1,3 +1,6 @@
+import { requireLegacyWriteUser, requireLegacyAdminWrite, accountOwnerHash, readVerifiedUser } from '../../_security/legacy-write.mjs';
+import { validateModelFile, modelContentType, modelResponseHeaders } from '../../_security/model-file.mjs';
+
 const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 const MAX_NAME_LENGTH = 120;
 const MAX_FILE_NAME_LENGTH = 180;
@@ -276,6 +279,10 @@ function publicPublishedAsset(record, request) {
 }
 
 async function requireOwner(context) {
+  const user = await readVerifiedUser(context);
+  if (user) {
+    return { ok: true, ownerHash: await accountOwnerHash(user), ownerUserId: user.id };
+  }
   const token = ownerTokenFromRequest(context.request);
   if (!token) return { ok: false, response: json({ ok: false, error: 'Owner token required.' }, { status: 403 }) };
   const ownerHash = await hashToken(token);
@@ -283,6 +290,10 @@ async function requireOwner(context) {
 }
 
 async function requireAdmin(context, payload = {}) {
+  if (context.legacyWriteUser) {
+    const user = await requireLegacyAdminWrite(context, 'cleanup');
+    return { ok: true, admin: { name: user.displayName || user.email || 'Administrator', role: 'admin' } };
+  }
   const provided = cleanToken(
     context.request.headers.get('x-crate-admin-token') ||
     payload.adminToken ||
@@ -334,6 +345,7 @@ async function listOwnerPublishedAssets(bucket, ownerHash, limit = MAX_PUBLIC_US
   const rows = [];
   let cursor = undefined;
   let scanned = 0;
+  let truncated = false;
   do {
     const remaining = Math.max(1, Math.min(1000, limit - scanned));
     const listed = await bucket.list({
@@ -360,9 +372,10 @@ async function listOwnerPublishedAssets(bucket, ownerHash, limit = MAX_PUBLIC_US
       if (scanned >= limit) break;
     }
     cursor = listed?.cursor;
+    truncated = !!listed?.truncated;
     if (!listed?.truncated || !cursor || scanned >= limit) break;
   } while (true);
-  return { rows, scanned };
+  return { rows, scanned, truncated };
 }
 
 async function storageUsage(context) {
@@ -426,12 +439,18 @@ async function uploadAsset(context) {
   if (sizeBytes > MAX_ASSET_BYTES) {
     return json({ ok: false, error: `Cloud asset uploads are limited to ${Math.round(MAX_ASSET_BYTES / (1024 * 1024))} MB.` }, { status: 413 });
   }
+  const fileData = await file.arrayBuffer();
+  validateModelFile(fileData, extension);
 
   const id = cleanId(form.get('id')) || `asset_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
   const currentRows = await readIndex(bucket, owner.ownerHash);
   const rowsWithoutCurrent = currentRows.filter((item) => item.id !== id);
+  if (rowsWithoutCurrent.length >= MAX_INDEX_ROWS) {
+    return json({ ok: false, error: 'Asset limit reached. Delete an older asset before uploading.' }, { status: 413 });
+  }
   const quotaBytes = ownerQuotaBytes(context.env);
-  if (sumAssetBytes(rowsWithoutCurrent) + sizeBytes > quotaBytes) {
+  const publishedUsage = await listOwnerPublishedAssets(bucket, owner.ownerHash);
+  if (publishedUsage.truncated || sumAssetBytes(rowsWithoutCurrent) + sumAssetBytes(publishedUsage.rows) + sizeBytes > quotaBytes) {
     return json({
       ok: false,
       error: `Cloud asset storage quota is ${Math.round(quotaBytes / (1024 * 1024))} MB. Delete older imports before uploading this file.`,
@@ -444,10 +463,11 @@ async function uploadAsset(context) {
   const record = {
     id,
     key,
+    ownerUserId: owner.ownerUserId,
     name: cleanText(form.get('name') || fileName.replace(/\.(glb|gltf)$/i, '').replace(/[-_]+/g, ' '), MAX_NAME_LENGTH) || 'Imported model',
     fileName,
     sizeBytes,
-    contentType: file.type || (extension === 'glb' ? 'model/gltf-binary' : 'model/gltf+json'),
+    contentType: modelContentType(fileName),
     extension,
     metrics,
     source: cleanText(form.get('source') || 'user-import', MAX_SOURCE_LENGTH),
@@ -455,7 +475,7 @@ async function uploadAsset(context) {
     updatedAt: now,
   };
 
-  await bucket.put(key, await file.arrayBuffer(), {
+  await bucket.put(key, fileData, {
     httpMetadata: { contentType: record.contentType },
     customMetadata: {
       id: record.id,
@@ -481,7 +501,10 @@ async function findAsset(context, id) {
   const rows = await readIndex(bucket, owner.ownerHash);
   const record = rows.find((item) => item.id === cleanAssetId);
   if (!record) return { response: json({ ok: false, error: 'Asset not found.' }, { status: 404 }) };
-  return { bucket, ownerHash: owner.ownerHash, rows, record };
+  if (context.legacyWriteUser && record.ownerUserId !== context.legacyWriteUser.id) {
+    return { response: json({ ok: false, error: 'Verified account ownership is required for this asset.' }, { status: 403 }) };
+  }
+  return { bucket, ownerHash: owner.ownerHash, ownerUserId: owner.ownerUserId, rows, record };
 }
 
 async function assetDetails(context, id) {
@@ -498,9 +521,8 @@ async function downloadAsset(context, id) {
   return new Response(object.body, {
     status: 200,
     headers: {
-      'Content-Type': found.record.contentType || object.httpMetadata?.contentType || 'model/gltf-binary',
+      ...modelResponseHeaders(cleanFileName(found.record.fileName)),
       'Content-Length': String(found.record.sizeBytes || object.size || ''),
-      'Content-Disposition': `inline; filename="${cleanFileName(found.record.fileName || 'model.glb')}"`,
       'Cache-Control': 'private, max-age=60',
       ...corsHeaders(),
     },
@@ -512,21 +534,39 @@ async function publishAsset(context, id) {
   if (found.response) return found.response;
   const payload = await readJson(context.request);
   const gameSlug = cleanId(payload.gameSlug || 'game');
-  const publicId = cleanId(payload.publicId || `${gameSlug || 'game'}-${found.record.id}`);
+  const store = getGameStore(context.env);
+  const game = store && await store.get(GAME_PREFIX + gameSlug, 'json');
+  if (!game || game.ownerUserId !== found.ownerUserId) {
+    return json({ ok: false, error: 'Create an account-owned game before publishing its assets.' }, { status: 403 });
+  }
+  const generatedPublicId = 'pub_' + await accountOwnerHash({ id: JSON.stringify([found.ownerUserId, gameSlug, found.record.id]) });
+  const publicId = cleanId(payload.publicId || generatedPublicId);
   if (!publicId) return json({ ok: false, error: 'Public asset id is required.' }, { status: 400 });
   const object = await found.bucket.get(found.record.key);
   if (!object) return json({ ok: false, error: 'Asset data not found.' }, { status: 404 });
   const now = new Date().toISOString();
   let existingPublicRecord = null;
-  try {
-    const existingMetadata = await found.bucket.get(publicMetadataKey(publicId));
-    if (existingMetadata) existingPublicRecord = JSON.parse(await existingMetadata.text());
-  } catch {}
+  const existingMetadata = await found.bucket.get(publicMetadataKey(publicId));
+  if (existingMetadata) {
+    try { existingPublicRecord = JSON.parse(await existingMetadata.text()); }
+    catch { return json({ ok: false, error: 'Public asset metadata is invalid; repair is required before writing.' }, { status: 409 }); }
+  }
+  if (existingPublicRecord && existingPublicRecord.ownerUserId !== found.ownerUserId) {
+    return json({ ok: false, error: 'This public asset id belongs to another owner or requires migration.' }, { status: 403 });
+  }
+  if (existingPublicRecord && existingPublicRecord.gameSlug !== gameSlug) {
+    return json({ ok: false, error: 'A public asset id cannot be reassigned to another game.' }, { status: 403 });
+  }
+  if (!existingPublicRecord && publicId !== generatedPublicId) {
+    return json({ ok: false, error: 'New public asset ids are allocated by the server.' }, { status: 403 });
+  }
+  const modelData = await object.arrayBuffer();
+  validateModelFile(modelData, cleanExtension(found.record.fileName));
   const quotaBytes = ownerQuotaBytes(context.env);
   const publishedUsage = await listOwnerPublishedAssets(found.bucket, found.ownerHash);
   const replacingBytes = existingPublicRecord?.ownerHash === found.ownerHash ? assetBytes(existingPublicRecord) : 0;
   const projectedBytes = sumAssetBytes(found.rows) + sumAssetBytes(publishedUsage.rows) - replacingBytes + assetBytes(found.record);
-  if (projectedBytes > quotaBytes) {
+  if (publishedUsage.truncated || projectedBytes > quotaBytes) {
     return json({
       ok: false,
       error: `Publishing this game asset would exceed the ${Math.round(quotaBytes / (1024 * 1024))} MB cloud storage quota.`,
@@ -539,6 +579,7 @@ async function publishAsset(context, id) {
     publicId,
     sourceAssetId: found.record.id,
     ownerHash: found.ownerHash,
+    ownerUserId: found.ownerUserId,
     gameSlug,
     key: publicObjectKey(publicId, found.record.fileName || 'model.glb'),
     source: 'published-user-asset',
@@ -546,8 +587,8 @@ async function publishAsset(context, id) {
     updatedAt: now,
     publishedAt: now,
   };
-  await found.bucket.put(publicRecord.key, await object.arrayBuffer(), {
-    httpMetadata: { contentType: publicRecord.contentType || object.httpMetadata?.contentType || 'model/gltf-binary' },
+  await found.bucket.put(publicRecord.key, modelData, {
+    httpMetadata: { contentType: modelContentType(publicRecord.fileName) },
     customMetadata: {
       publicId,
       sourceAssetId: found.record.id,
@@ -594,9 +635,8 @@ async function downloadPublicAsset(context, publicId) {
   return new Response(object.body, {
     status: 200,
     headers: {
-      'Content-Type': found.record.contentType || object.httpMetadata?.contentType || 'model/gltf-binary',
+      ...modelResponseHeaders(cleanFileName(found.record.fileName)),
       'Content-Length': String(found.record.sizeBytes || object.size || ''),
-      'Content-Disposition': `inline; filename="${cleanFileName(found.record.fileName || 'model.glb')}"`,
       'Cache-Control': 'public, max-age=86400',
       ...corsHeaders(),
     },
@@ -657,6 +697,9 @@ async function cleanupPublicAssets(context) {
   if (!admin.ok) return admin.response;
   const limit = Math.min(Math.max(Number(payload.limit) || MAX_PUBLIC_CLEANUP_SCAN, 1), MAX_PUBLIC_CLEANUP_SCAN);
   const dryRun = payload.dryRun !== false && payload.delete !== true;
+  if (!dryRun) {
+    return json({ ok: false, error: 'Public asset deletion is paused until verified ownership and transactional reference tracking are available.' }, { status: 503 });
+  }
   const listed = await listPublicAssetMetadata(bucket, limit);
   const result = {
     ok: true,
@@ -699,18 +742,19 @@ export async function onRequest(context) {
   }
 
   try {
+    if (['POST', 'DELETE'].includes(context.request.method)) await requireLegacyWriteUser(context);
     const parts = pathParts(context.params);
-    if (context.request.method === 'GET' && parts.length === 1 && parts[0] === 'health') return health(context);
-    if (context.request.method === 'GET' && parts.length === 1 && parts[0] === 'usage') return storageUsage(context);
-    if (context.request.method === 'POST' && parts.length === 2 && parts[0] === 'admin' && parts[1] === 'public-cleanup') return cleanupPublicAssets(context);
-    if (context.request.method === 'GET' && parts.length === 0) return listAssets(context);
-    if (context.request.method === 'POST' && parts.length === 0) return uploadAsset(context);
-    if (context.request.method === 'GET' && parts.length === 2 && parts[0] === 'public') return publicAssetDetails(context, parts[1]);
-    if (context.request.method === 'GET' && parts.length === 3 && parts[0] === 'public' && parts[2] === 'download') return downloadPublicAsset(context, parts[1]);
-    if (context.request.method === 'GET' && parts.length === 1) return assetDetails(context, parts[0]);
-    if (context.request.method === 'GET' && parts.length === 2 && parts[1] === 'download') return downloadAsset(context, parts[0]);
-    if (context.request.method === 'POST' && parts.length === 2 && parts[1] === 'publish') return publishAsset(context, parts[0]);
-    if (context.request.method === 'DELETE' && parts.length === 1) return deleteAsset(context, parts[0]);
+    if (context.request.method === 'GET' && parts.length === 1 && parts[0] === 'health') return await health(context);
+    if (context.request.method === 'GET' && parts.length === 1 && parts[0] === 'usage') return await storageUsage(context);
+    if (context.request.method === 'POST' && parts.length === 2 && parts[0] === 'admin' && parts[1] === 'public-cleanup') return await cleanupPublicAssets(context);
+    if (context.request.method === 'GET' && parts.length === 0) return await listAssets(context);
+    if (context.request.method === 'POST' && parts.length === 0) return await uploadAsset(context);
+    if (context.request.method === 'GET' && parts.length === 2 && parts[0] === 'public') return await publicAssetDetails(context, parts[1]);
+    if (context.request.method === 'GET' && parts.length === 3 && parts[0] === 'public' && parts[2] === 'download') return await downloadPublicAsset(context, parts[1]);
+    if (context.request.method === 'GET' && parts.length === 1) return await assetDetails(context, parts[0]);
+    if (context.request.method === 'GET' && parts.length === 2 && parts[1] === 'download') return await downloadAsset(context, parts[0]);
+    if (context.request.method === 'POST' && parts.length === 2 && parts[1] === 'publish') return await publishAsset(context, parts[0]);
+    if (context.request.method === 'DELETE' && parts.length === 1) return await deleteAsset(context, parts[0]);
     return json({ ok: false, error: 'Not found.' }, { status: 404 });
   } catch (err) {
     return json({ ok: false, error: err.message || 'Asset API failed.' }, { status: err.status || 500 });
