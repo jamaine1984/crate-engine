@@ -1,4 +1,4 @@
-import {sceneContext} from './scene-context.mjs';
+import {sceneContext,objectContext} from './scene-context.mjs';
 import {readLimitedResponse} from '../player/export.mjs';
 const BASE='http://127.0.0.1:9879';
 /** Turns MCP partial patches into full-field proposal updates: material and light merge, a null component removes it. */
@@ -8,6 +8,7 @@ export function editObjectOperations(project,operations){
   const entity=byId.get(operation.id);if(!entity)throw new Error('Object '+operation.id+' is not in this project. Read the scene again.');
   if(operation.op==='remove')return {op:'remove',id:operation.id};
   const patch={...operation.patch};
+  if(patch.shape&&entity.type!=='customMesh')throw new Error('Only customMesh objects have vector art (shape).');
   if(patch.material)patch.material={...entity.material,...patch.material};
   if(patch.light)patch.light={...entity.light,...patch.light};
   if(patch.components){const components={...entity.components};for(const [name,value]of Object.entries(patch.components)){if(value===null)delete components[name];else components[name]=value;}patch.components=components;}
@@ -39,6 +40,7 @@ export function createEditorMcpClient({getEditor,getState,onStatus=()=>{},onLog=
   const editor=getEditor(),args=command.arguments||{},state=getState();
   if(state.busy||state.mode!=='edit')throw new Error('Stop Play and finish the current operation first.');
   if(command.command==='get_scene')return sceneContext(editor.getProject(),args);
+  if(command.command==='get_object')return objectContext(editor.getProject(),args.id);
   if(command.command==='preview_world'){const result=await editor.previewWorld(args.recipe);validateActive(current,epoch);previews.add(result.previewId);return result;}
   if(!current.allowWrites)throw new Error('Scene changes are disabled for this connection.');
   if(command.command==='apply_world'){

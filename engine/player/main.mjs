@@ -1,3 +1,4 @@
+import {sideViewFollower} from '../runtime/side-follow.mjs';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {validateProject} from '../core/schema.mjs';
 import {MAX_MODEL_BYTES,hashBytes} from '../core/gltf.mjs';
@@ -28,10 +29,10 @@ async function initialize(canvas,score){
   view=createSceneRuntime({canvas,resolveAsset:async asset=>{const bytes=await request('assets/'+encodeURIComponent(asset.id)+'.glb',MAX_MODEL_BYTES);if(asset.sha256&&await hashBytes(bytes)!==asset.sha256)throw new Error('Game model checksum does not match: '+asset.name);return bytes;}});
   await view.sync(project);view.assertComplete();view.resize();if(disposed)throw new Error('Game startup was cancelled.');
   const camera=view.gameCamera(),cameraPosition=new THREE.Vector3(),cameraRotation=new THREE.Quaternion(),playerPosition=new THREE.Vector3();
-  // Side-view games keep the authored camera framing and smoothly follow the player along X, matching the editor preview.
-  let follow=null,followOffset=0,followX=0;
-  const followCamera=(dt=0)=>{if(!camera)return;camera.updateWorldMatrix(true,false);view.camera.position.copy(camera.getWorldPosition(cameraPosition));view.camera.quaternion.copy(camera.getWorldQuaternion(cameraRotation));if(follow){follow.updateWorldMatrix(true,false);const desired=follow.getWorldPosition(playerPosition).x+followOffset;followX+=(desired-followX)*(1-Math.exp(-7*Math.max(0,dt)));view.camera.position.x=followX;}};
-  const startFollow=()=>{follow=null;if(!camera||!physics)return;followCamera();const entity=project.entities.find(item=>item.components.player?.sideView&&physics.bodies.has(item.id)),object=entity&&view.objects.get(entity.id);if(!object)return;object.updateWorldMatrix(true,false);followX=view.camera.position.x;followOffset=followX-object.getWorldPosition(playerPosition).x;follow=object;};
+  // Side-view games keep the authored camera framing and follow the player (see side-follow.mjs), matching the editor preview.
+  let follow=null;const follower=sideViewFollower();
+  const followCamera=(dt=0)=>{if(!camera)return;camera.updateWorldMatrix(true,false);view.camera.position.copy(camera.getWorldPosition(cameraPosition));view.camera.quaternion.copy(camera.getWorldQuaternion(cameraRotation));if(follow){follow.updateWorldMatrix(true,false);follower.apply(follow.getWorldPosition(playerPosition),view.camera.position,dt);}};
+  const startFollow=()=>{follow=null;follower.stop();if(!camera||!physics)return;followCamera();const entity=project.entities.find(item=>item.components.player?.sideView&&physics.bodies.has(item.id)),object=entity&&view.objects.get(entity.id);if(!object)return;object.updateWorldMatrix(true,false);follower.start(object.getWorldPosition(playerPosition),view.camera.position,camera.fov);follow=object;};
   if(camera){view.camera.fov=camera.fov;view.camera.near=camera.near;view.camera.far=camera.far;view.camera.updateProjectionMatrix();followCamera();}
   else{controls=new OrbitControls(view.camera,canvas);controls.target.set(0,1,0);}
   // A round owns physics, touch controls and the HUD; Play again rebuilds all three from the untouched project.

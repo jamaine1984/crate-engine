@@ -424,3 +424,21 @@ test('screenshots: three checked image slots, private until published, locked du
   assert.equal(f.sql.prepare('SELECT cover_url FROM platform_games WHERE id=?').get(g.id).cover_url, null);
   f.sql.close();
 });
+
+test('owner handles player reports: dismiss, or take the game off the site and notify its creator', async () => {
+  const f = fixture(); const owner = await actor(f, ['OWNER'], { mfa: true }); const dev = await actor(f, ['DEVELOPER']); const reporter = await actor(f);
+  const g = game(f, dev);
+  await data(f, '/reports', reporter, 'POST', { gameId: g.id, category: 'content', detail: 'Offensive art' });
+  await data(f, '/reports', reporter, 'POST', { gameId: g.id, category: 'broken', detail: 'Black screen' });
+  assert.equal((await (await data(f, '/owner/overview', owner)).json()).openReports, 2);
+  const [first, second] = (await (await data(f, '/owner/reports', owner)).json()).items;
+  await assert.rejects(data(f, `/owner/reports/${first.id}`, owner, 'POST', { action: 'dismissed' }), reject(400));
+  await assert.rejects(data(f, `/owner/reports/${first.id}`, dev, 'POST', { action: 'dismissed', note: 'nope' }), reject(403));
+  await data(f, `/owner/reports/${first.id}`, owner, 'POST', { action: 'dismissed', note: 'Works for me' });
+  await data(f, `/owner/reports/${second.id}`, owner, 'POST', { action: 'suspend_game', note: 'Removed until fixed' });
+  assert.equal(f.sql.prepare('SELECT status FROM platform_games WHERE id=?').get(g.id).status, 'suspended');
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_reports WHERE status='open'").get().n, 0);
+  assert.match(f.sql.prepare('SELECT title FROM platform_notifications WHERE user_id=?').get(dev.id).title, /suspended/);
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM platform_audit WHERE action LIKE 'report.%'").get().n, 2);
+  f.sql.close();
+});

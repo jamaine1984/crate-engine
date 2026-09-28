@@ -8,8 +8,8 @@ import { createEditorBridge } from './bridge.mjs';
 import { callEditor } from './mcp-server.mjs';
 import { readFileSync } from 'node:fs';
 import { validArguments, validResult, toolDefinitions } from './contracts.mjs';
-import { createEditorMcpClient } from '../../engine/editor/mcp-client.mjs';
-import { sceneContext } from '../../engine/editor/scene-context.mjs';
+import { createEditorMcpClient, editObjectOperations } from '../../engine/editor/mcp-client.mjs';
+import { sceneContext, objectContext } from '../../engine/editor/scene-context.mjs';
 import { newProject } from '../../engine/core/schema.mjs';
 import { compileWorldRecipe } from '../../engine/core/procedural.mjs';
 import { ProjectStore } from '../../engine/core/project-store.mjs';
@@ -66,7 +66,7 @@ async function subprocess(t,f){
  const init=async()=>{const r=await rpc({id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'test',version:'1'}}});assert.equal(r.result.protocolVersion,'2025-06-18');send({method:'notifications/initialized'});};
  return {child,send,rpc,init,responses};
 }
-test('real stdio subprocess discovers tools and reads through paired browser transport',async t=>{const f=await fixture(t),s=await f.connect(),m=await subprocess(t,f);assert.equal((await m.rpc({id:90,method:'tools/list'})).error.code,-32000);await m.init();const list=await m.rpc({id:2,method:'tools/list'});assert.deepEqual(list.result.tools.map(x=>x.name),['get_scene','preview_world','apply_world','edit_objects','set_level_settings','undo']);const pending=m.rpc({id:3,method:'tools/call',params:{name:'get_scene',arguments:{limit:10}}});let command;for(let i=0;i<30&&!command;i++){command=(await(await f.poll(s)).json()).commands[0];if(!command)await delay(20);}assert.ok(command);assert.equal((await f.result(s,command.id,scene())).status,200);const answer=await pending;assert.equal(JSON.parse(answer.result.content[0].text).projectId,s.projectId);assert.equal((await m.rpc({id:3,method:'ping'})).error.code,-32600);});
+test('real stdio subprocess discovers tools and reads through paired browser transport',async t=>{const f=await fixture(t),s=await f.connect(),m=await subprocess(t,f);assert.equal((await m.rpc({id:90,method:'tools/list'})).error.code,-32000);await m.init();const list=await m.rpc({id:2,method:'tools/list'});assert.deepEqual(list.result.tools.map(x=>x.name),['get_scene','get_object','preview_world','apply_world','edit_objects','set_level_settings','undo']);const pending=m.rpc({id:3,method:'tools/call',params:{name:'get_scene',arguments:{limit:10}}});let command;for(let i=0;i<30&&!command;i++){command=(await(await f.poll(s)).json()).commands[0];if(!command)await delay(20);}assert.ok(command);assert.equal((await f.result(s,command.id,scene())).status,200);const answer=await pending;assert.equal(JSON.parse(answer.result.content[0].text).projectId,s.projectId);assert.equal((await m.rpc({id:3,method:'ping'})).error.code,-32600);});
 test('MCP cancellation is handled while a tool is pending and removes queued work',async t=>{const f=await fixture(t),s=await f.connect(),m=await subprocess(t,f);await m.init();m.send({id:2,method:'tools/call',params:{name:'get_scene',arguments:{}}});let command;for(let i=0;i<30&&!command;i++){command=(await(await f.poll(s)).json()).commands[0];if(!command)await delay(20);}assert.ok(command);m.send({method:'notifications/cancelled',params:{requestId:2}});await delay(180);assert.equal((await(await f.request('/commands/'+command.id)).json()).status,'cancelled');assert.ok((await m.rpc({id:3,method:'ping'})).result);assert.equal(m.responses.some(x=>x.id===2),false);});
 test('MCP rejects arbitrary execution, per-call credentials and oversized unterminated input',async t=>{const f=await fixture(t),m=await subprocess(t,f);await m.init();for(const [i,params]of[{name:'execute_python',arguments:{code:'evil()'}},{name:'get_scene',arguments:{apiKey:'private'}},{name:'apply_world',arguments:{recipe}}].entries())assert.equal((await m.rpc({id:2+i,method:'tools/call',params})).error.code,-32602);m.child.stdin.write('x'.repeat(524289));await delay(100);assert.ok(m.responses.some(x=>x.error?.message==='MCP input limit exceeded.'));});
 test('real bridge plus browser client previews and applies a world as one reversible change',async t=>{
@@ -121,4 +121,20 @@ test('real bridge plus browser client builds a level, edits it, sets rules and u
  const hero=read.entities.find(e=>e.name==='Hero');await assert.rejects(run('edit_objects',{operations:[{op:'update',id:hero.id,patch:{components:{goal:{}}}}]}));assert.equal(store.project.entities.find(e=>e.id===hero.id).components.goal,undefined);
  await run('set_level_settings',{settings:{lives:3,killY:-15}});assert.equal(store.project.settings.lives,3);assert.equal(store.project.settings.killY,-15);assert.equal((await run('get_scene',{})).settings.lives,3);
  await run('undo',{});assert.equal(store.project.settings.lives,0);await run('undo',{});assert.ok(store.project.entities.find(e=>e.id===lift.id).components.mover);await run('undo',{});assert.equal(store.project.entities.length,3);
+});
+test('get_object returns full customMesh art that edit_objects can change; shape edits need a customMesh', async () => {
+ const demo=JSON.parse(readFileSync(fileURLToPath(new URL('../../platform/media/skybound-sprint-recipe.json',import.meta.url)),'utf8'));
+ const project=newProject('Mira');project.id='project-one';project.entities=compileWorldRecipe(demo,project).entities;
+ const art=project.entities.find(e=>e.type==='customMesh'&&e.shape),plainBox=project.entities.find(e=>e.type!=='customMesh');
+ assert.equal(validArguments('get_object',{id:art.id}),true); assert.equal(validArguments('get_object',{id:'../x'}),false); assert.equal(validArguments('get_object',{}),false);
+ assert.equal(sceneContext(project).entities.find(e=>e.id===art.id).shape,undefined);
+ const full=objectContext(project,art.id); assert.deepEqual(full.entity.shape,art.shape); assert.equal(validResult('get_object',full,'project-one'),true);
+ assert.equal(validResult('get_object',full,'other-project'),false); assert.throws(()=>objectContext(project,'missing'),/not in this project/);
+ assert.ok((await toolDefinitions()).some(t=>t.name==='get_object'&&t.annotations.readOnlyHint));
+ const recolored={paths:art.shape.paths.map(path=>({...path,color:'#123456'}))};
+ const edit={operations:[{op:'update',id:art.id,patch:{shape:recolored}}]};
+ assert.equal(validArguments('edit_objects',edit),true);
+ assert.deepEqual(editObjectOperations(project,edit.operations)[0].patch.shape,recolored);
+ assert.throws(()=>editObjectOperations(project,[{op:'update',id:plainBox.id,patch:{shape:recolored}}]),/Only customMesh/);
+ assert.equal(validArguments('edit_objects',{operations:[{op:'update',id:art.id,patch:{shape:{paths:[{points:[[0,0],[1,1]],color:'#ffffff'}]}}}]}),false);
 });

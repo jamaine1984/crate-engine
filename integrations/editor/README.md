@@ -37,6 +37,7 @@ Pair the editor to the running helper, then explicitly enable writes only when y
 | Tool | Arguments | Behavior |
 | --- | --- | --- |
 | `get_scene` | Optional `offset`, `limit` (maximum 250) | Read a bounded page of scene metadata and available asset IDs. Check total counts/truncation before reasoning about the full scene. |
+| `get_object` | `{id}` | Read one object in full, including a `customMesh` object's vector `shape` (paths, colours, depth), so a client can copy that art into a recipe or change it. |
 | `preview_world` | `{recipe}` | Validate and expand a deterministic world recipe against the paired project. Returns a preview ID and proposed entity metadata; does not commit edits. |
 | `apply_world` | `{previewId}` | Apply an exact prior preview only while editor writes are enabled. Consumed, expired, wrong-project, or stale previews fail. One transaction supports Undo. |
 | `edit_objects` | `{summary?, operations}` | Update (`{op:'update', id, patch}`) or remove (`{op:'remove', id}`) up to 50 existing objects by the IDs from `get_scene`, as one Undo step, while writes are enabled. `material` and `light` patches merge; each listed component replaces that component and `null` removes it. The whole edit fails if any operation is invalid. |
@@ -55,7 +56,7 @@ Recipes and edits use the same gameplay components as the editor Inspector, so a
 - `rigidbody.collider: 'shape'` makes collision follow an object's real outline instead of its bounding box.
 - Lives and fall-out height are level settings, changed with `set_level_settings`.
 
-`get_scene` omits `customMesh` vector paths to keep pages small; those objects still report their transforms and components. Preview is still required before applying a world; a preview result alone does not mean the world was applied or saved. Saving and exporting remain explicit editor operations.
+`get_scene` omits `customMesh` vector paths to keep pages small; those objects still report their transforms and components. Use `get_object` to read one object's art, and an `edit_objects` patch with `shape` (customMesh only) to change it. Preview is still required before applying a world; a preview result alone does not mean the world was applied or saved. Saving and exporting remain explicit editor operations.
 
 The authoritative recipe contract is `engine/core/procedural.mjs`, exposed through the tool's schema. A version-1 recipe supplies an integer or string seed and `add`, `grid`, or `scatter` operations. Supported objects use the editor's allowlisted types/components. Model entities must reference existing project asset IDs. Limits include 64 recipe operations, 500 new entities, 5,000 total project entities, and 32 total lights. No code, arbitrary URLs, filesystem commands, API keys, or paid provider invocation is available through these tools.
 

@@ -15,7 +15,7 @@ const TYPES = [...ENTITY_TYPES];
 // Commands that change the paired project. The bridge refuses them unless the editor enabled writes.
 export const MUTATING_COMMANDS = Object.freeze(['apply_world','undo','edit_objects','set_level_settings']);
 const COMPONENT_NAMES = Object.keys(COMPONENT_SCHEMAS);
-const EDIT_FIELDS = ['name','position','rotation','scale','visible','material','light','components'];
+const EDIT_FIELDS = ['name','position','rotation','scale','visible','material','light','components','shape'];
 function validShape(x){
  if(!keys(x,['paths'])||!Array.isArray(x.paths)||x.paths.length<1||x.paths.length>64)return false;
  let total=0;
@@ -43,7 +43,7 @@ function entity(x, snapshot=false) {
 function validPatch(p){
  if(!keys(p,EDIT_FIELDS)||!Object.keys(p).length)return false;
  return maybe(p,'name',n=>text(n,100)&&n.length>0) && maybe(p,'position',n=>vector(n,3,-1e6,1e6)) && maybe(p,'rotation',n=>vector(n,3,-36000,36000)) && maybe(p,'scale',n=>vector(n,3,.001,10000)) &&
-  maybe(p,'visible',n=>typeof n==='boolean') && maybe(p,'material',validMaterial) && maybe(p,'light',validLight) &&
+  maybe(p,'visible',n=>typeof n==='boolean') && maybe(p,'material',validMaterial) && maybe(p,'light',validLight) && maybe(p,'shape',validShape) &&
   maybe(p,'components',c=>keys(c,COMPONENT_NAMES)&&Object.entries(c).every(([name,value])=>value===null||validComponents({[name]:value})));
 }
 function validEdits(args){
@@ -56,6 +56,7 @@ function recipeShape(recipe) {
 }
 export function validArguments(command,args){
  if(command==='get_scene')return keys(args,['offset','limit'])&&maybe(args,'offset',n=>int(n,0,4999))&&maybe(args,'limit',n=>int(n,1,LIMITS.maxSceneEntities));
+ if(command==='get_object')return keys(args,['id'])&&identifier(args.id);
  if(command==='preview_world')return keys(args,['recipe'])&&recipeShape(args.recipe);
  if(command==='apply_world')return keys(args,['previewId'])&&uuid(args.previewId);
  if(command==='undo')return keys(args,[]);
@@ -68,6 +69,7 @@ function validSettings(x){return keys(x,['background','gravity','ambientIntensit
 export function validResult(command,value,projectId,args={}){
  if(!plain(value)||(value.projectId!==undefined&&value.projectId!==projectId))return false;
  if(command==='get_scene')return keys(value,['projectId','name','entities','assets','settings','entityCount','assetCount','truncated','offset','limit'])&&value.projectId===projectId&&text(value.name,120)&&Array.isArray(value.entities)&&value.entities.length<=(args.limit??250)&&value.entities.every(e=>entity(e,true))&&Array.isArray(value.assets)&&value.assets.length<=500&&value.assets.every(a=>keys(a,['id','name','mime'])&&identifier(a.id)&&text(a.name,180)&&maybe(a,'mime',m=>m==='model/gltf-binary'))&&validSettings(value.settings)&&int(value.entityCount,0,5000)&&int(value.assetCount,0,500)&&typeof value.truncated==='boolean'&&maybe(value,'offset',n=>int(n,0,4999))&&maybe(value,'limit',n=>int(n,1,250));
+ if(command==='get_object')return keys(value,['projectId','entity'])&&value.projectId===projectId&&entity(value.entity,true);
  if(command==='preview_world')return keys(value,['projectId','previewId','summary','entities'])&&uuid(value.previewId)&&validSummary(value.summary)&&Array.isArray(value.entities)&&value.entities.length<=500&&value.entities.every(e=>entity(e,true));
  return keys(value,['ok','projectId','entityCount','revision','summary','changed'])&&value.ok===true&&maybe(value,'entityCount',n=>int(n,0,5000))&&maybe(value,'revision',n=>int(n,0,Number.MAX_SAFE_INTEGER))&&maybe(value,'summary',s=>text(s,2000)||validSummary(s))&&maybe(value,'changed',n=>typeof n==='boolean');
 }
@@ -78,7 +80,8 @@ const colorSchema={type:'string',pattern:'^#[a-fA-F0-9]{6}$'};
 const idSchema={type:'string',pattern:'^[A-Za-z0-9_-]{1,100}$'};
 const SETTINGS_SCHEMA=objectSchema({background:colorSchema,gravity:numberSchema(-100,100),ambientIntensity:numberSchema(0,10),exposure:numberSchema(.1,5),shadows:{type:'boolean'},quality:{enum:['low','balanced','high']},fogDensity:numberSchema(0,.2),
  killY:{...numberSchema(-10000,10000),description:'Players who fall below this height lose a life and respawn.'},lives:{type:'integer',minimum:0,maximum:99,description:'Lives per run; 0 means unlimited.'}});
-const PATCH_SCHEMA=objectSchema({name:{type:'string',minLength:1,maxLength:100},position:vectorSchema(-1e6,1e6),rotation:vectorSchema(-36000,36000),scale:vectorSchema(.001,10000),visible:{type:'boolean'},
+const SHAPE_SCHEMA={...objectSchema({paths:{type:'array',minItems:1,maxItems:64,items:{...objectSchema({points:{type:'array',minItems:3,maxItems:256,items:{type:'array',minItems:2,maxItems:2,items:numberSchema(-100,100)}},color:colorSchema,depth:numberSchema(-100,100)}),required:['points','color']}}}),required:['paths'],description:'customMesh vector art: up to 64 filled polygons (x,y points), each with a colour and optional depth. Only valid on customMesh objects.'};
+const PATCH_SCHEMA=objectSchema({name:{type:'string',minLength:1,maxLength:100},shape:SHAPE_SCHEMA,position:vectorSchema(-1e6,1e6),rotation:vectorSchema(-36000,36000),scale:vectorSchema(.001,10000),visible:{type:'boolean'},
  material:objectSchema({color:colorSchema,metalness:numberSchema(0,1),roughness:numberSchema(0,1)}),light:objectSchema({color:colorSchema,intensity:numberSchema(0,1000),distance:numberSchema(0,10000)}),
  components:{...objectSchema(Object.fromEntries(Object.entries(COMPONENT_SCHEMAS).map(([name,schema])=>[name,{oneOf:[schema,{type:'null'}]}]))),description:'Each listed component replaces that component; null removes it. Unlisted components are kept.'}});
 const EDIT_SCHEMA={...objectSchema({summary:{type:'string',maxLength:200},operations:{type:'array',minItems:1,maxItems:50,items:{oneOf:[
@@ -86,7 +89,8 @@ const EDIT_SCHEMA={...objectSchema({summary:{type:'string',maxLength:200},operat
  {...objectSchema({op:{const:'remove'},id:idSchema}),required:['op','id']}]}}}),required:['operations']};
 export async function toolDefinitions(){
  return [
-  {name:'get_scene',description:'Read a bounded page of the explicitly paired editor project: level settings (including lives and killY), object IDs, transforms, materials and gameplay components. customMesh vector paths are omitted to keep pages small. Assets contain IDs and names only; no credentials, files or URLs.',inputSchema:objectSchema({offset:{type:'integer',minimum:0,maximum:4999},limit:{type:'integer',minimum:1,maximum:250}}),annotations:{readOnlyHint:true}},
+  {name:'get_scene',description:'Read a bounded page of the explicitly paired editor project: level settings (including lives and killY), object IDs, transforms, materials and gameplay components. customMesh vector paths are omitted to keep pages small; use get_object to read the art of one object. Assets contain IDs and names only; no credentials, files or URLs.',inputSchema:objectSchema({offset:{type:'integer',minimum:0,maximum:4999},limit:{type:'integer',minimum:1,maximum:250}}),annotations:{readOnlyHint:true}},
+  {name:'get_object',description:'Read one object in full by the ID returned by get_scene, including customMesh vector paths (shape), so you can copy its art into a recipe or change it with edit_objects.',inputSchema:{...objectSchema({id:idSchema}),required:['id']},annotations:{readOnlyHint:true}},
   {name:'preview_world',description:'Preview a bounded deterministic declarative world recipe that adds objects, including gameplay rules (player, goal, hazard, checkpoint, collectible, mover). This does not apply edits. Use existing asset IDs returned by get_scene; no code, URLs or filesystem access.',inputSchema:{...objectSchema({recipe:WORLD_RECIPE_SCHEMA}),required:['recipe']},annotations:{readOnlyHint:true}},
   {name:'apply_world',description:'Apply an exact prior preview to the same project as one Undo step, only while the user has explicitly enabled MCP writes. Stale or consumed previews fail.',inputSchema:{...objectSchema({previewId:{type:'string',format:'uuid'}}),required:['previewId']},annotations:{readOnlyHint:false,destructiveHint:false}},
   {name:'edit_objects',description:'Update or remove existing objects by the IDs returned by get_scene, as one Undo step, only while the user has explicitly enabled MCP writes. material and light patches merge with current values; each listed component replaces that component and null removes it. Removing a parent requires removing its children first. The whole edit fails if any operation is invalid.',inputSchema:EDIT_SCHEMA,annotations:{readOnlyHint:false,destructiveHint:true}},

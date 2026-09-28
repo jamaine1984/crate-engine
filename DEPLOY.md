@@ -1,119 +1,39 @@
-# DEPLOY.md — Crate Engine Deployment Guide
+# Deploying Crate Ship Games
 
-**⚠️ READ THIS BEFORE MAKING ANY CHANGES ⚠️**
+Live site: https://crateshipgames.com (Cloudflare Pages project `crateship-games`).
+Work happens on branch `codex/platform-rebuild`; `main` is the old version and is left alone.
+Wrangler is logged in as the Cloudflare account that owns the project.
 
-## Current Working Version
+## Every deploy
 
-- **Git commit:** `1af5e18d` (main branch)
-- **Cloudflare deploy:** `edce0520.crateship-games.pages.dev`
-- **Live URL:** https://crateshipgames.com
-- **Date confirmed working:** 2026-04-06
-- **Confirmed features:**
-  - City builder (buildCityWorld3) — type "build city"
-  - Woman/Man NPCs with walk/run/idle animations
-  - 15 built-in world recipes (medieval village, cyberpunk city, etc.)
-  - 6,218 3D model files (GLBs)
-  - AI Build Agent (zero API keys needed for core features)
-  - Godmode runtime (client-side effects)
-
-## Repository Structure
-
-```
-/Users/jamainemartin/Desktop/crate-engine/     ← Git repo (source code)
-├── engine.mjs          ← Main engine (30K+ lines)
-├── character.mjs       ← Character system + NPCs
-├── ai-agent.mjs        ← AI chat agent + world recipes
-├── godmode.mjs         ← Godmode effects runtime
-├── llm-interpreter.mjs ← LLM command interpreter
-├── city_assets.json    ← City building manifest (REQUIRED for city builder)
-├── index.html          ← Landing page
-├── play.html           ← Game page
-├── models/             ← SYMLINK to models (NOT in git, deploy-only)
-└── .gitignore          ← Excludes models/, KOKO.app, etc.
+```powershell
+npm run test:platform          # expect 0 failures (1 skip: real Blender)
+npm run build
+npx wrangler d1 migrations apply crateship-platform-v1 --remote   # only if platform/migrations changed; run BEFORE deploying code that needs it
+npx wrangler pages deploy dist --project-name crateship-games --branch=main --commit-hash=<git sha> --commit-dirty=false
 ```
 
-## Where Are The Models?
+- Wrangler 4.20 often fails with "fetch failed / other side closed". Retry the same command (up to about 4 times).
+- The live site can take around 20 seconds to update after "Deployment complete".
+- Never use `fetch(..., {redirect: 'error'})` in server code. Cloudflare Workers throws on it, and it once broke every sign-in.
 
-The 3D models (6,218 GLB files, ~2GB) are **NOT in git** — they're too large.
+## Separate Workers
 
-**Local location:**
-```
-/Users/jamainemartin/.openclaw/workspace/crate-engine/web/models/
-```
+| Worker | Config | Purpose | Status |
+| --- | --- | --- | --- |
+| `crateship-game-content` | `worker/game-content/wrangler.toml` | Serves published games from `crateship-game-content.koikes2021.workers.dev`, walled off from player accounts | Deployed |
+| `crateship-game-scanner` | `worker/game-scanner/wrangler.toml` | Security check for uploaded game ZIPs (service binding `GAME_SCANNER`) | Needs the Workers Paid plan |
+| `crateship-game-publisher` | `worker/game-publisher/wrangler.toml` | Copies an approved build into `crateship-published-games` (service binding `GAME_PUBLISHER`) | Needs the Workers Paid plan |
+| `crateship-engine-maintenance` | `worker/engine-maintenance/wrangler.toml` | Hourly cleanup of private engine models | See its config |
 
-**In the deploy directory:**
-The `models/` symlink in the repo root points to the above location.
+Deploy one with `npx wrangler deploy --config <config path>`.
 
-**On Cloudflare:** Models are uploaded via wrangler and served at `/models/` paths.
+## Data and storage
 
-## How to Deploy
+- D1 database `crateship-platform-v1` (binding `PLATFORM_DB`). To read it: `npx wrangler d1 execute crateship-platform-v1 --remote --command "SELECT ..."`.
+- R2 bucket `crateship-games-user-assets` holds uploads, screenshots and private models. `crateship-published-games` holds released game files.
+- The 3D model library is served from a separate Pages project (`crateship-games-assets`), so `dist`-only deploys are safe.
 
-### Step 1: Push source code to GitHub
-```bash
-cd /Users/jamainemartin/Desktop/crate-engine
-git add -A
-git commit -m "your message"
-git push origin main
-```
+## Local preview
 
-### Step 2: Deploy to Cloudflare (includes models)
-
-**IMPORTANT:** Deploy from `/tmp/crate-deploy` (or similar) that includes both source AND models.
-
-```bash
-# Create deploy directory with source + models
-mkdir -p /tmp/crate-deploy
-cp /Users/jamainemartin/Desktop/crate-engine/*.mjs /tmp/crate-deploy/
-cp /Users/jamainemartin/Desktop/crate-engine/*.html /tmp/crate-deploy/
-cp /Users/jamainemartin/Desktop/crate-engine/*.json /tmp/crate-deploy/
-cp /Users/jamainemartin/Desktop/crate-engine/*.svg /tmp/crate-deploy/ 2>/dev/null
-cp /Users/jamainemartin/Desktop/crate-engine/_headers /tmp/crate-deploy/ 2>/dev/null
-cp /Users/jamainemartin/Desktop/crate-engine/service-worker.js /tmp/crate-deploy/ 2>/dev/null
-
-# Symlink models (avoids copying 2GB)
-ln -sf /Users/jamainemartin/.openclaw/workspace/crate-engine/web/models /tmp/crate-deploy/models
-
-# Deploy
-cd /tmp/crate-deploy
-npx wrangler pages deploy . --project-name=crateship-games --branch=main --commit-dirty=true
-```
-
-### ⚠️ DO NOT keep large app bundles in the repo root
-App bundles like `KOKO.app` can exceed Cloudflare's 25MB upload limit. Keep them outside the repo, or deploy from `/tmp/crate-deploy` as shown above.
-
-## Critical Files — DO NOT DELETE
-
-| File | Why |
-|------|-----|
-| `city_assets.json` | Without this, "build city" silently fails |
-| `engine.mjs` | Must have `skeleton.pose()` fix and tutorials.mjs stub |
-| `character.mjs` | Must have `woman`, `man`, `animated_woman`, `animated_man` entries |
-| `models/` directory | All 3D assets — city won't render without these |
-
-## What Broke Before (History)
-
-1. **Hermes (agent)** — made 18 "improvements" that broke production on 2026-03-31
-2. **Claude (agent)** — reverted engine to older version on 2026-04-05, losing:
-   - Woman/Man NPC characters
-   - Mixamo animation loading
-   - skeleton.pose() fix (caused T-pose)
-   - tutorials.mjs stub (caused black screen)
-   - city_assets.json (city builder stopped working)
-3. **Fix (Za/OpenClaw)** — 2026-04-06: Pulled correct files from working Cloudflare deploy `2baff1e9`, restored models from local disk, redeployed
-
-## Rules for AI Agents
-
-1. **DO NOT rewrite engine.mjs or character.mjs from scratch** — they are 30K+ and 8K+ lines
-2. **DO NOT remove city_assets.json**
-3. **DO NOT push to GitHub without Jamaine's permission**
-4. **DO NOT deploy without confirming the models/ directory is included**
-5. **Test changes locally before deploying**
-6. **If something breaks, the known-good commit is `1af5e18d`**
-
-## Cloudflare Details
-
-- **Project:** crateship-games
-- **Account:** Koikes2021@gmail.com
-- **Custom domain:** crateshipgames.com
-- **GitHub repo:** jamaine1984/crate-engine
-- **Cloudflare Worker (AI):** crate-engine-ai.koikes2021.workers.dev
+`npm run build`, then `node platform/dev/server.mjs --built` (port 4173; set `PLATFORM_PORT` to change it). Local data lives in `.platform-local/`, never in production.

@@ -20,3 +20,8 @@ export async function modelSceneContext(project){
  context.assetsTruncated=context.assets.length<context.assetCount;
  return context;
 }
+// One object in full, including customMesh vector paths, so an AI client can copy or edit art.
+export function objectContext(project,id){
+ const entity=project.entities.find(item=>item.id===id);if(!entity)throw new Error('Object '+id+' is not in this project. Read the scene again.');
+ return {projectId:project.id,entity:Object.fromEntries([...entityFields,'shape'].filter(key=>entity[key]!==undefined).map(key=>[key,structuredClone(entity[key])]))};
+}
