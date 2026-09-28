@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { sqliteD1 } from '../platform/dev/sqlite-d1.mjs';
-import { handleAuth, verifyFirebaseIdToken, base64url, requireUser } from '../platform/server/identity.mjs';
+import { handleAuth, verifyFirebaseIdToken, base64url, requireUser, totpCode } from '../platform/server/identity.mjs';
 import { HttpError } from '../platform/server/common.mjs';
 
 const migrations = await Promise.all(['0001_identity.sql', '0006_firebase_identity.sql']
@@ -177,4 +177,18 @@ test('Firebase key download works under Workers fetch rules and refuses redirect
     redirecting = true;
     await assert.rejects(verifyFirebaseIdToken(await token(), f.env), reject(503, 'FIREBASE_UNAVAILABLE'));
   } finally { globalThis.fetch = original; }
+});
+
+// Owner onboarding bug: "Confirm your identity" rotated the session and orphaned the pending setup,
+// so the correct authenticator code was rejected as expired.
+test('authenticator setup survives confirming identity partway through', async () => {
+  const f = fixture();
+  const signedIn = cookieOf(await call(f, '/auth/firebase', { idToken: await token() }));
+  const setup = await (await call(f, '/auth/mfa/enroll', {}, signedIn)).json();
+  const rotated = cookieOf(await call(f, '/auth/reauth', { idToken: await token() }, signedIn));
+  assert.notEqual(rotated, signedIn);
+  const code = await totpCode(setup.secret, Math.floor(Date.now() / 30000));
+  const confirmed = await (await call(f, '/auth/mfa/confirm', { code }, rotated)).json();
+  assert.equal(confirmed.enabled, true);
+  assert.equal(f.sql.prepare('SELECT enabled FROM platform_mfa').get().enabled, 1);
 });

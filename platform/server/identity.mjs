@@ -281,7 +281,7 @@ function suppliedToken(value) {
   return value;
 }
 
-async function createSession(request, env, userId, mfaTime = null, verifiedPasswordHash = null, expectedAuthVersion = null) {
+async function createSession(request, env, userId, mfaTime = null, verifiedPasswordHash = null, expectedAuthVersion = null, carryEnrollmentFrom = null) {
   const db = database(env); const roles = await rolesFor(db, userId);
   const raw = randomToken(); const sessionId = id(); const stamp = now();
   const duration = roles.includes('OWNER') ? OWNER_SESSION_SECONDS : SESSION_SECONDS;
@@ -297,6 +297,9 @@ async function createSession(request, env, userId, mfaTime = null, verifiedPassw
       (request.headers.get('user-agent') || 'Unknown browser').slice(0, 256), await ipHash(request, env), userId,
       verifiedPasswordHash, verifiedPasswordHash, expectedAuthVersion, expectedAuthVersion, mfaTime).first();
   if (!result) throw new HttpError(401, 'This account cannot sign in.', 'AUTH_REQUIRED');
+  // Reauthentication rotates the session; an unfinished authenticator setup follows it instead of silently expiring.
+  if (carryEnrollmentFrom) await db.prepare(`UPDATE platform_mfa SET pending_session_id = ? WHERE user_id = ? AND enabled = 0
+    AND pending_session_id = ? AND pending_expires_at > ?`).bind(sessionId, userId, carryEnrollmentFrom, stamp).run();
   await db.prepare('UPDATE platform_users SET last_login_at = ? WHERE id = ?').bind(stamp, userId).run();
   const user = await db.prepare('SELECT * FROM platform_users WHERE id = ?').bind(userId).first();
   await audit(env, { actor: userId, action: 'auth.login', target: sessionId, mfa: Boolean(mfaTime) });
@@ -526,7 +529,7 @@ async function reauthenticate(request, env, body) {
     if (mfa?.enabled === 1) { await consumeMfaCode(request, env, user, body.code); mfaTime = now(); }
     await db.prepare('UPDATE platform_sessions SET revoked_at = ? WHERE id = ?').bind(now(), user.sessionId).run();
     await audit(env, { actor: user.id, action: 'auth.reauthenticate', target: user.sessionId, method: 'firebase' });
-    return createSession(request, env, user.id, mfaTime);
+    return createSession(request, env, user.id, mfaTime, null, null, user.sessionId);
   }
   if (!account?.password_hash) {
     throw new HttpError(503, 'Sensitive changes for Google-only accounts require a configured provider reauthentication flow.', 'REAUTH_UNAVAILABLE');
@@ -538,7 +541,7 @@ async function reauthenticate(request, env, body) {
   if (mfa?.enabled === 1) { await consumeMfaCode(request, env, user, body.code); mfaTime = now(); }
   await db.prepare('UPDATE platform_sessions SET revoked_at = ? WHERE id = ?').bind(now(), user.sessionId).run();
   await audit(env, { actor: user.id, action: 'auth.reauthenticate', target: user.sessionId });
-  return createSession(request, env, user.id, mfaTime, account.password_hash);
+  return createSession(request, env, user.id, mfaTime, account.password_hash, null, user.sessionId);
 }
 async function logout(request, env, all = false) {
   const user = await requireUser(request, env); const stamp = now();
