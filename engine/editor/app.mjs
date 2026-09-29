@@ -10,6 +10,8 @@ import { createWorldPanel } from './world-panel.mjs';
 import { createAiAppsLink, aiAppsPanel } from './ai-apps.mjs';
 import { modelSceneContext, sceneFingerprint, authoredSceneJSON } from './scene-context.mjs';
 import { esc, icon, tool, layout, hierarchy, inspector, assetCards, dialog, connectionsShell, modelConnections, primitiveTypes, typeIcons, bytes } from './panels.mjs';
+/* A newly picked preset fills every look field; otherwise the form's own look values are used. */
+function lookFromForm(data,current={}){const numbers=['timeOfDay','clouds','shadowDistance','bloom','vignette','dof','saturation','contrast','warmth'];if(data.look&&data.look!=='custom'&&data.look!==current?.look)return {look:data.look};const out={look:data.look,sky:data.sky,toneMapping:data.toneMapping};for(const key of numbers)out[key]=Number(data[key]);return out;}
 
 const root = document.querySelector('#editor-root');
 trackVisit();
@@ -245,7 +247,7 @@ root.addEventListener('submit',event=>{
  run(async()=>{
   if(form.id==='new-project-form'){await editor.newProject(data.name);closeDialog();saveStatus('New project · Unsaved');changePane('viewport');}
   else if(form.id==='rename-form'){await editor.renameProject(data.name);closeDialog();}
-  else if(form.id==='scene-settings-form'){await editor.updateSettings({background:data.background,ambientIntensity:Number(data.ambientIntensity),gravity:Number(data.gravity),exposure:Number(data.exposure),fogDensity:Number(data.fogDensity),quality:data.quality,shadows:data.shadows==='true',lives:Number(data.lives),killY:Number(data.killY)});toast('Scene environment updated.');}
+  else if(form.id==='scene-settings-form'){const look=lookFromForm(data,editor.getProject()?.settings);await editor.updateSettings({background:data.background,ambientIntensity:Number(data.ambientIntensity),gravity:Number(data.gravity),exposure:Number(data.exposure),fogDensity:Number(data.fogDensity),quality:data.quality,shadows:data.shadows==='true',lives:Number(data.lives),killY:Number(data.killY),...look,...(look.sky?{}:{exposure:undefined,fogDensity:undefined})});toast('Scene environment updated.');}
   else if(form.id==='model-connection-form'){await api('/model-connections',{method:'POST',body:{provider:data.provider,label:data.label,apiKey:data.apiKey,model:data.model}});form.reset();await loadConnections();toast('Connection saved. Provider requests begin only when you choose.');}
   else if(form.id==='blender-connect-form'){blenderToken=data.token.trim();blenderConnected=false;await refreshBlender();}
  },button);

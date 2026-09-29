@@ -2,7 +2,8 @@ import {sideViewFollower} from './side-follow.mjs';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
 import {ProjectStore} from '../core/project-store.mjs';
-import {newProject,validateProject,cleanEntity,STARTER_MODEL_URL} from '../core/schema.mjs';
+import {newProject,validateProject,cleanEntity,cleanSettings,STARTER_MODEL_URL} from '../core/schema.mjs';
+import {expandLook} from '../core/look.mjs';
 import {createWorldPreviewSession} from '../core/procedural.mjs';
 import {inspectGLB,hashBytes,MAX_MODEL_BYTES} from '../core/gltf.mjs';
 import * as local from '../storage/local.mjs';
@@ -68,7 +69,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   })();assetRequests.set(key,request);
   try{return await request;}finally{if(assetRequests.get(key)===request)assetRequests.delete(key);}
  }
- const view=createSceneRuntime({canvas,resolveAsset,onLog,onInvalidate:()=>dirty=true});
+ const view=createSceneRuntime({canvas,resolveAsset,onLog,onInvalidate:()=>dirty=true});if(import.meta.env?.DEV)globalThis.__crateView=view;
  const controls=new OrbitControls(view.camera,canvas);controls.target.set(0,1,0);controls.enableDamping=true;controls.addEventListener('change',()=>dirty=true);
  const transform=new TransformControls(view.camera,canvas),helper=transform.getHelper();view.scene.add(helper);
  const grid=new THREE.GridHelper(100,100,'#587566','#2b3c33');grid.position.y=-.015;view.scene.add(grid);
@@ -295,7 +296,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   loadProject:input=>exclusive('Project import',async()=>loadPrepared(await prepareProjectLoad(input,{imported:true}))),
   loadCloud:id=>exclusive('Cloud project load',()=>cloudLoad(id)),newProject:name=>exclusive('New project',()=>makeNew(name)),
   renameProject(name){editable();store.commit('Rename project',project=>project.name=String(name).slice(0,120));},
-  updateSettings(patch){editable();store.commit('Scene settings',project=>project.settings={...project.settings,...patch});},
+  updateSettings(patch){editable();patch=expandLook(patch);store.commit('Scene settings',project=>project.settings=cleanSettings({...project.settings,...patch}));},
   async addEntity(type){editable();const id=store.add(type,{position:['pointLight','directionalLight'].includes(type)?[3,5,3]:[0,.5,0]});await settled();select(id);return id;},
   select,get selectedId(){return selected;},updateEntity(id,patch){editable();const entity=store.project.entities.find(item=>item.id===id),object=view.objects.get(id);if(Object.hasOwn(patch,'parentId')&&patch.parentId!==entity?.parentId&&!['position','rotation','scale'].some(key=>Object.hasOwn(patch,key))){if(syncPending||!object)throw new Error('Wait for the scene to finish updating before changing a parent.');patch={...patch,...preserveWorldTransform(object,view.objects.get(patch.parentId)||view.root)};}return store.update(id,patch);},
   async duplicate(id=selected){editable();const next=store.duplicate(id);await settled();select(next);return next;},

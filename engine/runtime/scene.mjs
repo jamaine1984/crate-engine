@@ -4,10 +4,8 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
-import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
-import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
-import {GTAOPass} from 'three/addons/postprocessing/GTAOPass.js';
-import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+import {createPost} from './post.mjs';
+import {createAtmosphere} from './atmosphere.mjs';
 import {computeBoundsTree,disposeBoundsTree,acceleratedRaycast} from 'three-mesh-bvh';
 import {inspectGLB} from '../core/gltf.mjs';
 import {createVectorObject} from './vector-shape.mjs';
@@ -44,26 +42,18 @@ export function createModelInstance(gltf,entity,{onLog=()=>{}}={}){
 
 export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidate=()=>{}}){
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
- renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;
- renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;renderer.info.autoReset=false;
+ renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.shadowMap.autoUpdate=true;
+ renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.info.autoReset=false;
  const scene=new THREE.Scene(),root=new THREE.Group();scene.add(root);
  const camera=new THREE.PerspectiveCamera(50,1,.05,3000);camera.position.set(8,6,9);camera.lookAt(0,1,0);
  const ambient=new THREE.HemisphereLight('#e5f1ff','#353f2c',.8);scene.add(ambient);
  const pmrem=new THREE.PMREMGenerator(renderer),room=new RoomEnvironment(),environment=pmrem.fromScene(room,.04);
  scene.environment=environment.texture;room.dispose();pmrem.dispose();
+ const atmosphere=createAtmosphere(THREE,{renderer,scene,defaultEnvironment:environment.texture}),post=createPost(THREE,{renderer,scene,camera,root});
  const objects=new Map(),entries=new Map(),loaded=new Map(),missing=new Map(),gate=createGenerationGate();
  const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
- let project=null,disposed=false,composer=null,ao=null,width=1,height=1,shadowWarning=false;
+ let project=null,disposed=false,width=1,height=1,shadowWarning=false;
 
- /* The depth buffer has too little precision far from the camera (near .05, far 3000), so ambient occlusion turns distant ground and sky into black speckle. It only matters up close, so fade it out with distance. */
- function fadeAoWithDistance(pass){
-  const material=pass.gtaoMaterial,marker='ao = pow(ao, scale);';
-  if(material.fragmentShader.includes(marker))material.fragmentShader=material.fragmentShader.replace(marker,marker+' ao = mix(ao, 1.0, smoothstep(30.0, 90.0, -viewPos.z));');
- }
- function postprocessing(high){
-  if(high&&!composer){composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));ao=new GTAOPass(scene,camera,width,height);ao.updateGtaoMaterial({radius:.7,distanceExponent:1,thickness:1,scale:1,samples:8});fadeAoWithDistance(ao);composer.addPass(ao);composer.addPass(new OutputPass());composer.setSize(width,height);}
-  if(ao)ao.enabled=high;
- }
  function geometry(type){switch(type){case'sphere':return new THREE.SphereGeometry(.5,32,20);case'cylinder':return new THREE.CylinderGeometry(.5,.5,1,24);case'capsule':return new THREE.CapsuleGeometry(.3,.5,6,16);case'plane':return new THREE.BoxGeometry(1,.02,1);default:return new THREE.BoxGeometry(1,1,1);}}
  function disposeCache(key){const cached=loaded.get(key);if(!cached)return;loaded.delete(key);if(cached.released)return;cached.released=true;cached.promise.then(gltf=>release(gltf.scene)).catch(()=>{});}
  function sourceFor(asset){
@@ -90,7 +80,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   }else if(entity.type==='customMesh')object=createVectorObject(THREE,entity.shape);
   else if(entity.type==='plane'&&entity.components?.water)object=createWaterMesh(THREE,entity);
   else if(entity.type==='directionalLight'){
-   object=new THREE.DirectionalLight(entity.light.color,entity.light.intensity);object.shadow.mapSize.set(2048,2048);Object.assign(object.shadow.camera,{left:-20,right:20,top:20,bottom:-20,near:.1,far:150});object.shadow.bias=-.0004;object.shadow.normalBias=.03;object.target.position.set(0,0,0);
+   object=new THREE.DirectionalLight(entity.light.color,entity.light.intensity);object.userData.baseIntensity=entity.light.intensity;object.target.position.set(0,0,0);
   }else if(entity.type==='pointLight'){
    object=new THREE.PointLight(entity.light.color,entity.light.intensity,entity.light.distance,2);object.shadow.mapSize.set(512,512);object.shadow.bias=-.001;
   }else if(entity.type==='camera')object=new THREE.PerspectiveCamera(55,1,.05,3000);
@@ -105,8 +95,9 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   scene.background=new THREE.Color(settings.background);ambient.intensity=settings.ambientIntensity;scene.environmentIntensity=settings.ambientIntensity;
   renderer.toneMappingExposure=settings.exposure;renderer.shadowMap.enabled=settings.shadows;
   const ratio=Math.min(globalThis.devicePixelRatio||1,settings.quality==='low'?1:settings.quality==='high'?2:1.5);
-  if(renderer.getPixelRatio()!==ratio){renderer.setPixelRatio(ratio);composer?.setPixelRatio(ratio);}
-  scene.fog=settings.fogDensity?new THREE.FogExp2(settings.background,settings.fogDensity):null;postprocessing(settings.quality==='high');
+  if(renderer.getPixelRatio()!==ratio)renderer.setPixelRatio(ratio);post.setPixelRatio(ratio);
+  const sunLight=[...objects.values()].find(object=>object.isDirectionalLight&&object.castShadow)||null;atmosphere.configure(settings,sunLight);
+  scene.fog=settings.fogDensity?new THREE.FogExp2(atmosphere.physical?atmosphere.horizon.getHex():settings.background,settings.fogDensity):null;post.configure(settings);
  }
  async function sync(next){
   if(disposed)throw new Error('The renderer has been closed.');
@@ -145,22 +136,22 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   }
  }
  function assertComplete(){if(missing.size)throw new Error('Resolve the missing or unsupported models before playing, cloud saving, or exporting: '+[...missing.keys()].map(id=>project?.entities.find(entity=>entity.id===id)?.name||id).join(', '));}
- function resize(){if(disposed)return;const rect=canvas.getBoundingClientRect();width=Math.max(1,Math.round(rect.width));height=Math.max(1,Math.round(rect.height));renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();composer?.setSize(width,height);onInvalidate();}
+ function resize(){if(disposed)return;const rect=canvas.getBoundingClientRect();width=Math.max(1,Math.round(rect.width));height=Math.max(1,Math.round(rect.height));renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();post.setSize(width,height);onInvalidate();}
  function hasWater(){for(const entry of entries.values())if(isWaterObject(entry.object))return true;return false;}
- function stepWater(){const seconds=performance.now()/1000,sky=scene.background&&scene.background.isColor?scene.background:null;for(const entry of entries.values())if(isWaterObject(entry.object))updateWaterTime(entry.object,seconds,sky);}
- function render(){if(disposed)return;stepWater();renderer.info.reset();if(composer&&ao.enabled)composer.render();else renderer.render(scene,camera);}
+ function stepWater(){const seconds=performance.now()/1000,sky=atmosphere.physical?atmosphere.horizon:scene.background&&scene.background.isColor?scene.background:null;for(const entry of entries.values())if(isWaterObject(entry.object))updateWaterTime(entry.object,seconds,sky);}
+ function render(){if(disposed)return;stepWater();atmosphere.update(camera,performance.now()/1000);renderer.info.reset();if(post.active)post.render();else renderer.render(scene,camera);}
  /** Renders one frame at a fixed size and returns it as a JPEG data URL, then restores the on-screen size. Must be called synchronously after the render, before the browser presents the frame. */
  function capture({width=960,quality=.82}={}){
   if(disposed)throw new Error('The renderer has been closed.');
   const outWidth=Math.max(160,Math.min(1600,Math.round(width))),outHeight=Math.max(90,Math.round(outWidth/(camera.aspect||1))),ratio=renderer.getPixelRatio();
-  renderer.setPixelRatio(1);composer?.setPixelRatio(1);renderer.setSize(outWidth,outHeight,false);composer?.setSize(outWidth,outHeight);camera.aspect=outWidth/outHeight;camera.updateProjectionMatrix();
+  renderer.setPixelRatio(1);post.setPixelRatio(1);renderer.setSize(outWidth,outHeight,false);post.setSize(outWidth,outHeight);camera.aspect=outWidth/outHeight;camera.updateProjectionMatrix();
   try{render();return {dataUrl:canvas.toDataURL('image/jpeg',quality),width:outWidth,height:outHeight};}
-  finally{renderer.setPixelRatio(ratio);composer?.setPixelRatio(ratio);resize();}
+  finally{renderer.setPixelRatio(ratio);post.setPixelRatio(ratio);resize();}
  }
  function tick(dt){for(const entry of entries.values())entry.mixer?.update(dt);}
  function resetAnimations(){for(const entry of entries.values()){if(entry.mixer){entry.mixer.setTime(0);}}}
  function effectivelyVisible(object){for(let node=object;node;node=node.parent)if(node.visible===false)return false;return !!object;}
  function gameCamera(){const active=project?.entities.find(entity=>entity.type==='camera'&&effectivelyVisible(objects.get(entity.id)));return active?objects.get(active.id):null;}
- async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);environment.dispose();for(const pass of composer?.passes||[])pass.dispose?.();composer?.dispose();renderer.dispose();}
- return {THREE,renderer,scene,root,camera,objects,sync,preflightAssets,assertComplete,resize,render,capture,tick,hasWater,resetAnimations,dispose,gameCamera};
+ async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);atmosphere.dispose();post.dispose();environment.dispose();renderer.dispose();}
+ return {THREE,renderer,scene,root,camera,objects,post,atmosphere,sync,preflightAssets,assertComplete,resize,render,capture,tick,hasWater,resetAnimations,dispose,gameCamera};
 }

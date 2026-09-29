@@ -1,3 +1,4 @@
+import {cleanLook} from './look.mjs';
 export const FORMAT='crateship-project';
 export const VERSION=4;
 // Starter Library models repaired for the engine are served from the site itself.
@@ -64,7 +65,7 @@ export function cleanEntity(value={}){
 export function newProject(name='Untitled World'){
  return {format:FORMAT,version:VERSION,id:crypto.randomUUID(),name:text(name,120,'Untitled World'),settings:cleanSettings(),entities:[],assets:[],createdAt:Date.now(),updatedAt:Date.now()};
 }
-export function cleanSettings(value={}){return {background:/^#[a-fA-F0-9]{6}$/.test(value.background)?value.background:'#15251e',gravity:finite(value.gravity,-9.81,-100,100),ambientIntensity:finite(value.ambientIntensity,.8,0,10),exposure:finite(value.exposure,1.15,.1,5),shadows:value.shadows!==false,quality:['low','balanced','high'].includes(value.quality)?value.quality:'balanced',fogDensity:finite(value.fogDensity,0,0,.2),killY:finite(value.killY,-30,-10000,10000),lives:Math.round(finite(value.lives,0,0,99))};}
+export function cleanSettings(value={}){return {background:/^#[a-fA-F0-9]{6}$/.test(value.background)?value.background:'#15251e',gravity:finite(value.gravity,-9.81,-100,100),ambientIntensity:finite(value.ambientIntensity,.8,0,10),exposure:finite(value.exposure,1.15,.1,5),shadows:value.shadows!==false,quality:['low','balanced','high'].includes(value.quality)?value.quality:'balanced',fogDensity:finite(value.fogDensity,0,0,.2),killY:finite(value.killY,-30,-10000,10000),lives:Math.round(finite(value.lives,0,0,99)),...cleanLook(value)};}
 function migrateLegacy(input){
  const project=newProject(input.name||'Imported legacy world');project.legacySource=clone(input);project.migrationWarnings=['Legacy scripts and command history are retained as source data and are never executed. Rebuild gameplay with the new components.'];
  for(const snapshot of (input.objects||[]).slice(0,5000)){
