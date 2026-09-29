@@ -77,7 +77,7 @@ export function createAiAppsLink({getEditor,getState,onLog=()=>{},onChange=()=>{
  };
 }
 
-const COMMAND_LABELS={get_scene:'Read the scene',get_object:'Read an object',preview_world:'Planned a layout',apply_world:'Built a layout',edit_objects:'Edited objects',set_level_settings:'Changed level settings',add_library_model:'Added a model',undo:'Undid a change'};
+const COMMAND_LABELS={get_scene:'Read the scene',get_object:'Read an object',preview_world:'Planned a layout',apply_world:'Built a layout',edit_objects:'Edited objects',set_level_settings:'Changed level settings',add_library_model:'Added a model',screenshot:'Took a screenshot',play_test:'Ran a play test',save_project:'Saved the project',undo:'Undid a change'};
 export function aiAppsPanel(info,state){
  if(info?.signedOut)return `<p class="dialog-lead">Connect Claude, ChatGPT, Cursor or any AI app you already use, on its normal subscription or API key, and let it build in this editor.</p><div class="dialog-actions"><a class="primary-button" href="/login?next=%2Fplay">${icon('sign-in')} Sign in to connect AI apps</a></div>`;
  if(info?.error)return `<p class="dialog-error">${esc(info.error)}</p><button class="text-button" data-ai-action="refresh">Try again</button>`;

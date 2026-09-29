@@ -11,7 +11,7 @@
 import { HttpError, json, id, now, database, appOrigin, requireMutationOrigin, audit } from './common.mjs';
 import { requireUser, rateLimit, tokenHash, base64url } from './identity.mjs';
 import { flags, rate } from './data.mjs';
-import { toolDefinitions, validArguments, validResult, MUTATING_COMMANDS } from '../../integrations/editor/contracts.mjs';
+import { toolDefinitions, validArguments, validResult, resultContent, MUTATING_COMMANDS } from '../../integrations/editor/contracts.mjs';
 import starterLibrary from '../../starter-library/catalog.mjs';
 
 export const MODERN_VERSION = '2026-07-28';
@@ -27,7 +27,8 @@ const INSTRUCTIONS = [
   'Read the scene with get_scene before changing it, and use only IDs it returns.',
   'Build worlds with preview_world, then apply_world with the returned previewId. Place 3D models with list_library_models and add_library_model.',
   'Make it playable with components through edit_objects: player (with a dynamic rigidbody), goal, hazard, checkpoint, collectible, mover. Add a camera object to follow the player.',
-  'Changes need the user to have turned on "Allow changes". Every change is one Undo step. Saving and pressing Play stay with the user.',
+  'Check your work: take a screenshot after building (view "game" needs a camera object), and run play_test with scripted controls to prove the level can be won. Fix what you find.',
+  'Changes need the user to have turned on "Allow changes". Every change is one Undo step. save_project saves the result when it is good. screenshot and play_test only need the editor open.',
 ].join(' ');
 
 const encoder = new TextEncoder();
@@ -210,7 +211,7 @@ async function authorize(request, env) {
     return page('Connect an AI app', `<h1>Connect ${escapeHtml(client.client_name)}?</h1>
 <p>Signed in as <strong>${escapeHtml(user.displayName || user.username)}</strong>.</p>
 <p><strong>${escapeHtml(client.client_name)}</strong> is asking to work in your Crate Ship game editor. If you allow it, it can:</p>
-<ul><li>Read the scene in the editor tab you open for AI apps.</li><li>Build and change that scene, but only while you have <strong>Allow changes</strong> turned on in the editor. Every change can be undone.</li></ul>
+<ul><li>Read the scene in the editor tab you open for AI apps, and take pictures of it.</li><li>Play your level for a few seconds to test it. This never changes your project.</li><li>Build, change and save that scene, but only while you have <strong>Allow changes</strong> turned on in the editor. Every change can be undone.</li></ul>
 <p>It cannot see your password, your other projects, your payments or your account settings. You can disconnect it at any time in Settings → AI apps.</p>
 ${client.kind === 'registered' ? '<p class="warn">This app registered itself automatically, so its name is not verified. Only continue if you just added Crate Ship Games to an AI app yourself.</p>' : ''}
 <p>After you allow it, you will be sent to <code>${escapeHtml(where)}</code>.</p>
@@ -378,6 +379,11 @@ export async function mcpTools() {
     ...editorTools,
   ];
 }
+// Pictures (screenshot, play_test) are returned as real MCP image blocks so the AI can look at them.
+function editorResult(value) {
+  const { content, structured } = resultContent(value);
+  return { content, structuredContent: structured, isError: false };
+}
 const toolText = (value, isError = false) => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }], ...(typeof value === 'string' ? {} : { structuredContent: value }), isError });
 
 async function liveLink(env, userId) {
@@ -413,12 +419,12 @@ async function callTool(env, grant, params) {
   for (let delay = 250; Date.now() < deadline; delay = Math.min(delay + 150, 1000)) {
     await sleep(delay);
     const row = await db.prepare('SELECT status,result_json,error FROM platform_ai_commands WHERE id=?').bind(commandId).first();
-    if (row?.status === 'completed') return toolText(parse(row.result_json, {}));
+    if (row?.status === 'completed') return editorResult(parse(row.result_json, {}));
     if (row?.status === 'failed') return toolText('The editor could not do that: ' + (row.error || 'unknown problem') + '.', true);
     if (!row || row.status === 'expired') break;
   }
   const expired = await db.prepare("UPDATE platform_ai_commands SET status='expired',completed_at=? WHERE id=? AND status IN ('queued','delivered') RETURNING status").bind(now(), commandId).first();
-  if (!expired) { const row = await db.prepare('SELECT status,result_json,error FROM platform_ai_commands WHERE id=?').bind(commandId).first(); if (row?.status === 'completed') return toolText(parse(row.result_json, {})); }
+  if (!expired) { const row = await db.prepare('SELECT status,result_json,error FROM platform_ai_commands WHERE id=?').bind(commandId).first(); if (row?.status === 'completed') return editorResult(parse(row.result_json, {})); }
   return toolText('The editor did not answer in time. ' + (MUTATING_COMMANDS.includes(name) ? 'The change may or may not have been applied: read the scene with get_scene before trying again.' : 'Check that the editor tab is still open and try again.'), true);
 }
 

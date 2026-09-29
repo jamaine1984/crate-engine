@@ -42,9 +42,12 @@ Pair the editor to the running helper, then explicitly enable writes only when y
 | `apply_world` | `{previewId}` | Apply an exact prior preview only while editor writes are enabled. Consumed, expired, wrong-project, or stale previews fail. One transaction supports Undo. |
 | `edit_objects` | `{summary?, operations}` | Update (`{op:'update', id, patch}`) or remove (`{op:'remove', id}`) up to 50 existing objects by the IDs from `get_scene`, as one Undo step, while writes are enabled. `material` and `light` patches merge; each listed component replaces that component and `null` removes it. The whole edit fails if any operation is invalid. |
 | `set_level_settings` | `{settings}` | Change level settings such as `lives` (0 = unlimited), `killY` (fall-out height), gravity, background, lighting and quality, as one Undo step, while writes are enabled. |
+| `screenshot` | `{view?, width?}` | Returns a JPEG of the editor view or the level's game camera (grid and gizmos hidden) so the client can check its own work. Read-only. |
+| `play_test` | `{seconds? \| steps?, screenshot?, width?}` | Plays the level with scripted input (`steps: [{move, seconds, jump?}]`, up to 12 s in total), then returns to Edit mode. Physics is stepped at a fixed 60 Hz, faster than real time, so it does not depend on frame rate or tab visibility. Reports start/end position, lowest/highest point, score, lives, won/lost, events and a picture of the last frame. It does not change the project. |
+| `save_project` | `{where?}` | Saves the project on this device (`device`, default) or on this device and to the signed-in account (`account`), while writes are enabled. |
 | `undo` | `{}` | Undo the latest editor change while writes are enabled. This can undo a manual edit too; use it deliberately. |
 
-Turning on writes authorizes the connected client to call `apply_world`, `edit_objects`, `set_level_settings` and `undo` within that paired session.
+Turning on writes authorizes the connected client to call `apply_world`, `edit_objects`, `set_level_settings`, `add_library_model`, `save_project` and `undo` within that paired session.
 
 ### Building a playable level
 

@@ -42,7 +42,7 @@ export function createOperationLock(){
 
 export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},onStats=()=>{},onLog=()=>{},onState=()=>{}}){
  let selected=null,mode='edit',physics=null,disposed=false,dirty=true,navigationApproved=false,authoringRevision=0,raf=0,last=performance.now(),frames=0,statsAt=last;
- let cloud=null,syncPromise=Promise.resolve(),syncVersion=0,syncPending=false,isDragging=false,hasChanges=false,playSnapshot=null,playPending=false,sceneError=null,touchControls=null,hud=null,editorCameraState=null,previewCamera=null;
+ let cloud=null,syncPromise=Promise.resolve(),syncVersion=0,syncPending=false,isDragging=false,hasChanges=false,playSnapshot=null,playPending=false,sceneError=null,touchControls=null,hud=null,editorCameraState=null,previewCamera=null,playClock=0,playEvents=[],scriptedPlay=false;
  const lifetime=new AbortController(),lock=createOperationLock(),assetBytes=new Map(),assetRequests=new Map();let cacheBytes=0;
  const alive=()=>{if(disposed)throw new Error('The editor has been closed.');};
  const state=()=>onState({mode,dirty:hasChanges,busy:lock.current||(playPending?'Starting preview':null),cloudId:cloud?.id||null});
@@ -129,7 +129,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  }
  function loop(time){
   if(disposed)return;raf=requestAnimationFrame(loop);const dt=Math.min((time-last)/1000,.05);last=time;if(document.hidden)return;if(controls.enabled)controls.update();
-  if(mode==='play'){physics?.step(dt);view.tick(dt);followPreviewCamera(dt);dirty=true;}
+  if(mode==='play'){if(!scriptedPlay){physics?.step(dt);playClock+=dt;view.tick(dt);followPreviewCamera(dt);}dirty=true;}
   if(dirty||isDragging){view.render();frames++;dirty=false;}
   if(time-statsAt>1000){onStats({fps:Math.round(frames*1000/(time-statsAt)),drawCalls:view.renderer.info.render.calls,triangles:view.renderer.info.render.triangles,entities:store.project.entities.length,mode});statsAt=time;frames=0;}
  }
@@ -205,8 +205,8 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  }
  async function play(){
   if(mode==='play')return;if(playPending)throw new Error('Physics is still loading.');editable();playPending=true;transform.enabled=false;state();
-  try{await settled();view.assertComplete();playSnapshot=store.snapshot();view.resetAnimations();hud?.dispose();hud=mountGameHud(canvas.parentElement,{maxLives:playSnapshot.settings.lives||0,onRestart:()=>{void stop().then(()=>play()).catch(error=>onLog({level:'error',message:error.message}));},onExit:()=>{void stop().catch(error=>onLog({level:'error',message:error.message}));}});
- const next=await createPhysics(playSnapshot,view.objects,{onScore:score=>onLog({level:'info',message:'Score: '+score}),onLog,onEvent:event=>{hud?.handle(event);if(event.type==='win')onLog({level:'info',message:'Level complete! Score: '+event.score});else if(event.type==='lose')onLog({level:'info',message:'Game over. Score: '+event.score});}});if(disposed){next.dispose();return;}physics=next;beginPreviewCamera();mode='play';transform.detach();grid.visible=false;selectionBox.visible=false;const player=playSnapshot.entities.find(entity=>entity.components.player&&physics.bodies.has(entity.id));touchControls=mountTouchControls(canvas.parentElement,{onInput:value=>physics?.setInput(value),enabled:!!player,sideView:player?.components.player.sideView===true});onLog({level:'info',message:'Preview running. Player components use touch / WASD / arrows and Jump / Space. Stop to select and move scene objects.'});dirty=true;state();}
+  try{await settled();view.assertComplete();playSnapshot=store.snapshot();playClock=0;playEvents=[];view.resetAnimations();hud?.dispose();hud=mountGameHud(canvas.parentElement,{maxLives:playSnapshot.settings.lives||0,onRestart:()=>{void stop().then(()=>play()).catch(error=>onLog({level:'error',message:error.message}));},onExit:()=>{void stop().catch(error=>onLog({level:'error',message:error.message}));}});
+ const next=await createPhysics(playSnapshot,view.objects,{onScore:score=>onLog({level:'info',message:'Score: '+score}),onLog,onEvent:event=>{hud?.handle(event);if(playEvents.length<60)playEvents.push({...event,at:playClock});if(event.type==='win')onLog({level:'info',message:'Level complete! Score: '+event.score});else if(event.type==='lose')onLog({level:'info',message:'Game over. Score: '+event.score});}});if(disposed){next.dispose();return;}physics=next;beginPreviewCamera();mode='play';transform.detach();grid.visible=false;selectionBox.visible=false;const player=playSnapshot.entities.find(entity=>entity.components.player&&physics.bodies.has(entity.id));touchControls=mountTouchControls(canvas.parentElement,{onInput:value=>physics?.setInput(value),enabled:!!player,sideView:player?.components.player.sideView===true});onLog({level:'info',message:'Preview running. Player components use touch / WASD / arrows and Jump / Space. Stop to select and move scene objects.'});dirty=true;state();}
   catch(error){hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();physics=null;mode='edit';restoreEditorCamera();playSnapshot=null;grid.visible=true;transform.enabled=!disposed;throw error;}finally{playPending=false;if(!disposed)state();}
  }
  async function stop(){
@@ -220,6 +220,53 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  }
  async function exportProject(){await settled();view.assertComplete();const portable=await createPortableProject(store.snapshot(),resolveAsset);return {blob:new Blob([JSON.stringify(portable)],{type:'application/json'}),filename:safeFilename(portable.name)+'.crate'};}
  const beforeUnload=event=>{if(hasChanges&&!navigationApproved){event.preventDefault();event.returnValue='';}};window.addEventListener('beforeunload',beforeUnload);
+ /** One screenshot of the scene for an AI app: the editor view or the game camera, without the grid and selection gizmos. */
+ async function screenshot({view:source='editor',width=960}={}){
+  alive();await settled();view.assertComplete();if(lock.current)throw new Error(lock.current+' is still in progress.');
+  const helpers=[grid,helper,selectionBox],wasVisible=helpers.map(item=>item.visible);let previewBegun=false;
+  try{
+   if(source==='game'&&mode==='edit'){beginPreviewCamera();previewBegun=true;if(!previewCamera)throw new Error('This project has no Camera object yet. Add one, or take the screenshot with view "editor".');}
+   helpers.forEach(item=>item.visible=false);
+   for(const quality of [.82,.66,.5]){
+    const shot=view.capture({width,quality}),data=shot.dataUrl.slice(shot.dataUrl.indexOf(',')+1);
+    if(data.length<=380*1024)return {mimeType:'image/jpeg',data,width:shot.width,height:shot.height,view:previewBegun||mode==='play'?'game':'editor'};
+   }
+   throw new Error('The screenshot was too large to send. Ask for a smaller width.');
+  }finally{helpers.forEach((item,index)=>{item.visible=wasVisible[index];});if(previewBegun)restoreEditorCamera();dirty=true;}
+ }
+ const PLAY_MOVES={left:{x:-1,z:0},right:{x:1,z:0},up:{x:0,z:-1},down:{x:0,z:1},none:{x:0,z:0}},round=value=>Math.round(value*100)/100;
+ /**
+  * Plays the level with scripted input, reports what happened, then stops and restores the editor.
+  * The simulation is stepped here at a fixed 60 Hz, faster than real time, so a report does not depend on
+  * frame rate or on whether the tab is in front, and it matches what a player would see at 60 fps.
+  */
+ async function playTest({seconds=5,steps=null,screenshot:takeShot=true,width=800}={}){
+  alive();await play();scriptedPlay=true;
+  try{
+   const player=playSnapshot.entities.find(entity=>entity.components.player&&physics.bodies.has(entity.id));
+   if(!player)throw new Error('Nothing to test: no object has a Player component with a solid body. Add a player first.');
+   const body=physics.bodies.get(player.id),position=()=>{const p=body.translation();return [round(p.x),round(p.y),round(p.z)];};
+   const plan=(steps||[{move:'none',seconds}]).map(step=>({move:step.move||'none',jump:step.jump===true,seconds:step.seconds})),total=plan.reduce((sum,step)=>sum+step.seconds,0);
+   const dt=1/60,start=position(),begin=playClock,path=[],wallLimit=performance.now()+15000;let minY=start[1],maxY=start[1],nextSample=0,timedOut=false,ticks=0;
+   for(;;){
+    const t=playClock-begin;let offset=0,step=null;
+    for(const candidate of plan){if(t<offset+candidate.seconds-1e-9){step=candidate;break;}offset+=candidate.seconds;}
+    const current=position();minY=Math.min(minY,current[1]);maxY=Math.max(maxY,current[1]);
+    if(t>=nextSample-1e-9&&path.length<40){path.push({t:round(t),x:current[0],y:current[1],z:current[2]});nextSample+=.5;}
+    if(!step||physics.state.status!=='playing')break;
+    if(performance.now()>wallLimit){timedOut=true;break;}
+    physics.setInput({...PLAY_MOVES[step.move],jump:step.jump&&((t-offset)%.6)<.25});
+    physics.step(dt);playClock+=dt;view.tick(dt);followPreviewCamera(dt);
+    if(++ticks%40===0)await new Promise(resolve=>setTimeout(resolve,0));alive();
+   }
+   physics.clearInput();
+   const end=position(),state=physics.state,elapsed=playClock-begin;
+   const report={seconds:round(elapsed),start,end,minY,maxY,path,state:{status:state.status,score:state.score,lives:state.lives,maxLives:state.maxLives},events:playEvents.map(event=>({type:String(event.type).slice(0,40),at:round(event.at),...(Number.isFinite(event.score)?{score:event.score}:{}),...(Number.isFinite(event.lives)?{lives:event.lives}:{}),...(typeof event.message==='string'?{message:event.message.slice(0,120)}:{}),...(typeof event.name==='string'?{name:event.name.slice(0,100)}:{})}))};
+   if(timedOut)report.warning='This computer was too slow to finish: only '+round(elapsed)+' of '+round(total)+' seconds were simulated.';
+   if(takeShot){try{const shot=await screenshot({view:'game',width});report.image={mimeType:shot.mimeType,data:shot.data};}catch(error){report.screenshotError=String(error.message).slice(0,200);}}
+   return report;
+  }finally{scriptedPlay=false;await stop();}
+ }
  const api={
   getProject:()=>store.snapshot(),get dirty(){return hasChanges;},get mode(){return mode;},get busy(){return lock.current;},
   setNavigationApproved(value){navigationApproved=value===true;},
@@ -236,7 +283,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   setTool(tool){editable();transform.setMode(tool);dirty=true;},setSpace(space){editable();transform.setSpace(space);dirty=true;},frameSelection,
   importFiles:files=>exclusive('Asset import',()=>importBatch(files)),importGLB:(bytes,name,source)=>exclusive('Model import',()=>importModel(bytes,name,source)),
   addCatalogAsset:record=>exclusive('Catalog import',async()=>{const path=record.path||record.file;if(typeof path!=='string'||path.includes('..')||path.includes('\\')||/^[a-z]+:/i.test(path)||/[?#]/.test(path))throw new Error('The catalog asset path is invalid.');const asset={id:crypto.randomUUID(),name:record.name||path.split('/').pop(),source:'catalog',mime:'model/gltf-binary',size:0,url:typeof record.url==='string'&&STARTER_MODEL_URL.test(record.url)?record.url:'https://crateship-games-assets.pages.dev/'+path.replace(/^\//,'')};return importModel(await resolveAsset(asset),asset.name,'catalog');}),
-  instantiateAsset:id=>exclusive('Asset instantiation',()=>instantiate(id)),play,stop,
+  instantiateAsset:id=>exclusive('Asset instantiation',()=>instantiate(id)),play,stop,capture:screenshot,playTest,
   exportProject:()=>exclusive('Project export',exportProject),exportGame:()=>exclusive('Game export',async()=>{await settled();view.assertComplete();return exportGameZip(store.snapshot(),resolveAsset);}),
   exportAsset:id=>exclusive('Model export',async()=>{const asset=store.project.assets.find(item=>item.id===id);if(!asset)throw new Error('Choose a model from this project.');return exportOriginalModel(asset,resolveAsset);}),
   saveLocal:()=>exclusive('Local save',persistLocal),listLocal:local.listProjects,

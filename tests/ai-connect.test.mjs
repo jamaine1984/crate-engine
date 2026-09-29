@@ -110,7 +110,7 @@ test('legacy and modern MCP clients can list tools; header and version mismatche
     assert.equal((await mcp(f, tokens.access_token, { method: 'notifications/initialized' }, { 'mcp-protocol-version': '2025-06-18' })).status, 202);
     const legacyList = await (await mcp(f, tokens.access_token, { id: 2, method: 'tools/list' }, { 'mcp-protocol-version': '2025-06-18' })).json();
     const names = legacyList.result.tools.map(t => t.name);
-    for (const name of ['editor_status', 'list_library_models', 'get_scene', 'preview_world', 'apply_world', 'edit_objects', 'add_library_model', 'undo']) assert.ok(names.includes(name), name);
+    for (const name of ['editor_status', 'list_library_models', 'get_scene', 'preview_world', 'apply_world', 'edit_objects', 'add_library_model', 'screenshot', 'play_test', 'save_project', 'undo']) assert.ok(names.includes(name), name);
     assert.equal(legacyList.result.resultType, undefined);
     const discover = await (await mcp(f, tokens.access_token, ...modern('server/discover'))).json();
     assert.equal(discover.result.resultType, 'complete'); assert.ok(discover.result.supportedVersions.includes(MODERN_VERSION));
@@ -158,6 +158,45 @@ test('tool calls reach the linked editor tab; writes need "Allow changes"; resul
     assert.equal((await tool('add_library_model', { path: 'not/in/library' })).result.isError, true);
     const library = await tool('list_library_models', { category: 'dungeon' });
     assert.equal(library.result.structuredContent.count, 7);
+  } finally { f.sql.close(); }
+});
+
+test('screenshot and play_test reach the editor; the AI gets a real image; save_project needs "Allow changes"', async () => {
+  const f = fixture();
+  try {
+    const u = await user(f), { tokens } = await connect(f, u);
+    const tool = (name, args = {}) => mcp(f, tokens.access_token, ...modern('tools/call', { name, arguments: args }, name)).then(r => r.json());
+    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', allowWrites: false })).json();
+    const jpeg = Buffer.from('not-a-real-jpeg-but-valid-base64-payload').toString('base64');
+    const answer = (expected, result) => (async () => {
+      for (let i = 0; i < 60; i++) {
+        const next = await (await editorApi(f, u, `/ai/editor/link/${link.linkId}/next`)).json();
+        if (next.commands.length) { const c = next.commands[0]; assert.equal(c.command, expected); return editorApi(f, u, `/ai/editor/link/${link.linkId}/results`, 'POST', { commandId: c.id, result }); }
+        await new Promise(r => setTimeout(r, 50));
+      }
+    })();
+    // Read-only tools work without "Allow changes" and come back as image + text blocks.
+    const shot = { projectId: 'proj-1', view: 'game', width: 800, height: 450, image: { mimeType: 'image/jpeg', data: jpeg } };
+    const [screenshot] = await Promise.all([tool('screenshot', { view: 'game', width: 800 }), answer('screenshot', shot)]);
+    assert.equal(screenshot.result.isError, false);
+    assert.deepEqual(screenshot.result.content[0], { type: 'image', data: jpeg, mimeType: 'image/jpeg' });
+    assert.equal(screenshot.result.content[1].type, 'text'); assert.ok(!screenshot.result.content[1].text.includes(jpeg), 'the picture is not repeated as text');
+    assert.equal(screenshot.result.structuredContent.width, 800);
+    const report = { projectId: 'proj-1', seconds: 4, start: [0, 1, 0], end: [6.5, 1, 0], minY: 0.9, maxY: 2.4, path: [{ t: 0, x: 0, y: 1, z: 0 }, { t: 0.5, x: 1.2, y: 1, z: 0 }], state: { status: 'won', score: 30, lives: 3, maxLives: 3 }, events: [{ type: 'score', at: 1.2, score: 10 }, { type: 'win', at: 3.9, score: 30, lives: 3, message: 'You made it!' }], image: { mimeType: 'image/jpeg', data: jpeg } };
+    const [played] = await Promise.all([tool('play_test', { steps: [{ move: 'right', seconds: 3 }, { move: 'right', jump: true, seconds: 1 }] }), answer('play_test', report)]);
+    assert.equal(played.result.isError, false); assert.equal(played.result.content[0].type, 'image');
+    assert.equal(played.result.structuredContent.state.status, 'won'); assert.equal(played.result.structuredContent.image.note, 'shown as an image');
+    // A play report that breaks the contract (an unknown status) is refused, not passed to the AI.
+    const [broken] = await Promise.all([tool('play_test', { seconds: 2 }), answer('play_test', { ...report, state: { ...report.state, status: 'cheating' } })]);
+    assert.equal(broken.result.isError, true);
+    // Bad arguments never reach the editor.
+    for (const args of [{ seconds: 30 }, { seconds: 2, steps: [{ seconds: 1 }] }, { steps: [{ move: 'fly', seconds: 1 }] }, { steps: [{ seconds: 8 }, { seconds: 8 }] }]) assert.equal((await tool('play_test', args)).result.isError, true, JSON.stringify(args));
+    assert.equal((await tool('screenshot', { width: 99999 })).result.isError, true);
+    const saveBlocked = await tool('save_project', { where: 'account' });
+    assert.equal(saveBlocked.result.isError, true); assert.match(saveBlocked.result.content[0].text, /Allow changes/);
+    await editorApi(f, u, `/ai/editor/link/${link.linkId}`, 'PUT', { projectId: 'proj-1', projectName: 'Forest', allowWrites: true });
+    const [saved] = await Promise.all([tool('save_project', { where: 'device' }), answer('save_project', { ok: true, projectId: 'proj-1', entityCount: 3, summary: 'Saved on this device.' })]);
+    assert.equal(saved.result.isError, false); assert.equal(saved.result.structuredContent.summary, 'Saved on this device.');
   } finally { f.sql.close(); }
 });
 

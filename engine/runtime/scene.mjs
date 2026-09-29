@@ -145,10 +145,18 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  function assertComplete(){if(missing.size)throw new Error('Resolve the missing or unsupported models before playing, cloud saving, or exporting: '+[...missing.keys()].map(id=>project?.entities.find(entity=>entity.id===id)?.name||id).join(', '));}
  function resize(){if(disposed)return;const rect=canvas.getBoundingClientRect();width=Math.max(1,Math.round(rect.width));height=Math.max(1,Math.round(rect.height));renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();composer?.setSize(width,height);onInvalidate();}
  function render(){if(disposed)return;renderer.info.reset();if(composer&&ao.enabled)composer.render();else renderer.render(scene,camera);}
+ /** Renders one frame at a fixed size and returns it as a JPEG data URL, then restores the on-screen size. Must be called synchronously after the render, before the browser presents the frame. */
+ function capture({width=960,quality=.82}={}){
+  if(disposed)throw new Error('The renderer has been closed.');
+  const outWidth=Math.max(160,Math.min(1600,Math.round(width))),outHeight=Math.max(90,Math.round(outWidth/(camera.aspect||1))),ratio=renderer.getPixelRatio();
+  renderer.setPixelRatio(1);composer?.setPixelRatio(1);renderer.setSize(outWidth,outHeight,false);composer?.setSize(outWidth,outHeight);camera.aspect=outWidth/outHeight;camera.updateProjectionMatrix();
+  try{render();return {dataUrl:canvas.toDataURL('image/jpeg',quality),width:outWidth,height:outHeight};}
+  finally{renderer.setPixelRatio(ratio);composer?.setPixelRatio(ratio);resize();}
+ }
  function tick(dt){for(const entry of entries.values())entry.mixer?.update(dt);}
  function resetAnimations(){for(const entry of entries.values()){if(entry.mixer){entry.mixer.setTime(0);}}}
  function effectivelyVisible(object){for(let node=object;node;node=node.parent)if(node.visible===false)return false;return !!object;}
  function gameCamera(){const active=project?.entities.find(entity=>entity.type==='camera'&&effectivelyVisible(objects.get(entity.id)));return active?objects.get(active.id):null;}
  async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);environment.dispose();for(const pass of composer?.passes||[])pass.dispose?.();composer?.dispose();renderer.dispose();}
- return {THREE,renderer,scene,root,camera,objects,sync,preflightAssets,assertComplete,resize,render,tick,resetAnimations,dispose,gameCamera};
+ return {THREE,renderer,scene,root,camera,objects,sync,preflightAssets,assertComplete,resize,render,capture,tick,resetAnimations,dispose,gameCamera};
 }

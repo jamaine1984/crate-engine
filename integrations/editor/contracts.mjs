@@ -13,7 +13,9 @@ const color = x => typeof x === 'string' && /^#[a-f0-9]{6}$/i.test(x);
 const maybe = (v, k, check) => v[k] === undefined || check(v[k]);
 const TYPES = [...ENTITY_TYPES];
 // Commands that change the paired project. The bridge refuses them unless the editor enabled writes.
-export const MUTATING_COMMANDS = Object.freeze(['apply_world','undo','edit_objects','set_level_settings','add_library_model']);
+export const MUTATING_COMMANDS = Object.freeze(['apply_world','undo','edit_objects','set_level_settings','add_library_model','save_project']);
+export const PLAY_MOVES = Object.freeze(['none','left','right','up','down']);
+export const MAX_PLAY_SECONDS = 12;
 // Starter Library paths as the catalog lists them, e.g. "kenney_dungeon/wall" or "hd_char_xbot".
 export const LIBRARY_PATH = /^[A-Za-z0-9_-]{1,80}(?:\/[A-Za-z0-9_-]{1,80}){0,2}$/;
 const COMPONENT_NAMES = Object.keys(COMPONENT_SCHEMAS);
@@ -56,12 +58,31 @@ function validEdits(args){
 function recipeShape(recipe) {
  try{validateWorldRecipeShape(recipe);return true;}catch{return false;}
 }
+function validPlayTest(args){
+ if(!keys(args,['seconds','steps','screenshot','width'])||!maybe(args,'seconds',n=>finite(n,.5,MAX_PLAY_SECONDS))||!maybe(args,'screenshot',n=>typeof n==='boolean')||!maybe(args,'width',n=>int(n,240,1280)))return false;
+ if(args.steps===undefined)return true;
+ if(args.seconds!==undefined||!Array.isArray(args.steps)||args.steps.length<1||args.steps.length>12)return false;
+ let total=0;
+ return args.steps.every(step=>keys(step,['move','seconds','jump'])&&finite(step.seconds,.1,MAX_PLAY_SECONDS)&&(total+=step.seconds)<=MAX_PLAY_SECONDS&&maybe(step,'move',n=>PLAY_MOVES.includes(n))&&maybe(step,'jump',n=>typeof n==='boolean'));
+}
+const validImage=x=>keys(x,['mimeType','data'])&&x.mimeType==='image/jpeg'&&typeof x.data==='string'&&x.data.length>0&&x.data.length<=400000&&/^[A-Za-z0-9+/]+={0,2}$/.test(x.data);
+function validPlayReport(value){
+ const position=n=>vector(n,3,-1e7,1e7);
+ return keys(value,['projectId','seconds','start','end','minY','maxY','path','state','events','warning','image','screenshotError'])&&finite(value.seconds,0,60)&&position(value.start)&&position(value.end)&&finite(value.minY,-1e7,1e7)&&finite(value.maxY,-1e7,1e7)&&
+  Array.isArray(value.path)&&value.path.length<=40&&value.path.every(p=>keys(p,['t','x','y','z'])&&['t','x','y','z'].every(k=>finite(p[k],-1e7,1e7)))&&
+  keys(value.state,['status','score','lives','maxLives'])&&['playing','won','lost'].includes(value.state.status)&&finite(value.state.score,-1e9,1e9)&&finite(value.state.lives,0,1e6)&&finite(value.state.maxLives,0,1e6)&&
+  Array.isArray(value.events)&&value.events.length<=60&&value.events.every(e=>keys(e,['type','at','score','lives','message','name'])&&text(e.type,40)&&finite(e.at,0,1e4)&&maybe(e,'score',n=>finite(n,-1e9,1e9))&&maybe(e,'lives',n=>finite(n,0,1e6))&&maybe(e,'message',n=>text(n,120))&&maybe(e,'name',n=>text(n,100)))&&
+  maybe(value,'warning',n=>text(n,300))&&maybe(value,'image',validImage)&&maybe(value,'screenshotError',n=>text(n,300));
+}
 export function validArguments(command,args){
  if(command==='get_scene')return keys(args,['offset','limit'])&&maybe(args,'offset',n=>int(n,0,4999))&&maybe(args,'limit',n=>int(n,1,LIMITS.maxSceneEntities));
  if(command==='get_object')return keys(args,['id'])&&identifier(args.id);
  if(command==='preview_world')return keys(args,['recipe'])&&recipeShape(args.recipe);
  if(command==='apply_world')return keys(args,['previewId'])&&uuid(args.previewId);
  if(command==='undo')return keys(args,[]);
+ if(command==='screenshot')return keys(args,['view','width'])&&maybe(args,'view',n=>['editor','game'].includes(n))&&maybe(args,'width',n=>int(n,240,1280));
+ if(command==='play_test')return validPlayTest(args);
+ if(command==='save_project')return keys(args,['where'])&&maybe(args,'where',n=>['device','account'].includes(n));
  if(command==='edit_objects')return validEdits(args);
  if(command==='add_library_model')return keys(args,['path','name','position','rotation','scale'])&&typeof args.path==='string'&&LIBRARY_PATH.test(args.path)&&maybe(args,'name',n=>text(n,100)&&n.length>0)&&maybe(args,'position',n=>vector(n,3,-1e6,1e6))&&maybe(args,'rotation',n=>vector(n,3,-36000,36000))&&maybe(args,'scale',n=>vector(n,3,.001,10000));
  if(command==='set_level_settings')return keys(args,['settings'])&&plain(args.settings)&&Object.keys(args.settings).length>0&&validSettings(args.settings);
@@ -73,6 +94,8 @@ export function validResult(command,value,projectId,args={}){
  if(!plain(value)||(value.projectId!==undefined&&value.projectId!==projectId))return false;
  if(command==='get_scene')return keys(value,['projectId','name','entities','assets','settings','entityCount','assetCount','truncated','offset','limit'])&&value.projectId===projectId&&text(value.name,120)&&Array.isArray(value.entities)&&value.entities.length<=(args.limit??250)&&value.entities.every(e=>entity(e,true))&&Array.isArray(value.assets)&&value.assets.length<=500&&value.assets.every(a=>keys(a,['id','name','mime'])&&identifier(a.id)&&text(a.name,180)&&maybe(a,'mime',m=>m==='model/gltf-binary'))&&validSettings(value.settings)&&int(value.entityCount,0,5000)&&int(value.assetCount,0,500)&&typeof value.truncated==='boolean'&&maybe(value,'offset',n=>int(n,0,4999))&&maybe(value,'limit',n=>int(n,1,250));
  if(command==='get_object')return keys(value,['projectId','entity'])&&value.projectId===projectId&&entity(value.entity,true);
+ if(command==='screenshot')return keys(value,['projectId','view','width','height','image'])&&value.projectId===projectId&&['editor','game'].includes(value.view)&&int(value.width,1,4000)&&int(value.height,1,4000)&&validImage(value.image);
+ if(command==='play_test')return value.projectId===projectId&&validPlayReport(value);
  if(command==='preview_world')return keys(value,['projectId','previewId','summary','entities'])&&uuid(value.previewId)&&validSummary(value.summary)&&Array.isArray(value.entities)&&value.entities.length<=500&&value.entities.every(e=>entity(e,true));
  return keys(value,['ok','projectId','entityCount','revision','summary','changed'])&&value.ok===true&&maybe(value,'entityCount',n=>int(n,0,5000))&&maybe(value,'revision',n=>int(n,0,Number.MAX_SAFE_INTEGER))&&maybe(value,'summary',s=>text(s,2000)||validSummary(s))&&maybe(value,'changed',n=>typeof n==='boolean');
 }
@@ -90,6 +113,11 @@ const PATCH_SCHEMA=objectSchema({name:{type:'string',minLength:1,maxLength:100},
 const EDIT_SCHEMA={...objectSchema({summary:{type:'string',maxLength:200},operations:{type:'array',minItems:1,maxItems:50,items:{oneOf:[
  {...objectSchema({op:{const:'update'},id:idSchema,patch:PATCH_SCHEMA}),required:['op','id','patch']},
  {...objectSchema({op:{const:'remove'},id:idSchema}),required:['op','id']}]}}}),required:['operations']};
+/** MCP content blocks for a tool result: pictures go out as real images, everything else as JSON text. */
+export function resultContent(value){
+ const picture=value?.image&&typeof value.image.data==='string'?value.image:null,rest=picture?{...value,image:{mimeType:picture.mimeType,note:'shown as an image'}}:value;
+ return {content:[...(picture?[{type:'image',data:picture.data,mimeType:picture.mimeType}]:[]),{type:'text',text:typeof value==='string'?value:JSON.stringify(rest)}],structured:rest};
+}
 export async function toolDefinitions(){
  return [
   {name:'get_scene',description:'Read a bounded page of the explicitly paired editor project: level settings (including lives and killY), object IDs, transforms, materials and gameplay components. customMesh vector paths are omitted to keep pages small; use get_object to read the art of one object. Assets contain IDs and names only; no credentials, files or URLs.',inputSchema:objectSchema({offset:{type:'integer',minimum:0,maximum:4999},limit:{type:'integer',minimum:1,maximum:250}}),annotations:{readOnlyHint:true}},
@@ -99,6 +127,9 @@ export async function toolDefinitions(){
   {name:'edit_objects',description:'Update or remove existing objects by the IDs returned by get_scene, as one Undo step, only while the user has explicitly enabled MCP writes. material and light patches merge with current values; each listed component replaces that component and null removes it. Removing a parent requires removing its children first. The whole edit fails if any operation is invalid.',inputSchema:EDIT_SCHEMA,annotations:{readOnlyHint:false,destructiveHint:true}},
   {name:'set_level_settings',description:'Change level settings (lives, fall-out height killY, gravity, background, lighting, quality) as one Undo step, only while the user has explicitly enabled MCP writes. Unlisted settings are kept.',inputSchema:{...objectSchema({settings:SETTINGS_SCHEMA}),required:['settings']},annotations:{readOnlyHint:false,destructiveHint:false}},
   {name:'add_library_model',description:'Add one Starter Library 3D model (characters, enemies, animals, platformer pieces, nature, buildings, props, dungeon and pirate kits, weapons, vehicles, furniture) to the scene as one object, only while the user has explicitly enabled MCP writes. Use a path from list_library_models. Returns the new object ID in the summary; set gameplay components on it afterwards with edit_objects.',inputSchema:{...objectSchema({path:{type:'string',pattern:'^[A-Za-z0-9_-]{1,80}(/[A-Za-z0-9_-]{1,80}){0,2}$',description:'Library path, for example "kenney_dungeon/wall".'},name:{type:'string',minLength:1,maxLength:100},position:vectorSchema(-1e6,1e6),rotation:{...vectorSchema(-36000,36000),description:'Degrees.'},scale:vectorSchema(.001,10000)}),required:['path']},annotations:{readOnlyHint:false,destructiveHint:false}},
+  {name:'screenshot',description:'Take a picture of what the user\'s editor shows right now so you can check your work. view "game" uses the level\'s Camera object (add one first), view "editor" uses the editor camera. The grid and selection handles are hidden. Returns a JPEG image. Use it after building or editing, and fix anything that looks wrong.',inputSchema:objectSchema({view:{enum:['editor','game'],description:'Default "editor".'},width:{type:'integer',minimum:240,maximum:1280,description:'Image width in pixels. Default 960.'}}),annotations:{readOnlyHint:true}},
+  {name:'play_test',description:'Play the level in the user\'s editor for a few seconds with scripted controls, then return to Edit mode. Reports where the player started and ended, the lowest and highest point reached, score, lives, whether the level was won or lost, checkpoint and respawn events, and a picture of the last frame. Give steps like [{move:"right",seconds:3},{move:"right",jump:true,seconds:1}] (move is none, left, right, up or down; jump:true presses Jump again every 0.6 s), or just seconds to watch the level with no input. Up to 12 seconds in total; the game is simulated at 60 frames per second and finishes in a second or two. It does not change the project.',inputSchema:objectSchema({seconds:numberSchema(.5,12),steps:{type:'array',minItems:1,maxItems:12,items:{...objectSchema({move:{enum:['none','left','right','up','down']},seconds:numberSchema(.1,12),jump:{type:'boolean'}}),required:['seconds']},description:'Controls to hold, one after another. Do not combine with seconds.'},screenshot:{type:'boolean',description:'Include a picture of the last frame. Default true.'},width:{type:'integer',minimum:240,maximum:1280}}),annotations:{readOnlyHint:true}},
+  {name:'save_project',description:'Save the project in the user\'s editor, only while the user has explicitly enabled changes. where "device" (default) saves it in this browser so it appears under Open; where "account" also saves a copy to the user\'s Crate Ship account. Use it when the work is in a good state.',inputSchema:objectSchema({where:{enum:['device','account']}}),annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true}},
   {name:'undo',description:'Undo the latest project edit only while the user has explicitly enabled MCP writes in this paired editor session.',inputSchema:objectSchema({}),annotations:{readOnlyHint:false,destructiveHint:true}},
  ];
 }

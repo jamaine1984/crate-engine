@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { LIMITS, plain, keys, validArguments, toolDefinitions } from './contracts.mjs';
+import { LIMITS, plain, keys, validArguments, toolDefinitions, resultContent } from './contracts.mjs';
 
 const delay=(ms,signal)=>new Promise((resolve,reject)=>{if(signal?.aborted)return reject(new Error('CANCELLED'));const done=()=>{signal?.removeEventListener('abort',abort);resolve();},timer=setTimeout(done,ms);const abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(new Error('CANCELLED'));};signal?.addEventListener('abort',abort,{once:true});});
 /** Fixed native loopback transport: no caller-selected host, URL, path or provider key. */
@@ -62,7 +62,7 @@ export function startMcp({input=process.stdin,output=process.stdout,env=process.
   if(active.size>=LIMITS.maxPending)return error(id,-32000,'Local MCP command queue is full.');
   const controller=new AbortController();active.set(key,controller);
   try{const value=await callEditor(message.params.name,message.params.arguments??{},{token:env.CRATESHIP_EDITOR_TOKEN,port:Number(env.CRATESHIP_EDITOR_PORT||9879),signal:controller.signal});
-   if(!controller.signal.aborted)return result(id,{content:[{type:'text',text:JSON.stringify(value)}]});
+   if(!controller.signal.aborted)return result(id,{content:resultContent(value).content});
   }catch{if(!controller.signal.aborted)return result(id,{isError:true,content:[{type:'text',text:'The paired editor could not complete this command. Check pairing, active project, preview and write permission. A timeout or cancelled delivered edit may already have applied; inspect the scene before trying a new command.'}]});}
   finally{active.delete(key);}
  }
