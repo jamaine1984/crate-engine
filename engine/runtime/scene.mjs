@@ -1,4 +1,5 @@
 import {createWaterMesh,isWaterObject,updateWaterTime} from './water.mjs';
+import {createWaterFX} from './water-fx.mjs';
 import {createTerrainMesh} from './terrain.mjs';
 import {findBone,createLocomotion} from './character.mjs';
 import * as THREE from 'three';
@@ -56,6 +57,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  const pmrem=new THREE.PMREMGenerator(renderer),room=new RoomEnvironment(),environment=pmrem.fromScene(room,.04);
  scene.environment=environment.texture;room.dispose();pmrem.dispose();
  const atmosphere=createAtmosphere(THREE,{renderer,scene,defaultEnvironment:environment.texture}),post=createPost(THREE,{renderer,scene,camera,root}),instancer=createInstancer(THREE,{scene,onReady:()=>onInvalidate()}),surfaces=createSurfaceLibrary(THREE,{base:surfaceBase,onLoad:()=>onInvalidate()});
+ const waterFX=createWaterFX(THREE,{renderer,scene});
  const objects=new Map(),entries=new Map(),loaded=new Map(),missing=new Map(),gate=createGenerationGate();
  const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
  let project=null,disposed=false,width=1,height=1,shadowWarning=false;
@@ -84,7 +86,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
    const gltf=await sourceFor(asset);if(!gate.current(token))return null;
    let locomotion;({object,mixer,locomotion}=createModelInstance(gltf,entity,{onLog}));object.userData.locomotion=locomotion||null;assetKey=assetCacheKey(asset);
   }else if(entity.type==='customMesh')object=createVectorObject(THREE,entity.shape);
-  else if(entity.type==='plane'&&entity.components?.water)object=createWaterMesh(THREE,entity);
+  else if(entity.type==='plane'&&entity.components?.water)object=createWaterMesh(THREE,entity,waterFX);
   else if(entity.type==='plane'&&entity.components?.terrain)object=createTerrainMesh(THREE,entity,surfaces);
   else if(entity.type==='directionalLight'){
    object=new THREE.DirectionalLight(entity.light.color,entity.light.intensity);object.userData.baseIntensity=entity.light.intensity;object.target.position.set(0,0,0);
@@ -100,7 +102,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  }
  function configure(settings){
   scene.background=new THREE.Color(settings.background);ambient.intensity=settings.ambientIntensity;scene.environmentIntensity=settings.ambientIntensity;
-  renderer.toneMappingExposure=settings.exposure;renderer.shadowMap.enabled=settings.shadows;
+  renderer.toneMappingExposure=settings.exposure;renderer.shadowMap.enabled=settings.shadows;waterFX.setQuality(settings.quality);
   const ratio=Math.min(globalThis.devicePixelRatio||1,settings.quality==='low'?1:settings.quality==='high'?2:1.5);
   if(renderer.getPixelRatio()!==ratio)renderer.setPixelRatio(ratio);post.setPixelRatio(ratio);
   const sunLight=[...objects.values()].find(object=>object.isDirectionalLight&&object.castShadow)||null;atmosphere.configure(settings,sunLight);
@@ -160,7 +162,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  function resize(){if(disposed)return;const rect=canvas.getBoundingClientRect();width=Math.max(1,Math.round(rect.width));height=Math.max(1,Math.round(rect.height));renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();post.setSize(width,height);onInvalidate();}
  function hasWater(){for(const entry of entries.values())if(isWaterObject(entry.object))return true;return false;}
  function stepWater(){const seconds=performance.now()/1000,sky=atmosphere.physical?atmosphere.horizon:scene.background&&scene.background.isColor?scene.background:null;for(const entry of entries.values())if(isWaterObject(entry.object))updateWaterTime(entry.object,seconds,sky);}
- function render(){if(disposed)return;stepWater();atmosphere.update(camera,performance.now()/1000);scene.updateMatrixWorld();instancer.update(camera);renderer.info.reset();if(post.active)post.render();else renderer.render(scene,camera);}
+ function render(){if(disposed)return;stepWater();atmosphere.update(camera,performance.now()/1000);scene.updateMatrixWorld();instancer.update(camera);renderer.info.reset();waterFX.prepare(camera);try{if(post.active)post.render();else renderer.render(scene,camera);}finally{waterFX.finish();}}
  /** Renders one frame at a fixed size and returns it as a JPEG data URL, then restores the on-screen size. Must be called synchronously after the render, before the browser presents the frame. */
  function capture({width=960,quality=.82}={}){
   if(disposed)throw new Error('The renderer has been closed.');
@@ -175,6 +177,6 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  function resetAnimations(){for(const entry of entries.values()){if(entry.mixer){entry.mixer.setTime(0);}}}
  function effectivelyVisible(object){for(let node=object;node;node=node.parent)if(node.visible===false)return false;return !!object;}
  function gameCamera(){const active=project?.entities.find(entity=>entity.type==='camera'&&effectivelyVisible(objects.get(entity.id)));return active?objects.get(active.id):null;}
- async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);instancer.dispose();surfaces.dispose();atmosphere.dispose();post.dispose();environment.dispose();renderer.dispose();}
+ async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);instancer.dispose();surfaces.dispose();atmosphere.dispose();post.dispose();waterFX.dispose();environment.dispose();renderer.dispose();}
  return {THREE,renderer,scene,root,camera,objects,post,atmosphere,instancer,performanceReport,sync,preflightAssets,assertComplete,resize,render,capture,tick,hasWater,resetAnimations,dispose,gameCamera};
 }
