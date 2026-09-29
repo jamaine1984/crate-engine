@@ -31,3 +31,42 @@ export function sideViewFollower() {
     },
   };
 }
+
+// 3D games: the camera keeps its authored angle and distance from the player and glides after them.
+export function chaseFollower() {
+  let active = false;
+  const offset = { x: 0, y: 0, z: 0 }, pos = { x: 0, y: 0, z: 0 };
+  return {
+    get active() { return active; },
+    start(player, camera) {
+      active = true;
+      offset.x = camera.x - player.x; offset.y = camera.y - player.y; offset.z = camera.z - player.z;
+      pos.x = camera.x; pos.y = camera.y; pos.z = camera.z;
+    },
+    stop() { active = false; },
+    apply(player, camera, dt = 0) {
+      if (!active) return;
+      const k = 1 - Math.exp(-6 * Math.max(0, dt));
+      pos.x += (player.x + offset.x - pos.x) * k; pos.y += (player.y + offset.y - pos.y) * k; pos.z += (player.z + offset.z - pos.z) * k;
+      camera.x = pos.x; camera.y = pos.y; camera.z = pos.z;
+    },
+  };
+}
+
+// Picks how the game camera follows the player: side-view games use sideViewFollower, 3D games chase.
+// A camera placed inside the player (a child object) already moves with them and is left alone.
+export function playerCameraFollower() {
+  const side = sideViewFollower(), chase = chaseFollower();
+  let current = null;
+  return {
+    get active() { return !!current?.active; },
+    start(player, camera, fovDegrees, sideView) { current = sideView ? side : chase; current.start(player, camera, fovDegrees); },
+    stop() { side.stop(); chase.stop(); current = null; },
+    apply(player, camera, dt) { current?.apply(player, camera, dt); },
+  };
+}
+
+export function isInside(object, ancestor) {
+  for (let node = object?.parent; node; node = node.parent) if (node === ancestor) return true;
+  return false;
+}
