@@ -157,7 +157,9 @@ test('tool calls reach the linked editor tab; writes need "Allow changes"; resul
     assert.equal(refused.result.isError, true);
     assert.equal((await tool('add_library_model', { path: 'not/in/library' })).result.isError, true);
     const library = await tool('list_library_models', { category: 'people' });
-    assert.equal(library.result.structuredContent.count, 1); assert.equal((await tool('list_library_models')).result.structuredContent.count, 3);
+    assert.equal(library.result.structuredContent.count, 1); assert.equal((await tool('list_library_models')).result.structuredContent.count, 30);
+    const props = (await tool('list_library_models', { category: 'props' })).result.structuredContent;
+    assert.ok(props.models.some(m => m.path === 'barrel') && props.models.every(m => m.cat === 'Props'));
   } finally { f.sql.close(); }
 });
 

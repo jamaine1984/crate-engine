@@ -73,7 +73,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  const view=createSceneRuntime({canvas,resolveAsset,onLog,onInvalidate:()=>dirty=true});if(import.meta.env?.DEV)globalThis.__crateView=view;const ambience=createAmbience();
  const controls=new OrbitControls(view.camera,canvas);controls.target.set(0,1,0);controls.enableDamping=true;controls.addEventListener('change',()=>dirty=true);
  const transform=new TransformControls(view.camera,canvas),helper=transform.getHelper();view.scene.add(helper);
- const grid=new THREE.GridHelper(100,100,'#587566','#2b3c33');grid.position.y=-.015;view.scene.add(grid);
+ const grid=new THREE.GridHelper(100,100,'#587566','#2b3c33');grid.position.y=-.015;grid.userData.editorHelper=true;view.scene.add(grid);
  const selectionBox=new THREE.BoxHelper(undefined,'#ff8d45');selectionBox.visible=false;view.scene.add(selectionBox);
  function scheduleScene(project){
   sceneError=null;syncPending=true;const version=++syncVersion;transform.detach();selectionBox.visible=false;
@@ -127,7 +127,8 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  function loop(time){
   if(disposed)return;raf=requestAnimationFrame(loop);const dt=Math.min((time-last)/1000,.05);last=time;if(document.hidden)return;if(controls.enabled)controls.update();
   if(mode==='play'){if(!scriptedPlay){physics?.step(dt);playClock+=dt;view.tick(dt);followPreviewCamera(dt);}dirty=true;}
-  if(dirty||isDragging||view.hasWater()){view.render();frames++;dirty=false;}
+  const water=view.hasWater();if(mode==='edit')grid.visible=!water;
+  if(dirty||isDragging||water){view.render();frames++;dirty=false;}
   if(time-statsAt>1000){onStats({fps:Math.round(frames*1000/(time-statsAt)),drawCalls:view.renderer.info.render.calls,triangles:view.renderer.info.render.triangles,entities:store.project.entities.length,mode});statsAt=time;frames=0;}
  }
  const observer=new ResizeObserver(()=>view.resize());observer.observe(canvas);view.resize();raf=requestAnimationFrame(loop);

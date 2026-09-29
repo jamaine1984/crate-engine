@@ -17,7 +17,7 @@ export function createWaterFX(THREE,{renderer,scene}){
  const shared={uRefract:{value:colorTarget.texture},uDepth:{value:colorTarget.depthTexture},uReflect:{value:reflectTarget.texture},uTexMatrix:{value:textureMatrix},uRes:{value:new THREE.Vector2(1,1)},uNear:{value:.1},uFar:{value:1000},uFX:{value:0},uReflectOn:{value:0}};
 
  function setQuality(quality){enabled=quality!=='low';scale=quality==='high'?.6:.5;}
- function waters(){const list=[];scene.traverseVisible(object=>{if(isWaterObject(object))list.push(object);});return list;}
+ function waters(){const list=[],helpers=[];scene.traverseVisible(object=>{if(isWaterObject(object))list.push(object);else if(object.userData.editorHelper||object.isTransformControlsRoot||object.type==='BoxHelper'||object.type==='GridHelper')helpers.push(object);});return {list,helpers};}
  function resize(){
   renderer.getDrawingBufferSize(size);shared.uRes.value.copy(size);
   const w=Math.max(1,Math.round(size.x*scale)),h=Math.max(1,Math.round(size.y*scale));
@@ -44,17 +44,18 @@ export function createWaterFX(THREE,{renderer,scene}){
  function prepare(camera){
   shared.uFX.value=0;
   if(!enabled)return false;
-  const list=waters();if(!list.length)return false;
+  const {list,helpers}=waters();if(!list.length)return false;
   resize();shared.uNear.value=camera.near;shared.uFar.value=camera.far;
   const previous=renderer.getRenderTarget(),xr=renderer.xr.enabled;renderer.xr.enabled=false;
   for(const water of list)water.visible=false;
+  for(const helper of helpers)helper.visible=false;   // editor grid, gizmos and selection boxes never belong under or in the water
   try{
    renderer.setRenderTarget(colorTarget);renderer.clear();renderer.render(scene,camera);          // shadows update here
    shadowAuto=renderer.shadowMap.autoUpdate;renderer.shadowMap.autoUpdate=false;
    const waterY=list[0].getWorldPosition(planePoint).y;
    shared.uReflectOn.value=mirrorCamera(camera,waterY)?1:0;
    if(shared.uReflectOn.value){renderer.setRenderTarget(reflectTarget);renderer.clear();renderer.render(scene,mirror);}
-  }finally{for(const water of list)water.visible=true;renderer.setRenderTarget(previous);renderer.xr.enabled=xr;}
+  }finally{for(const water of list)water.visible=true;for(const helper of helpers)helper.visible=true;renderer.setRenderTarget(previous);renderer.xr.enabled=xr;}
   shared.uFX.value=1;
   return true;
  }

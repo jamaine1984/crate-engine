@@ -10,27 +10,37 @@ const root = new URL('../starter-library/', import.meta.url);
 const catalog = JSON.parse(await readFile(new URL('catalog.json', root), 'utf8'));
 const picks = JSON.parse(await readFile(new URL('picks.json', root), 'utf8'));
 
-test('the starter library is exactly three characters', () => {
+const CHARACTERS = ['human', 'goat_kid', 'blue_robot'];
+const isCharacter = item => CHARACTERS.includes(item.path);
+
+test('the starter library is the three characters plus the approved Blender-made kit', () => {
   const items = normalizeCatalog(catalog);
-  assert.equal(items.length, 3);
+  assert.equal(items.length, picks.keep.length);
   assert.deepEqual(items.map(i => i.path.replace(/^models\//, '').replace(/\.glb$/, '')).sort(), [...picks.keep].sort());
-  assert.deepEqual(catalogCategories(items).map(([cat]) => cat), ['Creatures', 'People', 'Robots']);
+  for (const id of CHARACTERS) assert.ok(picks.keep.includes(id), id + ' stays in the library');
+  assert.deepEqual(catalogCategories(items).map(([cat]) => cat).sort(), ['Boats', 'Buildings', 'Creatures', 'Nature', 'People', 'Props', 'Robots', 'Terrain']);
   assert.equal(items.filter(i => i.cat === 'People').length, 1, 'exactly one human');
+  for (const id of picks.keep) assert.ok(picks.names[id] && picks.groups[id], id + ' has a name and a category');
 });
 
-test('every starter model is a real, rigged, web-sized GLB served from the site, with a thumbnail', async () => {
+test('every starter model is a real GLB served from the site, with a thumbnail; characters are rigged and animated', async () => {
   for (const item of catalog.models) {
     assert.ok(STARTER_MODEL_URL.test(item.url), item.path);
     assert.match(item.thumb, /^\/starter-library\/thumbs\/[a-z0-9_]+\.webp$/);
     await access(new URL('..' + item.thumb, root));
     const bytes = new Uint8Array(await readFile(new URL('..' + item.url, root)));
-    assert.ok(bytes.length < 5 * 1024 * 1024, item.path + ' stays under 5 MB so it loads fast');
     const { document } = inspectGLB(bytes);
+    for (const image of document.images || []) assert.equal(image.uri, undefined, item.path + ' has no outside textures');
+    if (!isCharacter(item)) {
+      assert.ok(bytes.length < 8 * 1024 * 1024, item.path + ' stays under 8 MB so it loads fast');
+      assert.ok((document.meshes || []).length > 0, item.path + ' has geometry');
+      continue;
+    }
+    assert.ok(bytes.length < 5 * 1024 * 1024, item.path + ' stays under 5 MB so it loads fast');
     assert.ok(document.skins?.length > 0, item.path + ' is rigged');
     assert.deepEqual((document.animations || []).map(a => a.name).sort(), ['Running', 'Walking'], item.path + ' has Walking and Running clips');
     const joints = new Set(document.skins[0].joints);
     for (const animation of document.animations) for (const channel of animation.channels) assert.ok(joints.has(channel.target.node), item.path + ': every animation channel drives a bone of its skeleton');
-    for (const image of document.images || []) assert.equal(image.uri, undefined, item.path + ' has no outside textures');
   }
 });
 

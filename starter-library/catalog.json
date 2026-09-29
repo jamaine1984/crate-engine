@@ -1,6 +1,6 @@
 {
  "name": "Crate Ship Starter Library",
- "version": "2026-09-28T23:00:00.000Z",
+ "version": "2026-09-29T17:35:03.061Z",
  "models": [
   {
    "path": "human",
@@ -22,6 +22,195 @@
    "cat": "Robots",
    "url": "/starter-library/models/blue_robot.glb",
    "thumb": "/starter-library/thumbs/blue_robot.webp"
+  },
+  {
+   "path": "fishing_pier",
+   "name": "Fishing Pier",
+   "cat": "Buildings",
+   "url": "/starter-library/models/fishing_pier.glb",
+   "thumb": "/starter-library/thumbs/fishing_pier.webp"
+  },
+  {
+   "path": "bait_shack",
+   "name": "Bait & Tackle Shack",
+   "cat": "Buildings",
+   "url": "/starter-library/models/bait_shack.glb",
+   "thumb": "/starter-library/thumbs/bait_shack.webp"
+  },
+  {
+   "path": "palm_a",
+   "name": "Palm Tree A",
+   "cat": "Nature",
+   "url": "/starter-library/models/palm_a.glb",
+   "thumb": "/starter-library/thumbs/palm_a.webp"
+  },
+  {
+   "path": "palm_b",
+   "name": "Palm Tree B",
+   "cat": "Nature",
+   "url": "/starter-library/models/palm_b.glb",
+   "thumb": "/starter-library/thumbs/palm_b.webp"
+  },
+  {
+   "path": "palm_c",
+   "name": "Palm Tree C",
+   "cat": "Nature",
+   "url": "/starter-library/models/palm_c.glb",
+   "thumb": "/starter-library/thumbs/palm_c.webp"
+  },
+  {
+   "path": "rock_a",
+   "name": "Beach Rock A",
+   "cat": "Nature",
+   "url": "/starter-library/models/rock_a.glb",
+   "thumb": "/starter-library/thumbs/rock_a.webp"
+  },
+  {
+   "path": "rock_b",
+   "name": "Beach Rock B",
+   "cat": "Nature",
+   "url": "/starter-library/models/rock_b.glb",
+   "thumb": "/starter-library/thumbs/rock_b.webp"
+  },
+  {
+   "path": "rock_c",
+   "name": "Beach Rock C",
+   "cat": "Nature",
+   "url": "/starter-library/models/rock_c.glb",
+   "thumb": "/starter-library/thumbs/rock_c.webp"
+  },
+  {
+   "path": "rock_d",
+   "name": "Boulder",
+   "cat": "Nature",
+   "url": "/starter-library/models/rock_d.glb",
+   "thumb": "/starter-library/thumbs/rock_d.webp"
+  },
+  {
+   "path": "grass_tuft",
+   "name": "Grass Tuft",
+   "cat": "Nature",
+   "url": "/starter-library/models/grass_tuft.glb",
+   "thumb": "/starter-library/thumbs/grass_tuft.webp"
+  },
+  {
+   "path": "grass_tuft_b",
+   "name": "Grass Tuft B",
+   "cat": "Nature",
+   "url": "/starter-library/models/grass_tuft_b.glb",
+   "thumb": "/starter-library/thumbs/grass_tuft_b.webp"
+  },
+  {
+   "path": "driftwood",
+   "name": "Driftwood",
+   "cat": "Nature",
+   "url": "/starter-library/models/driftwood.glb",
+   "thumb": "/starter-library/thumbs/driftwood.webp"
+  },
+  {
+   "path": "dune_grass_field",
+   "name": "Dune Grass Field",
+   "cat": "Nature",
+   "url": "/starter-library/models/dune_grass_field.glb",
+   "thumb": "/starter-library/thumbs/dune_grass_field.webp"
+  },
+  {
+   "path": "barrel",
+   "name": "Barrel",
+   "cat": "Props",
+   "url": "/starter-library/models/barrel.glb",
+   "thumb": "/starter-library/thumbs/barrel.webp"
+  },
+  {
+   "path": "crate",
+   "name": "Wooden Crate",
+   "cat": "Props",
+   "url": "/starter-library/models/crate.glb",
+   "thumb": "/starter-library/thumbs/crate.webp"
+  },
+  {
+   "path": "fish_crate",
+   "name": "Fish Crate",
+   "cat": "Props",
+   "url": "/starter-library/models/fish_crate.glb",
+   "thumb": "/starter-library/thumbs/fish_crate.webp"
+  },
+  {
+   "path": "bucket",
+   "name": "Bucket",
+   "cat": "Props",
+   "url": "/starter-library/models/bucket.glb",
+   "thumb": "/starter-library/thumbs/bucket.webp"
+  },
+  {
+   "path": "rope_coil",
+   "name": "Rope Coil",
+   "cat": "Props",
+   "url": "/starter-library/models/rope_coil.glb",
+   "thumb": "/starter-library/thumbs/rope_coil.webp"
+  },
+  {
+   "path": "lobster_trap",
+   "name": "Lobster Trap",
+   "cat": "Props",
+   "url": "/starter-library/models/lobster_trap.glb",
+   "thumb": "/starter-library/thumbs/lobster_trap.webp"
+  },
+  {
+   "path": "fishing_rod",
+   "name": "Fishing Rod",
+   "cat": "Props",
+   "url": "/starter-library/models/fishing_rod.glb",
+   "thumb": "/starter-library/thumbs/fishing_rod.webp"
+  },
+  {
+   "path": "rowboat_teal",
+   "name": "Rowboat (Teal)",
+   "cat": "Boats",
+   "url": "/starter-library/models/rowboat_teal.glb",
+   "thumb": "/starter-library/thumbs/rowboat_teal.webp"
+  },
+  {
+   "path": "rowboat_white",
+   "name": "Rowboat (White)",
+   "cat": "Boats",
+   "url": "/starter-library/models/rowboat_white.glb",
+   "thumb": "/starter-library/thumbs/rowboat_white.webp"
+  },
+  {
+   "path": "rowboat_blue",
+   "name": "Rowboat (Blue)",
+   "cat": "Boats",
+   "url": "/starter-library/models/rowboat_blue.glb",
+   "thumb": "/starter-library/thumbs/rowboat_blue.webp"
+  },
+  {
+   "path": "buoy_float",
+   "name": "Fishing Float",
+   "cat": "Boats",
+   "url": "/starter-library/models/buoy_float.glb",
+   "thumb": "/starter-library/thumbs/buoy_float.webp"
+  },
+  {
+   "path": "mooring_buoy",
+   "name": "Mooring Buoy",
+   "cat": "Boats",
+   "url": "/starter-library/models/mooring_buoy.glb",
+   "thumb": "/starter-library/thumbs/mooring_buoy.webp"
+  },
+  {
+   "path": "tidewater_terrain",
+   "name": "Tidewater Beach Terrain",
+   "cat": "Terrain",
+   "url": "/starter-library/models/tidewater_terrain.glb",
+   "thumb": "/starter-library/thumbs/tidewater_terrain.webp"
+  },
+  {
+   "path": "tidewater_backdrop",
+   "name": "Tidewater Backdrop",
+   "cat": "Terrain",
+   "url": "/starter-library/models/tidewater_backdrop.glb",
+   "thumb": "/starter-library/thumbs/tidewater_backdrop.webp"
   }
  ]
 }
