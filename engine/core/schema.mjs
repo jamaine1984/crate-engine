@@ -29,6 +29,7 @@ export function cleanComponents(value={}){
  if(value.hazard)result.hazard={};
  if(value.checkpoint)result.checkpoint={};
  if(value.mover)result.mover={offset:vec(value.mover.offset,[0,2,0],-1000,1000),period:finite(value.mover.period,4,.2,120)};
+ if(value.water)result.water={waveHeight:finite(value.water.waveHeight,.6,0,5),waveLength:finite(value.water.waveLength,24,4,200),speed:finite(value.water.speed,1,0,5),choppiness:finite(value.water.choppiness,.5,0,1),opacity:finite(value.water.opacity,.86,.3,1),deepColor:/^#[a-fA-F0-9]{6}$/.test(value.water.deepColor)?value.water.deepColor:'#0a4d6e',foam:value.water.foam!==false};
  if(value.animation)result.animation={clip:text(value.animation.clip,120),autoplay:value.animation.autoplay!==false,speed:finite(value.animation.speed,1,.01,5)};
  return result;
 }
@@ -50,6 +51,7 @@ export function cleanEntity(value={}){
  if(!ENTITY_TYPES.includes(value.type))throw new Error('Unsupported scene object type.');
  const components=cleanComponents(value.components);
  if(components.player&&(!['box','sphere','cylinder','capsule','plane','model','customMesh'].includes(value.type)||components.rigidbody?.type!=='dynamic'))throw new Error('A player controller requires a renderable object with a dynamic rigid body.');
+ if(components.water&&(value.type!=='plane'||components.rigidbody||components.spin||components.player||components.mover||components.goal||components.hazard||components.checkpoint||components.collectible))throw new Error('Water can only be added to a plane, and cannot combine with physics or gameplay components.');
  if(components.spin&&components.rigidbody)throw new Error('Spin and rigid body components cannot be combined.');
  if(components.mover&&(components.spin||components.player||components.rigidbody?.type==='dynamic'))throw new Error('A moving platform cannot also spin, be a player, or use a dynamic rigid body.');
  if(components.player&&(components.goal||components.hazard||components.checkpoint))throw new Error('The player cannot also be a goal, hazard, or checkpoint.');

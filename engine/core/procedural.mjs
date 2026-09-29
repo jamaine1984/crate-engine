@@ -16,7 +16,8 @@ export const COMPONENT_SCHEMAS=freeze({
  collectible:object({value:integer(0,1e6)}),spin:object({speed:number(-720,720)}),
  animation:object({clip:{type:'string',maxLength:120},autoplay:{type:'boolean'},speed:number(.01,5)}),
  goal:object({message:{type:'string',maxLength:120}}),hazard:object({}),checkpoint:object({}),
- mover:object({offset:tuple(3,number(-1000,1000)),period:number(.2,120)})
+ mover:object({offset:tuple(3,number(-1000,1000)),period:number(.2,120)}),
+ water:object({waveHeight:number(0,5),waveLength:number(4,200),speed:number(0,5),choppiness:number(0,1),opacity:number(.3,1),deepColor:color,foam:{type:'boolean'}})
 });
 const components=object(COMPONENT_SCHEMAS);
 const entity=object({
@@ -62,6 +63,7 @@ function countOf(operation){return operation.op==='grid'?operation.counts[0]*ope
 function modelRules(template){
  if(template.type==='model'&&!template.assetId)throw new Error('A model template requires an existing project assetId.');
  if(template.type!=='model'&&template.assetId)throw new Error('Only model templates may reference an assetId.');
+ if(template.components?.water&&template.type!=='plane')throw new Error('Water components require a plane object.');
  if(template.components?.animation&&template.type!=='model')throw new Error('Animation components require a model with an embedded animation clip.');
  if(template.type==='customMesh'&&!template.shape)throw new Error('A custom mesh requires its own vector paths.');
  if(template.type!=='customMesh'&&template.shape)throw new Error('Custom vector paths are supported only on customMesh objects.');

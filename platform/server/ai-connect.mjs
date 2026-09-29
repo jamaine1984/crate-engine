@@ -11,24 +11,29 @@
 import { HttpError, json, id, now, database, appOrigin, requireMutationOrigin, audit } from './common.mjs';
 import { requireUser, rateLimit, tokenHash, base64url } from './identity.mjs';
 import { flags, rate } from './data.mjs';
-import { toolDefinitions, validArguments, validResult, resultContent, MUTATING_COMMANDS } from '../../integrations/editor/contracts.mjs';
+import { toolDefinitions, validArguments, validResult, resultContent, MUTATING_COMMANDS, EDITOR_PROTOCOL } from '../../integrations/editor/contracts.mjs';
 import starterLibrary from '../../starter-library/catalog.mjs';
 
 export const MODERN_VERSION = '2026-07-28';
 export const LEGACY_VERSIONS = Object.freeze(['2025-11-25', '2025-06-18', '2025-03-26']);
 export const SUPPORTED_VERSIONS = Object.freeze([MODERN_VERSION, ...LEGACY_VERSIONS]);
 const SCOPE = 'editor', ACCESS_TTL = 3600, REFRESH_TTL = 30 * 86400, CODE_TTL = 600;
-const LINK_FRESH_SECONDS = 30, COMMAND_TTL = 30, WAIT_MS = 25000, MAX_RESULT_BYTES = 512 * 1024;
+const LINK_FRESH_SECONDS = 30, COMMAND_TTL = 45, WAIT_MS = 40000, MAX_RESULT_BYTES = 512 * 1024, LONG_POLL_MS = 8000;
 const SERVER_INFO = { name: 'crateship-games', title: 'Crate Ship Games', version: '1.0.0' };
 const LIBRARY = new Map(starterLibrary.map(model => [model.path.toLowerCase(), model]));
 const INSTRUCTIONS = [
   'You are connected to the Crate Ship Games browser game engine, in the user\'s own open editor tab.',
   'Start with editor_status. If no editor is open, ask the user to open the editor and turn on "Let AI apps build here".',
   'Read the scene with get_scene before changing it, and use only IDs it returns.',
-  'Build worlds with preview_world, then apply_world with the returned previewId. Place 3D models with list_library_models and add_library_model.',
+  'Build worlds with preview_world, then apply_world with the returned previewId. Place 3D models with list_library_models and add_library_model. To use your own models (made in Blender, downloaded from Poly Haven, etc.), host the .glb (an https link, or a tiny local file server such as http://127.0.0.1:PORT/model.glb when you run on the same computer) and call import_model, then place the returned asset ID with preview_world as {type:"model",assetId}.',
   'Make it playable with components through edit_objects: player (with a dynamic rigidbody), goal, hazard, checkpoint, collectible, mover. Add a camera object to follow the player.',
+  'Water: give a plane object components.water ({waveHeight metres, waveLength metres, speed, choppiness 0-1, opacity, deepColor, foam}) for animated Gerstner ocean waves with foam and sky reflection. The material.color of the plane is the shallow-water colour; scale x and z set the size (up to a few hundred metres is fine). Water cannot combine with physics or gameplay components.',
   'Static customMesh art collides along its drawn outline by default, so ramps, hills and curved platforms work. Set rigidbody collider "box" on one to force a plain box. Players, moving platforms, dynamic bodies and imported models always use boxes unless you choose otherwise.',
-  'Check your work: take a screenshot after building (view "game" needs a camera object), and run play_test with scripted controls to prove the level can be won. Fix what you find.',
+  'You have eyes: every change (apply_world, edit_objects, set_level_settings, add_library_model, place_on_ground, undo) returns a picture framed on what changed plus automatic warnings (for example an object floating above the ground or with nothing under it). Look at every picture and fix every warning before moving on; place_on_ground fixes floating props. Run check_scene and take a game-view screenshot before you tell the user a scene is done, and describe honestly what the pictures show.',
+  'Check gameplay with play_test and scripted controls to prove a level can be won. Fix what you find.',
+  'Never tell the user something cannot be built. Combine what you have: primitives and customMesh outlines for anything procedural (stalls, signs, rocks, fences), components.water for oceans and lakes, add_library_model for the rigged characters, and import_model for anything made outside the editor (Blender, Poly Haven, downloads). If a capability is truly missing, say what you built instead and what the engine would need. Match the setting: no street lamps on a wild beach, trees on islands, water wherever there should be water.',
+  'Speed: build large scenes in a few big recipes (up to 64 operations and 500 objects each) rather than many small calls. preview_world lists only the first 12 objects to keep replies short; apply it with the previewId.',
+  'If a tool says the editor tab is out of date, ask the user to refresh the editor tab (their work is kept) and turn AI apps back on.',
   'Changes need the user to have turned on "Allow changes". Every change is one Undo step. save_project saves the result when it is good. screenshot and play_test only need the editor open.',
 ].join(' ');
 
@@ -39,6 +44,7 @@ const sha256 = async value => base64url(await crypto.subtle.digest('SHA-256', en
 const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const parse = (value, fallback = null) => { try { return JSON.parse(value); } catch { return fallback; } };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const protocolOf = value => Number.isSafeInteger(value) && value > 0 && value < 1000 ? value : 0;
 
 export function mcpResource(env) { return appOrigin(env).origin + '/mcp'; }
 function metadataUrl(env) { return appOrigin(env).origin + '/.well-known/oauth-protected-resource/mcp'; }
@@ -390,6 +396,7 @@ const toolText = (value, isError = false) => ({ content: [{ type: 'text', text: 
 async function liveLink(env, userId) {
   return database(env).prepare('SELECT * FROM platform_ai_editor_links WHERE user_id=? AND closed_at IS NULL AND last_seen_at>=? ORDER BY last_seen_at DESC LIMIT 1').bind(userId, now() - LINK_FRESH_SECONDS).first();
 }
+const OUTDATED = 'The user\'s editor tab is running an older version of Crate Ship that does not have the newest tools. Ask the user to refresh the editor tab (F5; their work is kept in the browser), open AI apps and turn on "Let AI apps build here" and "Allow changes" again. Then try again.';
 const NO_EDITOR = 'No Crate Ship editor is open for AI apps. Ask the user to open the editor at {origin}/play, click "AI apps" in the top bar, and turn on "Let AI apps build here" (and "Allow changes" if you should edit). Then try again.';
 
 async function callTool(env, grant, params) {
@@ -399,7 +406,7 @@ async function callTool(env, grant, params) {
   try { await rate(env, grant.user_id, 'ai-tool-call', 120, 60); } catch { return toolText('Too many tool calls in the last minute. Wait a moment and try again.', true); }
   if (name === 'editor_status') {
     const link = await liveLink(env, grant.user_id);
-    return toolText(link ? { editorOpen: true, projectName: link.project_name, allowChanges: Boolean(link.allow_writes), secondsSinceLastSeen: now() - link.last_seen_at, editorUrl: origin + '/play' }
+    return toolText(link ? { editorOpen: true, projectName: link.project_name, allowChanges: Boolean(link.allow_writes), editorUpToDate: (link.editor_protocol || 0) >= EDITOR_PROTOCOL, ...((link.editor_protocol || 0) < EDITOR_PROTOCOL ? { help: OUTDATED } : {}), secondsSinceLastSeen: now() - link.last_seen_at, editorUrl: origin + '/play' }
       : { editorOpen: false, allowChanges: false, editorUrl: origin + '/play', help: NO_EDITOR.replace('{origin}', origin) });
   }
   if (name === 'list_library_models') {
@@ -412,12 +419,13 @@ async function callTool(env, grant, params) {
   if (name === 'add_library_model' && !LIBRARY.has(args.path.toLowerCase())) return toolText('That path is not in the Starter Library. Call list_library_models for valid paths.', true);
   const link = await liveLink(env, grant.user_id);
   if (!link) return toolText(NO_EDITOR.replace('{origin}', origin), true);
+  if ((link.editor_protocol || 0) < EDITOR_PROTOCOL) return toolText(OUTDATED, true);
   if (MUTATING_COMMANDS.includes(name) && !link.allow_writes) return toolText('Changes are turned off in the editor. Ask the user to turn on "Allow changes" in the AI apps panel, then try again.', true);
   const db = database(env), commandId = id(), at = now();
   await db.prepare("INSERT INTO platform_ai_commands(id,link_id,grant_id,command,arguments_json,status,created_at,expires_at) VALUES(?,?,?,?,?,'queued',?,?)")
     .bind(commandId, link.id, grant.grant_id, name, JSON.stringify(args), at, at + COMMAND_TTL).run();
   const deadline = Date.now() + WAIT_MS;
-  for (let delay = 250; Date.now() < deadline; delay = Math.min(delay + 150, 1000)) {
+  for (let delay = 60; Date.now() < deadline; delay = Math.min(delay + 30, 300)) {
     await sleep(delay);
     const row = await db.prepare('SELECT status,result_json,error FROM platform_ai_commands WHERE id=?').bind(commandId).first();
     if (row?.status === 'completed') return editorResult(parse(row.result_json, {}));
@@ -455,8 +463,8 @@ export async function handleAiEditor(request, env, path) {
     await db.batch([
       db.prepare("UPDATE platform_ai_commands SET status='expired',completed_at=? WHERE status IN ('queued','delivered') AND link_id IN (SELECT id FROM platform_ai_editor_links WHERE user_id=? AND closed_at IS NULL)").bind(at, user.id),
       db.prepare('UPDATE platform_ai_editor_links SET closed_at=? WHERE user_id=? AND closed_at IS NULL').bind(at, user.id),
-      db.prepare('INSERT INTO platform_ai_editor_links(id,user_id,project_id,project_name,allow_writes,created_at,last_seen_at) VALUES(?,?,?,?,?,?,?)').bind(linkId, user.id, projectId, text(body.projectName, 120), body.allowWrites === true ? 1 : 0, at, at)]);
-    return json({ linkId, allowWrites: body.allowWrites === true }, 201);
+      db.prepare('INSERT INTO platform_ai_editor_links(id,user_id,project_id,project_name,allow_writes,created_at,last_seen_at,editor_protocol) VALUES(?,?,?,?,?,?,?,?)').bind(linkId, user.id, projectId, text(body.projectName, 120), body.allowWrites === true ? 1 : 0, at, at, protocolOf(body.protocol))]);
+    return json({ linkId, allowWrites: body.allowWrites === true, latestProtocol: EDITOR_PROTOCOL }, 201);
   }
   const linkMatch = /^\/ai\/editor\/link\/([a-f0-9-]{36})(\/next|\/results)?$/.exec(path);
   if (!linkMatch) return null;
@@ -467,7 +475,7 @@ export async function handleAiEditor(request, env, path) {
   if (!linkMatch[2] && method === 'PUT') {
     const body = await readJsonBody(request), projectId = text(body.projectId, 100) || link.project_id;
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(projectId)) fail(400, 'A project is required.');
-    await db.prepare('UPDATE platform_ai_editor_links SET allow_writes=?,project_id=?,project_name=?,last_seen_at=? WHERE id=?').bind(body.allowWrites === true ? 1 : 0, projectId, text(body.projectName, 120) || link.project_name, at, link.id).run();
+    await db.prepare('UPDATE platform_ai_editor_links SET allow_writes=?,project_id=?,project_name=?,last_seen_at=?,editor_protocol=MAX(editor_protocol,?) WHERE id=?').bind(body.allowWrites === true ? 1 : 0, projectId, text(body.projectName, 120) || link.project_name, at, protocolOf(body.protocol), link.id).run();
     return json({ linkId: link.id, allowWrites: body.allowWrites === true });
   }
   if (!linkMatch[2] && method === 'DELETE') {
@@ -475,12 +483,16 @@ export async function handleAiEditor(request, env, path) {
     return json({ closed: true });
   }
   if (linkMatch[2] === '/next' && method === 'GET') {
-    await db.prepare('UPDATE platform_ai_editor_links SET last_seen_at=? WHERE id=?').bind(at, link.id).run();
-    const command = await db.prepare(`UPDATE platform_ai_commands SET status='delivered' WHERE id=(SELECT id FROM platform_ai_commands WHERE link_id=? AND status='queued' AND expires_at>? ORDER BY created_at LIMIT 1) AND status='queued' RETURNING id,command,arguments_json,expires_at,grant_id`).bind(link.id, at).first();
+    const query = new URL(request.url).searchParams, protocol = protocolOf(Number(query.get('p'))), wait = query.get('wait') === '1';
+    await db.prepare('UPDATE platform_ai_editor_links SET last_seen_at=?,editor_protocol=MAX(editor_protocol,?) WHERE id=?').bind(at, protocol, link.id).run();
+    const take = () => db.prepare(`UPDATE platform_ai_commands SET status='delivered' WHERE id=(SELECT id FROM platform_ai_commands WHERE link_id=? AND status='queued' AND expires_at>? ORDER BY created_at LIMIT 1) AND status='queued' RETURNING id,command,arguments_json,expires_at,grant_id`).bind(link.id, now()).first();
+    // Long poll: the tab keeps one request open and gets a tool call within ~0.1 s of the AI sending it.
+    let command = await take();
+    for (const until = Date.now() + LONG_POLL_MS; wait && !command && Date.now() < until;) { await sleep(100); command = await take(); }
     if (Math.random() < 0.02) await db.prepare("DELETE FROM platform_ai_commands WHERE link_id=? AND created_at<?").bind(link.id, at - 86400).run();
-    if (!command) return json({ commands: [], allowWrites: Boolean(link.allow_writes) });
+    if (!command) return json({ commands: [], allowWrites: Boolean(link.allow_writes), latestProtocol: EDITOR_PROTOCOL });
     const app = await db.prepare('SELECT client_name FROM platform_oauth_grants WHERE id=?').bind(command.grant_id).first();
-    return json({ commands: [{ id: command.id, command: command.command, arguments: parse(command.arguments_json, {}), projectId: link.project_id, expiresAt: command.expires_at * 1000, app: app?.client_name || 'AI app' }], allowWrites: Boolean(link.allow_writes) });
+    return json({ commands: [{ id: command.id, command: command.command, arguments: parse(command.arguments_json, {}), projectId: link.project_id, expiresAt: command.expires_at * 1000, app: app?.client_name || 'AI app' }], allowWrites: Boolean(link.allow_writes), latestProtocol: EDITOR_PROTOCOL });
   }
   if (linkMatch[2] === '/results' && method === 'POST') {
     const body = await readJsonBody(request, MAX_RESULT_BYTES + 4096);

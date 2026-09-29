@@ -1,4 +1,5 @@
 import {createCommandRunner} from './mcp-client.mjs';
+import {EDITOR_PROTOCOL} from '../../integrations/editor/contracts.mjs';
 import {normalizeCatalog} from './catalog.mjs';
 import {esc,icon} from './panels.mjs';
 
@@ -31,14 +32,16 @@ export function createAiAppsLink({getEditor,getState,onLog=()=>{},onChange=()=>{
  const project=()=>{const p=getEditor().getProject();return {projectId:p.id,projectName:String(p.name||'Untitled project').slice(0,120)};};
  function stopLocal(message=''){epoch++;if(timer)clearTimer(timer);timer=null;link=null;runner.reset();state.active=false;state.allowWrites=false;state.message=message;state.warning='';changed();}
  function remember(entry){activity.unshift({at:Date.now(),...entry});activity.length=Math.min(activity.length,12);}
- function schedule(current){if(link===current)timer=setTimer(()=>{timer=null;void poll(current);},700);}
+ // The server holds each /next request open for a few seconds (long poll), so the next one can start at once.
+ function schedule(current,delay=30){if(link===current)timer=setTimer(()=>{timer=null;void poll(current);},delay);}
  async function poll(current){
   if(link!==current)return;const mine=epoch;
   try{
    const now=project(),key=now.projectId+'|'+now.projectName;
-   if(key!==sentProject){await call('/ai/editor/link/'+current.id,'PUT',{...now,allowWrites:state.allowWrites});sentProject=key;}
-   const batch=await call('/ai/editor/link/'+current.id+'/next');if(mine!==epoch)return;
-   failures=0;if(state.warning){state.warning='';changed();}
+   if(key!==sentProject){await call('/ai/editor/link/'+current.id,'PUT',{...now,allowWrites:state.allowWrites,protocol:EDITOR_PROTOCOL});sentProject=key;}
+   const batch=await call('/ai/editor/link/'+current.id+'/next?p='+EDITOR_PROTOCOL+'&wait=1');if(mine!==epoch)return;
+   if(batch.latestProtocol>EDITOR_PROTOCOL&&!state.warning){state.warning='A newer version of the editor is available. Save, then refresh this tab so your AI gets the newest tools.';changed();}
+   if(failures&&state.warning&&state.warning.startsWith('Having trouble')){state.warning='';changed();}failures=0;
    state.allowWrites=batch.allowWrites===true;
    for(const command of batch.commands||[]){
     let body;
@@ -57,6 +60,7 @@ export function createAiAppsLink({getEditor,getState,onLog=()=>{},onChange=()=>{
    if(error.status===401){stopLocal('You were signed out. Sign in again to keep building with AI.');return;}
    if(error.status===503){stopLocal(error.message);return;}
    if(++failures>=3&&!state.warning){state.warning='Having trouble reaching Crate Ship Games. Retrying…';changed();}
+   schedule(current,Math.min(5000,500*failures));return;
   }
   schedule(current);
  }
@@ -64,20 +68,20 @@ export function createAiAppsLink({getEditor,getState,onLog=()=>{},onChange=()=>{
   get state(){return {...state,activity:[...activity]};},
   async start({allowWrites=false}={}){
    await this.stop();const mine=epoch,now=project();
-   const result=await call('/ai/editor/link','POST',{...now,allowWrites:allowWrites===true});
+   const result=await call('/ai/editor/link','POST',{...now,allowWrites:allowWrites===true,protocol:EDITOR_PROTOCOL});
    if(mine!==epoch)return;
    link={id:result.linkId};sentProject=now.projectId+'|'+now.projectName;failures=0;
    Object.assign(state,{active:true,allowWrites:result.allowWrites===true,message:'',warning:''});changed();schedule(link);
   },
   async setAllowWrites(value){
-   if(!link)return;await call('/ai/editor/link/'+link.id,'PUT',{...project(),allowWrites:value===true});state.allowWrites=value===true;runner.reset();changed();
+   if(!link)return;await call('/ai/editor/link/'+link.id,'PUT',{...project(),allowWrites:value===true,protocol:EDITOR_PROTOCOL});state.allowWrites=value===true;runner.reset();changed();
   },
   async stop(){const current=link;stopLocal();if(current)try{await call('/ai/editor/link/'+current.id,'DELETE');}catch{}},
   dispose(){stopLocal();},
  };
 }
 
-const COMMAND_LABELS={get_scene:'Read the scene',get_object:'Read an object',preview_world:'Planned a layout',apply_world:'Built a layout',edit_objects:'Edited objects',set_level_settings:'Changed level settings',add_library_model:'Added a model',screenshot:'Took a screenshot',play_test:'Ran a play test',save_project:'Saved the project',undo:'Undid a change'};
+const COMMAND_LABELS={get_scene:'Read the scene',get_object:'Read an object',preview_world:'Planned a layout',apply_world:'Built a layout',edit_objects:'Edited objects',set_level_settings:'Changed level settings',add_library_model:'Added a model',import_model:'Imported a model file',place_on_ground:'Placed objects on the ground',check_scene:'Checked the scene',screenshot:'Took a screenshot',play_test:'Ran a play test',save_project:'Saved the project',undo:'Undid a change'};
 export function aiAppsPanel(info,state){
  if(info?.signedOut)return `<p class="dialog-lead">Connect Claude, ChatGPT, Cursor or any AI app you already use, on its normal subscription or API key, and let it build in this editor.</p><div class="dialog-actions"><a class="primary-button" href="/login?next=%2Fplay">${icon('sign-in')} Sign in to connect AI apps</a></div>`;
  if(info?.error)return `<p class="dialog-error">${esc(info.error)}</p><button class="text-button" data-ai-action="refresh">Try again</button>`;

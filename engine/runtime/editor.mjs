@@ -8,6 +8,7 @@ import {inspectGLB,hashBytes,MAX_MODEL_BYTES} from '../core/gltf.mjs';
 import * as local from '../storage/local.mjs';
 import {createSceneRuntime,THREE,assetCacheKey} from './scene.mjs';
 import {createPhysics} from './physics.mjs';
+import {groundWarnings,groundPlacements as findGroundPlacements,framingPose} from './scene-inspect.mjs';
 import {mountTouchControls} from './touch-controls.mjs';
 import {mountGameHud} from './game-hud.mjs';
 import {createSelectionGesture,cancelTransformGesture,preserveWorldTransform} from './editor-interactions.mjs';
@@ -124,7 +125,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  function loop(time){
   if(disposed)return;raf=requestAnimationFrame(loop);const dt=Math.min((time-last)/1000,.05);last=time;if(document.hidden)return;if(controls.enabled)controls.update();
   if(mode==='play'){if(!scriptedPlay){physics?.step(dt);playClock+=dt;view.tick(dt);followPreviewCamera(dt);}dirty=true;}
-  if(dirty||isDragging){view.render();frames++;dirty=false;}
+  if(dirty||isDragging||view.hasWater()){view.render();frames++;dirty=false;}
   if(time-statsAt>1000){onStats({fps:Math.round(frames*1000/(time-statsAt)),drawCalls:view.renderer.info.render.calls,triangles:view.renderer.info.render.triangles,entities:store.project.entities.length,mode});statsAt=time;frames=0;}
  }
  const observer=new ResizeObserver(()=>view.resize());observer.observe(canvas);view.resize();raf=requestAnimationFrame(loop);
@@ -152,6 +153,12 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   await local.saveAsset(asset.id,bytes);alive();remember(assetCacheKey(asset),bytes);
   const entity=cleanEntity({type:'model',name:asset.name,assetId:asset.id,position:[0,0,0],components:{animation:{autoplay:true}}});
   store.commit('Import model',project=>{project.assets.push(asset);project.entities.push(entity);});await settled();select(entity.id);frameSelection();view.assertComplete();return asset;
+ }
+ async function importAsset(input,name='Imported model',source='mcp'){
+  const bytes=inspectGLB(input).bytes,sha256=await hashBytes(bytes);alive();const existing=store.project.assets.find(asset=>asset.sha256===sha256);if(existing)return existing;
+  const asset={id:crypto.randomUUID(),name:String(name).replace(/.glb$/i,'').slice(0,180),size:bytes.length,sha256,source,mime:'model/gltf-binary'};
+  await local.saveAsset(asset.id,bytes);alive();remember(assetCacheKey(asset),bytes);
+  store.commit('Import model',project=>{project.assets.push(asset);});await settled();return asset;
  }
  async function instantiate(assetId){const asset=store.project.assets.find(item=>item.id===assetId);if(!asset)throw new Error('Choose an asset from this project.');const id=store.add('model',{assetId,name:asset.name,position:[0,0,0],components:{animation:{autoplay:true}}});await settled();select(id);return id;}
  async function importBatch(files){
@@ -228,6 +235,25 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
    throw new Error('The screenshot was too large to send. Ask for a smaller width.');
   }finally{helpers.forEach((item,index)=>{item.visible=wasVisible[index];});if(previewBegun)restoreEditorCamera();dirty=true;}
  }
+ /** For AI builders: a picture framed on the changed objects (or the current view) plus automatic floating/ground checks. */
+ async function inspectChange({ids=[],look=true,width=640}={}){
+  alive();await settled();const warnings=[];let image=null;
+  if(ids.length){try{warnings.push(...groundWarnings({THREE,root:view.root,objects:view.objects,project:store.project,ids}));}catch(error){warnings.push('The ground check failed: '+error.message);}}
+  if(look&&mode==='edit'&&!lock.current){
+   const box=new THREE.Box3();for(const id of ids){const object=view.objects.get(id);if(object&&!object.isLight&&!object.isCamera)box.expandByObject(object);}
+   const saved={position:view.camera.position.clone(),quaternion:view.camera.quaternion.clone(),near:view.camera.near,far:view.camera.far};
+   const helpers=[grid,helper,selectionBox],wasVisible=helpers.map(item=>item.visible);
+   try{
+    if(!box.isEmpty()){const pose=framingPose(THREE,box,view.camera.aspect||16/9,view.camera.fov);view.camera.position.copy(pose.position);view.camera.lookAt(pose.target);view.camera.near=.05;view.camera.far=Math.max(3000,pose.position.distanceTo(pose.target)*20);view.camera.updateProjectionMatrix();}
+    helpers.forEach(item=>item.visible=false);
+    for(const quality of [.72,.55,.42]){const shot=view.capture({width,quality}),data=shot.dataUrl.slice(shot.dataUrl.indexOf(',')+1);if(data.length<=300*1024){image={mimeType:'image/jpeg',data};break;}}
+   }catch(error){warnings.push('The picture could not be taken: '+error.message);}
+   finally{helpers.forEach((item,index)=>{item.visible=wasVisible[index];});view.camera.position.copy(saved.position);view.camera.quaternion.copy(saved.quaternion);view.camera.near=saved.near;view.camera.far=saved.far;view.camera.updateProjectionMatrix();dirty=true;}
+  }
+  return {image,warnings};
+ }
+ async function checkScene(){alive();await settled();const ids=store.project.entities.map(entity=>entity.id);return {checked:Math.min(ids.length,150),warnings:groundWarnings({THREE,root:view.root,objects:view.objects,project:store.project,ids})};}
+ async function groundPlacements(ids,surface='any',offset=0){alive();await settled();return findGroundPlacements({THREE,root:view.root,objects:view.objects,project:store.project,ids,surface,offset});}
  const PLAY_MOVES={left:{x:-1,z:0},right:{x:1,z:0},up:{x:0,z:-1},down:{x:0,z:1},none:{x:0,z:0}},round=value=>Math.round(value*100)/100;
  /**
   * Plays the level with scripted input, reports what happened, then stops and restores the editor.
@@ -275,9 +301,9 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   async duplicate(id=selected){editable();const next=store.duplicate(id);await settled();select(next);return next;},
   remove(id=selected){editable();store.remove(id);},undo(){editable();return store.undo();},redo(){editable();return store.redo();},
   setTool(tool){editable();transform.setMode(tool);dirty=true;},setSpace(space){editable();transform.setSpace(space);dirty=true;},frameSelection,
-  importFiles:files=>exclusive('Asset import',()=>importBatch(files)),importGLB:(bytes,name,source)=>exclusive('Model import',()=>importModel(bytes,name,source)),
+  importFiles:files=>exclusive('Asset import',()=>importBatch(files)),importGLB:(bytes,name,source)=>exclusive('Model import',()=>importModel(bytes,name,source)),importAsset:(bytes,name,source)=>exclusive('Model import',()=>importAsset(bytes,name,source)),
   addCatalogAsset:record=>exclusive('Catalog import',async()=>{const path=record.path||record.file;if(typeof path!=='string'||path.includes('..')||path.includes('\\')||/^[a-z]+:/i.test(path)||/[?#]/.test(path))throw new Error('The catalog asset path is invalid.');if(typeof record.url!=='string'||!STARTER_MODEL_URL.test(record.url))throw new Error('That model is not in the Starter Library.');const asset={id:crypto.randomUUID(),name:record.name||path.split('/').pop(),source:'catalog',mime:'model/gltf-binary',size:0,url:record.url};return importModel(await resolveAsset(asset),asset.name,'catalog');}),
-  instantiateAsset:id=>exclusive('Asset instantiation',()=>instantiate(id)),play,stop,capture:screenshot,playTest,
+  instantiateAsset:id=>exclusive('Asset instantiation',()=>instantiate(id)),play,stop,capture:screenshot,playTest,inspectChange,checkScene,groundPlacements,
   exportProject:()=>exclusive('Project export',exportProject),exportGame:()=>exclusive('Game export',async()=>{await settled();view.assertComplete();return exportGameZip(store.snapshot(),resolveAsset);}),
   exportAsset:id=>exclusive('Model export',async()=>{const asset=store.project.assets.find(item=>item.id===id);if(!asset)throw new Error('Choose a model from this project.');return exportOriginalModel(asset,resolveAsset);}),
   saveLocal:()=>exclusive('Local save',persistLocal),listLocal:local.listProjects,

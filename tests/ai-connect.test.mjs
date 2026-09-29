@@ -24,7 +24,7 @@ async function user(f) {
 }
 const call = (f, path, init = {}) => handleAiConnect(new Request(ORIGIN + path, { ...init, headers: { 'cf-connecting-ip': '192.0.2.9', ...(init.headers || {}) } }), f.env);
 const form = body => ({ method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body).toString() });
-const editorApi = (f, u, path, method = 'GET', body) => handleAiEditor(new Request(ORIGIN + '/api/platform' + path, { method, headers: { cookie: u.cookie, origin: ORIGIN, 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }), f.env, path);
+const editorApi = (f, u, path, method = 'GET', body) => handleAiEditor(new Request(ORIGIN + '/api/platform' + path, { method, headers: { cookie: u.cookie, origin: ORIGIN, 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }), f.env, path.split('?')[0]);
 
 async function connect(f, u, { redirect = 'https://claude.ai/api/mcp/auth_callback' } = {}) {
   const reg = await (await call(f, '/oauth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_name: 'Claude', redirect_uris: [redirect], token_endpoint_auth_method: 'none' }) })).json();
@@ -134,7 +134,7 @@ test('tool calls reach the linked editor tab; writes need "Allow changes"; resul
     let status = await tool('editor_status');
     assert.equal(status.result.structuredContent.editorOpen, false);
     assert.equal((await tool('get_scene')).result.isError, true, 'no editor open');
-    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', allowWrites: false })).json();
+    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', protocol: 3, allowWrites: false })).json();
     status = await tool('editor_status');
     assert.deepEqual([status.result.structuredContent.editorOpen, status.result.structuredContent.projectName, status.result.structuredContent.allowChanges], [true, 'Forest', false]);
     const blocked = await tool('undo');
@@ -166,7 +166,7 @@ test('screenshot and play_test reach the editor; the AI gets a real image; save_
   try {
     const u = await user(f), { tokens } = await connect(f, u);
     const tool = (name, args = {}) => mcp(f, tokens.access_token, ...modern('tools/call', { name, arguments: args }, name)).then(r => r.json());
-    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', allowWrites: false })).json();
+    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', protocol: 3, allowWrites: false })).json();
     const jpeg = Buffer.from('not-a-real-jpeg-but-valid-base64-payload').toString('base64');
     const answer = (expected, result) => (async () => {
       for (let i = 0; i < 60; i++) {
@@ -194,7 +194,7 @@ test('screenshot and play_test reach the editor; the AI gets a real image; save_
     assert.equal((await tool('screenshot', { width: 99999 })).result.isError, true);
     const saveBlocked = await tool('save_project', { where: 'account' });
     assert.equal(saveBlocked.result.isError, true); assert.match(saveBlocked.result.content[0].text, /Allow changes/);
-    await editorApi(f, u, `/ai/editor/link/${link.linkId}`, 'PUT', { projectId: 'proj-1', projectName: 'Forest', allowWrites: true });
+    await editorApi(f, u, `/ai/editor/link/${link.linkId}`, 'PUT', { projectId: 'proj-1', projectName: 'Forest', protocol: 3, allowWrites: true });
     const [saved] = await Promise.all([tool('save_project', { where: 'device' }), answer('save_project', { ok: true, projectId: 'proj-1', entityCount: 3, summary: 'Saved on this device.' })]);
     assert.equal(saved.result.isError, false); assert.equal(saved.result.structuredContent.summary, 'Saved on this device.');
   } finally { f.sql.close(); }
@@ -249,5 +249,22 @@ test('the consent page keeps its Origin on the form post (no-referrer would make
     const page = await call(f, '/oauth/authorize?' + new URLSearchParams({ response_type: 'code', client_id: reg.client_id, redirect_uri: 'https://app.test/cb', code_challenge: 'a'.repeat(43), code_challenge_method: 'S256' }), { headers: { cookie: u.cookie } });
     assert.equal(page.status, 200); assert.notEqual(page.headers.get('referrer-policy'), 'no-referrer');
     assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  } finally { f.sql.close(); }
+});
+
+test('an editor tab from before an engine update is told to refresh instead of failing mysteriously', async () => {
+  const f = fixture();
+  try {
+    const u = await user(f), { tokens } = await connect(f, u);
+    const tool = (name, args = {}) => mcp(f, tokens.access_token, ...modern('tools/call', { name, arguments: args }, name)).then(r => r.json());
+    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Old tab', allowWrites: true })).json();
+    let status = (await tool('editor_status')).result.structuredContent;
+    assert.equal(status.editorOpen, true); assert.equal(status.editorUpToDate, false); assert.match(status.help, /refresh the editor tab/);
+    const refused = await tool('get_scene');
+    assert.equal(refused.result.isError, true); assert.match(refused.result.content[0].text, /older version/);
+    const next = await (await editorApi(f, u, `/ai/editor/link/${link.linkId}/next?p=3`)).json();
+    assert.equal(next.latestProtocol, 3);
+    status = (await tool('editor_status')).result.structuredContent;
+    assert.equal(status.editorUpToDate, true); assert.equal(status.help, undefined);
   } finally { f.sql.close(); }
 });

@@ -1,3 +1,4 @@
+import {createWaterMesh,isWaterObject,updateWaterTime} from './water.mjs';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
@@ -87,6 +88,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
    const gltf=await sourceFor(asset);if(!gate.current(token))return null;
    ({object,mixer}=createModelInstance(gltf,entity,{onLog}));assetKey=assetCacheKey(asset);
   }else if(entity.type==='customMesh')object=createVectorObject(THREE,entity.shape);
+  else if(entity.type==='plane'&&entity.components?.water)object=createWaterMesh(THREE,entity);
   else if(entity.type==='directionalLight'){
    object=new THREE.DirectionalLight(entity.light.color,entity.light.intensity);object.shadow.mapSize.set(2048,2048);Object.assign(object.shadow.camera,{left:-20,right:20,top:20,bottom:-20,near:.1,far:150});object.shadow.bias=-.0004;object.shadow.normalBias=.03;object.target.position.set(0,0,0);
   }else if(entity.type==='pointLight'){
@@ -94,7 +96,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   }else if(entity.type==='camera')object=new THREE.PerspectiveCamera(55,1,.05,3000);
   else if(entity.type==='empty')object=new THREE.Group();
   else object=new THREE.Mesh(geometry(entity.type),new THREE.MeshStandardMaterial({...entity.material}));
-  object.traverse(child=>{if(child.isMesh){child.castShadow=true;child.receiveShadow=true;}child.userData.entityId=entity.id;});
+  object.traverse(child=>{if(child.isMesh){child.castShadow=!isWaterObject(child);child.receiveShadow=true;}child.userData.entityId=entity.id;});
   const entry={object,mixer,assetKey,signature,error:null};
   if(!gate.current(token)){disposeEntry(entry);return null;}
   return entry;
@@ -112,7 +114,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   try{
    for(const entity of snapshot.entities){
     if(!gate.current(token))return {superseded:true};
-    const asset=assets.get(entity.assetId),signature=JSON.stringify([entity.type,entity.assetId?assetCacheKey(asset):null,entity.components.animation,entity.type==='model'?null:entity.material,entity.type==='customMesh'?entity.shape:null,entity.light]);
+    const asset=assets.get(entity.assetId),signature=JSON.stringify([entity.type,entity.assetId?assetCacheKey(asset):null,entity.components.animation,entity.components.water||null,entity.type==='model'?null:entity.material,entity.type==='customMesh'?entity.shape:null,entity.light]);
     let entry=entries.get(entity.id);
     if(!entry||entry.signature!==signature||entry.error){
      try{entry=await createEntry(entity,asset,token,signature);}
@@ -144,7 +146,9 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  }
  function assertComplete(){if(missing.size)throw new Error('Resolve the missing or unsupported models before playing, cloud saving, or exporting: '+[...missing.keys()].map(id=>project?.entities.find(entity=>entity.id===id)?.name||id).join(', '));}
  function resize(){if(disposed)return;const rect=canvas.getBoundingClientRect();width=Math.max(1,Math.round(rect.width));height=Math.max(1,Math.round(rect.height));renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();composer?.setSize(width,height);onInvalidate();}
- function render(){if(disposed)return;renderer.info.reset();if(composer&&ao.enabled)composer.render();else renderer.render(scene,camera);}
+ function hasWater(){for(const entry of entries.values())if(isWaterObject(entry.object))return true;return false;}
+ function stepWater(){const seconds=performance.now()/1000,sky=scene.background&&scene.background.isColor?scene.background:null;for(const entry of entries.values())if(isWaterObject(entry.object))updateWaterTime(entry.object,seconds,sky);}
+ function render(){if(disposed)return;stepWater();renderer.info.reset();if(composer&&ao.enabled)composer.render();else renderer.render(scene,camera);}
  /** Renders one frame at a fixed size and returns it as a JPEG data URL, then restores the on-screen size. Must be called synchronously after the render, before the browser presents the frame. */
  function capture({width=960,quality=.82}={}){
   if(disposed)throw new Error('The renderer has been closed.');
@@ -158,5 +162,5 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  function effectivelyVisible(object){for(let node=object;node;node=node.parent)if(node.visible===false)return false;return !!object;}
  function gameCamera(){const active=project?.entities.find(entity=>entity.type==='camera'&&effectivelyVisible(objects.get(entity.id)));return active?objects.get(active.id):null;}
  async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);environment.dispose();for(const pass of composer?.passes||[])pass.dispose?.();composer?.dispose();renderer.dispose();}
- return {THREE,renderer,scene,root,camera,objects,sync,preflightAssets,assertComplete,resize,render,capture,tick,resetAnimations,dispose,gameCamera};
+ return {THREE,renderer,scene,root,camera,objects,sync,preflightAssets,assertComplete,resize,render,capture,tick,hasWater,resetAnimations,dispose,gameCamera};
 }
