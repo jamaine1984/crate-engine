@@ -22,7 +22,7 @@ export function surfaceBelow({THREE,root,project,x,z,fromY,ignore=new Set(),surf
  const names=new Map(project.entities.map(e=>[e.id,e.name]));
  let ground=null;
  if(surface!=='water'){
-  const ray=new THREE.Raycaster(new THREE.Vector3(x,fromY,z),new THREE.Vector3(0,-1,0),0,5000);
+  const ray=new THREE.Raycaster(new THREE.Vector3(x,fromY,z),new THREE.Vector3(0,-1,0),0,5000);ray.layers.enableAll();
   const hits=ray.intersectObject(root,true);
   for(const hit of hits){
    const id=ownerOf(hit.object);if(!id||ignore.has(id)||hit.object.userData?.water||!hit.object.isMesh||!visibleChain(hit.object))continue;

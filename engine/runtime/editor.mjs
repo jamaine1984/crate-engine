@@ -101,7 +101,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  const pointerDown=event=>selectionGesture.begin(event,{blocked:isDragging||mode!=='edit'||!!lock.current||syncPending});
  const pointerMove=event=>selectionGesture.move(event);
  const effectivelyVisible=object=>{for(let node=object;node;node=node.parent)if(node.visible===false)return false;return true;};
- const pointerUp=event=>{if(!selectionGesture.end(event)||mode!=='edit'||lock.current||syncPending||isDragging||transform.axis)return;const rect=canvas.getBoundingClientRect();if(rect.width<=0||rect.height<=0)return;const ray=new THREE.Raycaster();ray.firstHitOnly=true;ray.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1),view.camera);const hit=ray.intersectObjects(view.root.children,true).find(item=>effectivelyVisible(item.object)&&item.object.userData.entityId);select(hit?.object.userData.entityId||null);};
+ const pointerUp=event=>{if(!selectionGesture.end(event)||mode!=='edit'||lock.current||syncPending||isDragging||transform.axis)return;const rect=canvas.getBoundingClientRect();if(rect.width<=0||rect.height<=0)return;const ray=new THREE.Raycaster();ray.firstHitOnly=true;ray.layers.enableAll();ray.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1),view.camera);const hit=ray.intersectObjects(view.root.children,true).find(item=>effectivelyVisible(item.object)&&item.object.userData.entityId);select(hit?.object.userData.entityId||null);};
  function cancelActiveTransform(){selectionGesture.cancel();if(disposed)return;if(cancelTransformGesture(transform)){isDragging=false;controls.enabled=!previewCamera;updateSelection();dirty=true;}}
  const lostPointer=()=>queueMicrotask(()=>{selectionGesture.cancel();if(isDragging)cancelActiveTransform();});
  const visibility=()=>{if(document.hidden){cancelActiveTransform();if(recoveryTimer)writeRecovery();}};
@@ -253,7 +253,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   }
   return {image,warnings};
  }
- async function checkScene(){alive();await settled();const ids=store.project.entities.map(entity=>entity.id);return {checked:Math.min(ids.length,150),warnings:groundWarnings({THREE,root:view.root,objects:view.objects,project:store.project,ids})};}
+ async function checkScene(){alive();await settled();const ids=store.project.entities.map(entity=>entity.id);return {checked:Math.min(ids.length,150),warnings:groundWarnings({THREE,root:view.root,objects:view.objects,project:store.project,ids}),performance:view.performanceReport()};}
  async function groundPlacements(ids,surface='any',offset=0){alive();await settled();return findGroundPlacements({THREE,root:view.root,objects:view.objects,project:store.project,ids,surface,offset});}
  const PLAY_MOVES={left:{x:-1,z:0},right:{x:1,z:0},up:{x:0,z:-1},down:{x:0,z:1},none:{x:0,z:0}},round=value=>Math.round(value*100)/100;
  /**

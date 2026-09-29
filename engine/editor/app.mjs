@@ -295,7 +295,7 @@ window.addEventListener('beforeunload',event=>{if(dirty&&!navigationApproved){ev
 window.addEventListener('pagehide',event=>{blenderToken='';worldPanel.dispose();aiLink.dispose();if(!event.persisted)editor?.dispose?.();});
 
 try{
- editor=await createEditor({canvas:$('#editor-canvas'),onChange,onSelection,onStats,onLog:log,onState});
+ editor=await createEditor({canvas:$('#editor-canvas'),onChange,onSelection,onStats,onLog:log,onState});if(import.meta.env?.DEV)globalThis.__crateEditor=editor;
  onChange(editor.getProject());
  saveStatus(urlProjectId?'Loaded from account':'Ready');
  ready=true;dirty=false;$('#viewport-loading').remove();setMode('edit');log({level:'info',message:'Workspace ready. Import your own assets or start with a primitive.'});

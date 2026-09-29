@@ -37,7 +37,7 @@ export function fadeAoWithDistance(pass){
 
 export function createPost(THREE,{renderer,scene,camera,root}){
  let composer=null,key='',passes={},width=1,height=1,ratio=1,focusFrame=0,focus=10;
- const ray=new THREE.Raycaster(),centre=new THREE.Vector2(0,0);ray.firstHitOnly=true;
+ const ray=new THREE.Raycaster(),centre=new THREE.Vector2(0,0);ray.firstHitOnly=true;ray.layers.enableAll();
  function destroy(){for(const pass of composer?.passes||[])pass.dispose?.();composer?.renderTarget1.dispose();composer?.renderTarget2.dispose();composer?.dispose();composer=null;passes={};}
  function build(plan){
   destroy();if(!plan.composer)return;

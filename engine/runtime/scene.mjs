@@ -6,6 +6,7 @@ import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {createPost} from './post.mjs';
 import {createAtmosphere} from './atmosphere.mjs';
+import {createInstancer,performanceTips} from './instancing.mjs';
 import {computeBoundsTree,disposeBoundsTree,acceleratedRaycast} from 'three-mesh-bvh';
 import {inspectGLB} from '../core/gltf.mjs';
 import {createVectorObject} from './vector-shape.mjs';
@@ -49,7 +50,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  const ambient=new THREE.HemisphereLight('#e5f1ff','#353f2c',.8);scene.add(ambient);
  const pmrem=new THREE.PMREMGenerator(renderer),room=new RoomEnvironment(),environment=pmrem.fromScene(room,.04);
  scene.environment=environment.texture;room.dispose();pmrem.dispose();
- const atmosphere=createAtmosphere(THREE,{renderer,scene,defaultEnvironment:environment.texture}),post=createPost(THREE,{renderer,scene,camera,root});
+ const atmosphere=createAtmosphere(THREE,{renderer,scene,defaultEnvironment:environment.texture}),post=createPost(THREE,{renderer,scene,camera,root}),instancer=createInstancer(THREE,{scene,onReady:()=>onInvalidate()});
  const objects=new Map(),entries=new Map(),loaded=new Map(),missing=new Map(),gate=createGenerationGate();
  const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
  let project=null,disposed=false,width=1,height=1,shadowWarning=false;
@@ -85,7 +86,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
    object=new THREE.PointLight(entity.light.color,entity.light.intensity,entity.light.distance,2);object.shadow.mapSize.set(512,512);object.shadow.bias=-.001;
   }else if(entity.type==='camera')object=new THREE.PerspectiveCamera(55,1,.05,3000);
   else if(entity.type==='empty')object=new THREE.Group();
-  else object=new THREE.Mesh(geometry(entity.type),new THREE.MeshStandardMaterial({...entity.material}));
+  else{object=new THREE.Mesh(geometry(entity.type),new THREE.MeshStandardMaterial({...entity.material}));object.userData.instanceKey='primitive|'+entity.type+'|'+JSON.stringify(entity.material);}
   object.traverse(child=>{if(child.isMesh){child.castShadow=!isWaterObject(child);child.receiveShadow=true;}child.userData.entityId=entity.id;});
   const entry={object,mixer,assetKey,signature,error:null};
   if(!gate.current(token)){disposeEntry(entry);return null;}
@@ -125,7 +126,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
    for(const entity of snapshot.entities){const object=objects.get(entity.id);if(object)applyTransform(object,entity);}
    for(const entity of snapshot.entities){const object=objects.get(entity.id);if(object)(objects.get(entity.parentId)||root).add(object);}
    for(const object of objects.values()){if(!object.isLight)continue;object.castShadow=false;if(!effectivelyVisible(object))continue;if(object.isDirectionalLight)object.castShadow=directionalShadows++<1;else if(object.isPointLight)object.castShadow=pointShadows++<2;if(!object.castShadow)extraShadowLights++;}
-   configure(snapshot.settings);project=snapshot;scene.updateMatrixWorld(true);
+   configure(snapshot.settings);project=snapshot;scene.updateMatrixWorld(true);instancer.rebuild(root);
    const activeSources=new Set([...entries.values()].map(entry=>entry.assetKey).filter(Boolean));for(const key of loaded.keys())if(!activeSources.has(key))disposeCache(key);
    if(extraShadowLights&&!shadowWarning){shadowWarning=true;onLog({level:'warn',message:'Shadows are limited to one sun and two point lights to keep the scene responsive.'});}else if(!extraShadowLights)shadowWarning=false;
    for(const [id,message] of missing)if(previousMissing.get(id)!==message)onLog({level:'error',message:`${snapshot.entities.find(entity=>entity.id===id)?.name||'Model'}: ${message}`});
@@ -139,7 +140,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  function resize(){if(disposed)return;const rect=canvas.getBoundingClientRect();width=Math.max(1,Math.round(rect.width));height=Math.max(1,Math.round(rect.height));renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();post.setSize(width,height);onInvalidate();}
  function hasWater(){for(const entry of entries.values())if(isWaterObject(entry.object))return true;return false;}
  function stepWater(){const seconds=performance.now()/1000,sky=atmosphere.physical?atmosphere.horizon:scene.background&&scene.background.isColor?scene.background:null;for(const entry of entries.values())if(isWaterObject(entry.object))updateWaterTime(entry.object,seconds,sky);}
- function render(){if(disposed)return;stepWater();atmosphere.update(camera,performance.now()/1000);renderer.info.reset();if(post.active)post.render();else renderer.render(scene,camera);}
+ function render(){if(disposed)return;stepWater();atmosphere.update(camera,performance.now()/1000);scene.updateMatrixWorld();instancer.update(camera);renderer.info.reset();if(post.active)post.render();else renderer.render(scene,camera);}
  /** Renders one frame at a fixed size and returns it as a JPEG data URL, then restores the on-screen size. Must be called synchronously after the render, before the browser presents the frame. */
  function capture({width=960,quality=.82}={}){
   if(disposed)throw new Error('The renderer has been closed.');
@@ -148,10 +149,12 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   try{render();return {dataUrl:canvas.toDataURL('image/jpeg',quality),width:outWidth,height:outHeight};}
   finally{renderer.setPixelRatio(ratio);post.setPixelRatio(ratio);resize();}
  }
+ /** Renders one frame and reports its cost against the phone budget. */
+ function performanceReport(){render();const info=renderer.info,report={drawCalls:info.render.calls,triangles:info.render.triangles,geometries:info.memory.geometries,textures:info.memory.textures,...instancer.stats()};return {...report,budget:performanceTips(report).length?'heavy':'ok',tips:performanceTips(report)};}
  function tick(dt){for(const entry of entries.values())entry.mixer?.update(dt);}
  function resetAnimations(){for(const entry of entries.values()){if(entry.mixer){entry.mixer.setTime(0);}}}
  function effectivelyVisible(object){for(let node=object;node;node=node.parent)if(node.visible===false)return false;return !!object;}
  function gameCamera(){const active=project?.entities.find(entity=>entity.type==='camera'&&effectivelyVisible(objects.get(entity.id)));return active?objects.get(active.id):null;}
- async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);atmosphere.dispose();post.dispose();environment.dispose();renderer.dispose();}
- return {THREE,renderer,scene,root,camera,objects,post,atmosphere,sync,preflightAssets,assertComplete,resize,render,capture,tick,hasWater,resetAnimations,dispose,gameCamera};
+ async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);instancer.dispose();atmosphere.dispose();post.dispose();environment.dispose();renderer.dispose();}
+ return {THREE,renderer,scene,root,camera,objects,post,atmosphere,instancer,performanceReport,sync,preflightAssets,assertComplete,resize,render,capture,tick,hasWater,resetAnimations,dispose,gameCamera};
 }

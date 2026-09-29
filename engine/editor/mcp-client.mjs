@@ -29,7 +29,7 @@ export function createCommandRunner({getEditor,getState,onLog=()=>{},resolveLibr
   if(command==='get_scene')return sceneContext(editor.getProject(),args);
   if(command==='get_object')return objectContext(editor.getProject(),args.id);
   if(command==='preview_world'){const result=await editor.previewWorld(args.recipe);previews.add(result.previewId);const shown=result.entities.slice(0,PREVIEW_SHOWN);return {...result,entities:shown,...(result.entities.length>shown.length?{omitted:result.entities.length-shown.length}:{})};}
-  if(command==='check_scene'){const report=await editor.checkScene();const look=args.look===false?{}:await editor.inspectChange({ids:[],look:true});return {projectId:editor.getProject().id,checked:report.checked,warnings:report.warnings,...(look.image?{image:look.image}:{})};}
+  if(command==='check_scene'){const report=await editor.checkScene();const look=args.look===false?{}:await editor.inspectChange({ids:[],look:true});return {projectId:editor.getProject().id,checked:report.checked,warnings:report.warnings,...(report.performance?{performance:report.performance}:{}),...(look.image?{image:look.image}:{})};}
   if(command==='screenshot'){const shot=await editor.capture({view:args.view,width:args.width});return {projectId:editor.getProject().id,view:shot.view,width:shot.width,height:shot.height,image:{mimeType:shot.mimeType,data:shot.data}};}
   if(command==='play_test'){onLog({level:'info',message:'AI is running a play test. The editor returns to Edit mode when it finishes.'});const report=await editor.playTest(args);previews.clear();return {projectId:editor.getProject().id,...report};}
   if(!allowWrites)throw new Error('Scene changes are disabled for this connection.');
