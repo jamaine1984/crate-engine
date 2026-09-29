@@ -4,7 +4,7 @@ Read this first in the next session, then `CHECKLIST.md` (the running list). Old
 
 ## Where everything lives
 - **Working checkout:** `C:\Users\koike\Documents\Codex\2026-09-27\and-look-this-is-what-i\outputs\crate-engine`, branch `codex/platform-rebuild`. `main` has never been touched.
-- **GitHub:** github.com/jamaine1984/crate-engine. Latest commit **`7d97984`**, pushed and live.
+- **GitHub:** github.com/jamaine1984/crate-engine. The **deployed app is commit `7d97984`**; commits after it only change notes and docs. Everything is pushed.
 - **Live site:** crateshipgames.com (Cloudflare Pages `crateship-games`, deployment `6199bfe3`). Wrangler is logged in as koikes2021@gmail.com.
 - **Deploy steps:**
   1. `npm run test:platform`. Expect **589 tests, 588 pass, 0 fail, 1 skip**.
