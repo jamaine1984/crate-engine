@@ -5,7 +5,8 @@
 export const LOOK_ENUMS = Object.freeze({
  look: ['custom', 'clear-day', 'golden-hour', 'sunset', 'overcast', 'night', 'cinematic'],
  sky: ['color', 'physical'],
- toneMapping: ['aces', 'agx', 'neutral']
+ toneMapping: ['aces', 'agx', 'neutral'],
+ ambience: ['none', 'ocean', 'wind', 'forest', 'rain', 'fire', 'night']
 });
 
 /* [min, max, default] */
@@ -18,11 +19,12 @@ export const LOOK_RANGES = Object.freeze({
  dof: [0, 1, 0],
  saturation: [-1, 1, 0],
  contrast: [-1, 1, 0],
- warmth: [-1, 1, 0]
+ warmth: [-1, 1, 0],
+ ambienceVolume: [0, 1, .5]
 });
 
 export const LOOK_DEFAULTS = Object.freeze({
- look: 'custom', sky: 'color', toneMapping: 'aces',
+ look: 'custom', sky: 'color', toneMapping: 'aces', ambience: 'none',
  ...Object.fromEntries(Object.entries(LOOK_RANGES).map(([key, [, , value]]) => [key, value]))
 });
 
@@ -57,7 +59,9 @@ export const LOOK_SCHEMA = Object.freeze({
  clouds: { type: 'number', minimum: 0, maximum: 1, description: 'Cloud cover in the physical sky (0 = clear, 1 = overcast).' },
  saturation: { type: 'number', minimum: -1, maximum: 1 },
  contrast: { type: 'number', minimum: -1, maximum: 1 },
- warmth: { type: 'number', minimum: -1, maximum: 1, description: 'Positive = warmer/orange, negative = cooler/blue.' }
+ warmth: { type: 'number', minimum: -1, maximum: 1, description: 'Positive = warmer/orange, negative = cooler/blue.' },
+ ambience: { enum: LOOK_ENUMS.ambience, description: 'Background sound during play, synthesized live (no files): ocean waves, wind, forest birds, rain, crackling fire, night crickets.' },
+ ambienceVolume: { type: 'number', minimum: 0, maximum: 1 }
 });
 
 /** Returns the clean look fields from a stored settings object (unknown or invalid values fall back to defaults). */

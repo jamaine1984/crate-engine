@@ -11,7 +11,7 @@ import { createAiAppsLink, aiAppsPanel } from './ai-apps.mjs';
 import { modelSceneContext, sceneFingerprint, authoredSceneJSON } from './scene-context.mjs';
 import { esc, icon, tool, layout, hierarchy, inspector, assetCards, dialog, connectionsShell, modelConnections, primitiveTypes, typeIcons, bytes } from './panels.mjs';
 /* A newly picked preset fills every look field; otherwise the form's own look values are used. */
-function lookFromForm(data,current={}){const numbers=['timeOfDay','clouds','shadowDistance','bloom','vignette','dof','saturation','contrast','warmth'];if(data.look&&data.look!=='custom'&&data.look!==current?.look)return {look:data.look};const out={look:data.look,sky:data.sky,toneMapping:data.toneMapping};for(const key of numbers)out[key]=Number(data[key]);return out;}
+function lookFromForm(data,current={}){const numbers=['timeOfDay','clouds','shadowDistance','bloom','vignette','dof','saturation','contrast','warmth'];if(data.look&&data.look!=='custom'&&data.look!==current?.look)return {look:data.look,ambience:data.ambience,ambienceVolume:Number(data.ambienceVolume)};const out={look:data.look,sky:data.sky,toneMapping:data.toneMapping,ambience:data.ambience,ambienceVolume:Number(data.ambienceVolume)};for(const key of numbers)out[key]=Number(data[key]);return out;}
 
 const root = document.querySelector('#editor-root');
 trackVisit();

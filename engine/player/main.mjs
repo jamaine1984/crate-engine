@@ -3,6 +3,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {validateProject} from '../core/schema.mjs';
 import {MAX_MODEL_BYTES,hashBytes} from '../core/gltf.mjs';
 import {createSceneRuntime,THREE} from '../runtime/scene.mjs';
+import {createAmbience} from '../runtime/ambience.mjs';
 import {createPhysics} from '../runtime/physics.mjs';
 import {mountTouchControls} from '../runtime/touch-controls.mjs';
 import {mountGameHud} from '../runtime/game-hud.mjs';
@@ -21,7 +22,8 @@ export function start(canvas,score){
 }
 async function initialize(canvas,score){
  const lifetime=new AbortController();let view,controls,physics,touchControls,hud,resize,raf=0,disposed=false,restarting=false;
- const dispose=async()=>{if(disposed)return;disposed=true;lifetime.abort();cancelAnimationFrame(raf);resize?.disconnect();hud?.dispose();touchControls?.dispose();physics?.dispose();controls?.dispose();window.removeEventListener('pagehide',pageHide);instances.delete(canvas);await view?.dispose();};
+ const ambience=createAmbience();
+ const dispose=async()=>{if(disposed)return;disposed=true;void ambience.dispose();lifetime.abort();cancelAnimationFrame(raf);resize?.disconnect();hud?.dispose();touchControls?.dispose();physics?.dispose();controls?.dispose();window.removeEventListener('pagehide',pageHide);instances.delete(canvas);await view?.dispose();};
  const pageHide=event=>{if(!event.persisted)dispose();};window.addEventListener('pagehide',pageHide);
  const request=async(path,limit)=>{const response=await fetch(path,{signal:AbortSignal.any([lifetime.signal,AbortSignal.timeout(30000)]),credentials:'omit',redirect:'error'});if(!response.ok)throw new Error('Missing game file: '+path);return readBytes(response,limit);};
  try{
@@ -49,6 +51,7 @@ async function initialize(canvas,score){
    try{const previous=physics;physics=null;hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;previous?.dispose();view.resetAnimations();await view.sync(project);followCamera();await beginRound();}
    finally{restarting=false;}
   }
+  ambience.start(project.settings);
   await beginRound();
   resize=new ResizeObserver(()=>view.resize());resize.observe(canvas);let last=performance.now();
   const loop=time=>{if(disposed)return;raf=requestAnimationFrame(loop);const dt=Math.min((time-last)/1000,.05);last=time;if(document.hidden)return;physics?.step(dt);view.tick(dt);controls?.update();followCamera(dt);view.render();};raf=requestAnimationFrame(loop);

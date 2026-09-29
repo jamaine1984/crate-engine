@@ -134,7 +134,7 @@ test('tool calls reach the linked editor tab; writes need "Allow changes"; resul
     let status = await tool('editor_status');
     assert.equal(status.result.structuredContent.editorOpen, false);
     assert.equal((await tool('get_scene')).result.isError, true, 'no editor open');
-    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', protocol: 4, allowWrites: false })).json();
+    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', protocol: 5, allowWrites: false })).json();
     status = await tool('editor_status');
     assert.deepEqual([status.result.structuredContent.editorOpen, status.result.structuredContent.projectName, status.result.structuredContent.allowChanges], [true, 'Forest', false]);
     const blocked = await tool('undo');
@@ -166,7 +166,7 @@ test('screenshot and play_test reach the editor; the AI gets a real image; save_
   try {
     const u = await user(f), { tokens } = await connect(f, u);
     const tool = (name, args = {}) => mcp(f, tokens.access_token, ...modern('tools/call', { name, arguments: args }, name)).then(r => r.json());
-    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', protocol: 4, allowWrites: false })).json();
+    const link = await (await editorApi(f, u, '/ai/editor/link', 'POST', { projectId: 'proj-1', projectName: 'Forest', protocol: 5, allowWrites: false })).json();
     const jpeg = Buffer.from('not-a-real-jpeg-but-valid-base64-payload').toString('base64');
     const answer = (expected, result) => (async () => {
       for (let i = 0; i < 60; i++) {
@@ -194,7 +194,7 @@ test('screenshot and play_test reach the editor; the AI gets a real image; save_
     assert.equal((await tool('screenshot', { width: 99999 })).result.isError, true);
     const saveBlocked = await tool('save_project', { where: 'account' });
     assert.equal(saveBlocked.result.isError, true); assert.match(saveBlocked.result.content[0].text, /Allow changes/);
-    await editorApi(f, u, `/ai/editor/link/${link.linkId}`, 'PUT', { projectId: 'proj-1', projectName: 'Forest', protocol: 4, allowWrites: true });
+    await editorApi(f, u, `/ai/editor/link/${link.linkId}`, 'PUT', { projectId: 'proj-1', projectName: 'Forest', protocol: 5, allowWrites: true });
     const [saved] = await Promise.all([tool('save_project', { where: 'device' }), answer('save_project', { ok: true, projectId: 'proj-1', entityCount: 3, summary: 'Saved on this device.' })]);
     assert.equal(saved.result.isError, false); assert.equal(saved.result.structuredContent.summary, 'Saved on this device.');
   } finally { f.sql.close(); }
@@ -262,8 +262,8 @@ test('an editor tab from before an engine update is told to refresh instead of f
     assert.equal(status.editorOpen, true); assert.equal(status.editorUpToDate, false); assert.match(status.help, /refresh the editor tab/);
     const refused = await tool('get_scene');
     assert.equal(refused.result.isError, true); assert.match(refused.result.content[0].text, /older version/);
-    const next = await (await editorApi(f, u, `/ai/editor/link/${link.linkId}/next?p=4`)).json();
-    assert.equal(next.latestProtocol, 4);
+    const next = await (await editorApi(f, u, `/ai/editor/link/${link.linkId}/next?p=5`)).json();
+    assert.equal(next.latestProtocol, 5);
     status = (await tool('editor_status')).result.structuredContent;
     assert.equal(status.editorUpToDate, true); assert.equal(status.help, undefined);
   } finally { f.sql.close(); }

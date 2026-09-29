@@ -26,7 +26,7 @@ export function surfaceBelow({THREE,root,project,x,z,fromY,ignore=new Set(),surf
   const hits=ray.intersectObject(root,true);
   for(const hit of hits){
    const id=ownerOf(hit.object);if(!id||ignore.has(id)||hit.object.userData?.water||!hit.object.isMesh||!visibleChain(hit.object))continue;
-   const entity=project.entities.find(e=>e.id===id);if(entity&&entity.components?.water)continue;
+   const entity=project.entities.find(e=>e.id===id);if(entity&&(entity.components?.water||entity.components?.attach))continue; // held items are never ground
    ground={y:hit.point.y,name:names.get(id)||'an object',id,water:false};break;
   }
  }
@@ -40,7 +40,7 @@ function worldBox(THREE,object){object.updateWorldMatrix(true,true);return new T
 /** Checks objects for floating or having nothing under them. Returns human-readable warnings. */
 export function groundWarnings({THREE,root,objects,project,ids}){
  const wanted=ids?.length?new Set(ids):null,warnings=[];let extra=0;
- const list=project.entities.filter(e=>(!wanted||wanted.has(e.id))&&!SKIP_TYPES.has(e.type)&&e.visible!==false&&!e.components?.water&&!e.components?.mover&&!e.components?.player&&!e.components?.spin&&e.components?.rigidbody?.type!=='dynamic').slice(0,INSPECT_LIMITS.checked);
+ const list=project.entities.filter(e=>(!wanted||wanted.has(e.id))&&!SKIP_TYPES.has(e.type)&&e.visible!==false&&!e.components?.water&&!e.components?.attach&&!e.components?.terrain&&!e.components?.mover&&!e.components?.player&&!e.components?.spin&&e.components?.rigidbody?.type!=='dynamic').slice(0,INSPECT_LIMITS.checked);
  for(const entity of list){
   const object=objects.get(entity.id);if(!object||!visibleChain(object))continue;
   const box=worldBox(THREE,object);if(box.isEmpty())continue;

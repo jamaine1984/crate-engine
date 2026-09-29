@@ -9,6 +9,7 @@ import {inspectGLB,hashBytes,MAX_MODEL_BYTES} from '../core/gltf.mjs';
 import * as local from '../storage/local.mjs';
 import {createSceneRuntime,THREE,assetCacheKey} from './scene.mjs';
 import {createPhysics} from './physics.mjs';
+import {createAmbience} from './ambience.mjs';
 import {groundWarnings,groundPlacements as findGroundPlacements,framingPose} from './scene-inspect.mjs';
 import {mountTouchControls} from './touch-controls.mjs';
 import {mountGameHud} from './game-hud.mjs';
@@ -69,7 +70,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   })();assetRequests.set(key,request);
   try{return await request;}finally{if(assetRequests.get(key)===request)assetRequests.delete(key);}
  }
- const view=createSceneRuntime({canvas,resolveAsset,onLog,onInvalidate:()=>dirty=true});if(import.meta.env?.DEV)globalThis.__crateView=view;
+ const view=createSceneRuntime({canvas,resolveAsset,onLog,onInvalidate:()=>dirty=true});if(import.meta.env?.DEV)globalThis.__crateView=view;const ambience=createAmbience();
  const controls=new OrbitControls(view.camera,canvas);controls.target.set(0,1,0);controls.enableDamping=true;controls.addEventListener('change',()=>dirty=true);
  const transform=new TransformControls(view.camera,canvas),helper=transform.getHelper();view.scene.add(helper);
  const grid=new THREE.GridHelper(100,100,'#587566','#2b3c33');grid.position.y=-.015;view.scene.add(grid);
@@ -208,13 +209,13 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
  async function play(){
   if(mode==='play')return;if(playPending)throw new Error('Physics is still loading.');editable();playPending=true;transform.enabled=false;state();
   try{await settled();view.assertComplete();playSnapshot=store.snapshot();playClock=0;playEvents=[];view.resetAnimations();hud?.dispose();hud=mountGameHud(canvas.parentElement,{maxLives:playSnapshot.settings.lives||0,onRestart:()=>{void stop().then(()=>play()).catch(error=>onLog({level:'error',message:error.message}));},onExit:()=>{void stop().catch(error=>onLog({level:'error',message:error.message}));}});
- const next=await createPhysics(playSnapshot,view.objects,{onScore:score=>onLog({level:'info',message:'Score: '+score}),onLog,onEvent:event=>{hud?.handle(event);if(playEvents.length<60)playEvents.push({...event,at:playClock});if(event.type==='win')onLog({level:'info',message:'Level complete! Score: '+event.score});else if(event.type==='lose')onLog({level:'info',message:'Game over. Score: '+event.score});}});if(disposed){next.dispose();return;}physics=next;beginPreviewCamera();mode='play';transform.detach();grid.visible=false;selectionBox.visible=false;const player=playSnapshot.entities.find(entity=>entity.components.player&&physics.bodies.has(entity.id));touchControls=mountTouchControls(canvas.parentElement,{onInput:value=>physics?.setInput(value),enabled:!!player,sideView:player?.components.player.sideView===true});onLog({level:'info',message:'Preview running. Player components use touch / WASD / arrows and Jump / Space. Stop to select and move scene objects.'});dirty=true;state();}
+ const next=await createPhysics(playSnapshot,view.objects,{onScore:score=>onLog({level:'info',message:'Score: '+score}),onLog,onEvent:event=>{hud?.handle(event);if(playEvents.length<60)playEvents.push({...event,at:playClock});if(event.type==='win')onLog({level:'info',message:'Level complete! Score: '+event.score});else if(event.type==='lose')onLog({level:'info',message:'Game over. Score: '+event.score});}});if(disposed){next.dispose();return;}physics=next;beginPreviewCamera();mode='play';ambience.start(playSnapshot.settings);transform.detach();grid.visible=false;selectionBox.visible=false;const player=playSnapshot.entities.find(entity=>entity.components.player&&physics.bodies.has(entity.id));touchControls=mountTouchControls(canvas.parentElement,{onInput:value=>physics?.setInput(value),enabled:!!player,sideView:player?.components.player.sideView===true});onLog({level:'info',message:'Preview running. Player components use touch / WASD / arrows and Jump / Space. Stop to select and move scene objects.'});dirty=true;state();}
   catch(error){hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();physics=null;mode='edit';restoreEditorCamera();playSnapshot=null;grid.visible=true;transform.enabled=!disposed;throw error;}finally{playPending=false;if(!disposed)state();}
  }
  async function stop(){
   alive();if(playPending)throw new Error('Physics is still loading.');if(mode!=='play')return;
   try{await lock.run('Stopping preview',async()=>{
-   hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();physics=null;mode='edit';restoreEditorCamera();grid.visible=true;transform.enabled=false;view.resetAnimations();state();
+   ambience.stop();hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();physics=null;mode='edit';restoreEditorCamera();grid.visible=true;transform.enabled=false;view.resetAnimations();state();
    // The authoring store never receives simulation transforms, scores, or hidden
    // collectibles. Restore precisely the snapshot used to enter preview.
    scheduleScene(playSnapshot||store.snapshot());await settled();playSnapshot=null;updateSelection();dirty=true;
@@ -310,7 +311,7 @@ export async function createEditor({canvas,onChange=()=>{},onSelection=()=>{},on
   saveLocal:()=>exclusive('Local save',persistLocal),listLocal:local.listProjects,
   loadLocal:id=>exclusive('Local project load',async()=>{const data=await local.getProject(id);alive();if(!data)throw new Error('Local project was not found.');return loadPrepared(await prepareProjectLoad(data),{source:'local'});}),
   saveCloud:()=>exclusive('Cloud save',cloudSave),applyProposal(proposal){editable();return store.apply(proposal);},
-  async dispose(){if(disposed)return;if(recoveryTimer)await writeRecovery();disposed=true;clearTimeout(recoveryTimer);lock.close();lifetime.abort();cancelAnimationFrame(raf);observer.disconnect();hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();controls.dispose();transform.removeEventListener('dragging-changed',dragging);transform.removeEventListener('objectChange',objectChange);transform.removeEventListener('mouseUp',transformEnd);transform.dispose();selectionBox.geometry.dispose();selectionBox.material.dispose();grid.geometry.dispose();grid.material.dispose();canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',cancelActiveTransform);canvas.removeEventListener('lostpointercapture',lostPointer);window.removeEventListener('blur',cancelActiveTransform);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('beforeunload',beforeUnload);assetBytes.clear();cacheBytes=0;await view.dispose();}
+  async dispose(){if(disposed)return;if(recoveryTimer)await writeRecovery();disposed=true;void ambience.dispose();clearTimeout(recoveryTimer);lock.close();lifetime.abort();cancelAnimationFrame(raf);observer.disconnect();hud?.dispose();hud=null;touchControls?.dispose();touchControls=null;physics?.dispose();controls.dispose();transform.removeEventListener('dragging-changed',dragging);transform.removeEventListener('objectChange',objectChange);transform.removeEventListener('mouseUp',transformEnd);transform.dispose();selectionBox.geometry.dispose();selectionBox.material.dispose();grid.geometry.dispose();grid.material.dispose();canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointermove',pointerMove);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('pointercancel',cancelActiveTransform);canvas.removeEventListener('lostpointercapture',lostPointer);window.removeEventListener('blur',cancelActiveTransform);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('beforeunload',beforeUnload);assetBytes.clear();cacheBytes=0;await view.dispose();}
  };
  async function restoreRecovery(projectId){
   let record;try{record=await local.getRecovery();}catch{return false;}alive();

@@ -113,6 +113,21 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
    }
   }
  }
+ /* Buoyancy: dynamic bodies inside a water plane's area are pushed up by the part of them below the (gently bobbing)
+    surface and slowed by water drag, so boats, buoys, crates and swimmers float instead of sinking. */
+ const waters=project.entities.filter(entity=>entity.components.water&&visible(entity)).map(entity=>{const object=objects.get(entity.id);if(!object)return null;object.updateWorldMatrix(true,false);const box=new Box3().setFromObject(object);return {minX:box.min.x,maxX:box.max.x,minZ:box.min.z,maxZ:box.max.z,y:object.getWorldPosition(new Vector3()).y,wave:entity.components.water.waveHeight,length:entity.components.water.waveLength};}).filter(Boolean);
+ const floaters=project.entities.filter(entity=>entity.components.rigidbody?.type==='dynamic'&&bodies.has(entity.id));
+ const gravity=Math.abs(project.settings.gravity)||9.81;
+ function buoyancy(){
+  if(!waters.length)return;
+  for(const entity of floaters){
+   const body=bodies.get(entity.id);if(!body)continue;const p=body.translation(),water=waters.find(w=>p.x>=w.minX&&p.x<=w.maxX&&p.z>=w.minZ&&p.z<=w.maxZ);if(!water)continue;
+   const half=heights.get(entity.id)||.5,surface=water.y+Math.sin(elapsed*1.3+(p.x+p.z)/Math.max(4,water.length)*6.283)*water.wave*.35,submerged=Math.min(1,Math.max(0,(surface-(p.y-half))/(2*half)));if(!submerged)continue;
+   const mass=body.mass(),v=body.linvel(),w=body.angvel(),drag=Math.min(.9,submerged*2.2*STEP);
+   body.applyImpulse({x:-v.x*mass*drag,y:mass*gravity*submerged*1.8*STEP-v.y*mass*drag*1.5,z:-v.z*mass*drag},true);
+   body.setAngvel({x:w.x*(1-drag),y:w.y*(1-drag),z:w.z*(1-drag)},true);
+  }
+ }
  function step(dt){
   if(disposed)return;dt=Number.isFinite(dt)?Math.max(0,Math.min(dt,.15)):0;accumulator=Math.min(accumulator+dt,.15);
   while(accumulator>=STEP){
@@ -131,7 +146,7 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
     if(player.sideView&&x)facing.set(entity.id,x<0?-1:1);
     body.setLinvel({x:x/length*player.speed+carryX,y,z:player.sideView?0:z/length*player.speed+carryZ},true);
    }
-   jumpPressed=false;world.timestep=STEP;world.step();accumulator-=STEP;
+   buoyancy();jumpPressed=false;world.timestep=STEP;world.step();accumulator-=STEP;
    rules();
   }
   for(const entity of ordered){

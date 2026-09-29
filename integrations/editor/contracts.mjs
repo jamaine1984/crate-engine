@@ -18,7 +18,7 @@ const TYPES = [...ENTITY_TYPES];
 // Commands that change the paired project. The bridge refuses them unless the editor enabled writes.
 export const MUTATING_COMMANDS = Object.freeze(['apply_world','undo','edit_objects','set_level_settings','add_library_model','import_model','place_on_ground','save_project']);
 /** Bumped whenever the editor gains commands or components. Older editor tabs are told to refresh. */
-export const EDITOR_PROTOCOL=4;
+export const EDITOR_PROTOCOL=5;
 /** A GLB the user's own browser may download for import: any public https address, or a file server on the user's own computer. */
 export function importableModelUrl(x){
  if(typeof x!=='string'||x.length<8||x.length>600)return false;
@@ -48,7 +48,8 @@ function validComponents(x) {
   maybe(x,'spin',r=>keys(r,['speed'])&&maybe(r,'speed',n=>finite(n,-720,720))) &&
   maybe(x,'collectible',r=>keys(r,['value'])&&maybe(r,'value',n=>int(n,0,1e6))) &&
   maybe(x,'player',r=>keys(r,['speed','jump','sideView'])&&maybe(r,'speed',n=>finite(n,.1,50))&&maybe(r,'jump',n=>finite(n,0,30))&&maybe(r,'sideView',n=>typeof n==='boolean')) &&
-  maybe(x,'animation',r=>keys(r,['clip','autoplay','speed'])&&maybe(r,'clip',n=>text(n,120))&&maybe(r,'autoplay',n=>typeof n==='boolean')&&maybe(r,'speed',n=>finite(n,.01,5))) &&
+  maybe(x,'attach',r=>keys(r,['to','bone'])&&identifier(r.to)&&maybe(r,'bone',n=>text(n,64)&&n.length>0)) &&
+  maybe(x,'animation',r=>keys(r,['clip','autoplay','speed','moveClip','idleClip'])&&maybe(r,'moveClip',n=>text(n,120))&&maybe(r,'idleClip',n=>text(n,120))&&maybe(r,'clip',n=>text(n,120))&&maybe(r,'autoplay',n=>typeof n==='boolean')&&maybe(r,'speed',n=>finite(n,.01,5))) &&
   maybe(x,'goal',r=>keys(r,['message'])&&maybe(r,'message',n=>text(n,120))) && maybe(x,'hazard',r=>keys(r,[])) && maybe(x,'checkpoint',r=>keys(r,[])) &&
   maybe(x,'water',r=>keys(r,['waveHeight','waveLength','speed','choppiness','opacity','deepColor','foam'])&&maybe(r,'waveHeight',n=>finite(n,0,5))&&maybe(r,'waveLength',n=>finite(n,4,200))&&maybe(r,'speed',n=>finite(n,0,5))&&maybe(r,'choppiness',n=>finite(n,0,1))&&maybe(r,'opacity',n=>finite(n,.3,1))&&maybe(r,'deepColor',color)&&maybe(r,'foam',n=>typeof n==='boolean')) &&
   maybe(x,'terrain',validTerrain) &&

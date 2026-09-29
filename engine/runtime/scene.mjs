@@ -1,5 +1,6 @@
 import {createWaterMesh,isWaterObject,updateWaterTime} from './water.mjs';
 import {createTerrainMesh} from './terrain.mjs';
+import {findBone,createLocomotion} from './character.mjs';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
@@ -34,6 +35,8 @@ export function createModelInstance(gltf,entity,{onLog=()=>{}}={}){
  // Preserve imported root transforms and animation binding names. Editable
  // entity transforms belong to a wrapper around the original GLB scene root.
  const content=cloneSkeleton(gltf.scene),object=new THREE.Group();object.add(content);let mixer=null;
+ const animation=entity.components.animation;
+ if(animation&&(animation.moveClip||animation.idleClip)&&gltf.animations.length){mixer=new THREE.AnimationMixer(content);const locomotion=createLocomotion(THREE,mixer,gltf.animations,animation);if(!locomotion)onLog({level:'warn',message:`${entity.name}: walk/idle clips were not found. Clips: ${gltf.animations.map(clip=>clip.name).join(', ')}.`});return {object,mixer,locomotion};}
  if(entity.components.animation?.autoplay&&gltf.animations.length){
   mixer=new THREE.AnimationMixer(content);
   const requested=entity.components.animation.clip,clip=gltf.animations.find(item=>item.name===requested)||gltf.animations[0];
@@ -79,7 +82,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   if(entity.type==='model'){
    if(!asset)throw new Error('Model asset is missing.');
    const gltf=await sourceFor(asset);if(!gate.current(token))return null;
-   ({object,mixer}=createModelInstance(gltf,entity,{onLog}));assetKey=assetCacheKey(asset);
+   let locomotion;({object,mixer,locomotion}=createModelInstance(gltf,entity,{onLog}));object.userData.locomotion=locomotion||null;assetKey=assetCacheKey(asset);
   }else if(entity.type==='customMesh')object=createVectorObject(THREE,entity.shape);
   else if(entity.type==='plane'&&entity.components?.water)object=createWaterMesh(THREE,entity);
   else if(entity.type==='plane'&&entity.components?.terrain)object=createTerrainMesh(THREE,entity,surfaces);
@@ -128,6 +131,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
    let directionalShadows=0,pointShadows=0,extraShadowLights=0;
    for(const entity of snapshot.entities){const object=objects.get(entity.id);if(object)applyTransform(object,entity);}
    for(const entity of snapshot.entities){const object=objects.get(entity.id);if(object)(objects.get(entity.parentId)||root).add(object);}
+   attachHeldItems(snapshot);
    for(const object of objects.values()){if(!object.isLight)continue;object.castShadow=false;if(!effectivelyVisible(object))continue;if(object.isDirectionalLight)object.castShadow=directionalShadows++<1;else if(object.isPointLight)object.castShadow=pointShadows++<2;if(!object.castShadow)extraShadowLights++;}
    configure(snapshot.settings);project=snapshot;scene.updateMatrixWorld(true);instancer.rebuild(root);
    const activeSources=new Set([...entries.values()].map(entry=>entry.assetKey).filter(Boolean));for(const key of loaded.keys())if(!activeSources.has(key))disposeCache(key);
@@ -137,6 +141,19 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   }finally{
    // Only committed entries may remain attached or retain per-instance mixers.
    const committed=new Set(entries.values());for(const entry of created)if(!committed.has(entry))disposeEntry(entry);
+  }
+ }
+ /* Held items: an entity with components.attach rides on a bone of another model. A holder group cancels the bone's
+    own scale so the item's position/rotation read as metres/degrees from the bone. */
+ const holders=[],attachWarnings=new Set();
+ function attachHeldItems(snapshot){
+  for(const holder of holders)holder.removeFromParent();holders.length=0;
+  for(const entity of snapshot.entities){
+   const attach=entity.components.attach;if(!attach)continue;
+   const object=objects.get(entity.id),target=objects.get(attach.to),bone=target?findBone(target,attach.bone):null;
+   if(!object||!bone){const key=entity.id+attach.to+attach.bone;if(!attachWarnings.has(key)){attachWarnings.add(key);onLog({level:'warn',message:`${entity.name}: ${target?'bone "'+attach.bone+'" was not found on its character':'the character it is attached to was not found'}.`});}continue;}
+   target.updateWorldMatrix(true,true);const boneScale=bone.getWorldScale(new THREE.Vector3()),targetScale=target.getWorldScale(new THREE.Vector3());
+   const holder=new THREE.Group();holder.userData.internal=true;holder.scale.set(targetScale.x/boneScale.x,targetScale.y/boneScale.y,targetScale.z/boneScale.z);bone.add(holder);holder.add(object);holders.push(holder);
   }
  }
  function assertComplete(){if(missing.size)throw new Error('Resolve the missing or unsupported models before playing, cloud saving, or exporting: '+[...missing.keys()].map(id=>project?.entities.find(entity=>entity.id===id)?.name||id).join(', '));}
@@ -154,7 +171,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  }
  /** Renders one frame and reports its cost against the phone budget. */
  function performanceReport(){render();const info=renderer.info,report={drawCalls:info.render.calls,triangles:info.render.triangles,geometries:info.memory.geometries,textures:info.memory.textures,...instancer.stats()};return {...report,budget:performanceTips(report).length?'heavy':'ok',tips:performanceTips(report)};}
- function tick(dt){for(const entry of entries.values())entry.mixer?.update(dt);}
+ function tick(dt){for(const entry of entries.values()){entry.object.userData.locomotion?.update(entry.object,dt);entry.mixer?.update(dt);}}
  function resetAnimations(){for(const entry of entries.values()){if(entry.mixer){entry.mixer.setTime(0);}}}
  function effectivelyVisible(object){for(let node=object;node;node=node.parent)if(node.visible===false)return false;return !!object;}
  function gameCamera(){const active=project?.entities.find(entity=>entity.type==='camera'&&effectivelyVisible(objects.get(entity.id)));return active?objects.get(active.id):null;}
