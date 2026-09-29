@@ -54,8 +54,13 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
  let project=null,disposed=false,composer=null,ao=null,width=1,height=1,shadowWarning=false;
 
+ /* The depth buffer has too little precision far from the camera (near .05, far 3000), so ambient occlusion turns distant ground and sky into black speckle. It only matters up close, so fade it out with distance. */
+ function fadeAoWithDistance(pass){
+  const material=pass.gtaoMaterial,marker='ao = pow(ao, scale);';
+  if(material.fragmentShader.includes(marker))material.fragmentShader=material.fragmentShader.replace(marker,marker+' ao = mix(ao, 1.0, smoothstep(30.0, 90.0, -viewPos.z));');
+ }
  function postprocessing(high){
-  if(high&&!composer){composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));ao=new GTAOPass(scene,camera,width,height);ao.updateGtaoMaterial({radius:.7,distanceExponent:1,thickness:1,scale:1,samples:8});composer.addPass(ao);composer.addPass(new OutputPass());composer.setSize(width,height);}
+  if(high&&!composer){composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));ao=new GTAOPass(scene,camera,width,height);ao.updateGtaoMaterial({radius:.7,distanceExponent:1,thickness:1,scale:1,samples:8});fadeAoWithDistance(ao);composer.addPass(ao);composer.addPass(new OutputPass());composer.setSize(width,height);}
   if(ao)ao.enabled=high;
  }
  function geometry(type){switch(type){case'sphere':return new THREE.SphereGeometry(.5,32,20);case'cylinder':return new THREE.CylinderGeometry(.5,.5,1,24);case'capsule':return new THREE.CapsuleGeometry(.3,.5,6,16);case'plane':return new THREE.BoxGeometry(1,.02,1);default:return new THREE.BoxGeometry(1,1,1);}}
