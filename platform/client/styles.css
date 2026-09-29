@@ -40,3 +40,5 @@ h1,h2,h3{font-family:Barlow,Arial,sans-serif;font-weight:800}.brand-mark{width:6
 .check-problems.warn{color:var(--tan)}
 
 .copy-box{display:block;padding:12px 14px;border-radius:10px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);font-family:ui-monospace,monospace;overflow-wrap:anywhere;user-select:all}
+
+.activity-wrap{overflow-x:auto;margin-top:14px}.activity-table{width:100%;border-collapse:collapse;font-size:14px}.activity-table th,.activity-table td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}.activity-table th:first-child,.activity-table td:first-child{text-align:left}.activity-table th{color:var(--muted);font-weight:600}.activity-table .bar-cell{position:relative;min-width:150px}.activity-table .bar{position:absolute;left:0;top:6px;bottom:6px;background:rgba(255,118,55,.28);border-radius:4px}.activity-table .bar-cell b{position:relative}

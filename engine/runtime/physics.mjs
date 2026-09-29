@@ -1,4 +1,5 @@
 import {Box3,Vector3,Quaternion,Matrix4,MathUtils} from 'three';
+import {colliderKind} from '../core/schema.mjs';
 let rapierPromise;
 const STEP=1/60,FLAT_HALF_DEPTH=.5,FLAT_TRIANGLE_LIMIT=4000,MESH_TRIANGLE_LIMIT=100000,HULL_POINT_LIMIT=20000,RESPAWN_GRACE=.75;
 
@@ -67,7 +68,7 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
    const kind=mover?'kinematic':rigidbody.type==='dynamic'?'dynamic':'static';
    const desc=kind==='dynamic'?R.RigidBodyDesc.dynamic():kind==='kinematic'?R.RigidBodyDesc.kinematicPositionBased():R.RigidBodyDesc.fixed();desc.setTranslation(position.x,position.y,position.z).setRotation(rotation);if(entity.components.player){desc.lockRotations();if(entity.components.player.sideView)desc.enabledTranslations(true,true,false);}
    const body=world.createRigidBody(desc),friction=rigidbody?.friction??.7,restitution=rigidbody?.restitution??0,mass=rigidbody?.mass??1;
-   const shaped=rigidbody?.collider==='shape'&&!entity.components.player?shapeColliders(entity,object,inverse,scale,size,center,kind):null;
+   const shaped=colliderKind(entity)==='shape'&&!entity.components.player?shapeColliders(entity,object,inverse,scale,size,center,kind):null;
    // Flat 2D artwork gets real depth: Rapier resolves paper-thin boxes by pushing 3D bodies out sideways, so they fall through.
    const halfDepth=size.z<.05&&!entity.components.player?FLAT_HALF_DEPTH:Math.max(.01,size.z/2);
    const descs=shaped||[R.ColliderDesc.cuboid(Math.max(.01,size.x/2),Math.max(.01,size.y/2),halfDepth).setTranslation(center.x,center.y,center.z)];

@@ -84,9 +84,12 @@ test('shape collision follows a vector outline instead of its bounding box', asy
   const shaped = await world(t, [{ type: 'customMesh', id: 'u', shape: notch, position: [0, 0, 0], components: { rigidbody: { type: 'static', collider: 'shape' } } }, crate]);
   shaped.frames(240);
   assert.ok(shaped.y('crate') < 1.8, `crate settles inside the notch, y=${shaped.y('crate')}`);
-  const boxed = await world(t, [{ type: 'customMesh', id: 'u', shape: notch, position: [0, 0, 0], components: { rigidbody: { type: 'static' } } }, crate]);
+  const automatic = await world(t, [{ type: 'customMesh', id: 'u', shape: notch, position: [0, 0, 0], components: { rigidbody: { type: 'static' } } }, crate]);
+  automatic.frames(240);
+  assert.ok(automatic.y('crate') < 1.8, `with no choice made, a drawn shape follows its outline by default, y=${automatic.y('crate')}`);
+  const boxed = await world(t, [{ type: 'customMesh', id: 'u', shape: notch, position: [0, 0, 0], components: { rigidbody: { type: 'static', collider: 'box' } } }, crate]);
   boxed.frames(240);
-  assert.ok(boxed.y('crate') > 3 && boxed.y('crate') < 4, `default box collider catches the crate on top of the outline box, y=${boxed.y('crate')}`);
+  assert.ok(boxed.y('crate') > 3 && boxed.y('crate') < 4, `an explicit box collider catches the crate on top of the outline box, y=${boxed.y('crate')}`);
 });
 
 test('schema rejects impossible rule combinations and clamps level settings', () => {

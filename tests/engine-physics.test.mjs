@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Scene, Mesh, Group, BoxGeometry, MeshBasicMaterial, MathUtils, Vector3 } from 'three';
-import { newProject, cleanEntity } from '../engine/core/schema.mjs';
+import { newProject, cleanEntity, colliderKind } from '../engine/core/schema.mjs';
 import { createPhysics } from '../engine/runtime/physics.mjs';
 import { createVectorObject } from '../engine/runtime/vector-shape.mjs';
 
@@ -102,4 +102,33 @@ test('dynamic parent synchronization is correct even when child precedes parent 
 test('hidden authored collectibles are not scored', async t => {
   const f = await fixture(t, [{ type: 'box', id: 'player', position: [4, .5, 0], components: { player: {}, rigidbody: { type: 'dynamic' } } }, { type: 'sphere', id: 'coin', position: [4, .5, .3], visible: false, components: { collectible: { value: 5 } } }]);
   f.frames(1); assert.deepEqual(f.scores, []);
+});
+
+// A drawn ramp: 6 wide, rising to 2 high on its right edge. A box around it is a 2-high wall on the left.
+const ramp = (rigidbody, extra = {}) => ({ type: 'customMesh', id: 'ramp', position: [6, 0, 0], shape: { paths: [{ points: [[-3, 0], [3, 0], [3, 2]], color: '#c58a3a', depth: .4 }] }, components: { rigidbody, ...extra } });
+async function runUpRamp(t, rigidbody) {
+  const runner = { type: 'box', id: 'runner', position: [-4, .6, 0], scale: [.6, 1.1, .6], components: { player: { speed: 5, jump: 6, sideView: true }, rigidbody: { type: 'dynamic' } } };
+  const f = await fixture(t, [ramp(rigidbody), runner], objects => objects.get('falling').position.set(0, 3, 8));
+  f.input.send('keydown', 'ArrowRight');
+  let maxY = 0; for (let i = 0; i < 300; i++) { f.physics.step(1 / 60); maxY = Math.max(maxY, f.physics.bodies.get('runner').translation().y); }
+  return { x: f.physics.bodies.get('runner').translation().x, maxY };
+}
+test('a static drawn shape follows its outline by default, so a player can walk up a ramp', async t => {
+  const result = await runUpRamp(t, { type: 'static' });
+  assert.ok(result.maxY > 1.5, `the player should climb the ramp; highest point ${result.maxY}`);
+});
+test('choosing Box makes the same ramp a wall, so the outline default can always be overridden', async t => {
+  const result = await runUpRamp(t, { type: 'static', collider: 'box' });
+  assert.ok(result.x < 2.8 && result.maxY < .9, `the player should be stopped by the box; x=${result.x} maxY=${result.maxY}`);
+});
+test('the automatic collision choice: outline only for static, non-moving drawn shapes', () => {
+  const art = extra => cleanEntity({ type: 'customMesh', shape: { paths: [{ points: [[0, 0], [1, 0], [1, 1]], color: '#ffffff' }] }, ...extra });
+  assert.equal(colliderKind(art({ components: { rigidbody: { type: 'static' } } })), 'shape');
+  assert.equal(colliderKind(art({ components: { rigidbody: { type: 'static', collider: 'box' } } })), 'box');
+  assert.equal(colliderKind(art({ components: { rigidbody: { type: 'dynamic' } } })), 'box', 'dynamic bodies stay stable boxes');
+  assert.equal(colliderKind(art({ components: { rigidbody: { type: 'static' }, mover: { offset: [1, 0, 0], period: 2 } } })), 'box', 'moving platforms stay boxes');
+  assert.equal(colliderKind({ type: 'customMesh', components: { rigidbody: { type: 'static' }, player: {} } }), 'box', 'players stay boxes');
+  assert.equal(colliderKind(cleanEntity({ type: 'model', assetId: 'a', components: { rigidbody: { type: 'static' } } })), 'box', 'imported models stay boxes');
+  assert.equal(colliderKind(cleanEntity({ type: 'box', components: { rigidbody: { type: 'static' } } })), 'box');
+  assert.equal(cleanEntity({ type: 'box', components: { rigidbody: { type: 'static', collider: 'weird' } } }).components.rigidbody.collider, undefined, 'unknown values are dropped');
 });

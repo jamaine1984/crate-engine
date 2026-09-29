@@ -6,6 +6,7 @@ import {needsUser,homePage,catalogPage,gamePage,authPage,loginGate,collectionPag
 import {developerPage,ownerPage} from './creator-pages.mjs';
 import {docsPage,staticPage} from './content.mjs';
 import {mountIsolatedPlayer} from './player-bridge.mjs';
+import {trackVisit} from './visit.mjs';
 import {qrSvg,groupKey} from './qr.mjs';
 import {administrationPanels} from './administration-ui.mjs';
 import {firebaseSignUp,firebasePasswordToken,firebaseGoogleToken,firebaseResetPassword,rememberPendingProfile,pendingProfile,clearPendingProfile} from './firebase-auth.mjs';
@@ -23,6 +24,7 @@ async function refreshSession(){const data=await api('/me');state.user=data.user
 function closeMenu(){document.getElementById('sidebar')?.classList.remove('open');document.querySelector('.drawer-overlay')?.classList.remove('open');document.querySelector('[data-action=menu]')?.setAttribute('aria-expanded','false');}
 async function navigate(path,replace=false){if(/^\/oauth\//.test(path)){location.assign(path);return;}if(uploadRunning&&!confirm('An upload is in progress. Leaving this page will interrupt it. Continue?'))return;if(replace)history.replaceState({},'',path);else history.pushState({},'',path);closeMenu();await render();window.scrollTo({top:0,behavior:'instant'});document.getElementById('main-content')?.focus({preventScroll:true});}
 async function render(){
+ trackVisit();
  const generation=++routeGeneration;activePlayer?.destroy();activePlayer=null;if(activeSession&&state.user){api('/player/sessions/'+encodeURIComponent(activeSession.id)+'/end',{method:'POST',body:{}}).catch(()=>{});}activeSession=null;
  app.innerHTML=renderShell(state);const main=document.getElementById('main-content');main.innerHTML=loading();let path=location.pathname.replace(/\/$/,'')||'/';
  document.title=(path==='/'?'Crate Ship Games — Play. Create. Belong.':path.split('/').filter(Boolean).map(s=>s.replaceAll('-',' ')).join(' · ')+' — Crate Ship Games');

@@ -27,6 +27,7 @@ const INSTRUCTIONS = [
   'Read the scene with get_scene before changing it, and use only IDs it returns.',
   'Build worlds with preview_world, then apply_world with the returned previewId. Place 3D models with list_library_models and add_library_model.',
   'Make it playable with components through edit_objects: player (with a dynamic rigidbody), goal, hazard, checkpoint, collectible, mover. Add a camera object to follow the player.',
+  'Static customMesh art collides along its drawn outline by default, so ramps, hills and curved platforms work. Set rigidbody collider "box" on one to force a plain box. Players, moving platforms, dynamic bodies and imported models always use boxes unless you choose otherwise.',
   'Check your work: take a screenshot after building (view "game" needs a camera object), and run play_test with scripted controls to prove the level can be won. Fix what you find.',
   'Changes need the user to have turned on "Allow changes". Every change is one Undo step. save_project saves the result when it is good. screenshot and play_test only need the editor open.',
 ].join(' ');

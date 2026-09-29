@@ -1,6 +1,16 @@
 export const FORMAT='crateship-project';
 export const VERSION=4;
 // Starter Library models repaired for the engine are served from the site itself.
+/**
+ * Which collision shape an object uses. An explicit choice always wins. Otherwise a static, non-moving object drawn as
+ * vector art (customMesh) follows its outline, so hills, ramps and curved platforms behave like they look. Everything else
+ * (players, moving platforms, dynamic bodies, imported models) uses a stable box.
+ */
+export function colliderKind(entity){
+ const rigidbody=entity?.components?.rigidbody,explicit=rigidbody?.collider;
+ if(explicit==='shape'||explicit==='box')return explicit;
+ return entity?.type==='customMesh'&&rigidbody?.type==='static'&&!entity.components.mover&&!entity.components.player?'shape':'box';
+}
 export const STARTER_MODEL_URL=/^\/starter-library\/models\/[a-z0-9_-]+(?:\/[a-z0-9_-]+)*\.glb$/i;
 export const ENTITY_TYPES=Object.freeze(['box','sphere','cylinder','capsule','plane','customMesh','directionalLight','pointLight','camera','model','empty']);
 const clone=x=>structuredClone(x);
@@ -10,7 +20,7 @@ function vec(value,fallback,min=-1e6,max=1e6){return [0,1,2].map(i=>finite(value
 function safeId(value){return typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value)?value:crypto.randomUUID();}
 export function cleanComponents(value={}){
  const result={};
- if(value.rigidbody)result.rigidbody={type:value.rigidbody.type==='dynamic'?'dynamic':'static',mass:finite(value.rigidbody.mass,1,.001,10000),restitution:finite(value.rigidbody.restitution,.2,0,1),friction:finite(value.rigidbody.friction,.7,0,10),...(value.rigidbody.collider==='shape'?{collider:'shape'}:{})};
+ if(value.rigidbody)result.rigidbody={type:value.rigidbody.type==='dynamic'?'dynamic':'static',mass:finite(value.rigidbody.mass,1,.001,10000),restitution:finite(value.rigidbody.restitution,.2,0,1),friction:finite(value.rigidbody.friction,.7,0,10),...(['shape','box'].includes(value.rigidbody.collider)?{collider:value.rigidbody.collider}:{})};
  if(value.spin)result.spin={speed:finite(value.spin.speed,30,-720,720)};
  if(value.collectible)result.collectible={value:Math.round(finite(value.collectible.value,1,0,1e6))};
  if(value.player)result.player={speed:finite(value.player.speed,5,.1,50),jump:finite(value.player.jump,6,0,30),...(value.player.sideView===true?{sideView:true}:{})};

@@ -1,5 +1,6 @@
 import './styles.css';
 import { createEditor } from '../runtime/editor.mjs';
+import { trackVisit } from '../../platform/client/visit.mjs';
 import { newProject } from '../core/schema.mjs';
 import { readLimitedResponse } from '../player/export.mjs';
 import { createProposalRequests } from './proposal-request.mjs';
@@ -11,6 +12,7 @@ import { modelSceneContext, sceneFingerprint, authoredSceneJSON } from './scene-
 import { esc, icon, tool, layout, hierarchy, inspector, assetCards, dialog, connectionsShell, modelConnections, primitiveTypes, typeIcons, bytes } from './panels.mjs';
 
 const root = document.querySelector('#editor-root');
+trackVisit();
 root.innerHTML = layout();
 const $ = selector => root.querySelector(selector);
 let editor, project = null, selected = null, activeTool = 'translate', space = 'world', mode = 'edit', ready = false, dirty = false, runtimeBusy = false;
@@ -258,7 +260,7 @@ root.addEventListener('change',event=>{
   else if(key.startsWith('material.')){const name=key.split('.')[1];patch={material:{...selected.material,[name]:name==='color'?input.value:Number(input.value)}};}
  else if(key.startsWith('light.')){const name=key.split('.')[1];patch={light:{...selected.light,[name]:name==='color'?input.value:Number(input.value)}};}
  else if(key.startsWith('components.mover.offset.')){const axis=Number(key.split('.')[3]),value=Number(input.value);if(!Number.isFinite(value))return;const offset=[...(selected.components.mover?.offset||[0,0,0])];offset[axis]=value;patch={components:{...selected.components,mover:{...selected.components.mover,offset}}};}
- else if(key==='components.rigidbody.collider'){const rigidbody={...selected.components.rigidbody};if(input.value==='shape')rigidbody.collider='shape';else delete rigidbody.collider;patch={components:{...selected.components,rigidbody}};}
+ else if(key==='components.rigidbody.collider'){const rigidbody={...selected.components.rigidbody};if(input.value==='shape'||input.value==='box')rigidbody.collider=input.value;else delete rigidbody.collider;patch={components:{...selected.components,rigidbody}};}
  else if(key.startsWith('components.')){const [,name,property]=key.split('.');const value=property==='autoplay'?input.value==='true':['type','clip','message'].includes(property)?input.value:Number(input.value);if(name==='rigidbody'&&property==='type'&&value!=='dynamic'&&selected.components.player){input.value='dynamic';toast('A player controller requires a dynamic rigid body.',true);return;}patch={components:{...selected.components,[name]:{...selected.components[name],[property]:value}}};}
  else if(key==='name')patch={name:input.value};else if(key==='parentId')patch={parentId:input.value||null};
  run(async()=>{try{await editor.updateEntity(selected.id,patch);}catch(error){renderInspector(true);throw error;}});

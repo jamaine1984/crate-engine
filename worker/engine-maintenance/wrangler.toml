@@ -1,4 +1,6 @@
-# Scheduled cleanup for private engine model storage. No public HTTP surface.
+# Daily housekeeping: private model files queued for deletion, finished visit days, expired sessions, tokens,
+# rate-limit rows and AI-connection leftovers. Every step is capped per run (platform/server/maintenance.mjs).
+# No public HTTP surface.
 # Deploy: npx wrangler deploy --config worker/engine-maintenance/wrangler.toml
 name = "crateship-engine-maintenance"
 main = "index.mjs"
@@ -7,7 +9,7 @@ workers_dev = false
 preview_urls = false
 
 [triggers]
-crons = ["23 * * * *"]
+crons = ["17 3 * * *"]   # 03:17 UTC every day
 
 [[d1_databases]]
 binding = "PLATFORM_DB"
