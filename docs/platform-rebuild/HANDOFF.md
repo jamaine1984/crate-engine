@@ -29,9 +29,9 @@ Procedural changes reject stale previews and require model preflight before comm
 
 ## Existing asset inventory and tags
 
-The remote and local selected catalogs each contain **4,077 distinct normalized GLB paths** from 4,122 source rows; 45 `.glb.tmp` rows are excluded by the loader. Existing names, category/tag metadata and binaries are preserved. Catalog search/category filtering, total/matching counts and Show more avoid presenting the first 80 cards as the entire library.
+The old 4,077-model catalog was deleted on purpose on 2026-09-28 (no backup). The Starter Library is now three rigged, animated characters (Human, Goat Kid, Blue Robot) in `starter-library/`.
 
-This is **not 4,077 verified working imports**, unique character identities, or newly curated tags. There are 1,037 category disagreements between catalogs, many broad/unclassified labels, and sampled files with external resources or JSON glTF stored under a `.glb` suffix that the safe importer rejects. Full binary/texture/license/rig/performance verification remains undone. See [asset inventory](asset-inventory.md); machine-readable CSV/JSON evidence is in the sibling `outputs/verification/` folder.
+Customers bring their own models or build them in Blender.
 
 ## Cloudflare setup and remaining prerequisites
 

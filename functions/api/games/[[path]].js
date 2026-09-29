@@ -636,7 +636,7 @@ async function publishGame(context) {
       htmlBytes: Number(payload.playable.htmlBytes) || 0,
       crateBytes: Number(payload.playable.crateBytes) || 0,
     } : null,
-    assetBaseUrl: payload.assetBaseUrl || 'https://crateship-games-assets.pages.dev',
+    assetBaseUrl: payload.assetBaseUrl || '',
     source: 'cloudflare-pages-kv',
     ownerHash,
     ownerUserId,

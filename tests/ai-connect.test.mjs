@@ -156,8 +156,8 @@ test('tool calls reach the linked editor tab; writes need "Allow changes"; resul
     const [refused] = await Promise.all([tool('get_object', { id: 'abc' }), bad]);
     assert.equal(refused.result.isError, true);
     assert.equal((await tool('add_library_model', { path: 'not/in/library' })).result.isError, true);
-    const library = await tool('list_library_models', { category: 'dungeon' });
-    assert.equal(library.result.structuredContent.count, 7);
+    const library = await tool('list_library_models', { category: 'people' });
+    assert.equal(library.result.structuredContent.count, 1); assert.equal((await tool('list_library_models')).result.structuredContent.count, 3);
   } finally { f.sql.close(); }
 });
 

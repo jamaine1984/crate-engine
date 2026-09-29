@@ -32,7 +32,7 @@ Deploy one with `npx wrangler deploy --config <config path>`.
 
 - D1 database `crateship-platform-v1` (binding `PLATFORM_DB`). To read it: `npx wrangler d1 execute crateship-platform-v1 --remote --command "SELECT ..."`.
 - R2 bucket `crateship-games-user-assets` holds uploads, screenshots and private models. `crateship-published-games` holds released game files.
-- The 3D model library is served from a separate Pages project (`crateship-games-assets`), so `dist`-only deploys are safe.
+- There is no separate model host any more. The old 4,000+ model catalog and its Pages project (`crateship-games-assets`) were deleted on purpose (owner decision, 2026-09-28). The three Starter Library characters ship inside `dist` from `starter-library/`.
 
 ## Local preview
 

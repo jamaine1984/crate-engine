@@ -2,7 +2,7 @@ import {createCommandRunner} from './mcp-client.mjs';
 import {normalizeCatalog} from './catalog.mjs';
 import {esc,icon} from './panels.mjs';
 
-/** Starter Library records keyed by their catalog path ("kenney_dungeon/wall"). */
+/** Starter Library records keyed by their catalog path ("human"). */
 let libraryIndex=null;
 export async function resolveLibraryModel(path,fetchFn=fetch){
  if(!libraryIndex){

@@ -375,7 +375,7 @@ export async function mcpTools() {
   const editorTools = await toolDefinitions();
   return [
     { name: 'editor_status', title: 'Editor status', description: 'Check whether the user has a Crate Ship editor tab open for AI apps, which project it shows, and whether changes are allowed. Call this first.', inputSchema: objectSchema({}), annotations: { readOnlyHint: true } },
-    { name: 'list_library_models', title: 'List library models', description: 'List the Starter Library: 100 tested 3D models (characters, enemies, animals, platformer pieces, nature, buildings, props, dungeon and pirate kits, weapons, vehicles, furniture). Filter by category or search text. Place one with add_library_model.', inputSchema: objectSchema({ category: { type: 'string', maxLength: 60 }, search: { type: 'string', maxLength: 60 } }), annotations: { readOnlyHint: true } },
+    { name: 'list_library_models', title: 'List library models', description: 'List the Starter Library: three rigged, animated characters (Human, Goat Kid and Blue Robot, each with Walking and Running clips). It is deliberately tiny. For anything else, build it in the scene from shapes, customMesh vector art or procedural recipes, or ask the user to import their own model. Place one with add_library_model.', inputSchema: objectSchema({ category: { type: 'string', maxLength: 60 }, search: { type: 'string', maxLength: 60 } }), annotations: { readOnlyHint: true } },
     ...editorTools,
   ];
 }

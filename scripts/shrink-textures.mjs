@@ -1,0 +1,20 @@
+// Shrinks textures (max 1024 px, WebP) so a character is light enough for a web game. Usage: node scripts/shrink-textures.mjs <in.glb> <out.glb>
+import { readFileSync, mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import path from 'node:path';
+const repo = fileURLToPath(new URL('../', import.meta.url)).replaceAll('\\', '/');
+const req = createRequire(repo + 'package.json');
+const imp = name => import(pathToFileURL(req.resolve(name)).href);
+const { NodeIO } = await imp('@gltf-transform/core');
+const { KHRONOS_EXTENSIONS } = await imp('@gltf-transform/extensions');
+const { textureCompress, prune, dedup } = await imp('@gltf-transform/functions');
+const sharp = (await imp('sharp')).default;
+const [input, output, size = '1024'] = process.argv.slice(2);
+const io = new NodeIO().registerExtensions(KHRONOS_EXTENSIONS);
+const doc = await io.read(input);
+await doc.transform(prune(), dedup(), textureCompress({ encoder: sharp, targetFormat: 'png', resize: [Number(size), Number(size)], quality: 85 }));
+mkdirSync(path.dirname(output), { recursive: true });
+await io.write(output, doc);
+const root = doc.getRoot();
+console.log('extensionsUsed:', root.listExtensionsUsed().map(e=>e.extensionName).join(',')||'none');console.log(path.basename(output), (readFileSync(output).length / 1e6).toFixed(2) + ' MB', 'skins', root.listSkins().length, 'anims', root.listAnimations().map(a => a.getName()).join('|'));

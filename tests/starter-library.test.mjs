@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, access } from 'node:fs/promises';
+import { readFile, readdir, access } from 'node:fs/promises';
 import { normalizeCatalog, catalogCategories } from '../engine/editor/catalog.mjs';
 import { newProject, validateProject, STARTER_MODEL_URL } from '../engine/core/schema.mjs';
 import { inspectGLB } from '../engine/core/gltf.mjs';
@@ -10,36 +10,40 @@ const root = new URL('../starter-library/', import.meta.url);
 const catalog = JSON.parse(await readFile(new URL('catalog.json', root), 'utf8'));
 const picks = JSON.parse(await readFile(new URL('picks.json', root), 'utf8'));
 
-test('starter catalog holds exactly the owner\'s 100 picks', () => {
+test('the starter library is exactly three characters', () => {
   const items = normalizeCatalog(catalog);
-  assert.equal(items.length, 100);
-  assert.deepEqual(items.map(i => i.path.replace(/^models\//, '').replace(/\.glb$/, '').toLowerCase()).sort(), picks.keep.map(p => p.toLowerCase()).sort());
-  assert.ok(catalogCategories(items).length >= 10);
+  assert.equal(items.length, 3);
+  assert.deepEqual(items.map(i => i.path.replace(/^models\//, '').replace(/\.glb$/, '')).sort(), [...picks.keep].sort());
+  assert.deepEqual(catalogCategories(items).map(([cat]) => cat), ['Creatures', 'People', 'Robots']);
+  assert.equal(items.filter(i => i.cat === 'People').length, 1, 'exactly one human');
 });
 
-test('every starter model has a thumbnail file, and repaired models point at the site copy', async () => {
-  const repair = new Set(picks.needsTextureRepair.map(p => p.toLowerCase()));
+test('every starter model is a real, rigged, web-sized GLB served from the site, with a thumbnail', async () => {
   for (const item of catalog.models) {
+    assert.ok(STARTER_MODEL_URL.test(item.url), item.path);
     assert.match(item.thumb, /^\/starter-library\/thumbs\/[a-z0-9_]+\.webp$/);
     await access(new URL('..' + item.thumb, root));
-    if (repair.has(item.path.toLowerCase())) assert.ok(STARTER_MODEL_URL.test(item.url), item.path);
-    else assert.equal(item.url, undefined, item.path);
-  }
-});
-
-test('repaired models carry their texture inside the GLB', async () => {
-  for (const item of catalog.models.filter(i => i.url)) {
     const bytes = new Uint8Array(await readFile(new URL('..' + item.url, root)));
+    assert.ok(bytes.length < 5 * 1024 * 1024, item.path + ' stays under 5 MB so it loads fast');
     const { document } = inspectGLB(bytes);
-    assert.ok(document.images.length > 0, item.path);
-    for (const image of document.images) { assert.equal(image.uri, undefined, item.path); assert.equal(typeof image.bufferView, 'number'); }
+    assert.ok(document.skins?.length > 0, item.path + ' is rigged');
+    assert.deepEqual((document.animations || []).map(a => a.name).sort(), ['Running', 'Walking'], item.path + ' has Walking and Running clips');
+    const joints = new Set(document.skins[0].joints);
+    for (const animation of document.animations) for (const channel of animation.channels) assert.ok(joints.has(channel.target.node), item.path + ': every animation channel drives a bone of its skeleton');
+    for (const image of document.images || []) assert.equal(image.uri, undefined, item.path + ' has no outside textures');
   }
 });
 
-test('projects keep starter model URLs and drop look-alikes', () => {
+test('nothing else is left in the library folders (the old catalog was deleted on purpose)', async () => {
+  assert.deepEqual((await readdir(new URL('models/', root))).sort(), catalog.models.map(m => m.url.split('/').pop()).sort());
+  assert.deepEqual((await readdir(new URL('thumbs/', root))).sort(), catalog.models.map(m => m.thumb.split('/').pop()).sort());
+  for (const gone of ['textures', 'models/kenney_dungeon', 'models/kenney_pirate']) await assert.rejects(access(new URL(gone, root)), gone);
+});
+
+test('projects keep starter model URLs and drop look-alikes, including the retired asset host', () => {
   const base = newProject('Starter');
-  const keep = { id: 'a', name: 'Wall', source: 'catalog', url: '/starter-library/models/kenney_dungeon/wall.glb' };
-  const bad = ['/starter-library/models/../secret.glb', '//evil.example/starter-library/models/x.glb', '/starter-library/thumbs/x.webp', 'https://evil.example/starter-library/models/x.glb'];
+  const keep = { id: 'a', name: 'Goat', source: 'catalog', url: '/starter-library/models/goat_kid.glb' };
+  const bad = ['/starter-library/models/../secret.glb', '//evil.example/starter-library/models/x.glb', '/starter-library/thumbs/x.webp', 'https://evil.example/starter-library/models/x.glb', 'https://crateship-games-assets.pages.dev/models/kenney_cars/sedan.glb'];
   const project = validateProject({ ...base, assets: [keep, ...bad.map((url, n) => ({ id: 'b' + n, name: 'x', source: 'catalog', url }))] });
   assert.equal(project.assets[0].url, keep.url);
   for (const asset of project.assets.slice(1)) assert.equal(asset.url, undefined, asset.id);
