@@ -1,4 +1,5 @@
 import {cleanEntity,ENTITY_TYPES} from './schema.mjs';
+import {MATERIAL_SCHEMA} from './material.mjs';
 
 export const WORLD_LIMITS=Object.freeze({operations:64,generatedEntities:500,totalEntities:5000,totalLights:32,recipeBytes:131072});
 const number=(minimum,maximum)=>({type:'number',minimum,maximum});
@@ -22,7 +23,7 @@ export const COMPONENT_SCHEMAS=freeze({
 const components=object(COMPONENT_SCHEMAS);
 const entity=object({
  type:{enum:[...ENTITY_TYPES]},name:text(100),position:vector,rotation:tuple(3,number(-36000,36000)),scale:tuple(3,number(.001,10000)),visible:{type:'boolean'},
- material:object({color,metalness:number(0,1),roughness:number(0,1)}),
+ material:MATERIAL_SCHEMA,
  light:object({color,intensity:number(0,1000),distance:number(0,10000)}),components,shape:customShape,
  assetId:text(100,{pattern:'^[A-Za-z0-9_-]+$'})
 },['type']);

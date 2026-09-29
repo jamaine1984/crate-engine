@@ -7,6 +7,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {createPost} from './post.mjs';
 import {createAtmosphere} from './atmosphere.mjs';
 import {createInstancer,performanceTips} from './instancing.mjs';
+import {createSurfaceLibrary,createEntityMaterial,materialSignature,worldScaleUVs,surfaceTile} from './materials.mjs';
 import {computeBoundsTree,disposeBoundsTree,acceleratedRaycast} from 'three-mesh-bvh';
 import {inspectGLB} from '../core/gltf.mjs';
 import {createVectorObject} from './vector-shape.mjs';
@@ -21,7 +22,7 @@ export function applyTransform(object,entity){object.position.fromArray(entity.p
 
 function release(object){
  const geometries=new Set(),materials=new Set(),textures=new Set();
- object.traverse(o=>{if(o.geometry)geometries.add(o.geometry);for(const material of Array.isArray(o.material)?o.material:[o.material])if(material){materials.add(material);for(const value of Object.values(material))if(value?.isTexture)textures.add(value);}});
+ object.traverse(o=>{if(o.geometry)geometries.add(o.geometry);for(const material of Array.isArray(o.material)?o.material:[o.material])if(material){materials.add(material);for(const value of Object.values(material))if(value?.isTexture&&!value.userData.shared)textures.add(value);}});
  for(const geometry of geometries){geometry.disposeBoundsTree?.();geometry.dispose();}
  for(const material of materials)material.dispose();
  for(const texture of textures)texture.dispose();
@@ -41,7 +42,7 @@ export function createModelInstance(gltf,entity,{onLog=()=>{}}={}){
  return {object,mixer};
 }
 
-export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidate=()=>{}}){
+export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidate=()=>{},surfaceBase='/starter-library/surfaces/'}){
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
  renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.shadowMap.autoUpdate=true;
  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.info.autoReset=false;
@@ -50,7 +51,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  const ambient=new THREE.HemisphereLight('#e5f1ff','#353f2c',.8);scene.add(ambient);
  const pmrem=new THREE.PMREMGenerator(renderer),room=new RoomEnvironment(),environment=pmrem.fromScene(room,.04);
  scene.environment=environment.texture;room.dispose();pmrem.dispose();
- const atmosphere=createAtmosphere(THREE,{renderer,scene,defaultEnvironment:environment.texture}),post=createPost(THREE,{renderer,scene,camera,root}),instancer=createInstancer(THREE,{scene,onReady:()=>onInvalidate()});
+ const atmosphere=createAtmosphere(THREE,{renderer,scene,defaultEnvironment:environment.texture}),post=createPost(THREE,{renderer,scene,camera,root}),instancer=createInstancer(THREE,{scene,onReady:()=>onInvalidate()}),surfaces=createSurfaceLibrary(THREE,{base:surfaceBase,onLoad:()=>onInvalidate()});
  const objects=new Map(),entries=new Map(),loaded=new Map(),missing=new Map(),gate=createGenerationGate();
  const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
  let project=null,disposed=false,width=1,height=1,shadowWarning=false;
@@ -86,7 +87,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
    object=new THREE.PointLight(entity.light.color,entity.light.intensity,entity.light.distance,2);object.shadow.mapSize.set(512,512);object.shadow.bias=-.001;
   }else if(entity.type==='camera')object=new THREE.PerspectiveCamera(55,1,.05,3000);
   else if(entity.type==='empty')object=new THREE.Group();
-  else{object=new THREE.Mesh(geometry(entity.type),new THREE.MeshStandardMaterial({...entity.material}));object.userData.instanceKey='primitive|'+entity.type+'|'+JSON.stringify(entity.material);}
+  else{const shape=geometry(entity.type);if(entity.material.surface)worldScaleUVs(shape,entity.scale,surfaceTile(entity.material));object=new THREE.Mesh(shape,createEntityMaterial(THREE,entity.material,surfaces));object.userData.instanceKey='primitive|'+entity.type+'|'+JSON.stringify(materialSignature(entity));}
   object.traverse(child=>{if(child.isMesh){child.castShadow=!isWaterObject(child);child.receiveShadow=true;}child.userData.entityId=entity.id;});
   const entry={object,mixer,assetKey,signature,error:null};
   if(!gate.current(token)){disposeEntry(entry);return null;}
@@ -106,7 +107,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   try{
    for(const entity of snapshot.entities){
     if(!gate.current(token))return {superseded:true};
-    const asset=assets.get(entity.assetId),signature=JSON.stringify([entity.type,entity.assetId?assetCacheKey(asset):null,entity.components.animation,entity.components.water||null,entity.type==='model'?null:entity.material,entity.type==='customMesh'?entity.shape:null,entity.light]);
+    const asset=assets.get(entity.assetId),signature=JSON.stringify([entity.type,entity.assetId?assetCacheKey(asset):null,entity.components.animation,entity.components.water||null,entity.type==='model'?null:materialSignature(entity),entity.type==='customMesh'?entity.shape:null,entity.light]);
     let entry=entries.get(entity.id);
     if(!entry||entry.signature!==signature||entry.error){
      try{entry=await createEntry(entity,asset,token,signature);}
@@ -155,6 +156,6 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
  function resetAnimations(){for(const entry of entries.values()){if(entry.mixer){entry.mixer.setTime(0);}}}
  function effectivelyVisible(object){for(let node=object;node;node=node.parent)if(node.visible===false)return false;return !!object;}
  function gameCamera(){const active=project?.entities.find(entity=>entity.type==='camera'&&effectivelyVisible(objects.get(entity.id)));return active?objects.get(active.id):null;}
- async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);instancer.dispose();atmosphere.dispose();post.dispose();environment.dispose();renderer.dispose();}
+ async function dispose(){if(disposed)return;disposed=true;gate.close();for(const entry of entries.values())entry.object.removeFromParent();for(const entry of entries.values())disposeEntry(entry);entries.clear();objects.clear();missing.clear();for(const key of [...loaded.keys()])disposeCache(key);instancer.dispose();surfaces.dispose();atmosphere.dispose();post.dispose();environment.dispose();renderer.dispose();}
  return {THREE,renderer,scene,root,camera,objects,post,atmosphere,instancer,performanceReport,sync,preflightAssets,assertComplete,resize,render,capture,tick,hasWater,resetAnimations,dispose,gameCamera};
 }

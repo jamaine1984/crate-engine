@@ -1,6 +1,7 @@
 import { WORLD_RECIPE_SCHEMA, COMPONENT_SCHEMAS, validateWorldRecipeShape } from '../../engine/core/procedural.mjs';
 import { ENTITY_TYPES } from '../../engine/core/schema.mjs';
 import { LOOK_VALIDATORS, LOOK_SCHEMA } from '../../engine/core/look.mjs';
+import { validMaterial as validMaterialFields, MATERIAL_SCHEMA } from '../../engine/core/material.mjs';
 export const LIMITS = Object.freeze({ maxBodyBytes: 524288, maxPending: 8, maxHistory: 1000, commandTimeoutMs: 30000, sessionIdleMs: 90000, maxSceneEntities: 250, maxWorldEntities: 500 });
 export const plain = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 export const keys = (x, allowed) => plain(x) && Object.keys(x).every(k => allowed.includes(k));
@@ -38,7 +39,7 @@ function validShape(x){
  let total=0;
  return x.paths.every(p=>keys(p,['points','color','depth'])&&Array.isArray(p.points)&&p.points.length>=3&&p.points.length<=256&&(total+=p.points.length)<=8000&&p.points.every(point=>vector(point,2,-100,100))&&color(p.color)&&maybe(p,'depth',n=>finite(n,-100,100)));
 }
-const validMaterial = x => keys(x,['color','metalness','roughness']) && maybe(x,'color',color) && maybe(x,'metalness',n=>finite(n,0,1)) && maybe(x,'roughness',n=>finite(n,0,1));
+const validMaterial = x => validMaterialFields(x);
 const validLight = x => keys(x,['color','intensity','distance']) && maybe(x,'color',color) && maybe(x,'intensity',n=>finite(n,0,1000)) && maybe(x,'distance',n=>finite(n,0,10000));
 function validComponents(x) {
  if(!keys(x,COMPONENT_NAMES))return false;
@@ -128,7 +129,7 @@ const SETTINGS_SCHEMA=objectSchema({background:colorSchema,gravity:numberSchema(
  killY:{...numberSchema(-10000,10000),description:'Players who fall below this height lose a life and respawn.'},lives:{type:'integer',minimum:0,maximum:99,description:'Lives per run; 0 means unlimited.'},...LOOK_SCHEMA});
 const SHAPE_SCHEMA={...objectSchema({paths:{type:'array',minItems:1,maxItems:64,items:{...objectSchema({points:{type:'array',minItems:3,maxItems:256,items:{type:'array',minItems:2,maxItems:2,items:numberSchema(-100,100)}},color:colorSchema,depth:numberSchema(-100,100)}),required:['points','color']}}}),required:['paths'],description:'customMesh vector art: up to 64 filled polygons (x,y points), each with a colour and optional depth. Only valid on customMesh objects.'};
 const PATCH_SCHEMA=objectSchema({name:{type:'string',minLength:1,maxLength:100},shape:SHAPE_SCHEMA,position:vectorSchema(-1e6,1e6),rotation:vectorSchema(-36000,36000),scale:vectorSchema(.001,10000),visible:{type:'boolean'},
- material:objectSchema({color:colorSchema,metalness:numberSchema(0,1),roughness:numberSchema(0,1)}),light:objectSchema({color:colorSchema,intensity:numberSchema(0,1000),distance:numberSchema(0,10000)}),
+ material:MATERIAL_SCHEMA,light:objectSchema({color:colorSchema,intensity:numberSchema(0,1000),distance:numberSchema(0,10000)}),
  components:{...objectSchema(Object.fromEntries(Object.entries(COMPONENT_SCHEMAS).map(([name,schema])=>[name,{oneOf:[schema,{type:'null'}]}]))),description:'Each listed component replaces that component; null removes it. Unlisted components are kept.'}});
 const EDIT_SCHEMA={...objectSchema({summary:{type:'string',maxLength:200},operations:{type:'array',minItems:1,maxItems:50,items:{oneOf:[
  {...objectSchema({op:{const:'update'},id:idSchema,patch:PATCH_SCHEMA}),required:['op','id','patch']},

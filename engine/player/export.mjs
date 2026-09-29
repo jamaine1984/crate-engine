@@ -1,3 +1,4 @@
+import {SURFACE_MAPS} from '../core/material.mjs';
 import {zipSync,strToU8} from 'fflate';
 import {validateProject} from '../core/schema.mjs';
 import {inspectGLB,hashBytes,MAX_MODEL_BYTES} from '../core/gltf.mjs';
@@ -45,6 +46,9 @@ export async function exportGameZip(input,resolveAsset){
  project.assets=project.assets.filter(asset=>referenced.has(asset.id));
  let total=0;
  for(const asset of project.assets){const bytes=await exactModelBytes(asset,resolveAsset);total+=bytes.length;if(total>MAX_EXPORT_MODEL_BYTES)throw new Error('Web export is limited to 80 MB of models.');files['assets/'+asset.id+'.glb']=bytes;portableAsset(asset);}
+ // Built-in surface textures used by this scene travel with the game (CC0).
+ const surfaces=new Set(project.entities.map(entity=>entity.material?.surface).filter(Boolean));
+ for(const surface of surfaces)for(const map of SURFACE_MAPS)files[`surfaces/${surface}/${map}.jpg`]=await distributionFile(`/starter-library/surfaces/${surface}/${map}.jpg`,8*1024*1024,'Surface texture '+surface);
  delete project.legacySource;delete project.migrationWarnings;
  const runtime=await distributionFile('/engine/distribution/game-runtime.js',32*1024*1024,'Game runtime');
  const code=new TextDecoder().decode(runtime);if(!code.includes('CrateGame'))throw new Error('The bundled game runtime is invalid.');

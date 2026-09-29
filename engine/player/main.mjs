@@ -26,7 +26,7 @@ async function initialize(canvas,score){
  const request=async(path,limit)=>{const response=await fetch(path,{signal:AbortSignal.any([lifetime.signal,AbortSignal.timeout(30000)]),credentials:'omit',redirect:'error'});if(!response.ok)throw new Error('Missing game file: '+path);return readBytes(response,limit);};
  try{
   const project=validateProject(JSON.parse(new TextDecoder().decode(await request('project.json',16*1024*1024))));
-  view=createSceneRuntime({canvas,resolveAsset:async asset=>{const bytes=await request('assets/'+encodeURIComponent(asset.id)+'.glb',MAX_MODEL_BYTES);if(asset.sha256&&await hashBytes(bytes)!==asset.sha256)throw new Error('Game model checksum does not match: '+asset.name);return bytes;}});
+  view=createSceneRuntime({canvas,surfaceBase:'surfaces/',resolveAsset:async asset=>{const bytes=await request('assets/'+encodeURIComponent(asset.id)+'.glb',MAX_MODEL_BYTES);if(asset.sha256&&await hashBytes(bytes)!==asset.sha256)throw new Error('Game model checksum does not match: '+asset.name);return bytes;}});
   await view.sync(project);view.assertComplete();view.resize();if(disposed)throw new Error('Game startup was cancelled.');
   const camera=view.gameCamera(),cameraPosition=new THREE.Vector3(),cameraRotation=new THREE.Quaternion(),playerPosition=new THREE.Vector3();
   // Side-view games keep the authored camera framing and follow the player (see side-follow.mjs), matching the editor preview.

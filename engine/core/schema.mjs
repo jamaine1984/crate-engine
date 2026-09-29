@@ -1,4 +1,5 @@
 import {cleanLook} from './look.mjs';
+import {cleanMaterial} from './material.mjs';
 export const FORMAT='crateship-project';
 export const VERSION=4;
 // Starter Library models repaired for the engine are served from the site itself.
@@ -58,7 +59,7 @@ export function cleanEntity(value={}){
  if(components.player&&(components.goal||components.hazard||components.checkpoint))throw new Error('The player cannot also be a goal, hazard, or checkpoint.');
  return {id:safeId(value.id),name:text(value.name,100,value.type),type:value.type,parentId:value.parentId?safeId(value.parentId):null,
   position:vec(value.position,[0,.5,0]),rotation:vec(value.rotation,[0,0,0],-36000,36000),scale:vec(value.scale,[1,1,1],.001,10000),visible:value.visible!==false,
-  material:{color:/^#[a-fA-F0-9]{6}$/.test(value.material?.color)?value.material.color:'#8ebfa6',metalness:finite(value.material?.metalness,.05,0,1),roughness:finite(value.material?.roughness,.65,0,1)},
+  material:cleanMaterial(value.material),
   light:{color:/^#[a-fA-F0-9]{6}$/.test(value.light?.color)?value.light.color:'#fff1dd',intensity:finite(value.light?.intensity,3,0,1000),distance:finite(value.light?.distance,30,0,10000)},
   components,...(value.type==='customMesh'?{shape:cleanShape(value.shape)}:{}),...(value.assetId?{assetId:safeId(value.assetId)}:{})};
 }
