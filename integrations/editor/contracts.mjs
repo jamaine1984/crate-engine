@@ -2,6 +2,7 @@ import { WORLD_RECIPE_SCHEMA, COMPONENT_SCHEMAS, validateWorldRecipeShape } from
 import { ENTITY_TYPES } from '../../engine/core/schema.mjs';
 import { LOOK_VALIDATORS, LOOK_SCHEMA } from '../../engine/core/look.mjs';
 import { validMaterial as validMaterialFields, MATERIAL_SCHEMA } from '../../engine/core/material.mjs';
+import { validTerrain } from '../../engine/core/terrain.mjs';
 export const LIMITS = Object.freeze({ maxBodyBytes: 524288, maxPending: 8, maxHistory: 1000, commandTimeoutMs: 30000, sessionIdleMs: 90000, maxSceneEntities: 250, maxWorldEntities: 500 });
 export const plain = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 export const keys = (x, allowed) => plain(x) && Object.keys(x).every(k => allowed.includes(k));
@@ -50,6 +51,7 @@ function validComponents(x) {
   maybe(x,'animation',r=>keys(r,['clip','autoplay','speed'])&&maybe(r,'clip',n=>text(n,120))&&maybe(r,'autoplay',n=>typeof n==='boolean')&&maybe(r,'speed',n=>finite(n,.01,5))) &&
   maybe(x,'goal',r=>keys(r,['message'])&&maybe(r,'message',n=>text(n,120))) && maybe(x,'hazard',r=>keys(r,[])) && maybe(x,'checkpoint',r=>keys(r,[])) &&
   maybe(x,'water',r=>keys(r,['waveHeight','waveLength','speed','choppiness','opacity','deepColor','foam'])&&maybe(r,'waveHeight',n=>finite(n,0,5))&&maybe(r,'waveLength',n=>finite(n,4,200))&&maybe(r,'speed',n=>finite(n,0,5))&&maybe(r,'choppiness',n=>finite(n,0,1))&&maybe(r,'opacity',n=>finite(n,.3,1))&&maybe(r,'deepColor',color)&&maybe(r,'foam',n=>typeof n==='boolean')) &&
+  maybe(x,'terrain',validTerrain) &&
   maybe(x,'mover',r=>keys(r,['offset','period'])&&maybe(r,'offset',n=>vector(n,3,-1000,1000))&&maybe(r,'period',n=>finite(n,.2,120)));
 }
 function entity(x, snapshot=false) {

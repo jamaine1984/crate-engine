@@ -1,4 +1,5 @@
 import {createWaterMesh,isWaterObject,updateWaterTime} from './water.mjs';
+import {createTerrainMesh} from './terrain.mjs';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
@@ -81,6 +82,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
    ({object,mixer}=createModelInstance(gltf,entity,{onLog}));assetKey=assetCacheKey(asset);
   }else if(entity.type==='customMesh')object=createVectorObject(THREE,entity.shape);
   else if(entity.type==='plane'&&entity.components?.water)object=createWaterMesh(THREE,entity);
+  else if(entity.type==='plane'&&entity.components?.terrain)object=createTerrainMesh(THREE,entity,surfaces);
   else if(entity.type==='directionalLight'){
    object=new THREE.DirectionalLight(entity.light.color,entity.light.intensity);object.userData.baseIntensity=entity.light.intensity;object.target.position.set(0,0,0);
   }else if(entity.type==='pointLight'){
@@ -107,7 +109,7 @@ export function createSceneRuntime({canvas,resolveAsset,onLog=()=>{},onInvalidat
   try{
    for(const entity of snapshot.entities){
     if(!gate.current(token))return {superseded:true};
-    const asset=assets.get(entity.assetId),signature=JSON.stringify([entity.type,entity.assetId?assetCacheKey(asset):null,entity.components.animation,entity.components.water||null,entity.type==='model'?null:materialSignature(entity),entity.type==='customMesh'?entity.shape:null,entity.light]);
+    const asset=assets.get(entity.assetId),signature=JSON.stringify([entity.type,entity.assetId?assetCacheKey(asset):null,entity.components.animation,entity.components.water||null,entity.components.terrain?[entity.components.terrain,entity.scale,entity.position[1]]:null,entity.type==='model'?null:materialSignature(entity),entity.type==='customMesh'?entity.shape:null,entity.light]);
     let entry=entries.get(entity.id);
     if(!entry||entry.signature!==signature||entry.error){
      try{entry=await createEntry(entity,asset,token,signature);}

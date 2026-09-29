@@ -60,7 +60,7 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
 
  try{
   for(const entity of project.entities){
-   const object=objects.get(entity.id),rigidbody=entity.components.rigidbody,mover=entity.components.mover;
+   const object=objects.get(entity.id),terrain=entity.components.terrain,rigidbody=entity.components.rigidbody||(terrain?{type:'static',collider:'shape'}:null),mover=entity.components.mover;
    if(!object||!(rigidbody||mover)||!visible(entity))continue;
    object.updateWorldMatrix(true,true);const position=object.getWorldPosition(new Vector3()),rotation=object.getWorldQuaternion(new Quaternion()),scale=object.getWorldScale(new Vector3()),box=new Box3(),inverse=object.matrixWorld.clone().invert();
    object.traverse(mesh=>{if(!mesh.geometry||mesh.userData.entityId&&mesh.userData.entityId!==entity.id)return;mesh.geometry.computeBoundingBox();box.union(mesh.geometry.boundingBox.clone().applyMatrix4(new Matrix4().multiplyMatrices(inverse,mesh.matrixWorld)));});
@@ -68,7 +68,7 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
    const kind=mover?'kinematic':rigidbody.type==='dynamic'?'dynamic':'static';
    const desc=kind==='dynamic'?R.RigidBodyDesc.dynamic():kind==='kinematic'?R.RigidBodyDesc.kinematicPositionBased():R.RigidBodyDesc.fixed();desc.setTranslation(position.x,position.y,position.z).setRotation(rotation);if(entity.components.player){desc.lockRotations();if(entity.components.player.sideView)desc.enabledTranslations(true,true,false);}
    const body=world.createRigidBody(desc),friction=rigidbody?.friction??.7,restitution=rigidbody?.restitution??0,mass=rigidbody?.mass??1;
-   const shaped=colliderKind(entity)==='shape'&&!entity.components.player?shapeColliders(entity,object,inverse,scale,size,center,kind):null;
+   const shaped=(terrain||colliderKind(entity)==='shape')&&!entity.components.player?shapeColliders(entity,object,inverse,scale,size,center,kind):null;
    // Flat 2D artwork gets real depth: Rapier resolves paper-thin boxes by pushing 3D bodies out sideways, so they fall through.
    const halfDepth=size.z<.05&&!entity.components.player?FLAT_HALF_DEPTH:Math.max(.01,size.z/2);
    const descs=shaped||[R.ColliderDesc.cuboid(Math.max(.01,size.x/2),Math.max(.01,size.y/2),halfDepth).setTranslation(center.x,center.y,center.z)];
