@@ -6,6 +6,7 @@ import {createSceneRuntime,THREE} from '../runtime/scene.mjs';
 import {createAmbience} from '../runtime/ambience.mjs';
 import {createPhysics} from '../runtime/physics.mjs';
 import {mountTouchControls} from '../runtime/touch-controls.mjs';
+import {mountLookControls} from '../runtime/look-controls.mjs';
 import {mountGameHud} from '../runtime/game-hud.mjs';
 // Keep the player bundle independent of the editor/exporter and its ZIP writer.
 async function readBytes(response,limit){
@@ -21,9 +22,9 @@ export function start(canvas,score){
  const run=initialize(canvas,score).finally(()=>pending.delete(canvas));pending.set(canvas,run);return run;
 }
 async function initialize(canvas,score){
- const lifetime=new AbortController();let view,controls,physics,touchControls,hud,resize,raf=0,disposed=false,restarting=false;
+ const lifetime=new AbortController();let view,controls,physics,touchControls,look,hud,resize,raf=0,disposed=false,restarting=false;
  const ambience=createAmbience();
- const dispose=async()=>{if(disposed)return;disposed=true;void ambience.dispose();lifetime.abort();cancelAnimationFrame(raf);resize?.disconnect();hud?.dispose();touchControls?.dispose();physics?.dispose();controls?.dispose();window.removeEventListener('pagehide',pageHide);instances.delete(canvas);await view?.dispose();};
+ const dispose=async()=>{if(disposed)return;disposed=true;void ambience.dispose();lifetime.abort();cancelAnimationFrame(raf);resize?.disconnect();hud?.dispose();touchControls?.dispose();look?.dispose();physics?.dispose();controls?.dispose();window.removeEventListener('pagehide',pageHide);instances.delete(canvas);await view?.dispose();};
  const pageHide=event=>{if(!event.persisted)dispose();};window.addEventListener('pagehide',pageHide);
  const request=async(path,limit)=>{const response=await fetch(path,{signal:AbortSignal.any([lifetime.signal,AbortSignal.timeout(30000)]),credentials:'omit',redirect:'error'});if(!response.ok)throw new Error('Missing game file: '+path);return readBytes(response,limit);};
  try{
@@ -33,9 +34,9 @@ async function initialize(canvas,score){
   const camera=view.gameCamera(),cameraPosition=new THREE.Vector3(),cameraRotation=new THREE.Quaternion(),playerPosition=new THREE.Vector3();
   // Side-view games keep the authored camera framing and follow the player (see side-follow.mjs), matching the editor preview.
   let follow=null;const follower=playerCameraFollower();
-  const followCamera=(dt=0)=>{if(!camera)return;camera.updateWorldMatrix(true,false);view.camera.position.copy(camera.getWorldPosition(cameraPosition));view.camera.quaternion.copy(camera.getWorldQuaternion(cameraRotation));if(follow){follow.updateWorldMatrix(true,false);follower.apply(follow.getWorldPosition(playerPosition),view.camera.position,dt);}};
+  const followCamera=(dt=0)=>{if(!camera)return;camera.updateWorldMatrix(true,false);view.camera.position.copy(camera.getWorldPosition(cameraPosition));view.camera.quaternion.copy(camera.getWorldQuaternion(cameraRotation));if(follow){follow.updateWorldMatrix(true,false);follower.apply(follow.getWorldPosition(playerPosition),view.camera.position,dt);if(follower.mode==='chase'){const t=follower.target;view.camera.lookAt(t.x,t.y,t.z);}}};
   const startFollow=()=>{follow=null;follower.stop();if(!camera||!physics)return;followCamera();const entity=project.entities.find(item=>item.components.player&&physics.bodies.has(item.id)),object=entity&&view.objects.get(entity.id);if(!object||isInside(camera,object))return;object.updateWorldMatrix(true,false);follower.start(object.getWorldPosition(playerPosition),view.camera.position,camera.fov,entity.components.player.sideView===true);follow=object;};
-  if(camera){view.camera.fov=camera.fov;view.camera.near=camera.near;view.camera.far=camera.far;view.camera.updateProjectionMatrix();followCamera();}
+  if(camera){view.camera.fov=camera.fov;view.camera.near=camera.near;view.camera.far=camera.far;view.camera.updateProjectionMatrix();followCamera();look=mountLookControls(canvas,{onLook:(yaw,pitch)=>follower.rotate(yaw,pitch),onZoom:factor=>follower.zoom(factor)});}
   else{controls=new OrbitControls(view.camera,canvas);controls.target.set(0,1,0);}
   // A round owns physics, touch controls and the HUD; Play again rebuilds all three from the untouched project.
   async function beginRound(){
@@ -54,7 +55,7 @@ async function initialize(canvas,score){
   ambience.start(project.settings);
   await beginRound();
   resize=new ResizeObserver(()=>view.resize());resize.observe(canvas);let last=performance.now();
-  const loop=time=>{if(disposed)return;raf=requestAnimationFrame(loop);const dt=Math.min((time-last)/1000,.05);last=time;if(document.hidden)return;physics?.step(dt);view.tick(dt);controls?.update();followCamera(dt);view.render();};raf=requestAnimationFrame(loop);
+  const loop=time=>{if(disposed)return;raf=requestAnimationFrame(loop);const dt=Math.min((time-last)/1000,.05);last=time;if(document.hidden)return;if(physics&&look){physics.setPadInput(look.poll(dt));physics.setViewYaw(follower.yaw);}physics?.step(dt);view.tick(dt);controls?.update();followCamera(dt);view.render();};raf=requestAnimationFrame(loop);
   const instance={dispose};instances.set(canvas,instance);return instance;
  }catch(error){await dispose();throw error;}
 }

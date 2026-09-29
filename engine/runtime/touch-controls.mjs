@@ -25,7 +25,7 @@ export function mountTouchControls(container,{onInput=()=>{},enabled=true,sideVi
  const root=doc.createElement('div');root.className='crate-touch-controls';root.setAttribute('role','group');root.setAttribute('aria-label','Touch game controls');
  root.dataset.sideView=String(sideView);
  const pad=doc.createElement('div');pad.className='crate-touch-pad';pad.setAttribute('role','group');pad.setAttribute('aria-label','Movement');
- const caption=doc.createElement('span');caption.className='crate-touch-caption';caption.textContent=enabled?(sideView?'Move left/right · Tap Jump':'Move with the pad · Tap Jump'):'This scene has no active player controller';
+ const caption=doc.createElement('span');caption.className='crate-touch-caption';caption.textContent=enabled?(sideView?'Move left/right · Tap Jump':'Move with the pad · Drag to look · Tap Jump'):'This scene has no active player controller';
  const buttons=new Map(),held=new Map(),keyboardPointers=new Set();let disposed=false;
  const state=createTouchState(value=>{onInput(value);for(const [action,button]of buttons)button.setAttribute('aria-pressed',String([...held.values()].includes(action)||keyboardPointers.has(action)));});
  const clear=()=>{const captured=[...held.entries()];held.clear();keyboardPointers.clear();state.clear();for(const button of buttons.values())button.setAttribute('aria-pressed','false');for(const [pointerId,action]of captured){const button=buttons.get(action);try{if(button.hasPointerCapture(pointerId))button.releasePointerCapture(pointerId);}catch{}}};

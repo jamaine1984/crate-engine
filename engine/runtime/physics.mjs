@@ -1,5 +1,6 @@
 import {Box3,Vector3,Quaternion,Matrix4,MathUtils} from 'three';
 import {colliderKind} from '../core/schema.mjs';
+const UP=new Vector3(0,1,0);
 let rapierPromise;
 const STEP=1/60,FLAT_HALF_DEPTH=.5,FLAT_TRIANGLE_LIMIT=4000,MESH_TRIANGLE_LIMIT=100000,HULL_POINT_LIMIT=20000,RESPAWN_GRACE=.75;
 
@@ -19,13 +20,19 @@ function localTriangles(entity,object,inverse,scale){
 export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{},onEvent=()=>{}}={}){
  rapierPromise??=import('@dimforge/rapier3d-compat').then(async module=>{await module.default.init();return module.default;});
  const R=await rapierPromise,world=new R.World({x:0,y:project.settings.gravity,z:0}),bodies=new Map(),keys=new Set(),collected=new Set(),heights=new Map();
- let accumulator=0,score=0,jumpPressed=false,disposed=false,input={x:0,z:0,jump:false},elapsed=0,status='playing';
+ let accumulator=0,score=0,jumpPressed=false,disposed=false,input={x:0,z:0,jump:false},pad={x:0,z:0,jump:false},viewYaw=null,elapsed=0,status='playing';
+ // 3D players turn to face where they walk (models are authored facing +Z); heading[id] = current yaw in radians.
+ const heading=new Map();
  // Side-view players face the way they last moved (art is authored facing right).
  const facing=new Map();
  const killY=Number.isFinite(project.settings.killY)?project.settings.killY:-30,maxLives=project.settings.lives||0;let lives=maxLives;
  const axis=value=>Number.isFinite(value)?Math.max(-1,Math.min(1,value)):0;
  function setInput(next={}){if(disposed)return;const jump=next.jump===true;if(jump&&!input.jump&&!keys.has('Space'))jumpPressed=true;input={x:axis(next.x),z:axis(next.z),jump};}
- function clearInput(){keys.clear();input={x:0,z:0,jump:false};jumpPressed=false;}
+ function clearInput(){keys.clear();input={x:0,z:0,jump:false};pad={x:0,z:0,jump:false};jumpPressed=false;}
+ /** Gamepad movement (left stick, A to jump), kept separate from touch input so both can be used. */
+ function setPadInput(next={}){if(disposed)return;const jump=next.jump===true;if(jump&&!pad.jump&&!input.jump&&!keys.has('Space'))jumpPressed=true;pad={x:axis(next.x),z:axis(next.z),jump};}
+ /** Yaw (radians) the game camera looks along; 3D movement becomes camera-relative. null = world axes. */
+ function setViewYaw(yaw){viewYaw=Number.isFinite(yaw)?yaw:null;}
  const down=event=>{if(event.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(event.code)){if(event.code==='Space'&&!keys.has(event.code)&&!input.jump)jumpPressed=true;keys.add(event.code);event.preventDefault();}};
  const up=event=>keys.delete(event.code),blur=()=>clearInput(),visibility=()=>{if(globalThis.document?.hidden)clearInput();};
  window.addEventListener('keydown',down);window.addEventListener('keyup',up);window.addEventListener('blur',blur);globalThis.document?.addEventListener?.('visibilitychange',visibility);
@@ -138,12 +145,13 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
    }
    for(const entity of project.entities){
     const body=bodies.get(entity.id);if(!body||!entity.components.player)continue;
-    const player=entity.components.player,active=status==='playing',x=active?axis(input.x+(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)):0,z=!active||player.sideView?0:axis(input.z+(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)),length=Math.max(1,Math.hypot(x,z)),velocity=body.linvel();let y=velocity.y;
+    const player=entity.components.player,active=status==='playing',rawX=active?axis(input.x+pad.x+(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)):0,rawZ=!active||player.sideView?0:axis(input.z+pad.z+(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)),turn=!player.sideView&&viewYaw!==null,x=turn?rawX*Math.cos(viewYaw)+rawZ*Math.sin(viewYaw):rawX,z=turn?-rawX*Math.sin(viewYaw)+rawZ*Math.cos(viewYaw):rawZ,length=Math.max(1,Math.hypot(x,z)),velocity=body.linvel();let y=velocity.y;
     const position=body.translation(),hit=world.castRay(new R.Ray({x:position.x,y:position.y,z:position.z},{x:0,y:-1,z:0}),(heights.get(entity.id)||.5)+.12,true,undefined,undefined,undefined,body);
     // Standing on a moving platform carries the player with it.
     const carrier=hit?movers.get(hit.collider.parent()?.handle):null,carryX=carrier?carrier.velocity.x:0,carryZ=carrier&&!player.sideView?carrier.velocity.z:0;
     if(active&&jumpPressed&&hit)y=player.jump;
     if(player.sideView&&x)facing.set(entity.id,x<0?-1:1);
+    if(!player.sideView&&(x||z)){const want=Math.atan2(x,z),rot=body.rotation(),from=heading.has(entity.id)?heading.get(entity.id):2*Math.atan2(rot.y,rot.w);let delta=Math.atan2(Math.sin(want-from),Math.cos(want-from));heading.set(entity.id,from+delta*Math.min(1,STEP*12));}
     body.setLinvel({x:x/length*player.speed+carryX,y,z:player.sideView?0:z/length*player.speed+carryZ},true);
    }
    buoyancy();jumpPressed=false;world.timestep=STEP;world.step();accumulator-=STEP;
@@ -151,11 +159,11 @@ export async function createPhysics(project,objects,{onScore=()=>{},onLog=()=>{}
   }
   for(const entity of ordered){
    const object=objects.get(entity.id);if(!object||!visible(entity))continue;const body=bodies.get(entity.id);
-   if(body){const position=body.translation(),rotation=body.rotation();object.position.set(position.x,position.y,position.z);if(object.parent)object.parent.worldToLocal(object.position);object.quaternion.set(rotation.x,rotation.y,rotation.z,rotation.w);if(object.parent)object.quaternion.premultiply(object.parent.getWorldQuaternion(new Quaternion()).invert());if(facing.has(entity.id))object.scale.x=Math.abs(object.scale.x)*facing.get(entity.id);}
+   if(body){const position=body.translation(),rotation=body.rotation();object.position.set(position.x,position.y,position.z);if(object.parent)object.parent.worldToLocal(object.position);object.quaternion.set(rotation.x,rotation.y,rotation.z,rotation.w);if(object.parent)object.quaternion.premultiply(object.parent.getWorldQuaternion(new Quaternion()).invert());if(facing.has(entity.id))object.scale.x=Math.abs(object.scale.x)*facing.get(entity.id);if(heading.has(entity.id)){object.quaternion.setFromAxisAngle(UP,heading.get(entity.id));if(object.parent)object.quaternion.premultiply(object.parent.getWorldQuaternion(new Quaternion()).invert());}}
    else if(entity.components.spin)object.rotation.y+=MathUtils.degToRad(entity.components.spin.speed)*dt;
   }
   const players=controllers.filter(entity=>visible(entity)&&bodies.has(entity.id)).map(entity=>objects.get(entity.id)).filter(Boolean);
   for(const entity of project.entities){if(!visible(entity)||!entity.components.collectible)continue;const object=objects.get(entity.id);if(object&&players.some(player=>player!==object&&player.getWorldPosition(new Vector3()).distanceTo(object.getWorldPosition(new Vector3()))<.85))collect(entity,object);}
  }
- return {step,world,bodies,setInput,clearInput,get input(){return {...input};},get state(){return {status,score,lives,maxLives};},dispose};
+ return {step,world,bodies,setInput,setPadInput,setViewYaw,clearInput,get input(){return {...input};},get state(){return {status,score,lives,maxLives};},dispose};
 }
