@@ -1,10 +1,12 @@
 import './styles.css';
+import './panel-scroll.css';
 import {api,listOf,messageFor} from './api.mjs';
 import {esc,icon,link,btn,notice,loading,feedback,input,downloadJson} from './ui.mjs';
 import {renderShell} from './shell.mjs';
 import {needsUser,homePage,catalogPage,gamePage,authPage,loginGate,collectionPage,walletPage,profilePage,settingsPage,projectsPage,creatorsPage,aiAppsPage} from './pages.mjs';
 import {developerPage,ownerPage} from './creator-pages.mjs';
 import {docsPage,staticPage} from './content.mjs';
+import {legalPage,LEGAL_PATHS} from './legal.mjs';
 import {mountIsolatedPlayer} from './player-bridge.mjs';
 import {trackVisit} from './visit.mjs';
 import {qrSvg,groupKey} from './qr.mjs';
@@ -14,7 +16,7 @@ import {firebaseSignUp,firebasePasswordToken,firebaseGoogleToken,firebaseResetPa
 const state={user:null,config:{flags:{},auth:{},limits:{}},library:[],history:[],favoriteIds:new Set(),preferences:{},serviceError:null};
 let routeGeneration=0;let activePlayer=null;let activeSession=null;let uploadRunning=false;
 const app=document.getElementById('app');
-const clientRoots=['games','game','creators','community','support','marketplace','coming-soon','favorites','library','history','rewards','profile','settings','notifications','login','signup','forgot-password','reset-password','verify-email','engine','developer','developers','owners-portal','privacy','terms'];
+const clientRoots=[...LEGAL_PATHS.map(path=>path.slice(1)),'games','game','creators','community','support','marketplace','coming-soon','favorites','library','history','rewards','profile','settings','notifications','login','signup','forgot-password','reset-password','verify-email','engine','developer','developers','owners-portal','privacy','terms'];
 function notify(text,error=false){const el=document.createElement('div');el.className='toast'+(error?' error':'');el.textContent=text;document.getElementById('toasts').append(el);setTimeout(()=>el.remove(),6500);}
 function safeNext(){const next=new URLSearchParams(location.search).get('next')||'/profile';return next.startsWith('/')&&!next.startsWith('//')&&!next.startsWith('/api/')?next:'/profile';}
 const firebaseConfig=()=>state.config.auth?.firebase||null;
@@ -22,7 +24,7 @@ async function completeFirebaseSignIn(token){const data=await api('/auth/firebas
 async function freshFirebaseToken(password){if(state.user?.signInProvider==='google.com')return firebaseGoogleToken(firebaseConfig());if(!password)throw new Error('Enter your password to confirm it is you.');return firebasePasswordToken(firebaseConfig(),state.user.email,password);}
 async function refreshSession(){const data=await api('/me');state.user=data.user||null;if(state.user){const results=await Promise.allSettled([api('/library'),api('/history'),api('/preferences'),api('/favorites')]);state.library=results[0].status==='fulfilled'?listOf(results[0].value):[];state.history=results[1].status==='fulfilled'?listOf(results[1].value):[];state.preferences=results[2].status==='fulfilled'?results[2].value.preferences||{}:{};state.favoriteIds=new Set(results[3].status==='fulfilled'?listOf(results[3].value).map(g=>g.id||g.gameId):[]);state.user.preferences=state.preferences;}else{state.library=[];state.history=[];state.favoriteIds=new Set();state.preferences={};}document.documentElement.dataset.reducedMotion=state.preferences.reducedMotion?'true':'false';}
 function closeMenu(){document.getElementById('sidebar')?.classList.remove('open');document.querySelector('.drawer-overlay')?.classList.remove('open');document.querySelector('[data-action=menu]')?.setAttribute('aria-expanded','false');}
-async function navigate(path,replace=false){if(/^\/oauth\//.test(path)){location.assign(path);return;}if(uploadRunning&&!confirm('An upload is in progress. Leaving this page will interrupt it. Continue?'))return;if(replace)history.replaceState({},'',path);else history.pushState({},'',path);closeMenu();await render();window.scrollTo({top:0,behavior:'instant'});document.getElementById('main-content')?.focus({preventScroll:true});}
+async function navigate(path,replace=false){if(/^\/oauth\//.test(path)){location.assign(path);return;}if(uploadRunning&&!confirm('An upload is in progress. Leaving this page will interrupt it. Continue?'))return;if(replace)history.replaceState({},'',path);else history.pushState({},'',path);closeMenu();window.scrollTo({top:0,behavior:'instant'});await render();document.getElementById('main-content')?.focus({preventScroll:true});}
 async function render(){
  trackVisit();
  const generation=++routeGeneration;activePlayer?.destroy();activePlayer=null;if(activeSession&&state.user){api('/player/sessions/'+encodeURIComponent(activeSession.id)+'/end',{method:'POST',body:{}}).catch(()=>{});}activeSession=null;
@@ -44,6 +46,7 @@ async function render(){
   else if(path==='/creators')result=creatorsPage(state);
   else if(path==='/developer'||path.startsWith('/developer/'))result=await developerPage(state,path);
   else if(path.startsWith('/owners-portal'))result=await ownerPage(state,path);
+  else if(LEGAL_PATHS.includes(path))result=legalPage(path);
   else if(path.startsWith('/developers/docs'))result=docsPage(path);
   else result=staticPage(path);
   if(generation!==routeGeneration)return;
@@ -51,7 +54,7 @@ async function render(){
   main.querySelectorAll('[data-action=favorite]').forEach(el=>el.setAttribute('aria-pressed',String(state.favoriteIds.has(el.dataset.id))));
   const submitGame=main.querySelector('form[data-form=submit-game]');if(submitGame&&!submitGame.elements.versionId.options.length){submitGame.querySelector('button[type=submit]').disabled=true;submitGame.insertAdjacentHTML('afterbegin',notice('No build has passed the security check yet. Upload your ZIP in Step 3 first.'));}else if(submitGame&&!state.media?.length){submitGame.querySelector('button[type=submit]').disabled=true;submitGame.insertAdjacentHTML('afterbegin',notice('Add at least one screenshot in Step 2 first.'));}
   if(state.serviceError&&path!=='/'&&!path.startsWith('/owners-portal'))main.insertAdjacentHTML('afterbegin',notice('Account services are currently unavailable. '+esc(messageFor(state.serviceError)),true));
-  if(location.hash==='#join'||location.hash==='#waitlist')document.getElementById('join')?.scrollIntoView({block:'start'});
+  const anchor=location.hash.slice(1);if(/^(join|waitlist|legal-section-[0-9]+)$/.test(anchor))document.getElementById(anchor==='waitlist'?'join':anchor)?.scrollIntoView({block:'start'});
  }catch(error){if(generation!==routeGeneration)return;main.innerHTML=`<div class="page-error">${icon(error.status===403?'shield-check':'warning-circle')}<h2>${error.status===403?'Additional verification required':'This page could not load.'}</h2><p>${esc(messageFor(error))}</p><div class="inline-actions">${btn('retry','Try Again','btn primary')}${error.status===403?link('/settings','Security Settings','btn'):link('/','Back to Home','btn')}</div></div>`;}
 }
 function formResult(form,text,isError=false){const box=form.querySelector('.form-feedback');if(box){box.className='form-feedback'+(isError?' error':'');box.textContent=text;box.scrollIntoView({block:'nearest'});}}

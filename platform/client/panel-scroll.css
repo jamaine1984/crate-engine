@@ -1,0 +1,43 @@
+/* Keep the navigation, page, and activity rail in separate desktop columns.
+   The lower creator sections must never extend underneath a sticky rail. */
+@media (min-width: 761px) {
+  .sidebar,
+  .right-rail {
+    grid-row: 1 / span 2;
+    align-self: start;
+    position: sticky;
+    top: 96px;
+    min-height: 0;
+    max-height: calc(100vh - 112px);
+    max-height: calc(100dvh - 112px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+  }
+
+  .sidebar { grid-column: 1; }
+  .right-rail { grid-column: 3; }
+  .main-content { grid-column: 2; grid-row: 1; }
+  .main-content.owner-section { grid-column: 2 / -1; }
+  .full-width { grid-column: 2; grid-row: 2; min-width: 0; }
+  .full-width:empty { display: none; }
+  .sidebar > * { flex-shrink: 0; }
+
+  /* These sections now follow the width of the main content column. */
+  .creator-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .creator-upload-banner { flex-wrap: wrap; }
+  .creator-upload-banner > div { flex: 1; min-width: 0; }
+  .creator-upload-banner > .btn { margin-left: 0; }
+}
+
+@media (max-width: 760px) {
+  .sidebar { overscroll-behavior-y: contain; }
+}
+
+.legal-toc { display: flex; flex-wrap: wrap; gap: 12px 20px; font-size: 13px; }
+.legal-section { scroll-margin-top: 100px; }
+.legal-section h2 { font-size: 24px; }
+.legal-contact { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.sidebar:focus-visible, .right-rail:focus-visible { outline: 3px solid #efbb60; outline-offset: 2px; }
