@@ -64,7 +64,7 @@ test('owner publication atomically commits exact ready version, immutable manife
   const f = await fixture(t), result = await (await publish(f)).json();
   assert.deepEqual(result, { published: true, gameId: f.gameId, versionId: f.versionId }); assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0].url, 'https://publisher.internal/promote'); assert.equal(f.calls[0].headers.get('authorization'), `Bearer ${f.env.PUBLISHER_INTERNAL_SECRET}`);
-  assert.deepEqual(await f.calls[0].json(), { gameId: f.gameId, versionId: f.versionId, checksum: f.checksum });
+  assert.deepEqual(await f.calls[0].json(), { gameId: f.gameId, versionId: f.versionId, checksum: f.checksum, premiumDelivery: false });
   assert.equal(f.sql.prepare('SELECT status FROM platform_games').get().status, 'published'); assert.equal(f.sql.prepare('SELECT status FROM platform_game_versions').get().status, 'published');
   const manifest = f.sql.prepare('SELECT * FROM platform_release_manifests').get(); assert.equal(manifest.checksum, f.checksum); assert.equal(manifest.manifest_json, f.manifest);
   const audit = f.sql.prepare("SELECT * FROM platform_audit WHERE action='game.publish'").all(); assert.equal(audit.length, 1);

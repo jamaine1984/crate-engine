@@ -28,7 +28,11 @@ function safePath(path) {
 }
 
 function requestedFile(url) {
-  const rawParts = url.pathname.split('/');
+  let rawParts = url.pathname.split('/'), sessionId = null;
+  if(rawParts[1]==='sessions'){
+    if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(rawParts[2]||''))return null;
+    sessionId=rawParts[2];rawParts=['',...rawParts.slice(3)];
+  }
   if (rawParts.length < 5 || rawParts[0] || rawParts[1] !== 'games' || !identifier.test(rawParts[2]) || !identifier.test(rawParts[3])) return null;
   const parts = rawParts.slice(4).map((part) => {
     const decoded = decodeURIComponent(part);
@@ -36,7 +40,7 @@ function requestedFile(url) {
     return decoded;
   });
   const path = parts.join('/');
-  return safePath(path) ? { gameId: rawParts[2], versionId: rawParts[3], path } : null;
+  return safePath(path) ? { gameId: rawParts[2], versionId: rawParts[3], path, sessionId } : null;
 }
 
 function releaseManifest(raw) {
@@ -69,21 +73,30 @@ export default {
       let target;
       try { target = requestedFile(url); } catch { return deny(400); }
       if (!target) return deny(404);
-      const { gameId, versionId, path } = target;
+      const { gameId, versionId, path, sessionId } = target;
       // Every normalized URL is authorized against its own exact game/version;
       // no request path is ever joined to a different release's object prefix.
-      const release = await env.PLATFORM_DB.prepare(`SELECT r.manifest_json, r.checksum
+      const release = await env.PLATFORM_DB.prepare(`SELECT r.manifest_json, r.checksum, g.price_minor
         FROM platform_release_manifests r
         JOIN platform_games g ON g.id = r.game_id
         JOIN platform_game_versions v ON v.id = r.version_id AND v.game_id = r.game_id
         WHERE r.game_id = ? AND r.version_id = ? AND g.status = 'published'
           AND g.active_version_id = v.id AND v.status = 'published'
-          AND v.platform = 'web' AND v.scan_status = 'clean' AND v.checksum = r.checksum
-          AND (g.price_minor IS NULL OR g.price_minor = 0)`)
+          AND v.platform = 'web' AND v.scan_status = 'clean' AND v.checksum = r.checksum`)
         .bind(gameId, versionId).first();
-      // No bearer query string or cookie bypass: paid delivery needs a separate
-      // entitlement-bound protocol and is deliberately unavailable here.
       if (!release || !hash.test(release.checksum || '')) return deny(404);
+      if(release.price_minor>0){
+        if(!sessionId)return deny(404);
+        // Check the live license on every file, including textures/scripts. Refunded,
+        // suspended or deleted accounts immediately lose access; never cache a grant.
+        const grant=await env.PLATFORM_DB.prepare(`SELECT 1 FROM platform_game_sessions s
+          JOIN platform_users u ON u.id=s.user_id
+          JOIN platform_licenses l ON l.user_id=s.user_id AND l.game_id=s.game_id
+          WHERE s.id=? AND s.game_id=? AND s.version_id=? AND s.expires_at>?
+          AND s.ended_at IS NULL AND u.status='active' AND l.status='active'`)
+          .bind(sessionId,gameId,versionId,Math.floor(Date.now()/1000)).first();
+        if(!grant)return deny(404);
+      }
       const manifest = releaseManifest(release.manifest_json);
       if (!manifest) return deny(503);
       const file = manifest.find((entry) => entry.path === path); if (!file) return deny(404);

@@ -14,7 +14,7 @@ export async function handlePlayer(request,env,path){
   const origin=contentOrigin(env,request);const sessionId=id();if(user)await rate(env,user.id,'game-session',30,60);
   const stmts=[db.prepare('INSERT INTO platform_game_sessions(id,user_id,game_id,version_id,created_at,expires_at) VALUES(?,?,?,?,?,?)').bind(sessionId,user?.id||null,game.id,version.id,now(),now()+7200)];
   if(user)stmts.push(db.prepare('INSERT INTO platform_play_history VALUES(?,?,?,1) ON CONFLICT(user_id,game_id) DO UPDATE SET last_played_at=excluded.last_played_at,play_count=play_count+1').bind(user.id,game.id,now()));await db.batch(stmts);
-  return json({session:{id:sessionId,gameId:game.id,expiresAt:now()+7200,contentUrl:`${origin}/games/${game.id}/${version.id}/index.html`,cloudSaveAvailable:Boolean(user)}},201);
+  return json({session:{id:sessionId,gameId:game.id,expiresAt:now()+7200,contentUrl:`${origin}${game.price_minor>0?'/sessions/'+sessionId:''}/games/${game.id}/${version.id}/index.html`,cloudSaveAvailable:Boolean(user)}},201);
  }
  const match=/^\/player\/sessions\/([^/]+)\/(progress|config|end)$/.exec(path);if(!match)return null;
  const u=await requireUser(request,env),session=await db.prepare('SELECT s.* FROM platform_game_sessions s JOIN platform_games g ON g.id=s.game_id WHERE s.id=? AND s.user_id=? AND s.expires_at>? AND s.ended_at IS NULL AND g.status=?').bind(match[1],u.id,now(),'published').first();if(!session)fail(403,'This game session has expired.','SESSION_EXPIRED');

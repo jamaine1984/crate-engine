@@ -50,6 +50,29 @@ test('HEAD has identical access checks and no response body', async (t) => {
   assert.equal(response.headers.get('content-length'), String(fileBytes.length));
 });
 
+test('premium files require a current session, active user and unrevoked license on every read', async t => {
+ const f=workerFixture(t),sid=crypto.randomUUID(),at=Math.floor(Date.now()/1000);
+ f.db.exec(`CREATE TABLE platform_game_sessions(id TEXT,user_id TEXT,game_id TEXT,version_id TEXT,expires_at INTEGER,ended_at INTEGER);
+ CREATE TABLE platform_users(id TEXT,status TEXT);
+ CREATE TABLE platform_licenses(user_id TEXT,game_id TEXT,status TEXT);
+ UPDATE platform_games SET price_minor=999;
+ INSERT INTO platform_users VALUES('buyer','active');
+ INSERT INTO platform_licenses VALUES('buyer','game-1','active');`);
+ f.db.prepare('INSERT INTO platform_game_sessions VALUES(?,?,?,?,?,NULL)').run(sid,'buyer','game-1','version-1',at+3600);
+ const path=`/sessions/${sid}/games/game-1/version-1/index.html`;
+ assert.equal((await f.fetch()).status,404);
+ assert.equal((await f.fetch(path)).status,200);
+ f.db.exec("UPDATE platform_licenses SET status='revoked'");
+ assert.equal((await f.fetch(path)).status,404);
+ f.db.exec("UPDATE platform_licenses SET status='active'; UPDATE platform_users SET status='suspended'");
+ assert.equal((await f.fetch(path)).status,404);
+ f.db.exec("UPDATE platform_users SET status='active'; UPDATE platform_game_sessions SET expires_at=1");
+ assert.equal((await f.fetch(path,{method:'HEAD'})).status,404);
+ f.db.prepare('UPDATE platform_game_sessions SET expires_at=?,ended_at=?').run(at+3600,at);
+ assert.equal((await f.fetch(path)).status,404);
+ assert.equal(f.reads.length,1);
+});
+
 for (const [name, statement] of [
   ['paid', 'UPDATE platform_games SET price_minor=100'],
   ['suspended game', "UPDATE platform_games SET status='suspended'"],

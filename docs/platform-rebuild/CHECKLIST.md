@@ -1,3 +1,5 @@
+> **October 3, 2026 current status:** Read `STRIPE-SETUP-2026-10-03.md`. Sandbox Stripe checkout, seller account/link generation, webhook verification and a real sandbox refund are tested; real payments await Stripe identity verification, final policies/tax handling and live connection. Cloudflare rejected publishing deployment on its Free plan; activate Workers Paid to finish uploads/publication. H5 application is submitted, with AdSense and H5 approvals pending. Operator: Jamaine Martin, Washington, United States. The owner wants all completed services live and ready for real games. The newer ad proposal is **70% creator / 30% platform**, superseding the older ad split below if adopted.
+
 # Crate Ship Games: Checklist
 
 The one running list of what's done and what's left. Newest decisions first. Last updated Sept 28, 2026 (night). Current handoff: `SESSION HANDOFF 2026-09-28 (night).md`.

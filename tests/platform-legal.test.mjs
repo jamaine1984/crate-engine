@@ -8,6 +8,7 @@ test('legal center exposes all nine policies with explicit draft status and cont
  assert.equal(Object.keys(legalDocuments).length,9);
  assert.match(html,/Prelaunch drafts/);
  assert.match(html,/mailto:crateshipstudios@gmail.com/);
+ assert.match(html,/Jamaine Martin, Washington, United States/);
  for(const path of Object.keys(legalDocuments))assert.ok(html.includes(`href="${path}"`));
 });
 

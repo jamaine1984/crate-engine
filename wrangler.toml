@@ -4,6 +4,8 @@ compatibility_date = "2026-05-19"
 
 [vars]
 APP_ORIGIN = "https://crateshipgames.com"
+STRIPE_MODE = "test"
+STRIPE_DELIVERY_READY = "true"
 # Local password signup (Resend mail) is unused: Firebase Authentication handles passwords and email.
 AUTH_PASSWORD_POLICY_APPROVED = "false"
 # Firebase project koko-engine-ai, web app "crateshipgames". Public web settings, not secrets.

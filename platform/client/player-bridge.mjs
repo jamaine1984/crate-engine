@@ -45,7 +45,8 @@ export function mountIsolatedPlayer(container, session, { api, onStatus = () => 
   try { content = new URL(session?.contentUrl); } catch { throw new Error('A valid isolated game session is required.'); }
   const app = new URL(location.origin);
   const related = app.hostname === content.hostname || app.hostname.endsWith('.' + content.hostname) || content.hostname.endsWith('.' + app.hostname) || app.hostname.split('.').slice(-2).join('.') === content.hostname.split('.').slice(-2).join('.');
-  const route = /^\/games\/([a-zA-Z0-9-]{1,80})\/([a-zA-Z0-9-]{1,80})\/index\.html$/.exec(content.pathname);
+  const route = /^(?:\/sessions\/[a-f0-9-]{36})?\/games\/([a-zA-Z0-9-]{1,80})\/([a-zA-Z0-9-]{1,80})\/index\.html$/i.exec(content.pathname);
+  if(content.pathname.startsWith('/sessions/')&&content.pathname.split('/')[2]!==session?.id)throw new Error('Licensed game session does not match.');
   if (!record(session) || typeof session.id !== 'string' || !idPattern.test(session.id) || !route || route[1] !== session.gameId || related || content.protocol !== 'https:' || content.username || content.password || content.search || content.hash || !Number.isSafeInteger(session.expiresAt) || session.expiresAt <= Date.now() / 1000 || typeof api !== 'function') {
     throw new Error('A separate secure game origin and valid game session are required.');
   }

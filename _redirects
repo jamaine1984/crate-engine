@@ -1,6 +1,7 @@
 /games / 200
 /games/* / 200
 /game/* / 200
+/checkout/* / 200
 /library / 200
 /favorites / 200
 /rewards / 200

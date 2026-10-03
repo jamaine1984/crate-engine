@@ -2,6 +2,7 @@ import { HttpError, json, readJson, id, now, database, requireMutationOrigin } f
 import { requireRole } from './identity.mjs';
 import { demandFlag } from './data.mjs';
 import { REVENUE_TYPES } from './commerce.mjs';
+import {commerceStatus} from './stripe-commerce.mjs';
 const fail = (status, message) => { throw new HttpError(status, message, 'RELEASE_BLOCKED'); };
 
 export async function handleReleases(request, env, path) {
@@ -23,7 +24,7 @@ export async function handleReleases(request, env, path) {
   const game = await db.prepare("SELECT * FROM platform_games WHERE id=? AND (status='approved' OR (status='published' AND update_status='approved' AND pending_version_id IS NOT NULL))").bind(match[1]).first();
   if (!game) fail(409, 'A separately approved game or update is required.');
   const releaseVersionId = game.status === 'published' ? game.pending_version_id : game.active_version_id;
-  if (game.price_minor > 0) fail(409, 'Paid delivery requires a separate commerce release.');
+  if (game.price_minor > 0) {if(!commerceStatus(env).checkoutEnabled)fail(409,'Paid delivery awaits Stripe activation and licensed hosting.');await demandFlag(env,'PREMIUM_SALES_ENABLED');}
   const version = await db.prepare(`SELECT v.*,u.object_key FROM platform_game_versions v
     JOIN platform_uploads u ON u.id=v.upload_id AND u.game_id=v.game_id AND u.version_id=v.id
     WHERE v.id=? AND v.game_id=? AND v.platform='web' AND v.status='ready' AND v.scan_status='clean'
@@ -40,7 +41,7 @@ export async function handleReleases(request, env, path) {
   try {
     response = await env.GAME_PUBLISHER.fetch(new Request('https://publisher.internal/promote', { method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${env.PUBLISHER_INTERNAL_SECRET}` },
-      body: JSON.stringify({ gameId: game.id, versionId: version.id, checksum: version.checksum }) }));
+      body: JSON.stringify({ gameId: game.id, versionId: version.id, checksum: version.checksum, premiumDelivery: game.price_minor>0 }) }));
   } catch { fail(503, 'The build could not be promoted. It has not been published.'); }
   if (!response.ok) fail(503, 'The build could not be promoted. It has not been published.');
   let release;
@@ -54,7 +55,7 @@ export async function handleReleases(request, env, path) {
     db.prepare(`INSERT INTO platform_audit(id,actor_id,action,target_id,detail_json,result,created_at)
       SELECT ?,?,?,?,?,?,? FROM platform_games g WHERE g.id=? AND g.developer_id=?
       AND ((g.status='approved' AND g.active_version_id=?) OR (g.status='published' AND g.update_status='approved' AND g.pending_version_id=?))
-      AND COALESCE(g.price_minor,0)=0
+      AND COALESCE(g.price_minor,0)=?
       AND EXISTS(SELECT 1 FROM platform_game_versions v JOIN platform_uploads u ON u.id=v.upload_id
         AND u.game_id=v.game_id AND u.version_id=v.id
         WHERE v.id=? AND v.game_id=g.id AND v.upload_id=? AND v.status='ready' AND v.platform='web'
@@ -76,7 +77,7 @@ export async function handleReleases(request, env, path) {
         AND (m.game_id!=g.id OR m.checksum!=? OR m.manifest_json!=?))`)
       .bind(publicationId, user.id, 'game.publish', game.id,
         JSON.stringify({ versionId: version.id, checksum: version.checksum, agreementId: agreement.id, agreementVersionId: agreement.version_id, reason: reason.slice(0, 500) }), 'success', committedAt,
-        game.id, game.developer_id, version.id, version.id, version.id, version.upload_id, version.scan_reference, version.checksum, version.manifest_json, version.object_key,
+        game.id, game.developer_id, version.id, version.id, game.price_minor||0, version.id, version.upload_id, version.scan_reference, version.checksum, version.manifest_json, version.object_key,
         committedAt, committedAt, committedAt, committedAt, agreement.id, agreement.version_id, committedAt, committedAt, committedAt, committedAt,
         user.id, user.sessionId, committedAt, committedAt - 300, committedAt - 300, version.id, version.checksum, version.manifest_json),
     // The swap is one statement: the old live build keeps serving until this commits.

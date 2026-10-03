@@ -5,6 +5,7 @@ import {esc,icon,link,btn,notice,loading,feedback,input,downloadJson} from './ui
 import {renderShell} from './shell.mjs';
 import {needsUser,homePage,catalogPage,gamePage,authPage,loginGate,collectionPage,walletPage,profilePage,settingsPage,projectsPage,creatorsPage,aiAppsPage} from './pages.mjs';
 import {developerPage,ownerPage} from './creator-pages.mjs';
+import {paymentsPage,checkoutReturnPage,stripeOwnerPage} from './payments.mjs';
 import {docsPage,staticPage} from './content.mjs';
 import {legalPage,LEGAL_PATHS} from './legal.mjs';
 import {mountIsolatedPlayer} from './player-bridge.mjs';
@@ -44,6 +45,9 @@ async function render(){
   else if(path==='/settings/ai')result=await aiAppsPage(state);
   else if(path==='/engine/projects')result=await projectsPage(state);
   else if(path==='/creators')result=creatorsPage(state);
+  else if(path==='/checkout/return')result=await checkoutReturnPage(state);
+  else if(path==='/developer/payments')result=await paymentsPage(state);
+  else if(path==='/owners-portal/stripe')result=await stripeOwnerPage(state);
   else if(path==='/developer'||path.startsWith('/developer/'))result=await developerPage(state,path);
   else if(path.startsWith('/owners-portal'))result=await ownerPage(state,path);
   else if(LEGAL_PATHS.includes(path))result=legalPage(path);
@@ -85,6 +89,8 @@ document.addEventListener('click',async event=>{
    if(action==='delete-project'&&confirm('Delete “'+p.name+'” from your cloud projects? Export a backup first if you need one.')){await api('/projects/'+encodeURIComponent(id),{method:'DELETE'});notify('Project deleted.');await render();}
   }
   if(action==='play-game'){const area=document.getElementById('player-area');area.innerHTML=loading();const data=await api('/player/sessions',{method:'POST',body:{gameId:state.currentGame.id}});activeSession=data.session;activePlayer=mountIsolatedPlayer(area,data.session,{api,onStatus:status=>{if(status==='ready')notify('Game ready.');}});activePlayer.frame.classList.add('player-frame');area.scrollIntoView({block:'center'});}
+  if(action==='refresh-payments'){await refreshSession();await render();return;}
+  if(action==='buy-game'){if(!state.user){await navigate('/login?next='+encodeURIComponent(location.pathname));return;}const result=await api('/checkout',{method:'POST',body:{gameId:state.currentGame.id,requestKey:crypto.randomUUID()}});if(result.owned){await refreshSession();await render();return;}if(result.testPaymentComplete){notify('Sandbox payment complete. No live license was created.');return;}const url=new URL(result.url);if(url.origin!=='https://checkout.stripe.com')throw new Error('Invalid payment address.');location.assign(url.href);return;}
   if(action==='claim-game'){if(!state.user){navigate('/login?next='+encodeURIComponent(location.pathname));return;}await api('/library',{method:'POST',body:{gameId:state.currentGame.id}});notify('Added to your library.');await refreshSession();el.textContent='In Your Library';el.disabled=true;}
  }catch(error){notify(messageFor(error),true);if(action==='play-game'){const area=document.getElementById('player-area');if(area)area.innerHTML=notice(esc(messageFor(error)),true);}}
  finally{if(el.isConnected)el.disabled=oldDisabled;}
@@ -116,6 +122,9 @@ document.addEventListener('submit',async event=>{
   else if(name==='create-project'){const result=await api('/projects',{method:'POST',body:{name:b.name,project:blankProject()}});notify('Project created.');await render();}
   else if(name==='import-project'){const file=form.elements.projectFile.files[0];if(!file||file.size>(state.config.limits.projectBytes||2097152))throw new Error('Choose a project file within the configured size limit.');const data=JSON.parse(await file.text());if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Choose a valid Crate project JSON file.');await api('/projects',{method:'POST',body:{name:b.name,project:data}});notify('Project backup imported.');await render();}
   else if(name==='report'){await api('/reports',{method:'POST',body:{gameId:form.dataset.id,category:b.reason==='security'?'malware':b.reason,detail:b.description}});form.reset();formResult(form,'Your report has been submitted for review.');}
+  else if(name==='stripe-onboard'){const result=await api('/seller/stripe/onboard',{method:'POST',body:{adultAndUSSeller:form.elements.adultAndUSSeller.checked}});const url=new URL(result.url);if(url.origin!=='https://connect.stripe.com')throw new Error('Invalid onboarding address.');location.assign(url.href);}
+  else if(name==='seller-accept'){await api('/seller/agreements/accept',{method:'POST',body:{agreementVersionId:form.dataset.agreement,policyVersion:form.dataset.policy,accepted:form.elements.accepted.checked}});notify('Sales agreement accepted.');await render();}
+  else if(name==='game-pricing'){if(!/^\d{1,3}(?:\.\d{1,2})?$/.test(b.price))throw new Error('Enter a USD price with no more than two decimal places.');const [whole,fraction='']=b.price.split('.');const priceMinor=Number(whole)*100+Number(fraction.padEnd(2,'0'));await api('/developer/games/'+encodeURIComponent(form.dataset.id)+'/pricing',{method:'PUT',body:{priceMinor}});notify('Game price saved.');await render();}
   else if(name==='create-game'){const data=await api('/developer/games',{method:'POST',body:gamePayload(b)});notify('Draft created.');await navigate('/developer/games/'+encodeURIComponent(data.game.id));}
   else if(name==='edit-game'){await api('/developer/games/'+encodeURIComponent(form.dataset.id),{method:'PUT',body:gamePayload(b)});formResult(form,'Game listing saved.');}
   else if(name==='upload-game'){await uploadBuild(form,b);}
